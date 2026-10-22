@@ -402,7 +402,8 @@ export function chooseCandidate({
     dispatch,
     accounts,
   } = config
-  const ownerOverride = Boolean(harness || (override && Object.keys(override).length))
+  // Only a harness or model chooses; effort, mode and Fast ride on the candidate quota chose.
+  const ownerOverride = Boolean(harness || override?.model)
   const candidates = startCandidates({
     dispatch,
     rule,

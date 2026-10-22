@@ -7,7 +7,7 @@ description: Use when you are Hydra and your digest shows "Setup needed", or the
 
 Pnyx checks its setup each time a Hydra session opens, in its own code, and lists only what is missing under "Setup needed" in your digest. A complete setup prints nothing. `pnyx-axi setup check --hydra <hydra>` prints the same list again (exit 1 while anything is missing).
 
-Each row names who fixes it. Do the `you` rows yourself, without asking. For `owner` rows that name a `pnyx-axi` command, run that command with `--hydra <hydra>` as usual: Pnyx turns it into a question card in your chat, and only the owner's Confirm runs it. For `owner` rows without a command, ask the owner in one short line. Greet a first setup with one line ("A few things to set up") before the cards; that line is the turn's reply, so never add `NO_REPLY` after it. When the owner dismisses one, note it in owner memory (`preferences`) and do not raise it again.
+Each row names who fixes it. Do the `you` rows yourself, without asking. For `owner` rows that name a `pnyx-axi` command, run that command with `--hydra <hydra>` as usual: Pnyx turns it into a question card in your chat, and only the owner's Confirm runs it; when your session is set to Bypass permissions or Codex's `never`, it runs at once instead, so report the result rather than a pending confirmation. For `owner` rows without a command, ask the owner in one short line. Greet a first setup with one line ("A few things to set up") before the cards; that line is the turn's reply, so never add `NO_REPLY` after it. When the owner dismisses one, note it in owner memory (`preferences`) and do not raise it again.
 
 After a fix, run `setup check` again and report only what is still missing.
 

@@ -343,6 +343,44 @@ test(
 )
 
 test(
+  'dispatch balances by live quota, not rotation: unchanged readings keep one choice, a shifted overdraw flips it',
+  () => {
+    // Both accounts overdrawn against their reset clocks, Claude less so.
+    const priorities: Record<string, number> = {
+      claude: -0.2092,
+      codex: -0.9649,
+    }
+    const quota = ({ account }: { account: { provider: string } }) => reading({
+      remaining: account.provider === 'claude' ? 55 : 48,
+      priority: priorities[account.provider],
+    })
+    const pick = () => chooseCandidate({
+      config: config(),
+      rule: 'build',
+      quota,
+    }).provider
+
+    assert.deepEqual(
+      [
+        pick(),
+        pick(),
+        pick(),
+      ],
+      [
+        'claude',
+        'claude',
+        'claude',
+      ],
+    )
+    priorities.claude = -1.2
+    assert.equal(
+      pick(),
+      'codex',
+    )
+  },
+)
+
+test(
   'a genuine spendPriority tie stops the start and names every tied candidate',
   () => {
     const current = config(), quota = () => reading({
@@ -844,6 +882,114 @@ test(
       process.env.HOME = saved.HOME
       process.env.CLAUDE_CONFIG_DIR = saved.CLAUDE_CONFIG_DIR
     }
+  },
+)
+
+test(
+  'settings-only overrides keep quota choosing the candidate; an explicit harness or model still wins',
+  () => {
+    // Claude's accounts are spent yet report a known priority, so only the spent veto keeps them below Codex's unknown quota.
+    const quota = ({ account }: { account: { provider: string } }) => account.provider === 'claude'
+      ? reading({
+        remaining: 0,
+        priority: -100,
+        exhausted: true,
+      })
+      : reading({})
+
+    for (const override of [
+      { effort: 'low' },
+      { mode: 'bypassPermissions' },
+      { fast: true },
+    ]) {
+      const chosen = chooseCandidate({
+        config: config(),
+        rule: 'build',
+        quota,
+        override,
+      })
+      assert.deepEqual(
+        [
+          chosen.account,
+          chosen.ownerOverride,
+          chosen.override,
+        ],
+        [
+          'codex:work',
+          undefined,
+          override,
+        ],
+      )
+      assert.match(
+        chosen.reason,
+        /only usable candidate/,
+      )
+    }
+
+    assert.deepEqual(
+      chosenSettings({
+        choice: chooseCandidate({
+          config: config(),
+          rule: 'build',
+          quota,
+          override: {
+            effort: 'low',
+            mode: 'never',
+          },
+        }),
+      }),
+      {
+        model: 'gpt-6.1-sol',
+        effort: 'low',
+        mode: 'never',
+      },
+    )
+
+    // An explicit harness or model is the owner's choice, so a spent account does not veto it.
+    const harness = chooseCandidate({
+      config: config(),
+      rule: 'build',
+      harness: 'claude',
+      quota,
+      override: { effort: 'low' },
+    })
+    const model = chooseCandidate({
+      config: config(),
+      rule: 'build',
+      quota,
+      override: {
+        model: 'opus',
+        mode: 'plan',
+      },
+      offers: {
+        claude: ['opus'],
+        codex: ['gpt-6.1-sol'],
+      },
+    })
+    assert.deepEqual(
+      [
+        harness.account,
+        harness.ownerOverride,
+        chosenSettings({ choice: harness }),
+        model.account,
+        model.ownerOverride,
+        chosenSettings({ choice: model }),
+      ],
+      [
+        'claude:work',
+        true,
+        {
+          model: 'opus',
+          effort: 'low',
+        },
+        'claude:work',
+        true,
+        {
+          model: 'opus',
+          mode: 'plan',
+        },
+      ],
+    )
   },
 )
 
