@@ -694,7 +694,6 @@ export function withWriter<T>({
           dirty = true
 
           // A task's explicit lifecycle change moves its card, as its own event in the same write.
-          // ponytail: O(cards) per append, the same order as reduce's state clone.
           for (const move of lifecycleMoves({
             before,
             state,
