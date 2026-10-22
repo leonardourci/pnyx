@@ -396,15 +396,16 @@ export function hostedHydra({ state }: { state: HydraState }): boolean {
 export function hydraMode({ state }: { state: HydraState }): string | undefined {
   const running = state.cards[HYDRA_CARD]?.settings?.mode
   const chosen = hydraConfig({ state }).hydra.agent
+  const settled = !chosen || chosen.mode === running
 
-  return hostedHydra({ state }) && (!chosen || chosen.mode === running) ? running : undefined
+  return hostedHydra({ state }) && settled ? running : undefined
 }
 
-// A Hydra the owner set to Bypass permissions, or Codex's never with its full access, runs owner-only commands without a Confirm card.
+// Codex's never runs with the same full access as Bypass permissions.
 export function hydraBypasses({ state }: { state: HydraState }): boolean {
   const mode = hydraMode({ state })
 
-  return mode === 'bypassPermissions' || (mode === 'never' && state.cards[HYDRA_CARD]?.agent?.provider === 'codex')
+  return mode === 'bypassPermissions' || mode === 'never'
 }
 
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
