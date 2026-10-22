@@ -694,13 +694,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; flex: none; color: var(--color-muted); }
 
-.composer-comments { align-self: flex-start; display: inline-flex; align-items: center; gap: 2px; padding: 1px 3px 1px 2px; border: 1px solid var(--color-gold-line); border-radius: 13px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-meta); }
+.composer-comments { align-self: flex-start; display: inline-flex; font-size: var(--text-chat); }
 
-.composer-comments > .button { min-height: 22px; padding: 0 6px; gap: 5px; color: inherit; font-size: inherit; border-radius: 11px; }
-
-.composer-comments > .icon-button { width: 20px; height: 20px; min-height: 20px; padding: 0; color: inherit; }
-
-.composer-comments > .remove-all { color: var(--color-red); }
+.composer-comments[data-armed] .card-x { width: auto; padding: 0 7px; color: var(--color-red); }
 
 .dialog { margin: auto; width: min(600px, calc(100vw - 32px)); max-height: min(78vh, 760px); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 18px 50px var(--color-shadow); }
 
