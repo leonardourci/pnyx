@@ -535,6 +535,18 @@ const pnyxShellEnvironment = ({ env }: { env: NodeJS.ProcessEnv }) => Object.fro
   ]))
 
 // Codex reports its account's windows by length: the five-hour one is the session, the seven-day one the week.
+const windowLabel = ({ minutes }: { minutes: number }) => {
+  if (minutes <= 300) {
+    return 'session'
+  }
+
+  if (minutes >= 10_080) {
+    return 'week'
+  }
+
+  return `${Math.round(minutes / 60)}h`
+}
+
 export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsage {
   const limits = object({ value: rateLimits })
 
@@ -547,8 +559,7 @@ export function codexLimits({ rateLimits }: { rateLimits: unknown }): HostedUsag
     ].flatMap(value => {
       const window = object({ value })
       const minutes = window.windowDurationMins
-      const label = typeof minutes !== 'number' ? undefined
-        : minutes <= 300 ? 'session' : minutes >= 10_080 ? 'week' : `${Math.round(minutes / 60)}h`
+      const label = typeof minutes === 'number' ? windowLabel({ minutes }) : undefined
 
       return label && typeof window.usedPercent === 'number' ? [
         {
