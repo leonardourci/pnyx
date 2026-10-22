@@ -297,6 +297,8 @@ test(
           name: 'project',
           path: folder,
           state: 'attached',
+          landing: 'pr',
+          merge: 'owner',
         },
       ],
     )

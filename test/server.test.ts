@@ -21,6 +21,11 @@ import type { HydraSummary } from '../src/server/hydras.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
+// The server follows linked pull requests; these tests never reach GitHub.
+process.env.PNYX_GH_AXI = join(
+  import.meta.dirname,
+  'fixtures/github/gh-axi.sh',
+)
 
 const BIN = join(
   import.meta.dirname,
@@ -3205,5 +3210,41 @@ test(
       },
     )
     t.ws.close()
+  },
+)
+
+test(
+  'the server follows a task\'s open pull request and records the checks gh-axi reports',
+  async () => {
+    await hydraWithCard()
+    const created = cli({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the export',
+      ],
+    })
+    const taskId = /id: (task-[0-9a-f-]+)/.exec(created)![1]!
+    const url = 'https://github.com/o/r/pull/77'
+    cli({
+      args: [
+        'link',
+        taskId,
+        '--url',
+        url,
+        '--state',
+        'open',
+      ],
+    })
+
+    const checks = await until({
+      check: () => loadHydra({ hydraId: 'default' }).state.cards[taskId]?.links.find(l => l.url === url)?.checks,
+      what: 'the followed pull request\'s checks',
+    })
+    assert.equal(
+      checks,
+      '0 passed, 0 failed',
+    )
   },
 )

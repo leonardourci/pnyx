@@ -563,7 +563,7 @@ test(
       args: [
         'status',
         'one',
-        'done',
+        'needs_you',
       ],
     })
     commands.link([
@@ -610,6 +610,11 @@ test(
       readPR: async () => 'merged',
     })
     await until({ check: () => f.sdk.calls[0]?.messages.length === 1 && f.card({ key: 'two' }).activity === 'finished' })
+    assert.equal(
+      f.card({ key: 'one' }).status?.state,
+      'done',
+      'the merge that released the queue also declared its task done',
+    )
     assert.equal(
       f.card({ key: 'two' }).agent?.sessionId,
       'worker',
@@ -701,6 +706,14 @@ test(
     const f = await lab({ t })
     f.commit()
     f.queue({ key: 'two' })
+    await project([
+      'set',
+      'app',
+      '--landing',
+      'branch',
+      '--hydra',
+      'lab',
+    ])
     f.task({
       args: [
         'status',
