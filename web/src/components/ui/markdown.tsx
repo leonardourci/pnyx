@@ -1,5 +1,5 @@
 import { TaskReference } from './task-reference.tsx'
-import { mentionId } from '../../../../src/mentions/mentions.ts'
+import { decodeValue, mentionId } from '../../../../src/mentions/mentions.ts'
 import { Fragment, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { imageLine, imagePaths } from '../../../../src/attachments/images.ts'
@@ -97,22 +97,24 @@ const inline = ({
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
         const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
+        const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
+        const label = inlineText({ tokens: token.tokens ?? [] }).replace(
+          /^@/,
+          '',
+        )
 
-        if (pointer?.[1] === 'image') {
+        if (pointer?.[1] === 'image' && value !== undefined) {
           return (
             <ImageChip
               key={i}
-              path={decodeURIComponent(pointer[2]!)}
-              label={inlineText({ tokens: token.tokens ?? [] }).replace(
-                /^@/,
-                '',
-              )}
+              path={value}
+              label={label}
             />
           )
         }
 
-        if (pointer?.[1] === 'column') {
-          const look = columnLook?.({ id: decodeURIComponent(pointer[2]!) }) ?? {
+        if (pointer?.[1] === 'column' && value !== undefined) {
+          const look = columnLook?.({ id: value }) ?? {
             icon: 'custom',
             tone: '',
           }
@@ -121,10 +123,7 @@ const inline = ({
             <ColumnChip
               key={i}
               {...look}
-              label={inlineText({ tokens: token.tokens ?? [] }).replace(
-                /^@/,
-                '',
-              )}
+              label={label}
             />
           )
         }
