@@ -3439,11 +3439,12 @@ const history = guard({
     const inWorkspace = ({ e }: { e: HydraEvent }) =>
       (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
 
+    const tagged = new Set(cardId ? [cardId] : [])
     const matches = readEvents({ hydraId })
       .filter(e => (before === undefined || e.seq < before)
         && (!cardId || e.cardId === cardId || tagsTask({
           event: e,
-          ids: new Set([cardId]),
+          ids: tagged,
         })))
       .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
       .reverse()
