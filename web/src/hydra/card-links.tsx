@@ -6,7 +6,7 @@ import { Tooltip, LINK_TOOLTIP_DELAY } from '../components/ui/tooltip.tsx'
 
 const CLOSED_LINKS = 2
 const OPEN_LINKS = 3
-const LINK_ICONS = {
+export const LINK_ICONS: Record<string, string> = {
   github_pr: 'github',
   linear: 'linear',
   url: 'paperclip',

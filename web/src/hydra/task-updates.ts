@@ -1,5 +1,6 @@
 import type { Card, HydraColumn, Link, PermissionRequest, RepliedEvent } from '../../../src/core/model.ts'
-import { mentionId } from '../../../src/mentions/mentions.ts'
+import { ownerActor } from '../../../src/core/model.ts'
+import { mentionId, TASK_MENTION } from '../../../src/mentions/mentions.ts'
 
 export interface TaskEvent {
   id: string
@@ -52,8 +53,9 @@ const HARNESSES: Record<string, string> = {
 }
 
 const INTENT = /^Captain's intent:\s*/
-const NEEDS_DECISION = /^needs-decision \[([^\]]+)\]:\s*([\s\S]+)$/
-const RESOLVED = /^resolved \[([^\]]+)\]:\s*(?:answered:\s*)?([\s\S]+)$/
+const NEEDS_DECISION = /^needs-decision(?: \[([^\]]+)\])?:\s*([\s\S]+)$/
+const RESOLVED = /^resolved(?: \[([^\]]+)\])?:\s*(?:answered:\s*)?([\s\S]+)$/
+const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
 
 const column = ({
   columns,
@@ -139,10 +141,8 @@ const decisionActor = ({ actor }: { actor?: string }) => {
     return 'Hydra'
   }
 
-  return owner({ actor }) ? 'You' : actor!
+  return ownerActor({ actor }) ? 'You' : actor!
 }
-
-const owner = ({ actor }: { actor?: string }) => !actor || actor === 'web' || actor === 'cli'
 
 const renamed = ({ data }: { data: Record<string, unknown> }): Row | undefined => {
   const before = data.before as Record<string, unknown> | undefined
@@ -173,7 +173,7 @@ const replied = ({
     }
   }
 
-  return owner({ actor }) ? {
+  return ownerActor({ actor }) ? {
     kind: 'ask',
     state: 'You asked',
     note: data.text,
@@ -231,7 +231,7 @@ const noted = ({ data }: { data: Record<string, unknown> }): Row | undefined => 
     state: 'Decision',
     note: '',
     decision: {
-      questionId: `firstmate:${(asked ?? resolved)![1]}`,
+      questionId: `firstmate:${(asked ?? resolved)![1] ?? 'default'}`,
       question: asked?.[2] ?? '',
       answer: resolved?.[2] ?? '',
       actor: 'Hydra',
@@ -287,11 +287,13 @@ export function relevantUpdate({
         },
       }
     }
-    case 'hydra.message': return owner({ actor: event.actor }) && data.action === 'send' && typeof data.text === 'string' && data.text.trim() ? {
-      kind: 'ask',
-      state: 'You asked',
-      note: data.text,
-    } : undefined
+    // A message to the task also queues its reply, which already shows as the ask.
+    case 'hydra.message': return !event.id.startsWith('task-context:') && ownerActor({ actor: event.actor })
+      && data.action === 'send' && typeof data.text === 'string' && data.text.trim() ? {
+        kind: 'ask',
+        state: 'You asked',
+        note: data.text,
+      } : undefined
     case 'task.declared': return typeof data.state === 'string' ? {
       kind: data.state === 'done' ? 'done' : 'status',
       state: data.state,
@@ -402,9 +404,9 @@ const withoutOwnChip = ({
   text: string
   cardId: string
 }) => {
-  const lead = /^\[@(?:\\.|[^\]\\\r\n])*\]\((pnyx-task:[\w%~.-]+)\)\s*/.exec(text)
+  const lead = OWN_CHIP.exec(text)
 
-  return lead && mentionId({ href: lead[1]! }) === cardId ? text.slice(lead[0].length) : text
+  return lead && mentionId({ href: lead[2]! }) === cardId ? text.slice(lead[0].length) : text
 }
 
 const mergeDecisions = ({
@@ -432,6 +434,9 @@ export function taskTimeline({
   columns: Columns
 }): TaskUpdate[] {
   const updates = new Map<string, TaskUpdate>()
+  // Firstmate reuses a decision key, the default one most of all: a question after its answer is a new decision.
+  const rounds = new Map<string, number>()
+  const answered = new Set<string>()
   let intent = ''
   let lastWords = ''
 
@@ -453,6 +458,27 @@ export function taskTimeline({
       at: event.at,
       seq: event.seq,
       ...row,
+    }
+
+    if (row.decision?.questionId?.startsWith('firstmate:')) {
+      const key = row.decision.questionId
+
+      if (row.decision.question && answered.delete(key)) {
+        rounds.set(
+          key,
+          (rounds.get(key) ?? 0) + 1,
+        )
+      }
+
+      if (row.decision.answer) {
+        answered.add(key)
+      }
+
+      update.id = `${key}:${rounds.get(key) ?? 0}`
+      update.decision = {
+        ...row.decision,
+        questionId: update.id,
+      }
     }
 
     if (row.kind === 'ask') {
@@ -597,11 +623,11 @@ export function groupUpdates({ updates }: { updates: TaskUpdate[] }): UpdateGrou
         })
       }
     } else if (last && prev?.at === update.at && !spoken({ update }) && !spoken({ update: prev })
-      && [
-        'single',
-        'moment',
-        'decisions',
-      ].includes(last.type)) {
+      && (update.kind === 'decision') === (prev.kind === 'decision') && [
+      'single',
+      'moment',
+      'decisions',
+    ].includes(last.type)) {
       last.updates.push(update)
       last.type = last.updates.every(item => item.kind === 'decision') ? 'decisions' : 'moment'
     } else if ((update.kind === 'hydra' || update.kind === 'told') && last?.type === 'single' && prev?.kind === 'ask'

@@ -912,7 +912,7 @@ test(
     assert.deepEqual(
       updates[3]!.decision,
       {
-        questionId: 'firstmate:emulator',
+        questionId: 'firstmate:emulator:0',
         question: 'Start one emulator?',
         answer: 'Yes, one.',
         actor: 'Hydra',
@@ -1129,6 +1129,15 @@ test(
         messages({ card: tagged }).length,
         1,
       )
+      const taskEvents = (commands.task([
+        'history',
+        tagged,
+        '--full',
+      ]) as { events: TaskEvent[] | string }).events
+      assert.equal(
+        Array.isArray(taskEvents) ? taskEvents.filter(item => item.type === 'hydra.message').length : 0,
+        1,
+      )
       assert.equal(
         messages({ card: state.keys.other! }).length,
         0,
@@ -1148,5 +1157,122 @@ test(
         process.env.PNYX_HOME = previous
       }
     }
+  },
+)
+
+test(
+  'default-key Firstmate decisions stay apart, a task message shows once, and a decision never hides in a moment',
+  () => {
+    const card = {
+      id: 'c1',
+      statusLog: [],
+    } as unknown as Card
+    const noted = ({
+      seq,
+      text,
+    }: {
+      seq: number
+      text: string
+    }) => event({
+      seq,
+      type: 'card.noted',
+      data: {
+        kind: 'decision',
+        source: 'firstmate',
+        text,
+      },
+    })
+    const updates = taskTimeline({
+      card,
+      columns,
+      events: [
+        noted({
+          seq: 1,
+          text: 'needs-decision: which docs first?',
+        }),
+        noted({
+          seq: 2,
+          text: 'resolved: the API docs',
+        }),
+        noted({
+          seq: 3,
+          text: 'needs-decision: publish them now?',
+        }),
+        {
+          ...event({
+            seq: 4,
+            type: 'hydra.message',
+            actor: 'web',
+            data: {
+              action: 'send',
+              task: 'c1',
+              text: 'Is it its own page?',
+            },
+          }),
+          id: 'task-context:c1:r1',
+        },
+        event({
+          seq: 5,
+          type: 'card.replied',
+          actor: 'web',
+          data: {
+            reply: 'r1',
+            state: 'queued',
+            route: 'pnyx',
+            text: 'Is it its own page?',
+          },
+        }),
+      ],
+    }).toReversed()
+
+    assert.deepEqual(
+      updates.map(update => update.kind === 'decision' ? [
+        update.decision!.question,
+        update.decision!.answer,
+      ] : [
+        update.kind,
+        update.note,
+      ]),
+      [
+        [
+          'which docs first?',
+          'the API docs',
+        ],
+        [
+          'publish them now?',
+          '',
+        ],
+        [
+          'ask',
+          'Is it its own page?',
+        ],
+      ],
+    )
+
+    const at = '2026-10-13T12:59:56Z'
+    assert.deepEqual(
+      groupUpdates({
+        updates: [
+          {
+            id: 'link',
+            kind: 'link',
+            state: 'Link attached',
+            note: '',
+            at,
+          },
+          {
+            id: 'decision',
+            kind: 'decision',
+            state: 'Decision',
+            note: '',
+            at,
+          },
+        ],
+      }).map(group => group.type),
+      [
+        'single',
+        'single',
+      ],
+    )
   },
 )

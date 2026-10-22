@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
-import { LinkChip } from './card-links.tsx'
+import { LINK_ICONS, LinkChip } from './card-links.tsx'
 import type { TaskUpdate, UpdateGroup, UpdateKind } from './task-updates.ts'
 
 const KINDS: Record<UpdateKind, {
@@ -57,11 +57,6 @@ const KINDS: Record<UpdateKind, {
     icon: 'summary',
     label: 'Update',
   },
-}
-
-const LINK_ICONS: Record<string, string> = {
-  github_pr: 'github_pr',
-  linear: 'linear',
 }
 
 const stateLabel = ({ state }: { state: string }) =>
@@ -162,6 +157,21 @@ function UpdateEntry({ update }: { update: TaskUpdate }) {
   )
 }
 
+function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> }) {
+  if (!decision.answer) {
+    return <p className="muted">Waiting for an answer</p>
+  }
+
+  const you = decision.actor === 'You'
+
+  return (
+    <div className="decision-answer">
+      <UpdateIcon kind={you ? 'ask' : 'hydra'} label={`Answered by ${you ? 'you' : decision.actor}`} />
+      <CollapsibleText text={decision.answer} />
+    </div>
+  )
+}
+
 function Decisions({ updates }: { updates: TaskUpdate[] }) {
   const many = updates.length > 1
 
@@ -178,15 +188,7 @@ function Decisions({ updates }: { updates: TaskUpdate[] }) {
               {many && <span className="decision-number">{index + 1}</span>}
               <CollapsibleText text={update.decision.question} />
             </div>
-            {update.decision.answer ? (
-              <div className="decision-answer">
-                <UpdateIcon
-                  kind={update.decision.actor === 'You' ? 'ask' : 'hydra'}
-                  label={`Answered by ${update.decision.actor === 'You' ? 'you' : update.decision.actor}`}
-                />
-                <CollapsibleText text={update.decision.answer} />
-              </div>
-            ) : <p className="muted">Waiting for an answer</p>}
+            <Answer decision={update.decision} />
             {update.decision.reason && <p className="decision-why">{update.decision.reason}</p>}
           </li>
         ))}
@@ -205,6 +207,7 @@ function Folded({ group }: { group: UpdateGroup }) {
       title={(
         <UpdateLine
           kind={workers ? 'status' : 'renamed'}
+          label={workers ? 'Worker updates' : 'Card changes'}
           at={group.updates.at(-1)!.at}
           plain
           title={(
@@ -240,16 +243,26 @@ function Moment({ updates }: { updates: TaskUpdate[] }) {
   )
 }
 
-export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
+function GroupBody({ group }: { group: UpdateGroup }) {
   const first = group.updates[0]!
-  const decisions = group.type === 'decisions' || (group.type === 'single' && first.kind === 'decision')
+
+  switch (group.type) {
+    case 'workers':
+    case 'changes': return <Folded group={group} />
+    case 'decisions': return <Decisions updates={group.updates} />
+    case 'moment': return <Moment updates={group.updates} />
+    default: return first.kind === 'decision'
+      ? <Decisions updates={group.updates} />
+      : group.updates.map(update => <UpdateEntry key={update.id} update={update} />)
+  }
+}
+
+export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
+  const decision = group.updates.every(update => update.kind === 'decision')
 
   return (
-    <li className={`update-row update-${group.type}${decisions ? ' update-decision' : ''}`}>
-      {group.type === 'workers' || group.type === 'changes' ? <Folded group={group} />
-        : decisions ? <Decisions updates={group.updates} />
-          : group.type === 'moment' ? <Moment updates={group.updates} />
-            : group.updates.map(update => <UpdateEntry key={update.id} update={update} />)}
+    <li className={decision ? 'update-decision' : undefined}>
+      <GroupBody group={group} />
     </li>
   )
 }
