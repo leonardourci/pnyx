@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react'
+import type { MouseEvent, ReactNode } from 'react'
 import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
@@ -257,11 +257,41 @@ function GroupBody({ group }: { group: UpdateGroup }) {
   }
 }
 
+// A click anywhere in an expandable row opens or closes all of it, never the card; selecting text does neither.
+function toggleRow({ event }: { event: MouseEvent<HTMLLIElement> }) {
+  const row = event.currentTarget
+  const folds = [...row.querySelectorAll<HTMLDetailsElement>('details.update-fold')]
+  const more = [...row.querySelectorAll<HTMLButtonElement>('.show-more')]
+
+  if (!folds.length && !more.length && !row.classList.contains('update-decision')) {
+    return
+  }
+
+  event.stopPropagation()
+
+  if (window.getSelection()?.toString() || (event.target instanceof Element && event.target.closest('a, button, summary'))) {
+    return
+  }
+
+  const expanded = ({ button }: { button: HTMLButtonElement }) => button.getAttribute('aria-expanded') === 'true'
+  const open = folds.length
+    ? folds.some(fold => fold.open)
+    : more.some(button => expanded({ button }))
+  folds.forEach(fold => {
+    fold.open = !open
+  })
+  // Opening a fold shows its text clamped; closing a row also closes any text opened in it.
+  const toggled = more.filter(button => open
+    ? expanded({ button })
+    : !folds.length && !expanded({ button }))
+  toggled.forEach(button => button.click())
+}
+
 export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
   const decision = group.updates.every(update => update.kind === 'decision')
 
   return (
-    <li className={decision ? 'update-decision' : undefined}>
+    <li className={decision ? 'update-decision' : undefined} onClick={event => toggleRow({ event })}>
       <GroupBody group={group} />
     </li>
   )
