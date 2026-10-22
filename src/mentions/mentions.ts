@@ -8,16 +8,26 @@ export interface TaskMention {
   title: string
 }
 
+export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file'
+
+// A reference as Pnyx writes it: [@Label](pnyx-<kind>:<encoded value>).
+export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file):([\w%~.-]+)\)/
+
+// A hand-written link can carry broken percent-encoding, which decodes to nothing.
+export function decodeValue({ value }: { value: string }): string | undefined {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return undefined
+  }
+}
+
 export function mentionId({ href }: { href: string }): string | undefined {
   if (!/^pnyx-task:[\w%~.-]+$/.test(href)) {
     return undefined
   }
 
-  try {
-    return decodeURIComponent(href.slice('pnyx-task:'.length)) || undefined
-  } catch {
-    return undefined
-  }
+  return decodeValue({ value: href.slice('pnyx-task:'.length) }) || undefined
 }
 
 // Only task references add context for Hydra; the other kinds are plain pointers.
@@ -26,7 +36,7 @@ export function reference({
   value,
   label,
 }: {
-  kind: 'task' | 'project' | 'column' | 'image' | 'file'
+  kind: ReferenceKind
   value: string
   label: string
 }): string {
