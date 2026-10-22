@@ -1,3 +1,4 @@
+import { refuseEarlyDone } from '../landing/done.ts'
 import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
@@ -1371,6 +1372,18 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       value: positionals[1],
       what: 'task id',
     })
+
+    if (positionals[2] === 'done') {
+      const state = loadHydra({ hydraId }).state
+      refuseEarlyDone({
+        state,
+        card: findCard({
+          state,
+          ref,
+        }),
+        hydraId,
+      })
+    }
 
     return commit({
       hydraId,
@@ -3983,6 +3996,8 @@ pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
+done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
+or, for an investigation, before its report is stored. The owner can still move the card to Done.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Choices are optional: a typed answer is always accepted.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
