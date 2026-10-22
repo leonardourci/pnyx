@@ -175,7 +175,6 @@ function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> })
   )
 }
 
-// A structured question: the question leads, then its context, choices and, folded away, the evidence.
 function AskParts({
   ask,
   choice,
@@ -187,7 +186,6 @@ function AskParts({
 
   return (
     <>
-      {/* Only Hydra asks the owner directly; everyone else asks Hydra. */}
       {ask.from && <p className="decision-from">{ask.from} asked {ask.from === 'Hydra' ? 'you' : 'Hydra'}</p>}
       {ask.context && <CollapsibleText text={ask.context} />}
       {!!ask.options?.length && (

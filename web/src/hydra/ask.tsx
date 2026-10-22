@@ -10,7 +10,6 @@ const RECEIPT: Record<string, string> = {
   failed: 'Answer not sent. Send it again.',
 }
 
-// A question waiting for the owner: the question leads, choices and a typed answer, evidence folded away.
 export function AskPanel({
   card,
   ask,
@@ -62,7 +61,6 @@ export function AskPanel({
           crypto.randomUUID(),
         ],
       })
-      // Hydra's own question is answered once recorded; a worker's once its session has the reply.
       const notice = receipt.answered ? 'Answer sent to Hydra.' : RECEIPT[String(receipt.state)]
       notify({ text: notice ?? 'The answer may not have arrived. Check the session before answering again.' })
     } catch (error) {

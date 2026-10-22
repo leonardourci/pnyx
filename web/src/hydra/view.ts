@@ -297,7 +297,6 @@ export function cardState({
     }
   }
 
-  // Waiting on Hydra is not waiting on the owner; a worker still running shows that instead.
   if (activity !== 'working' && openAsks({
     card,
     audience: 'hydra',

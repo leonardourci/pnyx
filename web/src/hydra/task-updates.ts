@@ -24,7 +24,6 @@ export interface UpdateDecision {
   actor: string
   reason?: string
   choice?: string
-  // A structured question's own parts, from its asking and any escalation.
   ask?: {
     from?: string
     to?: Ask['audience']
