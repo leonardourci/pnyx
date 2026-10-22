@@ -425,6 +425,14 @@ export function hostedHydra({ state }: { state: HydraState }): boolean {
   return hydraConfig({ state }).hydra.kind !== 'firstmate' && state.cards[HYDRA_CARD]?.agent?.host === 'pnyx'
 }
 
+// Pnyx runs this Hydra's agent, or starts it on the next message: not a Firstmate home or an outside agent.
+export function pnyxRunsHydra({ state }: { state: HydraState }): boolean {
+  const agent = state.cards[HYDRA_CARD]?.agent
+  const runsHere = !agent || agent.host === 'pnyx'
+
+  return hydraConfig({ state }).hydra.kind !== 'firstmate' && runsHere
+}
+
 // The mode a hosted Hydra's session runs in, once it matches the composer's; none mid-switch.
 export function hydraMode({ state }: { state: HydraState }): string | undefined {
   const running = state.cards[HYDRA_CARD]?.settings?.mode
@@ -450,6 +458,11 @@ export function wakesHydra({
   state: HydraState
   event: HydraEvent
 }): boolean {
+  // A worker's report waits in the same queue as its status changes, whatever card it names, and starts a Hydra Pnyx has not run yet.
+  if (event.type === 'hydra.message') {
+    return reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })
+  }
+
   const card = state.cards[event.cardId]
 
   if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
