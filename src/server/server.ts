@@ -1,3 +1,4 @@
+import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
@@ -1203,6 +1204,8 @@ async function mountOwnedHydra({
   let queueRun: Promise<void> | undefined
   let queueCheckedAt = 0
   let queueNeedsRetry = false
+  let followRun: Promise<void> | undefined
+  let followCheckedAt = 0
   let scheduled = false
 
   const kick = () => {
@@ -1243,6 +1246,25 @@ async function mountOwnedHydra({
           })()
         }
 
+        const following = followedLinks({ state }).length > 0
+
+        if (following && !followRun && Date.now() - followCheckedAt >= FOLLOW_POLL_MS) {
+          followCheckedAt = Date.now()
+          followRun = (async () => {
+            try {
+              await followPullRequests({
+                hydraId,
+                active: () => !closed,
+              })
+            } catch (error) {
+              console.error(`pnyx-axi follow: ${(error as Error).message}`)
+            } finally {
+              followRun = undefined
+              kick()
+            }
+          })()
+        }
+
         fireReminders({ hydraId })
         pump()
         const deadline = doneDeadline({ state })
@@ -1269,6 +1291,11 @@ async function mountOwnedHydra({
             ? [queueCheckedAt + QUEUE_POLL_MS] : []),
         ]
           .filter((at): at is number => at !== undefined)
+
+        if (!followRun && followedLinks({ state }).length > 0) {
+          deadlines.push(followCheckedAt + FOLLOW_POLL_MS)
+        }
+
         const deadline = deadlines.length ? Math.min(...deadlines) : undefined
 
         if (deadline !== undefined) {

@@ -1,3 +1,4 @@
+import { mergeCommand } from '../landing/merge.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
 import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
@@ -855,12 +856,22 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       to: { type: 'string' },
       undelivered: { type: 'boolean' },
       'from-message': { type: 'string' },
+      url: { type: 'string' },
     },
     positionals: 4,
   })
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'merge') {
+    return mergeCommand({
+      hydraId,
+      ref: positionals[1],
+      url: values.url as string | undefined,
+      meta: m,
+    })
+  }
 
   if (action === 'reminders') {
     const reminders = waitingReminders({ state: loadHydra({ hydraId }).state })
@@ -3998,6 +4009,9 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored. The owner can still move the card to Done.
+pnyx-axi task merge <id> [--url <pull request>]
+Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
+and never while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Choices are optional: a typed answer is always accepted.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
