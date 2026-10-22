@@ -8,6 +8,7 @@ import { HOST_LABEL, replyRoute, type ReplyRoute } from '../core/route.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { taskReceipt } from './task.ts'
 import { cardSessionId } from '../core/tasks.ts'
+import { lastAction, obj, type CurrentAction } from './calls.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -104,8 +105,6 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
   return parts
 }
 
-const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
-
 export function recordEntries({
   record,
   offset,
@@ -154,6 +153,8 @@ export function recordEntries({
       'tool_result',
       'function_call',
       'function_call_output',
+      'custom_tool_call',
+      'custom_tool_call_output',
     ].includes(String(b.type)) ? 'tool' : [
         'thinking',
         'reasoning',
@@ -255,15 +256,17 @@ function lastMessage({ lines }: { lines: string[] }): LatestMessage | null {
 // complete line, so a later read of the same file parses only what was appended.
 export interface LatestRead {
   message: LatestMessage | null
+  action: CurrentAction | null
   path: string
   ino: number
   size: number
 }
 
 // Given the previous read of the same, grown file, parses only the complete lines
-// appended since and keeps the previous message when they hold none. Otherwise reads
-// back from the end: a window of tool output doubles until a message turns up or
-// MAX_BYTES is read. message is null when the file holds no message or is unreadable.
+// appended since and keeps the previous message and action when they hold none, marking
+// that action done once its results arrive. Otherwise reads back from the end: a window
+// of tool output doubles until a message turns up or MAX_BYTES is read. message and
+// action are null when the file holds none or is unreadable.
 export function latestMessage({
   path,
   prev,
@@ -317,8 +320,19 @@ export function latestMessage({
         size: end,
       } = read({ start: prev.size })
 
+      const {
+        action,
+        results,
+      } = lastAction({ lines })
+      const answered = prev.action?.calls.every(call => results.has(call.id))
+      const settled = prev.action && !prev.action.done && answered ? {
+        ...prev.action,
+        done: true,
+      } : prev.action
+
       return {
         message: lastMessage({ lines }) ?? prev.message,
+        action: action ?? settled,
         path,
         ino,
         size: end,
@@ -338,11 +352,13 @@ export function latestMessage({
         size: end,
       } = read({ start })
       // The first line may be cut by the window.
-      const message = lastMessage({ lines: lines.slice(start ? 1 : 0) })
+      const whole = lines.slice(start ? 1 : 0)
+      const message = lastMessage({ lines: whole })
 
       if (message || !start || window >= MAX_BYTES) {
         return {
           message,
+          action: lastAction({ lines: whole }).action,
           path,
           ino,
           size: end,
@@ -352,6 +368,7 @@ export function latestMessage({
   } catch {
     return {
       message: null,
+      action: null,
       path,
       ino: 0,
       size: 0,
