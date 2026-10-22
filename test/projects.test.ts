@@ -855,7 +855,7 @@ test(
 )
 
 test(
-  'Settings requires absolute laptop folders',
+  'web project attachment requires absolute laptop folders',
   async () => {
     const { run } = fixture()
     await assert.rejects(
