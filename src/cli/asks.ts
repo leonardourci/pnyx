@@ -127,6 +127,7 @@ async function answerHydra({
   id,
   choice: picked,
   text: typed,
+  fromMessage,
   meta,
 }: {
   hydraId: string
@@ -134,6 +135,7 @@ async function answerHydra({
   id: string
   choice?: string
   text?: string
+  fromMessage?: string
   meta: Meta
 }): Promise<Output> {
   const result = commit({
@@ -152,8 +154,11 @@ async function answerHydra({
         answer,
         choice,
         question,
+        fromMessage: source,
       } = askAnswer({
         card,
+        state,
+        fromMessage,
         id,
         actor: meta.actor,
         choice: picked,
@@ -177,6 +182,7 @@ async function answerHydra({
               ...picks,
             ].join('\n'),
             answers: id,
+            fromMessage: source,
             ...(choice ? { choice } : {}),
             hydra: hydraConfig({
               state,
@@ -188,6 +194,13 @@ async function answerHydra({
     },
   })
   const event = result.event as { id?: string } | undefined
+
+  if (fromMessage && event?.id) {
+    return {
+      ...result,
+      answered: id,
+    }
+  }
 
   if (!event?.id) {
     return result
@@ -246,6 +259,10 @@ async function answerCommand({
     flag: '--choice',
   })
   const typed = text({ value: values.text })
+  const fromMessage = one({
+    value: values['from-message'],
+    flag: '--from-message',
+  })
   const undelivered = values.undelivered === true
   const state = loadHydra({ hydraId }).state
   const card = findCard({
@@ -261,6 +278,8 @@ async function answerCommand({
       card,
       id,
       actor: m.actor,
+      state,
+      fromMessage,
       choice: picked,
       text: typed,
       undelivered,
@@ -274,6 +293,7 @@ async function answerCommand({
       id,
       choice: picked,
       text: typed,
+      fromMessage,
       meta: m,
     })
   }
@@ -290,6 +310,7 @@ async function answerCommand({
       ask: {
         id,
         choice: picked,
+        fromMessage,
         text: typed,
         undelivered,
       },

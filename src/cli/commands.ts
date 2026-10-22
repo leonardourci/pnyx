@@ -68,7 +68,7 @@ import { answerPrompt } from '../core/answer.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter } from '../store/hydra-store.ts'
 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
@@ -216,90 +216,11 @@ export function explained({ meta }: { meta: Meta }): string {
     throw new HydraError({
       message: 'Hydra changes need --reason <why>',
       code: 'VALIDATION_ERROR',
-      help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event and posts it in your Hydra’s chat'],
+      help: ['Repeat the command with --reason "<one short line on why>"; Pnyx keeps it on the event'],
     })
   }
 
   return reason
-}
-
-// An ordinary Hydra message, so the light check, hydra messages and later sessions read it back.
-export function postLine({
-  writer,
-  hydraId,
-  meta,
-  cardId,
-  action,
-  reason,
-  id,
-}: {
-  writer: Writer
-  hydraId: string
-  meta: Meta
-  cardId: string
-  action: string
-  reason: string
-  id?: string
-}): string {
-  const text = `${action}: ${reason}`
-
-  if (id && id in writer.state.eventIds) {
-    return text
-  }
-
-  const decision = hydraEvent({
-    state: writer.state,
-    meta: {
-      at: meta.at,
-      actor: meta.actor,
-      ...(id ? { id } : {}),
-    },
-    cardId,
-    change: {
-      type: 'hydra.message',
-      data: {
-        task: cardId,
-        action: 'send',
-        text,
-        ...(meta.details ? { details: meta.details } : {}),
-        hydra: hydraConfig({
-          state: writer.state,
-          id: hydraId,
-        }).hydra.id,
-      },
-    },
-  })
-
-  if ('event' in decision) {
-    decision.event.messageId = decision.event.id
-    writer.append({ event: decision.event })
-  }
-
-  return text
-}
-
-function actionText({
-  state,
-  hydraId,
-  event,
-}: {
-  state: HydraState
-  hydraId: string
-  event: HydraEvent
-}): string {
-  const title = state.cards[event.cardId]?.title ?? event.cardId
-  const columnTitle = ({ id }: { id: Column | null }) => hydraConfig({
-    state,
-    id: hydraId,
-  }).columns.find(c => c.id === id)?.title ?? id ?? 'none'
-
-  switch (event.type) {
-    case 'card.moved': return event.undoes ? `Moved ${title} back to ${columnTitle({ id: event.data.after })}` : event.data.before === event.data.after ? `Reordered ${title} in ${columnTitle({ id: event.data.after })}` : `Moved ${title} to ${columnTitle({ id: event.data.after })}`
-    case 'task.created': return `Created ${title}`
-    case 'task.brief': return `Updated the brief of ${title}`
-    case 'task.visibility': return event.data.after ? `Hid ${title}` : `Returned ${title} to the Hydra`
-    default: return summarize({ event })
-  }
 }
 
 function receipt({
@@ -513,7 +434,9 @@ export function commit(
     }
   },
 ): Output {
-  const reason = EXPLAINED.includes(intent.type) ? explained({ meta }) : ''
+  if (EXPLAINED.includes(intent.type)) {
+    explained({ meta })
+  }
 
   return withWriter({
     hydraId,
@@ -594,28 +517,10 @@ export function commit(
 
           writer.append({ event: decision.event })
           const { event } = decision
-          const posted = meta.actor === HYDRA_ACTOR && reason && EXPLAINED.includes(event.type)
-            ? postLine({
-              writer,
-              hydraId,
-              meta,
-              cardId: event.cardId,
-              action: actionText({
-                state: writer.state,
-                hydraId,
-                event,
-              }),
-              reason,
-              id: `${event.id}:line`,
-            })
-            : undefined
-          out = {
-            ...receipt({
-              state: writer.state,
-              event,
-            }),
-            ...(posted ? { posted } : {}),
-          }
+          out = receipt({
+            state: writer.state,
+            event,
+          })
 
           if (decision.event.type === 'task.session' && decision.event.data.after) {
             harvestTranscripts({
@@ -947,6 +852,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       text: { type: 'string' },
       to: { type: 'string' },
       undelivered: { type: 'boolean' },
+      'from-message': { type: 'string' },
     },
     positionals: 4,
   })
@@ -1085,7 +991,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (action === 'start' || action === 'continue') {
-    const reason = explained({ meta: m })
+    explained({ meta: m })
     const ref = required({
       value: positionals[1],
       what: 'task id',
@@ -1115,47 +1021,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       meta: m,
     })
 
-    if (m.actor !== HYDRA_ACTOR) {
-      return started
-    }
-
-    // The worker is already started, so a failed post must not turn into an error Hydra retries.
-    return started.then(out => {
-      if (out.sent === 'failed') {
-        return out
-      }
-
-      try {
-        return {
-          ...out,
-          posted: withWriter({
-            hydraId,
-            fn: ({ writer }) => {
-              const card = findCard({
-                state: writer.state,
-                ref,
-              })
-              const action = `${positionals[0] === 'continue' ? 'Continued the agent in Pnyx on' : out.via === 'firstmate' ? 'Asked Firstmate for a worker on' : 'Started a worker on'} ${card.title}`
-
-              return postLine({
-                writer,
-                hydraId,
-                meta: m,
-                cardId: card.id,
-                action,
-                reason,
-                ...(m.id ? { id: `${m.id}:line` } : {}),
-              })
-            },
-          }),
-        }
-      } catch (error) {
-        return {
-          ...out,
-          posted: `none: ${(error as Error).message}`,
-        }
-      }
-    })
+    return started
   }
 
   if (action === 'copy') {
@@ -1957,6 +1823,7 @@ function taskHistory({
       ...(full ? {
         data: e.data,
         reason: e.reason,
+        details: e.details,
       } : {}),
     })) : 'none: no matching events',
     ...(matches.length > limit ? { next: page.at(-1)!.seq } : {}),
@@ -3639,6 +3506,7 @@ const history = guard({
         ...(values.full ? {
           data: e.data,
           reason: e.reason,
+          details: e.details,
         } : {}),
       })),
     }
@@ -4099,8 +3967,8 @@ pnyx-axi task rename <id> [--title <title>] [--project <name>]
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>]
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Choices are optional: a typed answer is always accepted.
-pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--reason <text>] [--undelivered]
-Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers only questions asked of it; agents never answer.
+pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
+Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
 An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
@@ -4118,7 +3986,7 @@ pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
 Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
-posts "<what Hydra did>: <reason>" in Hydra’s chat with --details under it, and returns that line as posted.
+and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
 pnyx-axi task paseo [--paseo-url <url>]
 pnyx-axi task queue <task> --behind <task|session>
 pnyx-axi task unqueue <task>
@@ -4197,7 +4065,7 @@ Sources are only read. Each note is kept once, so running it again appends only 
 Puts the card in the column just above the --before card, or at the end of the column without it.
 First returns confirmation: needed and a token; repeat with --confirm <token> to act.
 Hydra places a card only in response to its own agent’s actions, using the descriptions from \`pnyx-axi column list\`.
-Hydra's moves need --reason; Pnyx posts "Moved <task> to <column>: <reason>" in Hydra’s chat and returns it as posted. The owner's moves need none.
+Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
 GitHub pull request URLs get kind and number filled in. A link never moves the card.

@@ -52,6 +52,7 @@ export interface ReplyRequest {
   ask?: {
     id: string
     choice?: string
+    fromMessage?: string
     text?: string
     undelivered?: boolean
   }
@@ -407,6 +408,8 @@ export async function sendReply({
       if (request.ask) {
         const built = askAnswer({
           card,
+          state: writer.state,
+          fromMessage: request.ask.fromMessage,
           id: request.ask.id,
           actor: request.actor ?? 'cli',
           choice: request.ask.choice,
