@@ -191,6 +191,7 @@ interface MountedHydra {
     req,
     res,
     path,
+    search,
   }: HydraRequest): void
   upgrade({
     req,
@@ -206,6 +207,7 @@ type HydraRequest = {
   req: IncomingMessage
   res: ServerResponse
   path: string
+  search: string
 }
 type HydraUpgrade = {
   req: IncomingMessage
@@ -328,10 +330,13 @@ export async function startServer({
       })
     }
 
-    const path = new URL(
+    const {
+      pathname: path,
+      search,
+    } = new URL(
       req.url ?? '/',
       'http://localhost',
-    ).pathname
+    )
     const [
       , id,
       rest,
@@ -363,6 +368,7 @@ export async function startServer({
         req,
         res,
         path: rest,
+        search,
       })
     }
 
@@ -393,16 +399,19 @@ export async function startServer({
       })
     }
 
+    const home = `/hydra/${hydraId}/${search}`
+
     if (path === '/') {
       return void res.writeHead(
         302,
-        { location: `/hydra/${hydraId}/` },
+        { location: home },
       ).end()
     }
 
     serveStatic({
       res,
       path,
+      home,
     })
   })
 
@@ -1619,6 +1628,7 @@ async function mountOwnedHydra({
     req,
     res,
     path,
+    search,
   }: HydraRequest) => {
     // The CLI asks here to start or message an agent this server runs. A page cannot
     // send this header cross-origin without a preflight, which this server never answers.
@@ -1863,6 +1873,7 @@ async function mountOwnedHydra({
     serveStatic({
       res,
       path,
+      home: `${page.base}${search}`,
       page,
     })
   }
@@ -3026,10 +3037,12 @@ function reply({
 function serveStatic({
   res,
   path,
+  home,
   page,
 }: {
   res: ServerResponse
   path: string
+  home: string
   page?: {
     token: string
     identity: string
@@ -3044,14 +3057,11 @@ function serveStatic({
     WEB_ROOT,
     path === '/' ? 'index.html' : path,
   ))
-  const candidates = !file.startsWith(`${WEB_ROOT}/`) ? [] : page ? [
-    file,
-    index,
-  ] : file === index ? [] : [file]
+  const servable = file.startsWith(`${WEB_ROOT}/`) && (page !== undefined || file !== index)
 
-  for (const candidate of candidates) {
+  if (servable) {
     try {
-      if (candidate === index && page) {
+      if (file === index && page) {
         const raw = readFileSync(
           index,
           'utf8',
@@ -3071,16 +3081,24 @@ function serveStatic({
         return
       }
 
-      const body = readFileSync(candidate)
+      const body = readFileSync(file)
       res.writeHead(
         200,
-        { 'content-type': MIME[extname(candidate)] ?? 'application/octet-stream' },
+        { 'content-type': MIME[extname(file)] ?? 'application/octet-stream' },
       ).end(body)
 
       return
     } catch {
-      // Try the next candidate.
+      // Not a readable file; answered below.
     }
+  }
+
+  // A page served at a nested path would resolve its WebSocket there and never connect.
+  if (path !== '/' && !extname(path)) {
+    return void res.writeHead(
+      302,
+      { location: home },
+    ).end()
   }
 
   reply({
