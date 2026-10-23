@@ -45,6 +45,7 @@ export function HydraCard({
   view,
   save,
   open,
+  onEdit,
   tabIndex,
   command,
   connected,
@@ -72,6 +73,7 @@ export function HydraCard({
     id: string
     fromTitle?: boolean
   }): Promise<boolean>
+  onEdit(): void
   tabIndex: number
   command: Command
   connected: boolean
@@ -79,6 +81,15 @@ export function HydraCard({
   answer({ card }: { card: CardData }): void
 }) {
   const element = useRef<HTMLElement>(null)
+  const [
+    editingTitle,
+    setEditingTitle,
+  ] = useState(false)
+
+  const editTitle = () => {
+    onEdit(); setEditingTitle(true)
+  }
+
   const [
     preview,
     setPreview,
@@ -205,9 +216,9 @@ export function HydraCard({
           open({ id: card.id })
         }
       }}
-      draggable={connected && !selected && !reminding}
+      draggable={connected && !selected && !reminding && !editingTitle}
       onDragStart={e => {
-        if (e.target instanceof Element && e.target.closest('.resize, [contenteditable="plaintext-only"]')) {
+        if (e.target instanceof Element && e.target.closest('button, .resize, [contenteditable="plaintext-only"]')) {
           e.preventDefault()
 
           return
@@ -219,35 +230,6 @@ export function HydraCard({
         )
       }}
     >
-      <HoverActions anchor={element}>
-        <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
-        <Tooltip content="Hide">
-          <Button
-            aria-label="Hide"
-            disabled={!connected}
-            onClick={async () => {
-              try {
-                await command({
-                  name: 'task',
-                  args: [
-                    'hide',
-                    card.id,
-                    '--event-id',
-                    crypto.randomUUID(),
-                  ],
-                })
-
-                if (selected) {
-                  open({ id: card.id })
-                }
-              } catch (error) {
-                notify({ text: (error as Error).message })
-              }
-            }}
-          ><Icon name="review" size={15} />
-          </Button>
-        </Tooltip>
-      </HoverActions>
       <div className="card-content">
         <div className="card-state">
           <span className={`agent-activity activity-${status.kind}`}>
@@ -291,6 +273,9 @@ export function HydraCard({
             value={card.title}
             label={`Open task ${card.title}`}
             editingLabel="Task title"
+            editing={editingTitle}
+            edit={editTitle}
+            finished={() => setEditingTitle(false)}
             aria-expanded={selected}
             disabled={!connected}
             activate={({ pointer }) => open({
@@ -313,6 +298,45 @@ export function HydraCard({
             data-key-scope="hydra"
             tabIndex={tabIndex}
           />
+          <HoverActions anchor={element}>
+            <Tooltip content="Edit title">
+              <Button
+                aria-label="Edit task title"
+                disabled={!connected}
+                onClick={event => {
+                  event.stopPropagation(); editTitle()
+                }}
+              ><Icon name="renamed" size={15} />
+              </Button>
+            </Tooltip>
+            <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
+            <Tooltip content="Hide">
+              <Button
+                aria-label="Hide"
+                disabled={!connected}
+                onClick={async () => {
+                  try {
+                    await command({
+                      name: 'task',
+                      args: [
+                        'hide',
+                        card.id,
+                        '--event-id',
+                        crypto.randomUUID(),
+                      ],
+                    })
+
+                    if (selected) {
+                      open({ id: card.id })
+                    }
+                  } catch (error) {
+                    notify({ text: (error as Error).message })
+                  }
+                }}
+              ><Icon name="review" size={15} />
+              </Button>
+            </Tooltip>
+          </HoverActions>
           {selected && hasMetadata && (
             <Tooltip content={metadataLabel}>
               <Button
