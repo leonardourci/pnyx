@@ -1523,6 +1523,60 @@ test(
         writer.append({ event: hold.event })
       },
     })
+    const question = await commands.task([
+      'ask',
+      task.id,
+      '--question',
+      'Which scope?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+      '--reason',
+      'Owner choice',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'status',
+      task.id,
+      'needs_you',
+      '--note',
+      'Scope pending',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'answer',
+      task.id,
+      String(question.ask),
+      '--text',
+      'Keep the approved scope',
+      '--actor',
+      'cli',
+      '--hydra',
+      'lab',
+    ])
+    const restored = loadHydra({ hydraId: 'lab' }).state.cards[task.id]!.status
+    assert.equal(
+      restored?.state,
+      'paused',
+    )
+    assert.ok(restored?.restores)
+    const now = Date.now
+    Date.now = () => now() + 5 * 60 * 60 * 1000
+
+    try {
+      await sleep({ ms: 600 })
+      assert.equal(
+        waits().length,
+        1,
+        'answering a gate preserves an indefinite owner hold',
+      )
+    } finally {
+      Date.now = now
+    }
+
     await sleep({ ms: 600 })
     assert.equal(
       waits().length,

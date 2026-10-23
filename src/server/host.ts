@@ -1,3 +1,4 @@
+import { pausedDeclaration } from '../core/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, readUsage, type DispatchChoice } from '../dispatch/select.ts'
@@ -1435,9 +1436,9 @@ export function createHost({
 
   // When a paused task's wait ends: its --until, or PAUSE_MS after a worker paused without one.
   const waitEnd = ({ card }: { card: Card }): number | undefined => {
-    const declaration = card.status
+    const declaration = pausedDeclaration({ card })
 
-    if (declaration?.state !== 'paused') {
+    if (!declaration) {
       return undefined
     }
 
@@ -1611,7 +1612,7 @@ export function createHost({
     text: string
   }[] => Object.values(state.cards).flatMap(card => {
     const declaredWaitEnd = waitEnd({ card })
-    const declaration = card.status
+    const declaration = pausedDeclaration({ card })
 
     const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
 
