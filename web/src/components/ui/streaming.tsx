@@ -3,17 +3,21 @@ import { imageNames } from '../../../../src/attachments/images.ts'
 import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
 import {
   EDGE,
-  WINDOW,
+  arrivalRate,
   fencedTail,
   mountShown,
   revealSpeed,
   revealStep,
   safeEnd,
   splitBlocks,
+  type Arrival,
   type Block,
 } from './reveal.ts'
 
 type MarkdownProps = ComponentProps<typeof Markdown>
+
+export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
+const FRAME = 1000 / 60
 
 const lex = ({ text }: { text: string }) => markdown.lexer(text)
 
@@ -21,11 +25,11 @@ const useReducedMotion = () => {
   const [
     reduced,
     setReduced,
-  ] = useState(() => matchMedia('(prefers-reduced-motion: reduce)').matches)
+  ] = useState(() => matchMedia(REDUCED_MOTION).matches)
 
   useEffect(
     () => {
-      const media = matchMedia('(prefers-reduced-motion: reduce)')
+      const media = matchMedia(REDUCED_MOTION)
       const change = () => setReduced(media.matches)
       media.addEventListener(
         'change',
@@ -43,16 +47,15 @@ const useReducedMotion = () => {
   return reduced
 }
 
-// A message that mounts settled renders as plain Markdown; one that mounts streaming
-// types in and keeps its typing state for as long as it stays mounted.
+// Only a message that mounts streaming types in; it keeps typing state while it stays mounted.
 export function MessageText({
   streaming,
   decorations,
   ...props
 }: MarkdownProps & {
   streaming?: boolean
-  // Text inside these elements is not message text (comment cards, code labels).
-  decorations?: string
+  // Selector for elements inside a block that are not message text.
+  decorations: string
 }) {
   const [streamed] = useState(!!streaming)
 
@@ -60,7 +63,7 @@ export function MessageText({
     <StreamedText
       {...props}
       streaming={!!streaming}
-      decorations={decorations ?? '.code-language'}
+      decorations={decorations}
     />
   ) : <Markdown {...props} />
 }
@@ -70,21 +73,18 @@ type Reveal = {
   streaming: boolean
   ended: boolean
   decorations: string
-  // Typed position (fractional) and how much text the DOM holds, both in source chars.
+  // Both in source chars: the typed position (fractional) and how much text the DOM holds.
   cursor: number
   shown: number
   speed: number
-  arrivals: {
-    t: number
-    len: number
-  }[]
+  arrivals: Arrival[]
   boundary: number
   done: Block[]
   live: Block
   fenced: boolean
   frame: number
   last: number
-  // Rendered (DOM) text: its length after the last commit, and how much of it is typed.
+  // In rendered (DOM) chars: the length after the last commit, and how much of it is typed.
   rendered: number
   visible: number
   typed: {
@@ -94,8 +94,7 @@ type Reveal = {
   ranges: Range[]
 }
 
-// Letters typed in the last EDGE ms ramp up in four steps by position; untyped letters
-// are laid out but transparent. One shared Highlight per level holds every message's ranges.
+// One shared Highlight per level holds every message's ranges, so messages never clear each other's.
 const LEVELS = [
   'reveal-0',
   'reveal-1',
@@ -119,7 +118,7 @@ const highlight = ({ name }: { name: string }) => {
 }
 
 const unpaint = ({ st }: { st: Reveal }) => {
-  if (typeof CSS === 'undefined' || !CSS.highlights) {
+  if (!CSS.highlights) {
     return
   }
 
@@ -129,7 +128,6 @@ const unpaint = ({ st }: { st: Reveal }) => {
   ) => CSS.highlights.get(LEVELS[k]!)?.delete(range))
 }
 
-// Message text nodes, skipping those inside decorations.
 const textNodes = function* ({
   host,
   decorations,
@@ -173,8 +171,7 @@ const renderedLength = ({
   return length
 }
 
-// DOM points for distances back from the end of the rendered text, walking text nodes
-// backwards: the ranges only ever cover the last few words.
+// Walks back from the end: the ranges only ever cover the last few words.
 const pointsFromEnd = ({
   host,
   decorations,
@@ -247,12 +244,11 @@ const paint = ({
   host: HTMLElement | null
   now: number
 }) => {
-  if (!host || typeof CSS === 'undefined' || !CSS.highlights) {
+  if (!host || !CSS.highlights) {
     return
   }
 
-  // Unrendered markup between the cursor and the DOM end makes this an estimate;
-  // never decreasing, it turns into a short pause of the edge, never a letter vanishing.
+  // Unrendered markup makes this an estimate; never decreasing, it can pause the edge but never hide a letter again.
   st.visible = Math.min(
     st.rendered,
     Math.max(
@@ -302,7 +298,7 @@ const paint = ({
     k,
   ) => {
     const store = highlight({ name: LEVELS[k]! })
-    const range = st.ranges[k] ??= new Range()
+    const range = st.ranges[k]!
     const start = points.get(from!), end = points.get(to!)
     store.delete(range)
 
@@ -359,7 +355,6 @@ const split = ({ st }: { st: Reveal }) => {
   st.fenced = result.fenced
 }
 
-// Everything that has arrived, held back by the tail check.
 const arrived = ({ st }: { st: Reveal }) => safeEnd({
   text: st.text,
   end: st.text.length,
@@ -377,7 +372,7 @@ function tick({
   render,
   time,
 }: Loop & { time: number }) {
-  const elapsed = st.last ? time - st.last : 1000 / 60
+  const elapsed = st.last ? time - st.last : FRAME
   st.frame = 0
   st.last = time
   const step = revealStep({
@@ -416,9 +411,7 @@ function tick({
   }
 }
 
-// The streaming reply types word by word at the measured arrival rate, catching up
-// within CATCHUP and finishing within FINISH. Half-written Markdown waits, completed
-// blocks render once, and the typing is painted with CSS highlights, never DOM changes.
+// Typing is painted with CSS highlights so the DOM, caret and comment anchors never change.
 function StreamedText({
   text,
   streaming,
@@ -446,13 +439,13 @@ function StreamedText({
   if (!state.current) {
     const shown = mountShown({
       text,
-      streaming: streaming && !reduced,
+      fromStart: !reduced,
       lex,
     })
     state.current = {
       text,
       streaming,
-      ended: !streaming,
+      ended: false,
       decorations,
       cursor: shown,
       shown,
@@ -477,11 +470,7 @@ function StreamedText({
       rendered: 0,
       visible: 0,
       typed: [],
-      ranges: [],
-    }
-
-    if (reduced && streaming) {
-      state.current.shown = state.current.cursor = arrived({ st: state.current })
+      ranges: LEVELS.map(() => new Range()),
     }
 
     split({ st: state.current })
@@ -500,25 +489,18 @@ function StreamedText({
       st.streaming = streaming
       st.decorations = decorations
 
-      // Reduced motion shows text push by push; a harness that rewrote the text
-      // instead of extending it gets it shown as it is.
+      // Reduced motion shows each push as it lands; text a harness rewrote shows as it is.
       if (reduced || rewritten) {
         cancelAnimationFrame(st.frame)
         unpaint({ st })
-        Object.assign(
-          st,
-          {
-            frame: 0,
-            last: 0,
-            typed: [],
-            visible: 0,
-            ...rewritten ? {
-              boundary: 0,
-              done: [],
-              shown: 0,
-            } : {},
-          },
-        )
+        st.frame = st.last = st.visible = 0
+        st.typed = []
+
+        if (rewritten) {
+          st.boundary = st.shown = 0
+          st.done = []
+        }
+
         st.shown = st.cursor = Math.max(
           st.shown,
           arrived({ st }),
@@ -535,19 +517,11 @@ function StreamedText({
         return
       }
 
-      if (grew) {
-        st.arrivals.push({
-          t: now,
-          len: text.length,
-        })
-      }
-
-      const old = st.arrivals.findLastIndex(arrival => arrival.t <= now - WINDOW)
-      st.arrivals = st.arrivals.slice(Math.max(
-        0,
-        old,
-      ))
-      const rate = (text.length - st.arrivals[0]!.len) / WINDOW
+      const rate = arrivalRate({
+        arrivals: st.arrivals,
+        now,
+        length: text.length,
+      })
 
       // The speed holds between pushes; once the reply ends it is fixed to finish in time.
       if (streaming || !st.ended || grew) {
@@ -608,13 +582,14 @@ function StreamedText({
   )
 
   const st = state.current
+  const parts = st.live.raw ? [
+    ...st.done,
+    st.live,
+  ] : st.done
 
   return (
     <div className="markdown" ref={host}>
-      {[
-        ...st.done,
-        ...st.live.raw ? [st.live] : [],
-      ].map(part => (
+      {parts.map(part => (
         <MarkdownBlocks
           key={part.offset}
           text={part.raw}

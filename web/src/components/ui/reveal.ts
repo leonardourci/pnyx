@@ -1,5 +1,4 @@
-// The pure rules behind a streamed reply's reveal: how fast it types, where it may stop,
-// and which blocks are complete. Plain TypeScript so node --test can import it.
+// Plain TypeScript, so node --test can import the reveal rules directly.
 import type { Token, Tokens } from 'marked'
 
 // Letters typed in the last EDGE ms are still fading in.
@@ -7,19 +6,24 @@ export const EDGE = 60
 // How long a backlog takes to play out while the reply streams, and after it ends.
 export const CATCHUP = 400
 export const FINISH = 300
-// The arrival rate is measured over the last WINDOW ms of pushes.
 export const WINDOW = 1000
-// Chars per ms: the slowest the reveal ever types.
-export const MIN = 120 / 1000
+// Chars per ms.
+export const MIN_SPEED = 120 / 1000
 // How far the tail check looks back for an opener and ahead for its closer.
-export const LIMIT = 200
-// A streaming message mounted with at most this much text types from the start.
-export const FROM_START = 400
+const REACH = 200
+const FROM_START = 400
 const LONG_WORD = 24
 
 const MARKER_LINE = /^ {0,3}(?:#{1,6}|[-*+]|\d{1,9}[.)]?|>|[-=_*]+)?[ \t]*$/
 const MARKER = /^ {0,3}(?:#{1,6}|[-*+]|\d{1,9}[.)]|>)[ \t]+/
 const FENCE = /^ {0,3}(```|~~~)/
+// A table delimiter row, possibly still arriving.
+const DELIMITER_SO_FAR = /^\|?[ :|-]*$/
+
+export type Arrival = {
+  t: number
+  len: number
+}
 
 export function revealSpeed({
   rate,
@@ -33,14 +37,41 @@ export function revealSpeed({
   return Math.max(
     rate,
     backlog / (ended ? FINISH : CATCHUP),
-    MIN,
+    MIN_SPEED,
   )
 }
 
-// Typing lays out the whole word the cursor is in, so a word never jumps to the next
-// line while it types. A word that still touches the end of the received text may
-// grow, so typing waits before it; a word longer than LONG_WORD types as it comes.
-export function typingEnd({
+// Records a push and returns the chars per ms that arrived over the last WINDOW.
+export function arrivalRate({
+  arrivals,
+  now,
+  length,
+}: {
+  arrivals: Arrival[]
+  now: number
+  length: number
+}) {
+  if (length !== arrivals.at(-1)?.len) {
+    arrivals.push({
+      t: now,
+      len: length,
+    })
+  }
+
+  const old = arrivals.findLastIndex(arrival => arrival.t <= now - WINDOW)
+  arrivals.splice(
+    0,
+    Math.max(
+      0,
+      old,
+    ),
+  )
+
+  return (length - arrivals[0]!.len) / WINDOW
+}
+
+// The whole word under the cursor goes in at once so it never jumps lines mid-word.
+function typingEnd({
   text,
   cursor,
   final,
@@ -58,27 +89,26 @@ export function typingEnd({
     return i
   }
 
-  let j = i, k = i
+  let start = i, end = i
 
-  while (j > 0 && !/\s/.test(text[j - 1]!)) {
-    j--
+  while (start > 0 && !/\s/.test(text[start - 1]!)) {
+    start--
   }
 
-  while (k < text.length && !/\s/.test(text[k]!)) {
-    k++
+  while (end < text.length && !/\s/.test(text[end]!)) {
+    end++
   }
 
-  if (k - j > LONG_WORD) {
+  if (end - start > LONG_WORD) {
     return /[\uD800-\uDBFF]/.test(text[i - 1] ?? '') ? i + 1 : i
   }
 
-  return k >= text.length && !final ? j : k
+  // A word still touching the end of the received text may grow.
+  return end >= text.length && !final ? start : end
 }
 
-// safeEnd's `fenced` describes the text on screen. When a step would cross the line
-// that closes that fence, it stops at the end of that line, so the next step judges
-// what follows with the fence closed.
-export function fenceStop({
+// `fenced` describes the text on screen, so a step stops where that fence closes.
+function fenceStop({
   text,
   from,
   end,
@@ -87,15 +117,12 @@ export function fenceStop({
   from: number
   end: number
 }) {
-  for (let at = text[from - 1] === '\n' ? from : text.indexOf(
+  let at = text[from - 1] === '\n' ? from : text.indexOf(
     '\n',
     from,
-  ) + 1;
-    at > 0 && at < end;
-    at = text.indexOf(
-      '\n',
-      at,
-    ) + 1) {
+  ) + 1
+
+  while (at > 0 && at < end) {
     if (FENCE.test(text.slice(
       at,
       at + 8,
@@ -107,6 +134,11 @@ export function fenceStop({
 
       return newline < 0 ? text.length : newline
     }
+
+    at = text.indexOf(
+      '\n',
+      at,
+    ) + 1
   }
 
   return end
@@ -117,8 +149,18 @@ type Open = {
   at: number
 }
 
-// Where the cursor may stop so half-written Markdown never shows: a marker waits for
-// its closer, or the span shows whole once the closer has arrived.
+const lineStartBefore = ({
+  text,
+  at,
+}: {
+  text: string
+  at: number
+}) => text.lastIndexOf(
+  '\n',
+  at - 2,
+) + 1
+
+// Where the cursor may stop so half-written Markdown never shows.
 export function safeEnd({
   text,
   end,
@@ -160,24 +202,24 @@ export function safeEnd({
     return end
   }
 
-  const priorStart = text.lastIndexOf(
-    '\n',
-    lineStart - 2,
-  ) + 1
-  const underHeader = text.slice(
+  const priorStart = lineStartBefore({
+    text,
+    at: lineStart,
+  })
+  const priorIsRow = text.slice(
     priorStart,
     lineStart,
   ).startsWith('|')
-    && !text.slice(
-      text.lastIndexOf(
-        '\n',
-        priorStart - 2,
-      ) + 1,
-      priorStart,
-    ).startsWith('|')
+  const underHeader = priorIsRow && !text.slice(
+    lineStartBefore({
+      text,
+      at: priorStart,
+    }),
+    priorStart,
+  ).startsWith('|')
 
-  // While its delimiter row is still arriving, a table's header waits with it.
-  if (underHeader && !complete && /^\|?[ :|-]*$/.test(line)) {
+  // A table's header waits for its delimiter row.
+  if (underHeader && !complete && DELIMITER_SO_FAR.test(line)) {
     return priorStart
   }
 
@@ -192,12 +234,7 @@ export function safeEnd({
   }
 
   if (line.startsWith('|')) {
-    const header = !text.slice(
-      priorStart,
-      lineStart,
-    ).startsWith('|')
-
-    if (!header) {
+    if (priorIsRow) {
       return complete ? Math.max(
         end,
         lineEnd,
@@ -214,27 +251,30 @@ export function safeEnd({
     )
 
     if (!/^\|?[ :|-]+$/.test(delimiter)) {
-      return /^\|?[ :|-]*$/.test(delimiter) && !final ? lineStart : end
+      return DELIMITER_SO_FAR.test(delimiter) && !final ? lineStart : end
     }
 
-    return second >= 0 || final ? Math.max(
+    if (second < 0 && !final) {
+      return lineStart
+    }
+
+    return Math.max(
       end,
       second < 0 ? text.length : second,
-    ) : lineStart
+    )
   }
 
-  // Emphasis never spans blocks: scan from the start of the list item, heading or paragraph.
+  // Emphasis never spans blocks, so the scan starts at the list item, heading or paragraph.
   let paraStart = lineStart
 
-  while (paraStart > 0 && end - paraStart < LIMIT
-    && !/^ {0,3}(?:#{1,6}|[-*+]|\d{1,9}[.)]|>)[ \t]/.test(text.slice(
-      paraStart,
-      paraStart + 12,
-    ))) {
-    const prior = text.lastIndexOf(
-      '\n',
-      paraStart - 2,
-    ) + 1
+  while (paraStart > 0 && end - paraStart < REACH && !MARKER.test(text.slice(
+    paraStart,
+    paraStart + 12,
+  ))) {
+    const prior = lineStartBefore({
+      text,
+      at: paraStart,
+    })
 
     if (text.slice(
       prior,
@@ -251,6 +291,7 @@ export function safeEnd({
   for (let i = paraStart; i < end; i++) {
     const c = text[i]!
 
+    // Nothing inside a code span counts.
     if (open.at(-1)?.run[0] === '`') {
       if (c !== '`') {
         continue
@@ -286,16 +327,20 @@ export function safeEnd({
       }
 
       const run = text.slice(
-          i,
-          j,
-        ), before = text[i - 1] ?? ' ', after = text[j] ?? ' '
+        i,
+        j,
+      )
+      const before = text[i - 1] ?? ' '
+      const after = text[j] ?? ' '
 
-      // A run that touches the end of what has arrived cannot be judged yet.
+      // A run touching the end of what has arrived cannot be judged yet.
       if (j >= text.length && !final) {
-        return open.find(o => end - o.at < LIMIT)?.at ?? i
+        return open.find(o => end - o.at < REACH)?.at ?? i
       }
 
       const top = open.at(-1)
+      const opens = c === '`' || (!/\s/.test(after) && !(c === '_' && /\w/.test(before))
+        && (c !== '~' || run.length === 2))
 
       if (top && top.run === run && !/\s/.test(before)) {
         open.pop()
@@ -304,8 +349,7 @@ export function safeEnd({
         if (j > end && !open.length) {
           return j
         }
-      } else if (c === '`' || (!/\s/.test(after) && !(c === '_' && /\w/.test(before))
-        && (c !== '~' || run.length === 2))) {
+      } else if (opens) {
         open.push({
           run,
           at: i,
@@ -336,7 +380,7 @@ export function safeEnd({
     }
   }
 
-  const first = open.find(o => end - o.at < LIMIT)
+  const first = open.find(o => end - o.at < REACH)
 
   if (!first) {
     return end
@@ -349,7 +393,7 @@ export function safeEnd({
   )
   const ahead = text.slice(
     from,
-    first.at + LIMIT,
+    first.at + REACH,
   )
   const blank = ahead.indexOf('\n\n')
   const found = ahead.slice(
@@ -357,22 +401,16 @@ export function safeEnd({
     blank < 0 ? undefined : blank,
   ).indexOf(closer)
 
-  // The closer is here: show the span whole.
   if (found >= 0) {
     return from + found + closer.length
   }
 
-  // It can no longer close: show it as it is.
-  if (final || blank >= 0 || end - first.at >= LIMIT) {
-    return end
-  }
+  const closable = !final && blank < 0 && end - first.at < REACH
 
-  return first.at
+  return closable ? first.at : end
 }
 
-// One frame of typing: `cursor` is the typed position (fractional), `shown` how much
-// text the DOM holds. The DOM gets the whole word the cursor is in, held back by the
-// tail check; the cursor never passes it.
+// One frame: `cursor` is the typed position (fractional), `shown` how much text the DOM holds.
 export function revealStep({
   text,
   cursor,
@@ -407,16 +445,17 @@ export function revealStep({
       end: word,
     }),
   ) : word
+  const held = safeEnd({
+    text,
+    end,
+    final,
+    fenced,
+  })
   const next = Math.max(
     shown,
     Math.min(
       text.length,
-      safeEnd({
-        text,
-        end,
-        final,
-        fenced,
-      }),
+      held,
     ),
   )
 
@@ -434,46 +473,63 @@ export function revealStep({
 
 export type Block = {
   offset: number
-  // The message block index its first token starts at, as Markdown counts them.
+  // Markdown's block index for the first token, which comments store.
   index: number
   raw: string
   tokens: Token[]
 }
 
-// How many times Markdown's renderer calls `block` for these tokens. Keep in step with
-// `renderBlocks` in markdown.tsx.
-export const blockCount = ({
+// Counts the `block` calls renderBlocks in markdown.tsx makes for these tokens.
+function blockCount({
   tokens,
   inItem = false,
 }: {
   tokens: Token[]
   inItem?: boolean
-}): number => tokens.reduce(
-  (
-    sum,
-    token,
-  ) => sum + (token.type === 'space' || token.type === 'checkbox' || token.type === 'hr' ? 0
-    : token.type === 'blockquote' ? blockCount({ tokens: token.tokens ?? [] })
-      : token.type === 'list' ? (token as Tokens.List).items.reduce(
-        (
-          n,
-          item,
-        ) => n + 1 + blockCount({
+}): number {
+  let count = 0
+
+  for (const token of tokens) {
+    if (token.type === 'blockquote') {
+      count += blockCount({ tokens: token.tokens ?? [] })
+    } else if (token.type === 'list') {
+      for (const item of (token as Tokens.List).items) {
+        count += 1 + blockCount({
           tokens: item.tokens,
           inItem: true,
-        }),
-        0,
-      )
-        : inItem && (token.type === 'paragraph' || token.type === 'text') ? 0 : 1),
-  0,
-)
+        })
+      }
+    } else if (![
+      'space',
+      'checkbox',
+      'hr',
+    ].includes(token.type)
+      && !(inItem && (token.type === 'paragraph' || token.type === 'text'))) {
+      count++
+    }
+  }
+
+  return count
+}
+
+const lastBlock = ({ tokens }: { tokens: Token[] }) => {
+  let end = tokens.length - 1
+
+  while (end > 0 && tokens[end]!.type === 'space') {
+    end--
+  }
+
+  return Math.max(
+    0,
+    end,
+  )
+}
 
 const openFence = ({ token }: { token?: Token }) => token?.type === 'code' && FENCE.test(token.raw)
   && token.raw.trimEnd().split('\n')
     .filter(line => FENCE.test(line)).length < 2
 
-// Completed blocks are lexed once and kept in `done`; only the growing block is lexed
-// again. Every top-level token before the last non-space one is complete.
+// Every top-level token before the last non-space one is complete and is never lexed again.
 export function splitBlocks({
   text,
   boundary,
@@ -486,20 +542,13 @@ export function splitBlocks({
   lex({ text }: { text: string }): Token[]
 }) {
   const tokens = lex({ text: text.slice(boundary) })
-  const last = done.at(-1)
-  let index = last ? last.index + blockCount({ tokens: last.tokens }) : 0
-  let end = tokens.length - 1
-
-  while (end > 0 && tokens[end]!.type === 'space') {
-    end--
-  }
+  const previous = done.at(-1)
+  const end = lastBlock({ tokens })
+  let index = previous ? previous.index + blockCount({ tokens: previous.tokens }) : 0
 
   for (const token of tokens.slice(
     0,
-    Math.max(
-      0,
-      end,
-    ),
+    end,
   )) {
     done.push({
       offset: boundary,
@@ -511,10 +560,7 @@ export function splitBlocks({
     index += blockCount({ tokens: [token] })
   }
 
-  const live = tokens.slice(Math.max(
-    0,
-    end,
-  ))
+  const live = tokens.slice(end)
 
   return {
     boundary,
@@ -528,7 +574,6 @@ export function splitBlocks({
   }
 }
 
-// Whether the growing block of `text` past `boundary` is an open code fence.
 export const fencedTail = ({
   text,
   boundary,
@@ -539,31 +584,21 @@ export const fencedTail = ({
   lex({ text }: { text: string }): Token[]
 }) => {
   const tokens = lex({ text: text.slice(boundary) })
-  let end = tokens.length - 1
 
-  while (end > 0 && tokens[end]!.type === 'space') {
-    end--
-  }
-
-  return openFence({ token: tokens[end] })
+  return openFence({ token: tokens[lastBlock({ tokens })] })
 }
 
-// What a message shows when it mounts: a short streaming reply types from the start,
-// a longer one (a reload mid-reply) shows what has arrived, minus half-written Markdown.
+// A short streaming reply types from the start; a longer one (a reload) shows what arrived.
 export function mountShown({
   text,
-  streaming,
+  fromStart,
   lex,
 }: {
   text: string
-  streaming: boolean
+  fromStart: boolean
   lex({ text }: { text: string }): Token[]
 }) {
-  if (!streaming) {
-    return text.length
-  }
-
-  if (text.length <= FROM_START) {
+  if (fromStart && text.length <= FROM_START) {
     return 0
   }
 

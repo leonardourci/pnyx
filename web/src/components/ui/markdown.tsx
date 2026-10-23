@@ -288,7 +288,7 @@ type Blocks = {
   block?: BlockWrap
 } & TaskLink
 
-// Each `block` call is counted by blockCount in reveal.ts; keep the two in step.
+// blockCount in reveal.ts mirrors every `block` call made here.
 const renderBlocks = ({
   text,
   tokens,
@@ -464,8 +464,7 @@ const renderBlocks = ({
   return render({ tokens })
 }
 
-// A run of a message's top-level tokens, rendered on its own so a streamed reply
-// renders each completed block once.
+// Memoized, so a streamed reply's completed blocks skip the typing frames between pushes.
 export const MarkdownBlocks = memo(renderBlocks)
 
 export function Markdown({

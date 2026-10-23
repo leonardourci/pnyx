@@ -3,7 +3,7 @@ import { hydraConversation } from './conversation.ts'
 import { chatDecisions, ChatDecisionCard, WaitingDecisions, type ChatDecision } from './chat-decisions.tsx'
 import { DispatchProposals } from './dispatch-proposals.tsx'
 import { Icon } from '../components/ui/icon.tsx'
-import { WorkingDots } from '../components/ui/streaming.tsx'
+import { REDUCED_MOTION, WorkingDots } from '../components/ui/streaming.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
@@ -106,7 +106,7 @@ export function HydraChat({
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
-  const rendered = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
+  const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
     thinking,
@@ -236,10 +236,10 @@ export function HydraChat({
   ) => (a.at ?? '').localeCompare(b.at ?? ''))
   const entries = keepStreamedKeys({
     entries: listed,
-    previous: rendered.current,
+    previous: previousEntries.current,
     keys: streamedKeys.current,
   })
-  rendered.current = entries
+  previousEntries.current = entries
 
   const threadSession = useRef(card?.agent?.sessionId)
   threadSession.current = card?.agent?.sessionId
@@ -324,10 +324,15 @@ export function HydraChat({
   // Following eases toward the bottom; any input of the owner's stops it at once.
   const settle = () => {
     const element = stream.current
-    const left = element ? element.scrollHeight - element.clientHeight - element.scrollTop : 0
     glide.current = 0
 
-    if (element && follow.current && left >= 1) {
+    if (!element || !follow.current) {
+      return
+    }
+
+    const left = element.scrollHeight - element.clientHeight - element.scrollTop
+
+    if (left >= 1) {
       element.scrollTop += Math.ceil(left * GLIDE)
       glide.current = requestAnimationFrame(settle)
     }
@@ -356,7 +361,7 @@ export function HydraChat({
         const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
 
         // A page load or a jump of more than a screen snaps; only a growing reply glides.
-        if (left > scroller.clientHeight || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        if (left > scroller.clientHeight || matchMedia(REDUCED_MOTION).matches) {
           bottom()
         } else {
           glide.current = requestAnimationFrame(settle)

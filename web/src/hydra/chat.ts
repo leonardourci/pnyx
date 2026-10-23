@@ -204,11 +204,10 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
       prior.kind === entry.kind && (prior.part ?? 0) + prior.text.length === entry.part) {
       prior.text += entry.text
     } else {
-      // A group from the first part takes the message's own id, so a streaming reply
-      // keeps its key when it grows past one part.
+      // The message's own id keeps a streaming reply's key stable once it grows past one part.
       result.push({
         ...entry,
-        ...entry.messageId && entry.part === 0 ? { id: entry.messageId } : {},
+        id: entry.messageId && entry.part === 0 ? entry.messageId : entry.id,
       })
     }
   }
@@ -216,11 +215,9 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
   return result
 }
 
-// The transcript entry that replaces a streamed reply renders under the reply's key,
-// so the reply is not mounted again and finishes typing. `keys` maps settled ids to
-// live keys; it grows by one per streamed reply.
 type Keyed<Entry> = Entry & { renderKey?: string }
 
+// The transcript entry replacing a streamed reply keeps the reply's key, so it is not remounted.
 export function keepStreamedKeys<Entry extends ThreadEntry>({
   entries,
   previous,
@@ -245,7 +242,7 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
     if (settled) {
       keys.set(
         settled.id,
-        gone.renderKey ?? gone.id,
+        gone.id,
       )
     }
   }
