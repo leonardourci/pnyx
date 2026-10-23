@@ -1,10 +1,11 @@
+import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { dateLearnings, type Learning } from '../memory/learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { Meta } from '../core/decide.ts'
 import { HydraError } from '../core/model.ts'
-import { privateDir, withRegistryLock } from '../store/hydra-store.ts'
+import { privateDir, withRegistryLock, withWriter } from '../store/hydra-store.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { projectIdentity, projectSources } from './sources.ts'
 
@@ -14,6 +15,7 @@ export const PROJECT_MEMORY_DOCUMENTS = {
   profile: 'Profile',
   preferences: 'Project owner preferences',
   learnings: 'Project learnings',
+  workers: 'Standing worker instructions',
 } as const
 export type ProjectMemoryKey = keyof typeof PROJECT_MEMORY_DOCUMENTS
 
@@ -196,11 +198,42 @@ export function writeProjectMemory({
   meta: Meta
   confirmed?: string
 }) {
+  if (key === 'workers') {
+    checkWorkerNotes({
+      text: after,
+      reason: meta.reason,
+    })
+  }
+
   return withRegistryLock({
     fn: () => {
       const view = projectMemoryView({ path })
 
-      if (meta.id && view.events.some(event => event.id === meta.id)) {
+      const previous = view.events.find(event => event.id === meta.id)
+
+      const notify = ({ event }: { event: MemoryEvent }) => {
+        if (event.key !== 'workers') {
+          return
+        }
+
+        withWriter({
+          hydraId: event.hydra,
+          fn: ({ writer }) => workerNotesNotice({
+            writer,
+            target: basename(path),
+            meta: {
+              id: event.id,
+              at: event.at,
+              actor: event.actor,
+              reason: event.reason,
+            },
+          }),
+        })
+      }
+
+      if (previous) {
+        notify({ event: previous })
+
         return {
           project: view.id,
           revision: view.revision,
@@ -257,6 +290,12 @@ export function writeProjectMemory({
       }
 
       if (before === after && confirmed === undefined && (key !== 'profile' || !view.changed.length)) {
+        const saved = view.events.findLast(event => event.key === key)
+
+        if (saved) {
+          notify({ event: saved })
+        }
+
         return {
           project: view.id,
           revision: view.revision,
@@ -294,6 +333,8 @@ export function writeProjectMemory({
         `${JSON.stringify(event)}\n`,
         { mode: 0o600 },
       )
+
+      notify({ event })
 
       return {
         project: view.id,

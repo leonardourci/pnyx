@@ -895,7 +895,7 @@ test(
     assert.ok(first >= before)
     assert.match(
       wakes()[0]!,
-      / Memory changed; load owner memory[^\n]*<\/pnyx-wake>$/,
+      / Memory changed; load owner memory[^\n]*\nReply rules:/,
     )
     assert.doesNotMatch(
       wakes()[0]!,
@@ -1451,7 +1451,13 @@ test(
 
 test(
   'a worker that ends its turn still declaring working stalls, though plain progress never wakes Hydra',
-  async () => {
+  async t => {
+    let now = Date.now()
+    t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
     fakeDispatch({ root: home })
     const folder = join(
       home,
@@ -1510,6 +1516,8 @@ test(
       0,
       'a finished turn and a plain working declaration stay on the card',
     )
+
+    now += 60_000
 
     for (let i = 0; i < 150 && !wakes().length; i++) {
       await sleep({ ms: 10 })
@@ -3254,5 +3262,113 @@ test(
       ws.close()
       sdk.advance()
     }
+  },
+)
+
+test(
+  'an owner turn ending NO_REPLY gets one standalone-reply follow-up and never loops',
+  async () => {
+    const sdk = hydraSdk()
+    sdk.control.reply = 'NO_REPLY'
+    sdk.control.stream = true
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 10,
+    })
+    await send({
+      text: 'What is ready?',
+      id: 'owner-quiet',
+    })
+    const messages = () => sdk.calls.flatMap(call => call.messages)
+    await until({ check: () => messages().length === 2 && finished() })
+    assert.match(
+      messages()[1]!,
+      /^<pnyx-wake>The owner wrote to you; reply to them in one standalone message\./,
+    )
+    assert.match(
+      messages()[1]!,
+      /Reply rules:.*full links/,
+    )
+    assert.match(
+      messages()[1]!,
+      /what waits on the owner/,
+    )
+    assert.match(
+      messages()[1]!,
+      /second or plainly recurring snag/,
+    )
+    await sleep({ ms: 100 })
+    assert.equal(
+      messages().length,
+      2,
+    )
+    assert.equal(
+      state().hydraMessages!.filter(message => message.actor === 'web' || message.actor === 'cli').length,
+      1,
+    )
+    sdk.control.reply = 'The change is ready for review.'
+    await send({
+      text: 'And now?',
+      id: 'owner-answer',
+    })
+    await until({ check: () => messages().length === 3 && finished() })
+    assert.equal(
+      messages().filter(message => message.includes('The owner wrote to you')).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a quiet worker wake keeps NO_REPLY and ends with reply rules',
+  async () => {
+    const sdk = hydraSdk()
+    sdk.control.stream = true
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 10,
+    })
+    await send({ text: 'Watch for results' })
+    await until({ check: finished })
+    await commands.task([
+      'create',
+      '--key',
+      'quiet-task',
+      '--title',
+      'Quiet task',
+      '--hydra',
+      'lab',
+    ])
+    sdk.control.reply = 'NO_REPLY'
+    await commands.task([
+      'status',
+      'quiet-task',
+      'blocked',
+      '--note',
+      'Waiting for tool access',
+      '--hydra',
+      'lab',
+    ])
+    const messages = () => sdk.calls.flatMap(call => call.messages)
+    await until({ check: () => messages().length === 2 && finished() })
+    assert.match(
+      messages()[1]!,
+      /A result .* always gets a reply/,
+    )
+    assert.match(
+      messages()[1]!,
+      /Reply rules:/,
+    )
+    assert.match(
+      messages()[1]!,
+      /tell the owner in one sentence\.<\/pnyx-wake>$/,
+    )
+    await sleep({ ms: 100 })
+    assert.equal(
+      messages().length,
+      2,
+    )
   },
 )

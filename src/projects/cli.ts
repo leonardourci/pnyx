@@ -14,6 +14,16 @@ import { parseLanding, parseMerger } from '../landing/rule.ts'
 const clone = promisify(execFile)
 
 async function projectCommand({ args }: { args: string[] }): Promise<Output> {
+  if (args[0] === 'worker-notes') {
+    return projectMemoryCommand({
+      args: [
+        ...args.slice(1),
+        '--key',
+        'workers',
+      ],
+    })
+  }
+
   if (args[0] === 'memory') {
     return projectMemoryCommand({ args: args.slice(1) })
   }
@@ -353,7 +363,9 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project memory list|set|forget|confirm --project <name|path> [--key profile|preferences|learnings] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
+export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
+Standing worker instructions (1500 characters) are included verbatim in each new worker header.
+pnyx-axi project memory list|set|forget|confirm --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
