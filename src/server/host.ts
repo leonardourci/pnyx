@@ -328,6 +328,8 @@ interface Live {
   sentAt?: number
   // A setting this process could not take: it is replaced once its turn is over.
   stale?: boolean
+  // The owner stopped the running turn, so a new message waits for it to end.
+  stopping?: boolean
   idle?: ReturnType<typeof setTimeout>
 }
 
@@ -914,6 +916,11 @@ export function createHost({
       // The messages the running turn answers.
       let answering: string[] = []
       let turnRunning = false
+      // Messages taken mid-turn, so one the agent carries to its next turn can move there.
+      let joined: {
+        id: string | undefined
+        offset: number
+      }[] = []
       let completedOffset = 0
 
       const transcriptSize = () => {
@@ -931,8 +938,15 @@ export function createHost({
               id: item.id,
               offset: transcriptSize(),
             })
-          } else if (item.id) {
-            answering.push(item.id)
+          } else {
+            joined.push({
+              id: item.id,
+              offset: transcriptSize(),
+            })
+            answering = item.id ? [
+              ...answering,
+              item.id,
+            ] : answering
           }
 
           yield item.text
@@ -995,8 +1009,20 @@ export function createHost({
           continue
         }
 
+        if (activity === 'carried') {
+          const carried = joined.pop()
+
+          if (carried) {
+            answering = answering.filter(id => id !== carried.id)
+            opening.unshift(carried)
+          }
+
+          continue
+        }
+
         if (activity === 'finished') {
           turnRunning = false
+          entry.stopping = false
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
@@ -1019,14 +1045,18 @@ export function createHost({
           const answers = opened.flatMap(item => item.id ? [item.id] : [])
           const startOffset = opened.length ? opened[0]!.offset : 0
           answering = answers
+          joined = []
           turnRunning = true
           let ownerStarted: boolean | undefined
 
           if (card.id === HYDRA_CARD) {
             const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
-            const opener = ({ message }: { message: HydraMessage }) => answers.includes(message.id)
-            const ownerMessage = ({ message }: { message: HydraMessage }) => ownerActor({ actor: message.actor })
-            ownerStarted = messages.some(message => opener({ message }) && ownerMessage({ message }))
+            const opener = ({ message }: { message: HydraMessage }) =>
+              answers.includes(message.id)
+            const ownerMessage = ({ message }: { message: HydraMessage }) =>
+              ownerActor({ actor: message.actor })
+            ownerStarted = messages.some(message => opener({ message })
+              && ownerMessage({ message }))
           }
 
           entry.replies.start({
@@ -1086,7 +1116,7 @@ export function createHost({
       entry,
     })
 
-    // A check turn that failed read nothing; its updates wait for the next one.
+    // A check turn that failed is over: its updates are not offered again, as Hydra stays interrupted until the owner continues it.
     if (card.id === HYDRA_CARD) {
       finishReading()
     }
@@ -1555,7 +1585,8 @@ export function createHost({
               current: card?.settings,
               chosen: settings,
             })
-          const joinsTurn = actor !== 'pnyx' && sameSession
+          const stopping = Boolean(running && running.stopping)
+          const joinsTurn = actor !== 'pnyx' && sameSession && !stopping
 
           while (!joinsTurn && previousAgent && running?.activity === 'working'
             && live.get(sessionId({ agent: previousAgent })) === running && !closing) {
@@ -1801,6 +1832,7 @@ export function createHost({
         return { stopped: 'none: Hydra is not working on a turn' }
       }
 
+      entry.stopping = true
       await entry.session.interrupt()
 
       return { stopped: 'hydra' }
