@@ -421,9 +421,9 @@ h3 { font-weight: 600; }
 
 .usage-ring .usage-fill { stroke: var(--color-gold); stroke-linecap: round; transform: rotate(-90deg); transform-origin: center; }
 
-.tooltip .usage-panel { display: flex; flex-direction: column; gap: 10px; min-width: 240px; padding: 4px 2px; }
+.tooltip .tooltip-panel { display: flex; flex-direction: column; gap: 10px; min-width: 240px; padding: 4px 2px; }
 
-.tooltip .usage-row, .tooltip .usage-window { display: flex; flex-direction: column; gap: 4px; }
+.tooltip .tooltip-section, .tooltip .usage-window { display: flex; flex-direction: column; gap: 4px; }
 
 .tooltip .usage-bar { display: block; height: 4px; border-radius: 2px; background: color-mix(in srgb, var(--color-surface) 25%, transparent); overflow: hidden; }
 
@@ -1306,7 +1306,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 .tooltip-anchor { display: inline-flex; min-width: 0; max-width: 100%; }
-.tooltip { position: fixed; inset: auto; margin: 0; max-width: min(320px, calc(100vw - 16px)); padding: 5px 8px; border: 0; border-radius: 6px; background: var(--color-ink); color: var(--color-surface); font-size: var(--text-meta); line-height: 1.4; overflow-wrap: anywhere; pointer-events: none; opacity: 1; transition: opacity .18s ease; }
+.tooltip { position: fixed; inset: auto; margin: 0; max-width: min(320px, calc(100vw - 16px)); padding: 5px 8px; border: 0; border-radius: 6px; background: var(--color-ink); color: var(--color-surface); font-size: var(--text-meta); line-height: 1.4; overflow-wrap: anywhere; overflow-y: auto; overscroll-behavior: contain; pointer-events: auto; opacity: 1; transition: opacity .18s ease; }
 .tooltip strong, .tooltip span { display: block; }
 @starting-style { .tooltip:popover-open { opacity: 0; } }
 .card-state .agent-activity { padding: 2px 7px; border-radius: 999px; background: color-mix(in srgb, currentColor 10%, transparent); font-weight: 600; }
