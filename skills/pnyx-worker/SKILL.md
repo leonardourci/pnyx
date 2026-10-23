@@ -37,7 +37,7 @@ Replies reach you as ordinary messages in your session, even in the middle of a 
 
 ## Review pages
 
-When the owner should review something on a page, you own that page end to end; Hydra only relays its link.
+When Lavish (`lavish-axi`) is installed and the owner should review something on a page, you own that page end to end; Hydra only relays its link.
 
 - Build it with Lavish in your copy and keep it out of your commits. Open it with `lavish-axi <page>`, which prints the page's link.
 - Arm its listener so each round of the owner's comments comes straight to you, never to Hydra. After opening the page, and again after every round, run in the background:
