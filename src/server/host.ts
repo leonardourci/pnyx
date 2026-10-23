@@ -1,7 +1,7 @@
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
-import { helperAgent, helperEvent, helperReason, helperTask } from '../helper/route.ts'
-import { outcomeLines } from '../helper/state.ts'
+import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
+import { outcomeLines, wakeHandled } from '../helper/state.ts'
 import { isHelper, taskLease } from '../helper/leases.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
@@ -1581,9 +1581,16 @@ export function createHost({
     entry.input.push({ text })
   }
 
+  const helperPending = () => {
+    const state = loadHydra({ hydraId }).state
+
+    return outcomeLines({ state }).length > 0
+      || Object.values(state.helper?.runs ?? {}).some(batch => batch.error)
+  }
+
   // One check turn at a time; a busy Hydra is woken when its turn finishes.
   const armWake = () => {
-    if (!closing && !wakeTimer && wakeThrough) {
+    if (!closing && !wakeTimer && (wakeThrough || helperPending())) {
       wakeTimer = setTimeout(
         fireWake,
         wakeDelay,
@@ -1732,28 +1739,23 @@ export function createHost({
       armWake()
     },
     bound: helperBound,
-    handback: ({
-      id,
-      text,
-    }) => {
-      void host.hydra({
-        id,
-        text,
-        actor: 'pnyx',
+    agentFor: () => {
+      const state = loadHydra({ hydraId }).state
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const main = state.config?.hydra.agent
+        ?? effective.dispatch.rules.hydra?.candidates[0]
+        ?? effective.dispatch.default[0]
+
+      return helperAgent({
+        state,
+        main,
       })
     },
-    outcomesReady: () => {
-      const state = loadHydra({ hydraId }).state
-      const lines = outcomeLines({ state })
-
-      if (lines.length) {
-        void host.hydra({
-          id: `helper-outcomes:${state.seq}`,
-          actor: 'pnyx',
-          text: '<pnyx-wake>The routine helper recorded outcomes for the owner. Check them and relay each in one plain line with its full links.</pnyx-wake>',
-        })
-      }
-    },
+    handback: armWake,
+    outcomesReady: armWake,
   })
 
   const fireWake = () => {
@@ -1767,10 +1769,22 @@ export function createHost({
     })
 
     // An interrupted Hydra waits for the owner; the next change after that wakes it.
-    if (closing || !pnyxRunsHydra({ state }) || wakeThrough <= after
+    if (closing || !pnyxRunsHydra({ state })
       || (card?.sessionActivity ?? card?.activity) === 'interrupted'
       || card?.attention.some(a => a.key === INTERRUPTED)
       || queuedHydra.size || (session && live.get(session)?.activity === 'working')) {
+      return
+    }
+
+    if (wakeThrough <= after) {
+      if (helperPending()) {
+        void host.hydra({
+          id: `helper-outcomes:${state.seq}`,
+          actor: 'pnyx',
+          text: '<pnyx-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</pnyx-wake>',
+        })
+      }
+
       return
     }
 
@@ -1832,7 +1846,6 @@ export function createHost({
       return
     }
 
-    // A busy helper retains routine work for its next batch; main-only work still proceeds.
     if (routine && helperAgent({ state }) && helper.busy()) {
       return
     }
@@ -2063,7 +2076,10 @@ export function createHost({
 
     const id = `wait:${declaration.id}`
 
-    if (`${id}:hosted` in state.eventIds) {
+    if (wakeHandled({
+      state,
+      id,
+    })) {
       return []
     }
 
@@ -2085,7 +2101,10 @@ export function createHost({
 
   const missingReplies = ({ state }: { state: HydraState }): StallItem[] => {
     for (const id of unconfirmedReplies.keys()) {
-      if (`${id}:hosted` in state.eventIds) {
+      if (wakeHandled({
+        state,
+        id,
+      })) {
         unconfirmedReplies.delete(id)
       }
     }
@@ -2211,6 +2230,7 @@ export function createHost({
       tasks: fired.map(item => item.card),
       prompt: text,
       seqs: [],
+      once: fired.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
     })) {
       return
     }
@@ -2345,7 +2365,7 @@ export function createHost({
 
         let state = loadHydra({ hydraId }).state
 
-        if (id.startsWith('helper-outcomes:') && !outcomeLines({ state }).length) {
+        if (id.startsWith('helper-outcomes:') && !helperPending()) {
           return { state: 'queued' }
         }
 
@@ -3707,7 +3727,12 @@ export function createHost({
             events: [event],
           })
 
-          if (reasons.length) {
+          const progress = helperProgress({
+            state,
+            event,
+          })
+
+          if (reasons.length || progress) {
             host.wake({
               seq: event.seq,
               card: event.cardId,
@@ -4318,12 +4343,11 @@ export async function hostRequest({
       ref,
     })
 
-    const batch = state.helper?.runs[actor.slice('helper:'.length)]
-
-    if (helper && (!batch || batch.error || !batch.tasks.includes(card.id) || !helperTask({
+    if (helper && !helperGrant({
       state,
       task: card.id,
-    }))) {
+      actor,
+    })) {
       throw new HydraError({
         message: 'This task now belongs to the main Hydra',
         code: 'MAIN_ONLY',

@@ -1,4 +1,4 @@
-import { helperAgent, helperEvent } from '../helper/route.ts'
+import { helperProgress } from '../helper/route.ts'
 import { startReviewTimer } from '../review/timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
@@ -1400,12 +1400,12 @@ async function mountOwnedHydra({
           reasons,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
-        const task = helperEvent({
+        const task = helperProgress({
           state,
           event,
         })
 
-        if (task && helperAgent({ state })) {
+        if (task) {
           agents.wake({
             seq: event.seq,
             card: task,
