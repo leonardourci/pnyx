@@ -20,7 +20,8 @@
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
     "dev:server": "node --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
-    "verify": "node scripts/verify.ts"
+    "verify": "node scripts/verify.ts",
+    "refresh-agent-fixtures": "node scripts/refresh-agent-fixtures.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",

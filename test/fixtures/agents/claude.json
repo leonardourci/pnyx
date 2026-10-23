@@ -1,0 +1,550 @@
+{
+  "sdk": "0.3.285",
+  "claude": "2.1.309 (Claude Code)",
+  "models": [
+    {
+      "value": "default",
+      "resolvedModel": "claude-opus-5-5",
+      "displayName": "Default (recommended)",
+      "description": "Opus 5.5 · Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "opus",
+      "resolvedModel": "claude-opus-5-5",
+      "displayName": "Opus 5.5",
+      "description": "For complex work and everyday tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "fable",
+      "resolvedModel": "claude-fable-5-1",
+      "displayName": "Fable 5.1",
+      "description": "For your toughest challenges",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "sonnet",
+      "resolvedModel": "claude-sonnet-5-5",
+      "displayName": "Sonnet 5.5",
+      "description": "Most efficient for simpler tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "haiku",
+      "resolvedModel": "claude-haiku-5-5",
+      "displayName": "Haiku 5.5",
+      "description": "Fastest for quick answers",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "claude-haiku-4-5-20251001",
+      "resolvedModel": "claude-haiku-4-5-20251001",
+      "displayName": "Haiku 4.5",
+      "description": "Fastest for quick answers",
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-sonnet-5",
+      "resolvedModel": "claude-sonnet-5",
+      "displayName": "Sonnet 5",
+      "description": "Efficient for routine tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-opus-5",
+      "resolvedModel": "claude-opus-5",
+      "displayName": "Opus 5",
+      "description": "Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-fable-5",
+      "resolvedModel": "claude-fable-5",
+      "displayName": "Fable 5",
+      "description": "Most capable for your hardest and longest-running tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": false
+    },
+    {
+      "value": "claude-opus-4-8",
+      "resolvedModel": "claude-opus-4-8",
+      "displayName": "Opus 4.8",
+      "description": "Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsFastMode": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-opus-4-7",
+      "resolvedModel": "claude-opus-4-7",
+      "displayName": "Opus 4.7",
+      "description": "Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-opus-4-6",
+      "resolvedModel": "claude-opus-4-6",
+      "displayName": "Opus 4.6",
+      "description": "Best for everyday, complex tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    },
+    {
+      "value": "claude-sonnet-4-6",
+      "resolvedModel": "claude-sonnet-4-6",
+      "displayName": "Sonnet 4.6",
+      "description": "Efficient for routine tasks",
+      "supportsEffort": true,
+      "supportedEffortLevels": [
+        "low",
+        "medium",
+        "high",
+        "max"
+      ],
+      "supportsAdaptiveThinking": true,
+      "supportsAutoMode": true,
+      "supportsThinkingOff": true
+    }
+  ],
+  "turn": [
+    {
+      "type": "system",
+      "subtype": "init",
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "uuid": "1324b091-b5ba-4ad9-a10e-1b3b9c039fcf",
+      "model": "claude-haiku-5-5",
+      "cwd": "/work",
+      "permissionMode": "default",
+      "claude_code_version": "2.1.309"
+    },
+    {
+      "type": "system",
+      "subtype": "status",
+      "status": "requesting",
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "uuid": "7de47c61-47ec-41d2-bd71-3e6f80de05f6"
+    },
+    {
+      "type": "rate_limit_event",
+      "rate_limit_info": {
+        "status": "allowed_warning",
+        "resetsAt": 1793059200,
+        "rateLimitType": "seven_day",
+        "utilization": 0.77,
+        "overageStatus": "rejected",
+        "overageDisabledReason": "org_level_disabled",
+        "isUsingOverage": false,
+        "surpassedThreshold": 0.75,
+        "unifiedWindows": {
+          "five_hour": {
+            "utilization": 0.05,
+            "resetsAt": 1792802400
+          },
+          "seven_day": {
+            "utilization": 0.77,
+            "resetsAt": 1793059200
+          }
+        },
+        "overageEnabled": false
+      },
+      "uuid": "bb25fab5-f8c4-4f68-9bbf-1d87f436d2e0",
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_start",
+        "message": {
+          "model": "claude-haiku-5-5",
+          "id": "msg_011CgKndGvraDmn9F9JJTYRT",
+          "type": "message",
+          "role": "assistant",
+          "content": [],
+          "container": null,
+          "stop_reason": null,
+          "stop_sequence": null,
+          "stop_details": null,
+          "usage": {
+            "input_tokens": 2,
+            "cache_creation_input_tokens": 599,
+            "cache_read_input_tokens": 0,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 599
+            },
+            "output_tokens": 9,
+            "service_tier": "standard",
+            "inference_geo": "global",
+            "speed": "standard"
+          },
+          "input_transformations": [],
+          "diagnostics": null,
+          "context_management": null
+        }
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "0e5c0cc0-71f1-492a-a3c8-6bf63ebdfdc4",
+      "ttft_ms": 1407,
+      "thinking_display": "updates",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "5eec021c-0f29-4338-b9b0-42341d2abc3d",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "Recorded reply."
+        }
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "1a56822d-280c-49df-9e95-367b04404a87",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "type": "assistant",
+      "message": {
+        "model": "claude-haiku-5-5",
+        "id": "msg_011CgKndGvraDmn9F9JJTYRT",
+        "type": "message",
+        "role": "assistant",
+        "content": [
+          {
+            "type": "text",
+            "text": "Recorded reply."
+          }
+        ],
+        "container": null,
+        "stop_reason": null,
+        "stop_sequence": null,
+        "stop_details": null,
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 599,
+          "cache_read_input_tokens": 0,
+          "cache_creation": {
+            "ephemeral_5m_input_tokens": 0,
+            "ephemeral_1h_input_tokens": 599
+          },
+          "output_tokens": 9,
+          "service_tier": "standard",
+          "inference_geo": "global",
+          "speed": "standard"
+        },
+        "input_transformations": [],
+        "diagnostics": null,
+        "context_management": null
+      },
+      "parent_tool_use_id": null,
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "uuid": "21d1e92d-071f-4fb3-8820-18e60cc57772",
+      "timestamp": "2026-10-23T20:18:54.970Z",
+      "request_id": "req_011CgKndGaHKAPs2uYWm85b4"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "content_block_stop",
+        "index": 0
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "0e49862f-1b3c-481f-b480-eb3dabae045c",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "end_turn",
+          "stop_sequence": null,
+          "stop_details": null,
+          "container": null
+        },
+        "usage": {
+          "input_tokens": 2,
+          "cache_creation_input_tokens": 599,
+          "cache_read_input_tokens": 0,
+          "output_tokens": 9,
+          "output_tokens_details": {
+            "thinking_tokens": 0
+          },
+          "iterations": [
+            {
+              "input_tokens": 2,
+              "output_tokens": 9,
+              "cache_read_input_tokens": 0,
+              "cache_creation_input_tokens": 599,
+              "cache_creation": {
+                "ephemeral_5m_input_tokens": 0,
+                "ephemeral_1h_input_tokens": 599
+              },
+              "type": "message"
+            }
+          ]
+        },
+        "context_management": {
+          "applied_edits": []
+        }
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "26885cb2-5c74-4bcc-a3ed-5b5cd8dc6589",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "type": "stream_event",
+      "event": {
+        "type": "message_stop"
+      },
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "parent_tool_use_id": null,
+      "uuid": "150ecd4c-e23e-48f6-9ce5-eb9a992833be",
+      "api_message_id": "msg_011CgKndGvraDmn9F9JJTYRT"
+    },
+    {
+      "duration_api_ms": 2149,
+      "stop_reason": "end_turn",
+      "session_id": "320c3f71-f6a0-4678-94d2-6e02dc5663d6",
+      "total_cost_usd": 0.0002508,
+      "usage": {
+        "input_tokens": 2,
+        "cache_creation_input_tokens": 599,
+        "cache_read_input_tokens": 0,
+        "output_tokens": 9,
+        "output_tokens_details": {
+          "thinking_tokens": 0
+        },
+        "server_tool_use": {
+          "web_search_requests": 0,
+          "web_fetch_requests": 0
+        },
+        "service_tier": "standard",
+        "cache_creation": {
+          "ephemeral_1h_input_tokens": 599,
+          "ephemeral_5m_input_tokens": 0
+        },
+        "inference_geo": "global",
+        "iterations": [
+          {
+            "input_tokens": 2,
+            "output_tokens": 9,
+            "cache_read_input_tokens": 0,
+            "cache_creation_input_tokens": 599,
+            "cache_creation": {
+              "ephemeral_5m_input_tokens": 0,
+              "ephemeral_1h_input_tokens": 599
+            },
+            "type": "message"
+          }
+        ],
+        "speed": "standard",
+        "fallback_credit": null
+      },
+      "modelUsage": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1190,
+          "outputTokens": 24,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 599,
+          "webSearchRequests": 0,
+          "costUSD": 0.0002508,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      },
+      "permission_denials": [],
+      "terminal_reason": "completed",
+      "fast_mode_state": "off",
+      "fast_mode_disabled_reason": "sdk_opt_in_required",
+      "subagent_stats": {
+        "spawned": 0,
+        "requested": {
+          "background": 0,
+          "foreground": 0,
+          "unset": 0
+        },
+        "started_in_background": 0,
+        "max_depth": 0,
+        "spawned_by_subagents": 0,
+        "completed": 0,
+        "failed": 0,
+        "killed": {
+          "parent": 0,
+          "user": 0,
+          "system": 0
+        },
+        "refused": {
+          "depth_limit": 0,
+          "concurrency_limit": 0,
+          "budget": 0
+        },
+        "by_type": {}
+      },
+      "safety_stops": 0,
+      "is_error": false,
+      "num_turns": 1,
+      "subtype": "success",
+      "api_error_status": null,
+      "result": "Recorded reply.",
+      "ttft_ms": 1439,
+      "type": "result",
+      "duration_ms": 1452,
+      "uuid": "30e77aef-0dd4-4cdc-b412-168b390b133f",
+      "ttft_stream_ms": 1438,
+      "time_to_request_ms": 30,
+      "first_content_frame_ms": 1438,
+      "queued_turn_count": 0,
+      "result_index": 0,
+      "model_usage_since_last_result": {
+        "claude-haiku-5-5": {
+          "inputTokens": 1190,
+          "outputTokens": 24,
+          "cacheReadInputTokens": 0,
+          "cacheCreationInputTokens": 599,
+          "webSearchRequests": 0,
+          "costUSD": 0.0002508,
+          "contextWindow": 1000000,
+          "maxOutputTokens": 128000,
+          "thinkingTokens": 0,
+          "canonicalModel": "claude-haiku-5-5",
+          "provider": "firstParty",
+          "costBasis": "list"
+        }
+      }
+    }
+  ]
+}
