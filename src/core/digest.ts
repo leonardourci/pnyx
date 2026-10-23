@@ -1,3 +1,4 @@
+import { learningDigest, type Learning } from '../memory/learnings.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
@@ -23,6 +24,7 @@ const TASK_LIMIT = 40
 export type Memory = Record<string, {
   text: string
   at: string
+  lines?: Learning[]
 }>
 
 export const memorySize = ({ memory }: { memory: Memory }) =>
@@ -161,12 +163,14 @@ export function hydraDigest({
   owner,
   projects = [],
   setup = [],
+  now = new Date().toISOString(),
 }: {
   hydraId: string
   state: HydraState
   owner: Memory
   projects?: string[]
   setup?: string[]
+  now?: string
 }): string {
   const config = hydraConfig({
     state,
@@ -232,7 +236,10 @@ export function hydraDigest({
       title,
     ]) => [
       `${title} (owner memory key ${key}):`,
-      owner[key]?.text ?? 'none yet',
+      key === 'learnings' && owner[key]?.lines?.length ? learningDigest({
+        lines: owner[key]!.lines!,
+        now,
+      }) : owner[key]?.text ?? 'none yet',
       '',
     ]),
     ...(others.length ? [
