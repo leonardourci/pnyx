@@ -1,3 +1,4 @@
+import { reconcileAsks } from '../core/asks.ts'
 import { spawnSync } from 'node:child_process'
 import { randomInt } from 'node:crypto'
 import { LABEL_COLORS } from '../core/model.ts'
@@ -692,6 +693,13 @@ export function withWriter<T>({
             event,
           })
           dirty = true
+
+          for (const question of reconcileAsks({
+            state,
+            event,
+          })) {
+            writer.append({ event: question })
+          }
 
           for (const declaration of operationDeclarations({
             before,
