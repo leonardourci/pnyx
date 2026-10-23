@@ -403,6 +403,13 @@ export function askAnswer({
     id,
   })
 
+  if (actor.startsWith('helper:') && (ask.audience !== 'hydra' || ask.escalated)) {
+    throw new HydraError({
+      message: 'The helper cannot answer an owner decision',
+      code: 'OWNER_ONLY',
+    })
+  }
+
   if (reportActor({ actor }) || actor === 'pnyx') {
     throw new HydraError({
       message: 'an agent cannot answer a question; Hydra or the owner answers it',

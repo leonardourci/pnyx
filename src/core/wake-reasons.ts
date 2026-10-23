@@ -267,6 +267,10 @@ function eventReasons({
   state: HydraState
   event: HydraEvent
 }): WakeReason[] {
+  if (event.actor.startsWith('helper:')) {
+    return []
+  }
+
   if (event.type === 'hydra.review') {
     return pnyxRunsHydra({ state }) ? [{ kind: 'timed review' }] : []
   }
