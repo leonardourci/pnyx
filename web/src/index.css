@@ -1415,3 +1415,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .waiting-decisions > span { flex: none; }
 .waiting-decisions .button { flex: none; min-height: 0; padding: 2px 4px; font-size: inherit; line-height: inherit; color: var(--color-gold); }
 @media (prefers-reduced-motion: reduce) { .turn-actions > .disclosure > summary > .disclosure-chevron { transition: none; } }
+
+.task-intent { display: grid; gap: 6px; }
+.task-intent time { display: block; color: var(--color-muted); font-size: var(--text-meta); margin-bottom: 4px; }
