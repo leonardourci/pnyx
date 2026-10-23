@@ -110,6 +110,7 @@ const BOOLEAN = new Set([
   'discard',
   'preview',
   'remove',
+  'hold',
 ])
 
 function parse({ words }: { words: string[] }) {
