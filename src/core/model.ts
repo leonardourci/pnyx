@@ -417,6 +417,8 @@ export interface TaskDeclaration {
   note: string
   // A paused worker's declared end of its wait, as an ISO time.
   until?: string
+  // A pause the owner or Hydra asked for: it waits for their word, never for a timer.
+  hold?: boolean
   source?: string
   raw?: string
   waitingFor?: string[]
@@ -551,6 +553,8 @@ export interface HydraMessage {
   id: string
   task?: string
   action: 'send' | 'worker'
+  // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
+  kind?: 'progress'
   text: string
   details?: string
   context?: string
