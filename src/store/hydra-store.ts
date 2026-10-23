@@ -1,3 +1,5 @@
+import { guardTaskLease, isHelper } from '../helper/leases.ts'
+import { helperTask } from '../helper/route.ts'
 import { reconcileAsks } from '../core/asks.ts'
 import { spawnSync } from 'node:child_process'
 import { randomInt } from 'node:crypto'
@@ -519,7 +521,7 @@ function takeOver({
 }
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-function acquireLock({ dir }: { dir: string }): () => void {
+export function acquireLock({ dir }: { dir: string }): () => void {
   const path = join(
     dir,
     'writer.lock',
@@ -641,6 +643,28 @@ export function withWriter<T>({
           return state
         },
         append({ event }) {
+          if (event.actor === 'hydra' || isHelper({ actor: event.actor })) {
+            const task = event.type === 'hydra.message' ? event.data.task : event.cardId
+
+            if (task && state.cards[task]) {
+              guardTaskLease({
+                dir,
+                task,
+                actor: event.actor,
+              })
+            }
+
+            if (isHelper({ actor: event.actor }) && (!task || !helperTask({
+              state,
+              task,
+            }))) {
+              throw new HydraError({
+                message: 'Helper mutation is outside its task scope',
+                code: 'MAIN_ONLY',
+              })
+            }
+          }
+
           if (event.seq !== state.seq + 1) {
             throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
           }

@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { supervisedCommands } from '../helper/commands.ts'
 import { approval } from '../confirmations/commands.ts'
 import { dispatchCommands, DISPATCH_HELP } from '../dispatch/cli.ts'
 import { project, PROJECT_HELP } from '../projects/cli.ts'
@@ -32,28 +33,30 @@ await runAxiCli({
   home,
   getCommandHelp: command => commandHelp({ command })
     ?? firstmateHelp({ command }) ?? HELP[command],
-  commands: ownerOnly({
-    commands: {
-      ...commands,
-      approval,
-      project,
-      ...workerCommands,
-      ...dispatchCommands,
-      serve,
-      stop,
-      ...firstmateCommands,
-      reply,
-      agent,
-      integrations: integrationsCommand,
-      ...oracleCommands,
-      // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
-      update: () => {
-        throw new AxiError(
-          'pnyx-axi is not published yet',
-          'VALIDATION_ERROR',
-          ['Pull the repository and run `pnpm install && pnpm run build`'],
-        )
+  commands: supervisedCommands({
+    commands: ownerOnly({
+      commands: {
+        ...commands,
+        approval,
+        project,
+        ...workerCommands,
+        ...dispatchCommands,
+        serve,
+        stop,
+        ...firstmateCommands,
+        reply,
+        agent,
+        integrations: integrationsCommand,
+        ...oracleCommands,
+        // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
+        update: () => {
+          throw new AxiError(
+            'pnyx-axi is not published yet',
+            'VALIDATION_ERROR',
+            ['Pull the repository and run `pnpm install && pnpm run build`'],
+          )
+        },
       },
-    },
+    }),
   }),
 })
