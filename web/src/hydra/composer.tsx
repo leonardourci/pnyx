@@ -220,8 +220,14 @@ export function Composer({
     caretNext.current = caret; setDraft({ text })
   }
 
+  const fittedHeight = useRef<string | undefined>(undefined)
+
   // Holding the box height while measuring stops the browser from scrolling a pinned chat up.
   const fit = ({ element }: { element: HTMLTextAreaElement }) => {
+    if (fittedHeight.current !== undefined && element.style.height !== fittedHeight.current) {
+      return
+    }
+
     const box = element.parentElement
 
     if (box) {
@@ -230,6 +236,7 @@ export function Composer({
 
     element.style.height = '0'
     element.style.height = `${element.scrollHeight}px`
+    fittedHeight.current = element.style.height
     box?.style.removeProperty('min-height')
   }
 
