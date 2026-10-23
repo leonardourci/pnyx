@@ -85,10 +85,13 @@ const EVERYTHING: Step[] = [
   },
 ]
 
-function testsImportingWeb({ folder }: { folder: string }): string[] {
+// Tests of web/ code: those importing it, and the browser journeys that load the built page.
+const WEB_TEST_IMPORT = /from '((\.\.\/)+web\/|\.\/browser\.ts')/
+
+function webTests({ folder }: { folder: string }): string[] {
   return readdirSync(folder)
     .map(name => `${folder}/${name}`)
-    .filter(path => path.endsWith('.test.ts') && /from '(\.\.\/)+web\//.test(readFileSync(
+    .filter(path => path.endsWith('.test.ts') && WEB_TEST_IMPORT.test(readFileSync(
       path,
       'utf8',
     )))
@@ -96,8 +99,8 @@ function testsImportingWeb({ folder }: { folder: string }): string[] {
 
 // UI checks: the static checks plus every test of web/ code, browser journeys included.
 function uiSteps(): Step[] {
-  const units = testsImportingWeb({ folder: 'test' })
-  const scenarios = testsImportingWeb({ folder: 'test/scenarios' })
+  const units = webTests({ folder: 'test' })
+  const scenarios = webTests({ folder: 'test/scenarios' })
 
   return [
     ...CHECKS,

@@ -218,6 +218,8 @@ export function Composer({
     caret: number
   }) => {
     caretNext.current = caret; setDraft({ text })
+    // An insert finishing before the next render, like a second chosen file, builds on this text.
+    current.current.draft = text
   }
 
   const fittedHeight = useRef<string | undefined>(undefined)
