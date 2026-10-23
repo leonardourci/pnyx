@@ -1938,38 +1938,69 @@ test(
 )
 
 test(
-  'a working card gets what its agent is running when the agent keeps its transcript open, as Codex does',
+  'a working card and its open conversation follow a transcript its agent keeps open, as Codex does, even under a Firstmate status',
   async () => {
     const transcript = join(
       process.env.PNYX_HOME!,
       'rollout.jsonl',
     )
+    const reply = ({
+      text,
+      at,
+    }: {
+      text: string
+      at: string
+    }) => toolLine({
+      record: {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'output_text',
+              text,
+            },
+          ],
+        },
+      },
+      at,
+    })
     writeFileSync(
       transcript,
-      '',
+      reply({
+        text: 'Starting.',
+        at: '2026-10-13T10:59:00Z',
+      }),
     )
-    // Codex writes its rollout through one file it holds open for the whole session.
     const rollout = openSync(
       transcript,
       'a',
     )
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
 
-    try {
-      const input = join(
-        process.env.PNYX_HOME!,
-        'input.json',
-      )
+    const push = ({ fields }: { fields: Record<string, unknown> }) => {
       writeFileSync(
         input,
-        JSON.stringify({
-          agent: {
-            provider: 'codex',
-            sessionId: 'rollout',
-            transcriptPath: transcript,
-          },
-          activity: 'working',
-        }),
+        JSON.stringify(fields),
       )
+      cli({
+        args: [
+          'push',
+          '--key',
+          'work',
+          '--file',
+          input,
+        ],
+      })
+    }
+
+    const fileWatchers = () => process.getActiveResourcesInfo().filter(name => name === 'FSEventWrap').length
+
+    try {
       cli({
         args: [
           'task',
@@ -1980,21 +2011,53 @@ test(
           'Work',
         ],
       })
-      cli({
-        args: [
-          'push',
-          '--key',
-          'work',
-          '--file',
-          input,
-        ],
+      push({
+        fields: {
+          agent: {
+            provider: 'codex',
+            sessionId: 'rollout',
+            transcriptPath: transcript,
+          },
+          activity: 'working',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+      // Firstmate's status line replaces the card's activity; the session's own stays working.
+      push({
+        fields: {
+          activity: 'progress: running tests',
+          source: {
+            adapter: 'firstmate',
+            instanceId: process.env.PNYX_HOME!,
+            objectId: 'work',
+          },
+        },
       })
       const card = loadHydra({ hydraId: 'default' }).state.keys.work!
       server = await startServer({ hydraId: 'default' })
       const t = await tab(); await t.next()
+      assert.equal(
+        (await t.latest({ card }))?.text,
+        'Starting.',
+      )
+      t.command({
+        id: 'thread-1',
+        name: 'thread',
+        args: [card],
+      })
+      assert.equal(
+        (await t.reply({ id: 'thread-1' })).type,
+        'receipt',
+      )
       writeSync(
         rollout,
-        toolLine({
+        reply({
+          text: 'Running the tests.',
+          at: '2026-10-13T11:00:00Z',
+        }) + toolLine({
           record: {
             type: 'response_item',
             payload: {
@@ -2021,6 +2084,15 @@ test(
           at: '2026-10-13T11:00:00Z',
         },
       )
+
+      for (;;) {
+        const message = await t.next()
+
+        if (message.type === 'thread' && message.thread.entries.some(e => e.text === 'Running the tests.')) {
+          break
+        }
+      }
+
       writeSync(
         rollout,
         toolLine({
@@ -2038,6 +2110,32 @@ test(
       assert.equal(
         (await t.action({ card }))?.done,
         true,
+      )
+
+      // The file watcher goes once the session stops working.
+      const working = fileWatchers()
+      push({
+        fields: {
+          activity: 'finished',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+
+      const deadline = Date.now() + 5000
+
+      while (fileWatchers() >= working && Date.now() < deadline) {
+        await new Promise(r => setTimeout(
+          r,
+          50,
+        ))
+      }
+
+      assert.equal(
+        fileWatchers(),
+        working - 1,
       )
       t.ws.close()
     } finally {
@@ -2275,6 +2373,24 @@ test(
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
+    writeFileSync(
+      input,
+      JSON.stringify({ activity: 'working' }),
+    )
+    // A working card's transcript file is watched as well as its folder.
+    cli({
+      args: [
+        'push',
+        '--key',
+        'layout',
+        '--file',
+        input,
+      ],
+    })
     const settle = () => new Promise(r => setTimeout(
       r,
       300,
