@@ -1302,7 +1302,10 @@ async function mountOwnedHydra({
         store: actions,
         changes: changedActions,
         id,
-        value: read?.action ?? null,
+        value: card ? agents.action({
+          card,
+          action: read?.action ?? null,
+        }) : null,
       })
     }
 
@@ -1607,6 +1610,11 @@ async function mountOwnedHydra({
       }
     },
     streamed: ({ session }) => {
+      touchLatest({
+        ids: Object.values(state.cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
+          .map(card => card.id),
+      })
+
       for (const map of threadSubscriptions) {
         for (const [
           ws,

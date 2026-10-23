@@ -6,7 +6,7 @@ import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { attachedImages } from '../attachments/images.ts'
-import type { AskPermission, HostedText, HostedTool, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import type { AskPermission, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -303,7 +303,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
             const toolDone = message.method === 'item/completed' && TOOL_ITEMS.includes(String(item.type))
 
-            if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage' || toolDone) {
+            if (message.method === 'item/agentMessage/delta' || item.type === 'agentMessage' || item.type === 'reasoning' || toolDone) {
               events.push({
                 ...params,
                 method: message.method,
@@ -323,7 +323,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               )
             }
 
-            if (TOOL_ITEMS.includes(String(item.type))) {
+            if (item.type === 'reasoning' || TOOL_ITEMS.includes(String(item.type))) {
               events.push({
                 ...params,
                 method: message.method,
@@ -428,7 +428,9 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     }: {
       threadId: string
       turnId: string
-    }): AsyncGenerator<HostedText | HostedTool | HostedUsage | { turn: ObjectValue }> {
+    }): AsyncGenerator<
+      HostedText | HostedTool | HostedThinking | HostedUsage | { turn: ObjectValue }
+    > {
       for (;;) {
         if (failure) {
           throw failure
@@ -471,6 +473,15 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           if (event.turnId === turnId) {
             const item = object({ value: event.item })
             const toolEvent = event.method === 'item/started' || event.method === 'item/completed'
+
+            if (toolEvent && item.type === 'reasoning' && typeof item.id === 'string') {
+              yield {
+                type: 'thinking',
+                id: item.id,
+                running: event.method === 'item/started',
+              }
+              continue
+            }
 
             if (toolEvent && TOOL_ITEMS.includes(String(item.type)) && typeof item.id === 'string') {
               yield {

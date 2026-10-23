@@ -18,6 +18,7 @@ export interface ToolCall {
 
 // The agent's latest calls, made together; done once each has its result back.
 export interface CurrentAction {
+  thinking?: boolean
   calls: ToolCall[]
   at?: string
   done: boolean

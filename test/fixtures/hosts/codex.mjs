@@ -401,6 +401,27 @@ createInterface({ input: process.stdin }).on(
         })
       } else {
         // A command runs inside the turn before it answers.
+        if (text === 'THINKING') {
+          for (const method of [
+            'item/started',
+            'item/reasoning/textDelta',
+            'item/completed',
+          ]) {
+            send({
+              method,
+              params: {
+                threadId,
+                turnId,
+                item: {
+                  id: 'reason-1',
+                  type: 'reasoning',
+                },
+                delta: 'private reasoning',
+              },
+            })
+          }
+        }
+
         if (text === 'COMMAND') {
           const item = {
             id: 'command-run',

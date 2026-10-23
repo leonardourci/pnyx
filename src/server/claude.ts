@@ -365,6 +365,7 @@ export function claudeProvider({
 
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
           let messageId = '', textIndex = 0, active = false
+          const thinking = new Set<number>()
 
           for await (const message of running) {
             const activity = turnOf({ message })
@@ -431,6 +432,19 @@ export function claudeProvider({
                     used: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
                       + (usage.cache_read_input_tokens ?? 0),
                   }
+                }
+              } else if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
+                thinking.add(event.index)
+                yield {
+                  type: 'thinking' as const,
+                  id: `${messageId}:${event.index}`,
+                  running: true,
+                }
+              } else if (event.type === 'content_block_stop' && thinking.delete(event.index)) {
+                yield {
+                  type: 'thinking' as const,
+                  id: `${messageId}:${event.index}`,
+                  running: false,
                 }
               } else if (event.type === 'content_block_start' && event.content_block.type === 'text') {
                 textIndex = event.index

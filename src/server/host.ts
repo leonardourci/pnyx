@@ -11,6 +11,7 @@ import { codexProvider, type SpawnCodex } from './codex.ts'
 import { mergeWindows, modelIds, type HostedSession, type HostedUsage, type HydraUsage, type ModelOption, type PermissionDecision } from './provider.ts'
 import { liveReplies } from './streaming.ts'
 import { copyTagged } from './tagged-updates.ts'
+import type { CurrentAction } from '../thread/calls.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -141,6 +142,13 @@ export interface Host {
     reply: string
     text: string
   }): void
+  action({
+    card,
+    action,
+  }: {
+    card: Card
+    action: CurrentAction | null
+  }): CurrentAction | null
   thread({
     card,
     page,
@@ -395,6 +403,7 @@ interface Live {
   // The owner stopped the running turn, so a new message waits for it to end.
   stopping?: boolean
   idle?: ReturnType<typeof setTimeout>
+  thinking: Set<string>
   // The tool calls running now, by id, with when each started.
   tools: Map<string, number>
 }
@@ -1075,6 +1084,22 @@ export function createHost({
           continue
         }
 
+        if (typeof activity !== 'string' && activity.type === 'thinking') {
+          const wasThinking = entry.thinking.size > 0
+
+          if (activity.running) {
+            entry.thinking.add(activity.id)
+          } else {
+            entry.thinking.delete(activity.id)
+          }
+
+          if (wasThinking !== (entry.thinking.size > 0)) {
+            streamed({ session: key })
+          }
+
+          continue
+        }
+
         if (typeof activity !== 'string' && activity.type === 'tool') {
           if (activity.running) {
             entry.tools.set(
@@ -1084,6 +1109,8 @@ export function createHost({
           } else {
             entry.tools.delete(activity.id)
           }
+
+          streamed({ session: key })
 
           continue
         }
@@ -1110,6 +1137,7 @@ export function createHost({
           turnRunning = false
           entry.stopping = false
           entry.tools.clear()
+          entry.thinking.clear()
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
@@ -1294,6 +1322,7 @@ export function createHost({
       replies: liveReplies(),
       activity: 'finished',
       session,
+      thinking: new Set(),
       tools: new Map(),
     }
     live.set(
@@ -2980,6 +3009,23 @@ export function createHost({
       waiting: updates.filter(update => update.seq > readThrough),
       reading: updates.filter(update => update.seq <= readThrough),
     }),
+
+    action: ({
+      card,
+      action,
+    }) => {
+      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+
+      if (entry?.activity === 'working' && entry.thinking.size && !entry.tools.size) {
+        return {
+          calls: [],
+          done: false,
+          thinking: true,
+        }
+      }
+
+      return action
+    },
 
     thread: ({
       card,
