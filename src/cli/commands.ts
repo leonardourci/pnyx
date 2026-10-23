@@ -74,7 +74,7 @@ import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { answerPrompt } from '../core/answer.ts'
-import { tagsTask } from '../core/updates.ts'
+import { showsUpdate, tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
@@ -3649,6 +3649,7 @@ const history = guard({
       before: { type: 'string' },
       limit: { type: 'string' },
       full: { type: 'boolean' },
+      updates: { type: 'boolean' },
     }
     const {
       values,
@@ -3697,7 +3698,8 @@ const history = guard({
           event: e,
           ids: tagged,
         })))
-      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
+      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
+        && (!values.updates || showsUpdate({ event: e })))
       .reverse()
     const page = matches.slice(
       0,
@@ -3739,6 +3741,7 @@ const history = guard({
       out.help = [
         `Run \`pnyx-axi history ${[
           ...flags,
+          ...values.updates ? ['--updates'] : [],
           '--before',
           String(page.at(-1)!.seq),
         ].join(' ')}\` for older events`,
@@ -4299,8 +4302,8 @@ GitHub pull request URLs get kind and number filled in. A link never moves the c
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full]
-Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full] [--updates]
+Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}). --updates keeps only the events a task's Updates list shows.
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.

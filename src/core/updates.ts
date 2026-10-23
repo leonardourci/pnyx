@@ -492,3 +492,14 @@ export function tagsTask({
   return event.type === 'hydra.message'
     && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
 }
+
+// Whether the event adds or changes a row in its task's Updates list.
+export function showsUpdate({ event }: { event: HydraEvent }): boolean {
+  return !!updateRow({
+    event: {
+      ...event,
+      summary: '',
+    } as TaskEvent,
+    columns: [],
+  })
+}

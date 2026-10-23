@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
@@ -295,6 +295,137 @@ test(
         undefined,
         type,
       )
+    }
+  },
+)
+
+test(
+  'the Updates read filters on the server: one bounded page, no activity noise, the same timeline',
+  () => {
+    const previous = process.env.PNYX_HOME
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-updates-read-',
+    ))
+    process.env.PNYX_HOME = home
+
+    try {
+      commands.task([
+        'create',
+        '--key',
+        'busy',
+        '--title',
+        'Busy task',
+      ])
+      const activity = join(
+        home,
+        'activity.json',
+      )
+
+      for (let round = 0; round < 12; round++) {
+        for (const state of [
+          'working',
+          'idle',
+        ]) {
+          writeFileSync(
+            activity,
+            JSON.stringify({ activity: state }),
+          )
+          commands.push([
+            '--key',
+            'busy',
+            '--file',
+            activity,
+          ])
+        }
+
+        commands.task([
+          'status',
+          'busy',
+          'working',
+          '--note',
+          `Step ${round}`,
+        ])
+      }
+
+      const read = ({ args }: { args: string[] }) => commands.history([
+        '--card',
+        'busy',
+        '--full',
+        ...args,
+      ]) as {
+        events: TaskEvent[]
+        help?: string[]
+      }
+      const raw = read({
+        args: [
+          '--limit',
+          '100',
+        ],
+      }).events
+      const filtered = read({
+        args: [
+          '--updates',
+          '--limit',
+          '50',
+        ],
+      }).events
+      const card = Object.values(loadHydra({ hydraId: 'default' }).state.cards).find(card => card.title === 'Busy task')!
+
+      assert.ok(raw.some(event => event.type === 'card.pushed' && !relevantUpdate({
+        event,
+        columns: [],
+      })))
+      assert.ok(filtered.length < raw.length)
+      assert.ok(filtered.every(event => relevantUpdate({
+        event,
+        columns: [],
+      })))
+      assert.deepEqual(
+        taskTimeline({
+          card,
+          events: filtered,
+          columns: [],
+        }),
+        taskTimeline({
+          card,
+          events: raw,
+          columns: [],
+        }),
+      )
+
+      const page = read({
+        args: [
+          '--updates',
+          '--limit',
+          '5',
+        ],
+      })
+      assert.deepEqual(
+        page.events.map(event => event.id),
+        filtered.slice(
+          0,
+          5,
+        ).map(event => event.id),
+      )
+      assert.match(
+        page.help![0]!,
+        /--updates --before \d+/,
+      )
+    } finally {
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+
+      if (previous === undefined) {
+        delete process.env.PNYX_HOME
+      } else {
+        process.env.PNYX_HOME = previous
+      }
     }
   },
 )
