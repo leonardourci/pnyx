@@ -1,3 +1,4 @@
+import { requireUnheld } from '../core/holds.ts'
 import { readFileSync } from 'node:fs'
 import { findCard, type Meta } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
@@ -129,6 +130,8 @@ export function decideBuild({
     state,
     ref,
   })
+
+  requireUnheld({ card })
 
   if (reportActor({ actor: meta.actor })) {
     throw new HydraError({
