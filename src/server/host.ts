@@ -1897,6 +1897,9 @@ export function createHost({
           return { state: 'queued' }
         }
 
+        // Hydra's first owner turn starts its wake cursor, so progress sent after it reaches the first wake.
+        wakeStart ??= state.eventIds[id]
+
         if (`${id}:hosted` in state.eventIds) {
           return { state: 'queued' }
         }

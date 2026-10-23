@@ -1823,16 +1823,6 @@ test(
 
     await send({ text: 'Hello' })
     await until({ check: finished })
-    // A plain report still wakes Hydra, which leaves the handled-wake cursor every running Hydra has.
-    await commands.hydra([
-      'send',
-      '--task',
-      fix,
-      '--text',
-      'Picked up the task',
-      ...worker,
-    ])
-    await until({ check: () => turns().length === 2 && finished() })
 
     for (const step of [
       'Reproduced the bug',
@@ -1859,7 +1849,7 @@ test(
     await sleep({ ms: 400 })
     assert.equal(
       turns().length,
-      2,
+      1,
       'progress alone wakes no Hydra turn',
     )
 
@@ -1870,8 +1860,8 @@ test(
       'Which parser should own dates?',
       ...worker,
     ])
-    await until({ check: () => turns().length === 3 && finished() })
-    const wake = turns()[2]!
+    await until({ check: () => turns().length === 2 && finished() })
+    const wake = turns()[1]!
     assert.ok(wake.startsWith('<pnyx-wake>4 worker reports arrived while you were busy.'))
     assert.deepEqual(
       [
