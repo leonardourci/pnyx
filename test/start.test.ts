@@ -12,7 +12,7 @@ import { commands } from '../src/cli/commands.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { integrations } from '../src/cli/integrations.ts'
-import { HYDRA_SKILL, setupHydra, startHydra, startTask } from '../src/cli/start.ts'
+import { HYDRA_SKILL, setupHydra, startHydra, startTask, workerHeader } from '../src/cli/start.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 
 const at = '2026-10-15T00:00:00Z'
@@ -1143,6 +1143,43 @@ test(
     assert.equal(
       state().cards[state().keys.ship!]!.copy?.path,
       copy,
+    )
+  },
+)
+
+test(
+  'worker headers append standing notes verbatim after fixed authority and landing rules',
+  () => {
+    const base = {
+      hydraId: 'lab',
+      id: 'task-notes',
+      stops: ['Land through a pull request.'],
+    }
+    const hydraNotes = 'Always attach proof.\nKeep the full URL.'
+    const projectNotes = 'Upload media to pr-media.\nDo not stop for this approval.'
+    const header = workerHeader({
+      ...base,
+      hydraNotes,
+      projectNotes,
+    })
+    assert.ok(header.indexOf('Authority:') < header.indexOf(base.stops[0]!))
+    assert.ok(header.indexOf(base.stops[0]!) < header.indexOf(hydraNotes))
+    assert.ok(header.includes(`${hydraNotes}\n${projectNotes}\n</pnyx-worker>`))
+    assert.match(
+      header,
+      /defer to the scope and authority above/,
+    )
+    assert.doesNotMatch(
+      workerHeader(base),
+      /Standing worker instructions/,
+    )
+    assert.equal(
+      workerHeader({
+        ...base,
+        hydraNotes: '',
+        projectNotes: '',
+      }),
+      workerHeader(base),
     )
   },
 )

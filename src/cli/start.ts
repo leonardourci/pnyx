@@ -1,3 +1,5 @@
+import { projectIdentity } from '../projects/sources.ts'
+import { readProjectMemory } from '../projects/memory.ts'
 import { taskInstructions } from '../core/intent.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { taskStops } from '../landing/rule.ts'
@@ -5,7 +7,7 @@ import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, rule
 import { modelIds, type ModelOption } from '../server/provider.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { openPaseo } from '../integrations/paseo/client.ts'
-import { findProject } from '../projects/read.ts'
+import { findProject, projectsFor } from '../projects/read.ts'
 import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
@@ -139,11 +141,29 @@ export function workerHeader({
   hydraId,
   id,
   stops = [],
+  hydraNotes = '',
+  projectNotes = '',
 }: {
   hydraId: string
   id: string
   stops?: string[]
+  hydraNotes?: string
+  projectNotes?: string
 }): string {
+  const standing: string[] = []
+
+  if (hydraNotes || projectNotes) {
+    standing.push('Standing worker instructions (defer to the scope and authority above):')
+
+    if (hydraNotes) {
+      standing.push(hydraNotes)
+    }
+
+    if (projectNotes) {
+      standing.push(projectNotes)
+    }
+  }
+
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
     `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
@@ -152,6 +172,7 @@ export function workerHeader({
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
     ...stops,
+    ...standing,
     '</pnyx-worker>',
   ].join('\n')
 }
@@ -191,9 +212,19 @@ export function taskPrompt({
     title: card.title,
   })
   const state = loadHydra({ hydraId }).state
+  const attachedProject = projectsFor({ state }).find(project => !project.detached
+    && (project.path === card.project || project.name === card.project))
+  let projectNotes = ''
+
+  if (attachedProject) {
+    projectNotes = readProjectMemory(projectIdentity({ path: attachedProject.path })).documents.workers ?? ''
+  }
+
   const header = workerHeader({
     hydraId,
     id: card.id,
+    hydraNotes: state.hydraMemory?.workers?.text,
+    projectNotes,
     stops: taskStops({
       state,
       hydraId,

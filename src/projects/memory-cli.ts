@@ -90,7 +90,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     key,
   )) {
     throw new HydraError({
-      message: 'Use project memory list|set|forget|confirm --project <name|path>; keys are profile, preferences and learnings',
+      message: 'Use project memory list|set|forget|confirm --project <name|path>; keys are profile, preferences, learnings and workers',
       code: 'VALIDATION_ERROR',
     })
   }

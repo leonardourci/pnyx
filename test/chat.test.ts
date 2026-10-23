@@ -1169,3 +1169,30 @@ test(
     )
   },
 )
+
+test(
+  'standing worker instruction notices render in Pnyx voice',
+  () => {
+    const notice = message({
+      id: 'workers-edited',
+      actor: 'pnyx',
+      text: 'Standing worker instructions for pnyx changed: Workers repeatedly ask about media',
+    })
+    const entries = hydraMessages({
+      messages: [notice],
+      transcript: [],
+    })
+    assert.equal(
+      entries.length,
+      1,
+    )
+    assert.equal(
+      entries[0]!.role,
+      'Pnyx',
+    )
+    assert.equal(
+      entries[0]!.text,
+      notice.text,
+    )
+  },
+)

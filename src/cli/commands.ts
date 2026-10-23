@@ -1,3 +1,4 @@
+import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
@@ -466,6 +467,15 @@ export function commit(
           seq,
           intent,
         })
+        const original = readEvents({ hydraId }).find(event => event.id === meta.id)
+
+        if (original?.type === 'hydra.memory' && original.data.key === 'workers') {
+          workerNotesNotice({
+            writer,
+            target: `Hydra ${hydraId}`,
+            meta: original,
+          })
+        }
       } else {
         let decision = decide({
           state: writer.state,
@@ -529,6 +539,15 @@ export function commit(
 
           writer.append({ event: decision.event })
           const { event } = decision
+
+          if (event.type === 'hydra.memory' && event.data.key === 'workers') {
+            workerNotesNotice({
+              writer,
+              target: `Hydra ${hydraId}`,
+              meta: event,
+            })
+          }
+
           out = receipt({
             state: writer.state,
             event,
@@ -2680,6 +2699,17 @@ function columnCommand({ args }: { args: string[] }): Output {
 const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'worker-notes') {
+    return hydraCommand({
+      args: [
+        'memory',
+        ...args.slice(1),
+        '--key',
+        'workers',
+      ],
+    })
+  }
+
   if ([
     'create',
     'list',
@@ -2782,6 +2812,14 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
 
     const m = meta({ values })
+
+    if (key === 'workers') {
+      explained({ meta: m })
+      checkWorkerNotes({
+        text: after,
+        reason: m.reason,
+      })
+    }
 
     return commit({
       hydraId,
@@ -4180,6 +4218,8 @@ hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
 hydra usage prints the hosted Hydra's context window use and session cost when known, and its account's plan windows from quota-axi.
 pnyx-axi hydra resize --width <pixels>
+pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
+Standing worker instructions are included verbatim in every new worker header.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
