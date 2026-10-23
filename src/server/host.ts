@@ -1419,8 +1419,11 @@ export function createHost({
 
     const key = sessionId({ agent: card.agent })
     const entry = live.get(key)
+    const asking = card.attention.some(a => a.blocking && !a.answered)
+    // A worker that ended its turn still declaring working stopped without saying why; its finished turn alone never wakes Hydra.
+    const idle = entry?.activity === 'finished' && card.status?.state === 'working' && !asking
 
-    if (entry?.activity !== 'working') {
+    if (entry?.activity !== 'working' && !idle) {
       return []
     }
 
@@ -1458,10 +1461,17 @@ export function createHost({
       return []
     }
 
+    const quietFor = Math.round((now - seen) / 1000)
+    let text = `the worker on ${card.id} has been working with no sign of life for ${quietFor} s`
+
+    if (idle) {
+      text = `the worker on ${card.id} ended its turn ${quietFor} s ago and still declares working`
+    }
+
     return [
       {
         id: `stall:${card.id}:${seen}`,
-        text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+        text,
       },
     ]
   }

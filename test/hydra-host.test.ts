@@ -1276,6 +1276,79 @@ test(
 )
 
 test(
+  'a worker that ends its turn still declaring working stalls, though plain progress never wakes Hydra',
+  async () => {
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+      stallDelay: 300,
+    })
+    const task = () => state().cards[state().keys.fix!]!
+    const wakes = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+      .filter(m => m.startsWith('<pnyx-wake>'))
+
+    await send({ text: 'Watch the fix' })
+    await until({ check: finished })
+    await startTask({
+      hydraId: 'lab',
+      task: 'fix',
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'hydra',
+        reason: 'start it',
+        id: 'start-fix',
+      },
+    })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await commands.task([
+      'status',
+      'fix',
+      'working',
+      '--note',
+      'on it',
+      '--actor',
+      `worker:${task().id}`,
+      '--hydra',
+      'lab',
+    ])
+    await sleep({ ms: 200 })
+    assert.equal(
+      wakes().length,
+      0,
+      'a finished turn and a plain working declaration stay on the card',
+    )
+
+    for (let i = 0; i < 150 && !wakes().length; i++) {
+      await sleep({ ms: 10 })
+    }
+
+    assert.match(
+      wakes()[0] ?? '',
+      /^<pnyx-wake>Stalled: the worker on .* ended its turn \d+ s ago and still declares working/,
+    )
+  },
+)
+
+test(
   'a worker inside a tool call is busy, not stalled; a stall comes back counted; an ended wait wakes Hydra once',
   async () => {
     fakeDispatch({ root: home })
