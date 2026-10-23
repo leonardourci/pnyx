@@ -35,7 +35,7 @@ import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
@@ -891,6 +891,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       merge: { type: 'string' },
       clear: { type: 'boolean' },
       until: { type: 'string' },
+      hold: { type: 'boolean' },
     },
     positionals: 4,
   })
@@ -1506,6 +1507,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           until: values.until as string | undefined,
           now: m.at,
         }),
+        hold: values.hold as boolean | undefined,
       }),
     })
   }
@@ -2697,6 +2699,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       ...WRITE,
       task: { type: 'string' },
       action: { type: 'string' },
+      kind: { type: 'string' },
       key: { type: 'string' },
       width: { type: 'string' },
       text: { type: 'string' },
@@ -2916,6 +2919,22 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  if (values.kind !== undefined && values.kind !== 'progress') {
+    throw new HydraError({
+      message: '--kind must be progress',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const progress = values.kind === 'progress'
+
+  if (progress && (!ref || !reportActor({ actor: m.actor }))) {
+    throw new HydraError({
+      message: '--kind progress is a worker\'s report on its task: pass --task, and --actor worker:<task> when PNYX_ACTOR is unset',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
   const result = commit({
     hydraId,
     meta: m,
@@ -2964,6 +2983,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
           data: {
             ...(task ? { task: task.id } : {}),
             action,
+            ...(progress ? { kind: 'progress' as const } : {}),
             text,
             ...(m.details ? { details: m.details } : {}),
             ...(context ? { context } : {}),
@@ -2995,6 +3015,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     state: loadHydra({ hydraId }).state,
     id: hydraId,
   })
+
+  if (progress && result.event !== 'none: duplicate') {
+    return {
+      ...result,
+      help: ['Saved on the card; Hydra reads it with its next wake, so send questions, blockers and results through task ask or task status'],
+    }
+  }
 
   if (config.hydra.kind === 'firstmate' || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result
@@ -3610,7 +3637,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
     case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
-    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
@@ -4133,6 +4160,8 @@ in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workfl
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
+pnyx-axi hydra send --task <id> --kind progress --text <message>
+--kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
@@ -4182,8 +4211,9 @@ pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time>]
+pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
+--hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored. The owner can still move the card to Done.
 pnyx-axi task report <id> [--file <path>]
