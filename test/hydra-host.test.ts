@@ -909,6 +909,19 @@ test(
       },
       actor: 'worker:fix',
     })
+    const report = ({ kind }: { kind?: string }) => event({
+      change: {
+        type: 'hydra.message',
+        data: {
+          task: id,
+          action: 'send',
+          text: 'Tests pass',
+          hydra: 'hydra',
+          ...(kind ? { kind } : {}),
+        },
+      },
+      actor: 'worker:fix',
+    })
     const linked = ({
       before,
       after,
@@ -1006,6 +1019,15 @@ test(
         [
           declared({ status: 'needs_you' }),
           true,
+        ],
+        [
+          report({}),
+          true,
+        ],
+        // Progress stays on the card until something else wakes Hydra.
+        [
+          report({ kind: 'progress' }),
+          false,
         ],
         [
           declared({ status: 'blocked' }),
@@ -1632,6 +1654,295 @@ test(
     assert.ok(
       Math.abs(waitMs - 2 * 60 * 60 * 1000) < 60_000,
       `waits ${waitMs} ms`,
+    )
+  },
+)
+
+test(
+  'a hold the owner asked for never wakes Hydra on a timer, while an open-ended worker pause still does',
+  async () => {
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    await commands.task([
+      'create',
+      '--title',
+      'Rework the schema',
+      '--key',
+      'schema',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+      stallDelay: 200,
+      pauseDelay: 300,
+    })
+    const waits = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+      .filter(m => m.includes('Wait ended:'))
+    const id = state().keys.schema!
+    const pause = ({ args }: { args: string[] }) => commands.task([
+      'status',
+      id,
+      'paused',
+      ...args,
+      '--actor',
+      `worker:${id}`,
+      '--hydra',
+      'lab',
+    ])
+
+    await send({ text: 'Start the schema work' })
+    await until({ check: finished })
+    await startTask({
+      hydraId: 'lab',
+      task: 'schema',
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'hydra',
+        reason: 'start it',
+        id: 'start-schema',
+      },
+    })
+    await until({ check: () => Boolean(state().cards[id]!.sessionIds?.length) })
+
+    await pause({
+      args: [
+        '--hold',
+        '--note',
+        'Stopped at the owner\'s request',
+      ],
+    })
+    assert.match(
+      String((await commands.task([
+        'show',
+        id,
+        '--hydra',
+        'lab',
+      ]) as { task: { status: string } }).task.status),
+      /^paused on hold: Stopped at the owner's request/,
+    )
+    await sleep({ ms: 900 })
+    assert.equal(
+      waits().length,
+      0,
+      'a hold has no timer',
+    )
+
+    await pause({
+      args: [
+        '--note',
+        'Waiting on the migration window',
+      ],
+    })
+    await until({ check: () => waits().length === 1 })
+    assert.match(
+      waits()[0]!,
+      /the worker on .* paused since .*: Waiting on the migration window/,
+    )
+  },
+)
+
+test(
+  'a hold has no end, so it never takes --until, and only a pause is held',
+  async () => {
+    await commands.task([
+      'create',
+      '--title',
+      'Hold it',
+      '--key',
+      'held',
+      '--hydra',
+      'lab',
+    ])
+    await assert.rejects(
+      async () => commands.task([
+        'status',
+        'held',
+        'paused',
+        '--hold',
+        '--until',
+        'in 1 hour',
+        '--hydra',
+        'lab',
+      ]),
+      /use --hold or --until, not both/,
+    )
+    await assert.rejects(
+      async () => commands.task([
+        'status',
+        'held',
+        'working',
+        '--hold',
+        '--hydra',
+        'lab',
+      ]),
+      /--hold goes only with paused/,
+    )
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).filter(event => event.type === 'task.declared').length,
+      0,
+    )
+  },
+)
+
+test(
+  'progress reports update the card without a Hydra turn, and the next question brings them along',
+  async () => {
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--hydra',
+      'lab',
+    ])
+    const fix = state().keys.fix!
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+    })
+    const turns = () => sdk.calls.flatMap(call => call.messages)
+    const worker = [
+      '--actor',
+      `worker:${fix}`,
+      '--hydra',
+      'lab',
+    ]
+
+    await send({ text: 'Hello' })
+    await until({ check: finished })
+    // A plain report still wakes Hydra, which leaves the handled-wake cursor every running Hydra has.
+    await commands.hydra([
+      'send',
+      '--task',
+      fix,
+      '--text',
+      'Picked up the task',
+      ...worker,
+    ])
+    await until({ check: () => turns().length === 2 && finished() })
+
+    for (const step of [
+      'Reproduced the bug',
+      'Wrote the failing test',
+      'Fixed the parser',
+    ]) {
+      const sent = await commands.hydra([
+        'send',
+        '--task',
+        fix,
+        '--kind',
+        'progress',
+        '--text',
+        step,
+        ...worker,
+      ]) as { message: string }
+      assert.equal(
+        state().cards[fix]!.updatedSeq,
+        state().eventIds[sent.message],
+        'the progress report updates its card',
+      )
+    }
+
+    await sleep({ ms: 400 })
+    assert.equal(
+      turns().length,
+      2,
+      'progress alone wakes no Hydra turn',
+    )
+
+    await commands.task([
+      'ask',
+      fix,
+      '--question',
+      'Which parser should own dates?',
+      ...worker,
+    ])
+    await until({ check: () => turns().length === 3 && finished() })
+    const wake = turns()[2]!
+    assert.ok(wake.startsWith('<pnyx-wake>4 worker reports arrived while you were busy.'))
+    assert.deepEqual(
+      [
+        'Reproduced the bug',
+        'Wrote the failing test',
+        'Fixed the parser',
+      ].map(step => wake.includes(`task="${fix}" kind="progress"`) && wake.includes(`\n${step}\n</pnyx-report>`)),
+      [
+        true,
+        true,
+        true,
+      ],
+    )
+    assert.ok(wake.includes('Which parser should own dates?'))
+  },
+)
+
+test(
+  'only a worker sends progress, and only on its task',
+  async () => {
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--hydra',
+      'lab',
+    ])
+    const fix = state().keys.fix!
+
+    for (const args of [
+      [
+        '--task',
+        fix,
+      ],
+      [
+        '--actor',
+        `worker:${fix}`,
+      ],
+    ]) {
+      await assert.rejects(
+        async () => commands.hydra([
+          'send',
+          '--kind',
+          'progress',
+          '--text',
+          'Halfway',
+          ...args,
+          '--hydra',
+          'lab',
+        ]),
+        /--kind progress is a worker's report on its task/,
+      )
+    }
+
+    await assert.rejects(
+      async () => commands.hydra([
+        'send',
+        '--task',
+        fix,
+        '--kind',
+        'chatter',
+        '--text',
+        'Halfway',
+        '--actor',
+        `worker:${fix}`,
+        '--hydra',
+        'lab',
+      ]),
+      /--kind must be progress/,
     )
   },
 )
