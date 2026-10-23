@@ -1,6 +1,8 @@
 import { MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
 import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
@@ -12,7 +14,7 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
-import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, hydrasDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
@@ -3467,6 +3469,53 @@ test(
       what: 'the new Hydra to be served',
     })
     assert.ok(late)
+    assert.equal(
+      (await readServer({ hydraId: 'late' }))?.url,
+      `http://127.0.0.1:${server.port}/hydra/late/`,
+    )
+  },
+)
+
+test(
+  'a Hydra whose folder was seen before its log is served even if directory notifications are lost',
+  async t => {
+    mkdirSync(
+      hydraDir({ hydraId: 'late' }),
+      { recursive: true },
+    )
+    const watching = t.mock.method(
+      fs,
+      'watch',
+    )
+    syncBuiltinESMExports()
+
+    try {
+      server = await startServer({ hydraId: 'default' })
+    } finally {
+      watching.mock.restore()
+      syncBuiltinESMExports()
+    }
+
+    assert.match(
+      server.skipped.late!,
+      /unknown Hydra: late/,
+    )
+    const directoryWatcher = watching.mock.calls.find(
+      call => call.arguments[0] === hydrasDir(),
+    )?.result
+    assert.ok(directoryWatcher)
+    directoryWatcher.close()
+    cli({
+      args: [
+        'hydra',
+        'create',
+        'late',
+      ],
+    })
+    await until({
+      check: () => existsSync(infoPath({ hydraId: 'late' })) ? true : undefined,
+      what: 'the completed Hydra to be served without waiting for the periodic retry',
+    })
     assert.equal(
       (await readServer({ hydraId: 'late' }))?.url,
       `http://127.0.0.1:${server.port}/hydra/late/`,

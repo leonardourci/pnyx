@@ -225,6 +225,7 @@ const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
   'http://localhost',
 ) ?? new URL(`http://localhost${url}`)
 const RETRY_MS = 60_000
+const CREATION_POLL_MS = 1000
 const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
@@ -289,6 +290,7 @@ export async function startServer({
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
+  const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false, summariesKey = ''
@@ -480,6 +482,49 @@ export async function startServer({
     origins.add(`http://${host}`)
   }
 
+  // A directory notification can precede its log, and later filesystem notifications may be lost.
+  const watchMissingLog = ({ id }: { id: string }) => {
+    if (closed || pendingLogs.has(id)) {
+      return
+    }
+
+    const path = join(
+      hydraDir({ hydraId: id }),
+      'events.jsonl',
+    )
+
+    const stop = () => {
+      unwatchFile(
+        path,
+        ready,
+      )
+      pendingLogs.delete(id)
+    }
+
+    const ready = () => {
+      if (closed || !existsSync(path)) {
+        return
+      }
+
+      stop()
+      mountAll()
+    }
+
+    pendingLogs.set(
+      id,
+      stop,
+    )
+    watchFile(
+      path,
+      {
+        interval: CREATION_POLL_MS,
+        persistent: false,
+      },
+      ready,
+    )
+    ready()
+  }
+
   const mount = ({ id }: { id: string }): Promise<MountedHydra> => {
     const known = mounts.get(id)
 
@@ -508,6 +553,8 @@ export async function startServer({
     )
     started.then(
       m => {
+        pendingLogs.get(id)?.()
+
         if (closed) {
           void m.close()
         } else {
@@ -522,6 +569,10 @@ export async function startServer({
       (error: Error) => {
         mounts.delete(id)
         skipped[id] = error.message
+
+        if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+          watchMissingLog({ id })
+        }
       },
     )
 
@@ -570,6 +621,7 @@ export async function startServer({
     closed = true
     watcher.close()
     clearInterval(retry)
+    pendingLogs.forEach(stop => stop())
     const all = await Promise.allSettled(mounts.values())
     await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
     http.closeAllConnections()
