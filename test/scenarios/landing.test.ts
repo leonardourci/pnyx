@@ -329,45 +329,51 @@ test(
         s.column({ role: 'done' }),
       ],
     )
-    // The merged pull request is where this project's work lands, so the worker's own done now goes through.
-    await worker.run({
-      args: [
-        'task',
-        'status',
-        'ship',
-        'done',
-        '--note',
-        'Merged',
-      ],
-    })
     await until({
       what: 'the merge to wake Hydra',
-      check: () => hydraAgent.received.length > heard,
+      check: () => hydraAgent.received.slice(heard).some(text => text.startsWith('<pnyx-wake>')),
     })
-    const released = await until({
+    await until({
       what: 'the copy to go back to the pool',
-      check: () => s.task({ key: 'ship' }).copy?.state === 'removed' && s.task({ key: 'ship' }).copy,
+      check: () => s.task({ key: 'ship' }).copy?.state === 'removed',
     })
     assert.deepEqual(
       [
-        released.reason,
+        s.task({ key: 'ship' }).copy?.reason,
         s.task({ key: 'ship' }).folder,
         git({
           cwd: app,
           args: [
             'rev-parse',
-            '--verify',
-            '--quiet',
+            '--short',
             card.copy!.branch!,
           ],
-        }).length > 0,
+        }),
       ],
       [
         'its work landed; its folder went back to the pool',
         undefined,
-        true,
+        head,
       ],
     )
+
+    // Someone else moves main on; the next task must start from it, not from what this folder last saw.
+    const elsewhere = s.folder({ name: 'elsewhere' })
+    git({
+      cwd: elsewhere,
+      args: [
+        'clone',
+        '-q',
+        `${app}.git`,
+        '.',
+      ],
+    })
+    change({
+      copy: elsewhere,
+      file: 'later.txt',
+    })
+    commitAll({ copy: elsewhere })
+    push({ copy: elsewhere })
 
     // The finished worker leaves the copy, so the pool can hand it on.
     await s.owner({
@@ -426,12 +432,13 @@ test(
         copy,
         `pnyx/${s.hydraId}-${next.id}`,
         git({
-          cwd: copy,
+          cwd: app,
           args: [
-            'rev-parse',
-            'origin/main',
+            'ls-remote',
+            `${app}.git`,
+            'main',
           ],
-        }),
+        }).split('\t')[0],
         '',
       ],
     )
@@ -546,11 +553,14 @@ test(
         told({ text: `Checks failed on ${url}` }).length,
         told({ text: `new review comments on ${url}` }).length,
         s.task({ key: 'limit' }).column,
+        // Pnyx read the pull request many times; only its three changes were recorded.
+        s.events().filter(e => e.type === 'card.linked' && e.actor === 'pnyx').length,
       ],
       [
         1,
         1,
         s.column({ role: 'in_progress' }),
+        3,
       ],
     )
 
@@ -581,16 +591,11 @@ test(
         'NOT_FOUND',
       ],
     )
-    // Pnyx read the pull request many times; only its three changes were recorded.
-    assert.equal(
-      s.events().filter(e => e.type === 'card.linked' && e.actor === 'pnyx').length,
-      3,
-    )
   },
 )
 
 test(
-  'a branch-landing task is done once its work is committed, its unlanded copy is kept for Hydra, and a task given the pull request rule still needs one',
+  'a branch-landing task is done once all its work is committed, its unlanded copy is kept for Hydra, and a task given the pull request rule is done when GitHub merges its pull request',
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({
@@ -598,6 +603,8 @@ test(
       flags: [
         '--landing',
         'branch',
+        '--merge',
+        'hydra',
       ],
     })
     assert.equal(
@@ -620,7 +627,7 @@ test(
         ],
       }),
       new RegExp(
-        `^ {2}site,${app},attached,branch,owner$`,
+        `^ {2}site,${app},attached,branch,hydra$`,
         'm',
       ),
     )
@@ -645,7 +652,6 @@ test(
       })
     }
 
-    // On the owner's word, Hydra gives one task a rule of its own.
     await hydra.run({
       args: [
         'task',
@@ -657,15 +663,20 @@ test(
         'the owner wants a pull request for it',
       ],
     })
+    const rule = ({ key }: { key: string }) => s.owner({
+      args: [
+        'task',
+        'landing',
+        key,
+      ],
+    })
     assert.match(
-      await s.owner({
-        args: [
-          'task',
-          'landing',
-          'copy-fix',
-        ],
-      }),
-      /^landing: branch\nmerge: owner\nfrom: project$/m,
+      await rule({ key: 'copy-fix' }),
+      /^landing: branch\nmerge: hydra\nfrom: project$/m,
+    )
+    assert.match(
+      await rule({ key: 'pr-fix' }),
+      /^landing: pr\nmerge: hydra\nfrom: task$/m,
     )
 
     for (const key of [
@@ -686,19 +697,21 @@ test(
       s.task({ key: 'pr-fix' }).copy!.path,
     ]
     const [
-      branchWorker,
-      prWorker,
+      branchAgent,
+      prAgent,
     ] = await Promise.all(copies.map(cwd => s.agent({ cwd })))
+    const branchWorker = s.as({ agent: branchAgent! })
+    const prWorker = s.as({ agent: prAgent! })
     assert.match(
-      branchWorker!.received[0]!,
+      branchAgent!.received[0]!,
       /^Landing: commit your work on your branch in this copy, then declare done\. Do not push or open a pull request/m,
     )
     assert.match(
-      prWorker!.received[0]!,
+      prAgent!.received[0]!,
       /^Landing: commit on your branch, push it, open a ready pull request/m,
     )
     assert.equal(
-      (await s.as({ agent: prWorker! }).refusal({
+      (await prWorker.refusal({
         args: [
           'task',
           'landing',
@@ -710,56 +723,61 @@ test(
       'FORBIDDEN',
     )
 
+    const done = ({ key }: { key: string }) => [
+      'task',
+      'status',
+      key,
+      'done',
+    ]
+
     for (const copy of copies) {
       change({
         copy,
         file: 'fix.txt',
       })
+    }
+
+    assert.equal(
+      (await branchWorker.refusal({
+        args: done({ key: 'copy-fix' }),
+      })).error,
+      'not done yet: 1 file uncommitted',
+    )
+
+    for (const copy of copies) {
       commitAll({ copy })
     }
 
-    await s.as({ agent: branchWorker! }).run({
-      args: [
-        'task',
-        'status',
-        'copy-fix',
-        'done',
-      ],
+    await branchWorker.run({
+      args: done({ key: 'copy-fix' }),
     })
     assert.match(
-      (await s.as({ agent: prWorker! }).refusal({
-        args: [
-          'task',
-          'status',
-          'pr-fix',
-          'done',
-        ],
-      })).error,
+      (await prWorker.refusal({
+        args: done({ key: 'pr-fix' }),
+      })).error!,
       /is not pushed; no linked pull request$/,
     )
 
-    const kept = await until({
-      what: 'the unlanded copy to be kept',
-      check: () => s.task({ key: 'copy-fix' }).copy?.state === 'flagged' && s.task({ key: 'copy-fix' }).copy,
-    })
-    assert.equal(
-      kept.reason,
-      'its work has not landed on origin/main or main',
-    )
-    const id = s.task({ key: 'copy-fix' }).id
     await until({
-      what: 'Hydra to hear the copy was kept',
-      check: () => hydraAgent.received.length > 1,
+      what: 'the unlanded copy to be kept',
+      check: () => s.task({ key: 'copy-fix' }).copy?.state === 'flagged',
     })
+    const id = s.task({ key: 'copy-fix' }).id
     const messages = await hydra.run({
       args: [
         'hydra',
         'messages',
       ],
     })
-    assert.ok(
-      messages.includes(`The copy of task ${id} \\"copy-fix\\" at ${copies[0]} was kept: its work has not landed`),
-      messages,
+    assert.deepEqual(
+      [
+        s.task({ key: 'copy-fix' }).copy?.reason,
+        messages.includes(`The copy of task ${id} \\"copy-fix\\" at ${copies[0]} was kept: its work has not landed`),
+      ],
+      [
+        'its work has not landed on origin/main or main',
+        true,
+      ],
     )
     // Discarding work that never landed is the owner's call: Hydra only proposes it in the chat.
     assert.match(
@@ -803,37 +821,46 @@ test(
       'its work landed; its folder went back to the pool',
     )
 
-    // A commit on the default branch has landed under any rule.
-    for (const args of [
-      [
-        'fetch',
-        '-q',
-        'origin',
-      ],
-      [
-        'rebase',
-        '-q',
-        'origin/main',
-      ],
-    ]) {
-      git({
-        cwd: copies[1]!,
-        args,
-      })
-    }
-
-    push({
-      copy: copies[1]!,
-      to: 'HEAD:main',
-    })
-    await s.as({ agent: prWorker! }).run({
+    push({ copy: copies[1]! })
+    const url = s.pullRequest({ number: 3 })
+    await prWorker.run({
       args: [
-        'task',
-        'status',
+        'link',
         'pr-fix',
-        'done',
+        '--url',
+        url,
       ],
     })
+    await until({
+      what: 'Pnyx to read the open pull request',
+      check: () => s.task({ key: 'pr-fix' }).links[0]?.state === 'open',
+    })
+    // Merged on GitHub, not through task merge.
+    s.pullRequest({
+      number: 3,
+      state: 'merged',
+    })
+    await until({
+      what: 'the merge on GitHub to finish the task',
+      check: () => s.task({ key: 'pr-fix' }).status?.state === 'done',
+    })
+    assert.deepEqual(
+      [
+        s.task({ key: 'pr-fix' }).status?.note,
+        s.task({ key: 'pr-fix' }).status?.actor,
+        s.task({ key: 'pr-fix' }).column,
+        s.task({ key: 'pr-fix' }).links[0]?.state,
+        s.merges({ number: 3 }),
+      ],
+      [
+        `Pull request ${url} merged`,
+        'pnyx',
+        s.column({ role: 'done' }),
+        'merged',
+        0,
+      ],
+    )
+
     await s.owner({
       args: [
         'task',
@@ -843,14 +870,8 @@ test(
       ],
     })
     assert.match(
-      await s.owner({
-        args: [
-          'task',
-          'landing',
-          'pr-fix',
-        ],
-      }),
-      /^landing: branch\nmerge: owner\nfrom: project$/m,
+      await rule({ key: 'pr-fix' }),
+      /^landing: branch\nmerge: hydra\nfrom: project$/m,
     )
   },
 )

@@ -659,6 +659,62 @@ test(
 )
 
 test(
+  'done goes through once the work landed: a pushed commit whose pull request merged, or a commit on the default branch',
+  async () => {
+    const merged = await lab()
+    merged.change({ file: 'a.txt' })
+    merged.commitAll()
+    git({
+      cwd: merged.copy,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        'pnyx/task',
+      ],
+    })
+    commands.link([
+      merged.id,
+      '--url',
+      PR,
+      '--state',
+      'merged',
+    ])
+    merged.done()
+    assert.equal(
+      merged.card().status?.state,
+      'done',
+    )
+
+    const onMain = await lab()
+    onMain.change({ file: 'b.txt' })
+    onMain.commitAll()
+    git({
+      cwd: onMain.copy,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        'HEAD:main',
+      ],
+    })
+    git({
+      cwd: onMain.copy,
+      args: [
+        'fetch',
+        '-q',
+        'origin',
+      ],
+    })
+    onMain.done()
+    assert.equal(
+      onMain.card().status?.state,
+      'done',
+    )
+  },
+)
+
+test(
   'task merge: the owner merges under the owner rule, a worker never, and only an open, ready, single pull request',
   async () => {
     const {
