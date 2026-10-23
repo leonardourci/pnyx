@@ -1477,3 +1477,275 @@ test(
     )
   },
 )
+
+test(
+  'legacy layout migration preserves cards in surviving custom columns through the writer',
+  t => {
+    const f = hydraId()
+    t.after(() => rmSync(
+      f.home,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    f.run({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    const base = {
+      v: 1,
+      at: '2026-10-20T00:00:00Z',
+      actor: 'cli',
+    }
+    const legacy = [
+      {
+        ...base,
+        id: 'config',
+        seq: 1,
+        cardId: '$board',
+        type: 'board.configured',
+        data: {
+          id: 'default',
+          name: 'Old Hydra',
+          hydra: {
+            id: 'hydra',
+            name: 'Hydra',
+            kind: 'agent',
+          },
+          columns: [
+            {
+              id: 'workers_on_it',
+              title: 'Workers on it',
+              role: 'workers_on_it',
+            },
+            {
+              id: 'custom:research',
+              title: 'Research',
+            },
+          ],
+        },
+      },
+      {
+        ...base,
+        id: 'custom',
+        seq: 2,
+        cardId: 'custom-card',
+        type: 'task.created',
+        data: {
+          key: 'custom',
+          title: 'Manually researching',
+          column: 'custom:research',
+        },
+      },
+      {
+        ...base,
+        id: 'working',
+        seq: 3,
+        cardId: 'custom-card',
+        type: 'task.declared',
+        data: {
+          state: 'working',
+          note: 'In flight',
+        },
+      },
+      {
+        ...base,
+        id: 'legacy',
+        seq: 4,
+        cardId: 'legacy-card',
+        type: 'task.created',
+        data: {
+          key: 'legacy',
+          title: 'Old worker',
+          column: 'workers_on_it',
+        },
+      },
+    ].map(event => JSON.stringify(event)).join('\n') + '\n'
+    const logPath = join(
+      f.home,
+      'hydras/default/events.jsonl',
+    )
+    writeFileSync(
+      logPath,
+      legacy,
+    )
+    rmSync(join(
+      f.home,
+      'hydras/default/snapshot.json',
+    ))
+    f.run({
+      args: [
+        'task',
+        'rename',
+        'custom',
+        '--title',
+        'Still researching',
+      ],
+    })
+    assert.equal(
+      f.state().cards['custom-card']!.column,
+      'custom:research',
+    )
+    assert.equal(
+      f.state().cards['legacy-card']!.column,
+      'in_progress',
+    )
+    assert.ok(readFileSync(
+      logPath,
+      'utf8',
+    ).startsWith(legacy))
+    const moves = readFileSync(
+      logPath,
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line))
+      .filter(event => event.type === 'card.moved' && event.cardId === 'custom-card')
+    assert.deepEqual(
+      moves,
+      [],
+    )
+  },
+)
+
+test(
+  'deleting a matching rule column previews and reverses every move while honoring its fallback',
+  t => {
+    const f = hydraId()
+    t.after(() => rmSync(
+      f.home,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    f.run({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    f.run({
+      args: [
+        'column',
+        'create',
+        '--id',
+        'custom:research',
+        '--title',
+        'Research',
+      ],
+    })
+    f.run({
+      args: [
+        'column',
+        'reorder',
+        'custom:research',
+        '--before',
+        'queued',
+      ],
+    })
+    f.run({
+      args: [
+        'column',
+        'rule',
+        'custom:research',
+        '--when',
+        'kind:investigation',
+        '--reason',
+        'Research gets a column',
+      ],
+    })
+
+    for (const key of [
+      'inside',
+      'outside',
+    ]) {
+      f.run({
+        args: [
+          'task',
+          'create',
+          '--key',
+          key,
+          '--title',
+          key,
+          '--kind',
+          'investigation',
+        ],
+      })
+      f.run({
+        args: [
+          'task',
+          'status',
+          key,
+          'working',
+        ],
+      })
+    }
+
+    f.run({
+      args: [
+        'move',
+        'outside',
+        'parked',
+      ],
+    })
+    const before = f.state()
+    const command = [
+      'column',
+      'delete',
+      'custom:research',
+      '--to',
+      'queued',
+    ]
+    const preview = f.execute({ args: command })
+    assert.match(
+      preview,
+      /affectedCards: 2/,
+    )
+    assert.equal(
+      f.state().cards[before.keys.outside!]!.column,
+      before.cards[before.keys.outside!]!.column,
+    )
+    const token = /^token: (\S+)$/m.exec(preview)![1]!
+    const result = f.execute({
+      args: [
+        ...command,
+        '--confirm',
+        token,
+      ],
+    })
+    const role = ({ name }: { name: string }) =>
+      before.config!.columns.find(column => column.role === name)!.id
+    assert.equal(
+      f.state().cards[before.keys.inside!]!.column,
+      role({ name: 'queued' }),
+    )
+    assert.equal(
+      f.state().cards[before.keys.outside!]!.column,
+      role({ name: 'in_progress' }),
+    )
+    const event = /^ {2}id: (\S+)$/m.exec(result)![1]!
+    f.run({
+      args: [
+        'undo',
+        event,
+      ],
+    })
+
+    for (const key of [
+      'inside',
+      'outside',
+    ]) {
+      const id = before.keys[key]!
+      assert.equal(
+        f.state().cards[id]!.column,
+        before.cards[id]!.column,
+      )
+    }
+  },
+)

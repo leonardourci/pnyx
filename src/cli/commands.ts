@@ -2825,7 +2825,7 @@ function columnCommand({ args }: { args: string[] }): Output {
           },
         ]))
 
-      if (action === 'rule' || action === 'reorder') {
+      if (changesPlacement) {
         const config = hydraConfig({
           state,
           id: hydraId,
@@ -2842,6 +2842,10 @@ function columnCommand({ args }: { args: string[] }): Output {
           before: state,
           state: proposed,
         })) {
+          if (placements[move.cardId]) {
+            continue
+          }
+
           placements[move.cardId] = {
             before: state.cards[move.cardId]!.column,
             after: move.column,
