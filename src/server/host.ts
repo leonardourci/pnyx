@@ -125,6 +125,8 @@ export interface Host {
     seq: number
     card: string
   }): void
+  // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
+  unread({ seq }: { seq: number }): void
   // The changes waiting for Hydra's next check turn and the ones its running turn is reading.
   queue(): HydraQueue
   // Recovers hosted sessions and resumes a cut Hydra turn once.
@@ -1902,9 +1904,6 @@ export function createHost({
           return { state: 'queued' }
         }
 
-        // Hydra's first owner turn starts its wake cursor, so progress sent after it reaches the first wake.
-        wakeStart ??= state.eventIds[id]
-
         if (`${id}:hosted` in state.eventIds) {
           return { state: 'queued' }
         }
@@ -2953,6 +2952,10 @@ export function createHost({
       }
 
       armWake()
+    },
+
+    unread: ({ seq }) => {
+      wakeStart ??= seq - 1
     },
 
     queue: () => ({

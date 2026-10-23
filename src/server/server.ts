@@ -1337,6 +1337,8 @@ async function mountOwnedHydra({
           seq: event.seq,
           card: event.cardId,
         })
+      } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
+        agents.unread({ seq: event.seq })
       }
     }
 
