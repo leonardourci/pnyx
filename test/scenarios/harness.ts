@@ -2,7 +2,7 @@
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See test/README.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before } from 'node:test'
@@ -462,11 +462,12 @@ function hydraScenario({
       0,
       `pnyx-axi ${args.join(' ')} succeeded:\n${run.stdout}`,
     )
-    const error = /^error: (.*)$/m.exec(run.stdout)?.[1] ?? ''
+    const line = /^error: (.*)$/m.exec(run.stdout)?.[1]
+    const quoted = line?.startsWith('"')
 
     return {
       code: /^code: (\w+)$/m.exec(run.stdout)?.[1],
-      error: error.startsWith('"') ? JSON.parse(error) as string : error,
+      error: quoted ? JSON.parse(line!) as string : line,
     }
   }
 
@@ -495,6 +496,13 @@ function hydraScenario({
     check: () => sessions().findLast(s => s.env.PNYX_HYDRA === hydraId
       && (hydra ? s.env.PNYX_ACTOR === 'hydra' : s.cwd === cwd)),
   })
+
+  // This scenario's repository on the fake GitHub.
+  const repo = join(
+    process.env.PNYX_FAKE_GITHUB!,
+    'o',
+    hydraId,
+  )
 
   const folder = ({ name }: { name: string }) => {
     const path = join(
@@ -608,20 +616,17 @@ function hydraScenario({
       checks?: string
       comments?: number
     }) => {
-      const repo = join(
-        process.env.PNYX_FAKE_GITHUB!,
-        'o',
-        hydraId,
+      const file = join(
+        repo,
+        String(number),
       )
       mkdirSync(
         repo,
         { recursive: true },
       )
+      // Written whole and renamed, so the server's next read never sees half a pull request.
       writeFileSync(
-        join(
-          repo,
-          String(number),
-        ),
+        `${file}.next`,
         `pull_request:
   number: ${number}
   title: "Pull request ${number}"
@@ -632,23 +637,30 @@ function hydraScenario({
   review_count: 0
 `,
       )
+      renameSync(
+        `${file}.next`,
+        file,
+      )
 
       return `https://github.com/o/${hydraId}/pull/${number}`
     },
     // How many times `pr merge` merged that pull request.
     merges: ({ number }: { number: number }) => {
       const log = join(
-        process.env.PNYX_FAKE_GITHUB!,
-        'o',
-        hydraId,
+        repo,
         `${number}.merges`,
       )
 
-      return existsSync(log) ? readFileSync(
+      if (!existsSync(log)) {
+        return 0
+      }
+
+      const lines = readFileSync(
         log,
         'utf8',
       ).split('\n')
-        .filter(Boolean).length : 0
+
+      return lines.filter(Boolean).length
     },
     owner: ({
       args,
