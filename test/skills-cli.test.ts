@@ -40,7 +40,7 @@ test(
       ),
       PNYX_HOME: join(
         userHome,
-        'data',
+        '.pnyx',
       ),
       PNYX_SEMANTIC: 'off',
       PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws',

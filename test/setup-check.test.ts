@@ -33,7 +33,7 @@ function sandbox() {
     HOME: root,
     PNYX_HOME: join(
       root,
-      'pnyx',
+      '.pnyx',
     ),
     CLAUDE_CONFIG_DIR: join(
       root,
