@@ -10,7 +10,7 @@ import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { mentionContext, REFERENCE, referenceLabel, taskMentions } from '../mentions/mentions.ts'
+import { mentionContext, REFERENCE, referenceLabel } from '../mentions/mentions.ts'
 import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
@@ -74,6 +74,7 @@ import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { answerPrompt } from '../core/answer.ts'
+import { tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
@@ -1916,18 +1917,6 @@ function sessionRef({
       },
     }).id
     : ref
-}
-
-// A Hydra chat message belongs to its task and to every task it names with a chip.
-function tagsTask({
-  event,
-  ids,
-}: {
-  event: HydraEvent
-  ids: Set<string>
-}): boolean {
-  return event.type === 'hydra.message'
-    && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
 }
 
 function taskHistory({
