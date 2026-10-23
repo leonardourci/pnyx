@@ -1,3 +1,4 @@
+import { taskInstructions } from './intent.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import {
@@ -23,6 +24,7 @@ import {
   type PushFields,
   type Question,
   type RepliedEvent,
+  type SessionEvent,
   type SourceRef,
   type TerminalFacts,
   type ViewEvent,
@@ -852,6 +854,17 @@ export function decideSession({
     return { skipped: 'unchanged' }
   }
 
+  const data: SessionEvent['data'] = {
+    session: session.id,
+    before: session.taskId,
+    after: target?.id ?? null,
+  }
+  const instructions = target ? taskInstructions({ card: target }) : ''
+
+  if (instructions) {
+    data.brief = instructions
+  }
+
   return {
     event: {
       ...base({
@@ -860,12 +873,7 @@ export function decideSession({
         cardId: card.id,
       }),
       type: 'task.session',
-      data: {
-        session: session.id,
-        before: session.taskId,
-        after: target?.id ?? null,
-        ...(target?.brief?.trim() ? { brief: target.brief } : {}),
-      },
+      data,
     },
   }
 }
@@ -1601,6 +1609,7 @@ export function decideUndo({
   if ([
     'board.configured',
     'task.created',
+    'task.intent',
     'task.declared',
     'task.kind',
     'task.report',

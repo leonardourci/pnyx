@@ -1,4 +1,4 @@
-import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
+import { ownerActor, failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -662,6 +662,22 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'task.intent') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      card.ask = [
+        ...(card.ask ?? []),
+        structuredClone(event.data),
+      ]
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'task.brief' || event.type === 'task.visibility' || event.type === 'task.retention') {
     const card = state.cards[event.cardId]
 
@@ -799,6 +815,7 @@ export function applyHydra({
         brief,
         initialPrompt: brief,
       } : {}),
+      ask: event.data.ask ? [structuredClone(event.data.ask)] : [],
       titleSet: true,
       workspace: 'unassigned',
       tags: [],
@@ -940,6 +957,18 @@ export function applyHydra({
     const card = event.data.task ? state.cards[event.data.task] : undefined
 
     if (card) {
+      if (ownerActor({ actor: event.actor })) {
+        card.ask = [
+          ...(card.ask ?? []),
+          {
+            text: event.data.text,
+            at: event.at,
+            actor: event.actor,
+            message: event.id,
+          },
+        ]
+      }
+
       card.revision++
       card.updatedSeq = event.seq
       card.updatedAt = event.at
