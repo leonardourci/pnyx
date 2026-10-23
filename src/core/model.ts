@@ -498,11 +498,64 @@ export function landingRule({ project }: { project: Pick<HydraProject, 'landing'
   }
 }
 
+// The owner's rule for this task when one was recorded, otherwise its project's.
+export function cardLanding({
+  card,
+  projects,
+}: {
+  card: Card
+  projects: HydraProject[]
+}): LandingRule | undefined {
+  if (card.landing) {
+    return card.landing
+  }
+
+  const project = projects.find(p => !p.detached
+    && (p.path === card.project || p.name === card.project))
+
+  return project ? landingRule({ project }) : undefined
+}
+
+const checkCount = ({
+  checks,
+  word,
+}: {
+  checks?: string
+  word: string
+}) => Number(new RegExp(`(\\d+) ${word}`).exec(checks ?? '')?.[1] ?? 0)
+
 // How many checks gh-axi's checks line ("3 passed, 1 failed, 4 total") counts as failed.
 export function failedChecks({ checks }: { checks?: string }): number {
-  const failed = /(\d+) failed/.exec(checks ?? '')
+  return checkCount({
+    checks,
+    word: 'failed',
+  })
+}
 
-  return failed ? Number(failed[1]) : 0
+// Whatever is neither passed, failed nor skipped is still running.
+export function pendingChecks({ checks }: { checks?: string }): number {
+  const settled = [
+    'passed',
+    'failed',
+    'skipped',
+  ].reduce(
+    (
+      sum,
+      word,
+    ) => sum + checkCount({
+      checks,
+      word,
+    }),
+    0,
+  )
+
+  return Math.max(
+    0,
+    checkCount({
+      checks,
+      word: 'total',
+    }) - settled,
+  )
 }
 
 export interface HydraProject {

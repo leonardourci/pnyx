@@ -1,6 +1,6 @@
 import { promisify } from 'node:util'
 import { execFile, spawnSync } from 'node:child_process'
-import type { LinkState, SourceNote } from '../../core/model.ts'
+import { failedChecks, pendingChecks, type LinkState, type SourceNote } from '../../core/model.ts'
 
 const VIEW_TIMEOUT_MS = 30_000
 const BODY_MAX = 8000
@@ -181,19 +181,12 @@ export interface PullRequestStatus {
   comments: number
 }
 
-// gh-axi's checks line ("3 passed, 1 failed, 1 skipped, 6 total"); whatever is neither passed, failed nor skipped is still running.
+// gh-axi's checks line ("3 passed, 1 failed, 1 skipped, 6 total").
 function checkCounts({ summary }: { summary: string }): PullRequestChecks {
-  const count = ({ word }: { word: string }) => Number(new RegExp(`(\\d+) ${word}`).exec(summary)?.[1] ?? 0)
-  const failed = count({ word: 'failed' })
-  const settled = count({ word: 'passed' }) + failed + count({ word: 'skipped' })
-
   return {
     summary: summary.split(' — ')[0]!,
-    failed,
-    pending: Math.max(
-      0,
-      count({ word: 'total' }) - settled,
-    ),
+    failed: failedChecks({ checks: summary }),
+    pending: pendingChecks({ checks: summary }),
   }
 }
 
