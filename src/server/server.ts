@@ -20,7 +20,8 @@ import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import type { CurrentAction } from '../thread/calls.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
-import { HYDRA_CARD, hydraConfig, hydraEvent, wakesHydra } from '../core/hydra.ts'
+import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { wakeReasons } from '../core/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../core/decide.ts'
 import { replyRoute } from '../core/route.ts'
@@ -1373,13 +1374,16 @@ async function mountOwnedHydra({
       broadcast({ event })
       touchLatest({ ids: [event.cardId] })
 
-      if (wakesHydra({
+      const reasons = wakeReasons({
         state,
-        event,
-      })) {
+        events: [event],
+      })
+
+      if (reasons.length) {
         agents.wake({
           seq: event.seq,
           card: event.cardId,
+          reasons,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
         agents.unread({ seq: event.seq })

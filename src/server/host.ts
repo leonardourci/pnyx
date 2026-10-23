@@ -20,8 +20,8 @@ import { taskMention } from '../mentions/mentions.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
-import { reasonLine, wakeReasons, type WakeKind } from '../core/wake-reasons.ts'
+import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
+import { reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
 import { freeTask } from '../cli/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
@@ -124,9 +124,11 @@ export interface Host {
   wake({
     seq,
     card,
+    reasons,
   }: {
     seq: number
     card: string
+    reasons: string[]
   }): void
   // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
   unread({ seq }: { seq: number }): void
@@ -212,11 +214,9 @@ const WORKER_COMMANDS = [
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A stall, ended wait or unconfirmed reply the stall check found, as one reason line.
-interface StallItem {
+type StallItem = WakeReason & {
   id: string
   card: string
-  kind: WakeKind
-  detail: string
 }
 
 // A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
@@ -287,7 +287,7 @@ const sealed = ({ text }: { text: string }) => text.replace(
   '<\\/pnyx-wake',
 )
 
-// Every wake ends on this, so Hydra never mistakes a result for nothing to say.
+// Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
 const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.`
 
 // One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
@@ -561,6 +561,8 @@ export function createHost({
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
   // Changes since Hydra's last finished check turn; the ones through readThrough are in its running turn.
   let updates: QueuedUpdate[] = []
+  // Each queued change's reason lines, worked out from the state it landed in.
+  const wakeReasonsAt = new Map<number, string[]>()
   let readThrough = 0
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -1652,10 +1654,10 @@ export function createHost({
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
       && !reportSeqs.has(update.seq))
-    const reasons = wakeReasons({
-      state,
-      events: readEvents({ hydraId }).filter(event => event.seq > after && event.seq <= through),
-    })
+    const reasons = [
+      ...new Set(updates.filter(update => update.seq > after && update.seq <= through)
+        .flatMap(update => wakeReasonsAt.get(update.seq) ?? [])),
+    ]
     void host.hydra({
       id: wakeId({
         through,
@@ -1674,6 +1676,12 @@ export function createHost({
 
   const finishReading = () => {
     const unread = updates.filter(update => update.seq > readThrough)
+
+    for (const seq of wakeReasonsAt.keys()) {
+      if (seq <= readThrough) {
+        wakeReasonsAt.delete(seq)
+      }
+    }
 
     if (unread.length !== updates.length) {
       updates = unread
@@ -1823,7 +1831,7 @@ export function createHost({
     ]
   }
 
-  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; its finished turn never wakes Hydra.
+  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; this repeats the turn-ended wake while it lasts.
   const idleStall = ({
     state,
     card,
@@ -1893,7 +1901,7 @@ export function createHost({
       {
         id,
         card: card.id,
-        kind: 'wait ended' as const,
+        kind: 'wait ended',
         detail: `the worker paused ${named}${note}`,
       },
     ]
@@ -3256,8 +3264,13 @@ export function createHost({
     wake: ({
       seq,
       card,
+      reasons,
     }) => {
       wakeStart ??= seq - 1
+      wakeReasonsAt.set(
+        seq,
+        reasons,
+      )
       wakeThrough = Math.max(
         wakeThrough,
         seq,
@@ -3465,17 +3478,20 @@ export function createHost({
           readThrough = after
         }
 
-        const missed = readEvents({ hydraId })
-          .filter(event => event.seq > after && wakesHydra({
+        // Changes from while the server was stopped can only be read against the state now.
+        for (const event of readEvents({ hydraId }).filter(event => event.seq > after)) {
+          const reasons = wakeReasons({
             state,
-            event,
-          }))
-
-        for (const event of missed) {
-          host.wake({
-            seq: event.seq,
-            card: event.cardId,
+            events: [event],
           })
+
+          if (reasons.length) {
+            host.wake({
+              seq: event.seq,
+              card: event.cardId,
+              reasons,
+            })
+          }
         }
       }
     },
