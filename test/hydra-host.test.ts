@@ -1464,12 +1464,12 @@ test(
       stalls()[2] ?? '',
       /\(alarm 3\)/,
     )
-    // Flat gaps would span about 400 ms in all, uncapped ones about 1200.
+    // Each gap counts from when Hydra got the last alarm: flat gaps would be 200 ms, an uncapped second one 800.
     const firstGap = alarmTimes[1]! - alarmTimes[0]!
-    const span = alarmTimes[2]! - alarmTimes[0]!
+    const secondGap = alarmTimes[2]! - alarmTimes[1]!
     assert.ok(
-      firstGap >= 300 && span >= 750 && span < 1100,
-      `first alarm gap ${firstGap} ms, three alarms over ${span} ms`,
+      firstGap >= 380 && secondGap >= 430 && secondGap < 750,
+      `alarm gaps ${firstGap} ms and ${secondGap} ms`,
     )
 
     // A declared wait silences the stall until it ends, then wakes Hydra once.
@@ -2035,6 +2035,121 @@ test(
       /working with no sign of life/,
     )
     sdk.release()
+  },
+)
+
+test(
+  'a repeated stall counts its gap from when Hydra got the last alarm, so a slow delivery never shortens it',
+  async t => {
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    await commands.task([
+      'create',
+      '--title',
+      'Run the suite',
+      '--key',
+      'suite',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+      stallDelay: 200,
+      busyDelay: 5000,
+      stallRepeatMax: 5000,
+    })
+    const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+      .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+
+    await send({ text: 'Watch the suite' })
+    await until({ check: finished })
+    sdk.control.hold = true
+    sdk.control.tool = true
+    sdk.control.toolDone = true
+    await startTask({
+      hydraId: 'lab',
+      task: 'suite',
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'hydra',
+        reason: 'start it',
+        id: 'start-suite',
+      },
+    })
+    sdk.control.hold = false
+    sdk.control.tool = false
+    sdk.control.toolDone = false
+
+    // A busy machine stalls the event loop while the first alarm is on its way to Hydra.
+    let slowDelivery = true
+    const writeSync = fs.writeSync
+    t.mock.method(
+      fs,
+      'writeSync',
+      // eslint-disable-next-line pnyx/object-params -- Implements node:fs writeSync.
+      (
+        fd: number,
+        data: Buffer,
+        ...rest: []
+      ) => {
+        const text = String(data)
+
+        if (slowDelivery && /"id":"stall:[^"]*:hosted"/.test(text)) {
+          slowDelivery = false
+          const end = Date.now() + 250
+
+          while (Date.now() < end) {
+            // Blocks like a loaded machine.
+          }
+        }
+
+        return writeSync(
+          fd,
+          data,
+          ...rest,
+        )
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      const received: number[] = []
+
+      for (let i = 0; i < 400 && received.length < 2; i++) {
+        while (stalls().length > received.length) {
+          received.push(Date.now())
+        }
+
+        await sleep({ ms: 5 })
+      }
+
+      assert.ok(
+        !slowDelivery,
+        'the first alarm\'s delivery was slowed',
+      )
+      assert.match(
+        stalls()[1] ?? '',
+        /\(alarm 2\)/,
+      )
+      const gap = received[1]! - received[0]!
+      assert.ok(
+        gap >= 380,
+        `Hydra got the second alarm ${gap} ms after the first; the backoff is 400 ms`,
+      )
+    } finally {
+      sdk.release()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
   },
 )
 

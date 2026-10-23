@@ -1757,11 +1757,13 @@ export function createHost({
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
-    for (const item of [
+    const fired = [
       ...stalls,
       ...waits,
       ...unconfirmed,
-    ]) {
+    ]
+
+    for (const item of fired) {
       const count = stalled.get(item.id)?.count ?? 0
       stalled.set(
         item.id,
@@ -1776,10 +1778,21 @@ export function createHost({
       state,
       fallback: wakeStart ?? 0,
     })
+    // The next alarm counts from when Hydra got this one, so a slow delivery never shortens the gap it sees.
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
       text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+    }).then(() => {
+      const delivered = Date.now()
+
+      for (const item of fired) {
+        const entry = stalled.get(item.id)
+
+        if (entry) {
+          entry.at = delivered
+        }
+      }
     })
   }
 
