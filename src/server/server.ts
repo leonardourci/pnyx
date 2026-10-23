@@ -276,13 +276,14 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts and a failed Hydra start waits before each retry; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry and followed pull requests wait between reads; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
   retryDelays?: number[]
+  followDelay?: number
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -605,6 +606,7 @@ async function mountHydra({
   stallRepeatMax,
   pauseDelay,
   retryDelays,
+  followDelay,
   open,
   hydrasChanged,
 }: {
@@ -621,6 +623,7 @@ async function mountHydra({
   stallRepeatMax?: number
   pauseDelay?: number
   retryDelays?: number[]
+  followDelay?: number
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -640,6 +643,7 @@ async function mountHydra({
       stallRepeatMax,
       pauseDelay,
       retryDelays,
+      followDelay,
       open,
       release,
       hydrasChanged,
@@ -663,6 +667,7 @@ async function mountOwnedHydra({
   stallRepeatMax,
   pauseDelay,
   retryDelays,
+  followDelay = FOLLOW_POLL_MS,
   open,
   release,
   hydrasChanged,
@@ -679,6 +684,7 @@ async function mountOwnedHydra({
   stallRepeatMax?: number
   pauseDelay?: number
   retryDelays?: number[]
+  followDelay?: number
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -1501,7 +1507,7 @@ async function mountOwnedHydra({
 
         const following = followedLinks({ state }).length > 0
 
-        if (following && !followRun && Date.now() - followCheckedAt >= FOLLOW_POLL_MS) {
+        if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
           followCheckedAt = Date.now()
           followRun = (async () => {
             try {
@@ -1568,7 +1574,7 @@ async function mountOwnedHydra({
           .filter((at): at is number => at !== undefined)
 
         if (!followRun && followedLinks({ state }).length > 0) {
-          deadlines.push(followCheckedAt + FOLLOW_POLL_MS)
+          deadlines.push(followCheckedAt + followDelay)
         }
 
         const replyFollowUpDue = !replyRun && repliesPending
