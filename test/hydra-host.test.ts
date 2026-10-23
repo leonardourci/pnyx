@@ -1492,6 +1492,43 @@ test(
 )
 
 test(
+  'a worker report sent while the server is down reaches a Hydra that never ran once the server is back',
+  async () => {
+    commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--hydra',
+      'lab',
+    ])
+    const fix = state().keys.fix!
+    await commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      '--task',
+      fix,
+      '--text',
+      'Report while the server was down',
+      '--actor',
+      `worker:${fix}`,
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+    })
+    await until({ check: () => finished() && sdk.calls.length > 0 })
+    const said = sdk.calls.flatMap(call => call.messages)
+    assert.ok(said.some(text => text.startsWith('<pnyx-wake>')
+      && text.includes('\nReport while the server was down\n</pnyx-report>')))
+  },
+)
+
+test(
   'a setting a hook adds to Hydra’s session, such as its client version, keeps the session running',
   async () => {
     const sdk = hydraSdk()
