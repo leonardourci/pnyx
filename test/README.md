@@ -35,6 +35,8 @@ test('…', async () => {
 - `s.agent({ cwd })` is the worker session started in that folder, `s.agent({ hydra: true })` the Hydra's. `s.received({ cwd })` is every message the agents there got, across restarts.
 - `openPage` is the owner's page over the WebSocket: `shows` waits until its state passes a check, `command` sends a command and returns its receipt.
 - `s.state()`, `s.task({ key })` and `s.events()` read the Hydra's saved files.
+- `s.owner({ args, input })` pipes `input` into the CLI, including `reply --file -`.
+- `page.queues` records the server's worker-update queue messages, including waiting and reading batches.
 
 Rules:
 
@@ -47,3 +49,7 @@ Rules:
 `fake-agents.ts` replays real sessions: each message a fake Claude Code gets starts the recorded Agent SDK turn again, and the fake Codex app-server answers each request with its recorded result and notifications. Pnyx's own provider code reads that output, so a change in what the agents send shows up here.
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads. `agent-pins.test.ts` fails while the recording is from another SDK version, or when Pnyx uses a Codex method the recorded Codex protocol does not have.
+
+For a controlled turn, `pnyx.claude.plan({ text, reply, hold, fail })` matches the next prompt ending in `text`. It replays the recording with the chosen reply, or throws the chosen provider error. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
+
+`hydra.test.ts` covers owner chat and restart, failure recovery, queued message settings and tagged Updates, progress and question wakes, mid-turn steering and report batches, quiet replies, memory refresh, and Lavish feedback sent to its worker. The older tests for progress validation and batching, queued owner settings, busy-turn batching, quiet reply filtering and shared owner preferences are replaced by these journeys. Specialized stall, timer, permission, migration and interrupted-turn tests remain until scenarios cover their distinct guarantees.

@@ -786,49 +786,6 @@ test(
 )
 
 test(
-  'Hydra chat hides a quiet reply, even while it streams in',
-  () => {
-    const entries = hydraMessages({
-      messages: [],
-      transcript: [
-        {
-          id: 'quiet',
-          kind: 'message',
-          role: 'assistant',
-          text: 'NO_REPLY\n',
-        },
-        {
-          id: 'streaming',
-          kind: 'message',
-          role: 'assistant · continued',
-          text: 'NO_RE',
-        },
-        {
-          id: 'said',
-          kind: 'message',
-          role: 'assistant',
-          text: 'NO_REPLY is not all I said',
-        },
-        {
-          id: 'owner',
-          kind: 'message',
-          role: 'user',
-          text: 'NO',
-        },
-      ],
-    })
-
-    assert.deepEqual(
-      entries.map(entry => entry.id),
-      [
-        'said',
-        'owner',
-      ],
-    )
-  },
-)
-
-test(
   'each finished turn ends with its timing and reply, and a running turn has none',
   () => {
     const entries: ThreadEntry[] = [

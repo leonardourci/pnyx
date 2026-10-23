@@ -54,6 +54,7 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
+  model?: string
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
 }
@@ -64,9 +65,60 @@ const textOf = ({ message }: { message: SDKUserMessage }) => {
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
+interface TurnPlan {
+  text: string
+  reply?: string
+  fail?: string
+  hold?: boolean
+}
+
+function plannedTurns() {
+  const plans: (TurnPlan & {
+    wait: Promise<void>
+  })[] = []
+
+  return {
+    plan: ({
+      text,
+      reply,
+      fail,
+      hold,
+    }: TurnPlan) => {
+      let release = () => {}
+      const wait = new Promise<void>(resolve => {
+        release = resolve
+      })
+      plans.push({
+        text,
+        reply,
+        fail,
+        hold,
+        wait,
+      })
+
+      if (!hold) {
+        release()
+      }
+
+      return { release }
+    },
+    take: ({ text }: { text: string }) => {
+      const index = plans.findIndex(plan => text.endsWith(plan.text))
+
+      if (index >= 0) {
+        return plans.splice(
+          index,
+          1,
+        )[0]
+      }
+    },
+  }
+}
+
 // Each message starts the recorded turn again under the session's own id; the transcript is written as Claude Code writes it.
 export function replayClaude() {
   const sessions: AgentSession[] = []
+  const turns = plannedTurns()
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
@@ -95,6 +147,7 @@ export function replayClaude() {
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      model: options.model,
     }
     sessions.push(session)
     const path = transcriptPath({
@@ -133,16 +186,54 @@ export function replayClaude() {
           text,
         })
 
+        const plan = turns.take({ text })
+
+        if (plan?.fail) {
+          throw new Error(plan.fail)
+        }
+
+        const answer = plan?.reply ?? reply
+
         for (const recorded of claudeRecording.turn) {
-          yield {
-            ...recorded,
-            session_id: id,
+          if (recorded.type === 'assistant') {
+            await plan?.wait
+            yield {
+              ...recorded,
+              session_id: id,
+              message: {
+                ...recorded.message,
+                content: [
+                  {
+                    type: 'text',
+                    text: answer,
+                  },
+                ],
+              },
+            }
+          } else if (recorded.type === 'stream_event' && recorded.event.type === 'content_block_delta'
+            && recorded.event.delta.type === 'text_delta') {
+            yield {
+              ...recorded,
+              session_id: id,
+              event: {
+                ...recorded.event,
+                delta: {
+                  type: 'text_delta',
+                  text: answer,
+                },
+              },
+            }
+          } else {
+            yield {
+              ...recorded,
+              session_id: id,
+            }
           }
         }
 
         record({
           role: 'assistant',
-          text: reply,
+          text: answer,
         })
       }
     }
@@ -162,6 +253,8 @@ export function replayClaude() {
   return {
     query,
     sessions,
+    plan: turns.plan,
+    reply,
   }
 }
 
@@ -169,6 +262,7 @@ export function replayClaude() {
 // recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
 export function replayCodex() {
   const sessions: AgentSession[] = []
+  const turns = plannedTurns()
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
   const reply = notifications
     .filter(n => n.method === 'item/completed')
@@ -250,7 +344,7 @@ export function replayCodex() {
 
     createInterface({ input: stdin }).on(
       'line',
-      line => {
+      async line => {
         const message = JSON.parse(line) as Message
 
         if (typeof message.method !== 'string' || message.id === undefined) {
@@ -267,9 +361,24 @@ export function replayCodex() {
           sessions.push(session)
         }
 
-        if (message.method === 'turn/start') {
+        let plan: ReturnType<typeof turns.take>
+
+        if (message.method === 'turn/start' || message.method === 'turn/steer') {
           const input = (message.params as { input?: { text?: string }[] }).input ?? []
-          session.received.push(input.map(part => part.text ?? '').join('\n'))
+          const text = input.map(part => part.text ?? '').join('\n')
+          session.received.push(text)
+          plan = turns.take({ text })
+        }
+
+        if (message.method === 'turn/steer') {
+          send({
+            message: {
+              id: message.id,
+              result: { turnId: (message.params as { expectedTurnId: string }).expectedTurnId },
+            },
+          })
+
+          return
         }
 
         const found = answer({ method: message.method })
@@ -295,8 +404,19 @@ export function replayCodex() {
           },
         })
 
-        for (const notification of found.notifications) {
-          send({ message: notification })
+        try {
+          for (const notification of found.notifications) {
+            if (notification.method === 'turn/completed' || notification.method === 'item/agentMessage/delta') {
+              await plan?.wait
+            }
+
+            send({ message: notification })
+          }
+        } catch (error) {
+          child.emit(
+            'error',
+            error,
+          )
         }
       },
     )
@@ -307,6 +427,7 @@ export function replayCodex() {
   return {
     spawnCodex,
     sessions,
+    plan: turns.plan,
     reply,
   }
 }
