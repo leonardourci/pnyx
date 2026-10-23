@@ -204,6 +204,76 @@ test(
 )
 
 test(
+  'an owner turn that ends with NO_REPLY still shows the reply written before it',
+  () => {
+    const conversation = ({
+      quiet,
+      working,
+    }: {
+      quiet: string
+      working: boolean
+    }) => hydraConversation({
+      messages: [],
+      transcript: [
+        entry({
+          id: 'owner',
+          minute: 0,
+          role: 'user',
+        }),
+        entry({
+          id: 'reply',
+          minute: 1,
+          text: 'Agreed, I sent it to the worker.',
+        }),
+        entry({
+          id: 'quiet',
+          minute: 3,
+          text: quiet,
+        }),
+      ],
+      actions: [
+        action({
+          minute: 2,
+          task: 't1',
+        }),
+      ],
+      columns: [],
+      working,
+      thinking: false,
+    })
+    const result = conversation({
+      quiet: 'NO_REPLY',
+      working: false,
+    })
+    assert.deepEqual(
+      result.entries.map(entry => entry.id),
+      [
+        'owner',
+        'reply',
+      ],
+    )
+    assert.deepEqual(
+      result.folds.get('reply')?.notes,
+      [],
+    )
+    assert.equal(
+      result.folds.get('reply')?.tasks.length,
+      1,
+    )
+    assert.deepEqual(
+      conversation({
+        quiet: 'NO_RE',
+        working: true,
+      }).entries.map(entry => entry.id),
+      [
+        'owner',
+        'reply',
+      ],
+    )
+  },
+)
+
+test(
   'an internal wake remains an invisible boundary even when its words are stripped',
   () => {
     const wake = recordEntries({
