@@ -353,7 +353,10 @@ export function HydraChat({
           return
         }
 
-        if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+        const left = scroller.scrollHeight - scroller.clientHeight - scroller.scrollTop
+
+        // A page load or a jump of more than a screen snaps; only a growing reply glides.
+        if (left > scroller.clientHeight || matchMedia('(prefers-reduced-motion: reduce)').matches) {
           bottom()
         } else {
           glide.current = requestAnimationFrame(settle)
