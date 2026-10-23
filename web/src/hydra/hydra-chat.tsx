@@ -354,6 +354,12 @@ export function HydraChat({
 
       const scroller = stream.current
       const observer = new ResizeObserver(() => {
+        // One side of the stream's scrollbar gutter (0 with overlay scrollbars), for --chat-inset in index.css.
+        scroller.closest<HTMLElement>('.hydra-chat')?.style.setProperty(
+          '--chat-scrollbar',
+          `${(scroller.offsetWidth - scroller.clientWidth) / 2}px`,
+        )
+
         if (!follow.current || glide.current) {
           return
         }
