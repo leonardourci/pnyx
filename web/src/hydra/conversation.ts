@@ -195,6 +195,15 @@ export function hydraConversation({
     }
   }
 
+  entries.push(...reconciled.filter(entry => entry.role === 'Pnyx').map(entry => ({
+    ...entry,
+    hidden: false,
+  })))
+  entries.sort((
+    a,
+    b,
+  ) => (a.at ?? '').localeCompare(b.at ?? ''))
+
   const latest = [...timings.values()].at(-1)
 
   if (latest) {
