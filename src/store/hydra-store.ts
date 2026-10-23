@@ -705,6 +705,7 @@ export function withWriter<T>({
               note: declaration.note,
               until: declaration.until,
               waitingFor: declaration.waitingFor,
+              restores: declaration.restores,
               meta: {
                 id: `${event.id}:${declaration.cardId}:declaration`,
                 at: event.at,
