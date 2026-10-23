@@ -755,6 +755,7 @@ export function withWriter<T>({
           for (const move of lifecycleMoves({
             before,
             state,
+            event,
           })) {
             const moved = decideMove({
               state,

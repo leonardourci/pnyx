@@ -312,7 +312,7 @@ test(
 )
 
 test(
-  'explicit lifecycle changes move a task, activity never does; a column deletion moves it and undo restores it',
+  'rules place explicit phases and ended workers, manual moves last until a new phase, and column deletion is undoable',
   () => {
     const f = fixture()
 
@@ -415,7 +415,7 @@ test(
       hook({ input: { activity: 'ended' } })
       assert.equal(
         placed(),
-        column({ role: 'in_progress' }),
+        column({ role: 'parked' }),
       )
       f.run({
         args: [
@@ -437,7 +437,7 @@ test(
       })
       assert.equal(
         placed(),
-        column({ role: 'queued' }),
+        column({ role: 'in_progress' }),
       )
       hook({
         input: {
@@ -540,6 +540,14 @@ test(
             'Declared working',
           ],
           [
+            column({ role: 'parked' }),
+            'Worker ended with unfinished work',
+          ],
+          [
+            column({ role: 'in_progress' }),
+            'Declared working',
+          ],
+          [
             column({ role: 'needs_you' }),
             'Waiting for the owner',
           ],
@@ -586,8 +594,15 @@ test(
       })
       assert.equal(
         placed(),
-        'custom:research',
+        column({ role: 'in_progress' }),
       )
+      f.run({
+        args: [
+          'move',
+          'root',
+          'custom:research',
+        ],
+      })
       f.run({
         args: [
           'column',
