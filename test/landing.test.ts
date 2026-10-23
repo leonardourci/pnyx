@@ -974,6 +974,10 @@ test(
       import.meta.dirname,
       'fixtures/github/gh-axi.sh',
     )
+    assert.equal(
+      (await pullRequestStatus({ url: 'https://github.com/o/r/pull/10' }))?.draft,
+      true,
+    )
     const read = await pullRequestStatus({ url: 'https://github.com/o/r/pull/9' })
 
     assert.deepEqual(
