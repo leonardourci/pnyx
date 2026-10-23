@@ -448,6 +448,8 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
+  // A failed start holds stall alarms, which would otherwise be spent on starts that never reach Hydra.
+  let startFailed = false
   // Recorded wakes, or wakeStart before the first, say how far Hydra has checked.
   let wakeThrough = 0, wakeStart: number | undefined
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
@@ -1673,7 +1675,7 @@ export function createHost({
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
 
-    if (closing || !hostedHydra({ state }) || queuedHydra.size
+    if (closing || startFailed || !hostedHydra({ state }) || queuedHydra.size
       || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
       || hydraCard?.attention.some(a => a.key === INTERRUPTED)
       || (session && live.get(session)?.activity === 'working')) {
@@ -2168,6 +2170,7 @@ export function createHost({
             session: prepared,
           })
           prepared = undefined
+          startFailed = false
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
           entry.input.push({
@@ -2194,13 +2197,15 @@ export function createHost({
           }
 
           const detail = `Hydra could not start: ${(error as Error).message}. Check the harness login and settings, then send a message to retry.`
+          // Finished rather than interrupted, so Pnyx's next report wake retries the start; a cut turn's attention still waits for the owner.
+          startFailed = true
           write({
             fn: ({ writer }) => {
               if (previous?.agent?.host === 'pnyx') {
                 record({
                   writer,
                   agent: previous.agent,
-                  input: { activity: 'interrupted' },
+                  input: { activity: 'finished' },
                   actor: 'pnyx',
                 })
               }
@@ -2210,7 +2215,7 @@ export function createHost({
                 decision: decidePush({
                   state: writer.state,
                   key: HYDRA_CARD,
-                  input: { activity: 'interrupted' },
+                  input: { activity: 'finished' },
                   meta: {
                     at: at(),
                     actor: 'pnyx',

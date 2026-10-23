@@ -350,7 +350,7 @@ test(
     await until({ check: () => failures().length === 1 })
     assert.equal(
       hydra()?.activity,
-      'interrupted',
+      'finished',
     )
     await send({ text: 'Second try' })
     await until({ check: () => failures().length === 2 })
@@ -364,6 +364,79 @@ test(
       session,
     )
     assert.ok(!refusing.messages().some(m => m.method === 'thread/start'))
+  },
+)
+
+test(
+  'a worker report wakes Hydra after its last start failed and the server restarted',
+  async () => {
+    codexRule()
+    commands.task([
+      'create',
+      '--key',
+      'quick',
+      '--title',
+      'Task quick',
+      '--hydra',
+      'lab',
+    ])
+    const quick = state().keys.quick!
+    const first = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await send({ text: 'Hello Codex' })
+    await until({ check: finished })
+    await server.close()
+    const refusing = fakeCodex({
+      root: home,
+      refuse: 'thread/resume',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: refusing.spawnCodex,
+      stallDelay: 200,
+    })
+    const failures = () => (state().hydraMessages ?? []).filter(m => /Hydra could not start/.test(m.text))
+    await send({ text: 'Lost to the failed resume' })
+    await until({ check: () => failures().length === 1 })
+    // A wait that ends while starts fail keeps its alarm for a start that works.
+    await commands.task([
+      'status',
+      'quick',
+      'paused',
+      '--until',
+      new Date(Date.now() + 100).toISOString(),
+      '--hydra',
+      'lab',
+    ])
+    await sleep({ ms: 600 })
+    assert.equal(
+      failures().length,
+      1,
+    )
+    await server.close()
+    const fixed = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: fixed.spawnCodex,
+      wakeDelay: 50,
+    })
+    await commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      '--task',
+      quick,
+      '--text',
+      'A worker question',
+      '--actor',
+      `worker:${quick}`,
+    ])
+    const inputs = () => fixed.messages().filter(m => m.method === 'turn/start')
+      .map(m => (m.params!.input as { text: string }[])[0]!.text)
+    await until({ check: () => inputs().some(text => text.includes('A worker question')) && finished() })
   },
 )
 
