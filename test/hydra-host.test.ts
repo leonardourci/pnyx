@@ -1686,7 +1686,8 @@ test(
       stallDelay: 200,
       pauseDelay: 300,
     })
-    const hydraTurns = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+    const hydraTurns = () => sdk.calls.filter(c => c.options.cwd !== folder)
+      .flatMap(c => c.messages)
     const waits = () => hydraTurns().filter(m => m.includes('Wait ended:'))
     const id = state().keys.schema!
     const pause = ({ args }: { args: string[] }) => commands.task([

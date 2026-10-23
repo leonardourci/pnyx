@@ -2928,7 +2928,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   const progress = values.kind === 'progress'
 
-  if (progress && (!ref || !reportActor({ actor: m.actor }) || values.action !== undefined || values.text === undefined)) {
+  const misused = !ref || !reportActor({ actor: m.actor }) || values.action !== undefined
+    || values.text === undefined
+
+  if (progress && misused) {
     throw new HydraError({
       message: '--kind progress is an agent\'s report: pass --task and --text, no --action, and --actor worker:<task> when PNYX_ACTOR is unset',
       code: 'VALIDATION_ERROR',
