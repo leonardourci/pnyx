@@ -128,6 +128,7 @@ export function Composer({
   const display = view.display
   const mentionList = `mentions-${card}`
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
+  const slashMenu = useRef<HTMLDivElement>(null)
   const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
   // Where the caret goes once React has written the new display text.
   const caretNext = useRef<number | null>(null), caretLast = useRef(0)
@@ -420,6 +421,73 @@ export function Composer({
     prefix: prefix ?? '',
   }))
   const catalogOpen = prefix !== null
+  useLayoutEffect(
+    () => {
+      const element = slashMenu.current
+      const anchor = input.current
+
+      if (!catalogOpen || !element || !anchor) {
+        return
+      }
+
+      element.showPopover()
+
+      const position = () => {
+        const bounds = anchor.getBoundingClientRect()
+        const above = bounds.top > innerHeight - bounds.bottom
+        element.style.width = `${Math.min(
+          bounds.width,
+          innerWidth - 16,
+        )}px`
+        element.style.maxHeight = `${Math.min(
+          200,
+          Math.max(
+            80,
+            (above ? bounds.top : innerHeight - bounds.bottom) - 16,
+          ),
+        )}px`
+        element.style.left = `${Math.max(
+          8,
+          Math.min(
+            bounds.left,
+            innerWidth - element.offsetWidth - 8,
+          ),
+        )}px`
+        element.style.top = `${Math.max(
+          8,
+          above ? bounds.top - element.offsetHeight - 8 : bounds.bottom + 8,
+        )}px`
+      }
+
+      position()
+      const observer = new ResizeObserver(position)
+      observer.observe(element)
+      observer.observe(anchor)
+      window.addEventListener(
+        'resize',
+        position,
+      )
+      document.addEventListener(
+        'scroll',
+        position,
+        true,
+      )
+
+      return () => {
+        observer.disconnect()
+        window.removeEventListener(
+          'resize',
+          position,
+        )
+        document.removeEventListener(
+          'scroll',
+          position,
+          true,
+        )
+      }
+    },
+    [catalogOpen],
+  )
   useEffect(
     () => {
       if (!catalogOpen || !connected) {
@@ -739,7 +807,12 @@ export function Composer({
             />
           )}
           {prefix !== null && (
-            <div className="slash-menu">
+            <div
+              ref={slashMenu}
+              popover="manual"
+              className="slash-menu"
+              onMouseDown={event => event.preventDefault()}
+            >
               <span className="eyebrow">Session commands</span>
               <div id={`suggestions-${card}`} role="listbox" aria-label="Session commands">
                 {suggestions.map((

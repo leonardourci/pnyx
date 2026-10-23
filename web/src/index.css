@@ -461,7 +461,7 @@ h3 { font-weight: 600; }
 
 .composer-settings .select-menu { top: auto; bottom: calc(100% + 5px); }
 
-.slash-menu { position: absolute; bottom: calc(100% + 8px); width: 100%; max-height: 200px; overflow: auto; background: var(--color-raised); border: 1px solid var(--color-gold-line); border-radius: 7px; padding: 10px; z-index: 8; box-shadow: 0 8px 20px var(--color-shadow); }
+.slash-menu { position: fixed; inset: auto; margin: 0; color: var(--color-ink); max-height: 200px; overflow: auto; background: var(--color-raised); border: 1px solid var(--color-gold-line); border-radius: 7px; padding: 10px; z-index: 8; box-shadow: 0 8px 20px var(--color-shadow); }
 
 .slash-menu p { margin-top: 7px; color: var(--color-muted); font-size: var(--text-meta); }
 
