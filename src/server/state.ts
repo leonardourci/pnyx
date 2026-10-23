@@ -6,7 +6,8 @@ import { HydraError } from '../core/model.ts'
 import { hydraDir, pnyxHome, withWriter } from '../store/hydra-store.ts'
 
 export const DEFAULT_PORT = 4747
-const HEALTH_TIMEOUT_MS = 1000
+// A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.
+const HEALTH_TIMEOUT_MS = 60_000
 
 export interface ServerInfo {
   pid: number
@@ -52,6 +53,7 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
 // The Hydra's server, or null when none is running. Trusted only when the
 // recorded port answers /health with this Hydra and pid, so a server.json left
 // by a server that died (its pid or port since reused) counts as not running.
+// A dead pid is not asked at all, so only a running server is waited on.
 export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
   let info: ServerInfo
 
@@ -60,6 +62,10 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
       infoPath({ hydraId }),
       'utf8',
     )) as ServerInfo
+    process.kill(
+      info.pid,
+      0,
+    )
     const res = await fetch(
       local({
         info,
@@ -123,7 +129,8 @@ export function localToken(): string {
   ).trim()
 }
 
-const HOST_TIMEOUT_MS = 30000
+// A start waits for the harness to open its session, which Codex allows five minutes.
+const HOST_TIMEOUT_MS = 360_000
 
 // Asks the Hydra's running server to act on an agent it hosts. Throws NOT_RUNNING when
 // no server answers, so nothing was sent; any other failure after the request left may

@@ -3204,7 +3204,25 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
 
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  for (let left = pids; left.length > 0; left = await running()) {
+  // Files and pids, not /health, so a stopping server too busy to answer cannot outlast the deadline.
+  const recorded = () => new Set(hydraIds().flatMap(hydraId => {
+    try {
+      const { pid } = JSON.parse(readFileSync(
+        infoPath({ hydraId }),
+        'utf8',
+      )) as ServerInfo
+      process.kill(
+        pid,
+        0,
+      )
+
+      return [pid]
+    } catch {
+      return []
+    }
+  }))
+
+  for (let left = pids; left.length > 0; left = left.filter(pid => recorded().has(pid))) {
     if (Date.now() > deadline) {
       throw new AxiError(
         `server pid ${left.join(', ')} did not stop`,

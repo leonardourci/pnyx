@@ -237,7 +237,7 @@ createInterface({ input: process.stdin }).on(
       }
 
       threadId = params.threadId ?? '0199f00d-1111-7000-8000-000000000001'
-      send({
+      const opened = () => send({
         id,
         result: {
           thread: {
@@ -246,6 +246,16 @@ createInterface({ input: process.stdin }).on(
           },
         },
       })
+
+      // A slow open, such as one starting many MCP servers, answers when the test sends SIGHUP.
+      if (process.env.FAKE_CODEX_HOLD_OPEN) {
+        process.once(
+          'SIGHUP',
+          opened,
+        )
+      } else {
+        opened()
+      }
     } else if (method === 'turn/start') {
       const turnId = `turn-${++turn}`
       active = turnId

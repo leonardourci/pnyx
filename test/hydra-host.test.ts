@@ -324,6 +324,71 @@ test(
 )
 
 test(
+  'each owner message after a failed Codex resume tries the resume again and reports its own failure',
+  async () => {
+    codexRule()
+    const first = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await send({ text: 'Hello Codex' })
+    await until({ check: finished })
+    const session = state().config!.hydra.session
+    await server.close()
+    const refusing = fakeCodex({
+      root: home,
+      refuse: 'thread/resume',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: refusing.spawnCodex,
+    })
+    const failures = () => (state().hydraMessages ?? []).filter(m => /Hydra could not start/.test(m.text))
+    const resumes = () => refusing.messages().filter(m => m.method === 'thread/resume')
+    await send({ text: 'First try' })
+    await until({ check: () => failures().length === 1 })
+    assert.equal(
+      hydra()?.activity,
+      'interrupted',
+    )
+    await send({ text: 'Second try' })
+    await until({ check: () => failures().length === 2 })
+    assert.equal(
+      resumes().length,
+      2,
+    )
+    // A failed resume never replaces Hydra's thread, which would lose its conversation.
+    assert.equal(
+      state().config!.hydra.session,
+      session,
+    )
+    assert.ok(!refusing.messages().some(m => m.method === 'thread/start'))
+  },
+)
+
+test(
+  'an owner message reaches Hydra while the server is too busy to answer for over a second',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const sent = send({ text: 'Hello while busy' })
+    // The server shares this event loop, so holding it delays its health answer as slow spend counting does.
+    const busyUntil = Date.now() + 1500
+
+    while (Date.now() < busyUntil) {
+      // Holds the event loop.
+    }
+
+    await sent
+    await until({ check: () => sdk.calls.length === 1 && finished() })
+  },
+)
+
+test(
   'Hydra exposes provider failures and Firstmate Hydras never start a hosted agent',
   async () => {
     const sdk = hydraSdk(); sdk.control.fail = true

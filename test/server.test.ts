@@ -1333,6 +1333,57 @@ test(
 )
 
 test(
+  'a server.json whose pid is gone counts as not running at once, even when its port accepts and never answers',
+  async () => {
+    const gone = spawn(
+      process.execPath,
+      [
+        '-e',
+        '',
+      ],
+      { stdio: 'ignore' },
+    )
+    await once(
+      gone,
+      'exit',
+    )
+    const silent = createServer(() => {}).listen(
+      0,
+      '127.0.0.1',
+    )
+    await once(
+      silent,
+      'listening',
+    )
+    const port = (silent.address() as { port: number }).port
+    mkdirSync(
+      hydraDir({ hydraId: 'default' }),
+      { recursive: true },
+    )
+    writeFileSync(
+      infoPath({ hydraId: 'default' }),
+      JSON.stringify({
+        pid: gone.pid,
+        port,
+        url: `http://127.0.0.1:${port}/hydra/default/`,
+        socket: null,
+      }),
+    )
+
+    try {
+      const asked = Date.now()
+      assert.equal(
+        await readServer({ hydraId: 'default' }),
+        null,
+      )
+      assert.ok(Date.now() - asked < 5000)
+    } finally {
+      silent.close()
+    }
+  },
+)
+
+test(
   'oversized WebSocket frames close only their connection and keep the server running',
   async () => {
     await hydraWithCard()
