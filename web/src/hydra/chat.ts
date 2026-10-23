@@ -250,7 +250,8 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
     }
   }
 
-  return entries.map(entry => keys.has(entry.id) ? {
+  // A key whose live entry is back on the page stays with it, so keys never collide.
+  return entries.map(entry => keys.has(entry.id) && !ids.has(keys.get(entry.id)!) ? {
     ...entry,
     renderKey: keys.get(entry.id),
   } : entry)
