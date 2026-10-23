@@ -38,6 +38,8 @@ const TRACKED: readonly EventType[] = [
   'task.declared',
   'task.asked',
   'task.ask.escalated',
+  'task.ask.closed',
+  'task.ask.reopened',
   'task.session',
   'board.columns',
   'card.moved',

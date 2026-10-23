@@ -908,6 +908,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       discard: { type: 'boolean' },
       question: { type: 'string' },
       context: { type: 'string' },
+      evidence: { type: 'string' },
       choice: {
         type: 'string',
         multiple: true,
@@ -1769,7 +1770,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
-  if (action === 'ask' || action === 'answer' || action === 'escalate') {
+  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question') {
     return askCommand({
       action,
       positionals,
@@ -4320,6 +4321,8 @@ A worker's question goes to Hydra (the default); only Hydra asks the owner, with
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
 Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
 An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
+pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
+pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
 Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
 pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]

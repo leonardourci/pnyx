@@ -131,7 +131,7 @@ test(
         '--note',
         'Which crash report is current?',
       ],
-      role: 'needs_you',
+      role: 'in_progress',
       wakes: true,
     })
     await declare({
@@ -140,7 +140,7 @@ test(
         '--note',
         'No simulator license',
       ],
-      role: 'needs_you',
+      role: 'in_progress',
       wakes: true,
     })
     await declare({
