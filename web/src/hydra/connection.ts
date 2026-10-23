@@ -14,6 +14,7 @@ import type { HydraQueue } from '../../../src/server/host.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { shouldReload } from './view.ts'
+import { noteUpdate, staleUpdates } from './updates-cache.ts'
 
 const EMPTY_QUEUE: HydraQueue = {
   waiting: [],
@@ -405,6 +406,7 @@ export function useHydra() {
               }
             } else if (m.type === 'snapshot') {
               hasSnapshot.current = true; stateRef.current = m.state
+              staleUpdates()
 
               // The server follows a snapshot with Hydra's queue only when it holds updates.
               if (active) {
@@ -451,6 +453,7 @@ export function useHydra() {
                 state: stateRef.current,
                 event: m.event,
               })
+              noteUpdate({ event: m.event })
               const entry = cache.current.get(pathname)
 
               if (entry) {

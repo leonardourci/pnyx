@@ -1,5 +1,6 @@
 import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
-import { hydraSpend, type TaskSpend } from '../spend/tasks.ts'
+import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
+import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
@@ -966,10 +967,7 @@ async function mountOwnedHydra({
     })
     ws.send(JSON.stringify({
       type: 'latest',
-      spend: hydraSpend({
-        state,
-        events: derivationEvents(),
-      }),
+      ...spendNow,
       messages: latest,
       actions,
     } satisfies ServerMessage))
@@ -1059,7 +1057,33 @@ async function mountOwnedHydra({
   // A working card's transcript file is watched as well, for its card and open conversations:
   // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
-  let latestSpend = '{}'
+  // Task tokens, counted off the event loop; tabs get them once the first count is in.
+  let spendNow: { spend?: Record<string, TaskSpend> } = {}
+  const spend = spendCounter({
+    inputs: () => spendInputs({
+      state,
+      events: derivationEvents(),
+    }),
+    onSpend: ({ spend }) => {
+      if (JSON.stringify(spend) === JSON.stringify(spendNow.spend)) {
+        return
+      }
+
+      spendNow = { spend }
+
+      for (const ws of wss.clients) {
+        send({
+          ws,
+          message: {
+            type: 'latest',
+            spend,
+            messages: {},
+            actions: {},
+          },
+        })
+      }
+    },
+  })
   const latest: Record<string, LatestMessage> = {}
   const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
@@ -1243,21 +1267,14 @@ async function mountOwnedHydra({
 
     unread.clear()
     watchWorkingTranscripts()
-    const spend = hydraSpend({
-      state,
-      events: derivationEvents(),
-    })
-    const spendStamp = JSON.stringify(spend)
-    const spendChanged = spendStamp !== latestSpend
-    latestSpend = spendStamp
+    spend.count()
 
-    if (Object.keys(changed).length || Object.keys(changedActions).length || spendChanged) {
+    if (Object.keys(changed).length || Object.keys(changedActions).length) {
       for (const ws of wss.clients) {
         send({
           ws,
           message: {
             type: 'latest',
-            spend,
             messages: changed,
             actions: changedActions,
           },
@@ -2586,10 +2603,7 @@ async function mountOwnedHydra({
       ws,
       message: {
         type: 'latest',
-        spend: hydraSpend({
-          state,
-          events: derivationEvents(),
-        }),
+        ...spendNow,
         messages: latest,
         actions,
       },
@@ -2627,6 +2641,7 @@ async function mountOwnedHydra({
     await queueRun
     firstmate?.close()
     agents.close()
+    await spend.close()
 
     const threads = threadSubscriptions.flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
