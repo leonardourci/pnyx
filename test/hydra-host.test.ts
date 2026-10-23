@@ -1863,20 +1863,35 @@ test(
     ])
     await until({ check: () => turns().length === 2 && finished() })
     const wake = turns()[1]!
-    assert.ok(wake.startsWith('<pnyx-wake>4 worker reports arrived while you were busy.'))
+    assert.match(
+      wake,
+      /^<pnyx-wake>4 worker reports/,
+    )
+    const envelopes = wake.split('<pnyx-report').slice(1)
     assert.deepEqual(
+      envelopes.map(envelope => /kind="progress"/.test(envelope)),
+      [
+        true,
+        true,
+        true,
+        false,
+      ],
+    )
+    assert.deepEqual(
+      envelopes.slice(
+        0,
+        3,
+      ).map(envelope => /\n(.+)\n<\/pnyx-report>/.exec(envelope)?.[1]),
       [
         'Reproduced the bug',
         'Wrote the failing test',
         'Fixed the parser',
-      ].map(step => wake.includes(`task="${fix}" kind="progress"`) && wake.includes(`\n${step}\n</pnyx-report>`)),
-      [
-        true,
-        true,
-        true,
       ],
     )
-    assert.ok(wake.includes('Which parser should own dates?'))
+    assert.match(
+      envelopes[3]!,
+      /Which parser should own dates\?/,
+    )
   },
 )
 
