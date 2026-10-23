@@ -12,6 +12,7 @@ import { emptyHydra, reduce } from '../../src/core/reducer.ts'
 import { startServer, type RunningServer, type ServerMessage } from '../../src/server/server.ts'
 import { infoPath, localToken } from '../../src/server/state.ts'
 import { loadHydra, readEvents } from '../../src/store/hydra-store.ts'
+import type { HydraQueue } from '../../src/server/host.ts'
 import { fakeDispatch } from '../dispatch-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 
@@ -62,9 +63,11 @@ interface Run {
 function pnyxAxi({
   args,
   env,
+  input,
 }: {
   args: string[]
   env: NodeJS.ProcessEnv
+  input?: string
 }): Promise<Run> {
   assert.notEqual(
     args[0],
@@ -86,12 +89,13 @@ function pnyxAxi({
         env,
         timeout: TIMEOUT_MS,
         stdio: [
-          'ignore',
+          'pipe',
           'pipe',
           'pipe',
         ],
       },
     )
+    child.stdin.end(input)
     let stdout = ''
     let stderr = ''
     child.stdout.on(
@@ -128,12 +132,15 @@ export async function openPage({
   const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}`)
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
+  const queues: HydraQueue[] = []
   ws.on(
     'message',
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'snapshot') {
+      if (message.type === 'hydraQueue') {
+        queues.push(message.queue)
+      } else if (message.type === 'snapshot') {
         state = message.state
       } else if (message.type === 'event') {
         state = reduce({
@@ -164,6 +171,7 @@ export async function openPage({
   let next = 0
 
   return {
+    queues,
     shows: <T>({
       what,
       check,
@@ -283,6 +291,7 @@ export function scenarioGroup() {
 
   return {
     codex,
+    claude,
     port: () => server!.port,
     // Stops the server and starts it again on the same files, as a Pnyx restart does.
     restart: async () => {
@@ -337,9 +346,11 @@ function hydraScenario({
   const cli = ({
     args,
     env,
+    input,
   }: {
     args: string[]
     env: NodeJS.ProcessEnv
+    input?: string
   }) => pnyxAxi({
     args: [
       ...args,
@@ -347,18 +358,22 @@ function hydraScenario({
       hydraId,
     ],
     env,
+    input,
   })
 
   const mustSucceed = async ({
     args,
     env,
+    input,
   }: {
     args: string[]
     env: NodeJS.ProcessEnv
+    input?: string
   }) => {
     const run = await cli({
       args,
       env,
+      input,
     })
     assert.equal(
       run.status,
@@ -406,8 +421,15 @@ function hydraScenario({
 
       return path
     },
-    owner: ({ args }: { args: string[] }) => mustSucceed({
+    owner: ({
       args,
+      input,
+    }: {
+      args: string[]
+      input?: string
+    }) => mustSucceed({
+      args,
+      input,
       env: ownerEnv(),
     }),
     ownerRefused: ({ args }: { args: string[] }) => mustBeRefused({
