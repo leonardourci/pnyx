@@ -3,7 +3,7 @@ import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
 import { groupUpdates, taskTimeline } from './task-updates.ts'
-import { loadOlderUpdates, loadUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
+import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
 import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
 import { UpdateGroupRow } from './update-rows.tsx'
 
@@ -72,7 +72,7 @@ export function TaskUpdates({
     }
   }
 
-  const retry = () => void loadUpdates({
+  const retry = () => void retryUpdates({
     command,
     id: card.id,
   })

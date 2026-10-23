@@ -7,7 +7,7 @@ import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
 import type { Card, HydraEvent } from '../src/core/model.ts'
 import type { Command } from '../web/src/hydra/connection.ts'
-import { loadUpdates, noteUpdate, updatesOf } from '../web/src/hydra/updates-cache.ts'
+import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from '../web/src/hydra/updates-cache.ts'
 import { relevantUpdate, type TaskEvent, type TaskUpdate } from '../src/core/updates.ts'
 import { groupUpdates, taskTimeline } from '../web/src/hydra/task-updates.ts'
 
@@ -425,22 +425,27 @@ test(
 )
 
 test(
-  'kept Updates refresh once per change they show, and activity alone sends no read',
+  'kept Updates refresh once per change they show, activity alone sends no read, and Try again reads again',
   async () => {
     const id = 'task-cache'
     const at = '2026-10-21T10:00:00Z'
     const calls: string[][] = []
-    const pending: (() => void)[] = []
+    // eslint-disable-next-line pnyx/object-params -- Promise owns its resolver signature.
+    const pending: ((ok: boolean) => void)[] = []
 
     const command: Command = async ({ args }) => {
       calls.push(args)
-      await new Promise<void>(resolve => pending.push(resolve))
+      const n = calls.length
+
+      if (!await new Promise<boolean>(resolve => pending.push(resolve))) {
+        throw new Error('history failed')
+      }
 
       return {
         events: [
           {
-            id: `e${calls.length}`,
-            seq: calls.length,
+            id: `e${n}`,
+            seq: n,
             at,
             type: 'task.brief',
             summary: '',
@@ -449,28 +454,48 @@ test(
       }
     }
 
+    const settle = async ({ ok = true }: { ok?: boolean } = {}) => {
+      pending.shift()!(ok)
+      await new Promise(resolve => setTimeout(
+        resolve,
+        0,
+      ))
+    }
+
     const event = ({
       seq,
       type,
       data,
+      cardId = id,
     }: {
       seq: number
       type: string
       data: Record<string, unknown>
+      cardId?: string
     }) => ({
       v: 1,
       seq,
       id: `raw${seq}`,
       at,
       actor: 'cli',
-      cardId: id,
+      cardId,
       type,
       data,
     }) as unknown as HydraEvent
-    const first = loadUpdates({
+    const load = () => loadUpdates({
       command,
       id,
     })
+    const declared = ({ seq }: { seq: number }) => event({
+      seq,
+      type: 'task.declared',
+      data: {
+        state: 'working',
+        note: `Step ${seq}`,
+      },
+    })
+
+    void load()
 
     for (let seq = 1; seq <= 25; seq++) {
       noteUpdate({
@@ -483,69 +508,106 @@ test(
           },
         }),
       })
-      void loadUpdates({
-        command,
-        id,
-      })
+      void load()
     }
 
-    assert.equal(
-      calls.length,
-      1,
-    )
     assert.ok(calls[0]!.includes('--updates'))
+    await settle()
+    assert.deepEqual(
+      [
+        calls.length,
+        updatesOf({ id }).stale,
+        updatesOf({ id }).loaded,
+      ],
+      [
+        1,
+        false,
+        true,
+      ],
+    )
 
-    for (let seq = 26; seq <= 28; seq++) {
-      noteUpdate({
-        event: event({
-          seq,
-          type: 'task.declared',
-          data: {
-            state: 'working',
-            note: `Step ${seq}`,
-          },
-        }),
-      })
-      void loadUpdates({
-        command,
-        id,
-      })
+    noteUpdate({ event: declared({ seq: 26 }) })
+    void load()
+
+    for (const seq of [
+      27,
+      28,
+    ]) {
+      noteUpdate({ event: declared({ seq }) })
+      void load()
     }
 
-    pending.shift()!()
-    await first
-    await new Promise(resolve => setTimeout(
-      resolve,
-      0,
-    ))
     assert.equal(
       calls.length,
       2,
     )
-    pending.shift()!()
-    await new Promise(resolve => setTimeout(
-      resolve,
-      0,
-    ))
+    await settle()
+    assert.equal(
+      calls.length,
+      3,
+    )
+    await settle()
     assert.deepEqual(
       updatesOf({ id }).events.map(event => event.id),
       [
+        'e3',
         'e2',
         'e1',
       ],
     )
+    await load()
     assert.equal(
-      updatesOf({ id }).stale,
-      false,
+      calls.length,
+      3,
     )
 
-    await loadUpdates({
+    noteUpdate({
+      event: event({
+        seq: 29,
+        cardId: '$board',
+        type: 'hydra.message',
+        data: {
+          action: 'send',
+          text: `[@Cache task](pnyx-task:${id}) is next`,
+        },
+      }),
+    })
+    assert.equal(
+      updatesOf({ id }).stale,
+      true,
+    )
+    void load()
+    await settle({ ok: false })
+    assert.equal(
+      updatesOf({ id }).error,
+      'history failed',
+    )
+    await load()
+    assert.equal(
+      calls.length,
+      4,
+    )
+
+    void retryUpdates({
       command,
       id,
     })
+    await settle()
+    assert.deepEqual(
+      [
+        calls.length,
+        updatesOf({ id }).error,
+      ],
+      [
+        5,
+        '',
+      ],
+    )
+
+    staleUpdates()
     assert.equal(
-      calls.length,
-      2,
+      updatesOf({ id }).stale,
+      true,
     )
   },
 )

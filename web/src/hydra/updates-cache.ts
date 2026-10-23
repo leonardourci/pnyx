@@ -86,7 +86,8 @@ const readPage = async ({
 
   return {
     events,
-    more: events.length === PAGE_SIZE,
+    // The server names the next page only when there is one.
+    more: Array.isArray(result.help),
   }
 }
 
@@ -133,7 +134,7 @@ export function loadUpdates({
       const kept = updatesOf({ id })
       // A newest page sharing nothing with the kept list leaves a gap, so it starts over.
       const overlaps = events.some(next => kept.events.some(prior => prior.id === next.id))
-      const fresh = !kept.loaded || (events.length === PAGE_SIZE && !overlaps)
+      const fresh = !kept.loaded || (more && !overlaps)
       update({
         id,
         change: {
@@ -168,6 +169,25 @@ export function loadUpdates({
   )
 
   return read
+}
+
+// A failed read leaves the list as it was, so Try again reads it once more.
+export function retryUpdates({
+  command,
+  id,
+}: {
+  command: Command
+  id: string
+}): Promise<void> {
+  update({
+    id,
+    change: { stale: true },
+  })
+
+  return loadUpdates({
+    command,
+    id,
+  })
 }
 
 export async function loadOlderUpdates({
