@@ -8,13 +8,8 @@ import { loadHydra } from '../src/store/hydra-store.ts'
 import type { Card, HydraEvent } from '../src/core/model.ts'
 import type { Command } from '../web/src/hydra/connection.ts'
 import { loadUpdates, noteUpdate, updatesOf } from '../web/src/hydra/updates-cache.ts'
-import {
-  groupUpdates,
-  relevantUpdate,
-  taskTimeline,
-  type TaskEvent,
-  type TaskUpdate,
-} from '../web/src/hydra/task-updates.ts'
+import { relevantUpdate, type TaskEvent, type TaskUpdate } from '../src/core/updates.ts'
+import { groupUpdates, taskTimeline } from '../web/src/hydra/task-updates.ts'
 
 test(
   'task updates retain every declaration, deduplicate history and list relevant events newest first',

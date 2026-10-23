@@ -2,8 +2,6 @@ import type { Card } from '../../../src/core/model.ts'
 import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateColumns, type UpdateDecision } from '../../../src/core/updates.ts'
 import { mentionId, TASK_MENTION } from '../../../src/mentions/mentions.ts'
 
-export { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateDecision, type UpdateKind } from '../../../src/core/updates.ts'
-
 const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
 
 // The card already names its task, so its own chip would only repeat the title.

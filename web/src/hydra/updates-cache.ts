@@ -2,9 +2,9 @@ import type { HydraEvent } from '../../../src/core/model.ts'
 import { showsUpdate, tagsTask, type TaskEvent } from '../../../src/core/updates.ts'
 import type { Command } from './connection.ts'
 
-export const PAGE_SIZE = 50
+const PAGE_SIZE = 50
 
-export interface Updates {
+interface Updates {
   events: TaskEvent[]
   more: boolean
   loaded: boolean
@@ -121,14 +121,15 @@ export function loadUpdates({
     id,
     change: { stale: false },
   })
-  const read = readPage({
-    command,
-    id,
-  }).then(
-    ({
-      events,
-      more,
-    }) => {
+  const read = (async () => {
+    try {
+      const {
+        events,
+        more,
+      } = await readPage({
+        command,
+        id,
+      })
       const kept = updatesOf({ id })
       // A newest page sharing nothing with the kept list leaves a gap, so it starts over.
       const overlaps = events.some(next => kept.events.some(prior => prior.id === next.id))
@@ -145,13 +146,12 @@ export function loadUpdates({
           error: '',
         },
       })
-    },
-    error => update({
-      id,
-      change: { error: message({ error }) },
-    }),
-  )
-    .finally(() => {
+    } catch (error) {
+      update({
+        id,
+        change: { error: message({ error }) },
+      })
+    } finally {
       reads.delete(id)
 
       if (again.delete(id)) {
@@ -160,7 +160,8 @@ export function loadUpdates({
           id,
         })
       }
-    })
+    }
+  })()
   reads.set(
     id,
     read,
@@ -225,10 +226,20 @@ export function noteUpdate({ event }: { event: HydraEvent }) {
 
 // A snapshot skips the events in between, so every kept list may be behind.
 export function staleUpdates() {
-  for (const id of entries.keys()) {
-    update({
+  for (const [
+    id,
+    entry,
+  ] of entries) {
+    entries.set(
       id,
-      change: { stale: true },
-    })
+      {
+        ...entry,
+        stale: true,
+      },
+    )
+  }
+
+  for (const listener of listeners) {
+    listener()
   }
 }
