@@ -14,6 +14,7 @@ import { sendReply } from '../src/cli/reply.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
+import { createHost } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
@@ -1384,6 +1385,7 @@ test(
       wakeDelay: 50,
       stallDelay: 200,
       busyDelay: 1200,
+      stallRepeatMax: 450,
     })
     const wakes = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
     const stalls = () => wakes().filter(m => m.startsWith('<pnyx-wake>Stalled'))
@@ -1414,7 +1416,14 @@ test(
       'a running tool call is not a stall',
     )
 
-    for (let i = 0; i < 200 && stalls().length < 2; i++) {
+    // Each alarm comes after twice the last gap, up to the cap: 400 ms, then 450 rather than 800.
+    const alarmTimes: number[] = []
+
+    for (let i = 0; i < 400 && alarmTimes.length < 3; i++) {
+      while (stalls().length > alarmTimes.length) {
+        alarmTimes.push(Date.now())
+      }
+
       await sleep({ ms: 10 })
     }
 
@@ -1426,6 +1435,17 @@ test(
       stalls()[1] ?? '',
       /\(alarm 2\)/,
       'a stall still there after Hydra\'s turn comes back',
+    )
+    assert.match(
+      stalls()[2] ?? '',
+      /\(alarm 3\)/,
+    )
+    // Flat gaps would span about 400 ms in all, uncapped ones about 1200.
+    const firstGap = alarmTimes[1]! - alarmTimes[0]!
+    const span = alarmTimes[2]! - alarmTimes[0]!
+    assert.ok(
+      firstGap >= 300 && span >= 750 && span < 1100,
+      `first alarm gap ${firstGap} ms, three alarms over ${span} ms`,
     )
 
     // A declared wait silences the stall until it ends, then wakes Hydra once.
@@ -1452,6 +1472,7 @@ test(
     )
     await sleep({ ms: 200 })
     const stallsWhilePaused = stalls().length
+    // Unpaused, the stall would come back every 450 ms.
     await sleep({ ms: 900 })
     assert.equal(
       stalls().length,
@@ -1474,6 +1495,161 @@ test(
       'an ended wait wakes Hydra once',
     )
     sdk.release()
+  },
+)
+
+test(
+  'only a paused declaration takes --until, and a relative time becomes its end',
+  async () => {
+    await commands.task([
+      'create',
+      '--title',
+      'Wait on CI',
+      '--key',
+      'ci',
+      '--hydra',
+      'lab',
+    ])
+    const declarations = () => readEvents({ hydraId: 'lab' }).filter(event => event.type === 'task.declared').length
+    await assert.rejects(
+      async () => commands.task([
+        'status',
+        'ci',
+        'working',
+        '--until',
+        'in 1 hour',
+        '--hydra',
+        'lab',
+      ]),
+      /--until goes only with paused/,
+    )
+    assert.equal(
+      declarations(),
+      0,
+    )
+    await commands.task([
+      'status',
+      'ci',
+      'paused',
+      '--until',
+      'in 2 hours',
+      '--note',
+      'checks run',
+      '--hydra',
+      'lab',
+    ])
+    const declared = state().cards[state().keys.ci!]!.status!
+    const waitMs = Date.parse(declared.until!) - Date.parse(declared.at)
+    assert.ok(
+      Math.abs(waitMs - 2 * 60 * 60 * 1000) < 60_000,
+      `waits ${waitMs} ms`,
+    )
+  },
+)
+
+test(
+  'a worker whose tool call returned and then went quiet stalls before the busy limit',
+  async () => {
+    fakeDispatch({ root: home })
+    const folder = join(
+      home,
+      'work',
+    )
+    mkdirSync(folder)
+    await commands.task([
+      'create',
+      '--title',
+      'Run the suite',
+      '--key',
+      'suite',
+      '--folder',
+      folder,
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+      stallDelay: 200,
+      busyDelay: 5000,
+    })
+    const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+      .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+
+    await send({ text: 'Watch the suite' })
+    await until({ check: finished })
+    sdk.control.hold = true
+    sdk.control.tool = true
+    sdk.control.toolDone = true
+    await startTask({
+      hydraId: 'lab',
+      task: 'suite',
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'hydra',
+        reason: 'start it',
+        id: 'start-suite',
+      },
+    })
+    sdk.control.hold = false
+    sdk.control.tool = false
+    sdk.control.toolDone = false
+
+    for (let i = 0; i < 200 && !stalls().length; i++) {
+      await sleep({ ms: 10 })
+    }
+
+    assert.match(
+      stalls()[0] ?? '',
+      /working with no sign of life/,
+    )
+    sdk.release()
+  },
+)
+
+test(
+  'a reply never confirmed after its resends wakes Hydra once',
+  async () => {
+    const sdk = hydraSdk()
+    const host = createHost({
+      hydraId: 'lab',
+      query: sdk.query,
+      changed: () => {},
+      stallDelay: 200,
+    })
+    const notConfirmed = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('Not confirmed:'))
+
+    try {
+      await host.hydra({
+        id: 'hello',
+        text: 'Hello',
+        actor: 'owner',
+      })
+      await until({ check: finished })
+      const unconfirmed = {
+        card: 'task-1',
+        reply: 'r1',
+        text: 'Rebase   onto\nmain',
+      }
+      host.unconfirmed(unconfirmed)
+      await until({ check: () => notConfirmed().length === 1 && finished() })
+      assert.match(
+        notConfirmed()[0]!,
+        /Not confirmed: on task-1, the message "Rebase onto main" never showed up in the worker's session after 2 resends/,
+      )
+
+      // The server reports it again on each check; Hydra already heard.
+      host.unconfirmed(unconfirmed)
+      await sleep({ ms: 400 })
+      assert.equal(
+        notConfirmed().length,
+        1,
+      )
+    } finally {
+      host.close()
+    }
   },
 )
 

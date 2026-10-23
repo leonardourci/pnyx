@@ -406,6 +406,7 @@ export function createHost({
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
   busyDelay = BUSY_MS,
+  stallRepeatMax = STALL_REPEAT_MAX_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -422,6 +423,7 @@ export function createHost({
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
+  stallRepeatMax?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -1431,7 +1433,7 @@ export function createHost({
     return Date.parse(declaration.at) + PAUSE_MS
   }
 
-  // A stall fired before is due again once twice its last wait has passed, up to STALL_REPEAT_MAX_MS.
+  // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
   const stallDue = ({
     id,
     now,
@@ -1447,7 +1449,7 @@ export function createHost({
 
     const repeatAfter = Math.min(
       stallDelay * 2 ** fired.count,
-      STALL_REPEAT_MAX_MS,
+      stallRepeatMax,
     )
 
     return now - fired.at >= repeatAfter
