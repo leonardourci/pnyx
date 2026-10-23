@@ -16,13 +16,21 @@ const BIN = join(
   'pnyx-axi.js',
 )
 
-function run({ args = [] }: { args?: string[] } = {}): string {
+function run({
+  args = [],
+  hosted = false,
+}: {
+  args?: string[]
+  // Runs as the Hydra that Pnyx's server hosts.
+  hosted?: boolean
+} = {}): string {
   const env = {
     ...process.env,
     PNYX_HOME: mkdtempSync(join(
       tmpdir(),
       'pnyx-test-',
     )),
+    ...(hosted ? { PNYX_HOSTED: 'hydra' } : {}),
   }
 
   return execFileSync(
@@ -295,6 +303,45 @@ test(
         ],
       }),
       /^usage: "none: no Pnyx server runs this Hydra"$/m,
+    )
+  },
+)
+
+test(
+  'hydra check --wait is refused for the Hydra Pnyx hosts and allowed anywhere else',
+  () => {
+    assert.throws(
+      () => run({
+        args: [
+          'hydra',
+          'check',
+          '--wait',
+          '1',
+        ],
+        hosted: true,
+      }),
+      (error: { stdout: string }) => /--wait would block your turn/.test(error.stdout),
+    )
+    assert.match(
+      run({
+        args: [
+          'hydra',
+          'check',
+          '--wait',
+          '1',
+        ],
+      }),
+      /changes/,
+    )
+    assert.match(
+      run({
+        args: [
+          'hydra',
+          'check',
+        ],
+        hosted: true,
+      }),
+      /changes/,
     )
   },
 )

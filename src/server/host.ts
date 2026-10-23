@@ -877,7 +877,11 @@ export function createHost({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
-    ...(hydra ? { PNYX_ACTOR: HYDRA_ACTOR } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
+    // PNYX_HOSTED marks the Hydra Pnyx runs, whose turn must never block on a wait.
+    ...(hydra ? {
+      PNYX_ACTOR: HYDRA_ACTOR,
+      PNYX_HOSTED: 'hydra',
+    } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
   })
 
   const hydraInstructions = () =>
