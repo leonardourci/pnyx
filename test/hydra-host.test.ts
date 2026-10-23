@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1742,6 +1744,67 @@ test(
       ['Continue after the second cut'],
     )
     assert.ok(!interrupted())
+  },
+)
+
+test(
+  'saved worker declarations wake Hydra even when filesystem notifications are lost',
+  async t => {
+    await commands.task([
+      'create',
+      '--hydra',
+      'lab',
+      '--key',
+      'fix',
+      '--title',
+      'Fix',
+    ])
+    const watch = fs.watch
+    t.mock.method(
+      fs,
+      'watch',
+      // eslint-disable-next-line pnyx/object-params -- Implements node:fs watch.
+      (path: fs.PathLike) => watch(
+        path,
+        () => {},
+      ),
+    )
+    syncBuiltinESMExports()
+    const sdk = hydraSdk()
+
+    try {
+      server = await startServer({
+        hydraId: 'lab',
+        query: sdk.query,
+        wakeDelay: 10,
+      })
+      await send({ text: 'Watch the worker' })
+      await until({ check: finished })
+      await new Promise<void>(resolve => setImmediate(resolve))
+      await commands.task([
+        'status',
+        'fix',
+        'blocked',
+        '--hydra',
+        'lab',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 2 && finished() })
+      await new Promise<void>(resolve => setImmediate(resolve))
+      await commands.task([
+        'status',
+        'fix',
+        'needs_you',
+        '--hydra',
+        'lab',
+      ])
+      await until({ check: () => sdk.calls[0]?.messages.length === 3 && finished() })
+      assert.ok(sdk.calls[0]?.messages[2]?.startsWith('<pnyx-wake>'))
+    } finally {
+      await server?.close()
+      server = undefined
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
   },
 )
 
