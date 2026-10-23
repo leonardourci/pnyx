@@ -85,32 +85,48 @@ const EVERYTHING: Step[] = [
   },
 ]
 
-// The unit tests that import the web Hydra's code.
-function webTests(): string[] {
-  return readdirSync('test')
-    .filter(name => name.endsWith('.test.ts') && readFileSync(
-      join(
-        'test',
-        name,
-      ),
+function testsImportingWeb({ folder }: { folder: string }): string[] {
+  return readdirSync(folder)
+    .map(name => `${folder}/${name}`)
+    .filter(path => path.endsWith('.test.ts') && /from '(\.\.\/)+web\//.test(readFileSync(
+      path,
       'utf8',
-    ).includes('from \'../web/'))
-    .map(name => `test/${name}`)
+    )))
 }
 
-// The browser journeys join these when they land.
-const UI = (): Step[] => [
-  ...CHECKS,
-  {
-    name: 'web unit tests',
-    command: 'node',
-    args: [
-      '--test',
-      ...webTests(),
-    ],
-    needs: 'build',
-  },
-]
+// UI checks: the static checks plus every test of web/ code, browser journeys included.
+function uiSteps(): Step[] {
+  const units = testsImportingWeb({ folder: 'test' })
+  const scenarios = testsImportingWeb({ folder: 'test/scenarios' })
+
+  return [
+    ...CHECKS,
+    ...units.length ? [
+      {
+        name: 'web unit tests',
+        command: 'node',
+        args: [
+          '--test',
+          ...units,
+        ],
+        needs: 'build',
+      },
+    ] : [],
+    ...scenarios.length ? [
+      {
+        name: 'web scenarios',
+        command: 'node',
+        args: [
+          '--test',
+          '--test-concurrency=1',
+          ...scenarios,
+        ],
+        needs: 'build',
+      },
+    ] : [],
+  ]
+}
+
 const LOGS = mkdtempSync(join(
   tmpdir(),
   'pnyx-verify-',
@@ -186,8 +202,13 @@ function branchChanges(): string[] | undefined {
 }
 
 // Markdown outside the shipped skills and the tests is docs, as the Checks required workflow skips it.
-const area = ({ path }: { path: string }) => path.endsWith('.md') && !/^(skills|test)\//.test(path) ? 'docs'
-  : path.startsWith('web/') ? 'UI' : 'back-end'
+function area({ path }: { path: string }): string {
+  if (path.endsWith('.md') && !/^(skills|test)\//.test(path)) {
+    return 'docs'
+  }
+
+  return path.startsWith('web/') ? 'UI' : 'back-end'
+}
 
 // Back-end changes (or both) run everything, UI-only changes the UI checks, docs-only changes nothing.
 function selection(): {
@@ -203,8 +224,20 @@ function selection(): {
     }
   }
 
+  const byArea = new Map<string, string[]>()
+
+  for (const path of paths) {
+    byArea.set(
+      area({ path }),
+      [
+        ...byArea.get(area({ path })) ?? [],
+        path,
+      ],
+    )
+  }
+
   const named = ({ kind }: { kind: string }) => {
-    const found = paths.filter(path => area({ path }) === kind)
+    const found = byArea.get(kind)!
 
     return `${found.length} ${kind} (${found.slice(
       0,
@@ -212,18 +245,16 @@ function selection(): {
     ).join(', ')}${found.length > 3 ? ', …' : ''})`
   }
 
-  const has = ({ kind }: { kind: string }) => paths.some(path => area({ path }) === kind)
-
-  if (has({ kind: 'back-end' })) {
+  if (byArea.has('back-end')) {
     return {
       steps: EVERYTHING,
       why: `${named({ kind: 'back-end' })} changed`,
     }
   }
 
-  return has({ kind: 'UI' })
+  return byArea.has('UI')
     ? {
-      steps: UI(),
+      steps: uiSteps(),
       why: `only UI and docs changed: ${named({ kind: 'UI' })}`,
     }
     : {
