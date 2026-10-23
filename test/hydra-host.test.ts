@@ -8,7 +8,7 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
+import { declareTask, HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { startTask } from '../src/cli/start.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
@@ -1495,6 +1495,39 @@ test(
       waits().length,
       1,
       'an ended wait wakes Hydra once',
+    )
+    const state = loadHydra({ hydraId: 'lab' }).state
+    const task = state.cards[state.keys.suite!]!
+    assert.equal(
+      task.status?.state,
+      'paused',
+    )
+    assert.equal(
+      task.column,
+      state.config?.columns.find(c => c.role === 'parked')?.id,
+    )
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const hold = declareTask({
+          state: writer.state,
+          ref: task.id,
+          status: 'paused',
+          note: 'Owner hold',
+          meta: {
+            at: '2020-01-01T00:00:00Z',
+            actor: 'cli',
+          },
+        })
+        assert.ok('event' in hold)
+        writer.append({ event: hold.event })
+      },
+    })
+    await sleep({ ms: 600 })
+    assert.equal(
+      waits().length,
+      1,
+      'an indefinite owner hold never expires on a worker timer',
     )
     sdk.release()
   },

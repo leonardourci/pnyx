@@ -17,7 +17,7 @@ import { MAX_RESENDS } from '../cli/reply-retry.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
+import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
@@ -1229,11 +1229,33 @@ export function createHost({
         300,
       )}` : ''}. Send a message to continue it.`
       note({
-        fn: ({ writer }) => interrupt({
-          writer,
-          agent: card.agent,
-          note: text,
-        }),
+        fn: ({ writer }) => {
+          interrupt({
+            writer,
+            agent: card.agent,
+            note: text,
+          })
+
+          const attached = writer.state.cards[card.id]?.sessionIds?.includes(key)
+
+          const done = writer.state.cards[card.id]?.status?.state === 'done'
+
+          if (failure && card.id !== HYDRA_CARD && attached && !done) {
+            apply({
+              writer,
+              decision: declareTask({
+                state: writer.state,
+                ref: card.id,
+                status: 'blocked',
+                note: text,
+                meta: {
+                  at: at(),
+                  actor: 'pnyx',
+                },
+              }),
+            })
+          }
+        },
       })
     }
   }
@@ -1424,7 +1446,8 @@ export function createHost({
     }
 
     // Hydra or the owner parking a task, or a task with no worker, is not a wait.
-    const parked = declaration.actor === HYDRA_ACTOR || declaration.actor === 'web' || !card.sessionIds?.length
+    const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
+      || !card.sessionIds?.length
 
     if (parked) {
       return undefined
@@ -2476,6 +2499,7 @@ export function createHost({
                 state: writer.state,
                 ref: sessionId({ agent }),
                 task: card.id,
+                working: true,
                 meta: {
                   ...meta,
                   id: `${id}:attach`,
@@ -2647,6 +2671,22 @@ export function createHost({
               meta: {
                 ...meta,
                 id: `${id}:outcome`,
+              },
+            }),
+          })
+        }
+
+        if (card.status?.state !== 'done') {
+          apply({
+            writer,
+            decision: declareTask({
+              state: writer.state,
+              ref: card.id,
+              status: 'working',
+              note: 'Worker continued in Pnyx',
+              meta: {
+                ...meta,
+                id: `${id}:working`,
               },
             }),
           })

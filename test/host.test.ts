@@ -325,6 +325,14 @@ test(
       (started.agent as { host: string }).host,
       'pnyx',
     )
+    assert.equal(
+      task().status?.state,
+      'working',
+    )
+    assert.equal(
+      task().column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
     const agentRef = task().agent!
     assert.deepEqual(
       [
@@ -2262,6 +2270,14 @@ test(
       'lab',
     ])
     const started = await fresh({ id: 'fresh-1' })
+    assert.equal(
+      task().status?.state,
+      'working',
+    )
+    assert.equal(
+      task().column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
     assert.equal(
       (started.agent as { host: string }).host,
       'pnyx',
