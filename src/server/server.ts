@@ -217,6 +217,11 @@ type HydraUpgrade = {
 }
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
+// A target such as // reads as a URL with an empty host, which throws; take it as a path instead.
+const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
+  url,
+  'http://localhost',
+) ?? new URL(`http://localhost${url}`)
 const RETRY_MS = 60_000
 const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
@@ -333,10 +338,7 @@ export async function startServer({
     const {
       pathname: path,
       search,
-    } = new URL(
-      req.url ?? '/',
-      'http://localhost',
-    )
+    } = requestUrl({ url: req.url })
     const [
       , id,
       rest,
@@ -422,10 +424,7 @@ export async function startServer({
       socket,
       head,
     ) => {
-      const url = new URL(
-        req.url ?? '/',
-        'http://localhost',
-      )
+      const url = requestUrl({ url: req.url })
       // ponytail: /ws, like /, is the named Hydra's, for tabs from before one server and the Vite dev page.
       const [
         , id,

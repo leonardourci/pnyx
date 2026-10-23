@@ -1332,6 +1332,48 @@ test(
 )
 
 test(
+  'a // target redirects a GET home, refuses other methods and upgrades, and the server keeps answering',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const page = await http({
+      method: 'GET',
+      path: '//?open-hydra=default',
+    })
+    assert.deepEqual(
+      [
+        page.status,
+        page.headers.location,
+      ],
+      [
+        302,
+        '/hydra/default/?open-hydra=default',
+      ],
+    )
+    assert.equal(
+      (await http({
+        method: 'POST',
+        path: '//',
+      })).status,
+      405,
+    )
+    assert.equal(
+      await handshakeStatus({
+        query: '',
+        path: '//',
+      }),
+      403,
+    )
+    assert.equal(
+      (await http({
+        method: 'GET',
+        path: '/health',
+      })).status,
+      200,
+    )
+  },
+)
+
+test(
   'a server.json left by a dead server is not trusted, even when its pid was reused',
   async () => {
   // A live process that is not a Pnyx server, and a port nothing listens on.
