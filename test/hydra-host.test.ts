@@ -1284,8 +1284,11 @@ test(
       'lab',
     ])
     await until({ check: () => task().sessionActivity === 'finished' })
-    await sleep({ ms: 300 })
-    await until({ check: finished })
+    await until({ check: () => stalls().length === 2 && finished() })
+    assert.match(
+      stalls()[1]!,
+      /ended its turn/,
+    )
     sdk.control.hold = true
     await sendReply({
       hydraId: 'lab',
@@ -1297,13 +1300,11 @@ test(
       },
     })
 
-    for (let i = 0; i < 150 && stalls().length < 2; i++) {
-      await sleep({ ms: 10 })
-    }
-
-    assert.match(
-      stalls()[1] ?? '',
-      /working with no sign of life/,
+    const workingStalls = () => stalls().filter(message => message.includes('working with no sign of life'))
+    await until({ check: () => workingStalls().length > 0 })
+    assert.equal(
+      workingStalls().length,
+      1,
     )
     sdk.release()
   },
