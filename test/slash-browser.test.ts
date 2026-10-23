@@ -343,6 +343,13 @@ test(
       ],
     )
     await browser({
+      args: ['run'],
+      script: `
+        await page.fill('.hydra-chat textarea', '/ins');
+        await page.wait('.slash-menu [role="option"]');
+      `,
+    })
+    await browser({
       args: [
         'resize',
         '375',
@@ -352,20 +359,67 @@ test(
     const narrow = await browser({
       args: ['run'],
       script: `
-        await page.fill('.hydra-chat textarea', '/ins');
-        await page.wait('.slash-menu [role="option"]');
+        await page.wait(100);
         console.log(await page.eval(() => {
           const menu = document.querySelector('.slash-menu'), option = menu.querySelector('[role="option"]');
           const bounds = menu.getBoundingClientRect(), item = option.getBoundingClientRect();
+          const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
           return bounds.left >= 0 && bounds.right <= innerWidth && bounds.top >= 0 && bounds.bottom <= innerHeight
+            && Math.abs(bounds.bottom + 8 - anchor.top) < 2
             && option.contains(document.elementFromPoint(item.x + 10, item.y + 10));
+        }));
+        await page.eval(() => {
+          const anchor = document.querySelector('.hydra-chat textarea');
+          anchor.style.height = '150px';
+          anchor.style.minHeight = '150px';
+          anchor.style.maxHeight = '150px';
+        });
+        await page.wait(100);
+        console.log(await page.eval(() => {
+          const bounds = document.querySelector('.slash-menu').getBoundingClientRect();
+          const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
+          return Math.abs(bounds.bottom + 8 - anchor.top) < 2;
+        }));
+        await page.eval(() => {
+          const input = document.querySelector('.hydra-chat textarea');
+          input.style.position = 'fixed';
+          input.style.top = '30px';
+          input.style.left = '20px';
+          input.style.width = '300px';
+          input.style.height = '50px';
+          input.style.minHeight = '50px';
+          input.style.maxHeight = '50px';
+          document.dispatchEvent(new Event('scroll'));
+        });
+        await page.wait(100);
+        console.log(await page.eval(() => {
+          const menu = document.querySelector('.slash-menu'), bounds = menu.getBoundingClientRect();
+          const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
+          const option = menu.querySelector('[role="option"]'), item = option.getBoundingClientRect();
+          return Math.abs(bounds.top - anchor.bottom - 8) < 2
+            && option.contains(document.elementFromPoint(item.x + 10, item.y + 10));
+        }));
+        await page.eval(() => {
+          document.querySelector('.hydra-chat textarea').style.top = '60px';
+          document.dispatchEvent(new Event('scroll'));
+        });
+        await page.wait(100);
+        console.log(await page.eval(() => {
+          const bounds = document.querySelector('.slash-menu').getBoundingClientRect();
+          const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
+          return Math.abs(bounds.top - anchor.bottom - 8) < 2;
         }));
         await page.press('Escape');
       `,
     })
-    assert.equal(
-      narrow.trim(),
-      'true',
+    assert.deepEqual(
+      narrow.trim().split('\n'),
+      [
+        'true',
+        'true',
+        'true',
+        'true',
+      ],
     )
     assert.equal(
       readEvents({ hydraId: 'default' }).some(event => event.type === 'hydra.message' && event.data.action === 'send'),
