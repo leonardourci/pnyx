@@ -183,6 +183,72 @@ test(
 )
 
 test(
+  'ticket title mentions ignore spaces and case while retaining the original reference',
+  () => {
+    const f = fixture()
+    const title = 'commands and skills are not showing up properly in the composer when I type "/"'
+
+    try {
+      commands.task([
+        'rename',
+        'reference',
+        '--title',
+        title,
+      ])
+      const cards = Object.values(f.state().cards)
+      const expected = cards.find(card => card.id === f.referenced.id)
+
+      for (const query of [
+        'commands and skills',
+        'COMMANDS AND SKILLS',
+        'commandsandskills',
+        'CoMmAnDsAnDsKiLlS',
+        '  commands  AND skills  ',
+        'commands\tand skills',
+      ]) {
+        const matches = matchingTasks({
+          cards,
+          query,
+        })
+        assert.deepEqual(
+          matches.map(({ card }) => card.id),
+          [f.referenced.id],
+          query,
+        )
+        assert.equal(
+          matches[0]?.card,
+          expected,
+        )
+        assert.equal(
+          matches[0]?.card.title,
+          title,
+        )
+      }
+
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'unrelated words',
+        }),
+        [],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: ' \t ',
+        }),
+        matchingTasks({
+          cards,
+          query: '',
+        }),
+      )
+    } finally {
+      f.close()
+    }
+  },
+)
+
+test(
   'Hydra receives referenced context while history retains the captured title after rename and replay',
   () => {
     const f = fixture()
