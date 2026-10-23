@@ -44,6 +44,12 @@ export type { QueryFn } from './claude.ts'
 
 export interface Host {
   hydraId: string
+  catalogCommands({ card }: { card: Card }): Promise<{
+    command: string
+    description: string
+    source: string
+    kind: 'command'
+  }[]>
   models({ harness }: { harness: 'claude' | 'codex' }): Promise<ModelOption[]>
   hydra({
     text,
@@ -2284,6 +2290,39 @@ export function createHost({
   stallTimer.unref()
 
   const host: Host = {
+    async catalogCommands({ card }) {
+      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+
+      if (!entry?.session?.commands) {
+        return []
+      }
+
+      let timer: ReturnType<typeof setTimeout> | undefined
+
+      try {
+        const commands = await Promise.race([
+          entry.session.commands(),
+          new Promise<[]>(resolve => {
+            timer = setTimeout(
+              () => resolve([]),
+              100,
+            )
+          }),
+        ])
+
+        return commands.filter(item => item.builtin).map(item => ({
+          command: `/${item.name}`,
+          description: item.description,
+          source: 'Agent commands',
+          kind: 'command' as const,
+        }))
+      } catch {
+        // The disk index remains usable when the native command list is unavailable.
+        return []
+      } finally {
+        clearTimeout(timer)
+      }
+    },
     async models({ harness }) {
       const state = loadHydra({ hydraId }).state
       const effective = effectiveDispatch({

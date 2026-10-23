@@ -243,6 +243,9 @@ export function claudeProvider({
       return {
         id,
         path,
+        async commands() {
+          return running?.supportedCommands ? running.supportedCommands() : []
+        },
         async* run({
           input,
           permission,
