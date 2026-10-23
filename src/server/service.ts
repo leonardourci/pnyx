@@ -94,6 +94,53 @@ export function serviceFile({ userHome = homedir() }: { userHome?: string } = {}
   }
 }
 
+function requireAvailableServicePort({
+  agents,
+  home,
+  port,
+}: {
+  agents: string
+  home: string
+  port: number
+}) {
+  if (!existsSync(agents)) {
+    return
+  }
+
+  for (const name of readdirSync(agents).filter(name => /^local\.pnyx\.(server|board)\.[0-9a-f]{16}\.plist$/.test(name))) {
+    const text = readFileSync(
+      join(
+        agents,
+        name,
+      ),
+      'utf8',
+    )
+    const storedHome = /<key>PNYX_HOME<\/key>\s*<string>([^<]*)<\/string>/.exec(text)?.[1]
+    const otherHome = storedHome === undefined ? join(
+      homedir(),
+      '.pnyx',
+    ) : unxml({ text: storedHome })
+
+    if (canonical({ path: otherHome }) === canonical({ path: home })) {
+      continue
+    }
+
+    const argumentsXml = /<key>ProgramArguments<\/key>\s*<array>([\s\S]*?)<\/array>/.exec(text)?.[1] ?? ''
+    const args = [...argumentsXml.matchAll(/<string>([^<]*)<\/string>/g)].map(match => unxml({ text: match[1]! }))
+    const portIndex = args.indexOf('--port')
+    const portValue = portIndex < 0 ? args.find(arg => arg.startsWith('--port='))?.slice('--port='.length) : args[portIndex + 1]
+    const otherPort = portValue === undefined ? DEFAULT_PORT : Number(portValue)
+
+    if (port === otherPort) {
+      throw new HydraError({
+        message: `port ${port} is reserved by another Pnyx home's service: ${otherHome} (${name})`,
+        code: 'PORT_IN_USE',
+        help: ['Choose a different --port; --allow-custom-home does not override a service port conflict'],
+      })
+    }
+  }
+}
+
 // One login service runs the one server of every Hydra in this Pnyx home.
 export function setupService({
   port = DEFAULT_PORT,
@@ -152,6 +199,15 @@ export function setupService({
     path,
   } = serviceFile({ userHome })
   const agents = dirname(path)
+
+  if (!remove) {
+    requireAvailableServicePort({
+      agents,
+      home,
+      port,
+    })
+  }
+
   const domain = `gui/${process.getuid!()}`
   const log = join(
     home,

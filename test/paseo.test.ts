@@ -236,6 +236,10 @@ for (const harness of [
       )
 
       const task = state().cards.c1!
+      assert.equal(
+        task.status?.state,
+        'working',
+      )
       const provider = harness === 'claude' ? 'claude-code' : 'codex'
       assert.deepEqual(
         task.sessionIds,

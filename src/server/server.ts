@@ -1,5 +1,6 @@
 import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
-import { hydraSpend, type TaskSpend } from '../spend/tasks.ts'
+import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
+import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
@@ -267,11 +268,12 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy and a repeat stall waits at most; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most and an open-ended worker pause lasts; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -591,6 +593,7 @@ async function mountHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
+  pauseDelay,
   open,
   hydrasChanged,
 }: {
@@ -605,6 +608,7 @@ async function mountHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -622,6 +626,7 @@ async function mountHydra({
       stallDelay,
       busyDelay,
       stallRepeatMax,
+      pauseDelay,
       open,
       release,
       hydrasChanged,
@@ -643,6 +648,7 @@ async function mountOwnedHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
+  pauseDelay,
   open,
   release,
   hydrasChanged,
@@ -657,6 +663,7 @@ async function mountOwnedHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -855,18 +862,45 @@ async function mountOwnedHydra({
         },
       )
     } else if (path) {
+      let file: FSWatcher | undefined
+
+      const followFile = () => {
+        file?.close()
+        file = undefined
+
+        try {
+          const watcher = watch(
+            path,
+            () => refreshThread({ ws }),
+          )
+          watcher.on(
+            'error',
+            () => watcher.close(),
+          )
+          file = watcher
+        } catch { /* The folder watcher retries when the transcript appears. */ }
+      }
+
       try {
-        sub.watcher = watch(
+        const folder = watch(
           dirname(path),
           (
             _event,
             filename,
           ) => {
             if (!filename || String(filename) === basename(path)) {
+              followFile()
               refreshThread({ ws })
             }
           },
         )
+        sub.watcher = {
+          close: () => {
+            folder.close()
+            file?.close()
+          },
+        }
+        followFile()
       } catch { /* Missing transcript remains explicit. */ }
     }
 
@@ -966,10 +1000,7 @@ async function mountOwnedHydra({
     })
     ws.send(JSON.stringify({
       type: 'latest',
-      spend: hydraSpend({
-        state,
-        events: derivationEvents(),
-      }),
+      ...spendNow,
       messages: latest,
       actions,
     } satisfies ServerMessage))
@@ -1056,14 +1087,103 @@ async function mountOwnedHydra({
   // Each card's last conversation message, read from its transcript tail and pushed
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
+  // A working card's transcript file is watched as well, for its card and open conversations:
+  // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
-  let latestSpend = '{}'
+  // Task tokens, counted off the event loop; tabs get them once the first count is in.
+  let spendNow: { spend?: Record<string, TaskSpend> } = {}
+  const spend = spendCounter({
+    inputs: () => spendInputs({
+      state,
+      events: derivationEvents(),
+    }),
+    onSpend: ({ spend }) => {
+      if (JSON.stringify(spend) === JSON.stringify(spendNow.spend)) {
+        return
+      }
+
+      spendNow = { spend }
+
+      for (const ws of wss.clients) {
+        send({
+          ws,
+          message: {
+            type: 'latest',
+            spend,
+            messages: {},
+            actions: {},
+          },
+        })
+      }
+    },
+  })
   const latest: Record<string, LatestMessage> = {}
   const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
+  const transcripts = new Map<string, FSWatcher>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
+
+  const touchPath = ({ path }: { path: string }) => touchLatest({
+    ids: Object.values(state.cards).filter(c => threadPath({ card: c }) === path)
+      .map(c => c.id),
+  })
+
+  const unwatchTranscript = ({ path }: { path: string }) => {
+    transcripts.get(path)?.close()
+    transcripts.delete(path)
+  }
+
+  const watchTranscript = ({ path }: { path: string }) => {
+    if (closed || transcripts.has(path)) {
+      return
+    }
+
+    try {
+      const watcher = watch(
+        path,
+        () => {
+          touchPath({ path })
+
+          for (const map of threadSubscriptions) {
+            for (const [
+              ws,
+              sub,
+            ] of map) {
+              if (sub.path === path) {
+                refreshThread({ ws })
+              }
+            }
+          }
+        },
+      )
+      watcher.on(
+        'error',
+        () => unwatchTranscript({ path }),
+      )
+      transcripts.set(
+        path,
+        watcher,
+      )
+    } catch {
+      // A missing file is watched once the card's next event reads it again.
+    }
+  }
+
+  const watchWorkingTranscripts = () => {
+    const working = new Set(Object.values(state.cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
+
+    for (const path of transcripts.keys()) {
+      if (!working.has(path)) {
+        unwatchTranscript({ path })
+      }
+    }
+
+    for (const path of working) {
+      watchTranscript({ path })
+    }
+  }
 
   const watchFolder = ({ dir }: { dir: string }) => {
     if (closed || folders.has(dir)) {
@@ -1077,15 +1197,22 @@ async function mountOwnedHydra({
           _event,
           filename,
         ) => {
-          const changed = filename ? join(
-            dir,
-            String(filename),
-          ) : undefined
+          if (filename) {
+            touchPath({
+              path: join(
+                dir,
+                String(filename),
+              ),
+            })
+
+            return
+          }
+
           touchLatest({
             ids: Object.values(state.cards).filter(c => {
               const path = threadPath({ card: c })
 
-              return path && (changed ? path === changed : dirname(path) === dir)
+              return path && dirname(path) === dir
             })
               .map(c => c.id),
           })
@@ -1172,21 +1299,15 @@ async function mountOwnedHydra({
     }
 
     unread.clear()
-    const spend = hydraSpend({
-      state,
-      events: derivationEvents(),
-    })
-    const spendStamp = JSON.stringify(spend)
-    const spendChanged = spendStamp !== latestSpend
-    latestSpend = spendStamp
+    watchWorkingTranscripts()
+    spend.count()
 
-    if (Object.keys(changed).length || Object.keys(changedActions).length || spendChanged) {
+    if (Object.keys(changed).length || Object.keys(changedActions).length) {
       for (const ws of wss.clients) {
         send({
           ws,
           message: {
             type: 'latest',
-            spend,
             messages: changed,
             actions: changedActions,
           },
@@ -1243,6 +1364,8 @@ async function mountOwnedHydra({
           seq: event.seq,
           card: event.cardId,
         })
+      } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
+        agents.unread({ seq: event.seq })
       }
     }
 
@@ -1468,6 +1591,7 @@ async function mountOwnedHydra({
     stallDelay,
     busyDelay,
     stallRepeatMax,
+    pauseDelay,
     changed: () => kick(),
     queued: () => {
       for (const ws of wss.clients) {
@@ -2515,10 +2639,7 @@ async function mountOwnedHydra({
       ws,
       message: {
         type: 'latest',
-        spend: hydraSpend({
-          state,
-          events: derivationEvents(),
-        }),
+        ...spendNow,
         messages: latest,
         actions,
       },
@@ -2556,6 +2677,7 @@ async function mountOwnedHydra({
     await queueRun
     firstmate?.close()
     agents.close()
+    await spend.close()
 
     const threads = threadSubscriptions.flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
@@ -2563,12 +2685,14 @@ async function mountOwnedHydra({
     for (const w of [
       ...watchers,
       ...folders.values(),
+      ...transcripts.values(),
       ...threads,
     ]) {
       w.close()
     }
 
     folders.clear()
+    transcripts.clear()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)
@@ -3107,7 +3231,25 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
 
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
-  for (let left = pids; left.length > 0; left = await running()) {
+  // Files and pids, not /health, so a stopping server too busy to answer cannot outlast the deadline.
+  const recorded = () => new Set(hydraIds().flatMap(hydraId => {
+    try {
+      const { pid } = JSON.parse(readFileSync(
+        infoPath({ hydraId }),
+        'utf8',
+      )) as ServerInfo
+      process.kill(
+        pid,
+        0,
+      )
+
+      return [pid]
+    } catch {
+      return []
+    }
+  }))
+
+  for (let left = pids; left.length > 0; left = left.filter(pid => recorded().has(pid))) {
     if (Date.now() > deadline) {
       throw new AxiError(
         `server pid ${left.join(', ')} did not stop`,

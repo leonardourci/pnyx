@@ -195,6 +195,14 @@ test(
       state().cards[task]?.launch?.folder,
       folder,
     )
+    assert.equal(
+      state().cards[task]?.status?.state,
+      'working',
+    )
+    assert.equal(
+      state().cards[task]?.column,
+      state().config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
     const env = environment({ text: await written({ path: out }) })
     assert.equal(
       env.PNYX_TASK,

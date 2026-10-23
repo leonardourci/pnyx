@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
+import { sendReply, type ReplyRequest } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { decideReply } from '../src/core/decide.ts'
@@ -452,7 +453,7 @@ test(
     )
     assert.equal(
       lifecycleStage({ card: f.task() }),
-      undefined,
+      'in_progress',
     )
     assert.equal(
       f.task().column,
@@ -1212,7 +1213,7 @@ test(
     )
     assert.equal(
       f.task().column,
-      f.role({ name: 'needs_you' }),
+      f.role({ name: 'parked' }),
     )
     const decision = f.timeline().find(u => u.id === id)!.decision!
     assert.deepEqual(
@@ -1701,5 +1702,513 @@ test(
     assert.ok(ask?.answeredAt)
     assert.ok(f.workerCall()?.messages.some(text => text.includes('Answer from the owner')
     && text.includes('Yes, include the related cleanup.')))
+  },
+)
+
+test(
+  'successful start, pause, delivered resume and detach carry their task placement',
+  async () => {
+    const f = await lab()
+    const role = ({ name }: { name: string }) => f.role({ name })
+    assert.equal(
+      f.task().status?.state,
+      'working',
+    )
+    assert.equal(
+      f.task().column,
+      role({ name: 'in_progress' }),
+    )
+    const assignment = f.events().find(e => e.type === 'task.session' && e.data.working)
+    const initial = f.task().status
+    assert.ok(assignment)
+    assert.equal(
+      initial?.at,
+      assignment.at,
+    )
+    assert.equal(
+      f.events().filter(e => e.type === 'task.declared').length,
+      1,
+    )
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'Wait for CI',
+        '--until',
+        'in 2 hours',
+      ],
+    })
+    assert.equal(
+      f.task().column,
+      role({ name: 'parked' }),
+    )
+    const paused = f.task().status?.id
+    const reply = ({ control = false }: { control?: boolean } = {}) => sendReply({
+      hydraId: 'lab',
+      request: {
+        card: f.task().id,
+        text: 'Continue with the next step',
+        actor: 'cli',
+        homes: [],
+        control,
+      },
+    })
+
+    for (const flags of [
+      { control: true },
+      {
+        setting: {
+          name: 'model',
+          value: 'sonnet',
+        },
+      },
+      { taskMessage: true },
+    ] satisfies Partial<ReplyRequest>[]) {
+      const result = await sendReply({
+        hydraId: 'lab',
+        request: {
+          card: f.task().id,
+          text: 'Context update',
+          actor: 'cli',
+          homes: [],
+          ...flags,
+        },
+      })
+      assert.equal(
+        result.state,
+        'delivered',
+      )
+      assert.equal(
+        f.task().status?.id,
+        paused,
+      )
+      assert.equal(
+        f.task().column,
+        role({ name: 'parked' }),
+      )
+      assert.ok(f.task().status?.until)
+    }
+
+    await reply()
+    assert.equal(
+      f.task().status?.state,
+      'working',
+    )
+    assert.equal(
+      f.task().column,
+      role({ name: 'in_progress' }),
+    )
+    assert.equal(
+      f.task().status?.until,
+      undefined,
+    )
+    await f.run({
+      args: [
+        'detach',
+        'ship',
+      ],
+    })
+    assert.deepEqual(
+      f.task().sessionIds,
+      [],
+    )
+    assert.equal(
+      f.task().status?.state,
+      'paused',
+    )
+    assert.equal(
+      f.task().column,
+      role({ name: 'parked' }),
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events: f.events(),
+      }).cards[f.task().id],
+      f.task(),
+    )
+  },
+)
+
+test(
+  'answering the matching owner gates clears their waiting declaration only after delivery',
+  async () => {
+    const f = await lab()
+    const questions: string[] = []
+
+    for (const question of [
+      'Which scope?',
+      'Which target?',
+    ]) {
+      const asked = await f.run({
+        args: [
+          'ask',
+          'ship',
+          '--question',
+          question,
+          '--actor',
+          `worker:${f.task().id}`,
+        ],
+      })
+      const id = String(asked.ask)
+      questions.push(id)
+      await f.run({
+        args: [
+          'escalate',
+          'ship',
+          id,
+          '--actor',
+          'hydra',
+          '--reason',
+          'Needs owner choice',
+        ],
+      })
+    }
+
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'needs_you',
+        '--note',
+        'Owner choices pending',
+      ],
+    })
+    const waiting = f.task().status?.id
+    const plain = await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: f.task().id,
+        text: 'Some unrelated feedback',
+        actor: 'cli',
+        homes: [],
+      },
+    })
+    assert.equal(
+      plain.state,
+      'delivered',
+    )
+    assert.equal(
+      f.task().status?.id,
+      waiting,
+    )
+
+    for (const [
+      i,
+      id,
+    ] of questions.entries()) {
+      await f.run({
+        args: [
+          'answer',
+          'ship',
+          id,
+          '--text',
+          'Use the approved default',
+          '--actor',
+          'cli',
+        ],
+      })
+      assert.equal(
+        f.task().column,
+        f.role({ name: i === 0 ? 'needs_you' : 'in_progress' }),
+      )
+    }
+
+    assert.equal(
+      f.task().status?.state,
+      'working',
+    )
+  },
+)
+
+test(
+  'detach preserves an unresolved owner gate and completed work; ordinary replies do not reopen done',
+  async () => {
+    const f = await lab()
+    const asked = await f.run({
+      args: [
+        'ask',
+        'ship',
+        '--question',
+        'Choose scope',
+        '--actor',
+        `worker:${f.task().id}`,
+      ],
+    })
+    await f.run({
+      args: [
+        'escalate',
+        'ship',
+        String(asked.ask),
+        '--actor',
+        'hydra',
+        '--reason',
+        'Needs choice',
+      ],
+    })
+    const status = f.task().status?.id
+    await f.run({
+      args: [
+        'detach',
+        'ship',
+      ],
+    })
+    assert.equal(
+      f.task().column,
+      f.role({ name: 'needs_you' }),
+    )
+    assert.equal(
+      f.task().status?.id,
+      status,
+    )
+    await server?.close()
+    const second = await lab()
+    await second.run({
+      args: [
+        'status',
+        'ship',
+        'done',
+        '--note',
+        'Finished the task',
+      ],
+    })
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: second.task().id,
+        text: 'Thanks',
+        actor: 'cli',
+        homes: [],
+      },
+    })
+    assert.equal(
+      second.task().status?.state,
+      'done',
+    )
+    await second.run({
+      args: [
+        'detach',
+        'ship',
+      ],
+    })
+    assert.equal(
+      second.task().column,
+      second.role({ name: 'done' }),
+    )
+    assert.equal(
+      second.task().status?.state,
+      'done',
+    )
+  },
+)
+
+test(
+  'a terminal hosted failure declares blocked with its reason',
+  async () => {
+    const f = await lab()
+    f.sdk.control.turnError = 'Fixture harness failed'
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: f.task().id,
+        text: 'Run the next step',
+        actor: 'cli',
+        homes: [],
+      },
+    })
+    await until({ check: () => f.task().status?.state === 'blocked' })
+    assert.match(
+      f.task().status?.note ?? '',
+      /Fixture harness failed/,
+    )
+    assert.equal(
+      f.task().column,
+      f.role({ name: 'needs_you' }),
+    )
+  },
+)
+
+test(
+  'a permission answer clears its bound wait and restores the paused phase',
+  async () => {
+    const f = await lab()
+    f.sdk.control.ask = true
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: f.task().id,
+        text: 'Check the folder',
+        actor: 'cli',
+        homes: [],
+      },
+    })
+    await until({ check: () => !!f.task().permissions?.some(p => p.status === 'pending') })
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'CI pending',
+        '--until',
+        'in 2 hours',
+      ],
+    })
+    const untilTime = f.task().status?.until
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'needs_you',
+        '--note',
+        'Permission pending',
+      ],
+    })
+    const request = f.task().permissions!.find(p => p.status === 'pending')!
+    await f.run({
+      args: [
+        'permission',
+        'ship',
+        request.id,
+        'allow',
+      ],
+    })
+    assert.equal(
+      f.task().status?.state,
+      'paused',
+    )
+    assert.equal(
+      f.task().status?.until,
+      untilTime,
+    )
+    assert.equal(
+      f.task().column,
+      f.role({ name: 'parked' }),
+    )
+    f.sdk.control.ask = false
+  },
+)
+
+test(
+  'an accepted start preserves the owner custom column',
+  async () => {
+    const f = await lab({ worker: false })
+    await commands.column([
+      'create',
+      '--id',
+      'custom:research',
+      '--title',
+      'Research',
+      '--hydra',
+      'lab',
+    ])
+    await commands.move([
+      f.task().id,
+      'custom:research',
+      '--actor',
+      'web',
+      '--hydra',
+      'lab',
+    ])
+    await startTask({
+      hydraId: 'lab',
+      task: f.task().id,
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'cli',
+        id: 'custom-start',
+      },
+    })
+    assert.equal(
+      f.task().status?.state,
+      'working',
+    )
+    assert.equal(
+      f.task().column,
+      'custom:research',
+    )
+  },
+)
+
+test(
+  'an uncertain reply leaves paused work parked until its delivery is confirmed once',
+  async () => {
+    const f = await lab()
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'Wait for CI',
+      ],
+    })
+    const receipt = ({ state }: { state: 'queued' | 'delivery_unknown' | 'delivered' }) => withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = decideReply({
+          state: writer.state,
+          ref: f.task().id,
+          data: {
+            reply: 'uncertain-resume',
+            route: 'pnyx',
+            state,
+            ...(state === 'queued' ? { resumes: true } : {}),
+          },
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'cli',
+          },
+        })
+
+        if ('event' in decision) {
+          writer.append({ event: decision.event })
+        }
+      },
+    })
+    receipt({ state: 'queued' })
+    receipt({ state: 'delivery_unknown' })
+    assert.equal(
+      f.task().status?.state,
+      'paused',
+    )
+    assert.equal(
+      f.task().column,
+      f.role({ name: 'parked' }),
+    )
+    receipt({ state: 'delivered' })
+    assert.equal(
+      f.task().status?.state,
+      'working',
+    )
+    await f.run({
+      args: [
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'Owner hold',
+        '--until',
+        'in 2 hours',
+      ],
+    })
+    const hold = f.task().status
+    receipt({ state: 'delivered' })
+    assert.equal(
+      f.task().status?.id,
+      hold?.id,
+    )
+    await f.run({
+      args: [
+        'detach',
+        'ship',
+      ],
+    })
+    assert.deepEqual(
+      f.task().status,
+      hold,
+    )
   },
 )

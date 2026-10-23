@@ -1,3 +1,4 @@
+import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
 import { buildCommand, reportCommand } from '../investigation/cli.ts'
@@ -10,7 +11,7 @@ import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
-import { mentionContext, REFERENCE, referenceLabel, taskMentions } from '../mentions/mentions.ts'
+import { mentionContext, REFERENCE, referenceLabel } from '../mentions/mentions.ts'
 import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
@@ -35,7 +36,7 @@ import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
@@ -74,6 +75,7 @@ import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { answerPrompt } from '../core/answer.ts'
+import { showsUpdate, tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
@@ -890,6 +892,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       merge: { type: 'string' },
       clear: { type: 'boolean' },
       until: { type: 'string' },
+      hold: { type: 'boolean' },
     },
     positionals: 4,
   })
@@ -1505,6 +1508,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           until: values.until as string | undefined,
           now: m.at,
         }),
+        hold: values.hold as boolean | undefined,
       }),
     })
   }
@@ -1916,18 +1920,6 @@ function sessionRef({
       },
     }).id
     : ref
-}
-
-// A Hydra chat message belongs to its task and to every task it names with a chip.
-function tagsTask({
-  event,
-  ids,
-}: {
-  event: HydraEvent
-  ids: Set<string>
-}): boolean {
-  return event.type === 'hydra.message'
-    && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
 }
 
 function taskHistory({
@@ -2708,6 +2700,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       ...WRITE,
       task: { type: 'string' },
       action: { type: 'string' },
+      kind: { type: 'string' },
       key: { type: 'string' },
       width: { type: 'string' },
       text: { type: 'string' },
@@ -2908,7 +2901,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage or hydra messages',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra send --task <id> --kind progress --text <message>, hydra stop, hydra usage or hydra messages',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -2923,6 +2916,25 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (!ref && values.action !== undefined) {
     throw new HydraError({
       message: '--action needs --task',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (values.kind !== undefined && values.kind !== 'progress') {
+    throw new HydraError({
+      message: '--kind must be progress',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const progress = values.kind === 'progress'
+
+  const misused = !ref || !reportActor({ actor: m.actor }) || values.action !== undefined
+    || values.text === undefined
+
+  if (progress && misused) {
+    throw new HydraError({
+      message: '--kind progress is an agent\'s report: pass --task and --text, no --action, and --actor worker:<task> when PNYX_ACTOR is unset',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -2975,6 +2987,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
           data: {
             ...(task ? { task: task.id } : {}),
             action,
+            ...(progress ? { kind: 'progress' as const } : {}),
             text,
             ...(m.details ? { details: m.details } : {}),
             ...(context ? { context } : {}),
@@ -3006,6 +3019,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     state: loadHydra({ hydraId }).state,
     id: hydraId,
   })
+
+  if (progress && result.event !== 'none: duplicate') {
+    return {
+      ...result,
+      help: ['Saved on the card without waking Hydra; send questions, blockers and results through task ask or task status'],
+    }
+  }
 
   if (config.hydra.kind === 'firstmate' || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result
@@ -3621,7 +3641,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
     case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
-    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
@@ -3660,6 +3680,7 @@ const history = guard({
       before: { type: 'string' },
       limit: { type: 'string' },
       full: { type: 'boolean' },
+      updates: { type: 'boolean' },
     }
     const {
       values,
@@ -3708,7 +3729,8 @@ const history = guard({
           event: e,
           ids: tagged,
         })))
-      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e })))
+      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
+        && (!values.updates || showsUpdate({ event: e })))
       .reverse()
     const page = matches.slice(
       0,
@@ -3750,6 +3772,7 @@ const history = guard({
       out.help = [
         `Run \`pnyx-axi history ${[
           ...flags,
+          ...values.updates ? ['--updates'] : [],
           '--before',
           String(page.at(-1)!.seq),
         ].join(' ')}\` for older events`,
@@ -3831,6 +3854,7 @@ const setup = guard({
       harness: { type: 'string' },
       remove: { type: 'boolean' },
       preview: { type: 'boolean' },
+      'allow-custom-home': { type: 'boolean' },
       home: { type: 'string' },
       port: { type: 'string' },
     }
@@ -3846,6 +3870,14 @@ const setup = guard({
 
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
+    }
+
+    if ([
+      'hooks',
+      'service',
+      'skills',
+    ].includes(positionals[0] ?? '')) {
+      requireSetupHome({ allowCustomHome: !!values['allow-custom-home'] })
     }
 
     if (positionals[0] === 'skills') {
@@ -4141,6 +4173,8 @@ in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workfl
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
+pnyx-axi hydra send --task <id> --kind progress --text <message>
+--kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
 pnyx-axi hydra usage
@@ -4190,8 +4224,9 @@ pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time>]
+pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
+--hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored. The owner can still move the card to Done.
 pnyx-axi task report <id> [--file <path>]
@@ -4310,20 +4345,22 @@ GitHub pull request URLs get kind and number filled in. A link never moves the c
 `,
   outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
 `,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full]
-Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}).
+  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full] [--updates]
+Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}). --updates keeps only the events a task's Updates list shows.
 `,
   undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup service [--port <n>] [--remove] [--preview]
-pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
-pnyx-axi setup skills [--remove] [--preview]
+pnyx-axi setup service [--port <n>] [--remove] [--preview] [--allow-custom-home]
+pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
+pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup service refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced; --remove takes out only this install's links.

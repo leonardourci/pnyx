@@ -240,7 +240,7 @@ h3 { font-weight: 600; }
 
 .switch-label[aria-checked=true] .switch-track span { transform: translateX(11px); background: var(--color-gold); }
 
-.thread { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; padding: 4px 16px 12px; }
+.thread { flex: 1; min-width: 0; min-height: 45px; overflow: hidden auto; scrollbar-gutter: stable; padding: 4px 16px 12px; }
 
 .messages { position: relative; display: flex; flex-direction: column; gap: 18px; padding-top: 8px; }
 
@@ -986,6 +986,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 * { scrollbar-width: thin; scrollbar-color: transparent transparent; }
 
 *:hover, *.scrolling { scrollbar-color: var(--color-control) transparent; }
+
+/* Standard scrollbar properties override the explicit 4px thumb in Chromium. */
+@supports selector(::-webkit-scrollbar) {
+  .thread, .composer .textarea, .draft-mirror { scrollbar-width: auto; scrollbar-color: auto; }
+}
 
 ::-webkit-scrollbar { width: 4px; height: 4px; }
 

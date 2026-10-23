@@ -3,7 +3,8 @@ import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
 import { LINK_ICONS, LinkChip } from './card-links.tsx'
-import type { TaskUpdate, UpdateGroup, UpdateKind } from './task-updates.ts'
+import type { TaskUpdate, UpdateKind } from '../../../src/core/updates.ts'
+import type { UpdateGroup } from './task-updates.ts'
 
 const KINDS: Record<UpdateKind, {
   icon: string
@@ -161,7 +162,7 @@ export function UpdateEntry({ update }: { update: TaskUpdate }) {
             plain
             title={(
               <>
-                <span>Reported to Hydra</span>
+                <span>{update.state}</span>
                 <span className="update-fold-chevron" aria-hidden="true">
                   <Icon name="chevron_right" size={14} />
                 </span>

@@ -60,7 +60,11 @@ export function landingLine({
     ? 'Hydra merges it once every check is green'
     : 'the owner merges it'
 
-  return `Landing: commit on your branch, push it, open a ready pull request and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, then declare needs_you with its URL: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
+  const declaration = rule.merge === 'hydra'
+    ? 'then declare needs_you with its URL'
+    : 'then use needs_you with its URL only if readiness has not been recorded yet'
+
+  return `Landing: commit on your branch, push it, open a ready pull request and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, ${declaration}: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
 }
 
 // Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.

@@ -1,13 +1,14 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { recordedUsage } from '../src/integrations/hooks/usage.ts'
-import { mkdtempSync, writeFileSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { emptyHydra } from '../src/core/reducer.ts'
 import { hydraConfig } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
-import { taskSpend } from '../src/spend/tasks.ts'
+import { spendFor, spendInputs, taskSpend } from '../src/spend/tasks.ts'
+import { spendCounter } from '../src/spend/worker.ts'
 
 const at = '2026-10-22T12:00:00Z'
 
@@ -374,5 +375,240 @@ test(
         },
       )
     }
+  },
+)
+
+test(
+  'a growing transcript is counted from where it ended, and one pass gives each task its own total',
+  () => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-spend-growth-',
+    ))
+    const transcript = join(
+      dir,
+      'worker.jsonl',
+    )
+    const record = ({
+      id,
+      at,
+      tokens,
+    }: {
+      id: string
+      at: string
+      tokens: number
+    }) => JSON.stringify({
+      type: 'assistant',
+      timestamp: at,
+      message: {
+        id,
+        usage: { input_tokens: tokens },
+      },
+    })
+    const state = emptyHydra()
+    state.sessions = {
+      worker: {
+        id: 'worker',
+        originCardId: 'worker',
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'worker',
+          transcriptPath: transcript,
+        },
+        taskId: 'two',
+        attention: [],
+        sourceRefs: [],
+      },
+    }
+    const events = [
+      [
+        '2026-10-22T10:00:00Z',
+        null,
+        'one',
+      ],
+      [
+        '2026-10-22T11:00:00Z',
+        'one',
+        'two',
+      ],
+    ].map((
+      [
+        at,
+        before,
+        after,
+      ],
+      index,
+    ) => ({
+      v: 1,
+      seq: index + 1,
+      id: `assign-${index}`,
+      at,
+      actor: 'cli',
+      cardId: after,
+      type: 'task.session',
+      data: {
+        session: 'worker',
+        before,
+        after,
+      },
+    }) as HydraEvent)
+    const count = () => spendFor({
+      inputs: spendInputs({
+        state,
+        events,
+        tasks: [
+          'one',
+          'two',
+        ],
+      }),
+    })
+
+    try {
+      writeFileSync(
+        transcript,
+        `${record({
+          id: 'a',
+          at: '2026-10-22T10:30:00Z',
+          tokens: 5,
+        })}\n`,
+      )
+      assert.deepEqual(
+        [
+          count().one?.total,
+          count().two?.total,
+        ],
+        [
+          5,
+          undefined,
+        ],
+      )
+
+      const late = record({
+        id: 'c',
+        at: '2026-10-22T12:30:00Z',
+        tokens: 100,
+      })
+      appendFileSync(
+        transcript,
+        `${record({
+          id: 'b',
+          at: '2026-10-22T11:30:00Z',
+          tokens: 7,
+        })}\n${late.slice(
+          0,
+          20,
+        )}`,
+      )
+      assert.deepEqual(
+        [
+          count().one?.total,
+          count().two?.total,
+        ],
+        [
+          5,
+          7,
+        ],
+      )
+
+      appendFileSync(
+        transcript,
+        `${late.slice(20)}\n${record({
+          id: 'b',
+          at: '2026-10-22T11:30:00Z',
+          tokens: 9,
+        })}\n`,
+      )
+      const grown = count()
+      assert.deepEqual(
+        [
+          grown.one?.total,
+          grown.two?.total,
+        ],
+        [
+          5,
+          109,
+        ],
+      )
+      assert.deepEqual(
+        grown,
+        {
+          one: taskSpend({
+            state,
+            events,
+            task: 'one',
+          }),
+          two: taskSpend({
+            state,
+            events,
+            task: 'two',
+          }),
+        },
+      )
+
+      writeFileSync(
+        transcript,
+        `${record({
+          id: 'a',
+          at: '2026-10-22T10:30:00Z',
+          tokens: 4,
+        })}\n`,
+      )
+      assert.deepEqual(
+        [
+          count().one?.total,
+          count().two?.total,
+        ],
+        [
+          4,
+          undefined,
+        ],
+      )
+    } finally {
+      rmSync(
+        dir,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'the spend counter runs one count at a time and counts once more for a change asked meanwhile',
+  async () => {
+    const counted: string[][] = []
+    let tasks = ['first']
+    const done = new Promise<void>(resolve => {
+      const counter = spendCounter({
+        inputs: () => ({
+          tasks,
+          sessions: [],
+          configurations: [],
+          assignments: [],
+        }),
+        onSpend: ({ spend }) => {
+          counted.push(Object.keys(spend))
+
+          if (counted.length === 2) {
+            void counter.close().then(resolve)
+          }
+        },
+      })
+      counter.count()
+      tasks = ['second']
+      counter.count()
+      tasks = ['third']
+      counter.count()
+    })
+    await done
+    assert.deepEqual(
+      counted,
+      [
+        ['first'],
+        ['third'],
+      ],
+    )
   },
 )

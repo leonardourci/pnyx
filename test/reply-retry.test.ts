@@ -116,6 +116,7 @@ const receipt = ({
   at,
   route = 'terminal:tmux',
   control,
+  resumes,
 }: {
   reply: string
   state: ReplyState
@@ -123,6 +124,7 @@ const receipt = ({
   at: number
   route?: string
   control?: boolean
+  resumes?: boolean
 }) => withWriter({
   hydraId: 'lab',
   fn: ({ writer }) => {
@@ -130,6 +132,13 @@ const receipt = ({
       reply,
       state,
       route,
+    }
+
+    if (resumes !== undefined) {
+      Object.assign(
+        data,
+        { resumes },
+      )
     }
 
     if (control) {
@@ -317,9 +326,19 @@ test(
 test(
   'an unconfirmed reply found in the transcript is recorded delivered and never resent',
   async () => {
+    await commands.task([
+      'status',
+      'ship',
+      'paused',
+      '--note',
+      'Awaiting resumption',
+      '--hydra',
+      'lab',
+    ])
     receipt({
       reply: 'r1',
       state: 'queued',
+      resumes: true,
       text: 'Rebase   onto\nmain',
       at: SENT,
     })
@@ -328,6 +347,10 @@ test(
       state: 'delivery_unknown',
       at: SENT,
     })
+    assert.equal(
+      task().status?.state,
+      'paused',
+    )
     appendFileSync(
       transcript,
       `${JSON.stringify({
@@ -348,6 +371,26 @@ test(
       unconfirmed: () => assert.fail('a delivered reply is not reported'),
       now: SENT + 2 * MINUTE,
     })
+    assert.equal(
+      task().status?.state,
+      'working',
+    )
+    assert.equal(
+      task().column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
+    const count = task().statusLog?.length
+    await followUpReplies({
+      hydraId: 'lab',
+      tried,
+      resend: fake.resend,
+      unconfirmed: () => assert.fail('confirmed'),
+      now: SENT + 3 * MINUTE,
+    })
+    assert.equal(
+      task().statusLog?.length,
+      count,
+    )
     assert.deepEqual(
       fake.resent,
       [],

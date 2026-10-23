@@ -32,7 +32,9 @@ Routes:
 - `--via command [--prompt "<text>"]` runs the Hydra's own start command in the task's folder. `--command "<name>"` selects the assigned project's named command from `project list`. `bringsOwnFolder` means the command manages its own folder, so Pnyx makes no task copy and runs it from the project folder unless its contract needs `--folder`.
 - `--via firstmate [--prompt "<text>"]` hands the request to the Firstmate home that is this Hydra.
 
-A task holds one worker; `task detach <task>` frees it without stopping the agent. A repeated `--event-id` never starts a second worker.
+A successful start records working and places the card in the same accepted assignment write; no first status or placement command is needed. A task holds one worker; `task detach <task>` frees it without stopping the agent and parks eligible unfinished work, preserving Done and unresolved owner gates. A repeated `--event-id` never starts a second worker.
+
+A start's receipt is its record. A success through Pnyx or Paseo means the worker is attached, so do not reread the task to confirm it. `NOT_RUNNING` means nothing was sent: retry once with the same `--event-id`, and if it fails the same way, follow its help or tell the owner. Read the task only when a start's outcome is unknown, such as a timeout after the request left.
 
 ## Continue or replace
 
@@ -62,7 +64,7 @@ reviews. After all linked pull requests merge, or a task without a pull request 
 its commit lands, an idle worker takes the first queued task. Pnyx fetches origin, discovers its current
 default branch, verifies a clean isolated folder and landed commits, creates a fresh branch, transfers
 the copy to the next task, attaches the session and sends the next brief. Old branches stay intact.
-Automatic handoff restores the next card to In progress; manual attachment still leaves placement alone.
+Automatic handoff declares working and restores the next card to In progress atomically; manual attachment still leaves placement alone.
 
 Done cleanup keeps a folder while its worker has queued tasks. Project copy commands have their own
 folder contracts, so those queues return to Queued for a fresh worker rather than reusing their folder.
@@ -77,8 +79,8 @@ Firstmate owns assignments on its linked Hydras; ask Firstmate to queue there.
 ## Move a worker to another task
 
 For manual reuse outside an automatic queue, a worker whose task is done can take a related task. First
-confirm the worker is idle, its work has landed, and the next task uses the same project. Declare the
-current task `done`, then inspect its copy and folder: Done cleanup returns a clean landed slot to the
+confirm the worker is idle, its work has landed, and the next task uses the same project. Rely on the worker's checked
+`done` declaration, then inspect its copy and folder: Done cleanup returns a clean landed slot to the
 pool, reserving it while its worker remains attached.
 Reuse only after copy settlement is complete and the folder will remain. If the folder is gone, start a
 new worker from the current default branch instead; `task attach` cannot restore a missing copy.

@@ -3,7 +3,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -1333,6 +1333,57 @@ test(
 )
 
 test(
+  'a server.json whose pid is gone counts as not running at once, even when its port accepts and never answers',
+  async () => {
+    const gone = spawn(
+      process.execPath,
+      [
+        '-e',
+        '',
+      ],
+      { stdio: 'ignore' },
+    )
+    await once(
+      gone,
+      'exit',
+    )
+    const silent = createServer(() => {}).listen(
+      0,
+      '127.0.0.1',
+    )
+    await once(
+      silent,
+      'listening',
+    )
+    const port = (silent.address() as { port: number }).port
+    mkdirSync(
+      hydraDir({ hydraId: 'default' }),
+      { recursive: true },
+    )
+    writeFileSync(
+      infoPath({ hydraId: 'default' }),
+      JSON.stringify({
+        pid: gone.pid,
+        port,
+        url: `http://127.0.0.1:${port}/hydra/default/`,
+        socket: null,
+      }),
+    )
+
+    try {
+      const asked = Date.now()
+      assert.equal(
+        await readServer({ hydraId: 'default' }),
+        null,
+      )
+      assert.ok(Date.now() - asked < 5000)
+    } finally {
+      silent.close()
+    }
+  },
+)
+
+test(
   'oversized WebSocket frames close only their connection and keep the server running',
   async () => {
     await hydraWithCard()
@@ -1938,6 +1989,213 @@ test(
 )
 
 test(
+  'a working card and its open conversation follow a transcript its agent keeps open, as Codex does, even under a Firstmate status',
+  async () => {
+    const transcript = join(
+      process.env.PNYX_HOME!,
+      'rollout.jsonl',
+    )
+    const reply = ({
+      text,
+      at,
+    }: {
+      text: string
+      at: string
+    }) => toolLine({
+      record: {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'output_text',
+              text,
+            },
+          ],
+        },
+      },
+      at,
+    })
+    writeFileSync(
+      transcript,
+      reply({
+        text: 'Starting.',
+        at: '2026-10-13T10:59:00Z',
+      }),
+    )
+    const rollout = openSync(
+      transcript,
+      'a',
+    )
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
+
+    const push = ({ fields }: { fields: Record<string, unknown> }) => {
+      writeFileSync(
+        input,
+        JSON.stringify(fields),
+      )
+      cli({
+        args: [
+          'push',
+          '--key',
+          'work',
+          '--file',
+          input,
+        ],
+      })
+    }
+
+    const fileWatchers = () => process.getActiveResourcesInfo().filter(name => name === 'FSEventWrap').length
+
+    try {
+      cli({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'work',
+          '--title',
+          'Work',
+        ],
+      })
+      push({
+        fields: {
+          agent: {
+            provider: 'codex',
+            sessionId: 'rollout',
+            transcriptPath: transcript,
+          },
+          activity: 'working',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+      // Firstmate's status line replaces the card's activity; the session's own stays working.
+      push({
+        fields: {
+          activity: 'progress: running tests',
+          source: {
+            adapter: 'firstmate',
+            instanceId: process.env.PNYX_HOME!,
+            objectId: 'work',
+          },
+        },
+      })
+      const card = loadHydra({ hydraId: 'default' }).state.keys.work!
+      server = await startServer({ hydraId: 'default' })
+      const t = await tab(); await t.next()
+      assert.equal(
+        (await t.latest({ card }))?.text,
+        'Starting.',
+      )
+      t.command({
+        id: 'thread-1',
+        name: 'thread',
+        args: [card],
+      })
+      assert.equal(
+        (await t.reply({ id: 'thread-1' })).type,
+        'receipt',
+      )
+      writeSync(
+        rollout,
+        reply({
+          text: 'Running the tests.',
+          at: '2026-10-13T11:00:00Z',
+        }) + toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call',
+              name: 'exec_command',
+              call_id: 'call_run',
+              arguments: JSON.stringify({ cmd: 'pnpm test' }),
+            },
+          },
+          at: '2026-10-13T11:00:00Z',
+        }),
+      )
+      assert.deepEqual(
+        await t.action({ card }),
+        {
+          calls: [
+            {
+              id: 'call_run',
+              tool: 'exec_command',
+              command: 'pnpm test',
+            },
+          ],
+          done: false,
+          at: '2026-10-13T11:00:00Z',
+        },
+      )
+
+      for (;;) {
+        const message = await t.next()
+
+        if (message.type === 'thread' && message.thread.entries.some(e => e.text === 'Running the tests.')) {
+          break
+        }
+      }
+
+      writeSync(
+        rollout,
+        toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_run',
+              output: 'ok',
+            },
+          },
+          at: '2026-10-13T11:00:05Z',
+        }),
+      )
+      assert.equal(
+        (await t.action({ card }))?.done,
+        true,
+      )
+
+      // The file watcher goes once the session stops working.
+      const working = fileWatchers()
+      push({
+        fields: {
+          activity: 'finished',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+
+      const deadline = Date.now() + 5000
+
+      while (fileWatchers() >= working && Date.now() < deadline) {
+        await new Promise(r => setTimeout(
+          r,
+          50,
+        ))
+      }
+
+      assert.equal(
+        fileWatchers(),
+        working - 1,
+      )
+      t.ws.close()
+    } finally {
+      closeSync(rollout)
+    }
+  },
+)
+
+test(
   'the Hydra search rebuilds a stale index and finds a card by a word only its transcript holds, including words a live session just wrote',
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
@@ -2034,6 +2292,13 @@ test(
       (await t.spend())[card]?.total,
       40,
     )
+    const later = await tab()
+    await later.next()
+    assert.equal(
+      (await later.spend())[card]?.total,
+      40,
+    )
+    later.ws.close()
     const seq = loadHydra({ hydraId: 'default' }).state.seq
     appendFileSync(
       fixture.transcript,
@@ -2053,6 +2318,105 @@ test(
       seq,
     )
     await t.idle()
+    t.ws.close()
+  },
+)
+
+test(
+  'health checks and the event loop stay responsive while a large transcript is counted',
+  async () => {
+    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+    const card = fixture.state.keys.layout!
+    const at = new Date().toISOString()
+    const usage = ({
+      from,
+      count,
+    }: {
+      from: number
+      count: number
+    }) => Array.from(
+      { length: count },
+      (
+        _,
+        i,
+      ) => `${JSON.stringify({
+        type: 'assistant',
+        timestamp: at,
+        message: {
+          id: `usage-${from + i}`,
+          content: [
+            {
+              type: 'text',
+              text: 'Counting a long transcript.',
+            },
+          ],
+          usage: {
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        },
+      })}\n`,
+    ).join('')
+    writeFileSync(
+      fixture.transcript,
+      usage({
+        from: 0,
+        count: 1,
+      }),
+    )
+    server = await startServer({ hydraId: 'default' })
+    const t = await tab()
+    await t.next()
+    assert.equal(
+      (await t.spend())[card]?.total,
+      3,
+    )
+    const records = 200_000
+    const grown = usage({
+      from: 1,
+      count: records,
+    })
+    appendFileSync(
+      fixture.transcript,
+      grown,
+    )
+    let gap = 0
+    let tick = performance.now()
+    const ticker = setInterval(
+      () => {
+        const now = performance.now()
+        gap = Math.max(
+          gap,
+          now - tick,
+        )
+        tick = now
+      },
+      5,
+    )
+    const started = performance.now()
+    let counted = false
+    const spend = t.spend().then(spend => {
+      counted = true
+
+      return spend
+    })
+    const checks: boolean[] = []
+
+    while (!counted) {
+      checks.push(!!await readServer({ hydraId: 'default' }))
+    }
+
+    const countMs = performance.now() - started
+    clearInterval(ticker)
+    assert.equal(
+      (await spend)[card]?.total,
+      (records + 1) * 3,
+    )
+    assert.ok(checks.length > 0 && checks.every(Boolean))
+    assert.ok(
+      gap < 150,
+      `the event loop stalled ${Math.round(gap)} ms while counting took ${Math.round(countMs)} ms`,
+    )
     t.ws.close()
   },
 )
@@ -2166,6 +2530,24 @@ test(
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
+    writeFileSync(
+      input,
+      JSON.stringify({ activity: 'working' }),
+    )
+    // A working card's transcript file is watched as well as its folder.
+    cli({
+      args: [
+        'push',
+        '--key',
+        'layout',
+        '--file',
+        input,
+      ],
+    })
     const settle = () => new Promise(r => setTimeout(
       r,
       300,
@@ -2399,7 +2781,7 @@ test(
 
 test(
   'Hydra and the open task keep independent live transcripts on one socket',
-  async () => {
+  async context => {
     const root = process.env.PNYX_HOME!
     const paths = [
       join(
@@ -2411,10 +2793,11 @@ test(
         'hydra.jsonl',
       ),
     ]
-    paths.forEach(path => writeFileSync(
+    const files = paths.map(path => openSync(
       path,
-      '',
+      'a',
     ))
+    context.after(() => files.forEach(file => closeSync(file)))
     withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
@@ -2503,33 +2886,57 @@ test(
       id: 'hydra-thread',
       card: HYDRA_CARD,
     })
-    paths.forEach((
-      path,
-      index,
-    ) => appendFileSync(
-      path,
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: `live reply ${index}` },
-      }) + '\n',
-    ))
-    const changed = new Set<string>()
 
-    while (changed.size < 2) {
-      const message = await t.next()
+    for (const keepOpen of [
+      false,
+      true,
+    ]) {
+      const text = ({ index }: { index: number }) => `live reply ${index}, kept open: ${keepOpen}`
+      paths.forEach((
+        path,
+        index,
+      ) => {
+        const line = JSON.stringify({
+          type: 'assistant',
+          message: { content: text({ index }) },
+        }) + '\n'
 
-      if (message.type === 'thread' && message.thread.entries.some(e => e.text.startsWith('live reply'))) {
-        changed.add(message.thread.card)
+        if (keepOpen) {
+          writeSync(
+            files[index]!,
+            line,
+          )
+        } else {
+          appendFileSync(
+            path,
+            line,
+          )
+        }
+      })
+      const changed = new Set<string>()
+
+      while (changed.size < 2) {
+        const message = await t.next()
+
+        if (message.type !== 'thread') {
+          continue
+        }
+
+        const index = message.thread.card === task ? 0 : 1
+
+        if (message.thread.entries.some(e => e.text === text({ index }))) {
+          changed.add(message.thread.card)
+        }
       }
-    }
 
-    assert.deepEqual(
-      [...changed].sort(),
-      [
-        HYDRA_CARD,
-        task,
-      ].sort(),
-    )
+      assert.deepEqual(
+        [...changed].sort(),
+        [
+          HYDRA_CARD,
+          task,
+        ].sort(),
+      )
+    }
   },
 )
 

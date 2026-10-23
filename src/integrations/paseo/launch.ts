@@ -209,6 +209,7 @@ export async function startAgent({
           state: writer.state,
           ref: sessionId({ agent: ref }),
           task: claimed.card.id,
+          working: true,
           meta: {
             ...meta,
             id: attachId,

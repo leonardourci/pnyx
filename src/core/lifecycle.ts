@@ -1,8 +1,9 @@
-import type { Card, Column, HydraState, TaskStatus } from './model.ts'
+import { ownerGates } from './gates.ts'
+import type { Card, Column, HydraEvent, HydraState, TaskStatus } from './model.ts'
 import { HYDRA_CARD, hydraConfig, roleColumn } from './hydra.ts'
 import { INTERRUPTED } from './tasks.ts'
 
-type Stage = 'in_progress' | 'needs_you' | 'done'
+type Stage = 'in_progress' | 'needs_you' | 'parked' | 'done'
 
 const MOVE = ':lifecycle'
 
@@ -26,6 +27,7 @@ export function asksOwner({ card }: { card: Card }): boolean {
 
 const DECLARED: Partial<Record<TaskStatus, Stage>> = {
   working: 'in_progress',
+  paused: 'parked',
   done: 'done',
 }
 
@@ -66,6 +68,10 @@ const moveReason = ({
 
   if (answered) {
     return 'Answered'
+  }
+
+  if (stage === 'parked') {
+    return 'Declared paused'
   }
 
   return stage === 'done' ? 'Declared done' : 'Declared working'
@@ -123,4 +129,133 @@ export function lifecycleMoves({
       },
     ]
   })
+}
+
+export function operationDeclarations({
+  before,
+  state,
+  event,
+}: {
+  before: HydraState
+  state: HydraState
+  event: HydraEvent
+}): {
+  cardId: string
+  status: TaskStatus
+  note: string
+  until?: string
+  waitingFor?: string[]
+  restores?: string
+}[] {
+  if (state.config?.hydra.kind === 'firstmate') {
+    return []
+  }
+
+  const changes: ReturnType<typeof operationDeclarations> = []
+
+  const declare = ({
+    cardId,
+    status,
+    note,
+  }: {
+    cardId: string
+    status: TaskStatus
+    note: string
+  }) => {
+    const card = state.cards[cardId]
+
+    if (card && !card.automaticTask && card.id !== HYDRA_CARD) {
+      changes.push({
+        cardId,
+        status,
+        note,
+      })
+    }
+  }
+
+  if (event.type === 'task.session') {
+    const old = event.data.before && state.cards[event.data.before]
+
+    if (old && old.status?.state !== 'done' && old.status?.state !== 'paused'
+      && !asksOwner({ card: old })) {
+      declare({
+        cardId: old.id,
+        status: 'paused',
+        note: 'Worker detached',
+      })
+    }
+
+    if (event.data.after && (event.data.working || event.data.handoff)) {
+      declare({
+        cardId: event.data.after,
+        status: 'working',
+        note: 'Worker assigned',
+      })
+    }
+  }
+
+  if (event.type === 'task.launched' && event.data.via === 'command') {
+    declare({
+      cardId: event.cardId,
+      status: 'working',
+      note: 'Worker started',
+    })
+  }
+
+  const card = state.cards[event.cardId]
+  const previous = before.cards[event.cardId]
+
+  if (!card || !previous) {
+    return changes
+  }
+
+  const previousReply = event.type === 'card.replied'
+    ? previous.replies?.find(r => r.id === event.data.reply) : undefined
+  const deliveredReply = event.type === 'card.replied' && event.data.state === 'delivered'
+  const answeredPermission = event.type === 'task.permission'
+    && (event.data.status === 'allow' || event.data.status === 'deny')
+  const answeredQuestion = event.type === 'hydra.message' && !!event.data.answers
+  const answered = deliveredReply || answeredPermission || answeredQuestion
+  const waiting = card.status?.waitingFor
+
+  if (answered && waiting?.length && previous.status?.id === card.status?.id) {
+    const open = ownerGates({ card })
+    const wasOpen = ownerGates({ card: previous })
+    const resolved = waiting.some(id => wasOpen.includes(id) && !open.includes(id))
+
+    if (resolved && !waiting.some(id => open.includes(id))) {
+      const resume = card.statusLog?.findLast(s => !s.waitingFor?.length)
+      changes.push({
+        cardId: card.id,
+        status: resume?.state ?? (card.sessionIds?.length ? 'working' : 'paused'),
+        note: resume?.note ?? 'Owner gate answered',
+        until: resume?.until,
+        waitingFor: resume?.waitingFor ?? [],
+        restores: resume?.restores ?? resume?.id,
+      })
+    }
+  }
+
+  const resumes = event.type === 'card.replied' && (event.data.resumes || previousReply?.resumes)
+
+  if (deliveredReply && previousReply?.state !== 'delivered' && resumes
+    && card.status?.state === 'paused' && card.sessionIds?.length && !asksOwner({ card })) {
+    declare({
+      cardId: card.id,
+      status: 'working',
+      note: 'Worker resumed by reply',
+    })
+  }
+
+  return changes
+}
+
+export function pausedDeclaration({ card }: { card: Card }) {
+  const declaration = card.status
+
+  if (declaration?.state !== 'paused') {
+    return undefined
+  }
+
+  return card.statusLog?.find(s => s.id === declaration.restores && s.state === 'paused') ?? declaration
 }

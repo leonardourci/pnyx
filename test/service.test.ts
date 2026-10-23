@@ -427,3 +427,123 @@ test(
     )}</string>`))
   },
 )
+
+test(
+  'another home reserves its service port without touching launchd or files',
+  () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-service-conflict-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'ours',
+    )
+    const options = {
+      platform: 'darwin' as const,
+      userHome: root,
+      preview: true,
+      run: () => assert.fail('a conflict or preview must never call launchctl'),
+    }
+    const previewPlan = setupService(options)
+    const agents = join(
+      root,
+      'Library',
+      'LaunchAgents',
+    )
+    mkdirSync(
+      agents,
+      { recursive: true },
+    )
+    const other = join(
+      agents,
+      'local.pnyx.server.0123456789abcdef.plist',
+    )
+    const original = previewPlan.plist!.replaceAll(
+      process.env.PNYX_HOME,
+      join(
+        root,
+        'theirs &amp; home',
+      ),
+    )
+    writeFileSync(
+      other,
+      original,
+    )
+
+    for (const previewMode of [
+      false,
+      true,
+    ]) {
+      assert.throws(
+        () => setupService({
+          ...options,
+          preview: previewMode,
+        }),
+        { code: 'PORT_IN_USE' },
+      )
+      assert.equal(
+        existsSync(join(
+          root,
+          'ours',
+        )),
+        false,
+      )
+      assert.equal(
+        readFileSync(
+          other,
+          'utf8',
+        ),
+        original,
+      )
+    }
+
+    assert.equal(
+      existsSync(previewPlan.path),
+      false,
+    )
+    assert.ok(setupService({
+      ...options,
+      port: 49124,
+    }).plist!.includes('49124'))
+    assert.equal(
+      setupService({
+        ...options,
+        remove: true,
+      }).service,
+      'would remove',
+    )
+
+    writeFileSync(
+      other,
+      original.replace(
+        /<string>--port<\/string><string>4747<\/string>/,
+        '',
+      ),
+    )
+    assert.throws(
+      () => setupService(options),
+      { code: 'PORT_IN_USE' },
+    )
+    writeFileSync(
+      other,
+      original.replace(
+        '<string>--port</string><string>4747</string>',
+        '<string>--port=4747</string>',
+      ),
+    )
+    assert.throws(
+      () => setupService(options),
+      { code: 'PORT_IN_USE' },
+    )
+
+    writeFileSync(
+      other,
+      previewPlan.plist!,
+    )
+    assert.equal(
+      setupService(options).service,
+      'would install',
+    )
+  },
+)

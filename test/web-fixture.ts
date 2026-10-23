@@ -140,6 +140,7 @@ export function seedWebFixture({ home }: { home: string }) {
               url,
               number,
               state,
+              draft: false,
               checks: '0 passed, 0 failed',
               comments: 0,
             },

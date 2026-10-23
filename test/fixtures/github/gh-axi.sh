@@ -28,6 +28,10 @@ pull_request:
 TOON
   exit 0
 fi
+if [ "$1 $2 $3 $4 $5" = "pr view 10 --repo o/r" ]; then
+  printf 'pull_request:\n  number: 10\n  state: open\n'
+  exit 0
+fi
 if [ "$1 $2 $4" = "pr view --repo" ] && [ -z "$6" ]; then
   cat <<TOON
 pull_request:
