@@ -146,6 +146,7 @@ function taskLine({
       }).map(c => c.id)
         .join(', ') || 'none'}`,
     ] : []),
+    ...(card.hold ? [`  held for discussion: ${card.hold.reason}`] : []),
     ...(card.queueNote ? [`  handoff: ${card.queueNote}`] : []),
     ...(waiting.length ? [`  waiting: ${waiting.join('; ')}`] : []),
   ]

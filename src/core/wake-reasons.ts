@@ -85,7 +85,7 @@ export function readyBacklog({ state }: { state: HydraState }): Card[] {
   }).filter(card => {
     const started = card.agent || card.sessionIds?.length || card.queue
 
-    return card.id !== HYDRA_CARD && !started && !onHold({ card }) && card.status?.state !== 'done'
+    return card.id !== HYDRA_CARD && !started && !card.hold && !onHold({ card }) && card.status?.state !== 'done'
       && !ownerGates({ card }).length && !openAsks({ card }).length
   })
 }

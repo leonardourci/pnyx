@@ -1616,6 +1616,8 @@ export function decideUndo({
   if ([
     'board.configured',
     'task.created',
+    'task.held',
+    'task.released',
     'task.intent',
     'task.declared',
     'task.kind',
