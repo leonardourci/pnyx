@@ -467,7 +467,7 @@ test(
       ] of [
           [
             'blocked',
-            'needs_you',
+            'in_progress',
           ],
           [
             'working',
@@ -546,18 +546,6 @@ test(
           [
             column({ role: 'in_progress' }),
             'Answered',
-          ],
-          [
-            column({ role: 'needs_you' }),
-            'Declared blocked',
-          ],
-          [
-            column({ role: 'in_progress' }),
-            'Declared working',
-          ],
-          [
-            column({ role: 'needs_you' }),
-            'Declared needs you',
           ],
           [
             column({ role: 'parked' }),

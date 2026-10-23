@@ -314,6 +314,16 @@ function updateRow({
         },
       }
     }
+    case 'task.ask.closed': return {
+      kind: 'status',
+      state: 'Question closed',
+      note: `${data.reason} (${data.evidence})`,
+    }
+    case 'task.ask.reopened': return {
+      kind: 'status',
+      state: 'Question reopened',
+      note: String(data.ask),
+    }
     case 'task.ask.escalated': return {
       kind: 'decision',
       state: 'Decision',

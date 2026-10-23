@@ -9,10 +9,8 @@ import type { Command } from './connection.ts'
 
 export const hasTaskQuestion = ({
   card,
-  answered = false,
 }: {
   card: Card
-  answered?: boolean
 }) =>
   card.permissions?.some(request => request.status === 'pending')
   || card.attention.some(request => request.blocking && !request.answered)
@@ -20,7 +18,6 @@ export const hasTaskQuestion = ({
     card,
     audience: 'owner',
   }).length > 0
-  || (!answered && card.status?.state === 'needs_you')
 
 export function TaskQuestion({
   card,
@@ -39,7 +36,7 @@ export function TaskQuestion({
     card,
     request,
   }))
-  const text = attention?.text || card.status?.note
+  const text = attention?.text
   const asks = openAsks({
     card,
     audience: 'owner',

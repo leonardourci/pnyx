@@ -2578,7 +2578,7 @@ test(
 )
 
 test(
-  'a reply to a declared question records one folded decision after delivery',
+  'ordinary feedback to a worker note never fabricates an owner decision',
   async () => {
     const { task } = await lab()
     const sdk = fakeSdk()
@@ -2621,16 +2621,8 @@ test(
       columns: [],
     })
     assert.deepEqual(
-      timeline.filter(update => update.id === question.id).map(update => update.decision),
-      [
-        {
-          questionId: question.id,
-          question: 'Which layout?',
-          answer: 'Use layout A',
-          actor: 'Hydra',
-          reason: undefined,
-        },
-      ],
+      timeline.filter(update => update.id === question.id && update.decision),
+      [],
     )
   },
 )

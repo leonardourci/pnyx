@@ -1551,6 +1551,12 @@ test(
       plain.state,
       'delivered',
     )
+    const reply = f.events().findLast(event => event.type === 'card.replied')
+    assert.ok(reply?.type === 'card.replied')
+    assert.equal(
+      reply.data.decision,
+      undefined,
+    )
     assert.equal(
       f.task().status?.id,
       waiting,
@@ -1686,7 +1692,7 @@ test(
     )
     assert.equal(
       f.task().column,
-      f.role({ name: 'needs_you' }),
+      f.role({ name: 'in_progress' }),
     )
   },
 )

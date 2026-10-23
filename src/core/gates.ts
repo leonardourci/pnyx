@@ -7,6 +7,6 @@ export function ownerGates({ card }: { card: Card }): string[] {
     ...card.attention.filter(a => a.key !== INTERRUPTED && a.blocking && !a.answered)
       .map(a => `attention:${requestId({ request: a })}`),
     ...(card.permissions ?? []).filter(p => p.status === 'pending').map(p => `permission:${p.id}`),
-    ...(card.asks ?? []).filter(a => a.audience === 'owner' && !a.answered).map(a => `ask:${a.id}`),
+    ...(card.asks ?? []).filter(a => a.audience === 'owner' && !a.answered && !a.closed).map(a => `ask:${a.id}`),
   ]
 }

@@ -1,3 +1,4 @@
+import { mergeApproval } from './asks.ts'
 import { clip } from './digest.ts'
 import { openAsks } from './asks.ts'
 import { ownerGates } from './gates.ts'
@@ -109,17 +110,29 @@ function slotFree({ state }: { state: HydraState }): WakeReason[] {
   ]
 }
 
-// Hydra may merge once checks are green: the task's rule lets it, and its worker no longer declares working on it.
-export const mergeApproved = ({
+export function mergeApproved({
   state,
   card,
+  url,
 }: {
   state: HydraState
   card: Card
-}) => card.status?.state !== 'working' && cardLanding({
-  card,
-  projects: state.projects ?? [],
-})?.merge === 'hydra'
+  url?: string
+}): boolean {
+  if (url !== undefined && mergeApproval({
+    card,
+    url,
+  })) {
+    return true
+  }
+
+  const rule = cardLanding({
+    card,
+    projects: state.projects ?? [],
+  })
+
+  return card.status?.state !== 'working' && rule?.merge === 'hydra'
+}
 
 const checksDetail = ({ link }: { link: Link }) =>
   `${link.url} ${failedChecks({ checks: link.checks }) ? 'red' : 'green'} (${link.checks})`
@@ -161,6 +174,7 @@ function linkReasons({
     if (!failed && mergeApproved({
       state,
       card,
+      url: after.url,
     })) {
       reasons.push({
         kind: 'approved merge is green',
@@ -269,6 +283,27 @@ function eventReasons({
       text,
       kind,
     } = event.data
+
+    const card = task ? state.cards[task] : undefined
+    const approved = card?.asks?.find(a => a.id === ask || a.id === event.data.answers)
+    const link = card?.links.find(l => l.url === approved?.url)
+
+    const runsHere = pnyxRunsHydra({ state })
+
+    if (runsHere && card && link && approved?.answered === event.id && mergeApproval({
+      card,
+      url: link.url,
+    })
+      && link.state === 'open' && link.draft === false && ranChecks({ checks: link.checks })
+      && !failedChecks({ checks: link.checks }) && !pendingChecks({ checks: link.checks })) {
+      return [
+        {
+          kind: 'approved merge is green',
+          card: card.id,
+          detail: `${link.url} (${link.checks})`,
+        },
+      ]
+    }
 
     if (!reportActor({ actor: event.actor }) || kind === 'progress' || !pnyxRunsHydra({ state })) {
       return []

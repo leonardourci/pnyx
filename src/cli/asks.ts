@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { HydraError, HYDRA_ACTOR, type Ask, type AskAudience, type Card } from '../core/model.ts'
 import { findCard, type Meta } from '../core/decide.ts'
-import { askAnswer, askReport, askWording, decideAsk, decideEscalation } from '../core/asks.ts'
+import { askAnswer, askReport, askWording, decideAsk, decideAskClosure, decideEscalation } from '../core/asks.ts'
 import { hydraConfig, hydraDelivery, hydraEvent, reportActor } from '../core/hydra.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
@@ -59,6 +59,10 @@ const askState = ({
   card: Card
   ask: Ask
 }) => {
+  if (ask.closed) {
+    return `closed (${ask.closed.reason}; ${ask.closed.evidence})`
+  }
+
   if (ask.answered) {
     return `answered (${ask.answered})`
   }
@@ -286,7 +290,9 @@ async function answerCommand({
     })
   }
 
-  if (card.asks?.find(a => a.id === id)?.actor === HYDRA_ACTOR) {
+  const question = card.asks?.find(a => a.id === id)
+
+  if (question?.actor === HYDRA_ACTOR || question?.kind === 'merge') {
     return answerHydra({
       hydraId,
       ref,
@@ -493,7 +499,7 @@ export function askCommand({
   hydraId,
   meta: given,
 }: {
-  action: 'ask' | 'answer' | 'escalate'
+  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question'
   positionals: string[]
   values: Values
   hydraId: string
@@ -504,6 +510,29 @@ export function askCommand({
     value: positionals[1],
     what: 'task id',
   })
+
+  if (action === 'close-question' || action === 'reopen-question') {
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: action === 'reopen-question' ? 'task.ask.reopened' : 'task.ask.closed',
+        card: ref,
+      },
+      decide: ({ state }) => decideAskClosure({
+        state,
+        ref,
+        id: required({
+          value: positionals[2],
+          what: 'question id',
+        }),
+        evidence: text({ value: values.evidence }),
+        reopen: action === 'reopen-question',
+        answer: text({ value: values.answer }),
+        meta: m,
+      }),
+    })
+  }
 
   if (action === 'answer') {
     return answerCommand({

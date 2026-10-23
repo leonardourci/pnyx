@@ -1,5 +1,6 @@
-import { HydraError, HYDRA_ACTOR, ownerActor, type AnswerMessage, type Ask, type AskAudience, type Card, type HydraEvent, type HydraState, type Question } from './model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AnswerMessage, type Ask, type AskAudience, type Card, type HydraEvent, type HydraState, type Link, type Question } from './model.ts'
 import { findCard, type Decision, type Meta } from './decide.ts'
+import { cardLanding } from './model.ts'
 import { HYDRA_CARD, hydraEvent, reportActor } from './hydra.ts'
 
 const QUESTION_MAX = 300
@@ -97,7 +98,7 @@ const closed = ({
   ask: Ask
   undelivered?: boolean
 }) => {
-  if (ask.answered) {
+  if (ask.answered || ask.closed) {
     throw new HydraError({
       message: `question ${ask.id} on task ${card.id} is already answered`,
       code: 'ASK_CLOSED',
@@ -124,7 +125,8 @@ export const openAsks = ({
 }: {
   card: Card
   audience?: AskAudience
-}) => (card.asks ?? []).filter(a => !a.answered && (!audience || a.audience === audience))
+}) => (card.asks ?? []).filter(a =>
+  !a.answered && !a.closed && (!audience || a.audience === audience))
 
 export function decideAsk({
   state,
@@ -399,8 +401,8 @@ export function askAnswer({
       throw invalid({ message: '--from-message must name the owner’s own message sent after the question' })
     }
 
-    if (choice !== undefined || typed !== undefined) {
-      throw invalid({ message: '--from-message quotes the owner’s message; do not combine it with --choice or --text' })
+    if (typed !== undefined || (choice !== undefined && ask.kind !== 'merge')) {
+      throw invalid({ message: '--from-message quotes the owner’s message; only a merge question also takes --choice' })
     }
 
     source = {
@@ -444,6 +446,10 @@ export function askAnswer({
     throw invalid({ message: 'answer with --choice, --text or both' })
   }
 
+  if (ask.kind === 'merge' && !label && note !== 'Merge' && note !== 'Hold') {
+    throw invalid({ message: 'answer a merge question with --choice Merge or Hold; --from-message also needs that choice' })
+  }
+
   let by = actor
 
   if (source || ownerActor({ actor })) {
@@ -480,18 +486,33 @@ export function applyAsk({
     const card = event.data.answers && event.data.task ? state.cards[event.data.task] : undefined
 
     if (card?.asks) {
-      card.asks = card.asks.map(a => (a.id === event.data.answers ? {
-        ...a,
-        answered: event.id,
-        answeredAt: event.at,
-        fromMessage: event.data.fromMessage,
-      } : a))
+      card.asks = card.asks.map(a => {
+        if (a.id !== event.data.answers) {
+          return a
+        }
+
+        const answered = {
+          ...a,
+          answered: event.id,
+          answeredAt: event.at,
+          fromMessage: event.data.fromMessage,
+        }
+
+        if (event.data.choice !== undefined) {
+          answered.choice = event.data.choice
+        } else if (a.kind === 'merge') {
+          answered.choice = event.data.text
+        }
+
+        return answered
+      })
     }
 
     return false
   }
 
-  if (event.type !== 'task.asked' && event.type !== 'task.ask.escalated') {
+  if (event.type !== 'task.asked' && event.type !== 'task.ask.escalated'
+    && event.type !== 'task.ask.closed' && event.type !== 'task.ask.reopened') {
     return false
   }
 
@@ -512,7 +533,31 @@ export function applyAsk({
         },
       ]
     }
-  } else if (card.asks) {
+  } else if (event.type === 'task.ask.closed' && card.asks) {
+    card.asks = card.asks.map(a => a.id === event.data.ask ? {
+      ...a,
+      closed: {
+        id: event.id,
+        at: event.at,
+        reason: event.data.reason,
+        evidence: event.data.evidence,
+      },
+    } : a)
+  } else if (event.type === 'task.ask.reopened' && card.asks) {
+    card.asks = card.asks.map(a => {
+      if (a.id !== event.data.ask || a.answered !== event.data.answer) {
+        return a
+      }
+
+      const reopened = { ...a }
+      delete reopened.answered
+      delete reopened.answeredAt
+      delete reopened.fromMessage
+      delete reopened.choice
+
+      return reopened
+    })
+  } else if (event.type === 'task.ask.escalated' && card.asks) {
     card.asks = card.asks.map(a => (a.id === event.data.ask ? {
       ...a,
       audience: 'owner',
@@ -532,4 +577,203 @@ export function applyAsk({
   card.updatedAt = event.at
 
   return true
+}
+
+export const mergeApproval = ({
+  card,
+  url,
+}: {
+  card: Card
+  url: string
+}) =>
+  card.asks?.find(ask => ask.kind === 'merge' && ask.url === url && ask.answered && !ask.closed && ask.choice === 'Merge')
+
+export function reconcileAsks({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): HydraEvent[] {
+  const card = state.cards[event.cardId]
+
+  if (!card || card.id === HYDRA_CARD || card.automaticTask || state.config?.hydra.kind === 'firstmate') {
+    return []
+  }
+
+  const changes: HydraEvent[] = []
+  const ended = card.status?.state === 'done' || !!card.outcome?.closed
+  const requests = card.links.filter(link => link.kind === 'github_pr')
+  const allSettled = requests.length > 0
+    && requests.every(link => link.state === 'merged' || link.state === 'closed')
+
+  for (const ask of openAsks({
+    card,
+    audience: 'owner',
+  })) {
+    const link = card.links.find(link => link.url === ask.url)
+    const settled = link?.state === 'merged' || link?.state === 'closed'
+    const moot = ask.url ? settled : allSettled
+
+    if (!ended && !moot) {
+      continue
+    }
+
+    const reason = ended ? 'Task ended' : 'Pull request merged or closed'
+    const closed = hydraEvent({
+      state,
+      cardId: card.id,
+      meta: {
+        id: `${event.id}:${ask.id}:closed`,
+        at: event.at,
+        actor: 'pnyx',
+        reason,
+      },
+      change: {
+        type: 'task.ask.closed',
+        data: {
+          ask: ask.id,
+          reason,
+          evidence: link?.url ?? event.id,
+        },
+      },
+    })
+
+    if ('event' in closed) {
+      return [closed.event]
+    }
+  }
+
+  if (event.type !== 'card.linked' || ended) {
+    return changes
+  }
+
+  const link = event.data.after
+  const ownerMerges = cardLanding({
+    card,
+    projects: state.projects ?? [],
+  })?.merge === 'owner'
+  const ready = link?.kind === 'github_pr' && link.state === 'open' && link.draft === false
+  const alreadyAsked = card.asks?.some(ask => ask.kind === 'merge' && ask.url === link?.url)
+
+  if (!ready || !ownerMerges || alreadyAsked) {
+    return changes
+  }
+
+  const asked = hydraEvent({
+    state,
+    cardId: card.id,
+    meta: {
+      id: `${event.id}:merge-question`,
+      at: event.at,
+      actor: 'pnyx',
+    },
+    change: {
+      type: 'task.asked',
+      data: mergeQuestion({
+        link,
+        id: `ask-${state.seq + 1}`,
+      }),
+    },
+  })
+
+  if ('event' in asked) {
+    changes.push(asked.event)
+  }
+
+  return changes
+}
+
+function mergeQuestion({
+  link,
+  id,
+}: {
+  link: Link
+  id: string
+}): Extract<HydraEvent, { type: 'task.asked' }>['data'] {
+  const number = link.url.split('/').at(-1)
+
+  return {
+    id,
+    audience: 'owner',
+    kind: 'merge',
+    url: link.url,
+    question: `Review and merge PR #${number}?`,
+    context: `${link.url}\nChecks: ${link.checks ?? 'not read yet'}`,
+    options: [
+      { label: 'Merge' },
+      { label: 'Hold' },
+    ],
+  }
+}
+
+export function decideAskClosure({
+  state,
+  ref,
+  id,
+  evidence,
+  reopen,
+  answer,
+  meta,
+}: {
+  state: HydraState
+  ref: string
+  id: string
+  evidence?: string
+  reopen?: boolean
+  answer?: string
+  meta: Meta
+}): Decision {
+  const card = askableTask({
+    state,
+    ref,
+  })
+  const ask = findAsk({
+    card,
+    id,
+  })
+
+  if (reopen) {
+    const currentAnswer = ask.fromMessage && ask.answered && ask.answered === answer && !ask.closed
+
+    if (!ownerActor({ actor: meta.actor }) || !currentAnswer || !answer) {
+      throw invalid({ message: 'only the owner can undo the current answer recorded from their message' })
+    }
+
+    return hydraEvent({
+      state,
+      cardId: card.id,
+      meta,
+      change: {
+        type: 'task.ask.reopened',
+        data: {
+          ask: id,
+          answer,
+        },
+      },
+    })
+  }
+
+  if (meta.actor !== HYDRA_ACTOR || !meta.reason?.trim() || !evidence?.trim()) {
+    throw invalid({ message: 'Hydra closes a moot question with --reason and --evidence' })
+  }
+
+  closed({
+    card,
+    ask,
+  })
+
+  return hydraEvent({
+    state,
+    cardId: card.id,
+    meta,
+    change: {
+      type: 'task.ask.closed',
+      data: {
+        ask: id,
+        reason: meta.reason,
+        evidence,
+      },
+    },
+  })
 }

@@ -1,7 +1,7 @@
 import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
-import { appendFileSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -289,6 +289,114 @@ test(
           'true',
         ],
       )
+      const sourceAt = new Date(Date.now() - 1000).toISOString()
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const question = hydraEvent({
+            state: writer.state,
+            cardId: 'chat-ui-task',
+            meta: {
+              actor: 'hydra',
+              at: new Date(Date.now() - 2000).toISOString(),
+            },
+            change: {
+              type: 'task.asked',
+              data: {
+                id: 'recorded-question',
+                audience: 'owner',
+                question: 'Start the focused repairs?',
+              },
+            },
+          })
+          assert.ok('event' in question)
+          writer.append({ event: question.event })
+          const source = hydraEvent({
+            state: writer.state,
+            cardId: 'chat-ui-task',
+            meta: {
+              actor: 'web',
+              at: sourceAt,
+              id: 'owner-source',
+            },
+            change: {
+              type: 'hydra.message',
+              data: {
+                hydra: 'hydra',
+                action: 'send',
+                text: 'Sounds good',
+              },
+            },
+          })
+          assert.ok('event' in source)
+          writer.append({ event: source.event })
+        },
+      })
+      await commands.task([
+        'answer',
+        'chat-ui-task',
+        'recorded-question',
+        '--from-message',
+        'owner-source',
+        '--actor',
+        'hydra',
+        '--reason',
+        'Owner answered in conversation',
+      ])
+      const recorded = await browser({
+        args: ['run'],
+        script: `
+        await page.wait('[data-entry-id="ask:chat-ui-task:recorded-question"] .decided .button');
+        console.log(await page.eval(() => document.querySelector('[data-entry-id="ask:chat-ui-task:recorded-question"]').textContent.includes('Recorded as your answer to')));
+      `,
+      })
+      assert.equal(
+        recorded.trim(),
+        'true',
+      )
+      const evidence = process.env.PNYX_PR_EVIDENCE_DIR
+
+      if (evidence) {
+        mkdirSync(
+          evidence,
+          { recursive: true },
+        )
+        await browser({
+          args: [
+            'screenshot',
+            join(
+              evidence,
+              'answer-recorded.png',
+            ),
+          ],
+        })
+      }
+
+      const undone = await browser({
+        args: ['run'],
+        script: `
+        await page.click('[data-entry-id="ask:chat-ui-task:recorded-question"] .decided .button');
+        await page.wait('[data-entry-id="ask:chat-ui-task:recorded-question"] .ask');
+        console.log(await page.eval(() => document.querySelector('[data-entry-id="ask:chat-ui-task:recorded-question"]').textContent.includes('Start the focused repairs?') && !document.querySelector('[data-entry-id="ask:chat-ui-task:recorded-question"] .decided')));
+      `,
+      })
+      assert.equal(
+        undone.trim(),
+        'true',
+      )
+
+      if (evidence) {
+        await browser({
+          args: [
+            'screenshot',
+            join(
+              evidence,
+              'answer-reopened.png',
+            ),
+          ],
+        })
+      }
+
       appendFileSync(
         transcript,
         Array.from(

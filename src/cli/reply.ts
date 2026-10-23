@@ -508,15 +508,6 @@ export async function sendReply({
         }
       }
 
-      if (!answerDecision && !request.control && !request.key && !request.setting
-        && card.status?.state === 'needs_you' && card.status.note) {
-        answerDecision = {
-          questionId: card.status.id,
-          question: card.status.note,
-          answer: text,
-        }
-      }
-
       const context = !request.control && !request.key && !answer
         ? mentionContext({
           state: writer.state,

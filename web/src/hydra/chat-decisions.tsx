@@ -15,7 +15,7 @@ export interface ChatDecision {
 }
 
 export const chatDecisions = ({ cards }: { cards: Card[] }): ChatDecision[] => cards.flatMap(card =>
-  (card.asks ?? []).filter(ask => ask.audience === 'owner').map(ask => ({
+  (card.asks ?? []).filter(ask => ask.audience === 'owner' && !ask.closed).map(ask => ({
     id: `ask:${card.id}:${ask.id}`,
     at: ask.escalated?.at ?? ask.at,
     card,
@@ -39,7 +39,14 @@ export function ChatDecisionCard({
   return (
     <div className="chat-decision" contentEditable={false}>
       <TaskReference id={card.id} />
-      {ask.answered ? <Decided ask={ask} /> : (
+      {ask.answered ? (
+        <Decided
+          card={card}
+          ask={ask}
+          command={command}
+          notify={notify}
+        />
+      ) : (
         <AskPanel
           card={card}
           ask={ask}
@@ -51,7 +58,17 @@ export function ChatDecisionCard({
   )
 }
 
-function Decided({ ask }: { ask: Ask }) {
+function Decided({
+  card,
+  ask,
+  command,
+  notify,
+}: {
+  card: Card
+  ask: Ask
+  command: Command
+  notify({ text }: { text: string }): void
+}) {
   const decidedAt = ask.answeredAt ?? ask.fromMessage?.at
   const title = (
     <>Decided {decidedAt && clock({ at: decidedAt })}
@@ -64,9 +81,31 @@ function Decided({ ask }: { ask: Ask }) {
   }
 
   return (
-    <Disclosure className="decided" title={title}>
-      <blockquote><CollapsibleText text={ask.fromMessage.text} /></blockquote>
-    </Disclosure>
+    <div className="decided">
+      <Disclosure title={<>Recorded as your answer to ‘{askWording({ ask }).question}’</>}>
+        <blockquote><CollapsibleText text={ask.fromMessage.text} /></blockquote>
+      </Disclosure>
+      <Button
+        onClick={async () => {
+          try {
+            await command({
+              name: 'task',
+              args: [
+                'reopen-question',
+                card.id,
+                ask.id,
+                '--answer',
+                ask.answered ?? '',
+              ],
+            })
+            notify({ text: 'Question reopened.' })
+          } catch (error) {
+            notify({ text: String(error) })
+          }
+        }}
+      >Undo answer
+      </Button>
+    </div>
   )
 }
 

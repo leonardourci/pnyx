@@ -66,7 +66,7 @@ const push = ({
 })
 
 test(
-  'a task in its own copy is done only once its pull request merges: a ready pull request goes to the owner, only the owner merges, and the merge frees the copy for the next task on a fresh branch',
+  'a task in its own copy is done only once its pull request merges: a ready pull request asks the owner, approval lets Hydra merge, and the merge frees the copy for the next task on a fresh branch',
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({ name: 'app' })
@@ -293,17 +293,40 @@ test(
       })).error,
       'checks are still running: 0 passed, 0 failed, 1 total',
     )
+    const mergeQuestion = s.task({ key: 'ship' }).asks?.find(ask => ask.kind === 'merge')
+    assert.ok(mergeQuestion)
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'ship',
+        mergeQuestion.id,
+        '--choice',
+        'Merge',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'ship' }).column,
+      s.column({ role: 'in_progress' }),
+    )
+    assert.ok(s.task({ key: 'ship' }).asks?.find(ask => ask.id === mergeQuestion.id)?.answered)
     s.pullRequest({
       number: 1,
       checks: '1 passed, 0 failed, 1 total',
       comments: 1,
     })
+    await until({
+      what: 'the approved green merge wake',
+      check: () => hydraAgent.received.some(text => text.includes('approved merge is green') && text.includes(url)),
+    })
     const heard = hydraAgent.received.length
-    await s.owner({
+    await hydra.run({
       args: [
         'task',
         'merge',
         'ship',
+        '--reason',
+        'Owner approved and all checks passed',
       ],
     })
     // GitHub merged the branch into main.
@@ -872,6 +895,96 @@ test(
     assert.match(
       await rule({ key: 'pr-fix' }),
       /^landing: branch\nmerge: hydra\nfrom: project$/m,
+    )
+  },
+)
+
+test(
+  'an owner approval on an already-green pull request wakes Hydra to merge it and records Done',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'green-app' })
+    const agent = await s.chat({ text: 'Review the completed change.' })
+    const hydra = s.as({ agent })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Green change',
+        '--key',
+        'green',
+        '--project',
+        app,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'status',
+        'green',
+        'working',
+      ],
+    })
+    const url = s.pullRequest({
+      number: 147,
+      checks: '1 passed, 0 failed, 1 total',
+    })
+    await s.owner({
+      args: [
+        'link',
+        'green',
+        '--url',
+        url,
+      ],
+    })
+    const ask = await until({
+      what: 'the ready merge question',
+      check: () => s.task({ key: 'green' }).asks?.find(a => a.kind === 'merge'),
+    })
+    assert.equal(
+      s.task({ key: 'green' }).column,
+      s.column({ role: 'needs_you' }),
+    )
+    const heard = agent.received.length
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'green',
+        ask.id,
+        '--choice',
+        'Merge',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'green' }).column,
+      s.column({ role: 'in_progress' }),
+    )
+    await until({
+      what: 'the already-green approval wake',
+      check: () => agent.received.slice(heard).some(text => text.includes('approved merge is green') && text.includes(url)),
+    })
+    await hydra.run({
+      args: [
+        'task',
+        'merge',
+        'green',
+        '--reason',
+        'The owner approved the green pull request',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'green' }).column,
+      s.column({ role: 'done' }),
+    )
+    assert.equal(
+      s.task({ key: 'green' }).links[0]?.state,
+      'merged',
+    )
+    assert.equal(
+      s.merges({ number: 147 }),
+      1,
     )
   },
 )
