@@ -1,8 +1,7 @@
 // pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in verify): records one real
 // turn of each into test/fixtures/agents/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
-import { spawn } from 'node:child_process'
-import { execFileSync } from 'node:child_process'
-import { mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawn } from 'node:child_process'
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -212,6 +211,25 @@ async function recordCodex() {
       schemas,
     ],
   )
+  // Only the login is copied, so your config, MCP servers and hooks stay out of the recording.
+  const home = join(
+    work,
+    'codex-home',
+  )
+  mkdirSync(home)
+  copyFileSync(
+    join(
+      process.env.CODEX_HOME ?? join(
+        homedir(),
+        '.codex',
+      ),
+      'auth.json',
+    ),
+    join(
+      home,
+      'auth.json',
+    ),
+  )
   const child = spawn(
     'codex',
     [
@@ -221,10 +239,22 @@ async function recordCodex() {
     ],
     {
       cwd: work,
-      env,
+      env: {
+        ...env,
+        CODEX_HOME: home,
+      },
       stdio: 'pipe',
     },
   )
+  // Settles every wait below when Codex exits or the timeout kills it.
+  const exited = new Promise<never>((
+    _,
+    reject,
+  ) => child.once(
+    'exit',
+    code => reject(new Error(`codex app-server exited (${code})`)),
+  ))
+  exited.catch(() => {})
   const lines = createInterface({ input: child.stdout })
   const waiting = new Map<number, ({ message }: { message: Message }) => void>()
   const session: Message[] = []
@@ -276,7 +306,10 @@ async function recordCodex() {
       method,
       params,
     })}\n`)
-    const message = await reply
+    const message = await Promise.race([
+      reply,
+      exited,
+    ])
 
     if (message.error) {
       throw new Error(`${method}: ${JSON.stringify(message.error)}`)
@@ -339,11 +372,11 @@ async function recordCodex() {
         sandbox: 'read-only',
       },
     })
-    const thread = (started.thread as Message).id
+    const threadId = (started.thread as Message).id
     await request({
       method: 'turn/start',
       params: {
-        threadId: thread,
+        threadId,
         input: [
           {
             type: 'text',
@@ -352,7 +385,10 @@ async function recordCodex() {
         ],
       },
     })
-    await turnDone
+    await Promise.race([
+      turnDone,
+      exited,
+    ])
   } finally {
     clearTimeout(timer)
     child.kill()
