@@ -299,7 +299,6 @@ export function HydraChat({
   const hosted = hydra.kind !== 'firstmate'
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
-  const queueShown = queue.waiting.length > 0 || (running && queue.reading.length > 0)
   // A send counts from the owner's message until the server says the turn began.
   const lookup = pnyxLookup({ state })
   const since = (working ? card?.workingSince : undefined)
@@ -431,6 +430,16 @@ export function HydraChat({
         },
       ]
     }))
+  // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
+  const queueReading = running ? queue.reading : []
+  const queueShown = queue.waiting.length > 0 || queueReading.length > 0
+  const queueCards = updatedTasks({
+    updates: [
+      ...queueReading,
+      ...queue.waiting,
+    ],
+    tasks: Object.keys(references),
+  })
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
 
   return (
@@ -559,7 +568,7 @@ export function HydraChat({
               />
             )}
             {/* ponytail: room for one wrapped row of task chips; more rows overlap the last message. */}
-            {queueShown && <div className="chat-queue-room" aria-hidden="true" />}
+            {queueCards.length > 0 && <div className="chat-queue-room" aria-hidden="true" />}
           </div>
         </div>
         {(running || queueShown) && (
@@ -568,11 +577,11 @@ export function HydraChat({
               since={running ? since : null}
               running={running}
               label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
-              reading={running ? queue.reading : []}
-              waiting={queue.waiting}
-              tasks={Object.keys(references)}
+              reading={queueReading.length}
+              waiting={queue.waiting.length}
+              cards={queueCards}
             >
-              <ActionBubble action={action} since={since} lookup={lookup} />
+              {running && <ActionBubble action={action} since={since} lookup={lookup} />}
             </Running>
           </TaskReferencesProvider>
         )}
@@ -665,15 +674,16 @@ function Running({
   label,
   reading,
   waiting,
-  tasks,
+  cards,
   children,
 }: {
   since: string | null
   running: boolean
   label: string
-  reading: QueuedUpdate[]
-  waiting: QueuedUpdate[]
-  tasks: string[]
+  reading: number
+  waiting: number
+  // The tasks of the updates in Hydra's queue, each once.
+  cards: string[]
   children?: ReactNode
 }) {
   const [
@@ -692,46 +702,71 @@ function Running({
     [],
   )
 
-  const queueShown = reading.length > 0 || waiting.length > 0
-  const cards = updatedTasks({
-    updates: [
-      ...reading,
-      ...waiting,
-    ],
-    tasks,
+  const words = queueWords({
+    reading,
+    waiting,
+    cards: cards.length,
   })
-  // The chips rise in again whenever the queue moves on.
-  const queueKey = `${reading.length}:${waiting.length}`
 
+  // The chips stay outside the live status, so a change never re-reads them or moves focus off one.
   return (
-    <p
+    <div
       className="chat-running"
-      role="status"
-      aria-label={queueShown ? undefined : label}
       title={since ? `Started ${clock({
         at: since,
         seconds: true,
       })}` : undefined}
     >
-      {running && <WorkingDots />}
-      {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
-      {children}
-      <LiveLabel
-        value={queueWords({
-          reading: reading.length,
-          waiting: waiting.length,
-          cards: cards.length,
+      <span
+        className="chat-running-status"
+        role="status"
+        aria-label={statusName({
+          running,
+          label,
+          words,
         })}
-        keyOf={({ value }) => value}
-        render={({ value }) => value}
-      />
+      >
+        {running && <WorkingDots />}
+        {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+        {children}
+        <LiveLabel
+          value={words}
+          keyOf={({ value }) => value}
+          render={({ value }) => value}
+        />
+      </span>
       {cards.length > 0 && (
-        <span key={queueKey} className="chat-queue-tasks">
-          {cards.map(card => <TaskReference key={card} id={card} />)}
+        <span className="chat-queue-tasks">
+          {cards.map(card => (
+            <span key={card} className="chat-queue-chip">
+              <TaskReference id={card} />
+            </span>
+          ))}
         </span>
       )}
-    </p>
+    </div>
   )
+}
+
+// What the status says aloud: that Hydra is working, then what its queue holds.
+function statusName({
+  running,
+  label,
+  words,
+}: {
+  running: boolean
+  label: string
+  words: string | null
+}): string | undefined {
+  if (running && words) {
+    return `${label}. ${words}`
+  }
+
+  if (running) {
+    return label
+  }
+
+  return words ?? undefined
 }
 
 // What the running line says about Hydra's queue; null once it is empty.
