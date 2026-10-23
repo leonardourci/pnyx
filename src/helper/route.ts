@@ -14,7 +14,13 @@ const ROUTINE_KINDS: WakeKind[] = [
   'not confirmed',
 ]
 
-export function helperAgent({ state }: { state: HydraState }): AgentConfig | undefined {
+export function helperAgent({
+  state,
+  main,
+}: {
+  state: HydraState
+  main?: AgentConfig
+}): AgentConfig | undefined {
   const config = hydraConfig({ state })
 
   if (config.helper === false || config.hydra.kind !== 'agent') {
@@ -25,7 +31,7 @@ export function helperAgent({ state }: { state: HydraState }): AgentConfig | und
     return config.helper
   }
 
-  const harness = config.hydra.agent?.harness ?? 'claude'
+  const harness = config.hydra.agent?.harness ?? main?.harness ?? 'claude'
 
   return {
     harness,
@@ -42,7 +48,7 @@ export function helperTask({
 }): boolean {
   const card = state.cards[task]
 
-  if (!card || card.id === HYDRA_CARD || card.automaticTask) {
+  if (!card || card.id === HYDRA_CARD || card.automaticTask || card.hold) {
     return false
   }
 
@@ -96,6 +102,41 @@ export function helperEvent({
     if (!state.cards[task]?.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
       return task
     }
+  }
+
+  return undefined
+}
+
+export function helperGrant({
+  state,
+  task,
+  actor,
+}: {
+  state: HydraState
+  task: string
+  actor: string
+}): boolean {
+  const batch = state.helper?.runs[actor.slice('helper:'.length)]
+
+  return actor.startsWith('helper:') && !!batch && !batch.error && batch.tasks.includes(task)
+    && helperTask({
+      state,
+      task,
+    })
+}
+
+export function helperProgress({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): string | undefined {
+  if (event.type === 'hydra.message' && event.data.kind === 'progress' && helperAgent({ state })) {
+    return helperEvent({
+      state,
+      event,
+    })
   }
 
   return undefined

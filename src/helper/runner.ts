@@ -2,7 +2,7 @@ import { readThread } from '../thread/read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
-import { ownerActor, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
+import { ownerActor, type AgentConfig, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { hydraDir, loadHydra, withWriter } from '../store/hydra-store.ts'
 import type { HostedSession, Provider } from '../server/provider.ts'
@@ -74,6 +74,7 @@ export function createRoutineHelper({
   handback,
   outcomesReady,
   bound = TURN_MS,
+  agentFor,
   deadline,
 }: {
   hydraId: string
@@ -96,6 +97,7 @@ export function createRoutineHelper({
   }): void
   outcomesReady(): void
   bound?: number
+  agentFor?(): AgentConfig | undefined
   deadline?({ expire }: { expire(): void }): () => void
 }) {
   let busy = false
@@ -144,7 +146,7 @@ export function createRoutineHelper({
 
   const run = async ({ batch }: { batch: HelperBatch }) => {
     const state = loadHydra({ hydraId }).state
-    const candidate = helperAgent({ state })
+    const candidate = agentFor ? agentFor() : helperAgent({ state })
     const actor = `helper:${batch.id}`
     const releases: (() => void)[] = []
     let cancelDeadline = () => {}
@@ -352,10 +354,12 @@ export function createRoutineHelper({
       tasks,
       prompt,
       seqs,
+      once,
     }: {
       tasks: string[]
       prompt: string
       seqs: number[]
+      once?: string[]
     }): boolean {
       if (closed || busy || !tasks.length) {
         return false
@@ -366,6 +370,7 @@ export function createRoutineHelper({
         tasks: [...new Set(tasks)],
         prompt,
         seqs,
+        once,
       }
       busy = true
       append({
@@ -374,7 +379,6 @@ export function createRoutineHelper({
           data: batch,
         },
       })
-      // run records every failure durably and hands it back to main.
       void run({ batch })
 
       return true

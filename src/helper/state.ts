@@ -5,6 +5,7 @@ export interface HelperBatch {
   tasks: string[]
   prompt: string
   seqs: number[]
+  once?: string[]
   error?: string
 }
 
@@ -36,6 +37,7 @@ export interface HelperState {
   runs: Record<string, HelperBatch>
   outcomes: (HelperOutcome & { seq: number })[]
   handled: number[]
+  wakes: string[]
   delivered: number
 }
 
@@ -55,6 +57,7 @@ export function applyHelper({
     runs: {},
     outcomes: [],
     handled: [],
+    wakes: [],
     delivered: 0,
   }
   const helper = state.helper
@@ -64,6 +67,7 @@ export function applyHelper({
   } else if (event.type === 'hydra.helper-finished') {
     const batch = helper.runs[event.data.batch]
     helper.handled.push(...batch?.seqs ?? [])
+    helper.wakes.push(...batch?.once ?? [])
 
     if (batch && event.data.error) {
       batch.error = event.data.error
@@ -96,3 +100,12 @@ export function outcomeLines({ state }: { state: HydraState }): string[] {
     .filter(outcome => outcome.audience === 'owner' && outcome.seq > (state.helper?.delivered ?? 0))
     .map(outcome => `- ${outcome.task}: ${outcome.summary}`)
 }
+
+export const wakeHandled = ({
+  state,
+  id,
+}: {
+  state: HydraState
+  id: string
+}) =>
+  `${id}:hosted` in state.eventIds || (state.helper?.wakes ?? []).includes(id)
