@@ -670,6 +670,23 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.review') {
+    const reminders = { ...state.hydraReview?.reminders }
+
+    for (const key of event.data.reminders) {
+      reminders[key] = event.at
+    }
+
+    state.hydraReview = {
+      at: event.at,
+      seq: event.seq,
+      block: event.data.block,
+      reminders,
+    }
+
+    return true
+  }
+
   if (event.type === 'board.configured') {
     state.config = structuredClone(event.data)
     state.configured = true
