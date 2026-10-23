@@ -2,7 +2,7 @@ import { commit, required, type Output } from '../cli/commands.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideMove, findCard, type Meta } from '../core/decide.ts'
 import { declareTask, hydraConfig, roleColumn } from '../core/hydra.ts'
-import { HydraError, type HydraState, type LandingRule } from '../core/model.ts'
+import { HydraError, type LandingRule } from '../core/model.ts'
 import { landingLine, taskLanding } from '../landing/rule.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { decideBuild, decideReport, readReport, readReportFile } from './report.ts'
@@ -98,7 +98,7 @@ function reopen({
 }: {
   hydraId: string
   ref: string
-}): HydraState {
+}): void {
   return withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -135,8 +135,6 @@ function reopen({
       if ('event' in decision) {
         writer.append({ event: decision.event })
       }
-
-      return writer.state
     },
   })
 }
@@ -157,6 +155,21 @@ export async function buildCommand({
     value: ref,
     what: 'task id',
   })
+  const before = loadHydra({ hydraId }).state
+
+  // The card leaves Done before it becomes a build: a build in Done would settle away the copy its worker keeps.
+  if (meta.id === undefined || before.eventIds[meta.id] === undefined) {
+    decideBuild({
+      state: before,
+      ref: task,
+      meta,
+    })
+    reopen({
+      hydraId,
+      ref: task,
+    })
+  }
+
   const receipt = commit({
     hydraId,
     meta,
@@ -176,10 +189,7 @@ export async function buildCommand({
     return receipt
   }
 
-  const state = reopen({
-    hydraId,
-    ref: task,
-  })
+  const state = loadHydra({ hydraId }).state
   const card = findCard({
     state,
     ref: task,
