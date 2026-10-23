@@ -1,9 +1,11 @@
+import { parseArgs } from 'node:util'
+import { TASK_OPTIONS } from '../cli/commands.ts'
 import { HydraError, type Card, type HydraState } from '../core/model.ts'
 import { reportActor } from '../core/hydra.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
 import { loadHydra } from '../store/hydra-store.ts'
-import { helperTask } from './route.ts'
+import { helperGrant } from './route.ts'
 import { isHelper, taskLease } from './leases.ts'
 
 const TASK_READS = [
@@ -30,22 +32,6 @@ const READS: Record<string, string[]> = {
   owner: ['memory'],
 }
 
-function flagValue({
-  args,
-  name,
-}: {
-  args: string[]
-  name: string
-}): string | undefined {
-  const index = args.indexOf(name)
-
-  if (index >= 0) {
-    return args[index + 1]
-  }
-
-  return args.find(arg => arg.startsWith(`${name}=`))?.slice(name.length + 1)
-}
-
 function denied(): never {
   throw new AxiError(
     'This action belongs to the main Hydra; record an owner outcome for it',
@@ -62,28 +48,39 @@ export function commandLease({
   args: string[]
   env?: NodeJS.ProcessEnv
 }): () => void {
-  const actor = env.PNYX_ACTOR ?? flagValue({
+  const options = name === 'task' ? TASK_OPTIONS : {
+    ...TASK_OPTIONS,
+    json: { type: 'string' as const },
+    home: {
+      type: 'string' as const,
+      multiple: true,
+    },
+    wait: { type: 'string' as const },
+    after: { type: 'string' as const },
+    confirm: { type: 'boolean' as const },
+  }
+  const {
+    values,
+    positionals,
+  } = parseArgs({
     args,
-    name: '--actor',
-  }) ?? 'cli'
+    options,
+    allowPositionals: true,
+    strict: false,
+  })
+  const actor = env.PNYX_ACTOR ?? String(values.actor ?? 'cli')
   const helper = isHelper({ actor })
 
   if (reportActor({ actor })) {
     return () => {}
   }
 
-  const hydraId = flagValue({
-    args,
-    name: '--hydra',
-  }) ?? env.PNYX_HYDRA ?? 'default'
-  const action = args[0] ?? ''
+  const hydraId = String(values.hydra ?? env.PNYX_HYDRA ?? 'default')
+  const action = positionals[0] ?? ''
   let task: string | undefined
 
   if (helper) {
-    const requestedActor = flagValue({
-      args,
-      name: '--actor',
-    })
+    const requestedActor = values.actor
     const sameActor = requestedActor === undefined || requestedActor === actor
 
     if (hydraId !== env.PNYX_HYDRA || !sameActor || args.some(arg => /^--wait(?:=|$)/.test(arg))) {
@@ -99,20 +96,21 @@ export function commandLease({
         denied()
       }
     } else if (!READS[name]?.includes(action)
-      || (name === 'owner' && args[1] !== 'list')) {
+      || (name === 'owner' && positionals[1] !== 'list')) {
       denied()
     }
   }
 
   if (name === 'task' && !TASK_READS.includes(action) && action !== 'create') {
-    task = args[1]
+    task = positionals[1]
   } else if ([
     'reply',
+    'agent',
     'move',
     'link',
     'outcome',
   ].includes(name)) {
-    task = args[0]
+    task = positionals[0]
   }
 
   if (!task || task.startsWith('--')) {
@@ -141,17 +139,16 @@ export function commandLease({
   }
 
   if (helper) {
-    const batch = state.helper?.runs[actor.slice('helper:'.length)]
-
-    if (!batch || batch.error || !batch.tasks.includes(card.id) || !helperTask({
+    if (!helperGrant({
       state,
       task: card.id,
+      actor,
     })) {
       denied()
     }
 
     if (action === 'answer') {
-      const ask = card.asks?.find(ask => ask.id === args[2])
+      const ask = card.asks?.find(ask => ask.id === positionals[2])
 
       if (!ask || ask.audience !== 'hydra' || ask.escalated) {
         denied()
@@ -214,6 +211,14 @@ export function supervisedCommands<T extends Record<string, Command>>({ commands
         return result
       } catch (error) {
         release()
+
+        if (error instanceof TypeError && 'code' in error && String(error.code).startsWith('ERR_PARSE_ARGS')) {
+          throw new AxiError(
+            error.message,
+            'VALIDATION_ERROR',
+            ['Run the command with --help'],
+          )
+        }
 
         if (error instanceof HydraError) {
           throw new AxiError(

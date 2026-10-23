@@ -1,11 +1,16 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { randomUUID } from 'node:crypto'
+import { helperGrant } from './route.ts'
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
 import { acquireLock, hydraDir, loadHydra } from '../store/hydra-store.ts'
 
 interface Lease {
   actor: string
-  pid: number
+  holders: {
+    id: string
+    pid: number
+  }[]
 }
 
 export const isHelper = ({ actor }: { actor: string }) => actor.startsWith('helper:')
@@ -31,25 +36,61 @@ function readLease({ path }: { path: string }): Lease | undefined {
     'utf8',
   ))
 
-  if (!Number.isInteger(lease.pid) || lease.pid <= 0 || typeof lease.actor !== 'string') {
+  if (typeof lease.actor !== 'string' || !Array.isArray(lease.holders)
+    || lease.holders.some(holder => typeof holder.id !== 'string' || !Number.isInteger(holder.pid) || holder.pid <= 0)) {
     throw new Error('Invalid task lease')
   }
 
-  try {
-    process.kill(
-      lease.pid,
-      0,
-    )
+  lease.holders = lease.holders.filter(holder => {
+    try {
+      process.kill(
+        holder.pid,
+        0,
+      )
 
-    return lease
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-      throw error
+      return true
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+        throw error
+      }
+
+      return false
     }
+  })
 
+  if (!lease.holders.length) {
     rmSync(path)
 
     return undefined
+  }
+
+  return lease
+}
+
+function writeLease({
+  path,
+  lease,
+}: {
+  path: string
+  lease: Lease
+}): void {
+  const temporary = `${path}.${randomUUID()}.tmp`
+
+  try {
+    writeFileSync(
+      temporary,
+      JSON.stringify(lease),
+      { mode: 0o600 },
+    )
+    renameSync(
+      temporary,
+      path,
+    )
+  } finally {
+    rmSync(
+      temporary,
+      { force: true },
+    )
   }
 }
 
@@ -91,7 +132,7 @@ export function taskLease({
   actor: string
   pid?: number
 }): () => void {
-  let claimed = false
+  const holder = randomUUID()
   const dir = hydraDir({ hydraId })
   const unlock = acquireLock({ dir })
 
@@ -109,44 +150,41 @@ export function taskLease({
       })
     }
 
-    if (!lease) {
-      if (isHelper({ actor })) {
-        const batch = loadHydra({ hydraId }).state.helper?.runs[actor.slice('helper:'.length)]
-
-        if (!batch || batch.error || !batch.tasks.includes(task)) {
-          throw new HydraError({
-            message: 'Helper has no live grant for this task',
-            code: 'NOT_ALLOWED',
-          })
-        }
-      }
-
-      writeFileSync(
-        path,
-        JSON.stringify({
-          actor,
-          pid,
-        }),
-        {
-          flag: 'wx',
-          mode: 0o600,
-        },
-      )
-      claimed = true
+    if (isHelper({ actor }) && !helperGrant({
+      state: loadHydra({ hydraId }).state,
+      actor,
+      task,
+    })) {
+      throw new HydraError({
+        message: 'Helper has no live grant for this task',
+        code: 'NOT_ALLOWED',
+      })
     }
+
+    const holders = [
+      ...lease?.holders ?? [],
+      {
+        id: holder,
+        pid,
+      },
+    ]
+    writeLease({
+      path,
+      lease: {
+        actor,
+        holders,
+      },
+    })
   } finally {
     unlock()
   }
 
   return () => {
-    if (!claimed) {
-      return
-    }
-
     releaseTask({
       hydraId,
       task,
       actor,
+      holder,
     })
   }
 }
@@ -155,10 +193,12 @@ export function releaseTask({
   hydraId,
   task,
   actor,
+  holder,
 }: {
   hydraId: string
   task: string
   actor: string
+  holder?: string
 }): void {
   const dir = hydraDir({ hydraId })
   const unlock = acquireLock({ dir })
@@ -171,7 +211,17 @@ export function releaseTask({
     const lease = readLease({ path })
 
     if (lease?.actor === actor) {
-      rmSync(path)
+      lease.holders = lease.holders.filter(entry =>
+        holder ? entry.id !== holder : entry.pid !== process.pid)
+
+      if (lease.holders.length) {
+        writeLease({
+          path,
+          lease,
+        })
+      } else {
+        rmSync(path)
+      }
     }
   } finally {
     unlock()
