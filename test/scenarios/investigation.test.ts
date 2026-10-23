@@ -100,33 +100,41 @@ test(
       return path
     }
 
-    for (const [
+    for (const {
       name,
       text,
-    ] of [
-        [
-          'empty.md',
-          '',
-        ],
-        [
-          'huge.md',
-          'x'.repeat(REPORT_MAX_CHARS + 1),
-        ],
+      error,
+    } of [
+        {
+          name: 'blank.md',
+          text: '  \n',
+          error: 'the report is empty',
+        },
+        {
+          name: 'huge.md',
+          text: 'x'.repeat(REPORT_MAX_CHARS + 1),
+          error: `keep it under ${REPORT_MAX_CHARS}`,
+        },
       ]) {
+      const refusal = await worker.refusal({
+        args: [
+          'task',
+          'report',
+          'slow',
+          '--file',
+          file({
+            name,
+            text,
+          }),
+        ],
+      })
       assert.equal(
-        await worker.refused({
-          args: [
-            'task',
-            'report',
-            'slow',
-            '--file',
-            file({
-              name: name!,
-              text: text!,
-            }),
-          ],
-        }),
+        refusal.code,
         'VALIDATION_ERROR',
+      )
+      assert.ok(
+        refusal.error?.includes(error),
+        refusal.error,
       )
     }
 
@@ -214,17 +222,22 @@ test(
       }),
       /^worker: delivered$/m,
     )
-    const build = ({ received }: { received: string[] }) => received.filter(text => text.startsWith('The owner approved building this.'))
+    const buildMessages = ({ received }: { received: string[] }) => received.filter(text => text.startsWith('The owner approved building this.'))
     await until({
       what: 'the worker to finish its build turn',
-      check: () => build({ received: s.received({ cwd: copy }) }).length > 0 && s.task({ key: 'slow' }).sessionActivity === 'finished',
+      check: () => buildMessages({ received: s.received({ cwd: copy }) }).length > 0 && s.task({ key: 'slow' }).sessionActivity === 'finished',
     })
-    const [message] = build({ received: s.received({ cwd: copy }) })
+    const [message] = buildMessages({ received: s.received({ cwd: copy }) })
     assert.match(
       message!,
       /Start the build on a fresh branch from the up-to-date default branch.* Landing: commit on your branch, push it, open a ready pull request/,
     )
     const built = s.task({ key: 'slow' })
+    // The card left Done before it became a build, so no saved state had a build in Done to settle.
+    const kind = s.events().find(e => e.type === 'task.kind' && e.cardId === id)!
+    const reopened = s.events().find(e => e.type === 'task.declared' && e.cardId === id
+      && e.data.note === 'Building from its investigation')!
+    assert.ok(reopened.seq < kind.seq)
     assert.deepEqual(
       [
         built.kind,
@@ -261,18 +274,18 @@ test(
             'done',
           ],
         })).error,
-        await s.ownerRefused({
+        (await s.ownerRefusal({
           args: [
             'task',
             'build',
             'slow',
           ],
-        }),
-        build({ received: s.received({ cwd: copy }) }).length,
+        })).error,
+        buildMessages({ received: s.received({ cwd: copy }) }).length,
       ],
       [
         'not done yet: 1 file uncommitted',
-        'CONFLICT',
+        `task ${id} is already a build task`,
         1,
       ],
     )
