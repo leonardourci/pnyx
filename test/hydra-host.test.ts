@@ -324,6 +324,43 @@ test(
 )
 
 test(
+  'each owner message after a failed Codex resume tries the resume again and reports its own failure',
+  async () => {
+    codexRule()
+    const first = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await send({ text: 'Hello Codex' })
+    await until({ check: finished })
+    await server.close()
+    const refusing = fakeCodex({
+      root: home,
+      refuse: 'thread/resume',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: refusing.spawnCodex,
+    })
+    const failures = () => (state().hydraMessages ?? []).filter(m => /Hydra could not start/.test(m.text))
+    const resumes = () => refusing.messages().filter(m => m.method === 'thread/resume')
+    await send({ text: 'First try' })
+    await until({ check: () => failures().length === 1 })
+    assert.equal(
+      hydra()?.activity,
+      'interrupted',
+    )
+    await send({ text: 'Second try' })
+    await until({ check: () => failures().length === 2 })
+    assert.equal(
+      resumes().length,
+      2,
+    )
+  },
+)
+
+test(
   'an owner message reaches Hydra while the server is too busy to answer for over a second',
   async () => {
     const sdk = hydraSdk()
