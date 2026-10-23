@@ -1,3 +1,4 @@
+import { taskInstructions } from '../core/intent.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { taskStops } from '../landing/rule.ts'
 import { chooseCandidate, accountEnvironment, dispatchTask, hostedOverride, ruleCandidates, startCandidates, type DispatchChoice, type Override } from '../dispatch/select.ts'
@@ -218,7 +219,7 @@ export function taskPrompt({
   return [
     header,
     project,
-    card.brief?.trim(),
+    taskInstructions({ card }),
     instructions,
     progress,
   ].filter(Boolean).join('\n\n')

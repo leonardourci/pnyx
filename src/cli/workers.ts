@@ -33,6 +33,7 @@ const TRACKED: readonly EventType[] = [
   'task.report',
   'task.landing',
   'task.brief',
+  'task.intent',
   'task.visibility',
   'task.declared',
   'task.asked',

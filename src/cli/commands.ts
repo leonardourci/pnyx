@@ -3,6 +3,9 @@ import { taskLandingCommand } from '../landing/task-landing.ts'
 import { buildCommand, reportCommand } from '../investigation/cli.ts'
 import { parseKind } from '../investigation/report.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
+import { taskSpend } from '../spend/tasks.ts'
+import { staleLearnings } from '../memory/learnings.ts'
+import { ownerAsk, taskInstructions } from '../core/intent.ts'
 import { setupCheckOutput } from '../setup/check.ts'
 import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
@@ -84,6 +87,7 @@ const EXPLAINED: readonly EventType[] = [
   'card.moved',
   'task.created',
   'task.brief',
+  'task.intent',
   'task.visibility',
   'task.reminder',
 ]
@@ -839,6 +843,8 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       title: { type: 'string' },
       project: { type: 'string' },
       brief: { type: 'string' },
+      ask: { type: 'string' },
+      message: { type: 'string' },
       key: { type: 'string' },
       folder: { type: 'string' },
       session: { type: 'string' },
@@ -1201,6 +1207,18 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           created.kind = kind
         }
 
+        const ask = values.ask
+
+        if (ask !== undefined && String(ask).trim()) {
+          created.ask = ownerAsk({
+            state,
+            text: String(ask),
+            message: values.message as string | undefined,
+            actor: m.actor,
+            at: m.at,
+          })
+        }
+
         return hydraEvent({
           state,
           meta: m,
@@ -1312,9 +1330,16 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }),
     })
 
+    const spend = taskSpend({
+      state,
+      events: readEvents({ hydraId }),
+      task: task.id,
+    })
+
     if (values.full) {
       return {
         task,
+        spend,
         worker: task.sessionIds?.[0] ? state.sessions?.[task.sessionIds[0]] : undefined,
       }
     }
@@ -1324,6 +1349,8 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         ...cardRow({ card: task }),
         key: task.key,
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
+        ask: task.ask?.length ? task.ask : 'none: no owner words recorded',
+        spend,
         brief: task.brief ?? 'none',
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
@@ -1536,6 +1563,63 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
               },
             },
           })
+      },
+    })
+  }
+
+  if (action === 'intent') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'task.intent',
+        card: ref,
+      },
+      decide: ({ state }) => {
+        const task = findCard({
+          state,
+          ref,
+        })
+
+        if (task.automaticTask || task.id === HYDRA_CARD) {
+          throw new HydraError({
+            message: 'Choose a task for the owner ask',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        const entry = ownerAsk({
+          state,
+          text: required({
+            value: values.text as string | undefined,
+            what: '--text',
+          }),
+          message: values.message as string | undefined,
+          actor: m.actor,
+          at: m.at,
+        })
+
+        const recorded = task.ask?.some(ask => ask.message === entry.message
+          && ask.text === entry.text)
+
+        if (entry.message && recorded) {
+          return { skipped: 'unchanged' }
+        }
+
+        return hydraEvent({
+          state,
+          meta: m,
+          cardId: task.id,
+          change: {
+            type: 'task.intent',
+            data: entry,
+          },
+        })
       },
     })
   }
@@ -1773,7 +1857,7 @@ async function afterAttach({
         card: attachment.cardId,
         text: [
           context,
-          attachment.data.brief,
+          taskInstructions({ card: state.cards[attachment.cardId]! }),
         ].filter(Boolean).join('\n\n'),
         expectedSession: attachment.data.session,
         homes: home ? [home] : [],
@@ -2958,10 +3042,21 @@ function memoryList({
   const entries = Object.entries(memory).map(([
     key,
     entry,
-  ]) => ({
-    key,
-    ...entry,
-  }))
+  ]) => {
+    const row: Output = {
+      key,
+      ...entry,
+    }
+
+    if (entry.lines) {
+      row.stale = staleLearnings({
+        lines: entry.lines,
+        now: new Date().toISOString(),
+      })
+    }
+
+    return row
+  })
 
   return {
     memory: entries.length ? entries : empty,
@@ -3034,7 +3129,7 @@ const owner = guard({
       },
       positionals: 2,
     })
-    const usage = 'use owner memory list|set|forget'
+    const usage = 'use owner memory list|set|forget|confirm'
 
     if (positionals[0] !== 'memory') {
       throw new HydraError({
@@ -3053,6 +3148,26 @@ const owner = guard({
           empty: 'none: no owner memory yet',
         }),
         revision: ownerRevision(),
+      }
+    }
+
+    if (action === 'confirm') {
+      const memory = ownerMemory()
+      const line = required({
+        value: values.text as string | undefined,
+        what: '--text <existing learning line>',
+      })
+      const entry = saveOwnerMemory({
+        key: 'learnings',
+        after: memory.learnings?.text ?? null,
+        confirmed: line,
+        meta: meta({ values }),
+      })
+
+      return {
+        memory: 'learnings',
+        state: 'confirmed',
+        revision: entry?.seq,
       }
     }
 
@@ -3493,6 +3608,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.reminder': return event.data.after ? `Reminder set for ${event.data.after}` : 'Reminder cleared'
     case 'task.reminder-due': return event.data.message.text
+    case 'task.intent': return 'Owner ask added'
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
@@ -4048,7 +4164,7 @@ except its chat lines, which are listed but never end a wait; with --wait it blo
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
-  owner: `usage: pnyx-axi owner memory list|set|forget [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+  owner: `usage: pnyx-axi owner memory list|set|forget|confirm [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
@@ -4067,7 +4183,8 @@ repeat the same command with --confirm <token>. Browser actions already carry th
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list | show <id> [--full]
