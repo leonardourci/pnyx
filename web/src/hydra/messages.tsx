@@ -25,7 +25,8 @@ import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
-  blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
+  MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
+  type CommentPassage,
 } from './message-selection.ts'
 import { columnLook, receiptLabel } from './view.ts'
 import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
@@ -777,6 +778,7 @@ export function Messages({
                 <MessageText
                   text={entry.text}
                   streaming={entry.streaming}
+                  decorations={MESSAGE_DECORATIONS}
                   openTask={openTask}
                   columnLook={lookColumn}
                   block={({
