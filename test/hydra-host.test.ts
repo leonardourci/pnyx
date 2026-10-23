@@ -334,6 +334,7 @@ test(
     })
     await send({ text: 'Hello Codex' })
     await until({ check: finished })
+    const session = state().config!.hydra.session
     await server.close()
     const refusing = fakeCodex({
       root: home,
@@ -357,6 +358,12 @@ test(
       resumes().length,
       2,
     )
+    // A failed resume never replaces Hydra's thread, which would lose its conversation.
+    assert.equal(
+      state().config!.hydra.session,
+      session,
+    )
+    assert.ok(!refusing.messages().some(m => m.method === 'thread/start'))
   },
 )
 
@@ -369,11 +376,11 @@ test(
       query: sdk.query,
     })
     const sent = send({ text: 'Hello while busy' })
-    // The server shares this event loop, so holding it delays the server's health answer.
+    // The server shares this event loop, so holding it delays its health answer as slow spend counting does.
     const busyUntil = Date.now() + 1500
 
     while (Date.now() < busyUntil) {
-      // Busy, as spend counting over large transcripts holds a real server.
+      // Holds the event loop.
     }
 
     await sent
