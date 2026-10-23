@@ -1374,6 +1374,33 @@ test(
 )
 
 test(
+  'a Hydra that failed to load answers its pages with 404 and the reason, never a redirect',
+  async () => {
+    mkdirSync(
+      hydraDir({ hydraId: 'broken' }),
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        hydraDir({ hydraId: 'broken' }),
+        'events.jsonl',
+      ),
+      'not json\n',
+    )
+    server = await startServer({ hydraId: 'default' })
+    const response = await http({
+      method: 'GET',
+      path: '/hydra/broken/task/1',
+    })
+    assert.equal(
+      response.status,
+      404,
+    )
+    assert.ok((JSON.parse(response.text) as { reason?: string }).reason)
+  },
+)
+
+test(
   'a server.json left by a dead server is not trusted, even when its pid was reused',
   async () => {
   // A live process that is not a Pnyx server, and a port nothing listens on.
