@@ -1436,7 +1436,7 @@ export function createHost({
     }
   }
 
-  // When a paused task's wait ends: its --until, or pauseDelay after a worker paused without one or a hold.
+  // When a paused task's wait ends: its --until, never for a hold, or pauseDelay after a worker's pause with neither.
   const waitEnd = ({ card }: { card: Card }): number | undefined => {
     const declaration = pausedDeclaration({ card })
 
@@ -1448,9 +1448,14 @@ export function createHost({
       return Date.parse(declaration.until)
     }
 
-    // Hydra or the owner parking a task, a hold they asked for, or a task with no worker, is not a wait.
-    const parked = declaration.hold || declaration.actor === HYDRA_ACTOR
-      || ownerActor({ actor: declaration.actor }) || !card.sessionIds?.length
+    // A hold keeps its worker out of stall checks too, until the owner or Hydra resumes it.
+    if (declaration.hold) {
+      return Infinity
+    }
+
+    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
+    const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
+      || !card.sessionIds?.length
 
     if (parked) {
       return undefined

@@ -1686,8 +1686,8 @@ test(
       stallDelay: 200,
       pauseDelay: 300,
     })
-    const waits = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-      .filter(m => m.includes('Wait ended:'))
+    const hydraTurns = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+    const waits = () => hydraTurns().filter(m => m.includes('Wait ended:'))
     const id = state().keys.schema!
     const pause = ({ args }: { args: string[] }) => commands.task([
       'status',
@@ -1730,11 +1730,12 @@ test(
       ]) as { task: { status: string } }).task.status),
       /^paused on hold: Stopped at the owner's request/,
     )
+    const turnsBeforeHold = hydraTurns().length
     await sleep({ ms: 900 })
     assert.equal(
-      waits().length,
-      0,
-      'a hold has no timer',
+      hydraTurns().length,
+      turnsBeforeHold,
+      'a hold wakes Hydra for neither an ended wait nor a stall',
     )
 
     await pause({
