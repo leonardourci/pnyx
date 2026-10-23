@@ -1150,9 +1150,11 @@ test(
       text: 'Continue the review',
       id: 'continue',
     })
-    await finished({
-      s,
-      turns: 2,
+    // The worker's finished turns wake Hydra too, so wait for the owner's message rather than a turn count.
+    await until({
+      what: 'Hydra to finish the owner\'s next message',
+      check: () => s.received({ cwd: hydra.cwd }).includes('Continue the review')
+        && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     assert.equal(
       s.received({ cwd: folder }).filter(text => text === comments).length,
