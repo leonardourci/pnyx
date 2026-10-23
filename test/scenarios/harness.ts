@@ -215,7 +215,10 @@ export async function openPage({
 
 // Starts one disposable Pnyx for the test file (temporary PNYX_HOME, random port, fake agents);
 // call it at the top level of the file. Nothing outside its temporary folder is read or written.
-export function scenarioGroup() {
+export function scenarioGroup({ retryDelays }: {
+  // How long a failed Hydra start waits before each retry.
+  retryDelays?: number[]
+} = {}) {
   const root = realpathSync(mkdtempSync(join(
     tmpdir(),
     'pnyx-scenario-',
@@ -274,6 +277,7 @@ export function scenarioGroup() {
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
+      retryDelays,
     })
   }
 
