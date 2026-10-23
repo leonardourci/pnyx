@@ -2241,6 +2241,13 @@ test(
       (await t.spend())[card]?.total,
       40,
     )
+    const later = await tab()
+    await later.next()
+    assert.equal(
+      (await later.spend())[card]?.total,
+      40,
+    )
+    later.ws.close()
     const seq = loadHydra({ hydraId: 'default' }).state.seq
     appendFileSync(
       fixture.transcript,
@@ -2356,7 +2363,7 @@ test(
     )
     assert.ok(checks.length > 0 && checks.every(Boolean))
     assert.ok(
-      gap < countMs / 2,
+      gap < 150,
       `the event loop stalled ${Math.round(gap)} ms while counting took ${Math.round(countMs)} ms`,
     )
     t.ws.close()
