@@ -1078,7 +1078,6 @@ async function mountOwnedHydra({
     transcripts.delete(path)
   }
 
-  // A file replaced under its path is watched again on the read its rename starts.
   const watchTranscript = ({ path }: { path: string }) => {
     if (closed || transcripts.has(path)) {
       return
@@ -1087,11 +1086,7 @@ async function mountOwnedHydra({
     try {
       const watcher = watch(
         path,
-        event => {
-          if (event === 'rename') {
-            unwatchTranscript({ path })
-          }
-
+        () => {
           touchPath({ path })
 
           for (const map of threadSubscriptions) {
@@ -1145,15 +1140,22 @@ async function mountOwnedHydra({
           _event,
           filename,
         ) => {
-          const changed = filename ? join(
-            dir,
-            String(filename),
-          ) : undefined
+          if (filename) {
+            touchPath({
+              path: join(
+                dir,
+                String(filename),
+              ),
+            })
+
+            return
+          }
+
           touchLatest({
             ids: Object.values(state.cards).filter(c => {
               const path = threadPath({ card: c })
 
-              return path && (changed ? path === changed : dirname(path) === dir)
+              return path && dirname(path) === dir
             })
               .map(c => c.id),
           })
