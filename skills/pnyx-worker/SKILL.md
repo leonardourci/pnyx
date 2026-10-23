@@ -36,7 +36,7 @@ pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydr
 - Mention every pull request by its full URL in reports and status notes.
 - A completion note accounts for each part of the saved owner's ask, with results and proof or the remaining limitation.
 - Your declarations place your card: `working` moves it to In progress, `needs_you` or `blocked` to Needs you, and `done` to Done; `paused` parks it with its note and wait deadline. Answering the actual owner question or permission restores the previous phase unless another owner gate remains.
-- Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step. Ending your turn while still declared `working` reads as a stall after a few minutes, so declare what you wait on before you stop.
+- Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step. Ending your turn while still declared `working` wakes Hydra to ask why, so declare what you wait on before you stop.
 
 Send routine progress with `pnyx-axi hydra send --task <task> --kind progress --text "<what changed>" --hydra <hydra>`: it updates your card and reaches Hydra with its next wake, without waking it. A report Hydra must act on now, such as a page link to hand the owner, leaves out `--kind progress`. Questions, blockers and results never go this way: they take `task ask` and `task status`. Hydra reads every report as yours, never as the owner's words, and a report never answers a question.
 

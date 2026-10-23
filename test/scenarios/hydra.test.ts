@@ -458,7 +458,7 @@ test(
       const batch = s.received({ cwd: agent.cwd })[1]!
       assert.match(
         batch,
-        /^<pnyx-wake>4 worker reports/,
+        /^<pnyx-wake>Why you are woken:\n- \[@[^\]]+\]\(pnyx-task:[^)]+\) asked: ask-\d+: "Which parser should own dates\?"\n4 worker reports/,
       )
       const envelopes = batch.split('<pnyx-report').slice(1)
       assert.equal(
@@ -729,7 +729,7 @@ test(
       const batch = agent.received[2]!
       assert.match(
         batch,
-        /^<pnyx-wake>3 worker reports arrived while you were busy\./,
+        /^<pnyx-wake>Why you are woken:\n- \[@Fix add\]\(pnyx-task:[^)]+\) report: from worker:[^\n]+\n(- [^\n]+\n)*3 worker reports arrived while you were busy\./,
       )
 
       for (const text of [
@@ -1150,9 +1150,11 @@ test(
       text: 'Continue the review',
       id: 'continue',
     })
-    await finished({
-      s,
-      turns: 2,
+    // The worker's finished turns wake Hydra too, so wait for the owner's message rather than a turn count.
+    await until({
+      what: 'Hydra to finish the owner\'s next message',
+      check: () => s.received({ cwd: hydra.cwd }).includes('Continue the review')
+        && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     assert.equal(
       s.received({ cwd: folder }).filter(text => text === comments).length,

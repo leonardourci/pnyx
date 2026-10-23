@@ -326,6 +326,8 @@ export interface Card {
   sessionActivity?: string
   // When the session's current turn began, while it is working.
   workingSince?: string
+  // The change that ended the session's last working turn.
+  turnEndedSeq?: number
   stoppedAt?: string
   agent?: AgentRef
   launch?: AgentLaunch
@@ -498,11 +500,63 @@ export function landingRule({ project }: { project: Pick<HydraProject, 'landing'
   }
 }
 
-// How many checks gh-axi's checks line ("3 passed, 1 failed, 4 total") counts as failed.
-export function failedChecks({ checks }: { checks?: string }): number {
-  const failed = /(\d+) failed/.exec(checks ?? '')
+// The owner's rule for this task when one was recorded, otherwise its project's.
+export function cardLanding({
+  card,
+  projects,
+}: {
+  card: Card
+  projects: HydraProject[]
+}): LandingRule | undefined {
+  if (card.landing) {
+    return card.landing
+  }
 
-  return failed ? Number(failed[1]) : 0
+  const project = projects.find(p => !p.detached
+    && (p.path === card.project || p.name === card.project))
+
+  return project ? landingRule({ project }) : undefined
+}
+
+// gh-axi's checks line ("3 passed, 1 failed, 1 skipped, 6 total"), counted.
+function checkTally({ checks }: { checks?: string }) {
+  const count = ({ word }: { word: string }) => Number(new RegExp(`(\\d+) ${word}`).exec(checks ?? '')?.[1] ?? 0)
+
+  return {
+    passed: count({ word: 'passed' }),
+    failed: count({ word: 'failed' }),
+    skipped: count({ word: 'skipped' }),
+    total: count({ word: 'total' }),
+  }
+}
+
+export function failedChecks({ checks }: { checks?: string }): number {
+  return checkTally({ checks }).failed
+}
+
+// Whatever is neither passed, failed nor skipped is still running.
+export function pendingChecks({ checks }: { checks?: string }): number {
+  const {
+    passed,
+    failed,
+    skipped,
+    total,
+  } = checkTally({ checks })
+
+  return Math.max(
+    0,
+    total - passed - failed - skipped,
+  )
+}
+
+// At least one check passed or failed, so the line reports a real run rather than none or only skips.
+export function ranChecks({ checks }: { checks?: string }): boolean {
+  const {
+    passed,
+    failed,
+  } = checkTally({ checks })
+
+  return passed + failed > 0
 }
 
 export interface HydraProject {

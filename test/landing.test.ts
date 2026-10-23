@@ -8,7 +8,8 @@ import { commands } from '../src/cli/commands.ts'
 import { taskPrompt } from '../src/cli/start.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraDigest } from '../src/core/digest.ts'
-import { hydraConfig, hydraEvent, unwatchedPullRequests, wakesHydra } from '../src/core/hydra.ts'
+import { hydraConfig, hydraEvent, unwatchedPullRequests } from '../src/core/hydra.ts'
+import { wakesHydra } from '../src/core/wake-reasons.ts'
 import type { Card, Link, TaskCopy } from '../src/core/model.ts'
 import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
@@ -711,7 +712,7 @@ test(
 )
 
 test(
-  'a merged pull request wakes Hydra; failed checks wake it only when the task has no worker',
+  'a merged pull request or settled checks wake Hydra; a failure while checks still run wakes it only when the task has no worker',
   () => {
     const state = loadHydra({ hydraId: 'default' }).state
     const card = {
@@ -792,21 +793,118 @@ test(
         before: { state: 'open' },
         after: {
           state: 'open',
-          checks: '0 passed, 1 failed, 1 total',
+          checks: '0 passed, 1 failed, 2 total',
         },
         worker: true,
       }),
       false,
+      'a failure while another check runs goes to the worker alone',
     )
     assert.equal(
       linked({
         before: { state: 'open' },
         after: {
           state: 'open',
-          checks: '0 passed, 1 failed, 1 total',
+          checks: '0 passed, 1 failed, 2 total',
         },
       }),
       true,
+    )
+
+    const settled = ({
+      before,
+      after,
+      draft = false,
+    }: {
+      before?: string
+      after: string
+      draft?: boolean
+    }) => linked({
+      before: {
+        state: 'open',
+        checks: before,
+      },
+      after: {
+        state: 'open',
+        checks: after,
+        draft,
+      },
+      worker: true,
+    })
+
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      true,
+      'checks going green wake Hydra even with a live worker',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '1 passed, 1 failed, 2 total',
+      }),
+      true,
+      'checks going red wake Hydra too',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 1 failed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      true,
+      'a re-run that turns green wakes Hydra',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 3 total',
+        after: '2 passed, 3 total',
+      }),
+      false,
+      'checks still running wake nobody',
+    )
+    assert.equal(
+      settled({
+        before: '2 passed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      false,
+      'an unchanged result is not news',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '2 passed, 2 total',
+        draft: true,
+      }),
+      false,
+      'a draft is not ready for anyone',
+    )
+    assert.equal(
+      settled({
+        before: '2 pending, 2 total',
+        after: '2 skipped, 2 total',
+      }),
+      false,
+      'checks that all skipped ran nothing',
+    )
+    assert.equal(
+      linked({
+        before: {
+          state: 'open',
+          checks: '2 passed, 2 total',
+          draft: true,
+        },
+        after: {
+          state: 'open',
+          checks: '2 passed, 2 total',
+          draft: false,
+        },
+        worker: true,
+      }),
+      true,
+      'a draft marked ready with green checks is news',
     )
     assert.equal(
       linked({

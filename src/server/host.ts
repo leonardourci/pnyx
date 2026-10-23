@@ -20,7 +20,8 @@ import { taskMention } from '../mentions/mentions.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
-import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
+import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
+import { reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
 import { freeTask } from '../cli/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
@@ -123,9 +124,11 @@ export interface Host {
   wake({
     seq,
     card,
+    reasons,
   }: {
     seq: number
     card: string
+    reasons: string[]
   }): void
   // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
   unread({ seq }: { seq: number }): void
@@ -210,6 +213,12 @@ const WORKER_COMMANDS = [
 // The agent must not inherit the server's terminal, task or actor.
 const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
+// A stall, ended wait or unconfirmed reply the stall check found, as one reason line.
+type StallItem = WakeReason & {
+  id: string
+  card: string
+}
+
 // A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
 // The account a harness runs under: the one asked for, else the main one, else the first for that harness.
 const harnessAccount = ({
@@ -272,39 +281,52 @@ const REPLY_RULES = [
   'Answer worker questions already settled by standing preferences. On the second or plainly recurring snag, add one line to the project worker-notes and tell the owner in one sentence.',
 ].join('\n')
 
-// One check turn: the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
+// A worker's words cannot close the wake, or what follows them would reach Hydra outside it.
+const sealed = ({ text }: { text: string }) => text.replace(
+  /<\/pnyx-wake/gi,
+  '<\\/pnyx-wake',
+)
+
+// Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
+const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.`
+
+// One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 function wakeText({
   hydraId,
   after,
+  reasons,
   reports,
   check,
 }: {
   hydraId: string
   after: number
+  reasons: string[]
   reports: HydraMessage[]
   check: boolean
 }): string {
   const lines: string[] = []
+
+  if (reasons.length) {
+    lines.push(
+      'Why you are woken:',
+      ...reasons.map(line => sealed({ text: line })),
+    )
+  }
 
   if (reports.length) {
     const count = reports.length === 1 ? 'A worker report' : `${reports.length} worker reports`
     lines.push(`${count} arrived while you were busy. Handle them together and answer once.`)
 
     for (const message of reports) {
-      // A report cannot close the wake either.
-      const envelope = hydraDelivery({ message }).replace(
-        /<\/pnyx-wake/gi,
-        '<\\/pnyx-wake',
-      )
-      lines.push(envelope)
+      lines.push(sealed({ text: hydraDelivery({ message }) }))
     }
   }
 
   if (check) {
-    lines.push(`A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists.`)
+    lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   }
 
-  lines.push(`If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.`)
+  lines.push(QUIET_RULE)
   lines.push(REPLY_RULES)
 
   return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
@@ -539,6 +561,8 @@ export function createHost({
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
   // Changes since Hydra's last finished check turn; the ones through readThrough are in its running turn.
   let updates: QueuedUpdate[] = []
+  // Each queued change's reason lines, worked out from the state it landed in.
+  const wakeReasonsAt = new Map<number, string[]>()
   let readThrough = 0
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -1630,6 +1654,10 @@ export function createHost({
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
       && !reportSeqs.has(update.seq))
+    const reasons = [
+      ...new Set(updates.filter(update => update.seq > after && update.seq <= through)
+        .flatMap(update => wakeReasonsAt.get(update.seq) ?? [])),
+    ]
     void host.hydra({
       id: wakeId({
         through,
@@ -1639,6 +1667,7 @@ export function createHost({
       text: wakeText({
         hydraId,
         after,
+        reasons,
         reports,
         check: otherChanges || !reports.length,
       }),
@@ -1647,6 +1676,12 @@ export function createHost({
 
   const finishReading = () => {
     const unread = updates.filter(update => update.seq > readThrough)
+
+    for (const seq of wakeReasonsAt.keys()) {
+      if (seq <= readThrough) {
+        wakeReasonsAt.delete(seq)
+      }
+    }
 
     if (unread.length !== updates.length) {
       updates = unread
@@ -1721,10 +1756,7 @@ export function createHost({
     state: HydraState
     card: Card & { agent: AgentRef }
     now: number
-  }): {
-    id: string
-    text: string
-  }[] => {
+  }): StallItem[] => {
     const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
 
     if (requests.length) {
@@ -1738,7 +1770,9 @@ export function createHost({
         return [
           {
             id: `stall:${p.id}`,
-            text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer`,
+            card: card.id,
+            kind: 'permission',
+            detail: `${p.tool} has waited ${Math.round(waited / 1000)} s for an answer`,
           },
         ]
       })
@@ -1770,7 +1804,9 @@ export function createHost({
       return [
         {
           id: `stall:${card.id}:tool:${busySince}`,
-          text: `the worker on ${card.id} has been inside one tool call for ${Math.round(busyFor / 1000)} s`,
+          card: card.id,
+          kind: 'quiet',
+          detail: `the worker has been inside one tool call for ${Math.round(busyFor / 1000)} s`,
         },
       ]
     }
@@ -1788,12 +1824,14 @@ export function createHost({
     return [
       {
         id: `stall:${card.id}:${seen}`,
-        text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+        card: card.id,
+        kind: 'quiet',
+        detail: `the worker has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
       },
     ]
   }
 
-  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; its finished turn never wakes Hydra.
+  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; this repeats the turn-ended wake while it lasts.
   const idleStall = ({
     state,
     card,
@@ -1802,10 +1840,7 @@ export function createHost({
     state: HydraState
     card: Card & { agent: AgentRef }
     now: number
-  }): {
-    id: string
-    text: string
-  }[] => {
+  }): StallItem[] => {
     const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
     const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
     const asking = card.attention.some(a => a.blocking && !a.answered)
@@ -1829,7 +1864,9 @@ export function createHost({
     return [
       {
         id: `stall:${card.id}:idle:${seen}`,
-        text: `the worker on ${card.id} ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
+        card: card.id,
+        kind: 'turn ended',
+        detail: `the worker ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
       },
     ]
   }
@@ -1841,10 +1878,7 @@ export function createHost({
   }: {
     state: HydraState
     now: number
-  }): {
-    id: string
-    text: string
-  }[] => Object.values(state.cards).flatMap(card => {
+  }): StallItem[] => Object.values(state.cards).flatMap(card => {
     const declaredWaitEnd = waitEnd({ card })
     const declaration = pausedDeclaration({ card })
 
@@ -1866,18 +1900,17 @@ export function createHost({
     return [
       {
         id,
-        text: `the worker on ${card.id} paused ${named}${note}`,
+        card: card.id,
+        kind: 'wait ended',
+        detail: `the worker paused ${named}${note}`,
       },
     ]
   })
 
   // A message the worker never confirmed after its resends wakes Hydra once; the server reports it each check.
-  const unconfirmedReplies = new Map<string, string>()
+  const unconfirmedReplies = new Map<string, Omit<StallItem, 'id'>>()
 
-  const missingReplies = ({ state }: { state: HydraState }): {
-    id: string
-    text: string
-  }[] => {
+  const missingReplies = ({ state }: { state: HydraState }): StallItem[] => {
     for (const id of unconfirmedReplies.keys()) {
       if (`${id}:hosted` in state.eventIds) {
         unconfirmedReplies.delete(id)
@@ -1886,10 +1919,10 @@ export function createHost({
 
     return [...unconfirmedReplies].map(([
       id,
-      text,
+      item,
     ]) => ({
       id,
-      text,
+      ...item,
     }))
   }
 
@@ -1949,45 +1982,32 @@ export function createHost({
       return
     }
 
-    const alarm = ({
-      stall,
-    }: {
-      stall: {
-        id: string
-        text: string
-      }
-    }) => {
+    const alarm = ({ stall }: { stall: StallItem }) => {
       const count = stalled.get(stall.id)?.count ?? 0
 
       if (count === 0) {
-        return stall.text
+        return stall.detail
       }
 
-      return `${stall.text} (alarm ${count + 1})`
+      return `${stall.detail} (alarm ${count + 1})`
     }
-
-    const found: string[] = []
-
-    if (stalls.length) {
-      found.push(`Stalled: ${stalls.map(stall => alarm({ stall })).join('; ')}.`)
-    }
-
-    if (waits.length) {
-      found.push(`Wait ended: ${waits.map(wait => wait.text).join('; ')}.`)
-    }
-
-    if (unconfirmed.length) {
-      found.push(`Not confirmed: ${unconfirmed.map(reply => reply.text).join('; ')}.`)
-    }
-
-    const firstCount = stalled.get(first.id)?.count ?? 0
-    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
     const fired = [
       ...stalls,
       ...waits,
       ...unconfirmed,
     ]
+    const reasons = fired.map(item => sealed({
+      text: reasonLine({
+        state,
+        card: item.card,
+        kind: item.kind,
+        detail: alarm({ stall: item }),
+      }),
+    }))
+
+    const firstCount = stalled.get(first.id)?.count ?? 0
+    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
     for (const item of fired) {
       const count = stalled.get(item.id)?.count ?? 0
@@ -2008,7 +2028,7 @@ export function createHost({
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
-      text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${REPLY_RULES}</pnyx-wake>`,
+      text: `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${REPLY_RULES}</pnyx-wake>`,
     }).then(() => {
       const delivered = Date.now()
 
@@ -3230,18 +3250,27 @@ export function createHost({
     }) => {
       unconfirmedReplies.set(
         `unconfirmed:${card}:${reply}`,
-        `on ${card}, the message "${clip({
-          text,
-          size: UNCONFIRMED_QUOTE_CHARS,
-        })}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
+        {
+          card,
+          kind: 'not confirmed',
+          detail: `the message "${clip({
+            text,
+            size: UNCONFIRMED_QUOTE_CHARS,
+          })}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
+        },
       )
     },
 
     wake: ({
       seq,
       card,
+      reasons,
     }) => {
       wakeStart ??= seq - 1
+      wakeReasonsAt.set(
+        seq,
+        reasons,
+      )
       wakeThrough = Math.max(
         wakeThrough,
         seq,
@@ -3449,17 +3478,20 @@ export function createHost({
           readThrough = after
         }
 
-        const missed = readEvents({ hydraId })
-          .filter(event => event.seq > after && wakesHydra({
+        // Changes from while the server was stopped can only be read against the state now.
+        for (const event of readEvents({ hydraId }).filter(event => event.seq > after)) {
+          const reasons = wakeReasons({
             state,
-            event,
-          }))
-
-        for (const event of missed) {
-          host.wake({
-            seq: event.seq,
-            card: event.cardId,
+            events: [event],
           })
+
+          if (reasons.length) {
+            host.wake({
+              seq: event.seq,
+              card: event.cardId,
+              reasons,
+            })
+          }
         }
       }
     },
