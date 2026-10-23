@@ -130,6 +130,21 @@ const descriptionOf = ({ input }: { input: Record<string, unknown> }) => {
   return firstLine({ text: input.description })
 }
 
+const fileOf = ({ input }: { input: Record<string, unknown> }): unknown => {
+  const path = input.file_path ?? input.notebook_path ?? input.path
+
+  if (typeof path !== 'string' || path.length <= LINE_MAX) {
+    return path
+  }
+
+  return path.trim().replace(
+    /\/+$/,
+    '',
+  )
+    .split('/')
+    .at(-1)
+}
+
 function callOf({
   id,
   tool,
@@ -145,7 +160,7 @@ function callOf({
       max: COMMAND_MAX,
     }),
     file: scrubbed({
-      value: input.file_path ?? input.notebook_path ?? input.path,
+      value: fileOf({ input }),
       max: LINE_MAX,
     }),
     query: scrubbed({
