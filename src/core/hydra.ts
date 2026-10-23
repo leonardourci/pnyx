@@ -1,3 +1,4 @@
+import { ownerGates } from './gates.ts'
 import { ownerActor, failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
@@ -353,6 +354,7 @@ export function declareTask({
   source,
   raw,
   until,
+  waitingFor,
 }: {
   state: HydraState
   ref: string
@@ -362,6 +364,7 @@ export function declareTask({
   source?: string
   raw?: string
   until?: string
+  waitingFor?: string[]
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -391,6 +394,14 @@ export function declareTask({
   const data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> = {
     state: normalized as TaskStatus,
     note,
+  }
+
+  if (normalized === 'needs_you' || normalized === 'blocked') {
+    const gates = waitingFor ?? ownerGates({ card })
+
+    if (gates.length || waitingFor) {
+      data.waitingFor = gates
+    }
   }
 
   if (source) {

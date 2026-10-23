@@ -127,6 +127,7 @@ export interface Link {
   title?: string
   state?: LinkState
   checkedAt?: string
+  draft?: boolean
   // A followed pull request's last seen checks summary and comment count, so only changes reach its worker.
   checks?: string
   comments?: number
@@ -187,6 +188,7 @@ export interface Reply {
   id: string
   state: ReplyState
   answers?: string
+  resumes?: boolean
   route?: string
   detail?: string
 }
@@ -417,6 +419,7 @@ export interface TaskDeclaration {
   until?: string
   source?: string
   raw?: string
+  waitingFor?: string[]
 }
 export interface FirstmateRecord {
   home: string
@@ -818,6 +821,7 @@ export type RepliedEvent = EventBase & {
     detail?: string
     control?: boolean
     taskMessage?: boolean
+    resumes?: boolean
   }
 }
 
@@ -911,6 +915,7 @@ export type SessionEvent = EventBase & {
     before: string | null
     after: string | null
     brief?: string
+    working?: boolean
     handoff?: {
       folder: string
       copy?: TaskCopy

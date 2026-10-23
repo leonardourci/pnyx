@@ -512,7 +512,7 @@ test(
       })
       assert.equal(
         placed(),
-        column({ role: 'needs_you' }),
+        column({ role: 'parked' }),
       )
       f.run({
         args: [
@@ -558,6 +558,10 @@ test(
           [
             column({ role: 'needs_you' }),
             'Declared needs you',
+          ],
+          [
+            column({ role: 'parked' }),
+            'Declared paused',
           ],
           [
             column({ role: 'done' }),
