@@ -100,7 +100,7 @@ function sandbox() {
   ))
   const home = join(
     root,
-    'pnyx',
+    '.pnyx',
   )
   const claude = join(
     root,

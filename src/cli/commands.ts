@@ -1,3 +1,4 @@
+import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
 import { buildCommand, reportCommand } from '../investigation/cli.ts'
@@ -3853,6 +3854,7 @@ const setup = guard({
       harness: { type: 'string' },
       remove: { type: 'boolean' },
       preview: { type: 'boolean' },
+      'allow-custom-home': { type: 'boolean' },
       home: { type: 'string' },
       port: { type: 'string' },
     }
@@ -3868,6 +3870,14 @@ const setup = guard({
 
     if (positionals[0] === 'check') {
       return setupCheckOutput({ hydraId })
+    }
+
+    if ([
+      'hooks',
+      'service',
+      'skills',
+    ].includes(positionals[0] ?? '')) {
+      requireSetupHome({ allowCustomHome: !!values['allow-custom-home'] })
     }
 
     if (positionals[0] === 'skills') {
@@ -4343,12 +4353,14 @@ Appends an event that reverses a manual push edit, move, link or outcome. Refuse
 Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup service [--port <n>] [--remove] [--preview]
-pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview]
-pnyx-axi setup skills [--remove] [--preview]
+pnyx-axi setup service [--port <n>] [--remove] [--preview] [--allow-custom-home]
+pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
+pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
+setup hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup service refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced; --remove takes out only this install's links.
