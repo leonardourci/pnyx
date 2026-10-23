@@ -42,7 +42,7 @@ export function reasonLine({
   return `- ${ref}${kind}${detail ? `: ${detail}` : ''}`
 }
 
-const quote = ({ text }: { text: string }) => `"${clip({
+export const quote = ({ text }: { text: string }) => `"${clip({
   text,
   size: QUOTE_CHARS,
 })}"`

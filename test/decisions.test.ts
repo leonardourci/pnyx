@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { decisionsBlock, openDecisions } from '../src/core/decisions.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
+import { PERMISSION_PREFIX } from '../src/core/permissions.ts'
 import type { Ask, Card, HydraState, Link } from '../src/core/model.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
@@ -65,7 +66,7 @@ const pr = ({ checks }: { checks?: string }): Link => ({
   ...(checks ? { checks } : {}),
 })
 
-const lines = ({ state }: { state: HydraState }) => openDecisions({ state }).map(d => `${d.card} ${d.kind}: ${d.detail}`)
+const lines = ({ state }: { state: HydraState }) => openDecisions({ state }).map(d => `${d.card.id} ${d.kind}: ${d.detail}`)
 
 test(
   'every kind waiting on someone is listed, and an answered or closed one is not',
@@ -117,12 +118,26 @@ test(
               input: {},
               status: 'allow',
             },
+            {
+              id: 'perm-3',
+              session: 's',
+              tool: 'AskUserQuestion',
+              input: {},
+              status: 'pending',
+              at: '2026-10-23T11:00:00.000Z',
+              questions: [
+                {
+                  question: 'Which port?',
+                  options: [],
+                },
+              ],
+            },
           ],
           // A pending permission also shows as attention; it is listed once.
           attention: [
             {
               kind: 'permission',
-              key: 'pnyx:permission:perm-1',
+              key: `${PERMISSION_PREFIX}perm-1`,
               blocking: true,
               text: 'Bash',
             },
@@ -155,7 +170,32 @@ test(
               blocking: false,
               text: 'Not blocking',
             },
+            {
+              kind: 'question',
+              key: 'hook:4',
+              blocking: true,
+              questions: [],
+            },
           ],
+        }),
+        // Sessions no task owns, and cards retention hid, are never Hydra's to decide.
+        card({
+          id: 'outside',
+          automaticTask: true,
+          asks: [ask({ id: 'ask-5' })],
+          attention: [
+            {
+              kind: 'permission',
+              key: 'hook:tool:Bash',
+              blocking: true,
+              text: 'Bash',
+            },
+          ],
+        }),
+        card({
+          id: 'gone',
+          hidden: true,
+          asks: [ask({ id: 'ask-6' })],
         }),
         // Hydra's own card is never a decision Hydra is told about.
         card({
@@ -170,7 +210,9 @@ test(
       [
         'owner owner question: ask-1 "Question ask-1?" (recommended: Merge)',
         'prompt blocking prompt: "Which database?"',
-        'tool permission: perm-1: Bash waits for an answer',
+        'prompt blocking prompt: "question"',
+        'tool permission: perm-1 Bash',
+        'tool permission: perm-3 AskUserQuestion "Which port?"',
         'worker worker question: ask-3 to you "Question ask-3?"',
       ],
     )
@@ -203,14 +245,17 @@ test(
     })
 
     assert.deepEqual(
-      openDecisions({ state }),
+      openDecisions({ state }).map(d => [
+        d.kind,
+        d.at,
+        d.detail,
+      ]),
       [
-        {
-          kind: 'owner question',
-          card: 'fix',
-          at: '2026-10-23T11:30:00.000Z',
-          detail: 'ask-1 "Should the server move to port 80?"',
-        },
+        [
+          'owner question',
+          '2026-10-23T11:30:00.000Z',
+          'ask-1 "Should the server move to port 80?"',
+        ],
       ],
     )
   },
@@ -307,7 +352,7 @@ test(
 )
 
 test(
-  'the block lists items oldest first with their age, and says none when nothing waits',
+  'the block lists items oldest first with their age, then those with no time, and says none when nothing waits',
   () => {
     assert.equal(
       decisionsBlock({
@@ -359,6 +404,24 @@ test(
             },
           ],
         }),
+        card({
+          id: 'hour',
+          asks: [
+            ask({
+              id: 'ask-hour',
+              at: '2026-10-23T10:30:00.000Z',
+            }),
+          ],
+        }),
+        card({
+          id: 'hours',
+          asks: [
+            ask({
+              id: 'ask-hours',
+              at: '2026-10-23T09:30:00.000Z',
+            }),
+          ],
+        }),
       ],
     })
     const mention = ({ id }: { id: string }) => taskMention({
@@ -372,11 +435,13 @@ test(
         now,
       }),
       [
-        'Open decisions (4):',
-        `- ${mention({ id: 'prompt' })} blocking prompt: "Which database?"`,
+        'Open decisions (6):',
         `- ${mention({ id: 'old' })} owner question, 4 h old: ask-old "Question ask-old?"`,
+        `- ${mention({ id: 'hours' })} owner question, 2 h old: ask-hours "Question ask-hours?"`,
+        `- ${mention({ id: 'hour' })} owner question, 90 min old: ask-hour "Question ask-hour?"`,
         `- ${mention({ id: 'mid' })} worker question, 45 min old: ask-mid to you "Question ask-mid?"`,
         `- ${mention({ id: 'new' })} owner question, under 1 min old: ask-new "Question ask-new?"`,
+        `- ${mention({ id: 'prompt' })} blocking prompt: "Which database?"`,
       ].join('\n'),
     )
   },

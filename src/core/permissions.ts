@@ -2,7 +2,7 @@ import { EVENT_VERSION, HydraError, type HydraEvent, type HydraState, type Card,
 import { checkAnswer, type Prompt } from './answer.ts'
 import type { Meta } from './decide.ts'
 
-const PREFIX = 'pnyx:permission:'
+export const PERMISSION_PREFIX = 'pnyx:permission:'
 
 const text = ({ value }: { value: unknown }) => typeof value === 'string' && value.trim() ? value.trim() : undefined
 
@@ -133,10 +133,10 @@ export function permissionAnswer({
 
 export function permissionAttention({ card }: { card: Card }): void {
   card.attention = [
-    ...card.attention.filter(a => !a.key.startsWith(PREFIX)),
+    ...card.attention.filter(a => !a.key.startsWith(PERMISSION_PREFIX)),
     ...(card.permissions ?? []).filter(p => p.status === 'pending').map(p => ({
       kind: 'permission',
-      key: `${PREFIX}${p.id}`,
+      key: `${PERMISSION_PREFIX}${p.id}`,
       blocking: true,
       text: permissionText({ request: p }),
     })),
