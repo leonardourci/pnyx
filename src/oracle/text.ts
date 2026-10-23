@@ -177,6 +177,15 @@ export function eventText({ event }: { event: HydraEvent }): string {
         ...(event.data.options ?? []).map(option => option.label),
       )
       break
+    case 'task.ask.closed':
+      parts.push(
+        event.data.reason,
+        event.data.evidence,
+      )
+      break
+    case 'task.ask.reopened':
+      parts.push(event.data.ask)
+      break
     case 'task.ask.escalated':
       parts.push(
         event.data.question,
