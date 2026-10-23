@@ -29,7 +29,7 @@ Without a project, sweep for every layer: route project facts and project prefer
    - Learnings: facts you had to discover the hard way about tools, workers and routes, which would cost the next session time to rediscover. Each must still be true; check one you doubt before keeping it.
    - Hydra notes: what this Hydra covers and where it left off.
    - Leave out task progress, conversations, PRs and anything a task's history, brief or status already records.
-3. Curate each document: merge duplicates, rewrite a changed preference in place, drop learnings that turned out wrong or are no longer needed, move a Hydra entry that holds for every Hydra into owner memory, and keep one plain line per entry, most important first. Add a date in parentheses to a learning that may expire.
+3. Curate each document: merge duplicates, rewrite a changed preference in place, drop learnings that turned out wrong or are no longer needed, move a Hydra entry that holds for every Hydra into owner memory, and keep one plain line per entry, most important first. Pnyx keeps a confirmation date for each learning line; unchanged lines keep their date when the document is saved. Review every line marked stale after 30 days. Confirm a line only with evidence from this session: `owner memory confirm --text "<exact learning line>" --reason "<session evidence>"`, or `project memory confirm --project <project> --text "<exact learning line>" --reason "<session evidence>"`. Remove an unproven or outdated line by saving the remaining document; the old version stays in the log. Preferences do not age.
 4. Save each changed document whole, with a reason:
 
    ```sh

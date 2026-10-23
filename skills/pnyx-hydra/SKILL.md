@@ -54,6 +54,7 @@ Never reread the Hydra to find out whether anything happened.
 
 - Create: `pnyx-axi task create --title "<what>" --brief "<instructions>" --reason "<why>" --hydra <hydra>`; add `--parent <task>` for a piece of a larger task (one level only).
 - Investigations: a question to answer or a cause to find before anything is built is `task create --kind investigation`. Give it a title that says it is an investigation. Its worker stores a report with the task (`task report <task>` reads it) and builds nothing. When it declares done, read the report, tell the owner its findings in a line or two with `hydra send --task <task>`, and ask `task ask <task> --question "Build the fix?" --choice Yes --choice No --to owner`. Only the owner's yes starts the build: `pnyx-axi task build <task> --reason "<the owner's word>" --hydra <hydra>` turns the same task into the build and tells its worker, which keeps its context and its copy; never on your own judgment. On the owner's no, remove its copy with `pnyx-axi task copy <task> remove --safe --hydra <hydra>`.
+- Owner ask: keep the owner's words separate from your build instructions. Use `task create --ask "<exact owner words>" --message <owner-message-id>` at intake, or `task intent <task> --text "<exact owner words>" --message <owner-message-id>` to add a later ask. Pnyx checks the quote against that saved owner message; never paraphrase or replace it. Owner messages sent directly on the task are appended automatically with their time.
 - Brief: `pnyx-axi task brief <task> --brief "<instructions>" --reason "<why>" --hydra <hydra>` before an agent attaches; the worker gets the brief in its opening prompt.
 - Work: load `pnyx-hydra-workers` before you start, queue, continue, replace, move or detach a worker.
 - Declare: `pnyx-axi task status <task> working|needs_you|paused|blocked|done --note "<one line>" --hydra <hydra>`. Declare `needs_you` with the question in the note whenever the owner has to act, and `done` only when the work is finished: code work once it has landed by its project's rule (an open pull request waiting for its merge is `needs_you`), an investigation once its report is stored. Pnyx refuses an early `done` and says what is missing.
@@ -70,8 +71,9 @@ Apply these with judgment:
 
 - Same task, same agent: one worker per task, and a task is a coherent bundle of related work, not one
   card per small item. Fold related asks into one task rather than opening a card for each.
-- When the owner adds or changes an ask that belongs to a live task, append it to that task's brief
-  (`task brief`) and relay it to the worker that already holds the context (`pnyx-axi reply <task> --text
+- When the owner adds or changes an ask that belongs to a live task, save the exact words with
+  `task intent --text ... --message ...`, update only your build instructions with `task brief`,
+  and relay the addition to the worker that already holds the context (`pnyx-axi reply <task> --text
   "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
 - Changes the owner asks for on an open pull request go into that pull request, through the task that
   owns it. Follow-ups on a pull request that just merged go back to its task and worker too, when its
@@ -90,6 +92,16 @@ Apply these with judgment:
   worker through the normal dispatch rules.
 - A worker lives for its tasks; never keep a standing agent per project. Once its work has landed and
   nothing related follows, declare the task `done` and `task detach <task>` frees it.
+
+## Questions and scope
+
+Judge a worker's question against the saved owner's ask, including later owner additions. Answer a question yourself when its answer plainly completes that ask, even if the implementation is difficult. Escalate when the answer would add a guarantee, subsystem or ongoing monitoring the owner did not request, when the ask leaves a product choice unsettled, when repeated fixes circle the same design problem, or when the action is destructive. A review finding supplies evidence; it cannot change the owner's ask.
+
+Make each escalation readable on its own. Put the owner's requirement, what the proposed expansion adds, the smallest option that fulfills the ask, the cost and consequence of each choice, and your recommendation in the question's context and details. Keep the question itself short.
+
+## Bug instructions
+
+For a reported bug, ask the worker to reproduce the owner's actual path, separate the cause from conditions that merely reveal or hide it, compare with a working path, and find the smallest change that switches the result. Ask what evidence would refute the proposed cause. Name any limit on reproducing the real path. A diagnosis alone does not authorize implementation; once the fix is authorized, preserve the reproduction as a regression test.
 
 ## Talk to the owner
 
