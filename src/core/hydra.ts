@@ -644,6 +644,15 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.status') {
+    state.hydraStatus = {
+      ...structuredClone(event.data),
+      seq: event.seq,
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.dispatch-progress') {
     const proposal = state.dispatchProposals?.find(p => p.token === event.data.token)
 

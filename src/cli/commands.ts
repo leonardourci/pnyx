@@ -3700,6 +3700,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`

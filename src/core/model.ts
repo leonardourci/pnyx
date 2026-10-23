@@ -567,6 +567,14 @@ export interface HydraMessage {
   actor: string
   hydra: string
 }
+// Whether Pnyx can start the Hydra it runs: down from a failed start until a start works again.
+export interface HydraStatus {
+  state: 'down' | 'up'
+  since: string
+  detail?: string
+  // Down only: the last change before the message or wake that met the failure; the recap lists what came after it.
+  after?: number
+}
 export type HydraChange = EventBase & (
   | {
     type: 'task.queue'
@@ -730,6 +738,10 @@ export type HydraChange = EventBase & (
   | {
     type: 'hydra.message'
     data: Omit<HydraMessage, 'id' | 'at' | 'actor'>
+  }
+  | {
+    type: 'hydra.status'
+    data: HydraStatus
   }
   | {
     type: 'hydra.dispatch-proposed'
@@ -974,6 +986,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.ask.escalated',
   'task.mirrored',
   'hydra.message',
+  'hydra.status',
   'hydra.dispatch-proposed',
   'hydra.dispatch-resolved',
   'hydra.dispatch-progress',
@@ -1013,6 +1026,8 @@ export interface HydraState {
   configured?: boolean
   configRevision?: number
   hydraMessages?: HydraMessage[]
+  // seq is the event that set it, so a recap can list what came after Hydra went down.
+  hydraStatus?: HydraStatus & { seq: number }
   hydraMemory?: Record<string, {
     text: string
     at: string
