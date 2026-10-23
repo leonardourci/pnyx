@@ -278,6 +278,14 @@ export function cardState({
     }
   }
 
+  if (card.hold) {
+    return {
+      kind: 'paused',
+      text: 'talking',
+      at: card.hold.at,
+    }
+  }
+
   const activity = agentActivity({ card })
 
   if (activity === 'stopped') {
