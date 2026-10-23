@@ -1,7 +1,7 @@
 import { ownerGates } from './gates.ts'
 import type { Card, Column, HydraEvent, HydraState, TaskStatus } from './model.ts'
-import { HYDRA_CARD, hydraConfig, roleColumn } from './hydra.ts'
-import { INTERRUPTED } from './tasks.ts'
+import { HYDRA_CARD, hydraConfig } from './hydra.ts'
+import { cardFacts, placeCard } from './columns.ts'
 
 type Stage = 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done'
 
@@ -22,45 +22,13 @@ export function asksOwner({ card }: { card: Card }): boolean {
   return ownerGates({ card }).length > 0 || !!card.reminder?.dueAt
 }
 
-const DECLARED: Partial<Record<TaskStatus, Stage>> = {
-  working: 'in_progress',
-  needs_you: 'in_progress',
-  blocked: 'in_progress',
-  paused: 'parked',
-  done: 'done',
-}
-
-// A turn the server cut short waits for someone to continue it, not for the owner's answer.
-const waitsOnOwner = ({ card }: { card: Card }) => asksOwner({
-  card: {
-    ...card,
-    attention: card.attention.filter(a => a.key !== INTERRUPTED),
-  },
-})
-
-// Only explicit signals count: activity, a finished turn, silence or an ended session never do.
-export function lifecycleStage({ card }: { card: Card }): Stage | undefined {
-  if (waitsOnOwner({ card })) {
-    return 'needs_you'
-  }
-
-  if (card.hold) {
-    return 'queued'
-  }
-
-  if (card.status?.state === 'paused' && !card.status.hold
-    && card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
-    return 'in_progress'
-  }
-
-  return card.status && DECLARED[card.status.state]
-}
-
 const moveReason = ({
   stage,
   answered,
+  facts,
 }: {
-  stage: Stage | 'queued'
+  facts: ReturnType<typeof cardFacts>
+  stage: Stage
   answered: boolean
 }) => {
   if (stage === 'needs_you') {
@@ -72,11 +40,15 @@ const moveReason = ({
   }
 
   if (stage === 'queued') {
-    return 'Held for discussion'
+    if (facts.includes('held')) {
+      return 'Held for discussion'
+    }
+
+    return facts.includes('queued') ? 'Queued behind a worker' : 'Waiting for a worker'
   }
 
   if (stage === 'parked') {
-    return 'Declared paused'
+    return facts.includes('worker:ended') ? 'Worker ended with unfinished work' : 'Declared paused'
   }
 
   return stage === 'done' ? 'Declared done' : 'Declared working'
@@ -86,9 +58,11 @@ const moveReason = ({
 export function lifecycleMoves({
   before,
   state,
+  event,
 }: {
   before: HydraState
   state: HydraState
+  event?: HydraEvent
 }): {
   cardId: string
   column: Column
@@ -103,35 +77,56 @@ export function lifecycleMoves({
   return Object.values(state.cards).flatMap(card => {
     const previous = before.cards[card.id]
 
-    const placed = columns.find(c => c.id === card.column)
+    const unmanaged = !state.configured && card.tracking !== 'declared'
 
-    const manualColumn = !placed?.role && !card.hold && !previous?.hold
-
-    if (!previous || card.automaticTask || card.id === HYDRA_CARD || manualColumn) {
+    if (card.automaticTask || card.id === HYDRA_CARD || unmanaged
+      || (!previous && event?.type !== 'task.created')) {
       return []
     }
 
-    const was = lifecycleStage({ card: previous })
-    const answered = was === 'needs_you' && !waitsOnOwner({ card }) && previous.status?.id === card.status?.id
-    const back = card.sessionIds?.length ? 'in_progress' : 'queued'
-    const stage = lifecycleStage({ card }) ?? (answered && !card.status ? back : undefined)
-    const column = stage && stage !== was && roleColumn({
+    if (event?.type === 'board.columns' && event.data.placements?.[card.id]) {
+      return []
+    }
+
+    if (!previous && event?.type === 'task.created' && event.data.column && !card.hold) {
+      return []
+    }
+
+    const facts = cardFacts({
+      card,
+      state,
+    })
+    const column = placeCard({
+      card: facts,
       columns,
-      role: stage,
+    })
+    const previousColumn = previous && placeCard({
+      card: cardFacts({
+        card: previous,
+        state: before,
+      }),
+      columns: hydraConfig({ state: before }).columns,
     })
 
-    if (!column || column === card.column) {
+    if (!column || column === card.column || column === previousColumn) {
       return []
     }
+
+    const answered = !!previous && asksOwner({ card: previous }) && !asksOwner({ card })
+    const destination = columns.find(c => c.id === column)!
+    const stage = destination.role
+    const reason = stage && stage !== 'workers_on_it'
+      ? moveReason({
+        stage,
+        answered,
+        facts,
+      }) : `Column rule matched: ${destination.title}`
 
     return [
       {
         cardId: card.id,
         column,
-        reason: moveReason({
-          stage,
-          answered,
-        }),
+        reason,
       },
     ]
   })

@@ -3,9 +3,18 @@ import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
-import { lifecycleStage } from '../src/core/lifecycle.ts'
+import { cardFacts, placeCard } from '../src/core/columns.ts'
+import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
-import type { Card, HydraEvent } from '../src/core/model.ts'
+import type { Card, CardFact, HydraColumn, HydraEvent, TaskStatus } from '../src/core/model.ts'
+
+const placement = ({ card }: { card: Card }) => placeCard({
+  card: cardFacts({
+    card,
+    state: emptyHydra(),
+  }),
+  columns: DEFAULT_COLUMNS,
+})
 
 const at = '2026-10-15T00:00:00Z'
 const now = Date.parse('2026-10-15T02:00:00Z')
@@ -28,6 +37,462 @@ const agent = {
   provider: 'claude-code',
   sessionId: 'test',
 }
+
+test(
+  'default column rules place cards from recorded facts',
+  () => {
+    const declared = ({
+      state,
+      hold,
+    }: {
+      state: TaskStatus
+      hold?: boolean
+    }) => ({
+      id: 'status',
+      at,
+      actor: 'worker:test',
+      state,
+      note: '',
+      hold,
+    })
+    const ownerAsk = {
+      id: 'ask',
+      at,
+      actor: 'hydra',
+      audience: 'owner' as const,
+      question: 'Go?',
+    }
+    const held = {
+      id: 'hold',
+      at,
+      actor: 'hydra',
+      reason: 'Discuss first',
+    }
+    const cases: {
+      name: string
+      card: Partial<Card>
+      column: string
+      fact: CardFact
+    }[] = [
+      {
+        name: 'not assigned',
+        card: {},
+        column: 'queued',
+        fact: 'worker:none',
+      },
+      {
+        name: 'assigned',
+        card: { agent },
+        column: 'in_progress',
+        fact: 'worker:working',
+      },
+      {
+        name: 'declared working',
+        card: { status: declared({ state: 'working' }) },
+        column: 'in_progress',
+        fact: 'worker:working',
+      },
+      {
+        name: 'blocked',
+        card: { status: declared({ state: 'blocked' }) },
+        column: 'in_progress',
+        fact: 'worker:blocked',
+      },
+      {
+        name: 'worker needs Hydra',
+        card: { status: declared({ state: 'needs_you' }) },
+        column: 'in_progress',
+        fact: 'worker:hydra',
+      },
+      {
+        name: 'question to Hydra',
+        card: {
+          agent,
+          asks: [
+            {
+              ...ownerAsk,
+              audience: 'hydra',
+            },
+          ],
+        },
+        column: 'in_progress',
+        fact: 'worker:hydra',
+      },
+      {
+        name: 'paused by owner',
+        card: {
+          status: declared({
+            state: 'paused',
+            hold: true,
+          }),
+        },
+        column: 'parked',
+        fact: 'worker:paused',
+      },
+      {
+        name: 'worker ended unfinished',
+        card: {
+          agent,
+          activity: 'ended',
+        },
+        column: 'parked',
+        fact: 'worker:ended',
+      },
+      {
+        name: 'queued behind worker',
+        card: {
+          queue: {
+            session: 'claude:test',
+            rank: 1,
+          },
+        },
+        column: 'queued',
+        fact: 'queued',
+      },
+      {
+        name: 'discussion hold',
+        card: {
+          hold: held,
+          status: declared({ state: 'working' }),
+        },
+        column: 'queued',
+        fact: 'held',
+      },
+      {
+        name: 'go question',
+        card: {
+          hold: held,
+          asks: [ownerAsk],
+        },
+        column: 'needs_you',
+        fact: 'owner-question',
+      },
+      {
+        name: 'owner question',
+        card: {
+          status: declared({ state: 'working' }),
+          asks: [ownerAsk],
+        },
+        column: 'needs_you',
+        fact: 'owner-question',
+      },
+      {
+        name: 'reminder due',
+        card: {
+          reminder: {
+            id: 'reminder',
+            at,
+            dueAt: at,
+          },
+        },
+        column: 'needs_you',
+        fact: 'reminder-due',
+      },
+      {
+        name: 'done declaration',
+        card: { status: declared({ state: 'done' }) },
+        column: 'done',
+        fact: 'done',
+      },
+      {
+        name: 'investigation report done',
+        card: {
+          kind: 'investigation',
+          report: {
+            id: 'report',
+            at,
+            actor: 'worker:test',
+            chars: 20,
+          },
+          status: declared({ state: 'done' }),
+        },
+        column: 'done',
+        fact: 'kind:investigation',
+      },
+      {
+        name: 'waiting for checks',
+        card: {
+          status: declared({ state: 'paused' }),
+          links: [
+            {
+              kind: 'github_pr',
+              url: 'https://github.com/example/repo/pull/1',
+              state: 'open',
+              checks: '0 passed, 0 failed, 1 total',
+            },
+          ],
+        },
+        column: 'in_progress',
+        fact: 'worker:checks',
+      },
+      {
+        name: 'merged',
+        card: {
+          agent,
+          links: [
+            {
+              kind: 'github_pr',
+              url: 'https://github.com/example/repo/pull/1',
+              state: 'merged',
+            },
+          ],
+        },
+        column: 'done',
+        fact: 'pr:merged',
+      },
+      {
+        name: 'one of two PRs merged',
+        card: {
+          agent,
+          links: [
+            {
+              kind: 'github_pr',
+              url: 'https://github.com/example/repo/pull/1',
+              state: 'merged',
+            },
+            {
+              kind: 'github_pr',
+              url: 'https://github.com/example/repo/pull/2',
+              state: 'open',
+            },
+          ],
+        },
+        column: 'in_progress',
+        fact: 'pr:open',
+      },
+    ]
+
+    for (const sample of cases) {
+      const card = {
+        ...task,
+        ...sample.card,
+      }
+      const facts = cardFacts({
+        card,
+        state: emptyHydra(),
+      })
+      assert.ok(
+        facts.includes(sample.fact),
+        sample.name,
+      )
+      assert.equal(
+        placeCard({
+          card: facts,
+          columns: DEFAULT_COLUMNS,
+        }),
+        sample.column,
+        sample.name,
+      )
+      assert.equal(
+        placeCard({
+          card: facts,
+          columns: [...DEFAULT_COLUMNS].reverse(),
+        }),
+        sample.column,
+        sample.name,
+      )
+    }
+  },
+)
+
+test(
+  'custom rules match kind and PR checks, use AND/OR/NOT, and respect column order',
+  () => {
+    const columns: HydraColumn[] = [
+      {
+        id: 'custom:review',
+        title: 'Review',
+        rule: [
+          [
+            'kind:investigation',
+            '!done',
+          ],
+          [
+            'pr:green',
+            '!pr:draft',
+          ],
+        ],
+      },
+      ...DEFAULT_COLUMNS,
+    ]
+    const sample = ({ card }: { card: Partial<Card> }) => placeCard({
+      card: cardFacts({
+        card: {
+          ...task,
+          agent,
+          ...card,
+        },
+        state: emptyHydra(),
+      }),
+      columns,
+    })
+    assert.equal(
+      sample({ card: { kind: 'investigation' } }),
+      'custom:review',
+    )
+    assert.equal(
+      sample({ card: {} }),
+      'in_progress',
+    )
+    const link = {
+      kind: 'github_pr' as const,
+      url: 'https://github.com/example/repo/pull/1',
+      state: 'open' as const,
+      checks: '1 passed, 0 failed, 1 total',
+    }
+    assert.equal(
+      sample({ card: { links: [link] } }),
+      'custom:review',
+    )
+    assert.equal(
+      sample({
+        card: {
+          links: [
+            {
+              ...link,
+              draft: true,
+            },
+          ],
+        },
+      }),
+      'in_progress',
+    )
+    assert.equal(
+      sample({
+        card: {
+          links: [
+            {
+              ...link,
+              checks: '0 passed, 1 failed, 1 total',
+            },
+          ],
+        },
+      }),
+      'in_progress',
+    )
+    assert.equal(
+      placeCard({
+        card: [
+          'kind:investigation',
+          'worker:working',
+        ],
+        columns: [
+          ...DEFAULT_COLUMNS,
+          columns[0]!,
+        ],
+      }),
+      'in_progress',
+    )
+    assert.equal(
+      placeCard({
+        card: ['kind:investigation'],
+        columns: [
+          {
+            id: 'custom:manual',
+            title: 'Manual',
+            rule: [],
+          },
+        ],
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'PR facts distinguish draft, pending, red, green, closed, and absent checks',
+  () => {
+    for (const [
+      link,
+      expected,
+    ] of [
+        [
+          {
+            state: 'open' as const,
+            draft: true,
+          },
+          [
+            'pr:open',
+            'pr:draft',
+          ],
+        ],
+        [
+          {
+            state: 'open' as const,
+            checks: '0 passed, 0 failed, 1 total',
+          },
+          [
+            'pr:open',
+            'pr:pending',
+          ],
+        ],
+        [
+          {
+            state: 'open' as const,
+            checks: '1 passed, 1 failed, 2 total',
+          },
+          [
+            'pr:open',
+            'pr:red',
+          ],
+        ],
+        [
+          {
+            state: 'open' as const,
+            checks: '1 passed, 0 failed, 1 total',
+          },
+          [
+            'pr:open',
+            'pr:green',
+          ],
+        ],
+        [
+          {
+            state: 'closed' as const,
+            checks: '1 passed, 0 failed, 1 total',
+          },
+          ['pr:closed'],
+        ],
+        [
+          { state: 'open' as const },
+          ['pr:open'],
+        ],
+      ] as const) {
+      const facts = cardFacts({
+        card: {
+          ...task,
+          links: [
+            {
+              kind: 'github_pr',
+              url: 'https://github.com/example/repo/pull/1',
+              ...link,
+            },
+          ],
+        },
+        state: emptyHydra(),
+      })
+      assert.deepEqual(
+        facts.filter(fact => fact.startsWith('pr:')).sort(),
+        [...expected].sort(),
+      )
+    }
+
+    const card = {
+      ...task,
+      outcome: {
+        state: 'done' as const,
+        source: 'hooks',
+      },
+    }
+    assert.ok(
+      !cardFacts({
+        card,
+        state: emptyHydra(),
+      }).includes('done'),
+      'a successful worker session is not task completion',
+    )
+  },
+)
 
 test(
   'cards distinguish not started, working, finished, stopped, and unanswered asks',
@@ -150,13 +615,13 @@ test(
       ],
     )
     assert.equal(
-      lifecycleStage({
+      placement({
         card: {
           ...task,
           asks: [ask({ audience: 'hydra' })],
         },
       }),
-      undefined,
+      'in_progress',
     )
     const interrupted: Card = {
       ...task,
@@ -169,11 +634,11 @@ test(
       ],
     }
     assert.equal(
-      lifecycleStage({ card: interrupted }),
-      undefined,
+      placement({ card: interrupted }),
+      'queued',
     )
     assert.equal(
-      lifecycleStage({
+      placement({
         card: {
           ...interrupted,
           attention: [
@@ -324,7 +789,7 @@ test(
         },
       }
       assert.equal(
-        lifecycleStage({ card }),
+        placement({ card }),
         'in_progress',
       )
       assert.equal(
@@ -332,7 +797,7 @@ test(
         state,
       )
       assert.equal(
-        lifecycleStage({
+        placement({
           card: {
             ...card,
             permissions: [

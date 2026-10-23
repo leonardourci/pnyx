@@ -1,3 +1,4 @@
+import { describeColumnRule } from './columns.ts'
 import { learningDigest, type Learning } from '../memory/learnings.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'
@@ -218,7 +219,7 @@ export function hydraDigest({
     ] : []),
     '',
     'Columns (id · title · tasks · when):',
-    ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${clip({ text: c.description ?? 'no description' })}`),
+    ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${describeColumnRule({ column: c })} · ${clip({ text: c.description ?? 'no description' })}`),
     '',
     'Open tasks (id · title · column · declared status · worker):',
     ...(open.length ? open.slice(

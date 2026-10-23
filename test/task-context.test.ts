@@ -860,7 +860,7 @@ test(
       )
       assert.match(
         digest,
-        /- needs_you · Needs you · 1 · Work that needs the owner/,
+        /- needs_you · Needs you · 1 · owner-question OR reminder-due · Work that needs the owner/,
       )
       assert.match(
         digest,
