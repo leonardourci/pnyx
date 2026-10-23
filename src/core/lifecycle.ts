@@ -145,6 +145,7 @@ export function operationDeclarations({
   note: string
   until?: string
   waitingFor?: string[]
+  restores?: string
 }[] {
   if (state.config?.hydra.kind === 'firstmate') {
     return []
@@ -208,9 +209,13 @@ export function operationDeclarations({
     return changes
   }
 
-  const answered = event.type === 'card.replied' && event.data.state === 'delivered'
-    || event.type === 'task.permission' && (event.data.status === 'allow' || event.data.status === 'deny')
-    || event.type === 'hydra.message' && !!event.data.answers
+  const previousReply = event.type === 'card.replied'
+    ? previous.replies?.find(r => r.id === event.data.reply) : undefined
+  const deliveredReply = event.type === 'card.replied' && event.data.state === 'delivered'
+  const answeredPermission = event.type === 'task.permission'
+    && (event.data.status === 'allow' || event.data.status === 'deny')
+  const answeredQuestion = event.type === 'hydra.message' && !!event.data.answers
+  const answered = deliveredReply || answeredPermission || answeredQuestion
   const waiting = card.status?.waitingFor
 
   if (answered && waiting?.length && previous.status?.id === card.status?.id) {
@@ -226,13 +231,14 @@ export function operationDeclarations({
         note: resume?.note ?? 'Owner gate answered',
         until: resume?.until,
         waitingFor: resume?.waitingFor ?? [],
+        restores: resume?.restores ?? resume?.id,
       })
     }
   }
 
-  if (event.type === 'card.replied' && event.data.state === 'delivered'
-    && previous.replies?.find(r => r.id === event.data.reply)?.state !== 'delivered'
-    && (event.data.resumes || previous.replies?.find(r => r.id === event.data.reply)?.resumes)
+  const resumes = event.type === 'card.replied' && (event.data.resumes || previousReply?.resumes)
+
+  if (deliveredReply && previousReply?.state !== 'delivered' && resumes
     && card.status?.state === 'paused' && card.sessionIds?.length && !asksOwner({ card })) {
     declare({
       cardId: card.id,
@@ -242,4 +248,14 @@ export function operationDeclarations({
   }
 
   return changes
+}
+
+export function pausedDeclaration({ card }: { card: Card }) {
+  const declaration = card.status
+
+  if (declaration?.state !== 'paused') {
+    return undefined
+  }
+
+  return card.statusLog?.find(s => s.id === declaration.restores && s.state === 'paused') ?? declaration
 }

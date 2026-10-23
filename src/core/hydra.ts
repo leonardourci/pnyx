@@ -355,6 +355,7 @@ export function declareTask({
   raw,
   until,
   waitingFor,
+  restores,
 }: {
   state: HydraState
   ref: string
@@ -365,6 +366,7 @@ export function declareTask({
   raw?: string
   until?: string
   waitingFor?: string[]
+  restores?: string
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -402,6 +404,10 @@ export function declareTask({
     if (gates.length || waitingFor) {
       data.waitingFor = gates
     }
+  }
+
+  if (restores) {
+    data.restores = restores
   }
 
   if (source) {

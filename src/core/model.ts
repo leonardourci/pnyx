@@ -420,6 +420,7 @@ export interface TaskDeclaration {
   source?: string
   raw?: string
   waitingFor?: string[]
+  restores?: string
 }
 export interface FirstmateRecord {
   home: string
