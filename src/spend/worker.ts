@@ -8,7 +8,7 @@ if (!isMainThread) {
   )
 }
 
-// Counting reads whole transcripts, so it runs in a worker thread, off the server's event loop.
+// Counting reads transcripts, so it runs in a worker thread, off the server's event loop.
 // One count runs at a time; asking during it runs one more count, on the inputs of that moment.
 export function spendCounter({
   inputs,

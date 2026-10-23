@@ -1,7 +1,7 @@
-import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
 import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '../integrations/hooks/usage.ts'
 import type { AgentRef, HydraEvent, HydraState } from '../core/model.ts'
+import { readTranscript } from '../oracle/index.ts'
 
 export interface TaskSpend {
   worker?: number
@@ -34,33 +34,10 @@ export interface SpendInputs {
 
 // ponytail: transcripts are append-only, so a file keeps its reader until it shrinks or is replaced.
 const readers = new Map<string, {
-  ino: number
-  offset: number
+  identity: string
+  pos: number
   reader: UsageReader
 }>()
-
-const feed = ({
-  reader,
-  text,
-}: {
-  reader: UsageReader
-  text: string
-}) => {
-  try {
-    const value: unknown = JSON.parse(text)
-
-    if (value !== null && typeof value === 'object') {
-      readUsage({
-        reader,
-        value,
-      })
-
-      return true
-    }
-  } catch { /* A writer may not have finished the last record. */ }
-
-  return false
-}
 
 function transcriptUsage({ agent }: { agent: SpendInputs['sessions'][number]['agent'] }): RecordedUsage[] | undefined {
   const path = agent.transcriptPath
@@ -69,94 +46,43 @@ function transcriptUsage({ agent }: { agent: SpendInputs['sessions'][number]['ag
     return undefined
   }
 
-  let fd: number | undefined
+  const known = readers.get(path)
+  const same = known?.reader.provider === agent.provider
 
   try {
-    fd = openSync(
+    const tail = readTranscript({
+      cursor: {
+        source: path,
+        identity: same ? known.identity : '',
+        pos: same ? known.pos : 0,
+      },
+    })
+
+    if (!tail) {
+      return undefined
+    }
+
+    const reader = same && !tail.reset ? known.reader : usageReader({ provider: agent.provider })
+
+    for (const line of tail.lines) {
+      readUsage({
+        reader,
+        value: line.record,
+      })
+    }
+
+    readers.set(
       path,
-      'r',
+      {
+        identity: tail.identity,
+        pos: tail.end,
+        reader,
+      },
     )
-    const {
-      ino,
-      size,
-    } = fstatSync(fd)
-    let known = readers.get(path)
 
-    // A file replaced, cut short or read for another provider is read again from its start.
-    if (!known || known.ino !== ino || size < known.offset
-      || known.reader.provider !== agent.provider) {
-      known = {
-        ino,
-        offset: 0,
-        reader: usageReader({ provider: agent.provider }),
-      }
-      readers.set(
-        path,
-        known,
-      )
-    }
-
-    if (size > known.offset) {
-      const bytes = Buffer.alloc(size - known.offset)
-      let read = 0
-
-      while (read < bytes.length) {
-        const got = readSync(
-          fd,
-          bytes,
-          read,
-          bytes.length - read,
-          known.offset + read,
-        )
-
-        if (!got) {
-          break
-        }
-
-        read += got
-      }
-
-      const end = bytes.subarray(
-        0,
-        read,
-      ).lastIndexOf(0x0a) + 1
-
-      for (const line of bytes.toString(
-        'utf8',
-        0,
-        end,
-      ).split('\n')) {
-        if (line.trim()) {
-          feed({
-            reader: known.reader,
-            text: line,
-          })
-        }
-      }
-
-      known.offset += end
-      const tail = bytes.toString(
-        'utf8',
-        end,
-        read,
-      ).trim()
-
-      // A last record without its newline yet counts once it parses whole.
-      if (tail && feed({
-        reader: known.reader,
-        text: tail,
-      })) {
-        known.offset += read - end
-      }
-    }
-
-    return known.reader.rows
+    return reader.rows
   } catch {
     return undefined
-  } finally {
-    if (fd !== undefined) {
-      closeSync(fd)
-    }
   }
 }
 
