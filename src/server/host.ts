@@ -913,7 +913,6 @@ export function createHost({
         id: string | undefined
         offset: number
       }[] = []
-      // The messages the running turn answers.
       let answering: string[] = []
       let turnRunning = false
       // Messages taken mid-turn, so one the agent carries to its next turn can move there.
@@ -1284,7 +1283,6 @@ export function createHost({
     })
   }
 
-  // Hydra's turn ended, so the changes it was handed are read.
   const finishReading = () => {
     const unread = updates.filter(update => update.seq > readThrough)
 
