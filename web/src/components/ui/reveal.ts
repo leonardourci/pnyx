@@ -452,7 +452,7 @@ export const blockCount = ({
   (
     sum,
     token,
-  ) => sum + (token.type === 'space' || token.type === 'checkbox' ? 0
+  ) => sum + (token.type === 'space' || token.type === 'checkbox' || token.type === 'hr' ? 0
     : token.type === 'blockquote' ? blockCount({ tokens: token.tokens ?? [] })
       : token.type === 'list' ? (token as Tokens.List).items.reduce(
         (
