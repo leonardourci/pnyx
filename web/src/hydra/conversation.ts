@@ -15,6 +15,8 @@ export interface TurnActions {
   notes: ThreadEntry[]
 }
 
+const spoken = ({ entry }: { entry: ThreadEntry }) => !QUIET_REPLY.startsWith(entry.text.trim())
+
 export function hydraConversation({
   messages,
   transcript,
@@ -94,8 +96,9 @@ export function hydraConversation({
     const current = index === turns.length - 1 && working
     const texts = turn.entries.filter(entry => entry.kind === 'message'
       && entry.role.startsWith('assistant') && !entry.hidden)
-    const last = texts.at(-1)
-    const quiet = last && QUIET_REPLY.startsWith(last.text.trim())
+    // Hydra can answer the owner mid-turn and still close the turn with NO_REPLY; that answer is the reply.
+    const last = ownerStarted ? texts.findLast(entry => spoken({ entry })) : texts.at(-1)
+    const quiet = last && !spoken({ entry: last })
     const visibleReply = last && !quiet && (ownerStarted || !current)
 
     if (ownerStarted) {
@@ -171,10 +174,7 @@ export function hydraConversation({
       )
     }
 
-    const notes = texts.slice(
-      0,
-      -1,
-    ).filter(entry => !QUIET_REPLY.startsWith(entry.text.trim()))
+    const notes = texts.filter(entry => entry !== last && spoken({ entry }))
 
     if (tasks.size || notes.length) {
       const anchor = visibleReply ? last.id : turn.input!.id
