@@ -9,6 +9,7 @@ import { hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
 import { loadHydra, withRegistryLock } from '../store/hydra-store.ts'
 import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
+import { parseLanding, parseMerger } from '../landing/rule.ts'
 
 const clone = promisify(execFile)
 
@@ -31,6 +32,8 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       command: { type: 'string' },
       'brings-own-folder': { type: 'string' },
       copy: { type: 'string' },
+      landing: { type: 'string' },
+      merge: { type: 'string' },
     },
     positionals: 2,
   })
@@ -43,6 +46,20 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   const readonly = current.config?.hydra.kind === 'firstmate'
 
   const settings = values['command-name'] !== undefined || values.command !== undefined || values['brings-own-folder'] !== undefined
+  const landing = values.landing === undefined
+    ? undefined
+    : parseLanding({ value: String(values.landing) })
+  const merge = values.merge === undefined
+    ? undefined
+    : parseMerger({ value: String(values.merge) })
+  const rules = landing !== undefined || merge !== undefined
+
+  if (rules && action !== 'set' && action !== 'add') {
+    throw new HydraError({
+      message: 'Landing rules need project add <path> or project set <name|path>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
 
   if ((settings || values.copy !== undefined) && action !== 'set') {
     throw new HydraError({
@@ -99,9 +116,9 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   }
 
   if (action === 'set') {
-    if (values.clone || values.into || (!settings && values.copy === undefined)) {
+    if (values.clone || values.into || (!settings && !rules && values.copy === undefined)) {
       throw new HydraError({
-        message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false]',
+        message: 'Use project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false], --copy <shell> or --landing pr|branch --merge owner|hydra',
         code: 'VALIDATION_ERROR',
       })
     }
@@ -149,6 +166,14 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         }
 
         const after = { ...before }
+
+        if (landing !== undefined) {
+          after.landing = landing
+        }
+
+        if (merge !== undefined) {
+          after.merge = merge
+        }
 
         if (values.copy !== undefined) {
           const copy = String(values.copy).trim()
@@ -281,16 +306,23 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
         const before = state.projects?.find(p => p.path === path) ?? null
 
         const detached = action === 'remove'
-
-        if (before?.detached === detached) {
-          return { skipped: 'unchanged' }
-        }
-
         const after = {
           ...before,
           path,
           name: before?.name ?? projectName({ path }),
           detached,
+        }
+
+        if (landing !== undefined) {
+          after.landing = landing
+        }
+
+        if (merge !== undefined) {
+          after.merge = merge
+        }
+
+        if (before && JSON.stringify(before) === JSON.stringify(after)) {
+          return { skipped: 'unchanged' }
         }
 
         return hydraEvent({
@@ -327,13 +359,14 @@ Project memory is shared by normalized git remote (canonical path without a remo
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
 Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
 
-pnyx-axi project add <path> [--hydra <id>]
-pnyx-axi project add --clone <url> --into <folder> [--hydra <id>]
+pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
+pnyx-axi project add --clone <url> --into <folder> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 pnyx-axi project list [--hydra <id>]
 pnyx-axi project show <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --command-name <name> --command <shell> [--brings-own-folder true|false] [--hydra <id>]
 pnyx-axi project remove <name|path> [--hydra <id>]
 pnyx-axi project set <name|path> --copy <shell command> [--hydra <id>]
+pnyx-axi project set <name|path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
 
 A project is a folder on this laptop, shown by its folder name. Relative paths are accepted.
 Clone runs git directly; --into always names the destination. No agent receives the URL.
@@ -344,4 +377,6 @@ Set saves a named start command; an empty --command clears it. --brings-own-fold
 Workers start in their task's own copy: a git worktree on branch pnyx/<hydra>-<task>, kept under the Hydra's folder.
 --copy sets a command run in the project folder instead; it gets PNYX_TASK, PNYX_TASK_TITLE and PNYX_PROJECT and prints the new folder's path last.
 An empty --copy restores git worktree copies.
+Landing rules say where a worker's job stops. --landing pr (the default): commit, push and open a pull request; --landing branch: commit on the task's branch only.
+--merge owner (the default): the owner merges; --merge hydra: Hydra may merge with task merge once every check is green.
 Writes accept --event-id and --if-revision (project list shows the projects revision).`

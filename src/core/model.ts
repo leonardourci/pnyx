@@ -125,6 +125,9 @@ export interface Link {
   title?: string
   state?: LinkState
   checkedAt?: string
+  // A followed pull request's last seen checks summary and comment count, so only changes reach its worker.
+  checks?: string
+  comments?: number
 }
 
 export interface Question {
@@ -261,6 +264,21 @@ export interface Ask {
   fromMessage?: AnswerMessage
 }
 
+// An investigation's answer is its stored report; a build task's is its landed work.
+export const TASK_KINDS = [
+  'build',
+  'investigation',
+] as const
+export type TaskKind = (typeof TASK_KINDS)[number]
+
+// The text stays in the log, on the task.report event this names.
+export interface TaskReport {
+  id: string
+  at: string
+  actor: string
+  chars: number
+}
+
 export interface TaskReminder {
   id: string
   at: string
@@ -274,6 +292,10 @@ export interface Card {
   brief?: string
   initialPrompt?: string
   project?: string
+  kind?: TaskKind
+  report?: TaskReport
+  // A rule the owner chose for this task only, over its project's.
+  landing?: LandingRule
   reminder?: TaskReminder
   doneAt?: string
   keepDone?: boolean
@@ -426,10 +448,49 @@ export interface AgentConfig {
   fast?: boolean
   quota?: (typeof QUOTA_BUCKETS)[number]
 }
+// How a project's work lands: a pull request, or a commit on the task's branch only.
+export const LANDINGS = [
+  'pr',
+  'branch',
+] as const
+export type Landing = (typeof LANDINGS)[number]
+
+// Who merges a project's pull requests: the owner, or Hydra once every check is green.
+export const MERGERS = [
+  'owner',
+  'hydra',
+] as const
+export type Merger = (typeof MERGERS)[number]
+
+export interface LandingRule {
+  landing: Landing
+  merge: Merger
+}
+
+const DEFAULT_LANDING: Landing = 'pr'
+const DEFAULT_MERGER: Merger = 'owner'
+
+// A project saved before landing rules lands through a pull request the owner merges.
+export function landingRule({ project }: { project: Pick<HydraProject, 'landing' | 'merge'> }): LandingRule {
+  return {
+    landing: project.landing ?? DEFAULT_LANDING,
+    merge: project.merge ?? DEFAULT_MERGER,
+  }
+}
+
+// How many checks gh-axi's checks line ("3 passed, 1 failed, 4 total") counts as failed.
+export function failedChecks({ checks }: { checks?: string }): number {
+  const failed = /(\d+) failed/.exec(checks ?? '')
+
+  return failed ? Number(failed[1]) : 0
+}
+
 export interface HydraProject {
   path: string
   name: string
   detached: boolean
+  landing?: Landing
+  merge?: Merger
   startCommand?: {
     name: string
     command: string
@@ -547,6 +608,27 @@ export type HydraChange = EventBase & (
       column?: Column
       folder?: string
       project?: string
+      kind?: TaskKind
+    }
+  }
+  | {
+    type: 'task.kind'
+    data: {
+      before: TaskKind
+      after: TaskKind
+    }
+  }
+  | {
+    type: 'task.report'
+    data: {
+      text: string
+    }
+  }
+  | {
+    type: 'task.landing'
+    data: {
+      before: LandingRule | null
+      after: LandingRule | null
     }
   }
   | {
@@ -875,6 +957,9 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder-due',
   'task.copy',
   'task.queue',
+  'task.kind',
+  'task.report',
+  'task.landing',
 ]
 
 export interface DispatchProposal {

@@ -3,11 +3,14 @@ import type { HydraProject, HydraState } from '../../../src/core/model.ts'
 import { AddProject, ProjectSharing } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
+import { LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
 
 type ProjectRow = {
   name: string
   path: string
   state: string
+  landing: LandingChoice['landing']
+  merge: LandingChoice['merge']
   startCommand?: HydraProject['startCommand']
 }
 type Confirmation = {
@@ -102,6 +105,61 @@ function ProjectCommand({
         <Button type="submit" variant="surface">{busy ? 'Saving…' : 'Save start command'}</Button>
       </fieldset>
     </form>
+  )
+}
+
+// Saved as soon as it changes, like other inline settings.
+function ProjectLanding({
+  project,
+  disabled,
+  command,
+  refresh,
+  notify,
+}: {
+  project: ProjectRow
+  disabled: boolean
+  command: Command
+  refresh(): Promise<void>
+  notify({ text }: { text: string }): void
+}) {
+  const [
+    busy,
+    setBusy,
+  ] = useState(false)
+
+  const save = async ({ choice }: { choice: LandingChoice }) => {
+    setBusy(true)
+
+    try {
+      await command({
+        name: 'project',
+        args: [
+          'set',
+          project.path,
+          ...landingArgs({ choice }),
+          '--event-id',
+          crypto.randomUUID(),
+        ],
+      })
+      await refresh()
+      notify({ text: 'Landing rule saved.' })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  return (
+    <LandingFields
+      name={project.name}
+      choice={{
+        landing: project.landing,
+        merge: project.merge,
+      }}
+      disabled={disabled || busy}
+      onChange={save}
+    />
   )
 }
 
@@ -202,6 +260,15 @@ export function Projects({
     <li key={p.path} className={`project-row ${p.state === 'detached' ? 'detached' : ''}`}>
       <div className="project-details">
         <strong>{p.name}</strong><span className="project-path">{p.path}</span>
+        {!readonly && p.state === 'attached' && (
+          <ProjectLanding
+            project={p}
+            disabled={!connected || busy}
+            command={command}
+            refresh={refresh}
+            notify={notify}
+          />
+        )}
         {!readonly && p.state === 'attached' && (
           <ProjectCommand
             key={JSON.stringify(p.startCommand)}

@@ -5,6 +5,7 @@ import { decideLink, decideSession, type Decision } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
 import type { AgentSession, Card, HydraState, LinkState, SessionEvent } from '../core/model.ts'
 import { taskPrompt } from '../cli/start.ts'
+import { declareMerged } from '../landing/follow.ts'
 import { sendReply } from '../cli/reply.ts'
 import { pullRequestLanding, pullRequestState } from '../integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from '../integrations/presence/check.ts'
@@ -358,6 +359,7 @@ async function refreshLinks({
           const current = writer.state.cards[card.id]?.links.find(l => l.url === link.url)
 
           if (current && current.state !== 'merged' && current.state !== state) {
+            const at = meta().at
             append({
               writer,
               decision: decideLink({
@@ -367,11 +369,20 @@ async function refreshLinks({
                 link: {
                   ...current,
                   state,
-                  checkedAt: meta().at,
+                  checkedAt: at,
                 },
                 meta: meta(),
               }),
             })
+
+            if (state === 'merged') {
+              declareMerged({
+                writer,
+                cardId: card.id,
+                url: link.url,
+                at,
+              })
+            }
           }
         },
       })

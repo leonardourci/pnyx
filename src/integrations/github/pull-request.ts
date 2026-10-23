@@ -119,32 +119,9 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
 }
 
 export async function pullRequestState({ url }: { url: string }): Promise<LinkState | undefined> {
-  const pr = PR_URL.exec(url)
+  const status = await pullRequestStatus({ url })
 
-  if (!pr) {
-    return undefined
-  }
-
-  const { stdout } = await promisify(execFile)(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
-      'pr',
-      'view',
-      pr[3]!,
-      '--repo',
-      `${pr[1]}/${pr[2]}`,
-    ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
-  const state = field({
-    out: stdout,
-    key: 'state',
-  })
-
-  return state === 'open' || state === 'merged' || state === 'closed' ? state : undefined
+  return status?.state
 }
 
 export interface PullRequestLanding {
@@ -188,4 +165,129 @@ export async function pullRequestLanding(
       head,
       merge,
     } : undefined
+}
+
+export interface PullRequestChecks {
+  summary: string
+  failed: number
+  pending: number
+}
+
+export interface PullRequestStatus {
+  state: LinkState
+  draft: boolean
+  checks: PullRequestChecks
+  // Conversation comments and reviews together.
+  comments: number
+}
+
+// gh-axi's checks line ("3 passed, 1 failed, 1 skipped, 6 total"); whatever is neither passed, failed nor skipped is still running.
+function checkCounts({ summary }: { summary: string }): PullRequestChecks {
+  const count = ({ word }: { word: string }) => Number(new RegExp(`(\\d+) ${word}`).exec(summary)?.[1] ?? 0)
+  const failed = count({ word: 'failed' })
+  const settled = count({ word: 'passed' }) + failed + count({ word: 'skipped' })
+
+  return {
+    summary: summary.split(' — ')[0]!,
+    failed,
+    pending: Math.max(
+      0,
+      count({ word: 'total' }) - settled,
+    ),
+  }
+}
+
+export function pullRequestRef({ url }: { url: string }): {
+  number: string
+  repo: string
+} | undefined {
+  const pr = PR_URL.exec(url)
+
+  return pr ? {
+    number: pr[3]!,
+    repo: `${pr[1]}/${pr[2]}`,
+  } : undefined
+}
+
+// One gh-axi read gives a followed pull request's state, checks and comment count.
+export async function pullRequestStatus(
+  { url }: { url: string },
+): Promise<PullRequestStatus | undefined> {
+  const pr = pullRequestRef({ url })
+
+  if (!pr) {
+    return undefined
+  }
+
+  const { stdout } = await promisify(execFile)(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'pr',
+      'view',
+      pr.number,
+      '--repo',
+      pr.repo,
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
+  const state = field({
+    out: stdout,
+    key: 'state',
+  })
+
+  if (state !== 'open' && state !== 'merged' && state !== 'closed') {
+    return undefined
+  }
+
+  const fieldCount = ({ key }: { key: string }) => {
+    const value = Number.parseInt(field({
+      out: stdout,
+      key,
+    }) ?? '')
+
+    return Number.isNaN(value) ? 0 : value
+  }
+
+  return {
+    state,
+    draft: field({
+      out: stdout,
+      key: 'draft',
+    }) === 'yes',
+    checks: checkCounts({
+      summary: field({
+        out: stdout,
+        key: 'checks',
+      }) ?? '',
+    }),
+    comments: fieldCount({ key: 'comment_count' }) + fieldCount({ key: 'review_count' }),
+  }
+}
+
+// Merges with a merge commit, so every commit of the pull request stays on the base branch.
+export async function mergePullRequest({ url }: { url: string }): Promise<void> {
+  const pr = pullRequestRef({ url })
+
+  if (!pr) {
+    throw new Error(`not a GitHub pull request: ${url}`)
+  }
+
+  await promisify(execFile)(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'pr',
+      'merge',
+      pr.number,
+      '--repo',
+      pr.repo,
+      '--merge',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
 }

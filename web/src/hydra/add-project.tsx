@@ -5,6 +5,7 @@ import { Button, Input } from '../components/ui/controls.tsx'
 import { FolderSearch } from '../components/ui/folder-search.tsx'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
+import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
 
 type Confirmation = {
   token: string
@@ -138,6 +139,10 @@ export function AddProject({
     confirmation,
     setConfirmation,
   ] = useState<Confirmation | null>(null)
+  const [
+    landing,
+    setLanding,
+  ] = useState<LandingChoice>(DEFAULT_LANDING)
   const result = useFolders({
     path,
     repository: mode === 'clone' ? repository : '',
@@ -152,7 +157,10 @@ export function AddProject({
     try {
       const receipt = await command({
         name: 'project',
-        args,
+        args: [
+          ...args,
+          ...landingArgs({ choice: landing }),
+        ],
       })
 
       if (receipt.confirmation === 'needed') {
@@ -251,6 +259,12 @@ export function AddProject({
           {listing?.selected && path.trim() && <div className="picked-folder"><strong>{listing.selected.name}</strong><small>{listing.selected.path}</small></div>}
           {result?.error && <p className="small" role="status">{result.error}</p>}
           {mode === 'clone' && listing?.cloneInto && <p className="clone-preview">Code will land in <strong>{listing.cloneInto}</strong></p>}
+          <LandingFields
+            name="this project"
+            choice={landing}
+            disabled={disabled}
+            onChange={({ choice }) => setLanding(choice)}
+          />
           <Button type="submit" variant="surface" disabled={disabled || !path.trim() || (mode === 'clone' ? !listing?.cloneInto : !listing?.selected)}>{busy ? mode === 'clone' ? 'Cloning…' : 'Attaching…' : mode === 'clone' ? 'Clone and attach' : 'Add project'}</Button>
           {mode === 'folder' && !!listing?.recent.length && (
             <div className="recent-folders"><span className="small muted">Folders your agents worked in</span>{listing.recent.map(folder => (

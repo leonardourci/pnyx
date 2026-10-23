@@ -1,7 +1,7 @@
 import { projectLabel } from '../core/decide.ts'
 import { realpathSync, statSync } from 'node:fs'
 import { basename, resolve } from 'node:path'
-import { HydraError, type HydraProject, type HydraState } from '../core/model.ts'
+import { HydraError, landingRule, type HydraProject, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
@@ -32,6 +32,7 @@ export function projectRows({ state }: { state: HydraState }) {
     name: p.name,
     path: p.path,
     state: p.detached ? 'detached' : 'attached',
+    ...landingRule({ project: p }),
     ...(p.startCommand ? { startCommand: p.startCommand } : {}),
   }))
 }

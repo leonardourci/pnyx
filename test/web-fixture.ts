@@ -134,11 +134,14 @@ export function seedWebFixture({ home }: { home: string }) {
             state: w.state,
             ref: key,
             url,
+            // What the fake gh-axi reports, so following these pull requests records nothing new.
             link: {
               kind: 'github_pr',
               url,
               number,
               state,
+              checks: '0 passed, 0 failed',
+              comments: 0,
             },
             meta,
           }),

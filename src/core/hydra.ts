@@ -1,4 +1,4 @@
-import { HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type TaskStatus } from './model.ts'
+import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -450,6 +450,43 @@ export function hydraBypasses({ state }: { state: HydraState }): boolean {
   return mode === 'bypassPermissions' || codexNever
 }
 
+// Pnyx wakes a task's worker with news on its open pull request; a task whose worker ended, or that never had one, leaves it unwatched.
+export function unwatchedPullRequests({ card }: { card: Card }): Link[] {
+  if (card.sessionIds?.length && !card.stoppedAt) {
+    return []
+  }
+
+  return card.links.filter(l => l.kind === 'github_pr' && l.state !== 'merged' && l.state !== 'closed')
+}
+
+// A merged pull request needs Hydra; failed checks and new comments go to the task's worker, so they need Hydra only when no worker can be woken.
+function linkNeedsHydra({
+  card,
+  before,
+  after,
+}: {
+  card: Card
+  before: Link | null
+  after: Link | null
+}): boolean {
+  if (after?.kind !== 'github_pr') {
+    return false
+  }
+
+  if (after.state === 'merged') {
+    return before?.state !== 'merged'
+  }
+
+  if (!unwatchedPullRequests({ card }).length) {
+    return false
+  }
+
+  const failing = failedChecks({ checks: after.checks }) > failedChecks({ checks: before?.checks })
+  const commented = before?.comments !== undefined && (after.comments ?? 0) > before.comments
+
+  return failing || commented
+}
+
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
 export function wakesHydra({
   state,
@@ -474,9 +511,16 @@ export function wakesHydra({
     case 'task.queue':
     case 'task.declared':
     case 'task.reminder-due':
+    case 'task.kind':
       return true
     case 'task.permission':
       return event.data.status === 'pending'
+    case 'card.linked':
+      return linkNeedsHydra({
+        card,
+        before: event.data.before,
+        after: event.data.after,
+      })
     // An agent's own observation on a task, not a person's edit such as continuing a session.
     case 'card.pushed': {
       if (card.tracking !== 'declared' || !AGENT_ACTOR.test(event.actor)) {
@@ -494,7 +538,9 @@ export function wakesHydra({
       const asks = Boolean(before?.attention)
         && open({ list: attention }).some(key => !asked.includes(key))
 
-      return asks || (activity === 'finished' && Boolean(before?.activity))
+      const stopped = activity === 'ended' && unwatchedPullRequests({ card }).length > 0
+
+      return asks || stopped || (activity === 'finished' && Boolean(before?.activity))
     }
     default:
       return false
@@ -695,6 +741,7 @@ export function applyHydra({
       parentId,
       column,
       folder,
+      kind,
     } = event.data
     const columns = hydraConfig({ state }).columns
     const role = columns.find(c => c.id === column)?.role
@@ -735,11 +782,51 @@ export function applyHydra({
       updatedSeq: event.seq,
       updatedAt: event.at,
     }
+
+    if (kind === 'investigation') {
+      state.cards[event.cardId]!.kind = kind
+    }
+
     state.keys[key] = event.cardId
     refreshTasks({
       state,
       ids: [event.cardId],
     })
+
+    return true
+  }
+
+  if (event.type === 'task.kind' || event.type === 'task.report' || event.type === 'task.landing') {
+    const card = state.cards[event.cardId]
+
+    if (!card) {
+      return true
+    }
+
+    if (event.type === 'task.kind') {
+      card.kind = event.data.after
+    }
+
+    if (event.type === 'task.report') {
+      card.report = {
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+        chars: event.data.text.length,
+      }
+    }
+
+    if (event.type === 'task.landing' && event.data.after) {
+      card.landing = event.data.after
+    }
+
+    if (event.type === 'task.landing' && !event.data.after) {
+      delete card.landing
+    }
+
+    card.revision++
+    card.updatedSeq = event.seq
+    card.updatedAt = event.at
 
     return true
   }
