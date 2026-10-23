@@ -30,6 +30,8 @@ import { clock, duration, joinMessageParts, keepStreamedKeys, quoteInto, type Ch
 
 // How long after the owner's own input a scroll up still counts as theirs.
 const OWNER_SCROLL_MS = 1000
+// The share of the distance to the bottom that following covers per frame.
+const GLIDE = 0.3
 
 // Sends the server has not recorded yet; a confirmed one waits for its message to arrive.
 interface Sending {
@@ -103,7 +105,7 @@ export function HydraChat({
     setAway,
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
-  const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0)
+  const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const rendered = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
@@ -319,8 +321,22 @@ export function HydraChat({
     }
   }
 
+  // Following eases toward the bottom; any input of the owner's stops it at once.
+  const settle = () => {
+    const element = stream.current
+    const left = element ? element.scrollHeight - element.clientHeight - element.scrollTop : 0
+    glide.current = 0
+
+    if (element && follow.current && left >= 1) {
+      element.scrollTop += Math.ceil(left * GLIDE)
+      glide.current = requestAnimationFrame(settle)
+    }
+  }
+
   const ownerScroll = () => {
     scrolledAt.current = performance.now()
+    cancelAnimationFrame(glide.current)
+    glide.current = 0
   }
 
   useLayoutEffect(
@@ -333,8 +349,14 @@ export function HydraChat({
 
       const scroller = stream.current
       const observer = new ResizeObserver(() => {
-        if (follow.current) {
+        if (!follow.current || glide.current) {
+          return
+        }
+
+        if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
           bottom()
+        } else {
+          glide.current = requestAnimationFrame(settle)
         }
       })
       observer.observe(element)
@@ -346,6 +368,7 @@ export function HydraChat({
 
       return () => {
         observer.disconnect()
+        cancelAnimationFrame(glide.current)
         scroller.removeEventListener(
           MESSAGE_SCROLL,
           ownerScroll,
