@@ -26,7 +26,7 @@ import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { cardState } from './view.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
-import { clock, duration, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
+import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
 
 // How long after the owner's own input a scroll up still counts as theirs.
 const OWNER_SCROLL_MS = 1000
@@ -485,6 +485,12 @@ export function HydraChat({
     tasks: Object.keys(references),
   })
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
+  // Hydra's own state, apart from the browser's connection that the offline badge shows.
+  const pill = hydraPill({
+    status: state.hydraStatus,
+    working,
+    starting: pending.length > 0,
+  })
 
   return (
     <aside
@@ -495,7 +501,11 @@ export function HydraChat({
         flexBasis: width ?? view.hydraWidth,
       }}
     >
-      <header className="hydra-head"><Icon name="hydra" size={24} /><strong>{config.name}</strong></header>
+      <header className="hydra-head">
+        <Icon name="hydra" size={24} />
+        <strong>{config.name}</strong>
+        {hosted && <span className="hydra-status" role="status" data-down={pill.down || undefined}>{pill.text}</span>}
+      </header>
       <div className="hydra-body">
         <div
           className="hydra-messages thread"
