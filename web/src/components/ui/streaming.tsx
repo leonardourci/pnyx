@@ -373,6 +373,7 @@ function tick({
   time,
 }: Loop & { time: number }) {
   const elapsed = st.last ? time - st.last : FRAME
+  const before = st.cursor, held = st.shown
   st.frame = 0
   st.last = time
   const step = revealStep({
@@ -399,9 +400,14 @@ function tick({
     })
   }
 
+  // Held text waits for the next push, whose layout effect starts the loop again.
+  const stuck = st.cursor === before && st.shown === held && st.typed.length < 2
+
   if (settled({ st })) {
     st.last = 0
     unpaint({ st })
+  } else if (stuck) {
+    st.last = 0
   } else {
     schedule({
       st,
