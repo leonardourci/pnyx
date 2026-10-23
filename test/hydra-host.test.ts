@@ -13,6 +13,8 @@ import type { HydraEvent } from '../src/core/model.ts'
 import { startTask } from '../src/cli/start.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { sendReply } from '../src/cli/reply.ts'
+import { followPullRequests } from '../src/landing/follow.ts'
+import { project } from '../src/projects/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
@@ -47,6 +49,8 @@ beforeEach(() => {
     'codex',
   )
   process.env.PNYX_SEMANTIC = 'off'
+  // The server's own pull request follower never reaches GitHub; a test reads a pull request through follow.
+  process.env.PNYX_GH_AXI = 'false'
   commands.hydra([
     'create',
     'lab',
@@ -87,6 +91,9 @@ const sleep = ({ ms }: { ms: number }) => new Promise(resolve => setTimeout(
 const state = () => loadHydra({ hydraId: 'lab' }).state
 const hydra = () => state().cards[HYDRA_CARD]
 const finished = () => hydra()?.sessionActivity === 'finished'
+// A stall check's wake, told apart from a change's wake by the stall wake's own instruction.
+const stallWake = ({ text }: { text: string }) => text.startsWith('<pnyx-wake>Why you are woken:')
+  && text.includes('its requests and agents show what waits') && /\) (quiet|permission|turn ended): /.test(text)
 const interrupted = () => hydra()?.attention.some(a => a.kind === 'interrupted') ?? false
 const send = ({
   text,
@@ -671,7 +678,10 @@ test(
         reports.length,
         1,
       )
-      assert.ok(reports[0]!.startsWith('<pnyx-wake>A worker report arrived while you were busy.'))
+      assert.ok(reports[0]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${taskMention({
+        id: quick,
+        title: state().cards[quick]!.title,
+      })} report: from worker:${quick}, in its envelope below\nA worker report arrived while you were busy.`))
       assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${quick}" task="${quick}">\nA worker question\n</pnyx-report>`))
       assert.ok(!reports[0]!.includes('hydra check'))
       assert.ok(received.includes('Second'))
@@ -1319,7 +1329,7 @@ test(
     })
     const task = () => state().cards[state().keys.fix!]!
     const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-      .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+      .filter(m => stallWake({ text: m }))
 
     await send({ text: 'Watch the fix' })
     await until({ check: finished })
@@ -1399,7 +1409,7 @@ test(
     )
     assert.match(
       stalls()[0]!,
-      /Bash on .* has waited \d+ s for an answer/,
+      /permission: Bash has waited \d+ s for an answer/,
     )
     await sleep({ ms: 500 })
     assert.equal(
@@ -1445,7 +1455,7 @@ test(
 )
 
 test(
-  'a worker that ends its turn still declaring working stalls, though plain progress never wakes Hydra',
+  'a worker that ends its turn without declaring wakes Hydra at once and stalls later, though plain progress never wakes Hydra',
   async t => {
     let now = Date.now()
     t.mock.method(
@@ -1494,6 +1504,11 @@ test(
       },
     })
     await until({ check: () => task().sessionActivity === 'finished' })
+    await until({ check: () => wakes().length === 1 && finished() })
+    assert.match(
+      wakes()[0]!,
+      /^<pnyx-wake>Why you are woken:\n- \[@Fix add\]\(pnyx-task:[^)]+\) turn ended: the worker finished its turn /,
+    )
     await commands.task([
       'status',
       'fix',
@@ -1508,20 +1523,18 @@ test(
     await sleep({ ms: 200 })
     assert.equal(
       wakes().length,
-      0,
-      'a finished turn and a plain working declaration stay on the card',
+      1,
+      'a plain working declaration stays on the card',
     )
 
     now += 60_000
-
-    for (let i = 0; i < 150 && !wakes().length; i++) {
-      await sleep({ ms: 10 })
-    }
-
+    await until({ check: () => wakes().length === 2 })
     assert.match(
-      wakes()[0] ?? '',
+      wakes()[1]!,
       /ended its turn .* still declares working/,
+      'the next wake is the stall, never the plain working declaration',
     )
+    assert.ok(!wakes().some(wake => wake.includes('declared: working')))
   },
 )
 
@@ -1555,8 +1568,8 @@ test(
       stallRepeatMax: 450,
     })
     const wakes = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-    const stalls = () => wakes().filter(m => m.startsWith('<pnyx-wake>Stalled'))
-    const waits = () => wakes().filter(m => m.includes('Wait ended:'))
+    const stalls = () => wakes().filter(m => stallWake({ text: m }))
+    const waits = () => wakes().filter(m => m.includes(') wait ended: '))
 
     await send({ text: 'Watch the suite' })
     await until({ check: finished })
@@ -1653,7 +1666,7 @@ test(
 
     assert.match(
       waits()[0] ?? '',
-      /the worker on .* paused until .*: waiting on CI/,
+      /wait ended: the worker paused until .*: waiting on CI/,
     )
     await sleep({ ms: 600 })
     assert.equal(
@@ -1831,7 +1844,7 @@ test(
     })
     const hydraTurns = () => sdk.calls.filter(c => c.options.cwd !== folder)
       .flatMap(c => c.messages)
-    const waits = () => hydraTurns().filter(m => m.includes('Wait ended:'))
+    const waits = () => hydraTurns().filter(m => m.includes(') wait ended: '))
     const id = state().keys.schema!
     const pause = ({ args }: { args: string[] }) => commands.task([
       'status',
@@ -1857,6 +1870,8 @@ test(
       },
     })
     await until({ check: () => Boolean(state().cards[id]!.sessionIds?.length) })
+    // The worker's first turn ends without a declaration, which wakes Hydra once before the hold.
+    await until({ check: () => hydraTurns().some(m => m.includes(') turn ended: ')) && finished() })
 
     await pause({
       args: [
@@ -1891,7 +1906,7 @@ test(
     await until({ check: () => waits().length === 1 })
     assert.match(
       waits()[0]!,
-      /the worker on .* paused since .*: Waiting on the migration window/,
+      /wait ended: the worker paused since .*: Waiting on the migration window/,
     )
   },
 )
@@ -1968,7 +1983,7 @@ test(
       busyDelay: 5000,
     })
     const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-      .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+      .filter(m => stallWake({ text: m }))
 
     await send({ text: 'Watch the suite' })
     await until({ check: finished })
@@ -2031,7 +2046,7 @@ test(
       stallRepeatMax: 5000,
     })
     const stalls = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
-      .filter(m => m.startsWith('<pnyx-wake>Stalled'))
+      .filter(m => stallWake({ text: m }))
 
     await send({ text: 'Watch the suite' })
     await until({ check: finished })
@@ -2126,7 +2141,7 @@ test(
       changed: () => {},
       stallDelay: 200,
     })
-    const notConfirmed = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('Not confirmed:'))
+    const notConfirmed = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('not confirmed: '))
 
     try {
       await host.hydra({
@@ -2144,7 +2159,7 @@ test(
       await until({ check: () => notConfirmed().length === 1 && finished() })
       assert.match(
         notConfirmed()[0]!,
-        /Not confirmed: on task-1, the message "Rebase onto main" never showed up in the worker's session after 2 resends/,
+        /not confirmed: the message "Rebase onto main" never showed up in the worker's session after 2 resends/,
       )
 
       // The server reports it again on each check; Hydra already heard.
@@ -3040,5 +3055,311 @@ test(
       messages().length,
       2,
     )
+  },
+)
+
+const PULL_REQUEST = 'https://github.com/o/r/pull/7'
+
+// One gh-axi read of the pull request, with the checks line gh-axi prints.
+const prStatus = ({
+  state = 'open',
+  checks,
+}: {
+  state?: 'open' | 'merged'
+  checks: string
+}) => async () => ({
+  state,
+  draft: false,
+  checks: {
+    summary: checks,
+    failed: Number(/(\d+) failed/.exec(checks)?.[1] ?? 0),
+    pending: Number(/(\d+) pending/.exec(checks)?.[1] ?? 0),
+  },
+  comments: 0,
+})
+
+const follow = ({
+  state,
+  checks,
+}: {
+  state?: 'open' | 'merged'
+  checks: string
+}) => followPullRequests({
+  hydraId: 'lab',
+  readStatus: prStatus({
+    state,
+    checks,
+  }),
+  tell: async () => {},
+})
+
+// A task whose worker Pnyx started, and Hydra's turns, the worker's own left out.
+async function startedWorker({ key }: { key: string }) {
+  fakeDispatch({ root: home })
+  const folder = join(
+    home,
+    'work',
+  )
+  mkdirSync(folder)
+  await commands.task([
+    'create',
+    '--title',
+    'Fix add',
+    '--key',
+    key,
+    '--folder',
+    folder,
+    '--hydra',
+    'lab',
+  ])
+  const sdk = hydraSdk()
+  server = await startServer({
+    hydraId: 'lab',
+    query: sdk.query,
+    wakeDelay: 50,
+  })
+  const id = state().keys[key]!
+  const wakes = () => sdk.calls.filter(c => c.options.cwd !== folder).flatMap(c => c.messages)
+    .filter(m => m.startsWith('<pnyx-wake>'))
+
+  await send({ text: 'Watch the fix' })
+  await until({ check: finished })
+  await startTask({
+    hydraId: 'lab',
+    task: key,
+    meta: {
+      at: new Date().toISOString(),
+      actor: 'hydra',
+      reason: 'start it',
+      id: `start-${key}`,
+    },
+  })
+  await until({ check: () => state().cards[id]!.sessionActivity === 'finished' })
+  // The worker's first turn ends with no declaration of its own, which is a wake already.
+  await until({ check: () => wakes().length === 1 && finished() })
+
+  return {
+    sdk,
+    id,
+    wakes,
+    ref: taskMention({
+      id,
+      title: 'Fix add',
+    }),
+  }
+}
+
+test(
+  'a worker\'s needs_you wakes Hydra with its note and task link, and a turn that declared it adds no turn-ended reason',
+  async () => {
+    const {
+      sdk,
+      id,
+      wakes,
+      ref,
+    } = await startedWorker({ key: 'fix' })
+
+    assert.match(
+      wakes()[0]!,
+      /turn ended: the worker finished its turn /,
+    )
+    sdk.control.hold = true
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: 'fix',
+        text: 'Keep going',
+        homes: [],
+        actor: 'test',
+      },
+    })
+    await until({ check: () => state().cards[id]!.sessionActivity === 'working' })
+    await commands.task([
+      'status',
+      'fix',
+      'needs_you',
+      '--note',
+      'Pick a parser',
+      '--actor',
+      `worker:${id}`,
+      '--hydra',
+      'lab',
+    ])
+    sdk.release()
+    await until({ check: () => state().cards[id]!.sessionActivity === 'finished' && wakes().length === 2 && finished() })
+    await sleep({ ms: 300 })
+
+    assert.equal(
+      wakes().length,
+      2,
+      'the turn that declared needs_you wakes no second time',
+    )
+    assert.ok(wakes()[1]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${ref} declared: needs_you, "Pick a parser"\n`))
+    assert.ok(!wakes()[1]!.includes('turn ended'))
+    assert.ok(wakes()[1]!.endsWith('A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.</pnyx-wake>'))
+  },
+)
+
+test(
+  'checks settling on a pull request wake Hydra with its link though a live worker watches it',
+  async () => {
+    const {
+      wakes,
+      ref,
+    } = await startedWorker({ key: 'fix' })
+    await commands.link([
+      'fix',
+      '--url',
+      PULL_REQUEST,
+      '--state',
+      'open',
+      '--hydra',
+      'lab',
+    ])
+    await follow({ checks: '1 passed, 1 pending, 2 total' })
+    await sleep({ ms: 300 })
+    assert.equal(
+      wakes().length,
+      1,
+      'running checks wake nobody',
+    )
+
+    await follow({ checks: '2 passed, 2 total' })
+    await until({ check: () => wakes().length === 2 && finished() })
+    assert.ok(wakes()[1]!.includes(`\n- ${ref} checks: ${PULL_REQUEST} green (2 passed, 2 total)\n`))
+  },
+)
+
+test(
+  'an approved merge whose checks turn green wakes Hydra to merge it',
+  async () => {
+    const repo = join(
+      home,
+      'app',
+    )
+    mkdirSync(repo)
+    await project([
+      'add',
+      repo,
+      '--merge',
+      'hydra',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--project',
+      repo,
+      '--hydra',
+      'lab',
+    ])
+    await commands.link([
+      'fix',
+      '--url',
+      PULL_REQUEST,
+      '--state',
+      'open',
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+    })
+    const wakes = () => sdk.calls.flatMap(c => c.messages).filter(m => m.startsWith('<pnyx-wake>'))
+    await send({ text: 'Hello' })
+    await until({ check: finished })
+
+    await follow({ checks: '1 passed, 1 failed, 2 total' })
+    await until({ check: () => wakes().length === 1 && finished() })
+    await follow({ checks: '2 passed, 2 total' })
+    await until({ check: () => wakes().length === 2 && finished() })
+
+    assert.ok(wakes()[1]!.includes(`- ${taskMention({
+      id: state().keys.fix!,
+      title: 'Fix add',
+    })} approved merge is green: ${PULL_REQUEST} (2 passed, 2 total)\n`))
+  },
+)
+
+test(
+  'a merged task frees a slot: the wake lists the ready Backlog cards in order, never a held one',
+  async () => {
+    for (const [
+      title,
+      key,
+    ] of [
+        [
+          'Fix add',
+          'fix',
+        ],
+        [
+          'Next up',
+          'next',
+        ],
+        [
+          'Talk first',
+          'held',
+        ],
+      ]) {
+      await commands.task([
+        'create',
+        '--title',
+        title!,
+        '--key',
+        key!,
+        '--hydra',
+        'lab',
+      ])
+    }
+
+    await commands.task([
+      'status',
+      'held',
+      'paused',
+      '--hold',
+      '--note',
+      'The owner wants to talk first',
+      '--hydra',
+      'lab',
+    ])
+    await commands.link([
+      'fix',
+      '--url',
+      PULL_REQUEST,
+      '--state',
+      'open',
+      '--hydra',
+      'lab',
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+    })
+    const wakes = () => sdk.calls.flatMap(c => c.messages).filter(m => m.startsWith('<pnyx-wake>'))
+    await send({ text: 'Hello' })
+    await until({ check: finished })
+
+    await follow({
+      state: 'merged',
+      checks: '2 passed, 2 total',
+    })
+    await until({ check: () => wakes().length === 1 && finished() })
+    const ref = ({ key }: { key: string }) => taskMention({
+      id: state().keys[key]!,
+      title: state().cards[state().keys[key]!]!.title,
+    })
+
+    assert.ok(wakes()[0]!.includes(`- ${ref({ key: 'fix' })} merged: ${PULL_REQUEST}\n`))
+    assert.ok(wakes()[0]!.includes(`- slot free: ready in Backlog, in order: ${ref({ key: 'next' })}\n`))
+    assert.ok(!wakes()[0]!.includes('Talk first'))
   },
 )
