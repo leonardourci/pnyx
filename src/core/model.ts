@@ -521,46 +521,45 @@ export function cardLanding({
   return project ? landingRule({ project }) : undefined
 }
 
-const checkCount = ({
-  checks,
-  word,
-}: {
-  checks?: string
-  word: string
-}) => Number(new RegExp(`(\\d+) ${word}`).exec(checks ?? '')?.[1] ?? 0)
+// gh-axi's checks line ("3 passed, 1 failed, 1 skipped, 6 total"), counted.
+function checkTally({ checks }: { checks?: string }) {
+  const count = ({ word }: { word: string }) => Number(new RegExp(`(\\d+) ${word}`).exec(checks ?? '')?.[1] ?? 0)
 
-// How many checks gh-axi's checks line ("3 passed, 1 failed, 4 total") counts as failed.
+  return {
+    passed: count({ word: 'passed' }),
+    failed: count({ word: 'failed' }),
+    skipped: count({ word: 'skipped' }),
+    total: count({ word: 'total' }),
+  }
+}
+
 export function failedChecks({ checks }: { checks?: string }): number {
-  return checkCount({
-    checks,
-    word: 'failed',
-  })
+  return checkTally({ checks }).failed
 }
 
 // Whatever is neither passed, failed nor skipped is still running.
 export function pendingChecks({ checks }: { checks?: string }): number {
-  const settled = [
-    'passed',
-    'failed',
-    'skipped',
-  ].reduce(
-    (
-      sum,
-      word,
-    ) => sum + checkCount({
-      checks,
-      word,
-    }),
-    0,
-  )
+  const {
+    passed,
+    failed,
+    skipped,
+    total,
+  } = checkTally({ checks })
 
   return Math.max(
     0,
-    checkCount({
-      checks,
-      word: 'total',
-    }) - settled,
+    total - passed - failed - skipped,
   )
+}
+
+// At least one check passed or failed, so the line reports a real run rather than none or only skips.
+export function ranChecks({ checks }: { checks?: string }): boolean {
+  const {
+    passed,
+    failed,
+  } = checkTally({ checks })
+
+  return passed + failed > 0
 }
 
 export interface HydraProject {
