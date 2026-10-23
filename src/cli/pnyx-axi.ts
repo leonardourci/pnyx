@@ -33,30 +33,32 @@ await runAxiCli({
   home,
   getCommandHelp: command => commandHelp({ command })
     ?? firstmateHelp({ command }) ?? HELP[command],
-  commands: supervisedCommands({
-    commands: ownerOnly({
-      commands: {
-        ...commands,
-        approval,
-        project,
-        ...workerCommands,
-        ...dispatchCommands,
-        serve,
-        stop,
-        ...firstmateCommands,
-        reply,
-        agent,
-        integrations: integrationsCommand,
-        ...oracleCommands,
-        // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
-        update: () => {
-          throw new AxiError(
-            'pnyx-axi is not published yet',
-            'VALIDATION_ERROR',
-            ['Pull the repository and run `pnpm install && pnpm run build`'],
-          )
+  commands: ownerOnly({
+    commands: {
+      ...commands,
+      ...supervisedCommands({
+        commands: {
+          approval,
+          project,
+          ...workerCommands,
+          ...dispatchCommands,
+          serve,
+          stop,
+          ...firstmateCommands,
+          reply,
+          agent,
+          integrations: integrationsCommand,
+          ...oracleCommands,
+          // Shadows the SDK's npm self-update: pnyx-axi is not published while pre-v1.
+          update: () => {
+            throw new AxiError(
+              'pnyx-axi is not published yet',
+              'VALIDATION_ERROR',
+              ['Pull the repository and run `pnpm install && pnpm run build`'],
+            )
+          },
         },
-      },
-    }),
+      }),
+    },
   }),
 })
