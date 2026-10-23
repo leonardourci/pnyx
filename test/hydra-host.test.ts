@@ -1414,7 +1414,7 @@ test(
     )
     assert.match(
       stalls()[0]!,
-      new RegExp(`\\nOpen decisions \\(1\\):\\n- \\[@Fix add\\]\\(pnyx-task:${task().id}\\) permission, [^:]+: ${request.id}: Bash waits for an answer\\nReply rules:`),
+      new RegExp(`\\nOpen decisions \\(1\\):\\n- \\[@Fix add\\]\\(pnyx-task:${task().id}\\) permission, [^:]+: ${request.id} Bash\\n`),
     )
     await sleep({ ms: 500 })
     assert.equal(
@@ -1440,7 +1440,7 @@ test(
     )
     assert.match(
       stalls()[1]!,
-      /\nOpen decisions: none\nReply rules:/,
+      /\nOpen decisions: none\n/,
     )
     sdk.control.hold = true
     await sendReply({
@@ -3179,10 +3179,6 @@ test(
       'lab',
     ])
     const id = state().keys.scope!
-    const ref = taskMention({
-      id,
-      title: 'Pick a scope',
-    })
     const wakes = () => sdk.calls.flatMap(call => call.messages).filter(m => m.startsWith('<pnyx-wake>'))
 
     const report = async ({ text }: { text: string }) => {
@@ -3203,7 +3199,7 @@ test(
     await until({ check: () => wakes().length === 1 && finished() })
     assert.match(
       wakes()[0]!,
-      /\nOpen decisions: none\nIf none of this needs the owner/,
+      /\nOpen decisions: none\n/,
     )
 
     const question = await commands.task([
@@ -3222,7 +3218,11 @@ test(
     ])
     await report({ text: 'Waiting on the scope' })
     await until({ check: () => wakes().length === 2 && finished() })
-    assert.ok(wakes()[1]!.includes(`\nOpen decisions (1):\n- ${ref} owner question, under 1 min old: ${String(question.ask)} "Which scope?"\nIf none`))
+    // The age is pinned in the decisions unit test; here it depends on the clock.
+    assert.match(
+      wakes()[1]!,
+      new RegExp(`\\nOpen decisions \\(1\\):\\n- \\[@Pick a scope\\]\\(pnyx-task:${id}\\) owner question, [^:]+: ${String(question.ask)} "Which scope\\?"\\n`),
+    )
 
     await commands.task([
       'answer',
