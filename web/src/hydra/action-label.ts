@@ -743,6 +743,13 @@ export function currentLabel({
     return null
   }
 
+  if (action.thinking) {
+    return {
+      icon: 'thinking',
+      sentence: ['Thinking'],
+    }
+  }
+
   return actionLabel({
     action,
     lookup,
