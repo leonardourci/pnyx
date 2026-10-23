@@ -192,7 +192,7 @@ export async function buildCommand({
 
   const rule = taskLanding({
     state,
-    project: card.project,
+    card,
   })
 
   try {

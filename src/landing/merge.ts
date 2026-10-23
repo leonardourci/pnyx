@@ -91,7 +91,7 @@ export async function mergeCommand({
   })
   const rule = taskLanding({
     state,
-    project: card.project,
+    card,
   })
   const owner = ownerActor({ actor: meta.actor })
 

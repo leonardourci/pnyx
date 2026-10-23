@@ -1,4 +1,5 @@
 import { mergeCommand } from '../landing/merge.ts'
+import { taskLandingCommand } from '../landing/task-landing.ts'
 import { buildCommand, reportCommand } from '../investigation/cli.ts'
 import { parseKind } from '../investigation/report.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
@@ -861,6 +862,9 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       kind: { type: 'string' },
       file: { type: 'string' },
       url: { type: 'string' },
+      landing: { type: 'string' },
+      merge: { type: 'string' },
+      clear: { type: 'boolean' },
     },
     positionals: 4,
   })
@@ -881,6 +885,17 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return buildCommand({
       hydraId,
       ref: positionals[1],
+      meta: m,
+    })
+  }
+
+  if (action === 'landing') {
+    return taskLandingCommand({
+      hydraId,
+      ref: positionals[1],
+      landing: values.landing as string | undefined,
+      merge: values.merge as string | undefined,
+      clear: values.clear === true,
       meta: m,
     })
   }
@@ -4042,6 +4057,8 @@ pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
+pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
+Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
 pnyx-axi task merge <id> [--url <pull request>]
 Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
 and never while a check is red or still running.

@@ -59,7 +59,7 @@ export function doneGaps({
   }).landed
   const rule = taskLanding({
     state,
-    project: card.project,
+    card,
   })
 
   if (landed || rule?.landing === 'branch') {

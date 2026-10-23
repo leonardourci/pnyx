@@ -2,15 +2,20 @@ import { HydraError, LANDINGS, MERGERS, landingRule, type Card, type HydraState,
 import { investigationLine, reportLine } from '../investigation/report.ts'
 import { projectsFor } from '../projects/read.ts'
 
+// The owner's rule for this task when one was recorded, otherwise its project's.
 export function taskLanding({
   state,
-  project: ref,
+  card,
 }: {
   state: HydraState
-  project?: string
+  card: Card
 }): LandingRule | undefined {
+  if (card.landing) {
+    return card.landing
+  }
+
   const project = projectsFor({ state })
-    .find(p => !p.detached && (p.path === ref || p.name === ref))
+    .find(p => !p.detached && (p.path === card.project || p.name === card.project))
 
   return project ? landingRule({ project }) : undefined
 }
@@ -58,7 +63,7 @@ export function landingLine({
   return `Landing: commit on your branch, push it, open a ready pull request and link it with \`pnyx-axi link ${id} --url <pull request url> --hydra ${hydraId}\`, then declare needs_you with its URL: ${merger}; never merge it yourself. Pnyx follows the pull request, sends you failed checks and new review comments to fix, and marks the task done when it merges.`
 }
 
-// Where this task's worker stops: an investigation at its stored report, anything else at the project's landing rule.
+// Where this task's worker stops: an investigation at its stored report, anything else at its landing rule.
 export function taskStops({
   state,
   hydraId,
@@ -80,7 +85,7 @@ export function taskStops({
   const stops: string[] = []
   const rule = taskLanding({
     state,
-    project: card.project,
+    card,
   })
 
   if (card.report) {
