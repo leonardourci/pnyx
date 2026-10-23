@@ -396,9 +396,26 @@ test(
     server = await startServer({
       hydraId: 'lab',
       spawnCodex: refusing.spawnCodex,
+      stallDelay: 200,
     })
+    const failures = () => (state().hydraMessages ?? []).filter(m => /Hydra could not start/.test(m.text))
     await send({ text: 'Lost to the failed resume' })
-    await until({ check: () => (state().hydraMessages ?? []).some(m => /Hydra could not start/.test(m.text)) })
+    await until({ check: () => failures().length === 1 })
+    // A wait that ends while starts fail keeps its alarm for a start that works.
+    await commands.task([
+      'status',
+      'quick',
+      'paused',
+      '--until',
+      new Date(Date.now() + 100).toISOString(),
+      '--hydra',
+      'lab',
+    ])
+    await sleep({ ms: 600 })
+    assert.equal(
+      failures().length,
+      1,
+    )
     await server.close()
     const fixed = fakeCodex({ root: home })
     server = await startServer({
