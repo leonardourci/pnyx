@@ -399,6 +399,7 @@ async function askOne({
         ref,
         id,
         audience: to as AskAudience,
+        kind: text({ value: values.kind }),
         question: required({
           value: text({ value: values.question }),
           what: '--question',

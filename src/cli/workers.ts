@@ -29,6 +29,8 @@ const TRACKED: readonly EventType[] = [
   'task.permission',
   'hydra.message',
   'task.created',
+  'task.held',
+  'task.released',
   'task.kind',
   'task.report',
   'task.landing',

@@ -1,3 +1,4 @@
+import { decideHold, requireUnheld } from '../core/holds.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
@@ -1085,6 +1086,18 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return paseoStatus({ url })
   }
 
+  if (action === 'continue') {
+    requireUnheld({
+      card: findCard({
+        state: loadHydra({ hydraId }).state,
+        ref: required({
+          value: positionals[1],
+          what: 'task id',
+        }),
+      }),
+    })
+  }
+
   if (action === 'continue' && values.check) {
     return askHost({
       hydraId,
@@ -1159,6 +1172,29 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
   }
 
+  if (action === 'hold' || action === 'release') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: action === 'hold' ? 'task.held' : 'task.released',
+        card: ref,
+      },
+      decide: ({ state }) => decideHold({
+        state,
+        ref,
+        release: action === 'release',
+        message: values['from-message'] as string | undefined,
+        meta: m,
+      }),
+    })
+  }
+
   if (action === 'create') {
     const title = required({
       value: values.title as string | undefined,
@@ -1229,9 +1265,11 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }
 
         const cardId = `task-${randomUUID()}`
+        const holdReason = m.reason?.trim() || title
         const created: TaskCreated['data'] = {
           key,
           title,
+          ...(values.hold ? { hold: holdReason } : {}),
           ...(project ? { project } : {}),
           ...(brief !== undefined ? { brief } : {}),
           ...(folder ? { folder } : {}),
@@ -1317,6 +1355,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         parent: c.parentId ?? '',
         status: c.status?.state ?? 'paused',
         worker: c.sessionIds?.[0] ?? '',
+        ...(c.hold ? { hold: c.hold.reason } : {}),
         ...(c.queue ? {
           queue: queuePosition({
             state,
@@ -1411,6 +1450,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           }),
         })) : [],
         declarations: task.statusLog?.length ?? 0,
+        ...(task.hold ? { hold: task.hold } : {}),
         ...(task.asks?.length ? { questions: askRows({ card: task }) } : {}),
         firstmate: task.mirror ? 'mirrored' : 'none',
       },
@@ -3716,6 +3756,8 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.reminder': return event.data.after ? `Reminder set for ${event.data.after}` : 'Reminder cleared'
     case 'task.reminder-due': return event.data.message.text
+    case 'task.held': return `Held for discussion: ${event.data.reason}`
+    case 'task.released': return `Released on owner message ${event.data.message.id}`
     case 'task.intent': return 'Owner ask added'
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
@@ -4312,7 +4354,10 @@ repeat the same command with --confirm <token>. Browser actions already carry th
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task hold <id> --reason <topic>
+pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
+Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
 pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
@@ -4333,8 +4378,8 @@ Gives this task alone a landing rule other than its project's, or prints the rul
 pnyx-axi task merge <id> [--url <pull request>]
 Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
 and never while a check is red or still running.
-pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner]
-A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. Choices are optional: a typed answer is always accepted.
+pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
+A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
 Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
 An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
