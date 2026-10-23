@@ -7,7 +7,7 @@ import { commands } from '../src/cli/commands.ts'
 import { followUpReplies } from '../src/cli/reply-retry.ts'
 import { decidePush, decideReply, decideSession } from '../src/core/decide.ts'
 import type { ReplyState } from '../src/core/model.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 let root = ''
 let transcript = ''
@@ -114,18 +114,29 @@ const receipt = ({
   state,
   text,
   at,
+  route = 'terminal:tmux',
+  control,
 }: {
   reply: string
   state: ReplyState
   text?: string
   at: number
+  route?: string
+  control?: boolean
 }) => withWriter({
   hydraId: 'lab',
   fn: ({ writer }) => {
     const data = {
       reply,
       state,
-      route: 'terminal:tmux',
+      route,
+    }
+
+    if (control) {
+      Object.assign(
+        data,
+        { control },
+      )
     }
 
     if (text) {
@@ -195,6 +206,7 @@ test(
       at: SENT,
     })
     const reported: string[] = []
+    const tried = new Map<string, number>()
 
     const unconfirmed = ({
       reply,
@@ -210,6 +222,7 @@ test(
     const early = unknownResend({ at: SENT })
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: early.resend,
       unconfirmed,
       now: SENT + MINUTE / 2,
@@ -223,6 +236,7 @@ test(
     const first = unknownResend({ at: SENT + 2 * MINUTE })
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: first.resend,
       unconfirmed,
       now: SENT + 2 * MINUTE,
@@ -230,6 +244,7 @@ test(
     const second = unknownResend({ at: SENT + 4 * MINUTE })
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: second.resend,
       unconfirmed,
       now: SENT + 4 * MINUTE,
@@ -252,6 +267,7 @@ test(
     const last = unknownResend({ at: SENT + 6 * MINUTE })
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: last.resend,
       unconfirmed,
       now: SENT + 6 * MINUTE,
@@ -270,10 +286,17 @@ test(
       'the card stays unmarked',
     )
 
-    // Past the follow-up window nothing is resent or reported again.
+    // Past the reply's follow-up window nothing is resent or reported again, even on a card updated since.
+    receipt({
+      reply: 'r2',
+      state: 'delivered',
+      text: 'Thanks',
+      at: SENT + 39 * MINUTE,
+    })
     const late = unknownResend({ at: SENT + 40 * MINUTE })
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: late.resend,
       unconfirmed,
       now: SENT + 40 * MINUTE,
@@ -317,8 +340,10 @@ test(
       })}\n`,
     )
     const fake = unknownResend({ at: SENT })
+    const tried = new Map<string, number>()
     await followUpReplies({
       hydraId: 'lab',
+      tried,
       resend: fake.resend,
       unconfirmed: () => assert.fail('a delivered reply is not reported'),
       now: SENT + 2 * MINUTE,
@@ -330,6 +355,171 @@ test(
     assert.equal(
       task().replies?.find(reply => reply.id === 'r1')?.state,
       'delivered',
+    )
+  },
+)
+
+// A resend whose child failed before the reply command recorded anything.
+const lostResend = () => {
+  const resent: string[] = []
+
+  return {
+    resent,
+    resend: async ({ retry }: { retry: string }): Promise<ReplyState> => {
+      resent.push(retry)
+
+      return 'delivery_unknown'
+    },
+  }
+}
+
+const unconfirmedReply = ({
+  text,
+  route,
+  control,
+}: {
+  text: string
+  route?: string
+  control?: boolean
+}) => {
+  receipt({
+    reply: 'r1',
+    state: 'queued',
+    text,
+    at: SENT,
+    route,
+    control,
+  })
+  receipt({
+    reply: 'r1',
+    state: 'delivery_unknown',
+    at: SENT,
+    route,
+    control,
+  })
+}
+
+test(
+  'resends that fail before their receipt still count, so the reply is reported after two',
+  async () => {
+    unconfirmedReply({ text: '- rebase onto main' })
+    const tried = new Map<string, number>()
+    const fake = lostResend()
+    const reported: string[] = []
+
+    for (const minute of [
+      2,
+      4,
+      6,
+    ]) {
+      await followUpReplies({
+        hydraId: 'lab',
+        tried,
+        resend: fake.resend,
+        unconfirmed: ({ reply }) => {
+          reported.push(reply)
+        },
+        now: SENT + minute * MINUTE,
+      })
+    }
+
+    assert.deepEqual(
+      [
+        fake.resent,
+        reported,
+      ],
+      [
+        [
+          'r1~retry1',
+          'r1~retry2',
+        ],
+        ['r1'],
+      ],
+    )
+  },
+)
+
+test(
+  'control and Firstmate replies are never resent or reported',
+  async () => {
+    for (const reply of [
+      {
+        text: 'Use plan mode',
+        control: true,
+      },
+      {
+        text: 'Rebase onto main',
+        route: 'firstmate:inbox',
+      },
+    ]) {
+      unconfirmedReply(reply)
+      const fake = lostResend()
+      await followUpReplies({
+        hydraId: 'lab',
+        tried: new Map(),
+        resend: fake.resend,
+        unconfirmed: () => assert.fail(`${reply.text} is not reported`),
+        now: SENT + 2 * MINUTE,
+      })
+      assert.deepEqual(
+        fake.resent,
+        [],
+      )
+    }
+  },
+)
+
+test(
+  'a short reply counts as arrived only when a message ends with it',
+  async () => {
+    unconfirmedReply({ text: 'yes' })
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: new Date(SENT + 5000).toISOString(),
+        message: {
+          role: 'user',
+          content: 'yes, and also fix the docs',
+        },
+      })}\n`,
+    )
+    const fake = lostResend()
+    await followUpReplies({
+      hydraId: 'lab',
+      tried: new Map(),
+      resend: fake.resend,
+      unconfirmed: () => {},
+      now: SENT + 2 * MINUTE,
+    })
+    assert.deepEqual(
+      fake.resent,
+      ['r1~retry1'],
+    )
+  },
+)
+
+test(
+  'a resend that arrives marks the original delivered',
+  async () => {
+    unconfirmedReply({ text: 'Rebase onto main' })
+    await followUpReplies({
+      hydraId: 'lab',
+      tried: new Map(),
+      resend: async () => 'delivered',
+      unconfirmed: () => assert.fail('a delivered resend is not reported'),
+      now: SENT + 2 * MINUTE,
+    })
+    const arrived = readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'card.replied')
+    assert.deepEqual(
+      [
+        task().replies?.find(reply => reply.id === 'r1')?.state,
+        arrived?.type === 'card.replied' && arrived.data.detail,
+      ],
+      [
+        'delivered',
+        'resent as r1~retry1',
+      ],
     )
   },
 )

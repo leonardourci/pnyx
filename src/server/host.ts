@@ -19,7 +19,7 @@ import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
-import { hydraDigest } from '../core/digest.ts'
+import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
@@ -176,6 +176,8 @@ const BUSY_MS = 60 * 60 * 1000
 const PAUSE_MS = 4 * 60 * 60 * 1000
 // A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
 const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
+// How much of a message Hydra's Not confirmed wake quotes.
+const UNCONFIRMED_QUOTE_CHARS = 80
 const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 // A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
@@ -1615,21 +1617,21 @@ export function createHost({
   const missingReplies = ({ state }: { state: HydraState }): {
     id: string
     text: string
-  }[] => [...unconfirmedReplies].flatMap(([
-    id,
-    text,
-  ]) => {
-    if (`${id}:hosted` in state.eventIds) {
-      return []
+  }[] => {
+    for (const id of unconfirmedReplies.keys()) {
+      if (`${id}:hosted` in state.eventIds) {
+        unconfirmedReplies.delete(id)
+      }
     }
 
-    return [
-      {
-        id,
-        text,
-      },
-    ]
-  })
+    return [...unconfirmedReplies].map(([
+      id,
+      text,
+    ]) => ({
+      id,
+      text,
+    }))
+  }
 
   const wakeOnStall = () => {
     const state = loadHydra({ hydraId }).state
@@ -2872,13 +2874,10 @@ export function createHost({
     }) => {
       unconfirmedReplies.set(
         `unconfirmed:${card}:${reply}`,
-        `on ${card}, the message "${text.replace(
-          /\s+/g,
-          ' ',
-        ).slice(
-          0,
-          80,
-        )}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
+        `on ${card}, the message "${clip({
+          text,
+          size: UNCONFIRMED_QUOTE_CHARS,
+        })}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
       )
     },
 

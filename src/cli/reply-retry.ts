@@ -1,5 +1,5 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
-import { decideReply, type Decision } from '../core/decide.ts'
+import { decideReply } from '../core/decide.ts'
 import type { Card, HydraEvent, HydraState, ReplyState } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
@@ -23,7 +23,7 @@ const CLOCK_SLACK_MS = 1000
 // How much of the message, whitespace folded, must appear in the transcript.
 const MATCH_CHARS = 200
 
-export type ReplyFollowUp =
+type ReplyFollowUp =
   | {
     kind: 'confirm'
     card: string
@@ -64,6 +64,7 @@ const unconfirmedOriginals = ({ card }: { card: Card }) => (card.replies ?? [])
   .filter(reply => reply.state === 'delivery_unknown' && !reply.answers && !reply.id.includes(RETRY_MARK))
 
 // Whether any reply could need a follow-up, so the server knows to keep checking.
+// ponytail: gated on the card's last update, not the reply's age; record a send time on the reply if polling runs long.
 export function repliesToFollow({
   state,
   now = Date.now(),
@@ -111,8 +112,9 @@ function sentReplies({ events }: { events: HydraEvent[] }): Map<string, Sent> {
   return sent
 }
 
-// Whether the session's transcript shows the message as a user turn after it was sent.
-export function transcriptHas({
+// Whether the session's transcript shows the message as a user turn after it was sent; a missing transcript shows nothing.
+// ponytail: reads only the last TRANSCRIPT_WINDOW; record the transcript size at send time if huge turns push messages out.
+function transcriptHas({
   path,
   text,
   after,
@@ -168,12 +170,20 @@ export function transcriptHas({
 
       return transcriptMessages({ record }).some(message => {
         const recordedAt = message.at ? Date.parse(message.at) : after
+        const said = folded({ text: message.text })
+        const whole = said === wanted || said.endsWith(wanted)
+        // A short reply must end the message, or a word like "yes" would match any later one.
+        const matches = wanted.length < MATCH_CHARS ? whole : said.includes(wanted)
 
-        return recordedAt >= after && folded({ text: message.text }).includes(wanted)
+        return recordedAt >= after && matches
       })
     })
-  } catch {
-    return false
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return false
+    }
+
+    throw error
   } finally {
     if (fd !== undefined) {
       closeSync(fd)
@@ -182,13 +192,16 @@ export function transcriptHas({
 }
 
 // What each unconfirmed reply needs now; pure apart from reading the log and transcripts.
-export function replyFollowUps({
+// tried holds the resends sent so far by retry id and time, as one that failed before its receipt leaves no record.
+function replyFollowUps({
   hydraId,
   state,
+  tried,
   now,
 }: {
   hydraId: string
   state: HydraState
+  tried: Map<string, number>
   now: number
 }): ReplyFollowUp[] {
   if (!repliesToFollow({
@@ -218,24 +231,37 @@ export function replyFollowUps({
 
     for (const reply of unconfirmedOriginals({ card })) {
       const original = sent.get(`${card.id}:${reply.id}`)
-      const outside = !original?.text || original.control || original.route.startsWith('firstmate')
 
-      if (outside || now - original.firstAt >= FOLLOW_UP_WINDOW_MS) {
+      if (!original?.text) {
         continue
       }
 
-      const retries = replies.filter(retry => retry.id.startsWith(`${reply.id}${RETRY_MARK}`))
+      const outsideRoute = original.control || original.route.startsWith('firstmate')
+      const tooOld = now - original.firstAt >= FOLLOW_UP_WINDOW_MS
+
+      if (outsideRoute || tooOld) {
+        continue
+      }
+
+      const retryPrefix = `${reply.id}${RETRY_MARK}`
+      const retries = replies.filter(retry => retry.id.startsWith(retryPrefix))
+      const triedIds = [...tried.keys()].filter(id => id.startsWith(retryPrefix))
+      const retryIds = new Set([
+        ...retries.map(retry => retry.id),
+        ...triedIds,
+      ])
       const inFlight = retries.some(retry => retry.state === 'queued' || retry.state === 'delivered')
       const lastAt = Math.max(
         original.lastAt,
         ...retries.map(retry => sent.get(`${card.id}:${retry.id}`)?.lastAt ?? 0),
+        ...triedIds.map(id => tried.get(id) ?? 0),
       )
 
       if (inFlight || now - lastAt < RESEND_GRACE_MS) {
         continue
       }
 
-      const text = original.text!
+      const text = original.text
 
       if (transcriptHas({
         path,
@@ -248,14 +274,14 @@ export function replyFollowUps({
           reply: reply.id,
           route: original.route,
         })
-      } else if (retries.length < MAX_RESENDS) {
+      } else if (retryIds.size < MAX_RESENDS) {
         followUps.push({
           kind: 'resend',
           card: card.id,
           reply: reply.id,
           route: original.route,
           text,
-          retry: `${reply.id}${RETRY_MARK}${retries.length + 1}`,
+          retry: `${retryPrefix}${retryIds.size + 1}`,
         })
       } else {
         followUps.push({
@@ -271,18 +297,6 @@ export function replyFollowUps({
   return followUps
 }
 
-function apply({
-  writer,
-  decision,
-}: {
-  writer: Writer
-  decision: Decision
-}) {
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
-}
-
 function recordArrived({
   writer,
   card,
@@ -296,34 +310,36 @@ function recordArrived({
   route: string
   detail: string
 }) {
-  apply({
-    writer,
-    decision: decideReply({
-      state: writer.state,
-      ref: card,
-      data: {
-        reply,
-        route,
-        state: 'delivered',
-        detail,
-      },
-      meta: {
-        at: new Date().toISOString(),
-        actor: 'pnyx',
-      },
-    }),
+  const decision = decideReply({
+    state: writer.state,
+    ref: card,
+    data: {
+      reply,
+      route,
+      state: 'delivered',
+      detail,
+    },
+    meta: {
+      at: new Date().toISOString(),
+      actor: 'pnyx',
+    },
   })
+
+  if ('event' in decision) {
+    writer.append({ event: decision.event })
+  }
 }
 
-// Confirms or resends each reply its route could not confirm, and hands one still missing
-// after its resends to unconfirmed. resend sends through the reply command and returns its receipt.
+// Confirms, resends, or hands to unconfirmed each reply its route could not confirm.
 export async function followUpReplies({
   hydraId,
+  tried,
   resend,
   unconfirmed,
   now = Date.now(),
 }: {
   hydraId: string
+  tried: Map<string, number>
   resend({
     card,
     text,
@@ -347,6 +363,7 @@ export async function followUpReplies({
   const followUps = replyFollowUps({
     hydraId,
     state: loadHydra({ hydraId }).state,
+    tried,
     now,
   })
 
@@ -372,6 +389,10 @@ export async function followUpReplies({
         text: followUp.text,
       })
     } else {
+      tried.set(
+        followUp.retry,
+        now,
+      )
       const state = await resend({
         card: followUp.card,
         text: followUp.text,

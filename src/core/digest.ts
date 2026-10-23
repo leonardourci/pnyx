@@ -77,7 +77,7 @@ const usage = ({
   return `${layer} memory uses ${used} of ${budget} characters.${used > budget * NEARLY_FULL ? ` Load the ${MEMORY_SKILL} skill and curate it before it fills.` : ''}`
 }
 
-const clip = ({
+export const clip = ({
   text,
   size = 160,
 }: {

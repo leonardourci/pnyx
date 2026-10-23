@@ -216,6 +216,14 @@ const RETRY_MS = 60_000
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
 const runFile = promisify(execFile)
+// The CLI owns reply writes and delivery; a child keeps slow native sends off the server event loop.
+const REPLY_WORKER = join(
+  import.meta.dirname,
+  '..',
+  'cli',
+  import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
+)
+const REPLY_WORKER_TIMEOUT_MS = 130_000
 
 // Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
 // https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
@@ -1220,6 +1228,9 @@ async function mountOwnedHydra({
   let replyCheckedAt = 0
   let scheduled = false
 
+  // Resends tried so far, by retry id and time, so one that failed before its receipt still counts.
+  const triedResends = new Map<string, number>()
+
   // A resend goes through the reply command in a child, like a send from the page.
   const resendReply = async ({
     card,
@@ -1230,22 +1241,15 @@ async function mountOwnedHydra({
     text: string
     retry: string
   }): Promise<ReplyState> => {
-    const worker = join(
-      import.meta.dirname,
-      '..',
-      'cli',
-      import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
-    )
-
     try {
       const { stdout } = await runFile(
         process.execPath,
         [
-          worker,
+          REPLY_WORKER,
           'reply',
           card,
-          '--text',
-          text,
+          // A text starting with a dash would otherwise read as an option.
+          `--text=${text}`,
           '--idempotency-key',
           retry,
           '--hydra',
@@ -1254,14 +1258,21 @@ async function mountOwnedHydra({
           'pnyx',
         ],
         {
-          timeout: 130000,
+          timeout: REPLY_WORKER_TIMEOUT_MS,
           maxBuffer: MAX_BODY,
         },
       )
       const receipt = JSON.parse(stdout) as { reply?: { state?: ReplyState } }
+      const state = receipt.reply?.state
 
-      return receipt.reply?.state ?? 'delivery_unknown'
-    } catch {
+      if (!state) {
+        return 'delivery_unknown'
+      }
+
+      return state
+    } catch (error) {
+      console.error(`pnyx-axi replies: resend ${retry} failed: ${(error as Error).message}`)
+
       return 'delivery_unknown'
     }
   }
@@ -1278,6 +1289,8 @@ async function mountOwnedHydra({
       if (closed) {
         return
       }
+
+      let repliesPending = false
 
       try {
         if (spoolFiles({ dir }).length > 0) {
@@ -1324,13 +1337,15 @@ async function mountOwnedHydra({
         }
 
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
+        repliesPending = repliesToFollow({ state })
 
-        if (!replyRun && repliesToFollow({ state }) && replyCheckDue) {
+        if (!replyRun && repliesPending && replyCheckDue) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
               await followUpReplies({
                 hydraId,
+                tried: triedResends,
                 resend: resendReply,
                 unconfirmed: agents.unconfirmed,
               })
@@ -1374,7 +1389,7 @@ async function mountOwnedHydra({
           deadlines.push(followCheckedAt + FOLLOW_POLL_MS)
         }
 
-        const replyFollowUpDue = !replyRun && repliesToFollow({ state })
+        const replyFollowUpDue = !replyRun && repliesPending
 
         if (replyFollowUpDue) {
           deadlines.push(replyCheckedAt + REPLY_POLL_MS)
@@ -2190,16 +2205,10 @@ async function mountOwnedHydra({
                 [],
               ]
 
-          // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
           execFile(
             process.execPath,
             [
-              join(
-                import.meta.dirname,
-                '..',
-                'cli',
-                import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
-              ),
+              REPLY_WORKER,
               ...command,
               '--hydra',
               hydraId,
@@ -2212,7 +2221,7 @@ async function mountOwnedHydra({
               ...rest,
             ],
             {
-              timeout: 130000,
+              timeout: REPLY_WORKER_TIMEOUT_MS,
               maxBuffer: MAX_BODY,
             },
             (
