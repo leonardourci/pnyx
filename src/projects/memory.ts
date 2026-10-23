@@ -290,6 +290,12 @@ export function writeProjectMemory({
       }
 
       if (before === after && confirmed === undefined && (key !== 'profile' || !view.changed.length)) {
+        const saved = view.events.findLast(event => event.key === key)
+
+        if (saved) {
+          notify({ event: saved })
+        }
+
         return {
           project: view.id,
           revision: view.revision,

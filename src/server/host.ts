@@ -2216,12 +2216,13 @@ export function createHost({
           prepared = undefined
           startFailed = false
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
+          const memoryNote = waking ? memoryChangeNote() : ''
           entry.activity = 'working'
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
-            text: waking ? text.replace(
+            text: memoryNote ? text.replace(
               REPLY_RULES,
-              `${memoryChangeNote()}\n${REPLY_RULES}`,
+              `${memoryNote}\n${REPLY_RULES}`,
             ) : text,
             id,
           })

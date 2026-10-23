@@ -2821,7 +2821,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       })
     }
 
-    return commit({
+    const result = commit({
       hydraId,
       meta: m,
       intent: {
@@ -2853,6 +2853,26 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
       },
     })
+
+    if (key === 'workers' && result.event === 'none: unchanged') {
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => {
+          const saved = readEvents({ hydraId }).findLast(event => event.type === 'hydra.memory'
+            && event.data.key === 'workers')
+
+          if (saved) {
+            workerNotesNotice({
+              writer,
+              target: `Hydra ${hydraId}`,
+              meta: saved,
+            })
+          }
+        },
+      })
+    }
+
+    return result
   }
 
   if (positionals[0] === 'start') {
