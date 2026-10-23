@@ -1056,8 +1056,8 @@ async function mountOwnedHydra({
   // Each card's last conversation message, read from its transcript tail and pushed
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
-  // A working card's transcript file is watched as well: on macOS a folder hears nothing
-  // of writes to a file kept open, and Codex keeps its rollout open for the whole session.
+  // A working card's transcript file is watched as well, for its card and open conversations:
+  // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   let latestSpend = '{}'
   const latest: Record<string, LatestMessage> = {}
@@ -1093,6 +1093,17 @@ async function mountOwnedHydra({
           }
 
           touchPath({ path })
+
+          for (const map of threadSubscriptions) {
+            for (const [
+              ws,
+              sub,
+            ] of map) {
+              if (sub.path === path) {
+                refreshThread({ ws })
+              }
+            }
+          }
         },
       )
       watcher.on(
