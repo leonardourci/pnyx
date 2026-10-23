@@ -8,7 +8,7 @@ import { commands } from '../src/cli/commands.ts'
 import { taskPrompt } from '../src/cli/start.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraDigest } from '../src/core/digest.ts'
-import { hydraEvent, unwatchedPullRequests, wakesHydra } from '../src/core/hydra.ts'
+import { hydraConfig, hydraEvent, unwatchedPullRequests, wakesHydra } from '../src/core/hydra.ts'
 import type { Card, Link, TaskCopy } from '../src/core/model.ts'
 import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
@@ -394,7 +394,7 @@ test(
 
     assert.match(
       prompt(),
-      /open a ready pull request .* declare needs_you with its URL: the owner merges it; never merge it yourself/,
+      /open a ready pull request .* use needs_you with its URL only if readiness has not been recorded yet: the owner merges it; never merge it yourself/,
     )
     await project([
       'set',
@@ -1571,6 +1571,141 @@ test(
     assert.match(
       told.join('\n'),
       /Checks failed on/,
+    )
+  },
+)
+
+test(
+  'following metadata moves a draft to owner review only when it becomes ready, then to Done on merge',
+  async () => {
+    const f = await lab()
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    const column = ({ role }: { role: string }) => hydraConfig({ state: loadHydra({ hydraId: 'default' }).state }).columns.find(c => c.role === role)?.id
+    const follow = ({ read }: { read: PullRequestStatus }) => followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => read,
+    })
+    await follow({ read: status({ draft: true }) })
+    assert.notEqual(
+      f.card().column,
+      column({ role: 'needs_you' }),
+    )
+    assert.notEqual(
+      f.card().status?.state,
+      'done',
+    )
+    await follow({ read: status({ draft: false }) })
+    assert.equal(
+      f.card().column,
+      column({ role: 'needs_you' }),
+    )
+    assert.equal(
+      f.card().status?.state,
+      'needs_you',
+    )
+    const declaration = f.card().status?.id
+    await follow({ read: status({ comments: 1 }) })
+    assert.equal(
+      f.card().status?.id,
+      declaration,
+    )
+    await follow({ read: status({ state: 'merged' }) })
+    assert.equal(
+      f.card().column,
+      column({ role: 'done' }),
+    )
+    assert.equal(
+      f.card().status?.state,
+      'done',
+    )
+  },
+)
+
+test(
+  'a ready pull request under Hydra merge rules leaves its task phase alone',
+  async () => {
+    const f = await lab()
+    await commands.task([
+      'landing',
+      f.id,
+      '--landing',
+      'pr',
+      '--merge',
+      'hydra',
+    ])
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    const before = f.card().status?.id
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    assert.equal(
+      f.card().status?.id,
+      before,
+    )
+  },
+)
+
+test(
+  'answering another owner question preserves the ready pull request gate',
+  async () => {
+    const f = await lab()
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    assert.equal(
+      f.card().status?.state,
+      'needs_you',
+    )
+    const asked = await commands.task([
+      'ask',
+      f.id,
+      '--question',
+      'Which release target?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+      '--reason',
+      'Release choice',
+    ])
+    await commands.task([
+      'status',
+      f.id,
+      'needs_you',
+      '--note',
+      'Release target pending',
+    ])
+    await commands.task([
+      'answer',
+      f.id,
+      String(asked.ask),
+      '--text',
+      'Use staging',
+      '--actor',
+      'cli',
+    ])
+    assert.equal(
+      f.card().status?.state,
+      'needs_you',
+    )
+    assert.match(
+      f.card().status?.note ?? '',
+      /Pull request ready for owner review/,
     )
   },
 )

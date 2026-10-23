@@ -2,6 +2,7 @@ import { sendReply } from '../cli/reply.ts'
 import { decideLink } from '../core/decide.ts'
 import { declareTask, HYDRA_CARD } from '../core/hydra.ts'
 import { failedChecks, type Card, type HydraState, type Link } from '../core/model.ts'
+import { taskLanding } from './rule.ts'
 import { liveTask } from '../core/tasks.ts'
 import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
@@ -178,7 +179,7 @@ export async function followPullRequests({
     }
 
     const known = link.state === status.state && link.checks === status.checks.summary
-      && link.comments === status.comments
+      && link.comments === status.comments && link.draft === status.draft
 
     if (known) {
       continue
@@ -206,6 +207,7 @@ export async function followPullRequests({
             state: status.state,
             checks: status.checks.summary,
             comments: status.comments,
+            draft: status.draft,
             checkedAt: at,
           },
           meta: {
@@ -219,6 +221,31 @@ export async function followPullRequests({
         }
 
         writer.append({ event: decision.event })
+
+        const ready = status.state === 'open' && !status.draft
+          && (current.draft !== false || current.state !== 'open')
+          && taskLanding({
+            state: writer.state,
+            card: latest,
+          })?.merge === 'owner'
+
+        if (ready && latest.status?.state !== 'done') {
+          const declaration = declareTask({
+            state: writer.state,
+            ref: latest.id,
+            status: 'needs_you',
+            waitingFor: [],
+            note: `Pull request ready for owner review: ${link.url}`,
+            meta: {
+              actor: 'pnyx',
+              at,
+            },
+          })
+
+          if ('event' in declaration) {
+            writer.append({ event: declaration.event })
+          }
+        }
 
         if (status.state === 'merged') {
           declareMerged({
