@@ -25,9 +25,9 @@ import {
 import { basename, dirname, join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
-import { migrateColumns } from '../core/hydra.ts'
+import { declareTask, migrateColumns } from '../core/hydra.ts'
 import { decideMove } from '../core/decide.ts'
-import { lifecycleMoveId, lifecycleMoves } from '../core/lifecycle.ts'
+import { lifecycleMoveId, lifecycleMoves, operationDeclarations } from '../core/lifecycle.ts'
 import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
@@ -692,6 +692,30 @@ export function withWriter<T>({
             event,
           })
           dirty = true
+
+          for (const declaration of operationDeclarations({
+            before,
+            state,
+            event,
+          })) {
+            const declared = declareTask({
+              state,
+              ref: declaration.cardId,
+              status: declaration.status,
+              note: declaration.note,
+              until: declaration.until,
+              waitingFor: declaration.waitingFor,
+              meta: {
+                id: `${event.id}:${declaration.cardId}:declaration`,
+                at: event.at,
+                actor: 'pnyx',
+              },
+            })
+
+            if ('event' in declared) {
+              writer.append({ event: declared.event })
+            }
+          }
 
           // A task's explicit lifecycle change moves its card, as its own event in the same write.
           for (const move of lifecycleMoves({
