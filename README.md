@@ -37,6 +37,8 @@ pnyx-axi setup skills
 
 `pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
 
+Setup commands for hooks, skills and the login service change user-wide configuration. They refuse a `PNYX_HOME` other than `~/.pnyx`, including previews and removals. Unset `PNYX_HOME` to use the default home, or pass `--allow-custom-home` to explicitly target another home. Installing its service also requires a `--port` that no other Pnyx home’s installed service uses; the override does not bypass that check.
+
 `pnyx-axi setup skills` installs the Hydra skills (`pnyx-hydra`, `pnyx-hydra-workers`, `pnyx-hydra-columns`, `pnyx-hydra-firstmate`, `inscribe` and `pnyx-setup`) and `pnyx-worker` once as links into `~/.claude/skills/` (or `$CLAUDE_CONFIG_DIR/skills/`) and `~/.agents/skills/`. Workers in any project or copy can load the worker skill and report to their card. The links point to this installation, so skill updates apply without copying them into projects. Keep the installation in place; rerun setup if a link is missing. Existing files and unrelated links are preserved; move a conflicting skill aside before installing. Use `pnyx-axi setup skills --preview` to inspect the links and `pnyx-axi setup skills --remove` to remove only this installation's links. Check readiness with `pnyx-axi integrations` or Settings > Integrations.
 
 User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere else; the clone holds only code.
