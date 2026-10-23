@@ -1,3 +1,4 @@
+import { readSkillReference } from '../../../src/thread/skill-reference.ts'
 import { IMAGE, imageNames } from '../../../src/attachments/images.ts'
 import { FILE_BLOCK } from '../../../src/attachments/files.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/mentions/mentions.ts'
@@ -113,18 +114,31 @@ function draftChips({ text }: { text: string }): DraftChip[] {
     if (!inside({ at: match.index })) {
       const kind = match[2] as ChipKind
       const name = referenceLabel({ label: match[1]! })
+      const value = decodeValue({ value: match[3]! }) ?? match[3]!
+      const skill = kind === 'skill' ? readSkillReference({ value }) : undefined
+
+      if (kind === 'skill' && !skill) {
+        continue
+      }
+
       const prefix = REFERENCE_ROOM[kind] ?? '@'
+      let label = `${prefix}${name}`
+
+      if (skill) {
+        label = `${ICON_SPACE}${skill.project ? `${skill.project} ` : ''}/${skill.name}${ICON_SPACE}`
+      }
+
       chips.push({
         kind,
         attached: false,
-        value: decodeValue({ value: match[3]! }) ?? match[3]!,
+        value,
         name,
         label: cardChip({
           chip: {
             kind,
             attached: false,
           },
-        }) ? cardLabel({ name }) : `${prefix}${name}`,
+        }) ? cardLabel({ name }) : label,
         start: match.index,
         end: match.index + match[0].length,
       })

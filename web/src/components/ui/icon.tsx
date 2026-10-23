@@ -9,7 +9,7 @@ import {
   IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil, IconPencilCheck,
   IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled, IconPlug,
   IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag,
-  IconTerminal2, IconTestPipe, IconUser, IconWorld, IconX,
+  IconStar, IconTerminal2, IconTestPipe, IconUser, IconWorld, IconX,
 } from '@tabler/icons-react'
 
 const icons: Record<string, typeof IconRobot> = {
@@ -88,6 +88,7 @@ const icons: Record<string, typeof IconRobot> = {
   wait: IconHourglass,
   plug: IconPlug,
   skill: IconBook,
+  star: IconStar,
   terminal: IconTerminal2,
 
 }

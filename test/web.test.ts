@@ -471,7 +471,7 @@ test(
 )
 
 test(
-  'filters do not expose excluded parent details, and links/slashes stay literal',
+  'filters hide excluded parents, links stay safe and slash queries work within prose',
   () => {
     let state = push({
       state: emptyHydra(),
@@ -529,7 +529,7 @@ test(
         text: 'open /path',
         cursor: 10,
       }),
-      null,
+      '/path',
     )
     assert.equal(
       slashPrefix({
