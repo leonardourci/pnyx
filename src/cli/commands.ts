@@ -2900,7 +2900,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] !== 'send') {
     throw new HydraError({
-      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra stop, hydra usage or hydra messages',
+      message: 'Use hydra send --text <message>, hydra send --task <id> [--action send|worker], hydra send --task <id> --kind progress --text <message>, hydra stop, hydra usage or hydra messages',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -2928,9 +2928,9 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   const progress = values.kind === 'progress'
 
-  if (progress && (!ref || !reportActor({ actor: m.actor }))) {
+  if (progress && (!ref || !reportActor({ actor: m.actor }) || values.action !== undefined || values.text === undefined)) {
     throw new HydraError({
-      message: '--kind progress is a worker\'s report on its task: pass --task, and --actor worker:<task> when PNYX_ACTOR is unset',
+      message: '--kind progress is an agent\'s report: pass --task and --text, no --action, and --actor worker:<task> when PNYX_ACTOR is unset',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -3019,7 +3019,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (progress && result.event !== 'none: duplicate') {
     return {
       ...result,
-      help: ['Saved on the card; Hydra reads it with its next wake, so send questions, blockers and results through task ask or task status'],
+      help: ['Saved on the card without waking Hydra; send questions, blockers and results through task ask or task status'],
     }
   }
 

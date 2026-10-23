@@ -1881,7 +1881,7 @@ test(
 )
 
 test(
-  'only a worker sends progress, and only on its task',
+  'only an agent sends progress, on a task, with its own text',
   async () => {
     await commands.task([
       'create',
@@ -1893,15 +1893,36 @@ test(
       'lab',
     ])
     const fix = state().keys.fix!
+    const worker = [
+      '--actor',
+      `worker:${fix}`,
+    ]
 
     for (const args of [
       [
         '--task',
         fix,
+        '--text',
+        'Halfway',
       ],
       [
-        '--actor',
-        `worker:${fix}`,
+        ...worker,
+        '--text',
+        'Halfway',
+      ],
+      [
+        '--task',
+        fix,
+        ...worker,
+      ],
+      [
+        '--task',
+        fix,
+        '--action',
+        'worker',
+        '--text',
+        'Halfway',
+        ...worker,
       ],
     ]) {
       await assert.rejects(
@@ -1909,13 +1930,11 @@ test(
           'send',
           '--kind',
           'progress',
-          '--text',
-          'Halfway',
           ...args,
           '--hydra',
           'lab',
         ]),
-        /--kind progress is a worker's report on its task/,
+        /--kind progress is an agent's report/,
       )
     }
 
@@ -1928,12 +1947,15 @@ test(
         'chatter',
         '--text',
         'Halfway',
-        '--actor',
-        `worker:${fix}`,
+        ...worker,
         '--hydra',
         'lab',
       ]),
       /--kind must be progress/,
+    )
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).filter(event => event.type === 'hydra.message').length,
+      0,
     )
   },
 )
