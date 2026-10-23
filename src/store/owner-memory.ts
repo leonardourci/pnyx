@@ -1,3 +1,4 @@
+import { dateLearnings } from '../memory/learnings.ts'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
@@ -13,6 +14,7 @@ interface OwnerEntry {
   at: string
   actor: string
   reason?: string
+  confirmed?: string
   key: string
   before: string | null
   after: string | null
@@ -76,9 +78,20 @@ function readLog(): OwnerLog {
     if (entry.after === null) {
       delete memory[entry.key]
     } else {
+      const previous = memory[entry.key]?.lines
       memory[entry.key] = {
         text: entry.after,
         at: entry.at,
+      }
+
+      if (entry.key === 'learnings') {
+        memory[entry.key]!.lines = dateLearnings({
+          before: previous,
+          after: entry.after,
+          at: entry.at,
+          confirmed: entry.confirmed,
+          evidence: entry.reason,
+        })
       }
     }
   }
@@ -96,11 +109,13 @@ function append({
   change,
   meta,
   budget,
+  confirmed,
 }: {
   key: string
   change: ({ before }: { before: string | null }) => string | null
   meta: Meta
   budget?: number
+  confirmed?: string
 }): OwnerEntry | undefined {
   const log = readLog()
 
@@ -123,7 +138,24 @@ function append({
   const before = log.memory[key]?.text ?? null
   const after = change({ before })
 
-  if (before === after) {
+  if (confirmed !== undefined && key !== 'learnings') {
+    throw new HydraError({
+      message: 'Only learnings need reconfirmation',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (key === 'learnings') {
+    dateLearnings({
+      before: log.memory[key]?.lines,
+      after,
+      at: meta.at,
+      confirmed,
+      evidence: meta.reason,
+    })
+  }
+
+  if (before === after && confirmed === undefined) {
     return undefined
   }
 
@@ -147,6 +179,11 @@ function append({
     before,
     after,
   }
+
+  if (confirmed !== undefined) {
+    entry.confirmed = confirmed
+  }
+
   privateDir({ dir: ownerDir() })
   writeDurably({
     path: logPath(),
@@ -317,19 +354,22 @@ export function saveOwnerMemory({
   key,
   after,
   meta,
+  confirmed,
 }: {
   key: string
   after: string | null
   meta: Meta
+  confirmed?: string
 }): OwnerEntry | undefined {
   tryMigrate()
 
   return withRegistryLock({
     fn: () => append({
       key,
-      change: () => after,
+      change: ({ before }) => confirmed === undefined ? after : before,
       meta,
       budget: OWNER_MEMORY_BUDGET,
+      confirmed,
     }),
   })
 }
