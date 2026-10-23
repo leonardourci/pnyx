@@ -524,8 +524,11 @@ export async function sendReply({
         }) : ''
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
+      const resumes = !request.control && !request.key && !request.setting
+        && !request.taskMessage && !answers && !resolveKey
       const data = {
         reply,
+        resumes,
         state: 'queued' as const,
         route: routeName({
           route,
@@ -534,7 +537,7 @@ export async function sendReply({
         text,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
-        ...(request.control || request.key ? { control: true } : {}),
+        ...(request.control || request.key || request.setting ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
         ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
@@ -559,6 +562,7 @@ export async function sendReply({
         keys,
         answers,
         decision: answerDecision,
+        resumes,
         text: [
           request.ask ? text : request.text,
           context,
@@ -614,6 +618,9 @@ export async function sendReply({
             control: request.control,
           }),
           ...outcome,
+          resumes: queued.resumes,
+          ...(request.control || request.key || request.setting ? { control: true } : {}),
+          ...(request.taskMessage ? { taskMessage: true } : {}),
           ...(queued.decision ? { decision: queued.decision } : {}),
           ...(answers ? { answers } : {}),
         }
