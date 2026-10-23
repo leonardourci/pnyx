@@ -725,7 +725,7 @@ test(
     await until({ check: finished })
     const before = state().seq
 
-    // The worker's finished turn, a memory change and its declarations share one check turn.
+    // The worker's finished turn and plain working wait on the card; a memory change and done share one check turn.
     await startTask({
       hydraId: 'lab',
       task: 'fix',
@@ -759,7 +759,7 @@ test(
       wakes()[0]!,
       /Releases ship on Fridays|<pnyx-digest|Owner preferences/,
     )
-    declare({ status: 'paused' })
+    declare({ status: 'blocked' })
     await until({ check: () => wakes().length === 2 && finished() })
     assert.doesNotMatch(
       wakes()[1]!,
@@ -805,7 +805,7 @@ test(
 )
 
 test(
-  'wakes come from new questions, pending permissions, finished turns and due reminders on tasks',
+  'wakes come from new questions, judgment declarations, pending permissions, merges and due reminders, never from plain progress',
   async () => {
     await commands.task([
       'create',
@@ -889,13 +889,46 @@ test(
     await send({ text: 'Hello' })
     await until({ check: finished })
     const hosted = state()
-    // A person's edit, such as continuing a session, is not a worker's finished turn.
     const finishedBy = ({ actor }: { actor: string }) => pushed({
       data: {
         activity: 'finished',
         before: { activity: 'working' },
       },
       actor,
+    })
+    const declared = ({ status }: { status: string }) => event({
+      change: {
+        type: 'task.declared',
+        data: {
+          state: status,
+          note: status,
+        },
+      },
+      actor: 'worker:fix',
+    })
+    const linked = ({
+      before,
+      after,
+    }: {
+      before?: string
+      after: string
+    }) => event({
+      change: {
+        type: 'card.linked',
+        data: {
+          url: 'https://github.com/o/r/pull/1',
+          before: before ? {
+            kind: 'github_pr',
+            url: 'https://github.com/o/r/pull/1',
+            state: before,
+          } : null,
+          after: {
+            kind: 'github_pr',
+            url: 'https://github.com/o/r/pull/1',
+            state: after,
+          },
+        },
+      },
     })
 
     for (const [
@@ -950,16 +983,51 @@ test(
           }),
           false,
         ],
+        // A finished turn with no new question waits for the stall check instead.
         [
           finishedBy({ actor: 'pnyx' }),
-          true,
+          false,
         ],
         [
           finishedBy({ actor: 'hook:claude' }),
+          false,
+        ],
+        [
+          declared({ status: 'working' }),
+          false,
+        ],
+        [
+          declared({ status: 'paused' }),
+          false,
+        ],
+        [
+          declared({ status: 'needs_you' }),
           true,
         ],
         [
-          finishedBy({ actor: 'cli' }),
+          declared({ status: 'blocked' }),
+          true,
+        ],
+        [
+          declared({ status: 'done' }),
+          true,
+        ],
+        [
+          linked({
+            before: 'open',
+            after: 'merged',
+          }),
+          true,
+        ],
+        [
+          linked({ after: 'open' }),
+          false,
+        ],
+        [
+          linked({
+            before: 'merged',
+            after: 'merged',
+          }),
           false,
         ],
       ] as const) {
@@ -1009,7 +1077,7 @@ test(
 
     // Changes during a held wake turn wait for it, then share one more wake.
     sdk.control.hold = true
-    declare({ status: 'working' })
+    declare({ status: 'needs_you' })
     await until({ check: () => wakes().length === 1 })
     const first = state().seq
     declare({ status: 'blocked' })
@@ -1182,7 +1250,6 @@ test(
       'lab',
     ])
     await until({ check: () => task().sessionActivity === 'finished' })
-    // Hydra's wake for that finished turn must not hold too.
     await sleep({ ms: 300 })
     await until({ check: finished })
     sdk.control.hold = true
@@ -1449,7 +1516,7 @@ for (const resumeFails of [
       await commands.task([
         'status',
         'fix',
-        'working',
+        'needs_you',
         '--hydra',
         'lab',
       ])
@@ -1766,7 +1833,7 @@ test(
       commands.task([
         'status',
         fix,
-        'working',
+        'blocked',
         '--note',
         'Reports sent',
         '--actor',

@@ -517,6 +517,13 @@ function linkNeedsHydra({
   return failing || commented
 }
 
+// Declarations that need Hydra's judgment; working and paused stay on the card until its next check.
+const WAKING_STATES: TaskStatus[] = [
+  'needs_you',
+  'blocked',
+  'done',
+]
+
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
 export function wakesHydra({
   state,
@@ -539,10 +546,11 @@ export function wakesHydra({
 
   switch (event.type) {
     case 'task.queue':
-    case 'task.declared':
     case 'task.reminder-due':
     case 'task.kind':
       return true
+    case 'task.declared':
+      return WAKING_STATES.includes(event.data.state)
     case 'task.permission':
       return event.data.status === 'pending'
     case 'card.linked':
@@ -551,7 +559,7 @@ export function wakesHydra({
         before: event.data.before,
         after: event.data.after,
       })
-    // An agent's own observation on a task, not a person's edit such as continuing a session.
+    // An agent's new question on a task, or a worker that ended while its pull request is unwatched; a finished turn alone waits for the stall check.
     case 'card.pushed': {
       if (card.tracking !== 'declared' || !AGENT_ACTOR.test(event.actor)) {
         return false
@@ -565,12 +573,12 @@ export function wakesHydra({
       const open = ({ list }: { list?: Card['attention'] }) =>
         (list ?? []).filter(a => a.blocking && !a.answered).map(a => a.key)
       const asked = open({ list: before?.attention })
-      const asks = Boolean(before?.attention)
-        && open({ list: attention }).some(key => !asked.includes(key))
+      const newQuestion = open({ list: attention }).some(key => !asked.includes(key))
 
+      const asks = Boolean(before?.attention) && newQuestion
       const stopped = activity === 'ended' && unwatchedPullRequests({ card }).length > 0
 
-      return asks || stopped || (activity === 'finished' && Boolean(before?.activity))
+      return asks || stopped
     }
     default:
       return false
