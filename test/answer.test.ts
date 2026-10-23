@@ -1323,6 +1323,7 @@ function hosts() {
 
   return {
     root,
+    env,
     run,
     fails,
     calls,
@@ -1629,5 +1630,237 @@ test(
       }),
       /answered/,
     )
+  },
+)
+
+test(
+  'a delivered attention answer restores its bound paused phase; key controls preserve a pause',
+  () => {
+    const f = hosts()
+    f.session({
+      key: 'lifecycle',
+      provider: 'claude-code',
+      terminal: TMUX,
+      attention: [],
+    })
+    f.run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'ship',
+        '--title',
+        'Ship',
+      ],
+    })
+    f.run({
+      args: [
+        'task',
+        'attach',
+        'ship',
+        '--session',
+        'claude-code:lifecycle',
+      ],
+    })
+    f.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'Wait for CI',
+        '--until',
+        'in 2 hours',
+      ],
+    })
+
+    const task = () => {
+      const state = JSON.parse(readFileSync(
+        join(
+          f.root,
+          'pnyx',
+          'hydras',
+          'default',
+          'snapshot.json',
+        ),
+        'utf8',
+      )).state
+
+      return state.cards[state.keys.ship] as Card
+    }
+
+    const paused = task().status!
+    const source = new URL(
+      '../src/cli/reply.ts',
+      import.meta.url,
+    ).href
+    const request = {
+      card: task().id,
+      text: 'Cycle mode',
+      key: 'shift-tab',
+      homes: [],
+      actor: 'cli',
+    }
+    execFileSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import {sendReply} from ${JSON.stringify(source)}; const receipt = await sendReply({hydraId:'default',request:${JSON.stringify(request)}}); if(receipt.state !== 'delivered') throw new Error(receipt.state);`,
+      ],
+      { env: f.env },
+    )
+    assert.equal(
+      task().status?.id,
+      paused.id,
+    )
+    assert.equal(
+      task().status?.until,
+      paused.until,
+    )
+    assert.equal(
+      task().column,
+      'parked',
+    )
+    f.session({
+      key: 'lifecycle',
+      provider: 'claude-code',
+      terminal: TMUX,
+      attention: [plan],
+    })
+    f.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'needs_you',
+        '--note',
+        'Plan approval pending',
+      ],
+    })
+    assert.equal(
+      task().column,
+      'needs_you',
+    )
+    f.run({
+      args: [
+        'reply',
+        'ship',
+        '--answer',
+        plan.key,
+        '--json',
+        '{"choice":"approve"}',
+      ],
+    })
+    assert.equal(
+      task().status?.state,
+      'paused',
+    )
+    assert.equal(
+      task().status?.until,
+      paused.until,
+    )
+    assert.equal(
+      task().column,
+      'parked',
+    )
+  },
+)
+
+test(
+  'an attention answer with unknown delivery leaves its bound owner wait pending',
+  () => {
+    const f = hosts()
+    f.session({
+      key: 'lifecycle',
+      provider: 'claude-code',
+      terminal: TMUX,
+      attention: [],
+    })
+    f.run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'ship',
+        '--title',
+        'Ship',
+      ],
+    })
+    f.run({
+      args: [
+        'task',
+        'attach',
+        'ship',
+        '--session',
+        'claude-code:lifecycle',
+      ],
+    })
+    f.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'paused',
+        '--note',
+        'Wait for CI',
+        '--until',
+        'in 2 hours',
+      ],
+    })
+    f.session({
+      key: 'lifecycle',
+      provider: 'claude-code',
+      terminal: TMUX,
+      attention: [plan],
+    })
+    f.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'blocked',
+        '--note',
+        'Plan approval pending',
+      ],
+    })
+    f.set({
+      file: 'tmux.exit.3',
+      text: '1',
+    })
+    assert.match(
+      f.run({
+        args: [
+          'reply',
+          'ship',
+          '--answer',
+          plan.key,
+          '--json',
+          '{"choice":"revise","text":"smaller"}',
+        ],
+      }),
+      /state: delivery_unknown/,
+    )
+    const state = JSON.parse(readFileSync(
+      join(
+        f.root,
+        'pnyx',
+        'hydras',
+        'default',
+        'snapshot.json',
+      ),
+      'utf8',
+    )).state
+    const task: Card = state.cards[state.keys.ship]
+    assert.equal(
+      task.status?.state,
+      'blocked',
+    )
+    assert.equal(
+      task.column,
+      'needs_you',
+    )
+    assert.ok(task.attention.some(a => a.blocking && !a.answered))
   },
 )

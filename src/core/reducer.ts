@@ -419,9 +419,11 @@ function apply({
       const answers = event.data.answers
       const previous = card.replies?.find(r => r.id === event.data.reply)
       const taskMessage = event.data.taskMessage || previous?.route
+      const resumes = event.data.resumes ?? previous?.resumes
       const reply = {
         id: event.data.reply,
         state: event.data.state,
+        ...(resumes !== undefined ? { resumes } : {}),
         ...(taskMessage ? { route: event.data.route } : {}),
         ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
       }

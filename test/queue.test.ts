@@ -616,6 +616,10 @@ test(
       'the merge that released the queue also declared its task done',
     )
     assert.equal(
+      f.card({ key: 'two' }).status?.state,
+      'working',
+    )
+    assert.equal(
       f.card({ key: 'two' }).agent?.sessionId,
       'worker',
     )

@@ -256,7 +256,7 @@ export async function pullRequestStatus(
     draft: field({
       out: stdout,
       key: 'draft',
-    }) === 'yes',
+    }) !== 'no',
     checks: checkCounts({
       summary: field({
         out: stdout,

@@ -796,12 +796,14 @@ export function decideSession({
   task,
   meta,
   fromQueue,
+  working,
 }: {
   state: HydraState
   ref: string
   task: string | null
   meta: Meta
   fromQueue?: string
+  working?: boolean
 }): Decision {
   if (meta.id && meta.id in state.eventIds) {
     return { skipped: 'duplicate' }
@@ -859,6 +861,11 @@ export function decideSession({
     before: session.taskId,
     after: target?.id ?? null,
   }
+
+  if (working) {
+    data.working = true
+  }
+
   const instructions = target ? taskInstructions({ card: target }) : ''
 
   if (instructions) {

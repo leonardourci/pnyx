@@ -130,7 +130,7 @@ export function workerPrompt({
   return [
     `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the pnyx-worker skill when it is installed.`,
     `Start with \`pnyx-axi task show ${id} --hydra ${hydraId}\` and \`pnyx-axi task history ${id} --hydra ${hydraId}\`.`,
-    `Declare progress only with \`pnyx-axi task status ${id} working|needs_you|paused|blocked|done --note <text> --hydra ${hydraId}\`; silence changes nothing.`,
+    `Successful start already records working. Declare meaningful progress with \`pnyx-axi task status ${id} working|needs_you|paused|blocked|done --note <text> --hydra ${hydraId}\`; silence changes nothing.`,
   ].join(' ')
 }
 

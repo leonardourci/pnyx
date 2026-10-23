@@ -9,7 +9,7 @@ Each column's description says when and why work goes there; the digest prints t
 
 ## Move a card
 
-Pnyx moves a task's card when its lifecycle changes explicitly: a `working` declaration to In progress, an open permission request or question, or a `needs_you` or `blocked` declaration, to Needs you, and a `done` declaration or outcome to Done. Once the ask is answered the card returns to In progress. A finished turn, silence or an exit moves nothing, `paused` leaves the card where it is, and a card in a column without a role (one the owner made) stays put. Each such move appears in the task's history with its reason, so do not repeat it. Move a card yourself only when its own agent does something else that calls for it, using the column descriptions; the owner's manual placement holds until the next lifecycle change. For an agent's question, answer it through the card when you can. On a Firstmate-linked Hydra, Pnyx moves cards between the five default columns (Queued, In progress, Needs you, Parked, Done) from Firstmate's records, so leave those moves to it.
+Pnyx places cards through the operation that owns the phase change: successful start and queue handoff record working at once; continue and delivered replies resume eligible work; paused and detach park unfinished work. Owner questions, permission requests, blocked declarations and confirmed ready pull requests under owner-merge rules go to Needs you. Answering the matching gate restores the previous phase unless another owner gate remains. Checked done declarations and merges place completed work in Done. Silence, idle turns and exits never declare completion. Manual placement holds until the next lifecycle phase change, and custom columns without a role stay put. On Firstmate-linked Hydras, Firstmate's records own placement. Use `move` only for an owner request or an exceptional correction with a reason.
 
 ```sh
 pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>
@@ -17,7 +17,7 @@ pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>
 
 Inspect the proposed action, then repeat the command with `--confirm <token>`.
 
-When a worker reports completion, use `task status <task> done` so Pnyx checks that the work landed by its project's rule, then let its lifecycle move the card. Passing local checks alone is not completion; `move <task> done` is placement, not a substitute for those landing checks.
+Rely on the worker's checked done declaration or Pnyx's merge transition. If completion evidence is missing, ask the worker to record it and declare the result. Do not repeat its status or move the card to Done yourself. Passing local checks alone is not completion.
 
 ## Change columns
 
