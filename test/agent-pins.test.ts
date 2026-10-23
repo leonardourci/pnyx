@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync } from 'node:fs'
+import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { claudeRecording, codexRecording } from './scenarios/fake-agents.ts'
@@ -38,23 +38,42 @@ test(
 )
 
 test(
-  'every Codex app-server method Pnyx sends or reads exists in the protocol of the recorded Codex version',
+  'every Codex app-server request Pnyx sends, and every request or notification it reads, is in the recorded Codex protocol',
   () => {
-    const used = new Set(readFileSync(
-      join(
-        root,
-        'src/server/codex.ts',
-      ),
-      'utf8',
-    ).match(/'(initialize|[a-zA-Z]+\/[a-zA-Z/]+)'/g)!.map(quoted => quoted.slice(
-      1,
-      -1,
-    )))
-    const known = new Set(Object.values(codexRecording.protocol).flat())
-    assert.ok(used.size > 10)
+    const source = readdirSync(join(
+      root,
+      'src/server',
+    )).filter(name => /^codex.*\.ts$/.test(name))
+      .map(name => readFileSync(
+        join(
+          root,
+          'src/server',
+          name,
+        ),
+        'utf8',
+      ))
+      .join('\n')
+    const methods = ({ text }: { text: string }) => [...text.matchAll(/'(initialize|[a-zA-Z]+\/[a-zA-Z/]+)'/g)].map(m => m[1]!)
+    const sent = new Set(source.split('\n').filter(line => /\bmethod: (?!message|event)/.test(line))
+      .flatMap(line => methods({ text: line })))
+    const read = new Set(methods({ text: source }).filter(method => !sent.has(method)))
+    const { protocol } = codexRecording
+    assert.ok(
+      sent.has('turn/start') && read.has('turn/completed'),
+      'the scan finds what Pnyx sends and reads',
+    )
     assert.deepEqual(
-      [...used].filter(method => !known.has(method)),
-      [],
+      {
+        sent: [...sent].filter(method => !protocol.clientRequests.includes(method)),
+        read: [...read].filter(method => ![
+          ...protocol.serverRequests,
+          ...protocol.serverNotifications,
+        ].includes(method)),
+      },
+      {
+        sent: [],
+        read: [],
+      },
       `${codexRecording.codex} does not have these methods; ${REFRESH}`,
     )
   },
