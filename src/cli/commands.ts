@@ -1,3 +1,5 @@
+import { columnRule, parseColumnRule } from '../core/columns.ts'
+import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
 import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
@@ -363,6 +365,10 @@ function confirmationPreview({
       from: before.map(c => c.id),
       to: columns.map(c => c.id),
       removed: before.filter(c => !columns.some(next => next.id === c.id)).map(c => c.id),
+      rules: columns.map(column => ({
+        id: column.id,
+        rule: columnRule({ column }),
+      })),
       affectedCards: Object.keys(placements ?? {}).length,
       ...(fallback ? { fallback } : {}),
     }
@@ -2587,6 +2593,11 @@ function columnCommand({ args }: { args: string[] }): Output {
       title: { type: 'string' },
       description: { type: 'string' },
       width: { type: 'string' },
+      when: {
+        type: 'string',
+        multiple: true,
+      },
+      clear: { type: 'boolean' },
       id: { type: 'string' },
       to: { type: 'string' },
       before: { type: 'string' },
@@ -2602,12 +2613,22 @@ function columnCommand({ args }: { args: string[] }): Output {
       columns: hydraConfig({
         state,
         id: hydraId,
-      }).columns,
+      }).columns.map(column => ({
+        ...column,
+        rule: columnRule({ column }),
+      })),
       revision: state.configRevision ?? 0,
     }
   }
 
   const m = meta({ values })
+
+  if (action === 'rule' && !m.reason?.trim()) {
+    throw new HydraError({
+      message: 'column rule needs --reason <why>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
 
   if (action === 'resize') {
     const ref = required({
@@ -2653,10 +2674,17 @@ function columnCommand({ args }: { args: string[] }): Output {
     })
   }
 
+  let confirmation: { token?: string } | undefined
+  const changesPlacement = action === 'delete' || action === 'reorder' || action === 'rule'
+
+  if (m.actor !== 'web' && changesPlacement) {
+    confirmation = { token: values.confirm as string | undefined }
+  }
+
   return commit({
     hydraId,
     meta: m,
-    ...(m.actor !== 'web' && (action === 'delete' || action === 'reorder') ? { confirmation: { token: values.confirm as string | undefined } } : {}),
+    confirmation,
     intent: {
       type: 'board.columns',
       card: '$board',
@@ -2706,7 +2734,19 @@ function columnCommand({ args }: { args: string[] }): Output {
             what: '--title',
           }),
           description: String(values.description ?? ''),
+          rule: [],
         })
+      } else if (action === 'rule') {
+        const when = values.when as string[] | undefined ?? []
+
+        if ((!values.clear && !when.length) || (values.clear && when.length)) {
+          throw new HydraError({
+            message: 'pass --when <fact[,fact]> (repeat for OR), or --clear for manual placement',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        selected!.rule = parseColumnRule({ when })
       } else if (action === 'rename') {
         selected!.title = required({
           value: values.title as string,
@@ -2759,7 +2799,7 @@ function columnCommand({ args }: { args: string[] }): Output {
         }
       } else {
         throw new HydraError({
-          message: 'Use column list, create, rename, describe, resize, delete or reorder',
+          message: 'Use column list, create, rename, describe, rule, resize, delete or reorder',
           code: 'VALIDATION_ERROR',
         })
       }
@@ -2784,6 +2824,30 @@ function columnCommand({ args }: { args: string[] }): Output {
             after: fallback ?? columns[0]!.id,
           },
         ]))
+
+      if (action === 'rule' || action === 'reorder') {
+        const config = hydraConfig({
+          state,
+          id: hydraId,
+        })
+        const proposed = {
+          ...state,
+          config: {
+            ...config,
+            columns,
+          },
+        }
+
+        for (const move of lifecycleMoves({
+          before: state,
+          state: proposed,
+        })) {
+          placements[move.cardId] = {
+            before: state.cards[move.cardId]!.column,
+            after: move.column,
+          }
+        }
+      }
 
       return hydraEvent({
         state,
@@ -4300,7 +4364,7 @@ commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
-  column create|rename|describe|resize|delete|reorder|list  Edit columns
+  column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
@@ -4388,12 +4452,18 @@ Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/
 pnyx-axi column create --title <title> [--id custom:<id>]
 pnyx-axi column rename <id> --title <title>
 pnyx-axi column describe <id> --description <text>
+pnyx-axi column rule <id> --when <fact[,fact]> [--when <fact[,fact]>] --reason <why>
+pnyx-axi column rule <id> --clear --reason <why>
 pnyx-axi column resize <id> --width <pixels>
 pnyx-axi column delete <id> [--to <remaining-column>]
 pnyx-axi column reorder <id> [--before <id>]
 All columns, including template columns, can be edited. Deletion moves cards to the fallback;
-the final column cannot be deleted. Reorder and delete first return confirmation: needed and a token;
+the final column cannot be deleted. Rule edits, reorder and delete first return confirmation: needed and a token;
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
+Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
+The first matching column in display order wins; --clear makes a column manual only.
+Facts: worker:none|working|checks|blocked|hydra|paused|ended, owner-question, held,
+pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, done, reminder-due, queued.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
@@ -4522,7 +4592,8 @@ Sources are only read. Each note is kept once, so running it again appends only 
   move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
 Puts the card in the column just above the --before card, or at the end of the column without it.
 First returns confirmation: needed and a token; repeat with --confirm <token> to act.
-Hydra places a card only in response to its own agent’s actions, using the descriptions from \`pnyx-axi column list\`.
+Pnyx applies column rules on phase changes; a manual move lasts until the next rule result changes.
+Hydra uses manual placement for an exceptional correction with a reason. Read rules with \`pnyx-axi column list\`.
 Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
