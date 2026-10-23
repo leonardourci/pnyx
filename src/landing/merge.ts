@@ -1,3 +1,4 @@
+import { mergeApproval } from '../core/asks.ts'
 import { commit, required, type Output } from '../cli/commands.ts'
 import { decideLink, findCard, type Meta } from '../core/decide.ts'
 import { HYDRA_ACTOR, HydraError, ownerActor, type Link } from '../core/model.ts'
@@ -102,17 +103,21 @@ export async function mergeCommand({
     })
   }
 
-  if (!owner && rule?.merge !== 'hydra') {
+  const link = pullRequest({
+    links: card.links,
+    url,
+  })
+
+  if (!owner && rule?.merge !== 'hydra' && !mergeApproval({
+    card,
+    url: link.url,
+  })) {
     refuse({
       message: 'the owner merges this project\'s pull requests; ask them',
       code: 'FORBIDDEN',
     })
   }
 
-  const link = pullRequest({
-    links: card.links,
-    url,
-  })
   const status = await readStatus({ url: link.url })
 
   if (!status) {
@@ -124,6 +129,25 @@ export async function mergeCommand({
 
   if (status.state !== 'merged') {
     mustBeGreen({ status })
+    const latestState = loadHydra({ hydraId }).state
+    const latest = findCard({
+      state: latestState,
+      ref: card.id,
+    })
+    const currentRule = taskLanding({
+      state: latestState,
+      card: latest,
+    })
+
+    if (!owner && currentRule?.merge !== 'hydra' && !mergeApproval({
+      card: latest,
+      url: link.url,
+    })) {
+      refuse({
+        message: 'the owner’s merge approval was withdrawn',
+        code: 'FORBIDDEN',
+      })
+    }
 
     try {
       await merge({ url: link.url })

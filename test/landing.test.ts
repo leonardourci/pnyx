@@ -4,16 +4,20 @@ import { mkdirSync, mkdtempSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { workerCommands } from '../src/cli/workers.ts'
 import { commands } from '../src/cli/commands.ts'
 import { hydraDigest } from '../src/core/digest.ts'
 import { hydraEvent, unwatchedPullRequests } from '../src/core/hydra.ts'
-import { wakesHydra } from '../src/core/wake-reasons.ts'
+import { wakeReasons, wakesHydra } from '../src/core/wake-reasons.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { openAsks, mergeApproval } from '../src/core/asks.ts'
+import { openDecisions } from '../src/core/decisions.ts'
 import type { Card, Link, TaskCopy } from '../src/core/model.ts'
 import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
 import { mergeCommand } from '../src/landing/merge.ts'
 import { project } from '../src/projects/cli.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents, loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 const PR = 'https://github.com/o/r/pull/7'
@@ -967,9 +971,648 @@ test(
       f.card().status?.state,
       'needs_you',
     )
-    assert.match(
-      f.card().status?.note ?? '',
-      /Pull request ready for owner review/,
+    assert.equal(
+      openAsks({ card: f.card() }).filter(ask => ask.kind === 'merge').length,
+      1,
     )
+  },
+)
+
+test(
+  'ready pull requests ask once, drafts do not, and Hold closes without granting a merge',
+  async () => {
+    const f = await lab()
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status({ draft: true }),
+    })
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      0,
+    )
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    const asks = openAsks({
+      card: f.card(),
+      audience: 'owner',
+    })
+    assert.equal(
+      asks.length,
+      1,
+    )
+    const ask = asks[0]!
+    assert.equal(
+      ask.kind,
+      'merge',
+    )
+    assert.equal(
+      ask.url,
+      PR,
+    )
+    assert.deepEqual(
+      f.card().status?.waitingFor,
+      [`ask:${ask.id}`],
+    )
+    await commands.task([
+      'answer',
+      f.id,
+      ask.id,
+      '--choice',
+      'Hold',
+    ])
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      0,
+    )
+    assert.equal(
+      mergeApproval({
+        card: f.card(),
+        url: PR,
+      }),
+      undefined,
+    )
+    assert.notEqual(
+      f.card().column,
+      'needs_you',
+    )
+    await assert.rejects(
+      mergeCommand({
+        hydraId: 'default',
+        ref: f.id,
+        meta: {
+          actor: 'hydra',
+          at: new Date().toISOString(),
+        },
+        readStatus: async () => status(),
+        merge: async () => assert.fail('Hold cannot merge'),
+      }),
+      /owner merges/,
+    )
+    const held = f.card().asks?.find(a => a.id === ask.id)
+    assert.ok(held?.answered)
+    assert.throws(() => commands.task([
+      'reopen-question',
+      f.id,
+      ask.id,
+      '--answer',
+      held.answered!,
+    ]))
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    assert.equal(
+      f.card().asks?.length,
+      1,
+    )
+  },
+)
+
+test(
+  'the recorded pull request approval sequence replays In progress at approval and Done at merge',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.parse('2026-10-23T18:50:00Z'),
+    })
+    const f = await lab()
+    const url = 'https://github.com/leonardourci/pnyx/pull/147'
+    await commands.task([
+      'status',
+      f.id,
+      'working',
+    ])
+    await commands.task([
+      'status',
+      f.id,
+      'needs_you',
+      '--note',
+      `Owner review/merge: ${url}`,
+    ])
+    assert.equal(
+      f.card().column,
+      'in_progress',
+    )
+    commands.link([
+      f.id,
+      '--url',
+      url,
+    ])
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status({
+        failed: 1,
+        summary: '0 passed, 1 failed, 1 total',
+      }),
+    })
+    const ask = openAsks({ card: f.card() })[0]!
+    assert.equal(
+      f.card().column,
+      'needs_you',
+    )
+    t.mock.timers.setTime(Date.parse('2026-10-23T19:03:32Z'))
+    await workerCommands.hydra([
+      'send',
+      '--text',
+      'Go ahead with this one',
+      '--event-id',
+      'owner-go',
+    ])
+    t.mock.timers.setTime(Date.parse('2026-10-23T19:04:51Z'))
+    await commands.task([
+      'answer',
+      f.id,
+      ask.id,
+      '--from-message',
+      'owner-go',
+      '--choice',
+      'Merge',
+      '--actor',
+      'hydra',
+      '--reason',
+      'Owner approved this pull request',
+    ])
+    const atApproval = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId: 'default' }),
+    }).cards[f.id]!
+    assert.equal(
+      atApproval.column,
+      'in_progress',
+    )
+    assert.equal(
+      openAsks({ card: atApproval }).length,
+      0,
+    )
+    assert.equal(
+      mergeApproval({
+        card: atApproval,
+        url,
+      })?.fromMessage?.id,
+      'owner-go',
+    )
+    assert.equal(
+      mergeApproval({
+        card: atApproval,
+        url: PR,
+      }),
+      undefined,
+    )
+    const merge = async () => mergeCommand({
+      hydraId: 'default',
+      ref: f.id,
+      meta: {
+        actor: 'hydra',
+        at: '2026-10-23T19:32:29Z',
+      },
+      readStatus: async () => status(),
+      merge: async () => {},
+    })
+    await assert.rejects(
+      mergeCommand({
+        hydraId: 'default',
+        ref: f.id,
+        meta: {
+          actor: 'hydra',
+          at: '2026-10-23T19:05:50Z',
+        },
+        readStatus: async () => status({
+          failed: 1,
+          summary: '0 passed, 1 failed, 1 total',
+        }),
+        merge: async () => assert.fail('red checks cannot merge'),
+      }),
+      /checks are red/,
+    )
+    const cursor = loadHydra({ hydraId: 'default' }).state.seq
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    const state = loadHydra({ hydraId: 'default' }).state
+    state.cards.$hydra = {
+      ...f.card(),
+      id: '$hydra',
+      agent: {
+        host: 'pnyx',
+        provider: 'claude',
+        sessionId: 's',
+      },
+    }
+    assert.ok(openDecisions({ state }).some(item => item.kind === 'approved merge' && item.detail.includes(url)))
+    assert.ok(wakeReasons({
+      state,
+      events: readEvents({ hydraId: 'default' }).filter(e => e.seq > cursor),
+    }).some(line => line.includes('approved merge is green') && line.includes(url)))
+    await merge()
+    const landed = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId: 'default' }),
+    }).cards[f.id]!
+    assert.equal(
+      landed.column,
+      'done',
+    )
+    assert.equal(
+      landed.links[0]?.state,
+      'merged',
+    )
+  },
+)
+
+test(
+  'moot owner questions close on merge, close and done without an owner decision',
+  async () => {
+    for (const outcome of [
+      'merged',
+      'closed',
+      'done',
+    ] as const) {
+      const f = await lab()
+      const asked = await commands.task([
+        'ask',
+        f.id,
+        '--question',
+        'Which release?',
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+      ])
+
+      if (outcome === 'done') {
+        withWriter({
+          hydraId: 'default',
+          fn: ({ writer }) => {
+            const end = hydraEvent({
+              state: writer.state,
+              cardId: f.id,
+              meta: {
+                actor: 'pnyx',
+                at: new Date().toISOString(),
+              },
+              change: {
+                type: 'task.declared',
+                data: {
+                  state: 'done',
+                  note: 'Task ended',
+                },
+              },
+            })
+            assert.ok('event' in end)
+            writer.append({ event: end.event })
+          },
+        })
+      } else {
+        commands.link([
+          f.id,
+          '--url',
+          PR,
+        ])
+        await followPullRequests({
+          hydraId: 'default',
+          readStatus: async () => status({ state: outcome }),
+        })
+      }
+
+      const ask = f.card().asks?.find(a => a.id === asked.ask)
+      assert.ok(ask?.closed)
+      assert.equal(
+        ask.answered,
+        undefined,
+      )
+      assert.equal(
+        openAsks({ card: f.card() }).length,
+        0,
+      )
+      assert.ok(readEvents({ hydraId: 'default' }).some(e => e.type === 'task.ask.closed' && e.data.ask === ask.id && e.data.evidence))
+    }
+  },
+)
+
+test(
+  'evidence closes a moot question; undo of an inferred answer reopens it and revokes approval',
+  async t => {
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.parse('2026-10-23T18:50:00Z'),
+    })
+    const f = await lab()
+    const asked = await commands.task([
+      'ask',
+      f.id,
+      '--question',
+      'Which target?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+    ])
+    assert.throws(
+      () => commands.task([
+        'close-question',
+        f.id,
+        String(asked.ask),
+        '--actor',
+        'hydra',
+        '--reason',
+        'No longer relevant',
+      ]),
+      /--evidence/,
+    )
+    await commands.task([
+      'close-question',
+      f.id,
+      String(asked.ask),
+      '--actor',
+      'hydra',
+      '--reason',
+      'Superseded',
+      '--evidence',
+      PR,
+    ])
+    assert.equal(
+      f.card().asks?.find(a => a.id === asked.ask)?.answered,
+      undefined,
+    )
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      0,
+    )
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+    const ask = openAsks({ card: f.card() })[0]!
+    t.mock.timers.setTime(Date.parse('2026-10-23T19:03:32Z'))
+    await workerCommands.hydra([
+      'send',
+      '--text',
+      'Sounds good',
+      '--event-id',
+      'owner-answer',
+    ])
+    await commands.task([
+      'answer',
+      f.id,
+      ask.id,
+      '--from-message',
+      'owner-answer',
+      '--choice',
+      'Merge',
+      '--actor',
+      'hydra',
+      '--reason',
+      'Owner approved this pull request',
+    ])
+    const answered = f.card().asks?.find(a => a.id === ask.id)
+    assert.ok(answered?.answered)
+    assert.ok(mergeApproval({
+      card: f.card(),
+      url: PR,
+    }))
+    const undo = () => commands.task([
+      'reopen-question',
+      f.id,
+      ask.id,
+      '--answer',
+      answered.answered!,
+      '--event-id',
+      'undo-recorded',
+    ])
+    assert.throws(() => commands.task([
+      'reopen-question',
+      f.id,
+      ask.id,
+    ]))
+    const beforeUndo = readEvents({ hydraId: 'default' }).length
+
+    for (const flags of [
+      [
+        '--actor',
+        'hydra',
+        '--reason',
+        'Try undo',
+      ],
+      [
+        '--actor',
+        `worker:${f.id}`,
+      ],
+      [
+        '--answer',
+        'stale',
+      ],
+    ]) {
+      assert.throws(() => commands.task([
+        'reopen-question',
+        f.id,
+        ask.id,
+        '--answer',
+        answered.answered!,
+        ...flags,
+      ]))
+      assert.equal(
+        readEvents({ hydraId: 'default' }).length,
+        beforeUndo,
+      )
+      assert.ok(mergeApproval({
+        card: f.card(),
+        url: PR,
+      }))
+    }
+
+    await assert.rejects(
+      mergeCommand({
+        hydraId: 'default',
+        ref: f.id,
+        meta: {
+          actor: 'hydra',
+          at: new Date().toISOString(),
+        },
+        readStatus: async () => {
+          await undo()
+
+          return status()
+        },
+        merge: async () => assert.fail('revoked approval must never merge'),
+      }),
+      /approval was withdrawn/,
+    )
+    await undo()
+    assert.throws(() => commands.task([
+      'reopen-question',
+      f.id,
+      ask.id,
+      '--answer',
+      answered.answered!,
+    ]))
+    await assert.rejects(
+      mergeCommand({
+        hydraId: 'default',
+        ref: f.id,
+        meta: {
+          actor: 'hydra',
+          at: new Date().toISOString(),
+        },
+        readStatus: async () => status(),
+        merge: async () => assert.fail('undo forbids merge'),
+      }),
+      /owner merges/,
+    )
+
+    assert.equal(
+      f.card().column,
+      'needs_you',
+    )
+    assert.equal(
+      mergeApproval({
+        card: f.card(),
+        url: PR,
+      }),
+      undefined,
+    )
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      1,
+    )
+    const reloaded = replay({
+      state: emptyHydra(),
+      events: readEvents({ hydraId: 'default' }),
+    }).cards[f.id]!
+    assert.equal(
+      reloaded.asks?.find(a => a.id === ask.id)?.answered,
+      undefined,
+    )
+  },
+)
+
+test(
+  'settling one pull request leaves the other question open; settling the last closes every moot question',
+  async () => {
+    const f = await lab()
+    const second = 'https://github.com/o/r/pull/8'
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    commands.link([
+      f.id,
+      '--url',
+      second,
+    ])
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status(),
+    })
+
+    for (const question of [
+      'Which release?',
+      'Which target?',
+    ]) {
+      await commands.task([
+        'ask',
+        f.id,
+        '--question',
+        question,
+        '--to',
+        'owner',
+        '--actor',
+        'hydra',
+      ])
+    }
+
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async ({ url }) => status({ state: url === PR ? 'closed' : 'open' }),
+    })
+    assert.ok(f.card().asks?.find(a => a.url === PR)?.closed)
+    assert.equal(
+      f.card().asks?.find(a => a.url === second)?.closed,
+      undefined,
+    )
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      3,
+    )
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => status({ state: 'closed' }),
+    })
+    assert.equal(
+      openAsks({ card: f.card() }).length,
+      0,
+    )
+    assert.ok(f.card().asks?.every(a => a.closed && !a.answered))
+  },
+)
+
+test(
+  'evidence closure rejects actors and missing reason without recording a decision',
+  async () => {
+    const f = await lab()
+    const asked = await commands.task([
+      'ask',
+      f.id,
+      '--question',
+      'Which release?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+    ])
+    const count = readEvents({ hydraId: 'default' }).length
+
+    for (const flags of [
+      [
+        '--actor',
+        'cli',
+        '--reason',
+        'Moot',
+      ],
+      [
+        '--actor',
+        `worker:${f.id}`,
+        '--reason',
+        'Moot',
+      ],
+      [
+        '--actor',
+        'hydra',
+      ],
+    ]) {
+      assert.throws(() => commands.task([
+        'close-question',
+        f.id,
+        String(asked.ask),
+        '--evidence',
+        PR,
+        ...flags,
+      ]))
+      assert.equal(
+        readEvents({ hydraId: 'default' }).length,
+        count,
+      )
+      assert.equal(
+        openAsks({ card: f.card() }).length,
+        1,
+      )
+    }
   },
 )
