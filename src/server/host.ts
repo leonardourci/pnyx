@@ -301,7 +301,6 @@ function wakesThrough({
 }
 
 // A wake counts once the turn that read it finishes, so a failed turn's updates are offered again.
-// Logs from before handled wakes were recorded count a wake once its turn started.
 function wakeCursor({
   state,
   fallback,
@@ -313,12 +312,12 @@ function wakeCursor({
     state,
     pattern: WAKE_HANDLED,
   })
-  const started = wakesThrough({
-    state,
-    pattern: WAKE_TURN,
-  })
 
-  return handled || started || fallback
+  if (handled > 0) {
+    return handled
+  }
+
+  return fallback
 }
 
 function isFolder({ path }: { path: string }): boolean {
@@ -3039,14 +3038,25 @@ export function createHost({
           id,
           seq,
         ]) => id.endsWith(':hosted') ? [seq] : [])
+        const startedWakes = wakesThrough({
+          state,
+          pattern: WAKE_TURN,
+        })
+        let unhandled = Math.max(
+          0,
+          ...turns,
+        )
+
+        // A log from before handled wakes were recorded counts a wake once its turn started.
+        if (startedWakes > 0) {
+          unhandled = startedWakes
+        }
+
         // The resumed turn answers the wake it continues, so that wake's changes are not offered twice.
         const after = Math.max(
           wakeCursor({
             state,
-            fallback: Math.max(
-              0,
-              ...turns,
-            ),
+            fallback: unhandled,
           }),
           cutHydraTurn?.wakeThrough ?? 0,
         )

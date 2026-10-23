@@ -1079,6 +1079,10 @@ test(
     sdk.control.hold = true
     declare({ status: 'needs_you' })
     await until({ check: () => wakes().length === 1 })
+    assert.ok(
+      !Object.keys(state().eventIds).some(id => id.endsWith(':handled')),
+      'a wake is not handled while its turn runs',
+    )
     const first = state().seq
     declare({ status: 'blocked' })
     declare({ status: 'working' })
@@ -1589,6 +1593,14 @@ for (const resumeFails of [
       })
       await send({ text: 'Watch the worker' })
       await until({ check: finished })
+      await commands.task([
+        'status',
+        'fix',
+        'blocked',
+        '--hydra',
+        'lab',
+      ])
+      await until({ check: () => first.calls[0]?.messages.length === 2 && finished() })
       first.control.hold = true
       first.control.leaveTurnUnfinishedOnClose = true
       await commands.task([
@@ -1598,7 +1610,8 @@ for (const resumeFails of [
         '--hydra',
         'lab',
       ])
-      await until({ check: () => first.calls[0]?.messages.length === 2 })
+      await until({ check: () => first.calls[0]?.messages.length === 3 })
+      const handledThrough = Object.keys(state().eventIds).find(turnId => /^wake:\d+:handled$/.test(turnId))!.split(':')[1]!
       const cutWakeTurnId = Object.keys(state().eventIds).findLast(turnId => /^wake:\d+:hosted$/.test(turnId))!
       const wakeThroughSeq = cutWakeTurnId.split(':')[1]!
       await server.close()
@@ -1607,10 +1620,12 @@ for (const resumeFails of [
       server = await startServer({
         hydraId: 'lab',
         query: second.query,
+        wakeDelay: 50,
       })
 
       if (!resumeFails) {
         await until({ check: finished })
+        await sleep({ ms: 300 })
         assert.ok(second.calls[0]!.messages[0]!.includes(`a wake check through seq ${wakeThroughSeq}`))
         assert.equal(
           second.calls[0]!.messages.length,
@@ -1644,10 +1659,15 @@ for (const resumeFails of [
         'interrupted',
       )
       await send({ text: 'Try again after sign-in' })
-      await until({ check: () => third.calls[0]?.messages.length === 1 && finished() })
-      assert.deepEqual(
-        third.calls[0]!.messages,
-        ['Try again after sign-in'],
+      // The cut wake was never handled, so its changes come back after the owner's turn.
+      await until({ check: () => third.calls[0]?.messages.length === 2 && finished() })
+      assert.equal(
+        third.calls[0]!.messages[0],
+        'Try again after sign-in',
+      )
+      assert.match(
+        third.calls[0]!.messages[1]!,
+        new RegExp(`^<pnyx-wake>[\\s\\S]*--after ${handledThrough} `),
       )
     },
   )
