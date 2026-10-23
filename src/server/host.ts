@@ -1,3 +1,4 @@
+import { requireUnheld } from '../core/holds.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
@@ -833,6 +834,8 @@ export function createHost({
       state: writer.state,
       ref,
     })
+    requireUnheld({ card })
+
     const previous = outsideSession({
       writer,
       card,
@@ -2968,6 +2971,8 @@ export function createHost({
           state: writer.state,
           ref: task,
         })
+
+        requireUnheld({ card })
 
         if (!check && `${id}:continue` in writer.state.eventIds) {
           return {

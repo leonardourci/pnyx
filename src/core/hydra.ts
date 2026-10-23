@@ -618,6 +618,29 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'task.held' || event.type === 'task.released') {
+    const card = state.cards[event.cardId]
+
+    if (card) {
+      if (event.type === 'task.held') {
+        card.hold = {
+          id: event.id,
+          at: event.at,
+          actor: event.actor,
+          reason: event.data.reason,
+        }
+      } else if (card.hold?.id === event.data.hold) {
+        delete card.hold
+      }
+
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
+    return true
+  }
+
   if (event.type === 'task.intent') {
     const card = state.cards[event.cardId]
 
@@ -771,7 +794,16 @@ export function applyHydra({
       kind,
     } = event.data
     const columns = hydraConfig({ state }).columns
-    const role = columns.find(c => c.id === column)?.role
+    let placement = column
+
+    if (event.data.hold) {
+      placement = roleColumn({
+        columns,
+        role: 'queued',
+      })
+    }
+
+    const role = columns.find(c => c.id === placement)?.role
     const initial = role && ROLE_STATUS[role] && {
       id: event.id,
       at: event.at,
@@ -788,6 +820,14 @@ export function applyHydra({
         brief,
         initialPrompt: brief,
       } : {}),
+      ...(event.data.hold ? {
+        hold: {
+          id: event.id,
+          at: event.at,
+          actor: event.actor,
+          reason: event.data.hold,
+        },
+      } : {}),
       ask: event.data.ask ? [structuredClone(event.data.ask)] : [],
       titleSet: true,
       workspace: 'unassigned',
@@ -801,7 +841,7 @@ export function applyHydra({
       ...(initial ? { status: initial } : {}),
       ...(parentId ? { parentId } : {}),
       ...(folder ? { folder } : {}),
-      column: column ?? roleColumn({
+      column: placement ?? roleColumn({
         columns,
         role: 'queued',
       }) ?? 'parked',

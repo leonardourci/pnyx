@@ -3,7 +3,7 @@ import type { Card, Column, HydraEvent, HydraState, TaskStatus } from './model.t
 import { HYDRA_CARD, hydraConfig, roleColumn } from './hydra.ts'
 import { INTERRUPTED } from './tasks.ts'
 
-type Stage = 'in_progress' | 'needs_you' | 'parked' | 'done'
+type Stage = 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done'
 
 const MOVE = ':lifecycle'
 
@@ -44,6 +44,10 @@ export function lifecycleStage({ card }: { card: Card }): Stage | undefined {
     return 'needs_you'
   }
 
+  if (card.hold) {
+    return 'queued'
+  }
+
   if (card.status?.state === 'paused' && !card.status.hold
     && card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
     return 'in_progress'
@@ -65,6 +69,10 @@ const moveReason = ({
 
   if (answered) {
     return 'Answered'
+  }
+
+  if (stage === 'queued') {
+    return 'Held for discussion'
   }
 
   if (stage === 'parked') {
@@ -97,7 +105,9 @@ export function lifecycleMoves({
 
     const placed = columns.find(c => c.id === card.column)
 
-    if (!previous || card.automaticTask || card.id === HYDRA_CARD || !placed?.role) {
+    const manualColumn = !placed?.role && !card.hold && !previous?.hold
+
+    if (!previous || card.automaticTask || card.id === HYDRA_CARD || manualColumn) {
       return []
     }
 

@@ -407,7 +407,7 @@ async function deliverHandoffs({
 
     const receipt = card?.replies?.find(r => r.id === id)
 
-    if (!active() || card?.sessionIds?.[0] !== event.data.session
+    if (!active() || card?.hold || card?.sessionIds?.[0] !== event.data.session
       || receipt && receipt.state !== 'failed') {
       continue
     }
@@ -516,7 +516,7 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next) {
+      if (!next || next.hold) {
         continue
       }
 
@@ -549,7 +549,7 @@ export async function advanceQueues({
           })[0]
 
           if (source?.revision !== card.revision || target?.id !== next.id
-            || target.revision !== next.revision
+            || target.hold || target.revision !== next.revision
           || source.sessionIds?.[0] !== id || source.activity === 'working') {
             return
           }

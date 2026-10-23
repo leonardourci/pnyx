@@ -133,6 +133,7 @@ export function decideAsk({
   ref,
   id,
   audience,
+  kind,
   question,
   context,
   details,
@@ -143,6 +144,7 @@ export function decideAsk({
   state: HydraState
   ref: string
   id: string
+  kind?: string
   audience: AskAudience
   question: string
   context?: string
@@ -177,7 +179,26 @@ export function decideAsk({
     })
   }
 
-  const choices = (options ?? []).map(option => ({
+  if (kind !== undefined && kind !== 'go') {
+    throw invalid({ message: '--kind takes go for an owner go question' })
+  }
+
+  if (kind === 'go' && (audience !== 'owner' || !card.hold)) {
+    throw invalid({ message: 'a go question is for the owner on a held card' })
+  }
+
+  if (kind === 'go' && openAsks({ card }).some(ask => ask.kind === 'go')) {
+    throw invalid({ message: 'this card already has an open go question' })
+  }
+
+  if (kind === 'go' && (options?.length || recommended !== undefined)) {
+    throw invalid({ message: 'a go question supplies its own Go and Hold choices' })
+  }
+
+  const choices = (kind === 'go' ? [
+    { label: 'Go' },
+    { label: 'Hold' },
+  ] : options ?? []).map(option => ({
     label: text({
       value: option.label,
       what: 'a choice',
@@ -237,6 +258,10 @@ export function decideAsk({
       data: {
         id,
         audience,
+        ...(kind === 'go' ? {
+          kind,
+          hold: structuredClone(card.hold),
+        } : {}),
         question: said.question,
         ...(said.context ? { context: said.context } : {}),
         ...(said.details ? { details: said.details } : {}),
@@ -401,8 +426,8 @@ export function askAnswer({
       throw invalid({ message: '--from-message must name the owner’s own message sent after the question' })
     }
 
-    if (typed !== undefined || (choice !== undefined && ask.kind !== 'merge')) {
-      throw invalid({ message: '--from-message quotes the owner’s message; only a merge question also takes --choice' })
+    if (typed !== undefined || (choice !== undefined && ask.kind !== 'merge' && ask.kind !== 'go')) {
+      throw invalid({ message: '--from-message quotes the owner’s message; a merge or go question also takes --choice' })
     }
 
     source = {
@@ -448,6 +473,20 @@ export function askAnswer({
 
   if (ask.kind === 'merge' && !label && note !== 'Merge' && note !== 'Hold') {
     throw invalid({ message: 'answer a merge question with --choice Merge or Hold; --from-message also needs that choice' })
+  }
+
+  if (ask.kind === 'go') {
+    if (!card.hold || card.hold.id !== ask.hold?.id) {
+      throw invalid({ message: 'this go question no longer names the current hold' })
+    }
+
+    if (!label && note !== 'Go' && note !== 'Hold') {
+      throw invalid({ message: 'answer a go question with --choice Go or Hold; --from-message also needs that choice' })
+    }
+
+    if (source && Date.parse(source.at) <= Date.parse(card.hold.at)) {
+      throw invalid({ message: 'the owner’s message must be newer than the current hold' })
+    }
   }
 
   let by = actor
@@ -500,8 +539,12 @@ export function applyAsk({
 
         if (event.data.choice !== undefined) {
           answered.choice = event.data.choice
-        } else if (a.kind === 'merge') {
+        } else if (a.kind === 'merge' || a.kind === 'go') {
           answered.choice = event.data.text
+        }
+
+        if (a.kind === 'go' && answered.choice === 'Go' && card.hold?.id === a.hold?.id) {
+          delete card.hold
         }
 
         return answered
@@ -547,6 +590,10 @@ export function applyAsk({
     card.asks = card.asks.map(a => {
       if (a.id !== event.data.ask || a.answered !== event.data.answer) {
         return a
+      }
+
+      if (a.kind === 'go' && a.choice === 'Go' && a.hold && !card.hold) {
+        card.hold = structuredClone(a.hold)
       }
 
       const reopened = { ...a }
@@ -611,15 +658,21 @@ export function reconcileAsks({
     card,
     audience: 'owner',
   })) {
+    if (ask.kind === 'go' && ask.hold?.id === card.hold?.id) {
+      continue
+    }
+
     const link = card.links.find(link => link.url === ask.url)
     const settled = link?.state === 'merged' || link?.state === 'closed'
     const moot = ask.url ? settled : allSettled
 
-    if (!ended && !moot) {
+    const released = ask.kind === 'go' && ask.hold?.id !== card.hold?.id
+
+    if (!ended && !moot && !released) {
       continue
     }
 
-    const reason = ended ? 'Task ended' : 'Pull request merged or closed'
+    const reason = released ? 'Discussion hold released or replaced' : ended ? 'Task ended' : 'Pull request merged or closed'
     const closed = hydraEvent({
       state,
       cardId: card.id,

@@ -249,7 +249,8 @@ export interface Ask {
   at: string
   actor: string
   audience: AskAudience
-  kind?: 'merge'
+  kind?: 'merge' | 'go'
+  hold?: TaskHold
   url?: string
   choice?: string
   closed?: {
@@ -305,7 +306,15 @@ export interface OwnerAsk {
   message?: string
 }
 
+export interface TaskHold {
+  id: string
+  at: string
+  actor: string
+  reason: string
+}
+
 export interface Card {
+  hold?: TaskHold
   id: string
   key: string
   title: string
@@ -702,6 +711,7 @@ export type HydraChange = EventBase & (
   | {
     type: 'task.created'
     data: {
+      hold?: string
       ask?: OwnerAsk
       key: string
       title: string
@@ -711,6 +721,17 @@ export type HydraChange = EventBase & (
       folder?: string
       project?: string
       kind?: TaskKind
+    }
+  }
+  | {
+    type: 'task.held'
+    data: { reason: string }
+  }
+  | {
+    type: 'task.released'
+    data: {
+      hold: string
+      message: AnswerMessage
     }
   }
   | {
@@ -1089,6 +1110,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder-due',
   'task.copy',
   'task.queue',
+  'task.held',
+  'task.released',
   'task.kind',
   'task.report',
   'task.landing',

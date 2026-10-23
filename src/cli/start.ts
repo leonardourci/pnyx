@@ -1,3 +1,4 @@
+import { requireUnheld } from '../core/holds.ts'
 import { projectIdentity } from '../projects/sources.ts'
 import { readProjectMemory } from '../projects/memory.ts'
 import { taskInstructions } from '../core/intent.ts'
@@ -102,6 +103,8 @@ export function freeTask({
       help: ['Run `pnyx-axi task list`'],
     })
   }
+
+  requireUnheld({ card })
 
   if (card.queue) {
     throw new HydraError({
@@ -354,6 +357,8 @@ export async function startTask({
     ref: task,
   })
 
+  requireUnheld({ card })
+
   if (card.queue) {
     throw new HydraError({
       message: 'unqueue this task before starting a separate worker',
@@ -490,6 +495,13 @@ export async function startTask({
   const ownsFolder = commandName
     ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
   const ownFolder = command && ownsFolder
+  requireUnheld({
+    card: findCard({
+      state: loadHydra({ hydraId }).state,
+      ref: task,
+    }),
+  })
+
   const folder = replacement ? given
     : taskFolder({
       hydraId,
@@ -578,6 +590,8 @@ function askFirstmate({
         state: writer.state,
         ref: task,
       })
+
+      requireUnheld({ card })
 
       if (!liveTask({ card }) || card.id === HYDRA_CARD) {
         throw new HydraError({

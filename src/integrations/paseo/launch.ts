@@ -1,3 +1,4 @@
+import { requireUnheld } from '../../core/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '../../dispatch/select.ts'
 import { hydraEvent } from '../../core/hydra.ts'
 import { randomUUID } from 'node:crypto'
@@ -80,6 +81,8 @@ export async function startAgent({
           duplicate: true,
         }
       }
+
+      requireUnheld({ card })
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
         throw new HydraError({
@@ -164,6 +167,18 @@ export async function startAgent({
       PNYX_HOME: pnyxHome(),
       PNYX_HYDRA: hydraId,
     },
+    beforeCreate: () => withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        drainSpool({ writer })
+        requireUnheld({
+          card: findCard({
+            state: writer.state,
+            ref: task,
+          }),
+        })
+      },
+    }),
     labels: { 'pnyx.task': claimed.card.id },
     url: endpoint,
     connect,
@@ -174,6 +189,12 @@ export async function startAgent({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
+        requireUnheld({
+          card: findCard({
+            state: writer.state,
+            ref: task,
+          }),
+        })
         const pushed = decidePush({
           state: writer.state,
           key: `paseo:${agent.id}`,
@@ -279,6 +300,7 @@ export async function createPaseoAgent({
   labels,
   url,
   connect = openPaseo,
+  beforeCreate,
 }: {
   harness: Harness
   agent?: AgentConfig
@@ -290,6 +312,7 @@ export async function createPaseoAgent({
   labels: Record<string, string>
   url: string
   connect?: Connect
+  beforeCreate?(): void
 }): Promise<{
   agent: { id: string }
   ref: AgentRef
@@ -335,6 +358,7 @@ export async function createPaseoAgent({
       ...(kind?.mode ? { modeId: kind.mode } : {}),
       ...(kind?.fast === undefined ? {} : { featureValues: { fast_mode: kind.fast } }),
     }
+    beforeCreate?.()
     agent = await client.agents.create({
       config,
       cwd,
