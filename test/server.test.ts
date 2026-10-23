@@ -1118,12 +1118,23 @@ test(
 test(
   'the Hydra page carries the token only for its own host and origin; /health names the Hydra',
   async () => {
+    mkdirSync(
+      hydraDir({ hydraId: 'work' }),
+      { recursive: true },
+    )
+    appendFileSync(
+      join(
+        hydraDir({ hydraId: 'work' }),
+        'events.jsonl',
+      ),
+      '',
+    )
     server = await startServer({ hydraId: 'default' })
     const meta = `<meta name="pnyx-token" content="${localToken()}" />`
 
     for (const path of [
       '/hydra/default/',
-      '/hydra/default/some/route',
+      '/hydra/default/index.html',
     ]) {
       const page = await http({
         method: 'GET',
@@ -1164,7 +1175,7 @@ test(
       assert.ok(!refused.text.includes(localToken()))
     }
 
-    // Outside a Hydra only the shared assets are served, never a page carrying the token.
+    // Only a Hydra's own page carries the token; other unknown pages redirect home, missing files 404.
     for (const [
       method,
       path,
@@ -1176,6 +1187,12 @@ test(
           '/',
           302,
           '/hydra/default/',
+        ],
+        [
+          'GET',
+          '/?open-hydra=work',
+          302,
+          '/hydra/default/?open-hydra=work',
         ],
         [
           'GET',
@@ -1200,12 +1217,50 @@ test(
         ],
         [
           'GET',
+          '/hydra/missing/task/1',
+          404,
+        ],
+        [
+          'GET',
           '/hydra/default/api/commands/move',
+          302,
+          '/hydra/default/',
+        ],
+        [
+          'GET',
+          '/hydra/work/task/1/?project=%2Ftmp%2Fx',
+          302,
+          '/hydra/work/?project=%2Ftmp%2Fx',
+        ],
+        [
+          'GET',
+          '/some/route?open-hydra=work',
+          302,
+          '/hydra/default/?open-hydra=work',
+        ],
+        [
+          'GET',
+          '/hydra/work/favicon.svg',
           200,
+        ],
+        [
+          'GET',
+          '/hydra/default/assets/missing.js',
+          404,
+        ],
+        [
+          'GET',
+          '/assets/missing.js',
+          404,
         ],
         [
           'POST',
           '/hydra/default/api/commands/move',
+          405,
+        ],
+        [
+          'POST',
+          '/some/route',
           405,
         ],
       ] as const) {
@@ -1251,7 +1306,10 @@ test(
       {
         pid: process.pid,
         build,
-        hydras: ['default'],
+        hydras: [
+          'default',
+          'work',
+        ],
         skipped: {},
       },
     )
@@ -1270,6 +1328,75 @@ test(
         hydraId: identity,
       },
     )
+  },
+)
+
+test(
+  'a // target redirects a GET home, refuses other methods and upgrades, and the server keeps answering',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const page = await http({
+      method: 'GET',
+      path: '//?open-hydra=default',
+    })
+    assert.deepEqual(
+      [
+        page.status,
+        page.headers.location,
+      ],
+      [
+        302,
+        '/hydra/default/?open-hydra=default',
+      ],
+    )
+    assert.equal(
+      (await http({
+        method: 'POST',
+        path: '//',
+      })).status,
+      405,
+    )
+    assert.equal(
+      await handshakeStatus({
+        query: '',
+        path: '//',
+      }),
+      403,
+    )
+    assert.equal(
+      (await http({
+        method: 'GET',
+        path: '/health',
+      })).status,
+      200,
+    )
+  },
+)
+
+test(
+  'a Hydra that failed to load answers its pages with 404 and the reason, never a redirect',
+  async () => {
+    mkdirSync(
+      hydraDir({ hydraId: 'broken' }),
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        hydraDir({ hydraId: 'broken' }),
+        'events.jsonl',
+      ),
+      'not json\n',
+    )
+    server = await startServer({ hydraId: 'default' })
+    const response = await http({
+      method: 'GET',
+      path: '/hydra/broken/task/1',
+    })
+    assert.equal(
+      response.status,
+      404,
+    )
+    assert.ok((JSON.parse(response.text) as { reason?: string }).reason)
   },
 )
 
