@@ -1,5 +1,6 @@
-// pnpm verify: runs every check even after one fails, prints one summary, and writes the
-// checks marker for the PR head into the PR description only when all of them passed.
+// pnpm verify: picks the checks the branch's changed files need, runs each even after one fails,
+// prints one summary, and writes the checks marker for the PR head into the PR description only
+// when all of them passed.
 import {
   execFileSync,
   spawnSync,
@@ -8,6 +9,8 @@ import {
   closeSync,
   mkdtempSync,
   openSync,
+  readdirSync,
+  readFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -23,7 +26,7 @@ interface Step {
   needs?: string
 }
 
-const STEPS: Step[] = [
+const CHECKS: Step[] = [
   {
     name: 'lint:fix',
     command: 'pnpm',
@@ -57,12 +60,53 @@ const STEPS: Step[] = [
       'build',
     ],
   },
+]
+const EVERYTHING: Step[] = [
+  ...CHECKS,
   {
     name: 'unit tests',
     command: 'node',
     args: [
       '--test',
-      'test/**/*.test.ts',
+      'test/*.test.ts',
+    ],
+    needs: 'build',
+  },
+  // One file at a time, so at most the test process and one pnyx-axi run at once.
+  {
+    name: 'scenarios',
+    command: 'node',
+    args: [
+      '--test',
+      '--test-concurrency=1',
+      'test/scenarios/*.test.ts',
+    ],
+    needs: 'build',
+  },
+]
+
+// The unit tests that import the web Hydra's code.
+function webTests(): string[] {
+  return readdirSync('test')
+    .filter(name => name.endsWith('.test.ts') && readFileSync(
+      join(
+        'test',
+        name,
+      ),
+      'utf8',
+    ).includes('from \'../web/'))
+    .map(name => `test/${name}`)
+}
+
+// The browser journeys join these when they land.
+const UI = (): Step[] => [
+  ...CHECKS,
+  {
+    name: 'web unit tests',
+    command: 'node',
+    args: [
+      '--test',
+      ...webTests(),
     ],
     needs: 'build',
   },
@@ -106,6 +150,86 @@ function head(): string {
       'HEAD',
     ],
   })
+}
+
+// The branch's files that differ from the default branch, committed or not.
+function branchChanges(): string[] | undefined {
+  let base: string
+
+  try {
+    base = read({
+      args: [
+        'git',
+        'merge-base',
+        'HEAD',
+        'origin/main',
+      ],
+    })
+  } catch {
+    return undefined
+  }
+
+  return [
+    ...new Set([
+      ...read({
+        args: [
+          'git',
+          'diff',
+          '--name-only',
+          '--no-renames',
+          base,
+        ],
+      }).split('\n'),
+      ...changedPaths().flatMap(line => line.slice(3).split(' -> ')),
+    ].filter(Boolean)),
+  ]
+}
+
+// Markdown outside the shipped skills and the tests is docs, as the Checks required workflow skips it.
+const area = ({ path }: { path: string }) => path.endsWith('.md') && !/^(skills|test)\//.test(path) ? 'docs'
+  : path.startsWith('web/') ? 'UI' : 'back-end'
+
+// Back-end changes (or both) run everything, UI-only changes the UI checks, docs-only changes nothing.
+function selection(): {
+  steps: Step[]
+  why: string
+} {
+  const paths = branchChanges()
+
+  if (!paths?.length) {
+    return {
+      steps: EVERYTHING,
+      why: paths ? 'no changes from origin/main found' : 'origin/main is not available to compare with',
+    }
+  }
+
+  const named = ({ kind }: { kind: string }) => {
+    const found = paths.filter(path => area({ path }) === kind)
+
+    return `${found.length} ${kind} (${found.slice(
+      0,
+      3,
+    ).join(', ')}${found.length > 3 ? ', …' : ''})`
+  }
+
+  const has = ({ kind }: { kind: string }) => paths.some(path => area({ path }) === kind)
+
+  if (has({ kind: 'back-end' })) {
+    return {
+      steps: EVERYTHING,
+      why: `${named({ kind: 'back-end' })} changed`,
+    }
+  }
+
+  return has({ kind: 'UI' })
+    ? {
+      steps: UI(),
+      why: `only UI and docs changed: ${named({ kind: 'UI' })}`,
+    }
+    : {
+      steps: [],
+      why: `only docs changed: ${named({ kind: 'docs' })}`,
+    }
 }
 
 // The first line gh printed for a failed call.
@@ -196,7 +320,13 @@ const dirtyAtStart = changedPaths().length
 const failed = new Set<string>()
 const summary: string[] = []
 
-for (const step of STEPS) {
+const {
+  steps,
+  why,
+} = selection()
+console.log(`verify: ${steps.length ? `running ${steps.map(step => step.name).join(', ')}` : 'running no checks'}; ${why}`)
+
+for (const step of steps) {
   console.log(`verify: ${step.name}`)
   const outcome = runStep({
     step,
@@ -207,7 +337,7 @@ for (const step of STEPS) {
     failed.add(step.name)
   }
 
-  summary.push(`  ${step.name.padEnd(11)}${outcome}`)
+  summary.push(`  ${step.name.padEnd(15)}${outcome}`)
 }
 
 // Read after the run, so an edit made to the description meanwhile is kept.
@@ -266,5 +396,5 @@ if (blockers.length === 0 && found.pullRequest) {
   }
 }
 
-console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(11)}${marker}`)
+console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(15)}${marker}`)
 process.exitCode = blockers.length === 0 ? 0 : 1
