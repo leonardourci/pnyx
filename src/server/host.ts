@@ -258,6 +258,11 @@ const WAKE_ID = /^wake:(\d+)(?:\.\d+)?$/
 const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
 // The finished record of the turn that read a wake carries this id.
 const WAKE_HANDLED = /^wake:(\d+):handled$/
+const REPLY_RULES = [
+  'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, a failure or blocker cannot be cleared, or a decision is needed.',
+  'A result reply stands alone: say what waits on the owner from the open decisions and what happens next. Say in one sentence when you decide something small under a standing preference.',
+  'Answer worker questions already settled by standing preferences. On the second or plainly recurring snag, add one line to the project worker-notes and tell the owner in one sentence.',
+].join('\n')
 
 // One check turn: the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 function wakeText({
@@ -291,7 +296,8 @@ function wakeText({
     lines.push(`A worker or reminder changed something you track. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` and handle what it lists.`)
   }
 
-  lines.push(`If nothing needs the owner, write no other text and reply only ${QUIET_REPLY}.`)
+  lines.push(`If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.`)
+  lines.push(REPLY_RULES)
 
   return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
 }
@@ -1154,6 +1160,15 @@ export function createHost({
               }),
             })
             finishReading()
+            const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
+            const ownerInput = messages.some(message => answering.includes(message.id)
+              && ownerActor({ actor: message.actor }))
+
+            if (ownerInput && texts.at(-1)?.trim() === QUIET_REPLY) {
+              entry.input.push({
+                text: `<pnyx-wake>The owner wrote to you; reply to them in one standalone message.\n${REPLY_RULES}</pnyx-wake>`,
+              })
+            }
           }
         } else {
           const opened = opening.splice(0)
@@ -1813,7 +1828,7 @@ export function createHost({
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
-      text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+      text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${REPLY_RULES}</pnyx-wake>`,
     }).then(() => {
       const delivered = Date.now()
 
@@ -2205,8 +2220,8 @@ export function createHost({
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
             text: waking ? text.replace(
-              /<\/pnyx-wake>$/,
-              `${memoryChangeNote()}</pnyx-wake>`,
+              REPLY_RULES,
+              `${memoryChangeNote()}\n${REPLY_RULES}`,
             ) : text,
             id,
           })
@@ -3353,7 +3368,7 @@ function findHydraTurnToResume({
   return {
     resumeAttemptId,
     wakeThrough: Number(wakeThroughSeq ?? 0),
-    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.</pnyx-wake>`,
+    resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
   }
 }
 
