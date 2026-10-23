@@ -364,6 +364,14 @@ function apply({
     // A hosted agent's activity comes from the host as its session's own.
     if ((source?.adapter === 'hooks' || source?.adapter === 'pnyx') && typeof activity === 'string') {
       if (activity !== 'working') {
+        // The turn that just ended, so its end can tell whether the worker declared anything during it.
+        if (card.sessionActivity === 'working' && card.workingSince) {
+          card.lastTurn = {
+            since: card.workingSince,
+            seq: event.seq,
+          }
+        }
+
         delete card.workingSince
       } else if (card.sessionActivity !== 'working' || !card.workingSince) {
         card.workingSince = event.at

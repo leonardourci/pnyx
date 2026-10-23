@@ -326,6 +326,11 @@ export interface Card {
   sessionActivity?: string
   // When the session's current turn began, while it is working.
   workingSince?: string
+  // The session's last finished turn: when it began, and the change that ended it.
+  lastTurn?: {
+    since: string
+    seq: number
+  }
   stoppedAt?: string
   agent?: AgentRef
   launch?: AgentLaunch
