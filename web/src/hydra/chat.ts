@@ -204,11 +204,56 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
       prior.kind === entry.kind && (prior.part ?? 0) + prior.text.length === entry.part) {
       prior.text += entry.text
     } else {
-      result.push({ ...entry })
+      // A group from the first part takes the message's own id, so a streaming reply
+      // keeps its key when it grows past one part.
+      result.push({
+        ...entry,
+        ...entry.messageId && entry.part === 0 ? { id: entry.messageId } : {},
+      })
     }
   }
 
   return result
+}
+
+// The transcript entry that replaces a streamed reply renders under the reply's key,
+// so the reply is not mounted again and finishes typing. `keys` maps settled ids to
+// live keys; it grows by one per streamed reply.
+type Keyed<Entry> = Entry & { renderKey?: string }
+
+export function keepStreamedKeys<Entry extends ThreadEntry>({
+  entries,
+  previous,
+  keys,
+}: {
+  entries: Entry[]
+  previous: Keyed<Entry>[]
+  keys: Map<string, string>
+}): Keyed<Entry>[] {
+  const ids = new Set(entries.map(entry => entry.id))
+  const seen = new Set(previous.map(entry => entry.id))
+
+  for (const gone of previous) {
+    if (!gone.streaming || ids.has(gone.id)) {
+      continue
+    }
+
+    const settled = entries.find(entry => !seen.has(entry.id) && !entry.streaming
+      && entry.kind === gone.kind && entry.role === gone.role && !keys.has(entry.id)
+      && entry.text.startsWith(gone.text))
+
+    if (settled) {
+      keys.set(
+        settled.id,
+        gone.renderKey ?? gone.id,
+      )
+    }
+  }
+
+  return entries.map(entry => keys.has(entry.id) ? {
+    ...entry,
+    renderKey: keys.get(entry.id),
+  } : entry)
 }
 
 export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'

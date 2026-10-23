@@ -35,7 +35,10 @@ const PILL_GAP = 6
 let highlights = 0
 
 // A message the owner just sent shows at once, faded until the server records it.
-export type ChatEntry = ThreadEntry & { sending?: boolean }
+export type ChatEntry = ThreadEntry & {
+  sending?: boolean
+  renderKey?: string
+}
 
 const roleLabel = ({
   role,
@@ -755,7 +758,7 @@ export function Messages({
         }}
       >
         {entries.map(entry => (
-          <Fragment key={entry.id}>
+          <Fragment key={entry.renderKey ?? entry.id}>
             <article
               data-entry-id={entry.id}
               className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}

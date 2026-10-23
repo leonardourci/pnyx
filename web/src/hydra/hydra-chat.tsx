@@ -26,7 +26,7 @@ import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { cardState } from './view.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
-import { clock, duration, joinMessageParts, quoteInto, type ChatComment } from './chat.ts'
+import { clock, duration, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
 
 // How long after the owner's own input a scroll up still counts as theirs.
 const OWNER_SCROLL_MS = 1000
@@ -104,6 +104,7 @@ export function HydraChat({
   ] = useState(false)
   const stream = useRef<HTMLDivElement>(null), content = useRef<HTMLDivElement>(null)
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0)
+  const rendered = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const {
     thinking,
@@ -209,7 +210,7 @@ export function HydraChat({
       notify={notify}
     />,
   ]))
-  const entries: ChatEntry[] = [
+  const listed: ChatEntry[] = [
     ...chat.entries,
     ...shownDecisions.map(decision => ({
       id: decision.id,
@@ -231,6 +232,12 @@ export function HydraChat({
     a,
     b,
   ) => (a.at ?? '').localeCompare(b.at ?? ''))
+  const entries = keepStreamedKeys({
+    entries: listed,
+    previous: rendered.current,
+    keys: streamedKeys.current,
+  })
+  rendered.current = entries
 
   const threadSession = useRef(card?.agent?.sessionId)
   threadSession.current = card?.agent?.sessionId
