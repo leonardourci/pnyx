@@ -810,7 +810,7 @@ function startOverride({ values }: { values: Record<string, unknown> }): Overrid
 }
 
 // A paused worker's --until takes the same times as a reminder.
-function waitEnd({
+function untilTime({
   until,
   now,
 }: {
@@ -1474,7 +1474,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }),
         note: String(values.note ?? ''),
         meta: m,
-        until: waitEnd({
+        until: untilTime({
           until: values.until as string | undefined,
           now: m.at,
         }),
