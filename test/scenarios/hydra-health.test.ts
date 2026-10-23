@@ -152,7 +152,7 @@ test(
     )
     assert.match(
       recap,
-      /A worker report and any other changes from the outage reach you in your next wake\./,
+      /A worker report and any other changes from the outage reach you in your next wake\.\nOpen decisions: none\nIf none of this/,
     )
     // The worker's report comes once, in its own wake after the recap.
     await until({

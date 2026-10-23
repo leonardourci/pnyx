@@ -21,6 +21,7 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
+import { decisionsBlock } from '../core/decisions.ts'
 import { reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
 import { freeTask } from '../cli/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
@@ -293,12 +294,14 @@ const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. 
 // One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 function wakeText({
   hydraId,
+  state,
   after,
   reasons,
   reports,
   check,
 }: {
   hydraId: string
+  state: HydraState
   after: number
   reasons: string[]
   reports: HydraMessage[]
@@ -326,6 +329,12 @@ function wakeText({
     lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
   }
 
+  lines.push(sealed({
+    text: decisionsBlock({
+      state,
+      now: Date.now(),
+    }),
+  }))
   lines.push(QUIET_RULE)
   lines.push(REPLY_RULES)
 
@@ -385,6 +394,12 @@ function recapText({
       ...unread,
     ] : ['The owner sent you nothing meanwhile.'],
     ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from the outage reach you in your next wake.`] : [],
+    sealed({
+      text: decisionsBlock({
+        state,
+        now,
+      }),
+    }),
     `If none of this needs the owner, reply only ${QUIET_REPLY}.`,
     REPLY_RULES,
   ].join('\n')}</pnyx-wake>`
@@ -1666,6 +1681,7 @@ export function createHost({
       actor: 'pnyx',
       text: wakeText({
         hydraId,
+        state,
         after,
         reasons,
         reports,
@@ -2028,7 +2044,12 @@ export function createHost({
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
-      text: `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${REPLY_RULES}</pnyx-wake>`,
+      text: `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${sealed({
+        text: decisionsBlock({
+          state,
+          now,
+        }),
+      })}\n${REPLY_RULES}</pnyx-wake>`,
     }).then(() => {
       const delivered = Date.now()
 
