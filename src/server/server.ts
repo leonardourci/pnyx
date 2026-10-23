@@ -862,18 +862,45 @@ async function mountOwnedHydra({
         },
       )
     } else if (path) {
+      let file: FSWatcher | undefined
+
+      const followFile = () => {
+        file?.close()
+        file = undefined
+
+        try {
+          const watcher = watch(
+            path,
+            () => refreshThread({ ws }),
+          )
+          watcher.on(
+            'error',
+            () => watcher.close(),
+          )
+          file = watcher
+        } catch { /* The folder watcher retries when the transcript appears. */ }
+      }
+
       try {
-        sub.watcher = watch(
+        const folder = watch(
           dirname(path),
           (
             _event,
             filename,
           ) => {
             if (!filename || String(filename) === basename(path)) {
+              followFile()
               refreshThread({ ws })
             }
           },
         )
+        sub.watcher = {
+          close: () => {
+            folder.close()
+            file?.close()
+          },
+        }
+        followFile()
       } catch { /* Missing transcript remains explicit. */ }
     }
 

@@ -2730,7 +2730,7 @@ test(
 
 test(
   'Hydra and the open task keep independent live transcripts on one socket',
-  async () => {
+  async context => {
     const root = process.env.PNYX_HOME!
     const paths = [
       join(
@@ -2742,10 +2742,11 @@ test(
         'hydra.jsonl',
       ),
     ]
-    paths.forEach(path => writeFileSync(
+    const files = paths.map(path => openSync(
       path,
-      '',
+      'a',
     ))
+    context.after(() => files.forEach(file => closeSync(file)))
     withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {
@@ -2834,33 +2835,57 @@ test(
       id: 'hydra-thread',
       card: HYDRA_CARD,
     })
-    paths.forEach((
-      path,
-      index,
-    ) => appendFileSync(
-      path,
-      JSON.stringify({
-        type: 'assistant',
-        message: { content: `live reply ${index}` },
-      }) + '\n',
-    ))
-    const changed = new Set<string>()
 
-    while (changed.size < 2) {
-      const message = await t.next()
+    for (const keepOpen of [
+      false,
+      true,
+    ]) {
+      const text = ({ index }: { index: number }) => `live reply ${index}, kept open: ${keepOpen}`
+      paths.forEach((
+        path,
+        index,
+      ) => {
+        const line = JSON.stringify({
+          type: 'assistant',
+          message: { content: text({ index }) },
+        }) + '\n'
 
-      if (message.type === 'thread' && message.thread.entries.some(e => e.text.startsWith('live reply'))) {
-        changed.add(message.thread.card)
+        if (keepOpen) {
+          writeSync(
+            files[index]!,
+            line,
+          )
+        } else {
+          appendFileSync(
+            path,
+            line,
+          )
+        }
+      })
+      const changed = new Set<string>()
+
+      while (changed.size < 2) {
+        const message = await t.next()
+
+        if (message.type !== 'thread') {
+          continue
+        }
+
+        const index = message.thread.card === task ? 0 : 1
+
+        if (message.thread.entries.some(e => e.text === text({ index }))) {
+          changed.add(message.thread.card)
+        }
       }
-    }
 
-    assert.deepEqual(
-      [...changed].sort(),
-      [
-        HYDRA_CARD,
-        task,
-      ].sort(),
-    )
+      assert.deepEqual(
+        [...changed].sort(),
+        [
+          HYDRA_CARD,
+          task,
+        ].sort(),
+      )
+    }
   },
 )
 
