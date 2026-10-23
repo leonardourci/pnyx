@@ -25,8 +25,8 @@ const BIN = join(
   'pnyx-axi.js',
 )
 // Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
-const TIMEOUT_MS = 30_000
-const POLL_MS = 20
+export const TIMEOUT_MS = 30_000
+export const POLL_MS = 20
 // How often the server reads a followed pull request; the real minute would outlast the waits.
 const FOLLOW_MS = 100
 
@@ -328,8 +328,9 @@ export function scenarioGroup({ retryDelays }: {
   let server: RunningServer | undefined
   let scenarios = 0
 
-  const start = async () => {
+  const start = async ({ port }: { port?: number }) => {
     server = await startServer({
+      port,
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
@@ -338,7 +339,7 @@ export function scenarioGroup({ retryDelays }: {
     })
   }
 
-  before(start)
+  before(() => start({}))
   after(async () => {
     await server?.close()
     rmSync(
@@ -354,10 +355,12 @@ export function scenarioGroup({ retryDelays }: {
     codex,
     claude,
     port: () => server!.port,
-    // Stops the server and starts it again on the same files, as a Pnyx restart does.
+    // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
+    // so an open page reconnects to it.
     restart: async () => {
+      const { port } = server!
       await server!.close()
-      await start()
+      await start({ port })
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
     scenario: async () => {

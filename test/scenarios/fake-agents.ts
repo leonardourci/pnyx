@@ -65,12 +65,24 @@ export interface AgentSession {
     tool: string
     input: Record<string, unknown>
   }): Promise<PermissionResult | null>
+  // Claude only: the media type of each image it received.
+  images?: string[]
 }
 
 const textOf = ({ message }: { message: SDKUserMessage }) => {
   const { content } = message.message
 
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
+}
+
+const imagesOf = ({ message }: { message: SDKUserMessage }) => {
+  const { content } = message.message
+
+  if (typeof content === 'string') {
+    return []
+  }
+
+  return content.flatMap(block => block.type === 'image' && block.source.type === 'base64' ? [block.source.media_type] : [])
 }
 
 interface TurnPlan {
@@ -149,12 +161,14 @@ export function replayClaude() {
     // Without its own environment an agent's commands would reach the owner's real Pnyx.
     assert.ok(options.env)
     const id = options.sessionId ?? options.resume!
+    const images: string[] = []
     const session: AgentSession = {
       id,
       resumed: Boolean(options.resume),
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      images,
       model: options.model,
       useTool: ({
         tool,
@@ -201,6 +215,7 @@ export function replayClaude() {
       for await (const message of prompt) {
         const text = textOf({ message })
         session.received.push(text)
+        images.push(...imagesOf({ message }))
         record({
           role: 'user',
           text,
