@@ -34,7 +34,7 @@ const TOOLS: Record<string, string> = {
 }
 const ASKS = Object.keys(TOOLS)
 const REQUEST_TIMEOUT_MS = 30_000
-// Opening a thread starts every configured MCP server and plugin first, which can pass 30 seconds.
+// Opening a thread first starts every configured MCP server and plugin, which can take minutes.
 const OPEN_TIMEOUT_MS = 300_000
 // Items that run while the turn waits on them, such as a shell command or a subagent.
 const TOOL_ITEMS = [

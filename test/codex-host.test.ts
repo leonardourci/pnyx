@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { afterEach, test } from 'node:test'
+import { afterEach, mock, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
@@ -1157,6 +1157,65 @@ test(
       }),
       /takes allow or deny without an answer/,
     )
+  },
+)
+
+test(
+  'a Codex thread that takes longer than a request\'s 30 seconds to open still opens',
+  async () => {
+    const root = realpathSync(mkdtempSync(join(
+      tmpdir(),
+      'pnyx-codex-slow-',
+    )))
+    const codex = fakeCodex({
+      root,
+      holdOpen: true,
+    })
+    // Only setTimeout is faked, so the fixture's pipes and setImmediate run for real.
+    mock.timers.enable({ apis: ['setTimeout'] })
+
+    try {
+      const opening = codexProvider({ spawnCodex: codex.spawnCodex }).open({
+        cwd: root,
+        settings: {},
+        env: {
+          ...process.env,
+          CODEX_HOME: root,
+        },
+        signal: new AbortController().signal,
+      })
+      let failure: Error | undefined
+      void opening.catch((error: Error) => {
+        failure = error
+      })
+
+      while (!codex.messages().some(m => m.method === 'thread/start')) {
+        await new Promise(resolve => setImmediate(resolve))
+      }
+
+      mock.timers.tick(60_000)
+      await new Promise(resolve => setImmediate(resolve))
+      assert.equal(
+        failure,
+        undefined,
+      )
+      codex.children[0]!.kill('SIGHUP')
+      const session = await opening
+      assert.equal(
+        session.id,
+        '0199f00d-1111-7000-8000-000000000001',
+      )
+      session.close()
+    } finally {
+      mock.timers.reset()
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
   },
 )
 

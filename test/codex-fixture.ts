@@ -7,10 +7,12 @@ export function fakeCodex({
   root,
   refuse,
   models = [],
+  holdOpen,
 }: {
   root: string
   refuse?: string
   models?: string[]
+  holdOpen?: boolean
 }) {
   const log = join(
       root,
@@ -55,6 +57,7 @@ export function fakeCodex({
           FAKE_CODEX_TRANSCRIPT: transcript,
           FAKE_CODEX_REFUSE: refuse,
           FAKE_CODEX_MODELS: models.join(','),
+          ...(holdOpen ? { FAKE_CODEX_HOLD_OPEN: '1' } : {}),
         },
         stdio: 'pipe',
       },
