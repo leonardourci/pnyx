@@ -1,4 +1,4 @@
-import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus } from './model.ts'
+import { failedChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
 import { assignDefined } from './tasks.ts'
@@ -335,6 +335,15 @@ export function validateColumns({ columns }: { columns: HydraColumn[] }): void {
   }
 }
 
+// A declared state as shown to people and Hydra: a paused wait names its end.
+export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until'> }): string {
+  if (declaration.until) {
+    return `${declaration.state} until ${declaration.until}`
+  }
+
+  return declaration.state
+}
+
 export function declareTask({
   state,
   ref,
@@ -343,6 +352,7 @@ export function declareTask({
   meta,
   source,
   raw,
+  until,
 }: {
   state: HydraState
   ref: string
@@ -351,6 +361,7 @@ export function declareTask({
   meta: Meta
   source?: string
   raw?: string
+  until?: string
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -370,18 +381,37 @@ export function declareTask({
     })
   }
 
+  if (until !== undefined && normalized !== 'paused') {
+    throw new HydraError({
+      message: '--until goes only with paused',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const data: Omit<TaskDeclaration, 'id' | 'at' | 'actor'> = {
+    state: normalized as TaskStatus,
+    note,
+  }
+
+  if (source) {
+    data.source = source
+  }
+
+  if (raw) {
+    data.raw = raw
+  }
+
+  if (until) {
+    data.until = until
+  }
+
   return hydraEvent({
     state,
     meta,
     cardId: card.id,
     change: {
       type: 'task.declared',
-      data: {
-        state: normalized as TaskStatus,
-        note,
-        ...(source ? { source } : {}),
-        ...(raw ? { raw } : {}),
-      },
+      data,
     },
   })
 }
@@ -487,6 +517,13 @@ function linkNeedsHydra({
   return failing || commented
 }
 
+// Declarations that need Hydra's judgment; working and paused stay on the card until its next check.
+const WAKING_STATES: TaskStatus[] = [
+  'needs_you',
+  'blocked',
+  'done',
+]
+
 // Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
 export function wakesHydra({
   state,
@@ -509,10 +546,11 @@ export function wakesHydra({
 
   switch (event.type) {
     case 'task.queue':
-    case 'task.declared':
     case 'task.reminder-due':
     case 'task.kind':
       return true
+    case 'task.declared':
+      return WAKING_STATES.includes(event.data.state)
     case 'task.permission':
       return event.data.status === 'pending'
     case 'card.linked':
@@ -521,7 +559,7 @@ export function wakesHydra({
         before: event.data.before,
         after: event.data.after,
       })
-    // An agent's own observation on a task, not a person's edit such as continuing a session.
+    // An agent's new question on a task, or a worker that ended while its pull request is unwatched; a finished turn alone waits for the stall check.
     case 'card.pushed': {
       if (card.tracking !== 'declared' || !AGENT_ACTOR.test(event.actor)) {
         return false
@@ -535,12 +573,12 @@ export function wakesHydra({
       const open = ({ list }: { list?: Card['attention'] }) =>
         (list ?? []).filter(a => a.blocking && !a.answered).map(a => a.key)
       const asked = open({ list: before?.attention })
-      const asks = Boolean(before?.attention)
-        && open({ list: attention }).some(key => !asked.includes(key))
+      const newQuestion = open({ list: attention }).some(key => !asked.includes(key))
 
+      const asks = Boolean(before?.attention) && newQuestion
       const stopped = activity === 'ended' && unwatchedPullRequests({ card }).length > 0
 
-      return asks || stopped || (activity === 'finished' && Boolean(before?.activity))
+      return asks || stopped
     }
     default:
       return false

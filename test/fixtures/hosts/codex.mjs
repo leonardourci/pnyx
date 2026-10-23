@@ -390,7 +390,32 @@ createInterface({ input: process.stdin }).on(
           },
         })
       } else {
-      // Completion can arrive before the response to turn/start.
+        // A command runs inside the turn before it answers.
+        if (text === 'COMMAND') {
+          const item = {
+            id: 'command-run',
+            type: 'commandExecution',
+            command: 'pnpm test',
+          }
+          send({
+            method: 'item/started',
+            params: {
+              threadId,
+              turnId,
+              item,
+            },
+          })
+          send({
+            method: 'item/completed',
+            params: {
+              threadId,
+              turnId,
+              item,
+            },
+          })
+        }
+
+        // Completion can arrive before the response to turn/start.
         finish({
           id: turnId,
           text,

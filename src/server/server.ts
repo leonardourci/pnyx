@@ -2,6 +2,7 @@ import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/fo
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
+import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
 import { candidates } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
@@ -32,14 +33,14 @@ import { createServer, type IncomingMessage, type ServerResponse } from 'node:ht
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import type { Duplex } from 'node:stream'
 import { basename, dirname, extname, join, normalize } from 'node:path'
-import { parseArgs } from 'node:util'
+import { parseArgs, promisify } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer, type WebSocket } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
 import { commands as cliCommands } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
 import { browserCommand } from './browser.ts'
-import { HydraError, type HydraEvent, type HydraState, type Card, type ViewPreferences } from '../core/model.ts'
+import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyState, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
@@ -212,6 +213,17 @@ type HydraUpgrade = {
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
+// How often replies a route could not confirm are checked for a resend.
+const REPLY_POLL_MS = 30_000
+const runFile = promisify(execFile)
+// The CLI owns reply writes and delivery; a child keeps slow native sends off the server event loop.
+const REPLY_WORKER = join(
+  import.meta.dirname,
+  '..',
+  'cli',
+  import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
+)
+const REPLY_WORKER_TIMEOUT_MS = 130_000
 
 // Exact matches refuse other sites and rebound DNS names; *.localhost names (portless's
 // https://pnyx.localhost) pass because browsers resolve them to loopback (RFC 6761).
@@ -252,9 +264,11 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, and a stall lasts before waking it; tests shorten both.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy and a repeat stall waits at most; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
+  busyDelay?: number
+  stallRepeatMax?: number
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -572,6 +586,8 @@ async function mountHydra({
   spawnCodex,
   wakeDelay,
   stallDelay,
+  busyDelay,
+  stallRepeatMax,
   open,
   hydrasChanged,
 }: {
@@ -584,6 +600,8 @@ async function mountHydra({
   spawnCodex?: SpawnCodex
   wakeDelay?: number
   stallDelay?: number
+  busyDelay?: number
+  stallRepeatMax?: number
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -599,6 +617,8 @@ async function mountHydra({
       spawnCodex,
       wakeDelay,
       stallDelay,
+      busyDelay,
+      stallRepeatMax,
       open,
       release,
       hydrasChanged,
@@ -618,6 +638,8 @@ async function mountOwnedHydra({
   spawnCodex,
   wakeDelay,
   stallDelay,
+  busyDelay,
+  stallRepeatMax,
   open,
   release,
   hydrasChanged,
@@ -630,6 +652,8 @@ async function mountOwnedHydra({
   spawnCodex?: SpawnCodex
   wakeDelay?: number
   stallDelay?: number
+  busyDelay?: number
+  stallRepeatMax?: number
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -1206,7 +1230,58 @@ async function mountOwnedHydra({
   let queueNeedsRetry = false
   let followRun: Promise<void> | undefined
   let followCheckedAt = 0
+  let replyRun: Promise<void> | undefined
+  let replyCheckedAt = 0
   let scheduled = false
+
+  // Resends tried so far, by retry id and time, so one that failed before its receipt still counts.
+  const triedResends = new Map<string, number>()
+
+  // A resend goes through the reply command in a child, like a send from the page.
+  const resendReply = async ({
+    card,
+    text,
+    retry,
+  }: {
+    card: string
+    text: string
+    retry: string
+  }): Promise<ReplyState> => {
+    try {
+      const { stdout } = await runFile(
+        process.execPath,
+        [
+          REPLY_WORKER,
+          'reply',
+          card,
+          // A text starting with a dash would otherwise read as an option.
+          `--text=${text}`,
+          '--idempotency-key',
+          retry,
+          '--hydra',
+          hydraId,
+          '--actor',
+          'pnyx',
+        ],
+        {
+          timeout: REPLY_WORKER_TIMEOUT_MS,
+          maxBuffer: MAX_BODY,
+        },
+      )
+      const receipt = JSON.parse(stdout) as { reply?: { state?: ReplyState } }
+      const state = receipt.reply?.state
+
+      if (!state) {
+        return 'delivery_unknown'
+      }
+
+      return state
+    } catch (error) {
+      console.error(`pnyx-axi replies: resend ${retry} failed: ${(error as Error).message}`)
+
+      return 'delivery_unknown'
+    }
+  }
 
   const kick = () => {
     if (closed || scheduled) {
@@ -1220,6 +1295,8 @@ async function mountOwnedHydra({
       if (closed) {
         return
       }
+
+      let repliesPending = false
 
       try {
         if (spoolFiles({ dir }).length > 0) {
@@ -1265,6 +1342,28 @@ async function mountOwnedHydra({
           })()
         }
 
+        const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
+        repliesPending = repliesToFollow({ state })
+
+        if (!replyRun && repliesPending && replyCheckDue) {
+          replyCheckedAt = Date.now()
+          replyRun = (async () => {
+            try {
+              await followUpReplies({
+                hydraId,
+                tried: triedResends,
+                resend: resendReply,
+                unconfirmed: agents.unconfirmed,
+              })
+            } catch (error) {
+              console.error(`pnyx-axi replies: ${(error as Error).message}`)
+            } finally {
+              replyRun = undefined
+              kick()
+            }
+          })()
+        }
+
         fireReminders({ hydraId })
         pump()
         const deadline = doneDeadline({ state })
@@ -1294,6 +1393,12 @@ async function mountOwnedHydra({
 
         if (!followRun && followedLinks({ state }).length > 0) {
           deadlines.push(followCheckedAt + FOLLOW_POLL_MS)
+        }
+
+        const replyFollowUpDue = !replyRun && repliesPending
+
+        if (replyFollowUpDue) {
+          deadlines.push(replyCheckedAt + REPLY_POLL_MS)
         }
 
         const deadline = deadlines.length ? Math.min(...deadlines) : undefined
@@ -1329,6 +1434,8 @@ async function mountOwnedHydra({
     spawnCodex,
     wakeDelay,
     stallDelay,
+    busyDelay,
+    stallRepeatMax,
     changed: () => kick(),
     queued: () => {
       for (const ws of wss.clients) {
@@ -2105,16 +2212,10 @@ async function mountOwnedHydra({
                 [],
               ]
 
-          // The CLI owns reply writes and delivery. A child keeps slow native sends off the server event loop.
           execFile(
             process.execPath,
             [
-              join(
-                import.meta.dirname,
-                '..',
-                'cli',
-                import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
-              ),
+              REPLY_WORKER,
               ...command,
               '--hydra',
               hydraId,
@@ -2127,7 +2228,7 @@ async function mountOwnedHydra({
               ...rest,
             ],
             {
-              timeout: 130000,
+              timeout: REPLY_WORKER_TIMEOUT_MS,
               maxBuffer: MAX_BODY,
             },
             (

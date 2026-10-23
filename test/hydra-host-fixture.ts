@@ -31,6 +31,10 @@ export function hydraSdk() {
     reply: undefined as string | undefined,
     // Ends each turn with this error result, as the SDK does for a turn that fails.
     turnError: undefined as string | undefined,
+    // Runs a tool call across the held part of the turn.
+    tool: false,
+    // With tool, the call's result comes before the hold, so the held part is quiet.
+    toolDone: false,
   }
   const permissions: PermissionResult[] = []
   const sets: string[] = []
@@ -190,6 +194,45 @@ export function hydraSdk() {
           permissions.push(result!)
         }
 
+        const tool = control.tool ? `tool-${call.messages.length}` : undefined
+        const toolDoneEarly = control.toolDone
+        const toolResult = {
+          type: 'user',
+          parent_tool_use_id: null,
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: tool,
+                content: 'ok',
+              },
+            ],
+          },
+        } as const
+
+        if (tool) {
+          yield {
+            type: 'assistant',
+            parent_tool_use_id: null,
+            message: {
+              id: tool,
+              content: [
+                {
+                  type: 'tool_use',
+                  id: tool,
+                  name: 'Bash',
+                  input: { command: 'pnpm test' },
+                },
+              ],
+            },
+          }
+        }
+
+        if (tool && toolDoneEarly) {
+          yield toolResult
+        }
+
         if (control.hold) {
           await new Promise<void>(resolve => {
             release = () => {
@@ -206,6 +249,10 @@ export function hydraSdk() {
             role: 'user',
             text,
           })
+        }
+
+        if (tool && !toolDoneEarly) {
+          yield toolResult
         }
 
         // The SDK ends an interrupted turn with an error result.

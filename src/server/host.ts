@@ -13,12 +13,13 @@ import { copyTagged } from './tagged-updates.ts'
 import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
+import { MAX_RESENDS } from '../cli/reply-retry.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor, wakesHydra } from '../core/hydra.ts'
 import { freeTask } from '../cli/start.ts'
-import { hydraDigest } from '../core/digest.ts'
+import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
@@ -127,6 +128,16 @@ export interface Host {
   queue(): HydraQueue
   // Recovers hosted sessions and resumes a cut Hydra turn once.
   recover(): Promise<void>
+  // A reply that never showed up in its session after its resends; Hydra hears of it once.
+  unconfirmed({
+    card,
+    reply,
+    text,
+  }: {
+    card: string
+    reply: string
+    text: string
+  }): void
   thread({
     card,
     page,
@@ -159,6 +170,15 @@ const IDLE_MS = 10 * 60 * 1000
 const WAKE_MS = 5000
 // A request left pending or a working worker quiet this long wakes Hydra again.
 const STALL_MS = 240_000
+// A worker inside one tool call, such as a long test run, is busy rather than quiet for up to this long.
+const BUSY_MS = 60 * 60 * 1000
+// A paused worker that named no end for its wait is checked on after this long.
+const PAUSE_MS = 4 * 60 * 60 * 1000
+// A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
+const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
+// How much of a message Hydra's Not confirmed wake quotes.
+const UNCONFIRMED_QUOTE_CHARS = 80
+const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 // A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
@@ -206,9 +226,27 @@ function sameChosenSettings({
   ]) => current?.[key] === value)
 }
 
-const wakeId = ({ through }: { through: number }) => `wake:${through}`
-const WAKE_ID = /^wake:(\d+)$/
-const WAKE_TURN = /^wake:(\d+):hosted$/
+// A wake offered again after its turn failed gets a fresh id, as each id starts one turn: wake:<through>.<try>.
+const wakeId = ({
+  through,
+  state,
+}: {
+  through: number
+  state: HydraState
+}) => {
+  let id = `wake:${through}`
+
+  for (let attempt = 2; `${id}:hosted` in state.eventIds; attempt += 1) {
+    id = `wake:${through}.${attempt}`
+  }
+
+  return id
+}
+
+const WAKE_ID = /^wake:(\d+)(?:\.\d+)?$/
+const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
+// The finished record of the turn that read a wake carries this id.
+const WAKE_HANDLED = /^wake:(\d+):handled$/
 
 // One check turn: the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 function wakeText({
@@ -247,7 +285,24 @@ function wakeText({
   return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
 }
 
-// A wake counts once its turn starts, as its prompt is then in Hydra's session.
+// The highest change a wake id matching pattern covers, or 0.
+function wakesThrough({
+  state,
+  pattern,
+}: {
+  state: HydraState
+  pattern: RegExp
+}): number {
+  const covered = Object.keys(state.eventIds).flatMap(id => pattern.exec(id)?.[1] ?? [])
+    .map(Number)
+
+  return Math.max(
+    0,
+    ...covered,
+  )
+}
+
+// A wake counts once the turn that read it finishes, so a failed turn's updates are offered again.
 function wakeCursor({
   state,
   fallback,
@@ -255,10 +310,16 @@ function wakeCursor({
   state: HydraState
   fallback: number
 }): number {
-  const covered = Object.keys(state.eventIds).flatMap(id => WAKE_TURN.exec(id)?.[1] ?? [])
-    .map(Number)
+  const handled = wakesThrough({
+    state,
+    pattern: WAKE_HANDLED,
+  })
 
-  return covered.length ? Math.max(...covered) : fallback
+  if (handled > 0) {
+    return handled
+  }
+
+  return fallback
 }
 
 function isFolder({ path }: { path: string }): boolean {
@@ -331,6 +392,8 @@ interface Live {
   // The owner stopped the running turn, so a new message waits for it to end.
   stopping?: boolean
   idle?: ReturnType<typeof setTimeout>
+  // The tool calls running now, by id, with when each started.
+  tools: Map<string, number>
 }
 
 export function createHost({
@@ -342,6 +405,8 @@ export function createHost({
   queued = () => {},
   wakeDelay = WAKE_MS,
   stallDelay = STALL_MS,
+  busyDelay = BUSY_MS,
+  stallRepeatMax = STALL_REPEAT_MAX_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -357,6 +422,8 @@ export function createHost({
   queued?(): void
   wakeDelay?: number
   stallDelay?: number
+  busyDelay?: number
+  stallRepeatMax?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -1001,6 +1068,19 @@ export function createHost({
           continue
         }
 
+        if (typeof activity !== 'string' && activity.type === 'tool') {
+          if (activity.running) {
+            entry.tools.set(
+              activity.id,
+              Date.now(),
+            )
+          } else {
+            entry.tools.delete(activity.id)
+          }
+
+          continue
+        }
+
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
           streamed({ session: key })
@@ -1022,6 +1102,7 @@ export function createHost({
         if (activity === 'finished') {
           turnRunning = false
           entry.stopping = false
+          entry.tools.clear()
           completedOffset = transcriptSize()
           entry.replies.finish()
           streamed({ session: key })
@@ -1075,12 +1156,27 @@ export function createHost({
         if (activity !== entry.activity) {
           entry.activity = activity
           note({
-            fn: ({ writer }) => record({
-              writer,
-              agent: card.agent,
-              input: { activity },
-              actor: 'pnyx',
-            }),
+            fn: ({ writer }) => {
+              const handledThrough = wakesThrough({
+                state: writer.state,
+                pattern: WAKE_HANDLED,
+              })
+              // The wake this turn read counts as handled only now that the turn finished.
+              const handledWake = card.id === HYDRA_CARD && activity === 'finished' && readThrough > handledThrough
+              let eventId: string | undefined
+
+              if (handledWake) {
+                eventId = `wake:${readThrough}:handled`
+              }
+
+              record({
+                writer,
+                agent: card.agent,
+                input: { activity },
+                actor: 'pnyx',
+                eventId,
+              })
+            },
           })
           clearTimeout(entry.idle)
 
@@ -1115,8 +1211,14 @@ export function createHost({
       entry,
     })
 
-    // A check turn that failed is over: its updates are not offered again, as Hydra stays interrupted until the owner continues it.
-    if (card.id === HYDRA_CARD) {
+    // A check turn cut before it finished hands its updates back; they reach Hydra once the owner continues it.
+    if (card.id === HYDRA_CARD && entry.activity === 'working') {
+      readThrough = wakeCursor({
+        state: loadHydra({ hydraId }).state,
+        fallback: wakeStart ?? 0,
+      })
+      queued()
+    } else if (card.id === HYDRA_CARD) {
       finishReading()
     }
 
@@ -1163,6 +1265,7 @@ export function createHost({
       replies: liveReplies(),
       activity: 'finished',
       session,
+      tools: new Map(),
     }
     live.set(
       key,
@@ -1177,14 +1280,17 @@ export function createHost({
     return entry
   }
 
+  // eventId names the turn's working record, as a resumed turn's does.
   const send = ({
     card: ref,
     text,
     actor,
+    eventId,
   }: {
     card: string
     text: string
     actor: string
+    eventId?: string
   }) => {
     const card = write({
       fn: ({ writer }) => {
@@ -1221,6 +1327,7 @@ export function createHost({
           agent: card.agent,
           input: { activity: 'working' },
           actor,
+          eventId,
         })
 
         return writer.state.cards[card.id] as Card & { agent: AgentRef }
@@ -1272,7 +1379,10 @@ export function createHost({
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
       && !reportSeqs.has(update.seq))
     void host.hydra({
-      id: wakeId({ through }),
+      id: wakeId({
+        through,
+        state,
+      }),
       actor: 'pnyx',
       text: wakeText({
         hydraId,
@@ -1292,7 +1402,7 @@ export function createHost({
     }
   }
 
-  // A stall makes no event, so it is polled; each one wakes Hydra once.
+  // A stall or an ended wait makes no event, so it is polled.
   const checkStalls = () => {
     try {
       wakeOnStall()
@@ -1301,11 +1411,231 @@ export function createHost({
     }
   }
 
-  const wakeOnStall = () => {
-    if (!pending.size && ![...live.values()].some(entry => entry.activity === 'working')) {
-      return
+  // When a paused task's wait ends: its --until, or PAUSE_MS after a worker paused without one.
+  const waitEnd = ({ card }: { card: Card }): number | undefined => {
+    const declaration = card.status
+
+    if (declaration?.state !== 'paused') {
+      return undefined
     }
 
+    if (declaration.until) {
+      return Date.parse(declaration.until)
+    }
+
+    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
+    const parked = declaration.actor === HYDRA_ACTOR || declaration.actor === 'web' || !card.sessionIds?.length
+
+    if (parked) {
+      return undefined
+    }
+
+    return Date.parse(declaration.at) + PAUSE_MS
+  }
+
+  // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
+  const stallDue = ({
+    id,
+    now,
+  }: {
+    id: string
+    now: number
+  }) => {
+    const fired = stalled.get(id)
+
+    if (!fired) {
+      return true
+    }
+
+    const repeatAfter = Math.min(
+      stallDelay * 2 ** fired.count,
+      stallRepeatMax,
+    )
+
+    return now - fired.at >= repeatAfter
+  }
+
+  const workerStalls = ({
+    state,
+    card,
+    now,
+  }: {
+    state: HydraState
+    card: Card & { agent: AgentRef }
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => {
+    const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
+
+    if (requests.length) {
+      return requests.flatMap(p => {
+        const waited = p.at ? now - Date.parse(p.at) : 0
+
+        if (waited < stallDelay) {
+          return []
+        }
+
+        return [
+          {
+            id: `stall:${p.id}`,
+            text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer`,
+          },
+        ]
+      })
+    }
+
+    const key = sessionId({ agent: card.agent })
+    const entry = live.get(key)
+
+    if (entry?.activity !== 'working') {
+      return []
+    }
+
+    const declaredWaitEnd = waitEnd({ card })
+
+    if (declaredWaitEnd !== undefined && now < declaredWaitEnd) {
+      return []
+    }
+
+    const toolStarts = [...entry.tools.values()]
+
+    if (toolStarts.length) {
+      const busySince = Math.min(...toolStarts)
+      const busyFor = now - busySince
+
+      if (busyFor < busyDelay) {
+        return []
+      }
+
+      return [
+        {
+          id: `stall:${card.id}:tool:${busySince}`,
+          text: `the worker on ${card.id} has been inside one tool call for ${Math.round(busyFor / 1000)} s`,
+        },
+      ]
+    }
+
+    const agent = state.sessions?.[key]
+    const seen = Math.max(
+      agent ? seenAt({ session: agent }) : 0,
+      entry.sentAt ?? 0,
+    )
+
+    if (!seen || now - seen < stallDelay) {
+      return []
+    }
+
+    return [
+      {
+        id: `stall:${card.id}:${seen}`,
+        text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+      },
+    ]
+  }
+
+  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; its finished turn never wakes Hydra.
+  const idleStall = ({
+    state,
+    card,
+    now,
+  }: {
+    state: HydraState
+    card: Card & { agent: AgentRef }
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => {
+    const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
+    const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
+    const asking = card.attention.some(a => a.blocking && !a.answered)
+
+    if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
+      return []
+    }
+
+    const session = state.sessions?.[sessionId({ agent: card.agent })]
+
+    if (!session) {
+      return []
+    }
+
+    const seen = seenAt({ session })
+
+    if (!seen || now - seen < stallDelay) {
+      return []
+    }
+
+    return [
+      {
+        id: `stall:${card.id}:idle:${seen}`,
+        text: `the worker on ${card.id} ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
+      },
+    ]
+  }
+
+  // A paused worker's wait that ended wakes Hydra once, whoever runs the worker.
+  const endedWaits = ({
+    state,
+    now,
+  }: {
+    state: HydraState
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => Object.values(state.cards).flatMap(card => {
+    const declaredWaitEnd = waitEnd({ card })
+    const declaration = card.status
+
+    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
+
+    if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
+      return []
+    }
+
+    const id = `wait:${declaration.id}`
+
+    if (`${id}:hosted` in state.eventIds) {
+      return []
+    }
+
+    const named = declaration.until ? `until ${declaration.until}` : `since ${declaration.at}`
+    const note = declaration.note ? `: ${declaration.note}` : ''
+
+    return [
+      {
+        id,
+        text: `the worker on ${card.id} paused ${named}${note}`,
+      },
+    ]
+  })
+
+  // A message the worker never confirmed after its resends wakes Hydra once; the server reports it each check.
+  const unconfirmedReplies = new Map<string, string>()
+
+  const missingReplies = ({ state }: { state: HydraState }): {
+    id: string
+    text: string
+  }[] => {
+    for (const id of unconfirmedReplies.keys()) {
+      if (`${id}:hosted` in state.eventIds) {
+        unconfirmedReplies.delete(id)
+      }
+    }
+
+    return [...unconfirmedReplies].map(([
+      id,
+      text,
+    ]) => ({
+      id,
+      text,
+    }))
+  }
+
+  const wakeOnStall = () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -1319,57 +1649,112 @@ export function createHost({
 
     const now = Date.now()
     const stalls = Object.values(state.cards).flatMap(card => {
-      if (card.id === HYDRA_CARD || !card.agent || card.agent.host !== 'pnyx') {
+      if (card.id === HYDRA_CARD || !card.agent) {
         return []
       }
 
-      const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
-      const agent = state.sessions?.[sessionId({ agent: card.agent })]
-      const entry = live.get(sessionId({ agent: card.agent }))
-      const seen = Math.max(
-        agent ? seenAt({ session: agent }) : 0,
-        entry?.sentAt ?? 0,
-      )
-
-      return requests.length
-        ? requests.flatMap(p => {
-          const waited = p.at ? now - Date.parse(p.at) : 0
-
-          return waited >= stallDelay ? [
-            {
-              id: `stall:${p.id}`,
-              text: `${p.tool} on ${card.id} has waited ${Math.round(waited / 1000)} s for an answer`,
-            },
-          ] : []
-        })
-        : entry?.activity === 'working' && seen && now - seen >= stallDelay
-          ? [
-            {
-              id: `stall:${card.id}:${seen}`,
-              text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
-            },
-          ]
-          : []
-    })
-      .filter(stall => !stalled.has(stall.id))
-
-    const [first] = stalls
-
-    if (first) {
-      stalls.forEach(stall => stalled.add(stall.id))
-      const after = wakeCursor({
+      const worker = card as Card & { agent: AgentRef }
+      const idle = idleStall({
         state,
-        fallback: wakeStart ?? 0,
+        card: worker,
+        now,
       })
-      void host.hydra({
-        id: first.id,
-        actor: 'pnyx',
-        text: `<pnyx-wake>Stalled: ${stalls.map(s => s.text).join('; ')}. Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+
+      if (idle.length || card.agent.host !== 'pnyx') {
+        return idle
+      }
+
+      return workerStalls({
+        state,
+        card: worker,
+        now,
       })
+    })
+      .filter(stall => stallDue({
+        id: stall.id,
+        now,
+      }))
+    const waits = endedWaits({
+      state,
+      now,
+    }).filter(wait => !stalled.has(wait.id))
+    const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
+    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
+    const [first] = [
+      ...waits,
+      ...unconfirmed,
+      ...stalls,
+    ]
+
+    if (!first) {
+      return
     }
+
+    const alarm = ({
+      stall,
+    }: {
+      stall: {
+        id: string
+        text: string
+      }
+    }) => {
+      const count = stalled.get(stall.id)?.count ?? 0
+
+      if (count === 0) {
+        return stall.text
+      }
+
+      return `${stall.text} (alarm ${count + 1})`
+    }
+
+    const found: string[] = []
+
+    if (stalls.length) {
+      found.push(`Stalled: ${stalls.map(stall => alarm({ stall })).join('; ')}.`)
+    }
+
+    if (waits.length) {
+      found.push(`Wait ended: ${waits.map(wait => wait.text).join('; ')}.`)
+    }
+
+    if (unconfirmed.length) {
+      found.push(`Not confirmed: ${unconfirmed.map(reply => reply.text).join('; ')}.`)
+    }
+
+    const firstCount = stalled.get(first.id)?.count ?? 0
+    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
+
+    for (const item of [
+      ...stalls,
+      ...waits,
+      ...unconfirmed,
+    ]) {
+      const count = stalled.get(item.id)?.count ?? 0
+      stalled.set(
+        item.id,
+        {
+          count: count + 1,
+          at: now,
+        },
+      )
+    }
+
+    const after = wakeCursor({
+      state,
+      fallback: wakeStart ?? 0,
+    })
+    void host.hydra({
+      id: wakeTurnId,
+      actor: 'pnyx',
+      text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text; otherwise answer it or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+    })
   }
 
-  const stalled = new Set<string>()
+  // Each stall or wait fired so far: how many times, and when last.
+  const stalled = new Map<string, {
+    count: number
+    at: number
+  }>()
   const stallTimer = setInterval(
     checkStalls,
     Math.min(
@@ -1737,7 +2122,7 @@ export function createHost({
             session: prepared,
           })
           prepared = undefined
-          const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
+          const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
@@ -2484,6 +2869,20 @@ export function createHost({
       }
     },
 
+    unconfirmed: ({
+      card,
+      reply,
+      text,
+    }) => {
+      unconfirmedReplies.set(
+        `unconfirmed:${card}:${reply}`,
+        `on ${card}, the message "${clip({
+          text,
+          size: UNCONFIRMED_QUOTE_CHARS,
+        })}" never showed up in the worker's session after ${MAX_RESENDS} resends`,
+      )
+    },
+
     wake: ({
       seq,
       card,
@@ -2537,7 +2936,12 @@ export function createHost({
       let cutHydraTurn: {
         resumeAttemptId: string
         resumeMessage: string
+        wakeThrough: number
       } | undefined
+      const cutWorkerTurns: {
+        task: string
+        resumeAttemptId: string
+      }[] = []
 
       write({
         fn: ({ writer }) => {
@@ -2582,6 +2986,19 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
+            } else if (session.taskId && session.id !== writer.state.config?.hydra.session) {
+              resumeAttemptId = findWorkerTurnToResume({
+                hydraId,
+                state: writer.state,
+                agent: session.agent,
+              })
+
+              if (resumeAttemptId) {
+                cutWorkerTurns.push({
+                  task: session.taskId,
+                  resumeAttemptId,
+                })
+              }
             }
 
             interrupt({
@@ -2602,6 +3019,20 @@ export function createHost({
         })
       }
 
+      // A worker the restart cut continues once; one that cannot stays interrupted for Hydra or the owner.
+      for (const cut of cutWorkerTurns) {
+        try {
+          send({
+            card: cut.task,
+            text: WORKER_RESUME,
+            actor: 'pnyx',
+            eventId: `${cut.resumeAttemptId}:turn`,
+          })
+        } catch (error) {
+          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${(error as Error).message}`)
+        }
+      }
+
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
 
@@ -2610,13 +3041,28 @@ export function createHost({
           id,
           seq,
         ]) => id.endsWith(':hosted') ? [seq] : [])
-        const after = wakeCursor({
+        const startedWakes = wakesThrough({
           state,
-          fallback: Math.max(
-            0,
-            ...turns,
-          ),
+          pattern: WAKE_TURN,
         })
+        let unhandled = Math.max(
+          0,
+          ...turns,
+        )
+
+        // A log from before handled wakes were recorded counts a wake once its turn started.
+        if (startedWakes > 0) {
+          unhandled = startedWakes
+        }
+
+        // The resumed turn answers the wake it continues, so that wake's changes are not offered twice.
+        const after = Math.max(
+          wakeCursor({
+            state,
+            fallback: unhandled,
+          }),
+          cutHydraTurn?.wakeThrough ?? 0,
+        )
 
         // A Hydra that never ran has no cursor yet; its first missed report sets one.
         if (hostedHydra({ state })) {
@@ -2660,6 +3106,40 @@ export function createHost({
   return host
 }
 
+// A worker's cut turn is resumed once: not when that turn was itself a resume, nor twice for one cut.
+function findWorkerTurnToResume({
+  hydraId,
+  state,
+  agent,
+}: {
+  hydraId: string
+  state: HydraState
+  agent: AgentRef
+}): string | undefined {
+  const lastTurn = readEvents({ hydraId }).findLast(event => {
+    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
+      return false
+    }
+
+    const matchesSession = event.data.agent?.sessionId === agent.sessionId
+      && event.data.agent.provider === agent.provider
+
+    return matchesSession
+  })
+
+  if (!lastTurn || lastTurn.id.startsWith('resume:')) {
+    return undefined
+  }
+
+  const resumeAttemptId = `resume:${lastTurn.seq}`
+
+  if (resumeAttemptId in state.eventIds) {
+    return undefined
+  }
+
+  return resumeAttemptId
+}
+
 function findHydraTurnToResume({
   hydraId,
   state,
@@ -2671,6 +3151,7 @@ function findHydraTurnToResume({
 }): {
   resumeAttemptId: string
   resumeMessage: string
+  wakeThrough: number
 } | undefined {
   const events = readEvents({ hydraId })
   const cutHydraTurn = events.findLast(event => {
@@ -2714,7 +3195,7 @@ function findHydraTurnToResume({
     return isNewMessage && sentToHydra
   }).map(event => event.seq)
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
-  const isStallCheck = cutHydraTurn.id.startsWith('stall:')
+  const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
   const unfinishedWork: string[] = []
 
   if (unansweredMessageSeqs.length) {
@@ -2752,6 +3233,7 @@ function findHydraTurnToResume({
 
   return {
     resumeAttemptId,
+    wakeThrough: Number(wakeThroughSeq ?? 0),
     resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.</pnyx-wake>`,
   }
 }
