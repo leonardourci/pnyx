@@ -5,6 +5,7 @@ import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
+import { decidePush } from '../src/core/decide.ts'
 import { HYDRA_CARD, hydraEvent, wakesHydra } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { startTask } from '../src/cli/start.ts'
@@ -466,6 +467,7 @@ test(
     const server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
+      wakeDelay: 50,
     })
     const notes = ({ source }: { source: string }) => readEvents({ hydraId: 'lab' })
       .flatMap(event => event.type === 'card.noted' && event.cardId === quick && event.data.source === source ? [event.data.text] : [])
@@ -523,13 +525,18 @@ test(
         ],
       )
       const received = sdk.calls.flatMap(call => call.messages)
-      assert.deepEqual(
-        received.filter(text => text.includes('A worker question')).map(text => text.replace(
-          / message="[^"]+"/,
-          '',
-        )),
-        [`<pnyx-report from="worker:${quick}" task="${quick}">\nA worker question\n</pnyx-report>`],
+      // The report waits for the owner's turns and reaches Hydra in its own check turn, with no check to run.
+      const reports = received.filter(text => text.includes('A worker question')).map(text => text.replace(
+        / message="[^"]+"/,
+        '',
+      ))
+      assert.equal(
+        reports.length,
+        1,
       )
+      assert.ok(reports[0]!.startsWith('<pnyx-wake>A worker report arrived while you were busy.'))
+      assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${quick}" task="${quick}">\nA worker question\n</pnyx-report>`))
+      assert.ok(!reports[0]!.includes('hydra check'))
       assert.ok(received.includes('Second'))
     } finally {
       sdk.release(); await server.close(); rmSync(
@@ -1481,6 +1488,226 @@ test(
       resumeMessage,
       /messages seq|a wake check|a stall check/,
     )
+  },
+)
+
+test(
+  'a worker report sent while the server is down reaches a Hydra that never ran once the server is back',
+  async () => {
+    commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--hydra',
+      'lab',
+    ])
+    const fix = state().keys.fix!
+    await commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      '--task',
+      fix,
+      '--text',
+      'Report while the server was down',
+      '--actor',
+      `worker:${fix}`,
+    ])
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 50,
+    })
+    await until({ check: () => finished() && sdk.calls.length > 0 })
+    const said = sdk.calls.flatMap(call => call.messages)
+    assert.ok(said.some(text => text.startsWith('<pnyx-wake>')
+      && text.includes('\nReport while the server was down\n</pnyx-report>')))
+  },
+)
+
+test(
+  'a setting a hook adds to Hydra’s session, such as its client version, keeps the session running',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    await send({ text: 'First' })
+    await until({ check: finished })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = decidePush({
+          state: writer.state,
+          key: writer.state.cards[HYDRA_CARD]!.key,
+          input: { settings: { version: '2.1.308' } },
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'hook:claude',
+          },
+        })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
+      },
+    })
+    assert.equal(
+      hydra()!.settings?.version,
+      '2.1.308',
+    )
+    await send({ text: 'Second' })
+    await until({ check: () => sdk.calls[0]?.messages.includes('Second') ?? false })
+    assert.equal(
+      sdk.calls.length,
+      1,
+    )
+  },
+)
+
+test(
+  'the owner’s message joins Hydra’s running turn, and worker reports wait to reach it as one batch after the turn',
+  async () => {
+    codexRule()
+    const codex = fakeCodex({ root: home })
+    commands.task([
+      'create',
+      '--title',
+      'Fix add',
+      '--key',
+      'fix',
+      '--hydra',
+      'lab',
+    ])
+    const fix = state().keys.fix!
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+      wakeDelay: 50,
+    })
+    const queues: {
+      waiting: { card: string }[]
+      reading: { card: string }[]
+    }[] = []
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/lab/ws?token=${localToken()}`)
+    ws.on(
+      'message',
+      data => {
+        const message = JSON.parse(String(data)) as {
+          type: string
+          queue?: typeof queues[number]
+        }
+
+        if (message.type === 'hydraQueue' && message.queue) {
+          queues.push(message.queue)
+        }
+      },
+    )
+    const turns = () => codex.messages().filter(m => m.method === 'turn/start')
+      .map(m => (m.params!.input as { text: string }[])[0]!.text)
+    const steers = () => codex.messages().filter(m => m.method === 'turn/steer')
+
+    try {
+      await send({ text: 'HOLD' })
+      await until({ check: () => turns().length === 1 })
+      await send({ text: 'Also check the docs' })
+      await until({ check: () => steers().length === 1 })
+      assert.deepEqual(
+        [
+          steers()[0]!.params!.expectedTurnId,
+          (steers()[0]!.params!.input as { text: string }[])[0]!.text,
+        ],
+        [
+          'turn-1',
+          'Also check the docs',
+        ],
+      )
+
+      for (const report of [
+        'Report one',
+        'Report two',
+        'Report three',
+      ]) {
+        await commands.hydra([
+          'send',
+          '--hydra',
+          'lab',
+          '--task',
+          fix,
+          '--text',
+          report,
+          '--actor',
+          `worker:${fix}`,
+        ])
+      }
+
+      // A worker's status change waits in the same batch, which then also asks for a check.
+      commands.task([
+        'status',
+        fix,
+        'working',
+        '--note',
+        'Reports sent',
+        '--actor',
+        `worker:${fix}`,
+        '--hydra',
+        'lab',
+      ])
+      await until({ check: () => queues.at(-1)?.waiting.length === 4 })
+      await sleep({ ms: 200 })
+      assert.deepEqual(
+        [
+          turns().length,
+          steers().length,
+          queues.at(-1)!.waiting.map(update => update.card),
+        ],
+        [
+          1,
+          1,
+          [
+            fix,
+            fix,
+            fix,
+            fix,
+          ],
+        ],
+      )
+
+      codex.children[0]!.kill('SIGUSR1')
+      await until({
+        check: () => turns().length === 2 && finished()
+        && queues.at(-1)?.reading.length === 0,
+      })
+      const batch = turns()[1]!
+      assert.ok(batch.startsWith('<pnyx-wake>3 worker reports arrived while you were busy.'))
+      assert.deepEqual(
+        [
+          'Report one',
+          'Report two',
+          'Report three',
+        ].map(report => batch.includes(`\n${report}\n</pnyx-report>`)),
+        [
+          true,
+          true,
+          true,
+        ],
+      )
+      assert.match(
+        batch,
+        /hydra check --after \d+ --hydra lab/,
+      )
+      assert.ok(queues.some(queue => queue.reading.length === 4 && queue.waiting.length === 0))
+      assert.deepEqual(
+        queues.at(-1),
+        {
+          waiting: [],
+          reading: [],
+        },
+      )
+    } finally {
+      ws.close()
+    }
   },
 )
 

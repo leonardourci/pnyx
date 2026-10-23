@@ -10,9 +10,15 @@ import type { HydraState } from '../../../src/core/model.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
 import type { HydraSummary } from '../../../src/server/hydras.ts'
+import type { HydraQueue } from '../../../src/server/host.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { shouldReload } from './view.ts'
+
+const EMPTY_QUEUE: HydraQueue = {
+  waiting: [],
+  reading: [],
+}
 
 export type Receipt = Record<string, unknown>
 export type Command = ({
@@ -154,6 +160,10 @@ export function useHydra() {
     actions,
     setActions,
   ] = useState<Record<string, CurrentAction>>({})
+  const [
+    hydraQueue,
+    setHydraQueue,
+  ] = useState<HydraQueue>(EMPTY_QUEUE)
   const identity = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? '')
   const initial = useRef({
     endpoint: location.href,
@@ -395,6 +405,12 @@ export function useHydra() {
               }
             } else if (m.type === 'snapshot') {
               hasSnapshot.current = true; stateRef.current = m.state
+
+              // The server follows a snapshot with Hydra's queue only when it holds updates.
+              if (active) {
+                setHydraQueue(EMPTY_QUEUE)
+              }
+
               const previous = cache.current.get(pathname)
               cache.current.set(
                 pathname,
@@ -486,6 +502,10 @@ export function useHydra() {
               if (active) {
                 setLatest(next)
                 setActions(nextActions)
+              }
+            } else if (m.type === 'hydraQueue') {
+              if (active) {
+                setHydraQueue(m.queue)
               }
             } else if (m.type === 'hydras') {
               setNavigation(old => ({
@@ -743,6 +763,8 @@ export function useHydra() {
 
       target.current = next.href
       setLoading(next.pathname.split('/')[2]!); setError('')
+      // The next Hydra's server sends its own queue once connected.
+      setHydraQueue(EMPTY_QUEUE)
       const saved = cache.current.get(next.pathname)
 
       if (saved) {
@@ -826,6 +848,7 @@ export function useHydra() {
     connected: connected && !loading,
     command,
     hydraThread,
+    hydraQueue,
     latest,
     actions,
     navigation: {

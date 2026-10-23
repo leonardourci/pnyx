@@ -189,9 +189,15 @@ test(
       settings: {},
       signal: new AbortController().signal,
     })
+    // The second message arrives while the turn is being stopped, so it must open a turn of its own.
+    let stopped = () => {}
+    const turnStopped = new Promise<void>(resolve => {
+      stopped = resolve
+    })
     const events = session.run({
       input: (async function* () {
         yield 'HOLD'
+        await turnStopped
         yield 'USAGE'
       })(),
       permission: async () => ({
@@ -206,9 +212,17 @@ test(
         'working',
       )
       await session.interrupt()
-      assert.equal(
-        (await events.next()).value,
-        'finished',
+      stopped()
+      // The host hears that the message waits for the next turn, then that the stopped turn ended.
+      assert.deepEqual(
+        [
+          (await events.next()).value,
+          (await events.next()).value,
+        ],
+        [
+          'carried',
+          'finished',
+        ],
       )
       assert.deepEqual(
         fixture.messages().find(message => message.method === 'turn/interrupt')?.params,
@@ -217,6 +231,7 @@ test(
           turnId: 'turn-1',
         },
       )
+      assert.ok(!fixture.messages().some(message => message.method === 'turn/steer'))
       const next: unknown[] = []
 
       for (let event = await events.next(); event.value !== 'finished'; event = await events.next()) {
@@ -434,6 +449,8 @@ test(
     const server = await startServer({
       hydraId: 'stream',
       query: sdk.query,
+      // A worker report reaches Hydra through the wake queue.
+      wakeDelay: 50,
     })
     const tabs: WebSocket[] = []
     const state = () => loadHydra({ hydraId: 'stream' }).state

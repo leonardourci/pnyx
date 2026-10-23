@@ -762,47 +762,78 @@ export function codexProvider({
               thread: id,
             })
             const messages = input[Symbol.asyncIterator]()
+
+            // Raced only while waiting for a message, so a closed app-server never goes unhandled.
+            const appServerClosed = async (): Promise<never> => {
+              throw await rpc.ended
+            }
+
             // ponytail: Codex has no session hooks here, so the context leads the first turn and the turn after a compaction; a compaction mid-turn waits for the next turn.
             let fresh = true
+            // One read of the next message is always open, so a message that arrives mid-turn joins the running turn.
+            let incoming = messages.next()
+            let inputDone = false
+            // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
+            const carried: string[] = []
+            // text may lead with the context.
+            const turnInput = ({
+              text,
+              said,
+            }: {
+              text: string
+              said: string
+            }) => [
+              {
+                type: 'text',
+                text,
+                text_elements: [],
+              },
+              // Only the message's own images, never one named in the context before it.
+              ...attachedImages({
+                text: said,
+                hydras: join(
+                  pnyxHome(),
+                  'hydras',
+                ),
+              }).filter(path => existsSync(path))
+                .map(path => ({
+                  type: 'localImage',
+                  path,
+                })),
+            ]
 
             for (;;) {
-              const next = await Promise.race([
-                messages.next(),
-                rpc.ended.then(error => {
-                  throw error
-                }),
-              ])
+              let said = carried.shift()
 
-              if (next.done) {
+              if (said === undefined && inputDone) {
                 return
               }
 
-              const text = context && (rpc.compacted() || fresh) ? `${context()}\n\n${next.value}` : next.value
+              if (said === undefined) {
+                const next = await Promise.race([
+                  incoming,
+                  appServerClosed(),
+                ])
+
+                if (next.done) {
+                  return
+                }
+
+                said = next.value
+                incoming = messages.next()
+              }
+
+              const text = context && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
               fresh = false
               yield 'working'
               const result = await rpc.request({
                 method: 'turn/start',
                 params: {
                   threadId: id,
-                  input: [
-                    {
-                      type: 'text',
-                      text,
-                      text_elements: [],
-                    },
-                    // Only the message's own images, never one named in the context before it.
-                    ...attachedImages({
-                      text: next.value,
-                      hydras: join(
-                        pnyxHome(),
-                        'hydras',
-                      ),
-                    }).filter(path => existsSync(path))
-                      .map(path => ({
-                        type: 'localImage',
-                        path,
-                      })),
-                  ],
+                  input: turnInput({
+                    text,
+                    said,
+                  }),
                   ...(options.model ? { model: options.model } : {}),
                   ...serviceTier({ fast: options.fast }),
                   ...(options.effort ? { effort: options.effort } : {}),
@@ -824,16 +855,94 @@ export function codexProvider({
               }
 
               turnId = turn.id
+              const runningTurn = turn.id
 
               // A stop that came before Codex named the turn applies now.
               if (interrupted) {
                 await stopTurn()
               }
 
-              for await (const event of rpc.completed({
+              const events = rpc.completed({
                 threadId: id,
-                turnId: turn.id,
-              })) {
+                turnId: runningTurn,
+              })[Symbol.asyncIterator]()
+              let pendingEvent = events.next()
+              type Arrival = {
+                kind: 'event'
+                result: Awaited<typeof pendingEvent>
+              } | {
+                kind: 'message'
+                result: Awaited<typeof incoming>
+              }
+              const eventArrives = async (): Promise<Arrival> => ({
+                kind: 'event',
+                result: await pendingEvent,
+              })
+              const messageArrives = async (): Promise<Arrival> => ({
+                kind: 'message',
+                result: await incoming,
+              })
+              // One wrapper per pending read, so a turn's many events do not pile up waiters on the message read.
+              let eventArrival = eventArrives()
+              let messageArrival = messageArrives()
+
+              for (;;) {
+                const arrivals = [eventArrival]
+
+                if (!inputDone) {
+                  arrivals.push(messageArrival)
+                }
+
+                const settled = await Promise.race(arrivals)
+
+                if (settled.kind === 'message') {
+                  if (settled.result.done) {
+                    inputDone = true
+
+                    continue
+                  }
+
+                  incoming = messages.next()
+                  messageArrival = messageArrives()
+                  const message = settled.result.value
+
+                  // A turn being stopped answers nothing more, so the message waits for a turn of its own.
+                  if (interrupted) {
+                    carried.push(message)
+                    yield 'carried'
+
+                    continue
+                  }
+
+                  try {
+                    await rpc.request({
+                      method: 'turn/steer',
+                      params: {
+                        threadId: id,
+                        expectedTurnId: runningTurn,
+                        input: turnInput({
+                          text: message,
+                          said: message,
+                        }),
+                      },
+                    })
+                  } catch (error) {
+                    console.error(`pnyx-axi serve: Codex did not take a message into its running turn, so it starts the next turn: ${(error as Error).message}`)
+                    carried.push(message)
+                    yield 'carried'
+                  }
+
+                  continue
+                }
+
+                if (settled.result.done) {
+                  break
+                }
+
+                pendingEvent = events.next()
+                eventArrival = eventArrives()
+                const event = settled.result.value
+
                 if (!('turn' in event)) {
                   yield event
 

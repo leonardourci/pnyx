@@ -1,7 +1,8 @@
 import { appendFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
-let turn = 0, threadId, waiting, held
+// active is the turn still running, the only one a steer may join.
+let turn = 0, threadId, waiting, held, active
 const path = process.env.FAKE_CODEX_TRANSCRIPT
 const send = ({ ...message }) => process.stdout.write(`${JSON.stringify(message)}\n`)
 
@@ -99,6 +100,7 @@ const finish = ({
   }
 
   const status = text === 'FAIL' ? 'failed' : 'completed'
+  active = undefined
   appendFileSync(
     path,
     `${JSON.stringify({
@@ -246,6 +248,7 @@ createInterface({ input: process.stdin }).on(
       })
     } else if (method === 'turn/start') {
       const turnId = `turn-${++turn}`
+      active = turnId
       // The turn answers the message, past the digest Pnyx puts first.
       const text = params.input[0].text.replace(
         /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
@@ -397,6 +400,39 @@ createInterface({ input: process.stdin }).on(
       send({
         id,
         result: { turn: { id: turnId } },
+      })
+    } else if (method === 'turn/steer') {
+      if (params.expectedTurnId !== active) {
+        send({
+          id,
+          error: {
+            code: -32600,
+            message: 'no active turn to steer',
+          },
+        })
+
+        return
+      }
+
+      appendFileSync(
+        path,
+        `${JSON.stringify({
+          type: 'response_item',
+          payload: {
+            type: 'message',
+            role: 'user',
+            content: [
+              {
+                type: 'input_text',
+                text: params.input[0].text,
+              },
+            ],
+          },
+        })}\n`,
+      )
+      send({
+        id,
+        result: { turnId: active },
       })
     } else if (method === 'turn/interrupt') {
       send({

@@ -87,6 +87,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     command,
     connected,
     hydraThread,
+    hydraQueue,
     latest,
     actions,
     navigation,
@@ -1065,6 +1066,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   state={state}
                   liveThread={hydraThread}
                   action={actions[HYDRA_CARD]}
+                  queue={hydraQueue}
                   command={command}
                   connected={connected}
                   openTask={revealTask}

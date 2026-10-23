@@ -45,7 +45,8 @@ export const mergeWindows = ({
   ...base.map(window => over.find(limit => named(limit) === named(window)) ?? window),
   ...over.filter(limit => !base.some(window => named(window) === named(limit))),
 ]
-export type HostedEvent = 'working' | 'finished' | HostedText | HostedUsage
+// carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
+export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage
 export type AskPermission = ({
   tool,
   input,

@@ -11,12 +11,15 @@ import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
+import { TaskReference, TaskReferencesProvider } from '../components/ui/task-reference.tsx'
+import type { HydraQueue, QueuedUpdate } from '../../../src/server/host.ts'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { Messages, type ChatEntry } from './messages.tsx'
 import { pnyxLookup } from './pnyx-action.ts'
 import { ActionBubble } from './action-bubble.tsx'
+import { LiveLabel } from '../components/ui/live-label.tsx'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
@@ -48,6 +51,7 @@ export function HydraChat({
   comments,
   setComments,
   liveThread,
+  queue,
   projectSetup,
   openTask,
   action,
@@ -55,6 +59,7 @@ export function HydraChat({
   projectSetup?: ReactNode
   action?: CurrentAction
   liveThread: ThreadPage | null
+  queue: HydraQueue
   state: HydraState
   command: Command
   connected: boolean
@@ -425,6 +430,16 @@ export function HydraChat({
         },
       ]
     }))
+  // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
+  const queueReading = running ? queue.reading : []
+  const queueShown = queue.waiting.length > 0 || queueReading.length > 0
+  const queueCards = updatedTasks({
+    updates: [
+      ...queueReading,
+      ...queue.waiting,
+    ],
+    tasks: Object.keys(references),
+  })
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
 
   return (
@@ -552,12 +567,23 @@ export function HydraChat({
                 notify={notify}
               />
             )}
+            {/* ponytail: room for one wrapped row of task chips; more rows overlap the last message. */}
+            {queueCards.length > 0 && <div className="chat-queue-room" aria-hidden="true" />}
           </div>
         </div>
-        {running && (
-          <Running since={since} label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}>
-            <ActionBubble action={action} since={since} lookup={lookup} />
-          </Running>
+        {(running || queueShown) && (
+          <TaskReferencesProvider references={references} openTask={openTask}>
+            <Running
+              since={running ? since : null}
+              running={running}
+              label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
+              reading={queueReading.length}
+              waiting={queue.waiting.length}
+              cards={queueCards}
+            >
+              {running && <ActionBubble action={action} since={since} lookup={lookup} />}
+            </Running>
+          </TaskReferencesProvider>
         )}
         {away && (
           <>
@@ -632,13 +658,32 @@ export function HydraChat({
   )
 }
 
+// The tasks a group of updates is about, each once, leaving out any this Hydra does not show.
+const updatedTasks = ({
+  updates,
+  tasks,
+}: {
+  updates: QueuedUpdate[]
+  tasks: string[]
+}) => [...new Set(updates.map(update => update.card))].filter(card => tasks.includes(card))
+
+// The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
 function Running({
   since,
+  running,
   label,
+  reading,
+  waiting,
+  cards,
   children,
 }: {
   since: string | null
+  running: boolean
   label: string
+  reading: number
+  waiting: number
+  // The tasks of the updates in Hydra's queue, each once.
+  cards: string[]
   children?: ReactNode
 }) {
   const [
@@ -657,19 +702,96 @@ function Running({
     [],
   )
 
+  const words = queueWords({
+    reading,
+    waiting,
+    cards: cards.length,
+  })
+
+  // The chips stay outside the live status, so a change never re-reads them or moves focus off one.
   return (
-    <p
+    <div
       className="chat-running"
-      role="status"
-      aria-label={label}
       title={since ? `Started ${clock({
         at: since,
         seconds: true,
       })}` : undefined}
     >
-      <WorkingDots />
-      {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
-      {children}
-    </p>
+      <span
+        className="chat-running-status"
+        role="status"
+        aria-label={statusName({
+          running,
+          label,
+          words,
+        })}
+      >
+        {running && <WorkingDots />}
+        {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
+        {children}
+        <LiveLabel
+          value={words}
+          keyOf={({ value }) => value}
+          render={({ value }) => value}
+        />
+      </span>
+      {cards.length > 0 && (
+        <span className="chat-queue-tasks">
+          {cards.map(card => (
+            <span key={card} className="chat-queue-chip">
+              <TaskReference id={card} />
+            </span>
+          ))}
+        </span>
+      )}
+    </div>
   )
+}
+
+// What the status says aloud: that Hydra is working, then what its queue holds.
+function statusName({
+  running,
+  label,
+  words,
+}: {
+  running: boolean
+  label: string
+  words: string | null
+}): string | undefined {
+  if (running && words) {
+    return `${label}. ${words}`
+  }
+
+  if (running) {
+    return label
+  }
+
+  return words ?? undefined
+}
+
+// What the running line says about Hydra's queue; null once it is empty.
+function queueWords({
+  reading,
+  waiting,
+  cards,
+}: {
+  reading: number
+  waiting: number
+  cards: number
+}): string | null {
+  const colon = cards > 0 ? ':' : ''
+
+  if (reading > 0 && waiting > 0) {
+    return `Hydra is reading, more waiting${colon}`
+  }
+
+  if (reading > 0) {
+    return `Hydra is reading${colon}`
+  }
+
+  if (waiting > 0) {
+    return `Waiting for Hydra${colon}`
+  }
+
+  return null
 }
