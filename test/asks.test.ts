@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { afterEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
-import { sendReply } from '../src/cli/reply.ts'
+import { sendReply, type ReplyRequest } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { decideReply } from '../src/core/decide.ts'
@@ -1755,11 +1755,42 @@ test(
         control,
       },
     })
-    await reply({ control: true })
-    assert.equal(
-      f.task().status?.id,
-      paused,
-    )
+
+    for (const flags of [
+      { control: true },
+      {
+        setting: {
+          name: 'model',
+          value: 'sonnet',
+        },
+      },
+      { taskMessage: true },
+    ] satisfies Partial<ReplyRequest>[]) {
+      const result = await sendReply({
+        hydraId: 'lab',
+        request: {
+          card: f.task().id,
+          text: 'Context update',
+          actor: 'cli',
+          homes: [],
+          ...flags,
+        },
+      })
+      assert.equal(
+        result.state,
+        'delivered',
+      )
+      assert.equal(
+        f.task().status?.id,
+        paused,
+      )
+      assert.equal(
+        f.task().column,
+        role({ name: 'parked' }),
+      )
+      assert.ok(f.task().status?.until)
+    }
+
     await reply()
     assert.equal(
       f.task().status?.state,
@@ -2124,7 +2155,7 @@ test(
             reply: 'uncertain-resume',
             route: 'pnyx',
             state,
-            resumes: true,
+            ...(state === 'queued' ? { resumes: true } : {}),
           },
           meta: {
             at: new Date().toISOString(),
