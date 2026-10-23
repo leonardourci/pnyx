@@ -711,7 +711,7 @@ test(
 )
 
 test(
-  'a merged pull request wakes Hydra; failed checks wake it only when the task has no worker',
+  'a merged pull request or settled checks wake Hydra; a failure while checks still run wakes it only when the task has no worker',
   () => {
     const state = loadHydra({ hydraId: 'default' }).state
     const card = {
@@ -792,21 +792,93 @@ test(
         before: { state: 'open' },
         after: {
           state: 'open',
-          checks: '0 passed, 1 failed, 1 total',
+          checks: '0 passed, 1 failed, 2 total',
         },
         worker: true,
       }),
       false,
+      'a failure while another check runs goes to the worker alone',
     )
     assert.equal(
       linked({
         before: { state: 'open' },
         after: {
           state: 'open',
-          checks: '0 passed, 1 failed, 1 total',
+          checks: '0 passed, 1 failed, 2 total',
         },
       }),
       true,
+    )
+
+    const settled = ({
+      before,
+      after,
+      draft = false,
+    }: {
+      before?: string
+      after: string
+      draft?: boolean
+    }) => linked({
+      before: {
+        state: 'open',
+        checks: before,
+      },
+      after: {
+        state: 'open',
+        checks: after,
+        draft,
+      },
+      worker: true,
+    })
+
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      true,
+      'checks going green wake Hydra even with a live worker',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '1 passed, 1 failed, 2 total',
+      }),
+      true,
+      'checks going red wake Hydra too',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 1 failed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      true,
+      'a re-run that turns green wakes Hydra',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 3 total',
+        after: '2 passed, 3 total',
+      }),
+      false,
+      'checks still running wake nobody',
+    )
+    assert.equal(
+      settled({
+        before: '2 passed, 2 total',
+        after: '2 passed, 2 total',
+      }),
+      false,
+      'an unchanged result is not news',
+    )
+    assert.equal(
+      settled({
+        before: '1 passed, 2 total',
+        after: '2 passed, 2 total',
+        draft: true,
+      }),
+      false,
+      'a draft is not ready for anyone',
     )
     assert.equal(
       linked({
