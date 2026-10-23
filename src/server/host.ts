@@ -321,59 +321,50 @@ const outageMinutes = ({
   Math.round((now - Date.parse(since)) / 60_000),
 )
 
-// The first turn after Hydra could not start: what was sent to it meanwhile, and the check that lists every other change.
+// The first turn after Hydra could not start: the owner's messages no turn took, and how much more waits for the next wake.
 function recapText({
-  hydraId,
   state,
   since,
   after,
   now,
-  skip,
 }: {
-  hydraId: string
   state: HydraState
   since: string
   after: number
   now: number
-  // The message whose turn brought Hydra back, which it is already answering.
-  skip?: string
 }): string {
   const minutes = outageMinutes({
     since,
     now,
   })
   const sent = (state.hydraMessages ?? []).filter(message =>
-    (state.eventIds[message.id] ?? 0) > after
-    && message.id !== skip && message.actor !== HYDRA_ACTOR && message.actor !== 'pnyx'
-    && message.kind !== 'progress')
+    (state.eventIds[message.id] ?? 0) > after)
+  // A message whose turn started has been read; worker reports reach Hydra in their own wake.
+  const unread = sent.filter(message => ownerActor({ actor: message.actor })
+    && !(`${message.id}:hosted` in state.eventIds))
     .map(message => {
       const card = message.task ? state.cards[message.task] : undefined
       const task = card ? ` on ${taskMention({
         id: card.id,
         title: card.title,
       })}` : ''
-      const who = ownerActor({ actor: message.actor }) ? 'the owner' : reportActor({ actor: message.actor }) ? 'a worker' : message.actor
 
-      return `- ${who}${task} at ${message.at}: ${clip({
+      return `- ${message.at}${task}: ${clip({
         text: message.text,
         size: 300,
       })}`
     })
+  const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
 
   return `<pnyx-wake>${[
     `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
-    ...sent.length ? [
-      'Sent to you meanwhile, none of it answered yet:',
-      ...sent,
-    ] : ['Nothing was sent to you meanwhile.'],
-    `Run \`pnyx-axi hydra check --after ${Math.min(
-      after,
-      wakeCursor({
-        state,
-        fallback: after,
-      }),
-    )} --hydra ${hydraId}\` for every other change. The owner's messages above had no reply, so answer them.`,
+    ...unread.length ? [
+      'The owner wrote to you meanwhile and has had no reply; answer these:',
+      ...unread,
+    ] : ['The owner sent you nothing meanwhile.'],
+    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from the outage reach you in your next wake.`] : [],
     `If none of this needs the owner, reply only ${QUIET_REPLY}.`,
+    REPLY_RULES,
   ].join('\n')}</pnyx-wake>`
 }
 
@@ -540,8 +531,6 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
-  // A failed start holds stall alarms, which would otherwise be spent on starts that never reach Hydra.
-  let startFailed = false
   // Retries a failed start on a growing wait; each failed try plans the next one.
   let retryTimer: ReturnType<typeof setTimeout> | undefined
   let retries = 0
@@ -877,7 +866,6 @@ export function createHost({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
-    // PNYX_HOSTED marks the Hydra Pnyx runs, whose turn must never block on a wait.
     ...(hydra ? {
       PNYX_ACTOR: HYDRA_ACTOR,
       PNYX_HOSTED: 'hydra',
@@ -1506,23 +1494,18 @@ export function createHost({
     }
   }
 
+  // The outage a queued recap turn reports; its text is built when the turn starts, so it leaves out messages answered first.
+  let outage: NonNullable<HydraState['hydraStatus']> | undefined
+
   // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
-  const recapTurn = ({
-    down,
-    skip,
-  }: {
-    down: NonNullable<HydraState['hydraStatus']>
-    skip?: string
-  }) => void host.hydra({
+  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => void host.hydra({
     id: `back:${down.seq}`,
     actor: 'pnyx',
     text: recapText({
-      hydraId,
       state: loadHydra({ hydraId }).state,
       since: down.since,
       after: down.after ?? down.seq,
       now: Date.now(),
-      skip,
     }),
   })
 
@@ -1583,11 +1566,10 @@ export function createHost({
       },
     })
 
+    outage = down
+
     if (turn !== `back:${down.seq}`) {
-      recapTurn({
-        down,
-        skip: turn,
-      })
+      recapTurn({ down })
     }
   }
 
@@ -1916,7 +1898,8 @@ export function createHost({
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
 
-    if (closing || startFailed || !hostedHydra({ state }) || queuedHydra.size
+    // A Hydra that cannot start holds stall alarms, which would otherwise be spent on starts that never reach it.
+    if (closing || state.hydraStatus?.state === 'down' || !hostedHydra({ state }) || queuedHydra.size
       || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
       || hydraCard?.attention.some(a => a.key === INTERRUPTED)
       || (session && live.get(session)?.activity === 'working')) {
@@ -2411,7 +2394,6 @@ export function createHost({
             session: prepared,
           })
           prepared = undefined
-          startFailed = false
           const down = loadHydra({ hydraId }).state.hydraStatus
 
           if (down?.state === 'down') {
@@ -2424,13 +2406,24 @@ export function createHost({
 
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           const memoryNote = waking ? memoryChangeNote() : ''
+          const recap = outage && id === `back:${outage.seq}` ? recapText({
+            state: loadHydra({ hydraId }).state,
+            since: outage.since,
+            after: outage.after ?? outage.seq,
+            now: Date.now(),
+          }) : undefined
+
+          if (recap) {
+            outage = undefined
+          }
+
           entry.activity = 'working'
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
-            text: memoryNote ? text.replace(
+            text: recap ?? (memoryNote ? text.replace(
               REPLY_RULES,
               `${memoryNote}\n${REPLY_RULES}`,
-            ) : text,
+            ) : text),
             id,
           })
           const wakeThroughSeq = WAKE_ID.exec(id)?.[1]
@@ -2449,16 +2442,16 @@ export function createHost({
           }
 
           const reason = (error as Error).message
-          const detail = `Hydra could not start: ${reason}. Pnyx keeps trying and says here when Hydra is back; check the harness login and settings if this lasts.`
-          // Finished rather than interrupted, so Pnyx's next report wake retries the start; a cut turn's attention still waits for the owner.
-          startFailed = true
+          // An outside agent is not Pnyx's to start, so it is refused once rather than retried.
+          const retried = !(error instanceof HydraError && error.code === 'NO_ROUTE')
+          const detail = retried
+            ? `Hydra could not start: ${reason}. Pnyx is retrying; check the harness login and settings if this lasts.`
+            : `Hydra could not start: ${reason}`
+          // Finished rather than interrupted, so a retry or the next wake starts Hydra again; a cut turn's attention still waits for the owner.
           write({
             fn: ({ writer }) => {
               const down = writer.state.hydraStatus?.state === 'down'
-              const after = Math.min(
-                writer.state.seq,
-                (writer.state.eventIds[id] ?? Infinity) - 1,
-              )
+              const now = at()
 
               if (previous?.agent?.host === 'pnyx') {
                 record({
@@ -2476,19 +2469,19 @@ export function createHost({
                   key: HYDRA_CARD,
                   input: { activity: 'finished' },
                   meta: {
-                    at: at(),
+                    at: now,
                     actor: 'pnyx',
                   },
                 }),
               })
 
-              if (!down) {
+              if (retried && !down) {
                 apply({
                   writer,
                   decision: hydraEvent({
                     state: writer.state,
                     meta: {
-                      at: at(),
+                      at: now,
                       actor: 'pnyx',
                     },
                     cardId: HYDRA_CARD,
@@ -2496,9 +2489,12 @@ export function createHost({
                       type: 'hydra.status',
                       data: {
                         state: 'down',
-                        since: at(),
+                        since: now,
                         detail: reason,
-                        after,
+                        after: Math.min(
+                          writer.state.seq,
+                          (writer.state.eventIds[id] ?? Infinity) - 1,
+                        ),
                       },
                     },
                   }),
@@ -2512,7 +2508,7 @@ export function createHost({
                   decision: hydraEvent({
                     state: writer.state,
                     meta: {
-                      at: at(),
+                      at: now,
                       actor: 'pnyx',
                     },
                     cardId: HYDRA_CARD,
@@ -2529,7 +2525,10 @@ export function createHost({
               }
             },
           })
-          planRetry()
+
+          if (retried) {
+            planRetry()
+          }
 
           return {
             state: 'failed',
@@ -3412,12 +3411,11 @@ export function createHost({
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
 
-      // A Hydra that was down when the server stopped keeps being retried.
-      if (state.hydraStatus?.state === 'down') {
-        planRetry()
-      }
-
       if (pnyxRunsHydra({ state })) {
+        if (state.hydraStatus?.state === 'down') {
+          planRetry()
+        }
+
         const turns = Object.entries(state.eventIds).flatMap(([
           id,
           seq,
