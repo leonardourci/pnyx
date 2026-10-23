@@ -313,6 +313,7 @@ function wakeText({
   reasons,
   reports,
   check,
+  review,
 }: {
   hydraId: string
   state: HydraState
@@ -321,6 +322,7 @@ function wakeText({
   reasons: string[]
   reports: HydraMessage[]
   check: boolean
+  review?: string
 }): string {
   const lines: string[] = []
 
@@ -342,6 +344,10 @@ function wakeText({
 
   if (check) {
     lines.push(`Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\` for the details and every other change, and handle what it lists.`)
+  }
+
+  if (review) {
+    lines.push(sealed({ text: review }))
   }
 
   lines.push(decisionsText({
@@ -1684,6 +1690,13 @@ export function createHost({
       ...new Set(updates.filter(update => update.seq > after && update.seq <= through)
         .flatMap(update => wakeReasonsAt.get(update.seq) ?? [])),
     ]
+    const review = state.hydraReview
+    let reviewText: string | undefined
+
+    if (review && review.seq > after && review.seq <= through) {
+      reviewText = review.block
+    }
+
     void host.hydra({
       id: wakeId({
         through,
@@ -1698,6 +1711,7 @@ export function createHost({
         reasons,
         reports,
         check: otherChanges || !reports.length,
+        review: reviewText,
       }),
     })
   }

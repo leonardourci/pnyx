@@ -1,3 +1,4 @@
+import { startReviewTimer } from '../review/timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
 import { spendCounter } from '../spend/worker.ts'
@@ -284,6 +285,7 @@ export async function startServer({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -607,6 +609,7 @@ async function mountHydra({
   pauseDelay,
   retryDelays,
   followDelay,
+  reviewClock,
   open,
   hydrasChanged,
 }: {
@@ -624,6 +627,7 @@ async function mountHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -644,6 +648,7 @@ async function mountHydra({
       pauseDelay,
       retryDelays,
       followDelay,
+      reviewClock,
       open,
       release,
       hydrasChanged,
@@ -668,6 +673,7 @@ async function mountOwnedHydra({
   pauseDelay,
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
+  reviewClock,
   open,
   release,
   hydrasChanged,
@@ -685,6 +691,7 @@ async function mountOwnedHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -1546,6 +1553,7 @@ async function mountOwnedHydra({
           })()
         }
 
+        review.check()
         fireReminders({ hydraId })
         pump()
         const deadline = doneDeadline({ state })
@@ -1645,6 +1653,14 @@ async function mountOwnedHydra({
         }
       }
     },
+  })
+
+  const review = startReviewTimer({
+    hydraId,
+    now: reviewClock?.now,
+    interval: reviewClock?.interval,
+    wake: kick,
+    busy: () => agents.queue().waiting.length > 0 || agents.queue().reading.length > 0,
   })
 
   // The server has already checked Host and Origin.
@@ -2711,6 +2727,7 @@ async function mountOwnedHydra({
     )
     await queueRun
     firstmate?.close()
+    review.close()
     agents.close()
     await spend.close()
 

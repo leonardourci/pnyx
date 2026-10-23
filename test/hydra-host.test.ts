@@ -27,6 +27,87 @@ import { thinkingSdk } from './thinking-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
+import { REVIEW_MS } from '../src/review/timer.ts'
+
+test(
+  'a timed review reaches Hydra through the server with facts, decisions and reply rules in order',
+  async () => {
+    const sdk = hydraSdk()
+    sdk.control.reply = 'NO_REPLY'
+    choose({
+      agent: {
+        harness: 'claude',
+        model: 'sonnet',
+      },
+    })
+    commands.task([
+      'create',
+      '--title',
+      'Ready for dispatch',
+      '--key',
+      'ready',
+      '--hydra',
+      'lab',
+    ])
+    let clock = Date.now()
+    const ticks = new Map<string, () => void>()
+    let closed = 0
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      homes: [],
+      wakeDelay: 0,
+      reviewClock: {
+        now: () => clock,
+        interval: ({ run }) => {
+          const id = String(ticks.size)
+          ticks.set(
+            id,
+            run,
+          )
+
+          return () => closed++
+        },
+      },
+    })
+    clock += REVIEW_MS
+
+    for (const run of ticks.values()) {
+      run()
+    }
+
+    await until({ check: () => finished() })
+    const message = sdk.calls.flatMap(call => call.messages).find(text => text.includes('- timed review'))
+    assert.ok(message)
+    const sections = [
+      'Why you are woken:',
+      'Timed review:',
+      'Ready in Backlog',
+      'Review flags:',
+      'Open decisions: none',
+      'Reply rules:',
+    ]
+
+    for (let index = 1; index < sections.length; index++) {
+      assert.ok(message.indexOf(sections[index - 1]!) < message.indexOf(sections[index]!))
+    }
+
+    assert.match(
+      message,
+      /\[@Ready for dispatch\]\(pnyx-task:/,
+    )
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).filter(event => event.type === 'hydra.review').length,
+      1,
+    )
+    await server.close()
+    server = undefined
+    assert.equal(
+      closed,
+      ticks.size,
+    )
+  },
+)
 
 let server: RunningServer | undefined
 let home = ''
