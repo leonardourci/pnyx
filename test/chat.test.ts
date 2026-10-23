@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { recordEntries, splitEntry } from '../src/thread/read.ts'
 import { hydraDelivery } from '../src/core/hydra.ts'
 import { transcriptMessages } from '../src/oracle/text.ts'
-import { hydraMessages, commentReply, duration, joinMessageParts, keepStreamedKeys, quoteInto, quoteSnippet, turnTimings } from '../web/src/hydra/chat.ts'
+import { hydraMessages, hydraPill, commentReply, duration, joinMessageParts, keepStreamedKeys, quoteInto, quoteSnippet, turnTimings } from '../web/src/hydra/chat.ts'
 import { DEFAULT_KEYBOARD, keyboardError, resolveKey } from '../src/core/keyboard.ts'
 
 test(
@@ -1159,6 +1159,53 @@ test(
     assert.equal(
       entries[0]!.text,
       notice.text,
+    )
+  },
+)
+
+test(
+  'the Hydra pill shows down with its time over working, then working, starting or idle',
+  () => {
+    const since = '2026-10-23T16:54:07.000Z'
+    const down = hydraPill({
+      status: {
+        state: 'down',
+        since,
+      },
+      working: true,
+      starting: true,
+    })
+    assert.ok(down.down)
+    assert.match(
+      down.text,
+      /^Down since .+ · retrying$/,
+    )
+    const up = {
+      state: 'up' as const,
+      since,
+    }
+    assert.deepEqual(
+      [
+        hydraPill({
+          status: up,
+          working: true,
+          starting: true,
+        }).text,
+        hydraPill({
+          status: up,
+          working: false,
+          starting: true,
+        }).text,
+        hydraPill({
+          working: false,
+          starting: false,
+        }).text,
+      ],
+      [
+        'Working',
+        'Starting',
+        'Idle',
+      ],
     )
   },
 )

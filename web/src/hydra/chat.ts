@@ -1,4 +1,4 @@
-import { HYDRA_ACTOR, type HydraMessage } from '../../../src/core/model.ts'
+import { HYDRA_ACTOR, type HydraMessage, type HydraStatus } from '../../../src/core/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/core/hydra.ts'
 import { withoutInjected } from '../../../src/oracle/text.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
@@ -483,3 +483,29 @@ export const clock = ({
     ...(seconds ? { second: '2-digit' } : {}),
   },
 )
+
+// The header's word for Hydra: down outranks everything, since nothing else can happen until a start works.
+export const hydraPill = ({
+  status,
+  working,
+  starting,
+}: {
+  status?: HydraStatus
+  working: boolean
+  starting: boolean
+}): {
+  text: string
+  down: boolean
+} => {
+  if (status?.state === 'down') {
+    return {
+      text: `Down since ${clock({ at: status.since })} · retrying`,
+      down: true,
+    }
+  }
+
+  return {
+    text: working ? 'Working' : starting ? 'Starting' : 'Idle',
+    down: false,
+  }
+}

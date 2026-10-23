@@ -263,6 +263,11 @@ export function replayClaude() {
 export function replayCodex() {
   const sessions: AgentSession[] = []
   const turns = plannedTurns()
+  // refuse: a method answered with an error while set, as a harness that cannot open a thread; refused counts them.
+  const control = {
+    refuse: undefined as string | undefined,
+    refused: 0,
+  }
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
   const reply = notifications
     .filter(n => n.method === 'item/completed')
@@ -353,6 +358,21 @@ export function replayCodex() {
 
         session.requests!.push(message.method)
 
+        if (message.method === control.refuse) {
+          control.refused += 1
+          send({
+            message: {
+              id: message.id,
+              error: {
+                code: -32000,
+                message: `refused ${message.method}`,
+              },
+            },
+          })
+
+          return
+        }
+
         // A model or config read is not a session; one that opens a thread is.
         if (message.method === 'thread/start' || message.method === 'thread/resume') {
           session.resumed = message.method === 'thread/resume'
@@ -429,5 +449,6 @@ export function replayCodex() {
     sessions,
     plan: turns.plan,
     reply,
+    control,
   }
 }

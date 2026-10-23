@@ -151,6 +151,14 @@ process.on(
   },
 )
 
+// Listening from the start, as the test may send SIGHUP as soon as the thread request is logged; one held open per process.
+const hangup = process.env.FAKE_CODEX_HOLD_OPEN
+  ? new Promise(resolve => process.once(
+    'SIGHUP',
+    resolve,
+  ))
+  : undefined
+
 createInterface({ input: process.stdin }).on(
   'line',
   line => {
@@ -248,11 +256,8 @@ createInterface({ input: process.stdin }).on(
       })
 
       // A slow open, such as one starting many MCP servers, answers when the test sends SIGHUP.
-      if (process.env.FAKE_CODEX_HOLD_OPEN) {
-        process.once(
-          'SIGHUP',
-          opened,
-        )
+      if (hangup) {
+        void hangup.then(opened)
       } else {
         opened()
       }

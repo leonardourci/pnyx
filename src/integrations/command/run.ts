@@ -10,12 +10,14 @@ export function runCommand({
   cwd: string
   env: Record<string, string>
 }): { pid: number } {
-  // A worker never writes as the actor that started it, such as Hydra.
+  // A worker never writes as the actor that started it, such as Hydra, nor counts as the Hydra Pnyx runs.
   const {
     PNYX_ACTOR: _actor,
+    PNYX_HOSTED: _hosted,
     ...inherited
   } = process.env
   void _actor
+  void _hosted
   const child = spawn(
     '/bin/sh',
     [

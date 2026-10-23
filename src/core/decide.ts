@@ -1624,6 +1624,7 @@ export function decideUndo({
     'task.mirrored',
     'task.permission',
     'hydra.message',
+    'hydra.status',
     'chat.message',
     'board.agents',
   ].includes(target.type)) {

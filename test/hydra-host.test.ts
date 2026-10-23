@@ -442,6 +442,59 @@ test(
 )
 
 test(
+  'a Hydra held by an outside agent refuses a hosted start once, without counting as down or retrying',
+  async () => {
+    const sdk = hydraSdk()
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = decidePush({
+          state: writer.state,
+          key: 'outside',
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'outside',
+            },
+          },
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'test',
+          },
+        })
+        assert.ok('event' in decision); writer.append({ event: decision.event })
+      },
+    })
+    commands.hydra([
+      'set',
+      '--hydra',
+      'lab',
+      '--session',
+      'claude-code:outside',
+    ])
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      retryDelays: [10],
+    })
+    await send({ text: 'Hello' })
+    await until({ check: () => (state().hydraMessages ?? []).some(m => m.actor === 'pnyx') })
+    assert.deepEqual(
+      (state().hydraMessages ?? []).filter(m => m.actor === 'pnyx').map(m => m.text),
+      ['Hydra could not start: This Hydra already has an outside agent. Continue it in its own harness.'],
+    )
+    assert.equal(
+      state().hydraStatus,
+      undefined,
+    )
+    assert.equal(
+      sdk.calls.length,
+      0,
+    )
+  },
+)
+
+test(
   'an owner message reaches Hydra while the server is too busy to answer for over a second',
   async () => {
     const sdk = hydraSdk()

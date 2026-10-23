@@ -16,6 +16,7 @@ import type { ThreadPage } from '../thread/read.ts'
 import { seenAt, terminalPresence, type Presence } from '../integrations/presence/check.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { MAX_RESENDS } from '../cli/reply-retry.ts'
+import { taskMention } from '../mentions/mentions.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
@@ -187,6 +188,13 @@ const BUSY_MS = 60 * 60 * 1000
 const PAUSE_MS = 4 * 60 * 60 * 1000
 // A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
 const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
+// After a failed start Pnyx tries again after each of these waits, then every last one, until a start works.
+const RETRY_MS = [
+  60_000,
+  120_000,
+  300_000,
+  600_000,
+]
 // How much of a message Hydra's Not confirmed wake quotes.
 const UNCONFIRMED_QUOTE_CHARS = 80
 const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
@@ -300,6 +308,64 @@ function wakeText({
   lines.push(REPLY_RULES)
 
   return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
+}
+
+const outageMinutes = ({
+  since,
+  now,
+}: {
+  since: string
+  now: number
+}) => Math.max(
+  1,
+  Math.round((now - Date.parse(since)) / 60_000),
+)
+
+// The first turn after Hydra could not start: the owner's messages no turn took, and how much more waits for the next wake.
+function recapText({
+  state,
+  since,
+  after,
+  now,
+}: {
+  state: HydraState
+  since: string
+  after: number
+  now: number
+}): string {
+  const minutes = outageMinutes({
+    since,
+    now,
+  })
+  const sent = (state.hydraMessages ?? []).filter(message =>
+    (state.eventIds[message.id] ?? 0) > after)
+  // A message whose turn started has been read; worker reports reach Hydra in their own wake.
+  const unread = sent.filter(message => ownerActor({ actor: message.actor })
+    && !(`${message.id}:hosted` in state.eventIds))
+    .map(message => {
+      const card = message.task ? state.cards[message.task] : undefined
+      const task = card ? ` on ${taskMention({
+        id: card.id,
+        title: card.title,
+      })}` : ''
+
+      return `- ${message.at}${task}: ${clip({
+        text: message.text,
+        size: 300,
+      })}`
+    })
+  const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
+
+  return `<pnyx-wake>${[
+    `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
+    ...unread.length ? [
+      'The owner wrote to you meanwhile and has had no reply; answer these:',
+      ...unread,
+    ] : ['The owner sent you nothing meanwhile.'],
+    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from the outage reach you in your next wake.`] : [],
+    `If none of this needs the owner, reply only ${QUIET_REPLY}.`,
+    REPLY_RULES,
+  ].join('\n')}</pnyx-wake>`
 }
 
 // The highest change a wake id matching pattern covers, or 0.
@@ -426,6 +492,7 @@ export function createHost({
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
   pauseDelay = PAUSE_MS,
+  retryDelays = RETRY_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -444,6 +511,7 @@ export function createHost({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  retryDelays?: number[]
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -463,8 +531,9 @@ export function createHost({
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
-  // A failed start holds stall alarms, which would otherwise be spent on starts that never reach Hydra.
-  let startFailed = false
+  // Retries a failed start on a growing wait; each failed try plans the next one.
+  let retryTimer: ReturnType<typeof setTimeout> | undefined
+  let retries = 0
   // Recorded wakes, or wakeStart before the first, say how far Hydra has checked.
   let wakeThrough = 0, wakeStart: number | undefined
   let wakeTimer: ReturnType<typeof setTimeout> | undefined
@@ -797,7 +866,10 @@ export function createHost({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
     PNYX_HYDRA: hydraId,
-    ...(hydra ? { PNYX_ACTOR: HYDRA_ACTOR } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
+    ...(hydra ? {
+      PNYX_ACTOR: HYDRA_ACTOR,
+      PNYX_HOSTED: 'hydra',
+    } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
   })
 
   const hydraInstructions = () =>
@@ -1422,6 +1494,113 @@ export function createHost({
     }
   }
 
+  // The outage a queued recap turn reports; its text is built when the turn starts, so it leaves out messages answered first.
+  let outage: NonNullable<HydraState['hydraStatus']> | undefined
+
+  // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
+  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => void host.hydra({
+    id: `back:${down.seq}`,
+    actor: 'pnyx',
+    text: recapText({
+      state: loadHydra({ hydraId }).state,
+      since: down.since,
+      after: down.after ?? down.seq,
+      now: Date.now(),
+    }),
+  })
+
+  // A start worked after Hydra was down: say so in Pnyx's voice, then give Hydra the recap once the turn that started it ends.
+  const back = ({
+    down,
+    turn,
+    hydra,
+  }: {
+    down: NonNullable<HydraState['hydraStatus']>
+    turn: string
+    hydra: string
+  }) => {
+    clearTimeout(retryTimer)
+    retryTimer = undefined
+    retries = 0
+    const now = Date.now()
+    write({
+      fn: ({ writer }) => {
+        const meta = {
+          at: new Date(now).toISOString(),
+          actor: 'pnyx',
+        }
+        apply({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            meta,
+            cardId: HYDRA_CARD,
+            change: {
+              type: 'hydra.status',
+              data: {
+                state: 'up',
+                since: meta.at,
+              },
+            },
+          }),
+        })
+        apply({
+          writer,
+          decision: hydraEvent({
+            state: writer.state,
+            meta,
+            cardId: HYDRA_CARD,
+            change: {
+              type: 'hydra.message',
+              data: {
+                action: 'send',
+                hydra,
+                text: `Hydra is back after ${outageMinutes({
+                  since: down.since,
+                  now,
+                })} min.`,
+              },
+            },
+          }),
+        })
+      },
+    })
+
+    outage = down
+
+    if (turn !== `back:${down.seq}`) {
+      recapTurn({ down })
+    }
+  }
+
+  // The recap turn tries the start again; a Hydra that is up, or no longer Pnyx's to run, needs no retry.
+  const retryStart = () => {
+    retryTimer = undefined
+    const state = loadHydra({ hydraId }).state
+    const status = state.hydraStatus
+
+    if (closing || status?.state !== 'down' || !pnyxRunsHydra({ state })) {
+      return
+    }
+
+    recapTurn({ down: status })
+  }
+
+  const planRetry = () => {
+    if (retryTimer || closing) {
+      return
+    }
+
+    retryTimer = setTimeout(
+      retryStart,
+      retryDelays[Math.min(
+        retries,
+        retryDelays.length - 1,
+      )],
+    )
+    retries += 1
+  }
+
   const fireWake = () => {
     wakeTimer = undefined
     const state = loadHydra({ hydraId }).state
@@ -1719,7 +1898,8 @@ export function createHost({
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
 
-    if (closing || startFailed || !hostedHydra({ state }) || queuedHydra.size
+    // A Hydra that cannot start holds stall alarms, which would otherwise be spent on starts that never reach it.
+    if (closing || state.hydraStatus?.state === 'down' || !hostedHydra({ state }) || queuedHydra.size
       || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
       || hydraCard?.attention.some(a => a.key === INTERRUPTED)
       || (session && live.get(session)?.activity === 'working')) {
@@ -2214,16 +2394,36 @@ export function createHost({
             session: prepared,
           })
           prepared = undefined
-          startFailed = false
+          const down = loadHydra({ hydraId }).state.hydraStatus
+
+          if (down?.state === 'down') {
+            back({
+              down,
+              turn: id,
+              hydra: config.hydra.id,
+            })
+          }
+
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           const memoryNote = waking ? memoryChangeNote() : ''
+          const recap = outage && id === `back:${outage.seq}` ? recapText({
+            state: loadHydra({ hydraId }).state,
+            since: outage.since,
+            after: outage.after ?? outage.seq,
+            now: Date.now(),
+          }) : undefined
+
+          if (recap) {
+            outage = undefined
+          }
+
           entry.activity = 'working'
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
-            text: memoryNote ? text.replace(
+            text: recap ?? (memoryNote ? text.replace(
               REPLY_RULES,
               `${memoryNote}\n${REPLY_RULES}`,
-            ) : text,
+            ) : text),
             id,
           })
           const wakeThroughSeq = WAKE_ID.exec(id)?.[1]
@@ -2241,11 +2441,18 @@ export function createHost({
             return { state: 'failed' }
           }
 
-          const detail = `Hydra could not start: ${(error as Error).message}. Check the harness login and settings, then send a message to retry.`
-          // Finished rather than interrupted, so Pnyx's next report wake retries the start; a cut turn's attention still waits for the owner.
-          startFailed = true
+          const reason = (error as Error).message
+          // An outside agent is not Pnyx's to start, so it is refused once rather than retried.
+          const retried = !(error instanceof HydraError && error.code === 'NO_ROUTE')
+          const detail = retried
+            ? `Hydra could not start: ${reason}. Pnyx is retrying; check the harness login and settings if this lasts.`
+            : `Hydra could not start: ${reason}`
+          // Finished rather than interrupted, so a retry or the next wake starts Hydra again; a cut turn's attention still waits for the owner.
           write({
             fn: ({ writer }) => {
+              const down = writer.state.hydraStatus?.state === 'down'
+              const now = at()
+
               if (previous?.agent?.host === 'pnyx') {
                 record({
                   writer,
@@ -2262,32 +2469,66 @@ export function createHost({
                   key: HYDRA_CARD,
                   input: { activity: 'finished' },
                   meta: {
-                    at: at(),
+                    at: now,
                     actor: 'pnyx',
                   },
                 }),
               })
-              apply({
-                writer,
-                decision: hydraEvent({
-                  state: writer.state,
-                  meta: {
-                    at: at(),
-                    actor: 'hydra',
-                  },
-                  cardId: HYDRA_CARD,
-                  change: {
-                    type: 'hydra.message',
-                    data: {
-                      action: 'send',
-                      hydra: config.hydra.id,
-                      text: detail,
+
+              if (retried && !down) {
+                apply({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    meta: {
+                      at: now,
+                      actor: 'pnyx',
                     },
-                  },
-                }),
-              })
+                    cardId: HYDRA_CARD,
+                    change: {
+                      type: 'hydra.status',
+                      data: {
+                        state: 'down',
+                        since: now,
+                        detail: reason,
+                        after: Math.min(
+                          writer.state.seq,
+                          (writer.state.eventIds[id] ?? Infinity) - 1,
+                        ),
+                      },
+                    },
+                  }),
+                })
+              }
+
+              // Retries fail quietly; the owner hears of each failure their own message meets.
+              if (!down || ownerActor({ actor })) {
+                apply({
+                  writer,
+                  decision: hydraEvent({
+                    state: writer.state,
+                    meta: {
+                      at: now,
+                      actor: 'pnyx',
+                    },
+                    cardId: HYDRA_CARD,
+                    change: {
+                      type: 'hydra.message',
+                      data: {
+                        action: 'send',
+                        hydra: config.hydra.id,
+                        text: detail,
+                      },
+                    },
+                  }),
+                })
+              }
             },
           })
+
+          if (retried) {
+            planRetry()
+          }
 
           return {
             state: 'failed',
@@ -3171,6 +3412,10 @@ export function createHost({
       const state = loadHydra({ hydraId }).state
 
       if (pnyxRunsHydra({ state })) {
+        if (state.hydraStatus?.state === 'down') {
+          planRetry()
+        }
+
         const turns = Object.entries(state.eventIds).flatMap(([
           id,
           seq,
@@ -3222,6 +3467,7 @@ export function createHost({
     close: () => {
       closing = true
       clearTimeout(wakeTimer)
+      clearTimeout(retryTimer)
       clearInterval(stallTimer)
       controller.abort()
 
