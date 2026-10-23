@@ -1,0 +1,542 @@
+{
+ "claude": {
+  "text": "Streaming Markdown is cheap when the app stops re-rendering the whole message on every token. Split the text into **stable blocks** and one **live tail**. Once a block ends, usually at a blank line outside a code fence, it never changes, so it gets parsed once and cached. Each new chunk only re-parses the tail. Updates are batched with `requestAnimationFrame`, and each finished block is rendered through a memoized component keyed by its offset, such as `key={start}`. The cost of each update then depends on the size of the tail, not the length of the message.\n\n- **Re-parse only the tail.** Finished blocks are immutable, so their parsed trees and DOM nodes are reused as they are.\n- **Batch updates per frame.** Tokens can arrive faster than 60 Hz. Collect them in a buffer and flush once per frame, not once per chunk.\n- **Patch unclosed syntax.** A half-typed `**bold` or an open code fence makes the tail flicker. Close it temporarily for display, then drop the patch when the real closing marker arrives.\n- **Defer expensive work.** Syntax highlighting, math and Mermaid diagrams run only after a block is finished. Until then, the tail shows plain monospace text.\n\nHow one chunk is handled:\n\n1. Append the chunk to the buffer. If no flush is scheduled, schedule one with `requestAnimationFrame`.\n2. On flush, find the last safe block boundary. Freeze everything before it as finished blocks and append them to the cached list.\n3. Parse the remaining tail with temporary closers added, then render only that one live node.\n\n| Technique | Cost without it | Cost with it |\n|---|---|---|\n| Finished-block cache | Whole message re-parsed on every token, O(n²) overall | Each block parsed once, O(n) overall |\n| Frame batching | One render per chunk | At most one render per frame |\n| Deferred highlighting | Highlighter runs on every keystroke-sized change | Highlighter runs once per finished code block |\n| Memoized block components | React re-renders every block | Only the tail component re-renders |\n\nA minimal version of the split:\n\n```ts\ntype Block = { start: number; html: string };\n\nconst done: Block[] = [];\nlet buf = \"\", frozenAt = 0, queued = false;\n\nexport function push(chunk: string, render: (b: Block[], tail: string) => void) {\n  buf += chunk;\n  if (queued) return;\n  queued = true;\n  requestAnimationFrame(() => {\n    queued = false;\n    const cut = lastSafeBoundary(buf, frozenAt); // blank line outside a fence\n    if (cut > frozenAt) { done.push({ start: frozenAt, html: parse(buf.slice(frozenAt, cut)) }); frozenAt = cut; }\n    render(done, parse(closeOpenSyntax(buf.slice(frozenAt))));\n  });\n}\n```\n\nThe tricky part is `lastSafeBoundary`. It has to track whether the parser is inside a fenced code block, which means counting ```` ``` ```` lines from `frozenAt`. Otherwise a blank line inside a code sample would split the block too early. Lists and tables need the same care: keep them in the tail until a line appears that cannot continue them. Freezing them early is what makes the layout jump.\n\n**Freeze finished blocks, re-parse only the live tail, and flush once per frame. That keeps streaming Markdown at O(tail) work per update.**",
+  "pushes": [
+   {
+    "t": 0,
+    "len": 77
+   },
+   {
+    "t": 262,
+    "len": 153
+   },
+   {
+    "t": 496,
+    "len": 212
+   },
+   {
+    "t": 747,
+    "len": 281
+   },
+   {
+    "t": 997,
+    "len": 375
+   },
+   {
+    "t": 1248,
+    "len": 468
+   },
+   {
+    "t": 1499,
+    "len": 529
+   },
+   {
+    "t": 1747,
+    "len": 593
+   },
+   {
+    "t": 1951,
+    "len": 654
+   },
+   {
+    "t": 2199,
+    "len": 708
+   },
+   {
+    "t": 2449,
+    "len": 809
+   },
+   {
+    "t": 2703,
+    "len": 872
+   },
+   {
+    "t": 2953,
+    "len": 947
+   },
+   {
+    "t": 3201,
+    "len": 1014
+   },
+   {
+    "t": 3448,
+    "len": 1072
+   },
+   {
+    "t": 3700,
+    "len": 1131
+   },
+   {
+    "t": 3903,
+    "len": 1183
+   },
+   {
+    "t": 4152,
+    "len": 1243
+   },
+   {
+    "t": 4398,
+    "len": 1324
+   },
+   {
+    "t": 4650,
+    "len": 1389
+   },
+   {
+    "t": 4852,
+    "len": 1474
+   },
+   {
+    "t": 5101,
+    "len": 1541
+   },
+   {
+    "t": 5361,
+    "len": 1600
+   },
+   {
+    "t": 5599,
+    "len": 1659
+   },
+   {
+    "t": 5857,
+    "len": 1703
+   },
+   {
+    "t": 6066,
+    "len": 1798
+   },
+   {
+    "t": 6301,
+    "len": 1881
+   },
+   {
+    "t": 6553,
+    "len": 1984
+   },
+   {
+    "t": 6801,
+    "len": 2043
+   },
+   {
+    "t": 7007,
+    "len": 2123
+   },
+   {
+    "t": 7252,
+    "len": 2155
+   },
+   {
+    "t": 7498,
+    "len": 2231
+   },
+   {
+    "t": 7750,
+    "len": 2305
+   },
+   {
+    "t": 7953,
+    "len": 2390
+   },
+   {
+    "t": 8202,
+    "len": 2462
+   },
+   {
+    "t": 8449,
+    "len": 2541
+   },
+   {
+    "t": 8699,
+    "len": 2595
+   },
+   {
+    "t": 8964,
+    "len": 2661
+   },
+   {
+    "t": 9200,
+    "len": 2732
+   },
+   {
+    "t": 9452,
+    "len": 2780
+   },
+   {
+    "t": 9700,
+    "len": 2840
+   },
+   {
+    "t": 9912,
+    "len": 2914
+   },
+   {
+    "t": 10151,
+    "len": 2988
+   },
+   {
+    "t": 10406,
+    "len": 3016
+   },
+   {
+    "t": 10649,
+    "len": 3100
+   },
+   {
+    "t": 10900,
+    "len": 3157
+   },
+   {
+    "t": 11181,
+    "len": 3167,
+    "final": true
+   }
+  ]
+ },
+ "codex": {
+  "text": "A chat app can follow a streaming reply by scrolling to a **bottom sentinel**, setting the container’s **scroll position**, or responding to **content resizing**. All three need the same rule: follow new content only while the reader intends to stay at the bottom. Keep that intent in a `following` flag, use a small tolerance when comparing `scrollTop` with the bottom, and offer a **Jump to latest** button when the reader scrolls away.\n\nThe simplest approach places an empty element after the last message and calls `sentinel.scrollIntoView({ block: \"end\" })` after rendering. It fits component frameworks well because the target is an element rather than a calculated position. However, it can move multiple scrollable ancestors, including the page, depending on the layout. Repeated smooth scrolling can also keep restarting the animation while tokens arrive. Use immediate scrolling during streaming and reserve smooth motion for deliberate navigation.\n\nThe second approach directly sets the message container’s `scrollTop` to its `scrollHeight`. The browser clamps the value to the maximum scroll position. This gives precise control over which container moves and works well when the app owns the entire conversation viewport. Schedule the write after rendering and coalesce updates into one animation frame. Reading layout values after changing the DOM can force layout, so avoid alternating measurements and writes several times per frame.\n\nThe third approach uses a `ResizeObserver` on an inner content wrapper, then schedules a scroll when its height changes. This catches changes that token-driven effects miss: images loading, fonts changing, or code highlighting altering line wrapping. Observe the content wrapper, because a fixed-height scroll container may not resize when its contents grow. The observer detects when to act; it still uses a sentinel or `scrollTop` to perform the movement.\n\n| Approach | Main advantage | Main tradeoff |\n|---|---|---|\n| Bottom sentinel | Simple element-based integration | May scroll ancestor containers |\n| Direct `scrollTop` | Controls one specific viewport | Needs careful update timing |\n| Resize observer | Catches delayed height changes | Requires lifecycle and loop care |\n\nWhichever approach you choose, four behaviors matter more than the scrolling API:\n\n- **Respect reading position.** Pause following when the reader moves upward. Incoming tokens should never drag them back down.\n- **Allow a bottom tolerance.** Treat a gap of roughly 24–64 pixels as near the bottom; exact equality is fragile with fractional positions and layout rounding.\n- **Batch movement.** Scroll at most once per frame, even if several chunks or resize notifications arrive together.\n- **Handle history separately.** Prepending older messages should preserve the visible message’s position, rather than trigger a jump to the newest reply.\n\nImplement the behavior in three steps:\n\n1. Track whether following is enabled from user navigation and the Jump to latest action. Preserve that state across content updates; new content increasing the bottom gap does not itself mean the reader opted out.\n2. After a render or content resize, request one animation-frame callback. Check following again inside the callback so a reader who scrolls away before it runs can cancel the movement.\n3. On conversation changes or unmount, disconnect observers and cancel pending callbacks. Test long replies, delayed images, expanding code blocks, and scrolling upward while tokens arrive.\n\nThis helper illustrates the observer approach. Your scroll-intent handler updates `following`; `stop()` cleans up the subscription.\n\n```typescript\nlet following = true;\nlet frame: number | undefined;\nconst observer = new ResizeObserver(() => {\n  if (!following || frame !== undefined) return;\n  frame = requestAnimationFrame(() => {\n    frame = undefined;\n    if (following) viewport.scrollTop = viewport.scrollHeight;\n  });\n});\nobserver.observe(content);\nfunction stop() {\n  observer.disconnect();\n  if (frame !== undefined) cancelAnimationFrame(frame);\n}\n```\n\n**Use a sentinel for simplicity, direct scrolling for control, and resize observation for delayed layout changes—always preserve the reader’s intent.**",
+  "pushes": [
+   {
+    "t": 0,
+    "len": 23
+   },
+   {
+    "t": 248,
+    "len": 52
+   },
+   {
+    "t": 1510,
+    "len": 233
+   },
+   {
+    "t": 1772,
+    "len": 269
+   },
+   {
+    "t": 2089,
+    "len": 308
+   },
+   {
+    "t": 2398,
+    "len": 331
+   },
+   {
+    "t": 2733,
+    "len": 362
+   },
+   {
+    "t": 3017,
+    "len": 408
+   },
+   {
+    "t": 3319,
+    "len": 443
+   },
+   {
+    "t": 3700,
+    "len": 495
+   },
+   {
+    "t": 4035,
+    "len": 568
+   },
+   {
+    "t": 4401,
+    "len": 587
+   },
+   {
+    "t": 4878,
+    "len": 608
+   },
+   {
+    "t": 5182,
+    "len": 653
+   },
+   {
+    "t": 5508,
+    "len": 693
+   },
+   {
+    "t": 5824,
+    "len": 743
+   },
+   {
+    "t": 6136,
+    "len": 753
+   },
+   {
+    "t": 6605,
+    "len": 833
+   },
+   {
+    "t": 6909,
+    "len": 864
+   },
+   {
+    "t": 7351,
+    "len": 963
+   },
+   {
+    "t": 7665,
+    "len": 1028
+   },
+   {
+    "t": 7973,
+    "len": 1081
+   },
+   {
+    "t": 8268,
+    "len": 1113
+   },
+   {
+    "t": 8570,
+    "len": 1195
+   },
+   {
+    "t": 9022,
+    "len": 1233
+   },
+   {
+    "t": 9335,
+    "len": 1243
+   },
+   {
+    "t": 9616,
+    "len": 1299
+   },
+   {
+    "t": 9936,
+    "len": 1379
+   },
+   {
+    "t": 10227,
+    "len": 1432
+   },
+   {
+    "t": 10531,
+    "len": 1499
+   },
+   {
+    "t": 10825,
+    "len": 1546
+   },
+   {
+    "t": 11127,
+    "len": 1592
+   },
+   {
+    "t": 11404,
+    "len": 1610
+   },
+   {
+    "t": 11788,
+    "len": 1655
+   },
+   {
+    "t": 12180,
+    "len": 1686
+   },
+   {
+    "t": 12465,
+    "len": 1738
+   },
+   {
+    "t": 12773,
+    "len": 1822
+   },
+   {
+    "t": 13220,
+    "len": 1842
+   },
+   {
+    "t": 13543,
+    "len": 1873
+   },
+   {
+    "t": 13858,
+    "len": 1927
+   },
+   {
+    "t": 14401,
+    "len": 2035
+   },
+   {
+    "t": 14746,
+    "len": 2068
+   },
+   {
+    "t": 15016,
+    "len": 2127
+   },
+   {
+    "t": 15447,
+    "len": 2165
+   },
+   {
+    "t": 15757,
+    "len": 2179
+   },
+   {
+    "t": 16055,
+    "len": 2219
+   },
+   {
+    "t": 16380,
+    "len": 2268
+   },
+   {
+    "t": 16681,
+    "len": 2335
+   },
+   {
+    "t": 16983,
+    "len": 2379
+   },
+   {
+    "t": 17251,
+    "len": 2427
+   },
+   {
+    "t": 17580,
+    "len": 2453
+   },
+   {
+    "t": 17868,
+    "len": 2481
+   },
+   {
+    "t": 18174,
+    "len": 2531
+   },
+   {
+    "t": 18621,
+    "len": 2614
+   },
+   {
+    "t": 18921,
+    "len": 2656
+   },
+   {
+    "t": 19231,
+    "len": 2657
+   },
+   {
+    "t": 19564,
+    "len": 2683
+   },
+   {
+    "t": 20070,
+    "len": 2796
+   },
+   {
+    "t": 20330,
+    "len": 2850
+   },
+   {
+    "t": 20579,
+    "len": 2915
+   },
+   {
+    "t": 20873,
+    "len": 2944
+   },
+   {
+    "t": 21162,
+    "len": 3016
+   },
+   {
+    "t": 21463,
+    "len": 3050
+   },
+   {
+    "t": 21773,
+    "len": 3094
+   },
+   {
+    "t": 22070,
+    "len": 3143
+   },
+   {
+    "t": 22368,
+    "len": 3191
+   },
+   {
+    "t": 22678,
+    "len": 3261
+   },
+   {
+    "t": 22963,
+    "len": 3297
+   },
+   {
+    "t": 23253,
+    "len": 3337
+   },
+   {
+    "t": 23677,
+    "len": 3418
+   },
+   {
+    "t": 24204,
+    "len": 3465
+   },
+   {
+    "t": 24417,
+    "len": 3480
+   },
+   {
+    "t": 24627,
+    "len": 3533
+   },
+   {
+    "t": 24916,
+    "len": 3556
+   },
+   {
+    "t": 25190,
+    "len": 3568
+   },
+   {
+    "t": 25488,
+    "len": 3610
+   },
+   {
+    "t": 25777,
+    "len": 3657
+   },
+   {
+    "t": 26090,
+    "len": 3724
+   },
+   {
+    "t": 26387,
+    "len": 3794
+   },
+   {
+    "t": 26685,
+    "len": 3864
+   },
+   {
+    "t": 27003,
+    "len": 3935
+   },
+   {
+    "t": 27296,
+    "len": 4015
+   },
+   {
+    "t": 27744,
+    "len": 4134
+   },
+   {
+    "t": 28076,
+    "len": 4223
+   },
+   {
+    "t": 28320,
+    "len": 4223,
+    "final": true
+   }
+  ]
+ }
+}

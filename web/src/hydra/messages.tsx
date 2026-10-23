@@ -25,7 +25,8 @@ import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
-  blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage, type CommentPassage,
+  MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
+  type CommentPassage,
 } from './message-selection.ts'
 import { columnLook, receiptLabel } from './view.ts'
 import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
@@ -34,7 +35,10 @@ const PILL_GAP = 6
 let highlights = 0
 
 // A message the owner just sent shows at once, faded until the server records it.
-export type ChatEntry = ThreadEntry & { sending?: boolean }
+export type ChatEntry = ThreadEntry & {
+  sending?: boolean
+  renderKey?: string
+}
 
 const roleLabel = ({
   role,
@@ -754,7 +758,7 @@ export function Messages({
         }}
       >
         {entries.map(entry => (
-          <Fragment key={entry.id}>
+          <Fragment key={entry.renderKey ?? entry.id}>
             <article
               data-entry-id={entry.id}
               className={`message ${entry.kind}${ownMessage({ entry }) ? ' mine' : ''}`}
@@ -777,6 +781,7 @@ export function Messages({
                 <MessageText
                   text={entry.text}
                   streaming={entry.streaming}
+                  decorations={MESSAGE_DECORATIONS}
                   openTask={openTask}
                   columnLook={lookColumn}
                   block={({

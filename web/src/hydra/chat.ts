@@ -204,11 +204,54 @@ export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): Threa
       prior.kind === entry.kind && (prior.part ?? 0) + prior.text.length === entry.part) {
       prior.text += entry.text
     } else {
-      result.push({ ...entry })
+      // The message's own id keeps a streaming reply's key stable once it grows past one part.
+      result.push({
+        ...entry,
+        id: entry.messageId && entry.part === 0 ? entry.messageId : entry.id,
+      })
     }
   }
 
   return result
+}
+
+type Keyed<Entry> = Entry & { renderKey?: string }
+
+// The transcript entry replacing a streamed reply keeps the reply's key, so it is not remounted.
+export function keepStreamedKeys<Entry extends ThreadEntry>({
+  entries,
+  previous,
+  keys,
+}: {
+  entries: Entry[]
+  previous: Keyed<Entry>[]
+  keys: Map<string, string>
+}): Keyed<Entry>[] {
+  const ids = new Set(entries.map(entry => entry.id))
+  const seen = new Set(previous.map(entry => entry.id))
+
+  for (const gone of previous) {
+    if (!gone.streaming || ids.has(gone.id)) {
+      continue
+    }
+
+    const settled = entries.find(entry => !seen.has(entry.id) && !entry.streaming
+      && entry.kind === gone.kind && entry.role === gone.role && !keys.has(entry.id)
+      && entry.text.startsWith(gone.text))
+
+    if (settled) {
+      keys.set(
+        settled.id,
+        gone.id,
+      )
+    }
+  }
+
+  // A key whose live entry is back on the page stays with it, so keys never collide.
+  return entries.map(entry => keys.has(entry.id) && !ids.has(keys.get(entry.id)!) ? {
+    ...entry,
+    renderKey: keys.get(entry.id),
+  } : entry)
 }
 
 export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
