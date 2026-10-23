@@ -1599,11 +1599,12 @@ export function createHost({
     }
 
     const named = declaration.until ? `until ${declaration.until}` : `since ${declaration.at}`
+    const note = declaration.note ? `: ${declaration.note}` : ''
 
     return [
       {
         id,
-        text: `the worker on ${card.id} paused ${named}: ${declaration.note || '(no note)'}`,
+        text: `the worker on ${card.id} paused ${named}${note}`,
       },
     ]
   })
@@ -1674,10 +1675,11 @@ export function createHost({
       now,
     }).filter(wait => !stalled.has(wait.id))
     const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
+    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
     const [first] = [
-      ...stalls,
       ...waits,
       ...unconfirmed,
+      ...stalls,
     ]
 
     if (!first) {
@@ -2116,7 +2118,7 @@ export function createHost({
             session: prepared,
           })
           prepared = undefined
-          const waking = /^(wake|stall):/.test(id) && !opened && Boolean(entry.session)
+          const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
           entry.activity = 'working'
           entry.input.push({
             // The note stays inside the wake, so the chat never shows it as the owner's.
@@ -3192,7 +3194,7 @@ function findHydraTurnToResume({
     return isNewMessage && sentToHydra
   }).map(event => event.seq)
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
-  const isStallCheck = cutHydraTurn.id.startsWith('stall:')
+  const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
   const unfinishedWork: string[] = []
 
   if (unansweredMessageSeqs.length) {
