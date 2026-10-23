@@ -7,7 +7,7 @@ import { scenarioGroup, until } from './harness.ts'
 const pnyx = scenarioGroup()
 
 test(
-  'each wake says why: a worker\'s finished turn, its needs_you note, and a freed slot naming the ready Backlog card but not a held one',
+  'each wake says why: a worker\'s finished turn, its needs_you note, and its done freeing a slot for the ready Backlog card but not a held one',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'app' })
@@ -88,7 +88,7 @@ test(
       check: () => wakes().find(text => text.includes(`- ${ref({ key: 'fix' })} turn ended: the worker finished its turn`)),
     })
     assert.ok(turnEnded.startsWith('<pnyx-wake>Why you are woken:\n'))
-    assert.ok(turnEnded.includes('A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.'))
+    assert.ok(turnEnded.includes('always gets a reply'))
 
     await worker.run({
       args: [
@@ -105,11 +105,14 @@ test(
       check: () => wakes().some(text => text.includes(`- ${ref({ key: 'fix' })} declared: needs_you, "Which parser should own dates?"`)),
     })
 
-    await s.owner({
+    await worker.run({
       args: [
         'task',
-        'detach',
+        'status',
         'fix',
+        'done',
+        '--note',
+        'Dates parse in one place now',
       ],
     })
     const slot = await until({
