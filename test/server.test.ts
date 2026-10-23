@@ -3,7 +3,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -1938,6 +1938,213 @@ test(
 )
 
 test(
+  'a working card and its open conversation follow a transcript its agent keeps open, as Codex does, even under a Firstmate status',
+  async () => {
+    const transcript = join(
+      process.env.PNYX_HOME!,
+      'rollout.jsonl',
+    )
+    const reply = ({
+      text,
+      at,
+    }: {
+      text: string
+      at: string
+    }) => toolLine({
+      record: {
+        type: 'response_item',
+        payload: {
+          type: 'message',
+          role: 'assistant',
+          content: [
+            {
+              type: 'output_text',
+              text,
+            },
+          ],
+        },
+      },
+      at,
+    })
+    writeFileSync(
+      transcript,
+      reply({
+        text: 'Starting.',
+        at: '2026-10-13T10:59:00Z',
+      }),
+    )
+    const rollout = openSync(
+      transcript,
+      'a',
+    )
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
+
+    const push = ({ fields }: { fields: Record<string, unknown> }) => {
+      writeFileSync(
+        input,
+        JSON.stringify(fields),
+      )
+      cli({
+        args: [
+          'push',
+          '--key',
+          'work',
+          '--file',
+          input,
+        ],
+      })
+    }
+
+    const fileWatchers = () => process.getActiveResourcesInfo().filter(name => name === 'FSEventWrap').length
+
+    try {
+      cli({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'work',
+          '--title',
+          'Work',
+        ],
+      })
+      push({
+        fields: {
+          agent: {
+            provider: 'codex',
+            sessionId: 'rollout',
+            transcriptPath: transcript,
+          },
+          activity: 'working',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+      // Firstmate's status line replaces the card's activity; the session's own stays working.
+      push({
+        fields: {
+          activity: 'progress: running tests',
+          source: {
+            adapter: 'firstmate',
+            instanceId: process.env.PNYX_HOME!,
+            objectId: 'work',
+          },
+        },
+      })
+      const card = loadHydra({ hydraId: 'default' }).state.keys.work!
+      server = await startServer({ hydraId: 'default' })
+      const t = await tab(); await t.next()
+      assert.equal(
+        (await t.latest({ card }))?.text,
+        'Starting.',
+      )
+      t.command({
+        id: 'thread-1',
+        name: 'thread',
+        args: [card],
+      })
+      assert.equal(
+        (await t.reply({ id: 'thread-1' })).type,
+        'receipt',
+      )
+      writeSync(
+        rollout,
+        reply({
+          text: 'Running the tests.',
+          at: '2026-10-13T11:00:00Z',
+        }) + toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call',
+              name: 'exec_command',
+              call_id: 'call_run',
+              arguments: JSON.stringify({ cmd: 'pnpm test' }),
+            },
+          },
+          at: '2026-10-13T11:00:00Z',
+        }),
+      )
+      assert.deepEqual(
+        await t.action({ card }),
+        {
+          calls: [
+            {
+              id: 'call_run',
+              tool: 'exec_command',
+              command: 'pnpm test',
+            },
+          ],
+          done: false,
+          at: '2026-10-13T11:00:00Z',
+        },
+      )
+
+      for (;;) {
+        const message = await t.next()
+
+        if (message.type === 'thread' && message.thread.entries.some(e => e.text === 'Running the tests.')) {
+          break
+        }
+      }
+
+      writeSync(
+        rollout,
+        toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_run',
+              output: 'ok',
+            },
+          },
+          at: '2026-10-13T11:00:05Z',
+        }),
+      )
+      assert.equal(
+        (await t.action({ card }))?.done,
+        true,
+      )
+
+      // The file watcher goes once the session stops working.
+      const working = fileWatchers()
+      push({
+        fields: {
+          activity: 'finished',
+          source: {
+            adapter: 'hooks',
+            objectId: 'rollout',
+          },
+        },
+      })
+
+      const deadline = Date.now() + 5000
+
+      while (fileWatchers() >= working && Date.now() < deadline) {
+        await new Promise(r => setTimeout(
+          r,
+          50,
+        ))
+      }
+
+      assert.equal(
+        fileWatchers(),
+        working - 1,
+      )
+      t.ws.close()
+    } finally {
+      closeSync(rollout)
+    }
+  },
+)
+
+test(
   'the Hydra search rebuilds a stale index and finds a card by a word only its transcript holds, including words a live session just wrote',
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
@@ -2166,6 +2373,24 @@ test(
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
+    const input = join(
+      process.env.PNYX_HOME!,
+      'input.json',
+    )
+    writeFileSync(
+      input,
+      JSON.stringify({ activity: 'working' }),
+    )
+    // A working card's transcript file is watched as well as its folder.
+    cli({
+      args: [
+        'push',
+        '--key',
+        'layout',
+        '--file',
+        input,
+      ],
+    })
     const settle = () => new Promise(r => setTimeout(
       r,
       300,

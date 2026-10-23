@@ -1056,14 +1056,77 @@ async function mountOwnedHydra({
   // Each card's last conversation message, read from its transcript tail and pushed
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
+  // A working card's transcript file is watched as well, for its card and open conversations:
+  // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   let latestSpend = '{}'
   const latest: Record<string, LatestMessage> = {}
   const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
+  const transcripts = new Map<string, FSWatcher>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
+
+  const touchPath = ({ path }: { path: string }) => touchLatest({
+    ids: Object.values(state.cards).filter(c => threadPath({ card: c }) === path)
+      .map(c => c.id),
+  })
+
+  const unwatchTranscript = ({ path }: { path: string }) => {
+    transcripts.get(path)?.close()
+    transcripts.delete(path)
+  }
+
+  const watchTranscript = ({ path }: { path: string }) => {
+    if (closed || transcripts.has(path)) {
+      return
+    }
+
+    try {
+      const watcher = watch(
+        path,
+        () => {
+          touchPath({ path })
+
+          for (const map of threadSubscriptions) {
+            for (const [
+              ws,
+              sub,
+            ] of map) {
+              if (sub.path === path) {
+                refreshThread({ ws })
+              }
+            }
+          }
+        },
+      )
+      watcher.on(
+        'error',
+        () => unwatchTranscript({ path }),
+      )
+      transcripts.set(
+        path,
+        watcher,
+      )
+    } catch {
+      // A missing file is watched once the card's next event reads it again.
+    }
+  }
+
+  const watchWorkingTranscripts = () => {
+    const working = new Set(Object.values(state.cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
+
+    for (const path of transcripts.keys()) {
+      if (!working.has(path)) {
+        unwatchTranscript({ path })
+      }
+    }
+
+    for (const path of working) {
+      watchTranscript({ path })
+    }
+  }
 
   const watchFolder = ({ dir }: { dir: string }) => {
     if (closed || folders.has(dir)) {
@@ -1077,15 +1140,22 @@ async function mountOwnedHydra({
           _event,
           filename,
         ) => {
-          const changed = filename ? join(
-            dir,
-            String(filename),
-          ) : undefined
+          if (filename) {
+            touchPath({
+              path: join(
+                dir,
+                String(filename),
+              ),
+            })
+
+            return
+          }
+
           touchLatest({
             ids: Object.values(state.cards).filter(c => {
               const path = threadPath({ card: c })
 
-              return path && (changed ? path === changed : dirname(path) === dir)
+              return path && dirname(path) === dir
             })
               .map(c => c.id),
           })
@@ -1172,6 +1242,7 @@ async function mountOwnedHydra({
     }
 
     unread.clear()
+    watchWorkingTranscripts()
     const spend = hydraSpend({
       state,
       events: derivationEvents(),
@@ -2563,12 +2634,14 @@ async function mountOwnedHydra({
     for (const w of [
       ...watchers,
       ...folders.values(),
+      ...transcripts.values(),
       ...threads,
     ]) {
       w.close()
     }
 
     folders.clear()
+    transcripts.clear()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)
