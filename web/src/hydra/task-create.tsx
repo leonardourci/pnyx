@@ -49,7 +49,7 @@ export function TaskCreate({
             'create',
             '--title',
             title.trim(),
-            '--brief',
+            '--ask',
             prompt,
             '--column',
             column,
@@ -79,7 +79,7 @@ export function TaskCreate({
         onChange={e => setTitle(e.target.value)}
       />
       <Textarea
-        aria-label="Initial prompt"
+        aria-label="Your ask"
         placeholder="What should happen?"
         value={prompt}
         onChange={e => setPrompt(e.target.value)}

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Tooltip } from '../components/ui/tooltip.tsx'
+import { Tooltip, TooltipPanel, TooltipSection } from '../components/ui/tooltip.tsx'
 import type { HydraUsage } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 
@@ -95,19 +95,21 @@ export function UsageRing({
   ) : undefined
   const now = Date.now()
   const panel = (
-    <span className="usage-panel">
+    <TooltipPanel>
       {percent !== undefined && (
-        <span className="usage-row">
+        <TooltipSection>
           <strong>Context window</strong>
           <span>
             {percent}% used · {tokens({ count: usage.used! })}
             {' / '}{tokens({ count: usage.window! })} tokens
           </span>
-        </span>
+        </TooltipSection>
       )}
-      {usage.cost !== undefined && <span className="usage-row">Session cost ${usage.cost.toFixed(2)}</span>}
+      {usage.cost !== undefined && (
+        <TooltipSection>Session cost ${usage.cost.toFixed(2)}</TooltipSection>
+      )}
       {!!usage.windows?.length && (
-        <span className="usage-row">
+        <TooltipSection>
           <strong>{usage.harness === 'codex' ? 'Codex' : 'Claude'}{usage.plan ? ` ${capital({ text: usage.plan })}` : ''}</strong>
           {usage.windows.map(window => (
             <span key={window.label} className="usage-window">
@@ -119,12 +121,12 @@ export function UsageRing({
               <span className="usage-bar"><i style={{ width: `${window.used}%` }} /></span>
             </span>
           ))}
-        </span>
+        </TooltipSection>
       )}
       {usage.account && !usage.account.endsWith(':default') && (
-        <span className="usage-row usage-account">Account {usage.account}</span>
+        <TooltipSection className="usage-account">Account {usage.account}</TooltipSection>
       )}
-    </span>
+    </TooltipPanel>
   )
 
   return (

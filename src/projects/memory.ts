@@ -1,3 +1,4 @@
+import { dateLearnings, type Learning } from '../memory/learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -23,6 +24,7 @@ interface MemoryEvent {
   at: string
   actor: string
   reason?: string
+  confirmed?: string
   hydra: string
   identity: string
   key: ProjectMemoryKey
@@ -33,6 +35,7 @@ interface MemoryEvent {
 
 export interface ProjectMemory {
   revision: number
+  learnings?: Learning[]
   documents: Partial<Record<ProjectMemoryKey, string>>
   sources: Record<string, string>
   events: MemoryEvent[]
@@ -108,6 +111,16 @@ export function readProjectMemory({ id }: { id: string }): ProjectMemory {
       memory.documents[event.key] = event.after
     }
 
+    if (event.key === 'learnings') {
+      memory.learnings = dateLearnings({
+        before: memory.learnings,
+        after: event.after,
+        at: event.at,
+        confirmed: event.confirmed,
+        evidence: event.reason,
+      })
+    }
+
     if (event.key === 'profile') {
       memory.sources = event.sources ?? {}
     }
@@ -173,6 +186,7 @@ export function writeProjectMemory({
   after,
   sources,
   meta,
+  confirmed,
 }: {
   path: string
   hydraId: string
@@ -180,6 +194,7 @@ export function writeProjectMemory({
   after: string | null
   sources?: string
   meta: Meta
+  confirmed?: string
 }) {
   return withRegistryLock({
     fn: () => {
@@ -209,6 +224,11 @@ export function writeProjectMemory({
       }
 
       const before = view.documents[key] ?? null
+
+      if (confirmed !== undefined) {
+        after = before
+      }
+
       const used = view.used - (before?.length ?? 0) + (after?.length ?? 0)
 
       if (after !== null && used > PROJECT_MEMORY_BUDGET && used > view.used) {
@@ -219,7 +239,24 @@ export function writeProjectMemory({
         })
       }
 
-      if (before === after && (key !== 'profile' || !view.changed.length)) {
+      if (confirmed !== undefined && key !== 'learnings') {
+        throw new HydraError({
+          message: 'Only learnings need reconfirmation',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      if (key === 'learnings') {
+        dateLearnings({
+          before: view.learnings,
+          after,
+          at: meta.at,
+          confirmed,
+          evidence: meta.reason,
+        })
+      }
+
+      if (before === after && confirmed === undefined && (key !== 'profile' || !view.changed.length)) {
         return {
           project: view.id,
           revision: view.revision,
@@ -241,6 +278,11 @@ export function writeProjectMemory({
         after,
         ...(key === 'profile' && after !== null ? { sources: view.currentSources.hashes } : {}),
       }
+
+      if (confirmed !== undefined) {
+        event.confirmed = confirmed
+      }
+
       const dir = join(
         pnyxHome(),
         'projects',

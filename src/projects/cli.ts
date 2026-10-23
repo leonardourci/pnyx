@@ -353,7 +353,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 }
 
 export const project = guard({ handler: projectCommand })
-export const PROJECT_HELP = `pnyx-axi project memory list|set|forget --project <name|path> [--key profile|preferences|learnings] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
+export const PROJECT_HELP = `pnyx-axi project memory list|set|forget|confirm --project <name|path> [--key profile|preferences|learnings] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.

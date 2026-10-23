@@ -241,6 +241,7 @@ async function tab({
   tabs.add(ws)
   const main = inbox<ServerMessage>(), latest = inbox<LatestMessages>()
   const actions = inbox<LatestActions>()
+  const spend = inbox<NonNullable<Extract<ServerMessage, { type: 'latest' }>['spend']>>()
   const summaries = inbox<Extract<ServerMessage, { type: 'hydras' }>>()
   const queue = main.queue
   ws.on(
@@ -251,6 +252,10 @@ async function tab({
       if (message.type === 'latest') {
         latest.put({ message: message.messages })
         actions.put({ message: message.actions })
+
+        if (message.spend) {
+          spend.put({ message: message.spend })
+        }
       } else if (message.type === 'hydras') {
         summaries.put({ message })
       } else {
@@ -273,6 +278,7 @@ async function tab({
     hello,
     next: main.next,
     summaries: summaries.next,
+    spend: spend.next,
     async latest({ card }: { card: string }) {
       for (;;) {
         const messages = await latest.next()
@@ -1990,6 +1996,63 @@ test(
       await search({ text: 'flamingo nowhere' }),
       [],
     )
+    t.ws.close()
+  },
+)
+
+test(
+  'latest messages carry task tokens and refresh usage without a Hydra event or changed reply',
+  async () => {
+    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+    const card = fixture.state.keys.layout!
+    const at = new Date().toISOString()
+    const usageLine = ({ tokens }: { tokens: number }) => `${JSON.stringify({
+      type: 'assistant',
+      timestamp: at,
+      message: {
+        id: 'usage-message',
+        content: [
+          {
+            type: 'text',
+            text: 'Working.',
+          },
+        ],
+        usage: {
+          input_tokens: tokens,
+          output_tokens: 0,
+        },
+      },
+    })}\n`
+    writeFileSync(
+      fixture.transcript,
+      usageLine({ tokens: 40 }),
+    )
+    server = await startServer({ hydraId: 'default' })
+    const t = await tab()
+    await t.next()
+    assert.equal(
+      (await t.spend())[card]?.total,
+      40,
+    )
+    const seq = loadHydra({ hydraId: 'default' }).state.seq
+    appendFileSync(
+      fixture.transcript,
+      usageLine({ tokens: 70 }),
+    )
+
+    for (;;) {
+      const updated = await t.spend()
+
+      if (updated[card]?.total === 70) {
+        break
+      }
+    }
+
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.seq,
+      seq,
+    )
+    await t.idle()
     t.ws.close()
   },
 )

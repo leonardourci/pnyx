@@ -1,3 +1,5 @@
+import type { TaskSpend } from '../spend/tasks.ts'
+
 export const EVENT_VERSION = 1 as const
 export const HYDRA_ACTOR = 'hydra'
 // The Hydra page and an unlabelled CLI are usually the owner; workers Pnyx runs write as `worker:<task>`.
@@ -285,10 +287,20 @@ export interface TaskReminder {
   dueAt?: string
 }
 
+export interface OwnerAsk {
+  text: string
+  at: string
+  actor: string
+  message?: string
+}
+
 export interface Card {
   id: string
   key: string
   title: string
+  ask?: OwnerAsk[]
+  // Derived transcript totals sent to the browser; never used as Hydra state.
+  spend?: TaskSpend
   brief?: string
   initialPrompt?: string
   project?: string
@@ -603,6 +615,7 @@ export type HydraChange = EventBase & (
   | {
     type: 'task.created'
     data: {
+      ask?: OwnerAsk
       key: string
       title: string
       brief?: string
@@ -647,6 +660,10 @@ export type HydraChange = EventBase & (
       column: Column
       message: Omit<HydraMessage, 'id' | 'at' | 'actor'>
     }
+  }
+  | {
+    type: 'task.intent'
+    data: OwnerAsk
   }
   | {
     type: 'task.brief'
@@ -938,6 +955,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'board.columns',
   'task.created',
   'task.brief',
+  'task.intent',
   'task.visibility',
   'task.retention',
   'hydra.memory',

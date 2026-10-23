@@ -1,3 +1,4 @@
+import { staleLearnings, learningDigest } from '../memory/learnings.ts'
 import type { HydraState } from '../core/model.ts'
 import { projectsFor } from './read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from './memory.ts'
@@ -15,9 +16,13 @@ export function projectDigest({ state }: { state: HydraState }): string[] {
     'Projects (load memory on demand with pnyx-axi project show <name|path>):',
     ...projects.map(project => {
       const view = projectMemoryView(project)
+      const stale = staleLearnings({
+        lines: view.learnings ?? [],
+        now: new Date().toISOString(),
+      })
       const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ' · nearly full: load inscribe with this project' : ''}`
+      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ' · nearly full: load inscribe with this project' : ''}${stale.length ? ` · ${stale.length} stale learnings: load inscribe` : ''}`
     }),
   ]
 }
@@ -46,7 +51,11 @@ export function projectWorkerContext({
       key,
       title,
     ]) => {
-      const text = view.documents[key as keyof typeof PROJECT_MEMORY_DOCUMENTS]?.replace(
+      const document = key === 'learnings' && view.learnings?.length ? learningDigest({
+        lines: view.learnings,
+        now: new Date().toISOString(),
+      }) : view.documents[key as keyof typeof PROJECT_MEMORY_DOCUMENTS]
+      const text = document?.replace(
         /\s+/g,
         ' ',
       ).trim()

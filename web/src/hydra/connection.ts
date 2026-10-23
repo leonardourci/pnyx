@@ -473,6 +473,28 @@ export function useHydra() {
                 setHydraThread(m.thread)
               }
             } else if (m.type === 'latest') {
+              if (m.spend) {
+                const cards = { ...stateRef.current.cards }
+
+                for (const [
+                  id,
+                  spend,
+                ] of Object.entries(m.spend)) {
+                  if (cards[id]) {
+                    cards[id] = {
+                      ...cards[id],
+                      spend,
+                    }
+                  }
+                }
+
+                stateRef.current = {
+                  ...stateRef.current,
+                  cards,
+                }
+                publish()
+              }
+
               if (!ready.current) {
                 ready.current = true; attempt = 0; flush()
 
@@ -495,6 +517,7 @@ export function useHydra() {
               })
 
               if (entry) {
+                entry.state = stateRef.current
                 entry.latest = next
                 entry.actions = nextActions
               }

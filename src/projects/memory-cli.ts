@@ -1,3 +1,4 @@
+import { staleLearnings } from '../memory/learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '../cli/commands.ts'
 import { HydraError } from '../core/model.ts'
 import { loadHydra } from '../store/hydra-store.ts'
@@ -39,6 +40,11 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
       identity: view.identity,
       revision: view.revision,
       profile: view.status,
+      learnings: view.learnings ?? [],
+      stale: staleLearnings({
+        lines: view.learnings ?? [],
+        now: new Date().toISOString(),
+      }),
       memory: Object.keys(view.documents).length ? view.documents : 'none: no project memory yet',
       used: `${view.used} of ${PROJECT_MEMORY_BUDGET} characters`,
       ref: view.currentSources.ref,
@@ -58,6 +64,22 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     }
   }
 
+  if (action === 'confirm') {
+    const view = projectMemoryView(project)
+
+    return writeProjectMemory({
+      path: project.path,
+      hydraId,
+      key: 'learnings',
+      after: view.documents.learnings ?? null,
+      confirmed: required({
+        value: values.text as string | undefined,
+        what: '--text <existing learning line>',
+      }),
+      meta: meta({ values }),
+    })
+  }
+
   const key = values.key as ProjectMemoryKey | undefined
 
   if (![
@@ -68,7 +90,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     key,
   )) {
     throw new HydraError({
-      message: 'Use project memory list|set|forget --project <name|path>; keys are profile, preferences and learnings',
+      message: 'Use project memory list|set|forget|confirm --project <name|path>; keys are profile, preferences and learnings',
       code: 'VALIDATION_ERROR',
     })
   }

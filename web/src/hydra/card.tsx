@@ -1,3 +1,4 @@
+import { AgentDetails } from './agent-details.tsx'
 import { answerPrompt } from '../../../src/core/answer.ts'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { ReminderEditor, ReminderLabel } from './reminder.tsx'
@@ -146,8 +147,6 @@ export function HydraCard({
     at: update.at,
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
-  const agentHost = card.agent?.host === 'pnyx' ? 'Pnyx' : ''
-  const agentRoute = card.terminal?.tty ? 'terminal' : agentHost
   const created = card.createdAt || card.statusLog?.[0]?.at
   const request = card.permissions?.find(request => request.status === 'pending')
   const attention = card.attention.find(request => request.blocking && !request.answered)
@@ -277,10 +276,7 @@ export function HydraCard({
           </Tooltip>
           {card.agent && (
             <Tooltip
-              content={[
-                harnessName({ provider: card.agent.provider }),
-                agentRoute,
-              ].filter(Boolean).join(' · ')}
+              content={<AgentDetails card={card} />}
             >
               <span className="card-agent" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
                 <Icon name={card.agent.provider} />
