@@ -8,7 +8,8 @@ import { commands } from '../src/cli/commands.ts'
 import { taskPrompt } from '../src/cli/start.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraDigest } from '../src/core/digest.ts'
-import { hydraConfig, hydraEvent, unwatchedPullRequests, wakesHydra } from '../src/core/hydra.ts'
+import { hydraConfig, hydraEvent, unwatchedPullRequests } from '../src/core/hydra.ts'
+import { wakesHydra } from '../src/core/wake-reasons.ts'
 import type { Card, Link, TaskCopy } from '../src/core/model.ts'
 import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
@@ -879,6 +880,31 @@ test(
       }),
       false,
       'a draft is not ready for anyone',
+    )
+    assert.equal(
+      settled({
+        before: '2 pending, 2 total',
+        after: '2 skipped, 2 total',
+      }),
+      false,
+      'checks that all skipped ran nothing',
+    )
+    assert.equal(
+      linked({
+        before: {
+          state: 'open',
+          checks: '2 passed, 2 total',
+          draft: true,
+        },
+        after: {
+          state: 'open',
+          checks: '2 passed, 2 total',
+          draft: false,
+        },
+        worker: true,
+      }),
+      true,
+      'a draft marked ready with green checks is news',
     )
     assert.equal(
       linked({

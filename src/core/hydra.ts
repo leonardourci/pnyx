@@ -1,8 +1,8 @@
 import { ownerGates } from './gates.ts'
-import { ownerActor, failedChecks, pendingChecks, HydraError, HYDRA_ACTOR, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration, type PushedEvent } from './model.ts'
+import { ownerActor, HydraError, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
-import { assignDefined, columnCards } from './tasks.ts'
+import { assignDefined } from './tasks.ts'
 
 export const HYDRA_CARD = '$hydra'
 type Role = (typeof COLUMNS)[number]
@@ -460,10 +460,11 @@ export function declareTask({
 // Hydra ends a turn that needs nothing from the owner with only this reply, which its chat hides.
 export const QUIET_REPLY = 'NO_REPLY'
 
-const AGENT_ACTOR = /^(pnyx$|hook:|session:|worker:)/
+// Pnyx itself, a hook, a session or a worker: an agent's write, never the owner's or Hydra's.
+export const agentActor = ({ actor }: { actor: string }) => /^(pnyx$|hook:|session:|worker:)/.test(actor)
 
 // A worker's or session's message to Hydra is its report, never the owner's words.
-export const reportActor = ({ actor }: { actor: string }) => actor !== 'pnyx' && AGENT_ACTOR.test(actor)
+export const reportActor = ({ actor }: { actor: string }) => actor !== 'pnyx' && agentActor({ actor })
 
 // The exact text Hydra receives, so its transcript copy of a report is known by identity, never by markup.
 export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 'actor' | 'task' | 'kind' | 'text' | 'details' | 'context'> }) {
@@ -529,180 +530,6 @@ export function unwatchedPullRequests({ card }: { card: Card }): Link[] {
   }
 
   return card.links.filter(l => l.kind === 'github_pr' && l.state !== 'merged' && l.state !== 'closed')
-}
-
-// Every check on an open, ready pull request has finished, and the result differs from the last read.
-export function checksSettled({
-  before,
-  after,
-}: {
-  before: Link | null
-  after: Link | null
-}): boolean {
-  const ran = /\d+ (passed|failed)/.test(after?.checks ?? '')
-  const ready = after?.kind === 'github_pr' && after.state === 'open' && !after.draft
-
-  const changed = after?.checks !== before?.checks
-
-  return ready && ran && changed && pendingChecks({ checks: after.checks }) === 0
-}
-
-// A worker's turn that this push ended while it still declares working, or with nothing declared during it.
-export function turnEndedUndeclared({
-  card,
-  event,
-}: {
-  card: Card
-  event: PushedEvent
-}): boolean {
-  const turn = card.lastTurn
-  const asking = card.attention.some(a => a.blocking && !a.answered)
-  // A hold waits for the owner's or Hydra's word, so a turn that ends under one is expected.
-  const held = card.status?.state === 'paused' && card.status.hold
-
-  if (event.data.activity !== 'finished' || turn?.seq !== event.seq || card.tracking !== 'declared'
-    || !AGENT_ACTOR.test(event.actor) || asking || held) {
-    return false
-  }
-
-  const declaredAt = card.status ? Date.parse(card.status.at) : -Infinity
-  const declaredDuring = declaredAt >= Date.parse(turn.since)
-
-  return card.status?.state === 'working' || !declaredDuring
-}
-
-// Backlog cards a free worker could take: no worker yet, not queued behind one, not held, and nothing waiting on the owner.
-export function readyBacklog({ state }: { state: HydraState }): Card[] {
-  const column = roleColumn({
-    columns: hydraConfig({ state }).columns,
-    role: 'queued',
-  })
-
-  if (!column) {
-    return []
-  }
-
-  return columnCards({
-    state,
-    column,
-  }).filter(card => {
-    const held = card.status?.state === 'paused' && card.status.hold
-    const started = card.agent || card.sessionIds?.length || card.queue
-
-    return card.id !== HYDRA_CARD && !started && !held && card.status?.state !== 'done'
-      && !ownerGates({ card }).length
-  })
-}
-
-// A merged pull request or settled checks need Hydra; failed checks and new comments go to the task's worker, so they need Hydra only when no worker can be woken.
-function linkNeedsHydra({
-  card,
-  before,
-  after,
-}: {
-  card: Card
-  before: Link | null
-  after: Link | null
-}): boolean {
-  if (after?.kind !== 'github_pr') {
-    return false
-  }
-
-  if (after.state === 'merged') {
-    return before?.state !== 'merged'
-  }
-
-  if (checksSettled({
-    before,
-    after,
-  })) {
-    return true
-  }
-
-  if (!unwatchedPullRequests({ card }).length) {
-    return false
-  }
-
-  const failing = failedChecks({ checks: after.checks }) > failedChecks({ checks: before?.checks })
-  const commented = before?.comments !== undefined && (after.comments ?? 0) > before.comments
-
-  return failing || commented
-}
-
-// Declarations that need Hydra's judgment; working and paused stay on the card until its next check.
-const WAKING_STATES: TaskStatus[] = [
-  'needs_you',
-  'blocked',
-  'done',
-]
-
-// Changes that wake a hosted Hydra for a check turn; never Hydra's own writes or card.
-export function wakesHydra({
-  state,
-  event,
-}: {
-  state: HydraState
-  event: HydraEvent
-}): boolean {
-  // A worker's report waits in the same queue as its status changes, whatever card it names, and starts a Hydra Pnyx has not run yet;
-  // a progress report only joins the next wake.
-  if (event.type === 'hydra.message') {
-    return reportActor({ actor: event.actor }) && event.data.kind !== 'progress' && pnyxRunsHydra({ state })
-  }
-
-  const card = state.cards[event.cardId]
-
-  if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
-    || !hostedHydra({ state })) {
-    return false
-  }
-
-  switch (event.type) {
-    case 'task.queue':
-    case 'task.reminder-due':
-    case 'task.kind':
-      return true
-    case 'task.declared':
-      return WAKING_STATES.includes(event.data.state)
-    case 'task.permission':
-      return event.data.status === 'pending'
-    case 'card.linked':
-      return linkNeedsHydra({
-        card,
-        before: event.data.before,
-        after: event.data.after,
-      })
-    // A worker detached by someone else frees a slot, which matters only when Backlog has work for it.
-    case 'task.session':
-      return event.data.before !== null && event.data.after === null
-        && readyBacklog({ state }).length > 0
-    // An agent's new question on a task, a worker that ended while its pull request is unwatched, or a turn that ended without a new declaration.
-    case 'card.pushed': {
-      if (card.tracking !== 'declared' || !AGENT_ACTOR.test(event.actor)) {
-        return false
-      }
-
-      const {
-        before,
-        attention,
-        activity,
-      } = event.data
-      const open = ({ list }: { list?: Card['attention'] }) =>
-        (list ?? []).filter(a => a.blocking && !a.answered).map(a => a.key)
-      const asked = open({ list: before?.attention })
-      const newQuestion = open({ list: attention }).some(key => !asked.includes(key))
-
-      const asks = Boolean(before?.attention) && newQuestion
-      const stopped = activity === 'ended' && unwatchedPullRequests({ card }).length > 0
-
-      return asks || stopped || turnEndedUndeclared({
-        card,
-        event,
-      })
-    }
-    default:
-      return false
-  }
 }
 
 export function applyHydra({

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { HYDRA_CARD } from '../src/core/hydra.ts'
-import type { Card, HydraEvent, HydraState, Link } from '../src/core/model.ts'
+import { decidePush } from '../src/core/decide.ts'
+import { declareTask, HYDRA_CARD } from '../src/core/hydra.ts'
+import type { Card, HydraEvent, HydraState, Link, TaskStatus } from '../src/core/model.ts'
+import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
-import { reasonLine, wakeReasons } from '../src/core/wake-reasons.ts'
+import { reasonLine, wakeReasons, wakesHydra } from '../src/core/wake-reasons.ts'
 
 const PR = 'https://github.com/o/r/pull/7'
 
@@ -206,14 +208,16 @@ test(
 )
 
 test(
-  'a finished turn is a reason only when the worker declared nothing during it or still declares working',
+  'a finished turn is a reason only while the worker still declares working or has declared nothing',
   () => {
     const turn = ({
       status,
       attention = [],
+      endedHere = true,
     }: {
-      status: Card['status']
+      status?: TaskStatus
       attention?: Card['attention']
+      endedHere?: boolean
     }) => {
       const ended = event({
         type: 'card.pushed',
@@ -230,12 +234,15 @@ test(
             card({
               id: 'fix',
               tracking: 'declared',
-              status,
-              attention,
-              lastTurn: {
-                since: '2026-10-23T10:00:00.000Z',
-                seq: ended.seq,
+              status: status && {
+                id: 'd',
+                at: '2026-10-23T10:01:00.000Z',
+                actor: 'worker:fix',
+                state: status,
+                note: '',
               },
+              attention,
+              turnEndedSeq: endedHere ? ended.seq : ended.seq - 1,
             }),
           ],
         }),
@@ -243,68 +250,31 @@ test(
       })
     }
 
-    const declared = ({
-      state,
-      at,
-      hold,
-    }: {
-      state: 'working' | 'paused' | 'needs_you'
-      at: string
-      hold?: boolean
-    }) => ({
-      id: 'd',
-      at,
-      actor: 'worker:fix',
-      state,
-      note: '',
-      ...(hold ? { hold } : {}),
-    })
-
     assert.deepEqual(
-      turn({
-        status: declared({
-          state: 'working',
-          at: '2026-10-23T10:01:00.000Z',
-        }),
-      }),
+      turn({ status: 'working' }),
       [`- ${ref({ id: 'fix' })} turn ended: the worker finished its turn still declaring working`],
     )
     assert.deepEqual(
-      turn({
-        status: declared({
-          state: 'paused',
-          at: '2026-10-23T09:00:00.000Z',
-        }),
-      }),
-      [`- ${ref({ id: 'fix' })} turn ended: the worker finished its turn without a new declaration (still paused)`],
+      turn({}),
+      [`- ${ref({ id: 'fix' })} turn ended: the worker finished its turn without declaring anything`],
     )
+
+    for (const status of [
+      'needs_you',
+      'blocked',
+      'paused',
+      'done',
+    ] as const) {
+      assert.deepEqual(
+        turn({ status }),
+        [],
+        `a worker that declared ${status} said why it stopped`,
+      )
+    }
+
     assert.deepEqual(
       turn({
-        status: declared({
-          state: 'needs_you',
-          at: '2026-10-23T10:01:00.000Z',
-        }),
-      }),
-      [],
-      'a fresh declaration already woke Hydra',
-    )
-    assert.deepEqual(
-      turn({
-        status: declared({
-          state: 'paused',
-          at: '2026-10-23T09:00:00.000Z',
-          hold: true,
-        }),
-      }),
-      [],
-      'a turn that ends under a hold is expected',
-    )
-    assert.deepEqual(
-      turn({
-        status: declared({
-          state: 'working',
-          at: '2026-10-23T10:01:00.000Z',
-        }),
+        status: 'working',
         attention: [
           {
             kind: 'question',
@@ -315,6 +285,91 @@ test(
       }),
       [],
       'an open question is the worker\'s reason, not its finished turn',
+    )
+    assert.deepEqual(
+      turn({
+        status: 'working',
+        endedHere: false,
+      }),
+      [],
+      'a finished push that ended no working turn is not a turn end',
+    )
+  },
+)
+
+test(
+  'a hook session\'s Stop ends its turn through the reducer, which wakes Hydra',
+  () => {
+    const meta = ({ actor }: { actor: string }) => ({
+      at: '2026-10-23T10:00:00.000Z',
+      actor,
+    })
+
+    const push = ({
+      state,
+      activity,
+    }: {
+      state: HydraState
+      activity: string
+    }) => {
+      const decision = decidePush({
+        state,
+        key: 'fix',
+        input: {
+          title: 'Task fix',
+          activity,
+          source: {
+            adapter: 'hooks',
+            objectId: 's1',
+          },
+        },
+        meta: meta({ actor: 'hook:s1' }),
+      })
+      assert.ok('event' in decision)
+
+      return decision.event
+    }
+
+    let state = reduce({
+      state: emptyHydra(),
+      event: push({
+        state: emptyHydra(),
+        activity: 'working',
+      }),
+    })
+    const declared = declareTask({
+      state,
+      ref: 'fix',
+      status: 'working',
+      note: 'on it',
+      meta: meta({ actor: 'worker:fix' }),
+    })
+    assert.ok('event' in declared)
+    state = reduce({
+      state,
+      event: declared.event,
+    })
+    const stop = push({
+      state,
+      activity: 'finished',
+    })
+    state = reduce({
+      state,
+      event: stop,
+    })
+    // Hydra's own card, as a Pnyx-run Hydra has it.
+    state.cards[HYDRA_CARD] = hydraState({ cards: [] }).cards[HYDRA_CARD]!
+
+    assert.ok(wakesHydra({
+      state,
+      event: stop,
+    }))
+    assert.match(
+      wakeReasons({
+        state,
+        events: [stop],
+      })[0]!,
+      /\) turn ended: the worker finished its turn still declaring working$/,
     )
   },
 )
@@ -403,6 +458,62 @@ test(
       }),
       [`- ${ref({ id: 'fix' })} approved merge is green: ${PR} (2 passed, 2 total)`],
     )
+
+    const settle = ({
+      state,
+      checks,
+    }: {
+      state: HydraState
+      checks: string
+    }) => wakeReasons({
+      state,
+      events: [
+        linked({
+          before: {
+            state: 'open',
+            checks: '1 passed, 2 total',
+          },
+          after: {
+            state: 'open',
+            checks,
+          },
+        }),
+      ],
+    })
+
+    assert.deepEqual(
+      settle({
+        state: approved,
+        checks: '1 passed, 1 failed, 2 total',
+      }),
+      [`- ${ref({ id: 'fix' })} checks: ${PR} red (1 passed, 1 failed, 2 total)`],
+      'red checks are never an approved merge',
+    )
+
+    const working = hydraState({
+      cards: [
+        {
+          ...fix,
+          status: {
+            id: 'w',
+            at: '2026-10-23T10:00:00.000Z',
+            actor: 'worker:fix',
+            state: 'working',
+            note: 'addressing review comments',
+          },
+        },
+      ],
+      projects: approved.projects,
+    })
+
+    assert.deepEqual(
+      settle({
+        state: working,
+        checks: '2 passed, 2 total',
+      }),
+      [`- ${ref({ id: 'fix' })} checks: ${PR} green (2 passed, 2 total)`],
+      'a worker still working on it holds the merge',
+    )
   },
 )
 
@@ -453,6 +564,71 @@ test(
       [
         `- ${ref({ id: 'fix' })} checks: ${PR} red (0 passed, 1 failed, 3 total), and no worker watches it`,
         `- ${ref({ id: 'fix' })} comments: 2 new on ${PR}, and no worker watches it`,
+      ],
+    )
+  },
+)
+
+test(
+  'a worker\'s new blocking question is asked, and a session that ends with its pull request unwatched says so',
+  () => {
+    const state = hydraState({
+      cards: [
+        card({
+          id: 'fix',
+          tracking: 'declared',
+          stoppedAt: '2026-10-23T10:05:00.000Z',
+          sessionIds: ['s1'],
+          links: [
+            {
+              kind: 'github_pr',
+              url: PR,
+              state: 'open',
+            },
+          ],
+        }),
+      ],
+    })
+
+    assert.deepEqual(
+      wakeReasons({
+        state,
+        events: [
+          event({
+            type: 'card.pushed',
+            actor: 'hook:s1',
+            data: {
+              key: 'fix',
+              attention: [
+                {
+                  kind: 'question',
+                  key: 'q1',
+                  blocking: true,
+                  questions: [
+                    {
+                      question: 'Which DB?',
+                      options: [],
+                    },
+                  ],
+                },
+              ],
+              before: { attention: [] },
+            },
+          }),
+          event({
+            type: 'card.pushed',
+            actor: 'hook:s1',
+            data: {
+              key: 'fix',
+              activity: 'ended',
+              before: { activity: 'finished' },
+            },
+          }),
+        ],
+      }),
+      [
+        `- ${ref({ id: 'fix' })} asked: q1: "Which DB?"`,
+        `- ${ref({ id: 'fix' })} turn ended: the worker's session ended, and no worker watches ${PR}`,
       ],
     )
   },
@@ -526,7 +702,7 @@ test(
 )
 
 test(
-  'a finished task frees a slot, listed once with the ready Backlog cards in order; held, started or asking cards are not ready',
+  'a done task frees a slot, listed with the ready Backlog cards in order; held, started or asking cards are not ready',
   () => {
     const state = hydraState({
       cards: [
@@ -600,9 +776,10 @@ test(
       }),
       [
         `- ${ref({ id: 'fix' })} merged: ${PR}`,
-        free,
         `- ${ref({ id: 'fix' })} declared: done, "Pull request ${PR} merged"`,
+        free,
       ],
+      'only done frees the slot: a task with another open pull request keeps it',
     )
     assert.deepEqual(
       wakeReasons({
@@ -619,8 +796,8 @@ test(
           }),
         ],
       }),
-      [free],
-      'a worker the owner detached frees its slot too',
+      [],
+      'a detach is often a replacement, so it frees nothing',
     )
   },
 )
