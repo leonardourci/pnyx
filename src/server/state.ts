@@ -6,7 +6,7 @@ import { HydraError } from '../core/model.ts'
 import { hydraDir, pnyxHome, withWriter } from '../store/hydra-store.ts'
 
 export const DEFAULT_PORT = 4747
-// A busy server can hold its event loop for seconds; a message it misses is lost, so a live pid gets this long.
+// A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.
 const HEALTH_TIMEOUT_MS = 60_000
 
 export interface ServerInfo {
@@ -129,7 +129,8 @@ export function localToken(): string {
   ).trim()
 }
 
-const HOST_TIMEOUT_MS = 30000
+// A start waits for the harness to open its session, which Codex allows five minutes.
+const HOST_TIMEOUT_MS = 360_000
 
 // Asks the Hydra's running server to act on an agent it hosts. Throws NOT_RUNNING when
 // no server answers, so nothing was sent; any other failure after the request left may
