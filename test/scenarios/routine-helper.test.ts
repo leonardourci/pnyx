@@ -1,3 +1,4 @@
+import { createHost } from '../../src/server/host.ts'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
@@ -53,6 +54,15 @@ test(
       '--hydra',
       'lab',
     ])
+    commands.task([
+      'create',
+      '--key',
+      'other',
+      '--title',
+      'Other',
+      '--hydra',
+      'lab',
+    ])
     withWriter({
       hydraId: 'lab',
       fn: ({ writer }) => {
@@ -84,6 +94,7 @@ test(
     })
     const state = () => loadHydra({ hydraId: 'lab' }).state
     const task = state().keys.work!
+    const other = state().keys.other!
     const main = hydraSdk()
     const helper = hydraSdk()
     helper.control.hold = true
@@ -94,6 +105,11 @@ test(
           task,
           audience: 'routine',
           summary: 'Worker is progressing within scope.',
+        },
+        {
+          task: other,
+          audience: 'routine',
+          summary: 'Other worker is progressing.',
         },
       ],
     })
@@ -210,24 +226,51 @@ test(
       )
       await finishAfter({ after: hello })
       const progress = state().seq
-      assert.equal(
-        (await cli({
-          args: [
-            'hydra',
-            'send',
-            '--task',
+      const seqs: number[] = []
+      withWriter({
+        hydraId: 'lab',
+        fn: ({ writer }) => {
+          for (const id of [
             task,
-            '--kind',
-            'progress',
-            '--text',
-            'Worker made progress',
-            '--actor',
-            `worker:${task}`,
-          ],
-        })).code,
-        0,
+            other,
+          ]) {
+            const decision = hydraEvent({
+              state: writer.state,
+              cardId: id,
+              meta: {
+                at: new Date().toISOString(),
+                actor: `worker:${id}`,
+              },
+              change: {
+                type: 'hydra.message',
+                data: {
+                  action: 'send',
+                  hydra: 'hydra',
+                  task: id,
+                  kind: 'progress',
+                  text: 'Worker made progress',
+                },
+              },
+            })
+            assert.ok('event' in decision)
+            seqs.push(decision.event.seq)
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+      const grant = await event({ matches: ({ event: e }) => e.seq > progress && e.type === 'hydra.helper-started' })
+      assert.ok(grant.type === 'hydra.helper-started')
+      assert.deepEqual(
+        grant.data.tasks,
+        [
+          task,
+          other,
+        ],
       )
-      await event({ matches: ({ event: e }) => e.seq > progress && e.type === 'hydra.helper-started' })
+      assert.deepEqual(
+        grant.data.seqs,
+        seqs,
+      )
 
       assert.equal(
         (await cli({
@@ -297,6 +340,7 @@ test(
         main.calls[0]!.messages.length,
         2,
       )
+      helper.control.hold = true
       helper.control.reply = JSON.stringify({
         outcomes: [
           {
@@ -323,6 +367,51 @@ test(
         })).code,
         0,
       )
+      await event({ matches: ({ event: e }) => e.type === 'hydra.helper-started' && e.seq > quiet.seq })
+      main.control.hold = true
+      let firstReceived = () => {}
+      const firstInput = new Promise<void>(resolve => {
+        firstReceived = resolve
+      })
+
+      main.control.onInput = ({ text }) => {
+        if (text.includes('Hold the main turn')) {
+          firstReceived()
+        }
+      }
+
+      assert.equal(
+        (await cli({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            'Hold the main turn while I add context.',
+          ],
+        })).code,
+        0,
+      )
+      await firstInput
+      helper.release()
+      await event({ matches: ({ event: e }) => e.type === 'hydra.helper-finished' && e.seq > quiet.seq })
+      assert.equal(
+        (await cli({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            'Owner arrives after helper finishes.',
+          ],
+        })).code,
+        0,
+      )
+      const later = state().hydraMessages!.findLast(message => message.text === 'Owner arrives after helper finishes.')!
+      await event({ matches: ({ event: e }) => e.id === `${later.id}:hosted` })
+      assert.equal(
+        main.control.hold,
+        true,
+      )
+      main.release()
       await event({ matches: ({ event: e }) => e.type === 'hydra.helper-acknowledged' && e.data.through > quiet.seq })
       assert.ok(main.calls[0]!.messages.some(text => text.includes(`- ${task}: Findings ready: https://example.test/findings`)))
       assert.equal(
@@ -331,9 +420,53 @@ test(
       )
       assert.equal(
         state().helper!.outcomes.length,
-        2,
+        3,
       )
+      const beforeFailure = state().seq
+      helper.control.reply = 'NO_REPLY'
+      assert.equal(
+        (await cli({
+          args: [
+            'hydra',
+            'send',
+            '--task',
+            task,
+            '--kind',
+            'progress',
+            '--text',
+            'Failed helper progress',
+            '--actor',
+            `worker:${task}`,
+          ],
+        })).code,
+        0,
+      )
+      const failure = await event({ matches: ({ event: e }) => e.seq > beforeFailure && e.type === 'hydra.helper-finished' && !!e.data.error })
+      await event({ matches: ({ event: e }) => e.seq > failure.seq && e.type === 'hydra.helper-acknowledged' && e.data.batches.length > 0 })
+      assert.ok(main.calls[0]!.messages.some(text => text.includes('Helper hand-back:') && text.includes('Failed helper progress')))
+      assert.deepEqual(
+        state().helper!.runs,
+        {},
+      )
+      const finishedBatches = readEvents({ hydraId: 'lab' }).filter(e => e.type === 'hydra.helper-started').length
+      await server.close()
+      const resumed = createHost({
+        hydraId: 'lab',
+        query,
+        changed: () => {},
+      })
+      await resumed.recover()
+      assert.deepEqual(
+        resumed.queue().waiting,
+        [],
+      )
+      assert.equal(
+        readEvents({ hydraId: 'lab' }).filter(e => e.type === 'hydra.helper-started').length,
+        finishedBatches,
+      )
+      resumed.close()
     } finally {
+      main.release()
       helper.release()
       ws.close()
       await server.close()
