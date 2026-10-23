@@ -150,7 +150,7 @@ export function workerHeader({
     'Before starting, follow the repository conventions, skills and context files in your current copy: read AGENTS.md and CLAUDE.md when present, plus the relevant skills, docs and context files they point to. Follow the project skills named in your task brief.',
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
-    `Escalate only real decisions, with \`pnyx-axi task status ${id} needs_you --note "<question and options>" --hydra ${hydraId}\`: merges, destructive actions, writes to shared or production systems, and work outside this task. Then wait for the answer.`,
+    `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
     ...stops,
     '</pnyx-worker>',
   ].join('\n')

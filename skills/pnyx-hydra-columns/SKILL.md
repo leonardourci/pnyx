@@ -17,6 +17,8 @@ pnyx-axi move <task> <column> --reason "<why>" --hydra <hydra>
 
 Inspect the proposed action, then repeat the command with `--confirm <token>`.
 
+When a worker reports completion, use `task status <task> done` so Pnyx checks that the work landed by its project's rule, then let its lifecycle move the card. Passing local checks alone is not completion; `move <task> done` is placement, not a substitute for those landing checks.
+
 ## Change columns
 
 - `column create --title "<name>" --description "<when and why>"`, `column rename <id> --title "<name>"` and `column describe <id> --description "<when and why>"` maintain the columns.

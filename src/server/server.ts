@@ -29,7 +29,7 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { queryOracle, matchActions } from '../oracle/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, watch, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watch, watchFile, writeFileSync, type FSWatcher } from 'node:fs'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import type { Duplex } from 'node:stream'
@@ -215,6 +215,7 @@ type HydraUpgrade = {
 
 const HYDRA_PATH = /^\/hydra\/([^/]+)(\/.*)?$/
 const RETRY_MS = 60_000
+const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
 const runFile = promisify(execFile)
@@ -876,6 +877,10 @@ async function mountOwnedHydra({
   }
 
   const dir = hydraDir({ hydraId })
+  const eventsPath = join(
+    dir,
+    'events.jsonl',
+  )
   privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
@@ -2544,6 +2549,10 @@ async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    unwatchFile(
+      eventsPath,
+      kick,
+    )
     await queueRun
     firstmate?.close()
     agents.close()
@@ -2607,6 +2616,15 @@ async function mountOwnedHydra({
         spoolDir({ dir }),
         kick,
       ),
+    )
+    // Directory notifications can coalesce rapid appends; stat polling recovers the missed tail.
+    watchFile(
+      eventsPath,
+      {
+        interval: EVENT_POLL_MS,
+        persistent: false,
+      },
+      kick,
     )
     followHome()
     const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
