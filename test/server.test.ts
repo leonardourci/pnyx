@@ -3,7 +3,7 @@ import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -1934,6 +1934,115 @@ test(
       null,
     )
     t.ws.close()
+  },
+)
+
+test(
+  'a working card gets what its agent is running when the agent keeps its transcript open, as Codex does',
+  async () => {
+    const transcript = join(
+      process.env.PNYX_HOME!,
+      'rollout.jsonl',
+    )
+    writeFileSync(
+      transcript,
+      '',
+    )
+    // Codex writes its rollout through one file it holds open for the whole session.
+    const rollout = openSync(
+      transcript,
+      'a',
+    )
+
+    try {
+      const input = join(
+        process.env.PNYX_HOME!,
+        'input.json',
+      )
+      writeFileSync(
+        input,
+        JSON.stringify({
+          agent: {
+            provider: 'codex',
+            sessionId: 'rollout',
+            transcriptPath: transcript,
+          },
+          activity: 'working',
+        }),
+      )
+      cli({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'work',
+          '--title',
+          'Work',
+        ],
+      })
+      cli({
+        args: [
+          'push',
+          '--key',
+          'work',
+          '--file',
+          input,
+        ],
+      })
+      const card = loadHydra({ hydraId: 'default' }).state.keys.work!
+      server = await startServer({ hydraId: 'default' })
+      const t = await tab(); await t.next()
+      writeSync(
+        rollout,
+        toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call',
+              name: 'exec_command',
+              call_id: 'call_run',
+              arguments: JSON.stringify({ cmd: 'pnpm test' }),
+            },
+          },
+          at: '2026-10-13T11:00:00Z',
+        }),
+      )
+      assert.deepEqual(
+        await t.action({ card }),
+        {
+          calls: [
+            {
+              id: 'call_run',
+              tool: 'exec_command',
+              command: 'pnpm test',
+            },
+          ],
+          done: false,
+          at: '2026-10-13T11:00:00Z',
+        },
+      )
+      writeSync(
+        rollout,
+        toolLine({
+          record: {
+            type: 'response_item',
+            payload: {
+              type: 'function_call_output',
+              call_id: 'call_run',
+              output: 'ok',
+            },
+          },
+          at: '2026-10-13T11:00:05Z',
+        }),
+      )
+      assert.equal(
+        (await t.action({ card }))?.done,
+        true,
+      )
+      t.ws.close()
+    } finally {
+      closeSync(rollout)
+    }
   },
 )
 
