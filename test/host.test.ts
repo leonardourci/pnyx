@@ -1892,6 +1892,18 @@ test(
       hydraId: 'lab',
       query: sdk.query,
     })
+    await commands.task([
+      'status',
+      'ship',
+      'paused',
+      '--note',
+      'Outside hold',
+      '--until',
+      'in 2 hours',
+      '--hydra',
+      'lab',
+    ])
+    const paused = task().status?.id
     assert.equal(
       (await commands.task([
         'continue',
@@ -1906,6 +1918,10 @@ test(
       task().agent?.host,
       undefined,
     )
+    assert.equal(
+      task().status?.id,
+      paused,
+    )
     const adopted = await commands.task([
       'continue',
       'ship',
@@ -1917,6 +1933,18 @@ test(
     assert.equal(
       (adopted.agent as { session: string }).session,
       'native-session',
+    )
+    assert.equal(
+      task().status?.state,
+      'working',
+    )
+    assert.equal(
+      task().column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
+    assert.equal(
+      task().status?.until,
+      undefined,
     )
     const agentRef = task().agent!
     assert.deepEqual(
@@ -2334,6 +2362,17 @@ test(
       spawnCodex: fixture.spawnCodex,
     })
     await commands.task([
+      'status',
+      'ship',
+      'paused',
+      '--note',
+      'Outside hold',
+      '--until',
+      'in 2 hours',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
       'continue',
       'ship',
       '--event-id',
@@ -2341,6 +2380,18 @@ test(
       '--hydra',
       'lab',
     ])
+    assert.equal(
+      task().status?.state,
+      'working',
+    )
+    assert.equal(
+      task().column,
+      loadHydra({ hydraId: 'lab' }).state.config?.columns.find(c => c.role === 'in_progress')?.id,
+    )
+    assert.equal(
+      task().status?.until,
+      undefined,
+    )
     assert.deepEqual(
       [
         task().agent?.host,
