@@ -1,5 +1,5 @@
 import { guardTaskLease, isHelper } from '../helper/leases.ts'
-import { helperTask } from '../helper/route.ts'
+import { helperGrant } from '../helper/route.ts'
 import { reconcileAsks } from '../core/asks.ts'
 import { spawnSync } from 'node:child_process'
 import { randomInt } from 'node:crypto'
@@ -28,7 +28,7 @@ import {
 import { basename, dirname, join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
-import { declareTask, migrateColumns } from '../core/hydra.ts'
+import { agentActor, declareTask, migrateColumns } from '../core/hydra.ts'
 import { decideMove } from '../core/decide.ts'
 import { lifecycleMoveId, lifecycleMoves, operationDeclarations } from '../core/lifecycle.ts'
 import { pnyxHome } from './paths.ts'
@@ -643,7 +643,7 @@ export function withWriter<T>({
           return state
         },
         append({ event }) {
-          if (event.actor === 'hydra' || isHelper({ actor: event.actor })) {
+          if (!agentActor({ actor: event.actor }) && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
             const task = event.type === 'hydra.message' ? event.data.task : event.cardId
 
             if (task && state.cards[task]) {
@@ -654,9 +654,10 @@ export function withWriter<T>({
               })
             }
 
-            if (isHelper({ actor: event.actor }) && (!task || !helperTask({
+            if (isHelper({ actor: event.actor }) && (!task || !helperGrant({
               state,
               task,
+              actor: event.actor,
             }))) {
               throw new HydraError({
                 message: 'Helper mutation is outside its task scope',
