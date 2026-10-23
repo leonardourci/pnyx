@@ -1,4 +1,5 @@
 import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
+import { hydraSpend, type TaskSpend } from '../spend/tasks.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
@@ -43,7 +44,7 @@ import { browserCommand } from './browser.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyState, type ViewPreferences } from '../core/model.ts'
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEvents, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
 import { createHost, hostRequest, type HydraQueue, type QueryFn } from './host.ts'
@@ -144,6 +145,7 @@ export type ServerMessage =
   // Last conversation messages and current actions by card: all of them on connect, then the ones that changed (null when gone).
   | {
     type: 'latest'
+    spend?: Record<string, TaskSpend>
     messages: Record<string, LatestMessage | null>
     actions: Record<string, CurrentAction | null>
   }
@@ -907,6 +909,18 @@ async function mountOwnedHydra({
   }
 
   let recent: HydraEvent[] = []
+  let derivedThrough = -1
+  let derivedHistory: HydraEvent[] = []
+
+  const derivationEvents = () => {
+    if (state.seq !== derivedThrough) {
+      derivedHistory = readEvents({ hydraId })
+      derivedThrough = state.seq
+    }
+
+    return derivedHistory
+  }
+
   const resyncing = new WeakSet<WebSocket>()
 
   const send = ({
@@ -947,6 +961,10 @@ async function mountOwnedHydra({
     })
     ws.send(JSON.stringify({
       type: 'latest',
+      spend: hydraSpend({
+        state,
+        events: derivationEvents(),
+      }),
       messages: latest,
       actions,
     } satisfies ServerMessage))
@@ -1034,6 +1052,7 @@ async function mountOwnedHydra({
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
+  let latestSpend = '{}'
   const latest: Record<string, LatestMessage> = {}
   const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
@@ -1148,13 +1167,21 @@ async function mountOwnedHydra({
     }
 
     unread.clear()
+    const spend = hydraSpend({
+      state,
+      events: derivationEvents(),
+    })
+    const spendStamp = JSON.stringify(spend)
+    const spendChanged = spendStamp !== latestSpend
+    latestSpend = spendStamp
 
-    if (Object.keys(changed).length || Object.keys(changedActions).length) {
+    if (Object.keys(changed).length || Object.keys(changedActions).length || spendChanged) {
       for (const ws of wss.clients) {
         send({
           ws,
           message: {
             type: 'latest',
+            spend,
             messages: changed,
             actions: changedActions,
           },
@@ -2483,6 +2510,10 @@ async function mountOwnedHydra({
       ws,
       message: {
         type: 'latest',
+        spend: hydraSpend({
+          state,
+          events: derivationEvents(),
+        }),
         messages: latest,
         actions,
       },
