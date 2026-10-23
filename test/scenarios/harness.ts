@@ -378,6 +378,8 @@ export function scenarioGroup({ retryDelays }: {
           'hydra',
           'create',
           hydraId,
+          '--helper',
+          'off',
         ],
       })
       await until({
