@@ -14,6 +14,7 @@ import { HydraCard } from './card.tsx'
 import { TaskCreate } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
+import { loadUpdates } from './updates-cache.ts'
 import { sendableComment, type ChatComment } from './chat.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
@@ -811,6 +812,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
     if (!state.cards[id]) {
       return false
+    }
+
+    // The list loads while the card scrolls into place and opens.
+    if (connected) {
+      void loadUpdates({
+        command,
+        id,
+      })
     }
 
     const controller = new AbortController()

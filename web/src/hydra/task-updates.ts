@@ -6,51 +6,6 @@ export { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateDecision, t
 
 const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
 
-export const MIN_ROWS = 20
-export const MAX_PAGES = 10
-
-// Most raw events are hidden, so page back until enough new rows show or history ends.
-export async function loadRelevant({
-  before,
-  pageSize,
-  load,
-}: {
-  before?: number
-  pageSize: number
-  load({ before }: { before?: number }): Promise<TaskEvent[]>
-}) {
-  const found: TaskEvent[] = []
-  let cursor = before
-
-  for (let pages = 0; pages < MAX_PAGES; pages++) {
-    const page = await load({ before: cursor })
-    found.push(...page)
-
-    if (page.length < pageSize) {
-      return {
-        found,
-        more: false,
-      }
-    }
-
-    const shown = found.filter(event => relevantUpdate({
-      event,
-      columns: [],
-    })).length
-
-    if (shown >= MIN_ROWS) {
-      break
-    }
-
-    cursor = Math.min(...page.map(event => event.seq))
-  }
-
-  return {
-    found,
-    more: true,
-  }
-}
-
 // The card already names its task, so its own chip would only repeat the title.
 const withoutOwnChip = ({
   text,

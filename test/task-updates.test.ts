@@ -5,12 +5,11 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
-import type { Card } from '../src/core/model.ts'
+import type { Card, HydraEvent } from '../src/core/model.ts'
+import type { Command } from '../web/src/hydra/connection.ts'
+import { loadUpdates, noteUpdate, updatesOf } from '../web/src/hydra/updates-cache.ts'
 import {
   groupUpdates,
-  loadRelevant,
-  MAX_PAGES,
-  MIN_ROWS,
   relevantUpdate,
   taskTimeline,
   type TaskEvent,
@@ -431,125 +430,127 @@ test(
 )
 
 test(
-  'busy task history pages back until enough relevant rows show, and stops at its end',
+  'kept Updates refresh once per change they show, and activity alone sends no read',
   async () => {
-    const pageSize = 5
-    const event = ({
-      seq,
-      relevant,
-    }: {
-      seq: number
-      relevant: boolean
-    }): TaskEvent => ({
-      id: `e${seq}`,
-      seq,
-      at: '2026-10-21T10:00:00Z',
-      type: relevant ? 'task.brief' : 'card.pushed',
-      summary: '',
-      data: relevant ? {} : {
-        key: 'k',
-        activity: 'working',
-      },
-    })
-    const history = ({
-      total,
-      every,
-    }: {
-      total: number
-      every: number
-    }) =>
-      Array.from(
-        { length: total },
-        (
-          _,
-          i,
-        ) => event({
-          seq: total - i,
-          relevant: i % every === 0,
-        }),
-      )
+    const id = 'task-cache'
+    const at = '2026-10-21T10:00:00Z'
+    const calls: string[][] = []
+    const pending: (() => void)[] = []
 
-    const pager = ({ events }: { events: TaskEvent[] }) => {
-      const calls: (number | undefined)[] = []
-
-      const load = async ({ before }: { before?: number }) => {
-        calls.push(before)
-
-        return events.filter(e => before === undefined || e.seq < before).slice(
-          0,
-          pageSize,
-        )
-      }
+    const command: Command = async ({ args }) => {
+      calls.push(args)
+      await new Promise<void>(resolve => pending.push(resolve))
 
       return {
-        calls,
-        load,
+        events: [
+          {
+            id: `e${calls.length}`,
+            seq: calls.length,
+            at,
+            type: 'task.brief',
+            summary: '',
+          },
+        ],
       }
     }
 
-    const short = pager({
-      events: history({
-        total: 3,
-        every: 10,
-      }),
+    const event = ({
+      seq,
+      type,
+      data,
+    }: {
+      seq: number
+      type: string
+      data: Record<string, unknown>
+    }) => ({
+      v: 1,
+      seq,
+      id: `raw${seq}`,
+      at,
+      actor: 'cli',
+      cardId: id,
+      type,
+      data,
+    }) as unknown as HydraEvent
+    const first = loadUpdates({
+      command,
+      id,
     })
-    const ended = await loadRelevant({
-      pageSize,
-      load: short.load,
-    })
+
+    for (let seq = 1; seq <= 25; seq++) {
+      noteUpdate({
+        event: event({
+          seq,
+          type: 'card.pushed',
+          data: {
+            key: 'k',
+            activity: seq % 2 ? 'working' : 'idle',
+          },
+        }),
+      })
+      void loadUpdates({
+        command,
+        id,
+      })
+    }
+
+    assert.equal(
+      calls.length,
+      1,
+    )
+    assert.ok(calls[0]!.includes('--updates'))
+
+    for (let seq = 26; seq <= 28; seq++) {
+      noteUpdate({
+        event: event({
+          seq,
+          type: 'task.declared',
+          data: {
+            state: 'working',
+            note: `Step ${seq}`,
+          },
+        }),
+      })
+      void loadUpdates({
+        command,
+        id,
+      })
+    }
+
+    pending.shift()!()
+    await first
+    await new Promise(resolve => setTimeout(
+      resolve,
+      0,
+    ))
+    assert.equal(
+      calls.length,
+      2,
+    )
+    pending.shift()!()
+    await new Promise(resolve => setTimeout(
+      resolve,
+      0,
+    ))
     assert.deepEqual(
+      updatesOf({ id }).events.map(event => event.id),
       [
-        short.calls.length,
-        ended.more,
-      ],
-      [
-        1,
-        false,
+        'e2',
+        'e1',
       ],
     )
-
-    const sparse = pager({
-      events: history({
-        total: 1000,
-        every: 2,
-      }),
-    })
-    const enough = await loadRelevant({
-      pageSize,
-      load: sparse.load,
-    })
-    assert.ok(enough.found.filter(e => e.type === 'task.brief').length >= MIN_ROWS)
     assert.equal(
-      enough.more,
-      true,
-    )
-    assert.equal(
-      sparse.calls.length,
-      Math.ceil(MIN_ROWS * 2 / pageSize),
+      updatesOf({ id }).stale,
+      false,
     )
 
-    const noise = pager({
-      events: history({
-        total: 1000,
-        every: 1000,
-      }),
-    })
-    const capped = await loadRelevant({
-      before: 900,
-      pageSize,
-      load: noise.load,
+    await loadUpdates({
+      command,
+      id,
     })
     assert.equal(
-      noise.calls.length,
-      MAX_PAGES,
-    )
-    assert.equal(
-      noise.calls[0],
-      900,
-    )
-    assert.equal(
-      capped.more,
-      true,
+      calls.length,
+      2,
     )
   },
 )
