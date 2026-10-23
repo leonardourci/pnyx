@@ -1,3 +1,4 @@
+import { hydraConversation } from '../web/src/hydra/conversation.ts'
 import type { HydraMessage } from '../src/core/model.ts'
 import type { ThreadEntry } from '../src/thread/read.ts'
 import assert from 'node:assert/strict'
@@ -1166,6 +1167,41 @@ test(
         undefined,
       ],
       'a reply still streaming hands out no key',
+    )
+  },
+)
+
+test(
+  'standing worker instruction notices render in Pnyx voice',
+  () => {
+    const notice = message({
+      id: 'workers-edited',
+      actor: 'pnyx',
+      text: 'Standing worker instructions for pnyx changed: Workers repeatedly ask about media',
+    })
+    const { entries } = hydraConversation({
+      messages: [notice],
+      transcript: [],
+      actions: [],
+      columns: [],
+      working: false,
+      thinking: false,
+    })
+    assert.equal(
+      entries.length,
+      1,
+    )
+    assert.equal(
+      entries[0]!.role,
+      'Pnyx',
+    )
+    assert.equal(
+      entries[0]!.hidden,
+      false,
+    )
+    assert.equal(
+      entries[0]!.text,
+      notice.text,
     )
   },
 )

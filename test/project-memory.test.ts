@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -10,7 +12,7 @@ import { workerCommands } from '../src/cli/workers.ts'
 import { project } from '../src/projects/cli.ts'
 import { PROJECT_MEMORY_BUDGET } from '../src/projects/memory.ts'
 import { normalizedRemote, projectIdentity } from '../src/projects/sources.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents } from '../src/store/hydra-store.ts'
 
 function commitFixture({
   folder,
@@ -932,3 +934,339 @@ test(
     )
   },
 )
+
+test(
+  'standing worker notes are bounded, reasoned, audited and included in future task prompts',
+  async t => {
+    const f = fixture({ t })
+    await project([
+      'add',
+      f.folder,
+      '--hydra',
+      'alpha',
+    ])
+    const notes = ({
+      text,
+      reason,
+      id,
+    }: {
+      text: string
+      reason?: string
+      id?: string
+    }) => project([
+      'worker-notes',
+      'set',
+      '--project',
+      'repo',
+      '--hydra',
+      'alpha',
+      '--text',
+      text,
+      ...(reason ? [
+        '--reason',
+        reason,
+      ] : []),
+      ...(id ? [
+        '--event-id',
+        id,
+      ] : []),
+    ])
+    await assert.rejects(
+      notes({ text: 'Upload screenshots.' }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await assert.rejects(
+      notes({
+        text: 'x'.repeat(1501),
+        reason: 'Too much',
+      }),
+      { code: 'MEMORY_FULL' },
+    )
+    const text = 'Upload screenshots to pr-media.\n' + 'x'.repeat(1468)
+    assert.equal(
+      text.length,
+      1500,
+    )
+    await notes({
+      text,
+      reason: 'Workers repeatedly ask about media',
+      id: 'media-rule',
+    })
+    await notes({
+      text,
+      reason: 'Workers repeatedly ask about media',
+      id: 'media-rule',
+    })
+    const memory = await f.memory()
+    assert.equal(
+      (memory.memory as Record<string, string>).workers,
+      text,
+    )
+    const notices = () => loadHydra({ hydraId: 'alpha' }).state.hydraMessages ?? []
+    assert.equal(
+      notices().length,
+      1,
+    )
+    assert.equal(
+      notices()[0]!.actor,
+      'pnyx',
+    )
+    assert.equal(
+      notices()[0]!.text,
+      'Standing worker instructions for repo changed: Workers repeatedly ask about media',
+    )
+    const saved = readFileSync(
+      join(
+        process.env.PNYX_HOME!,
+        'projects',
+        String(memory.id),
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    assert.match(
+      saved,
+      /"key":"workers"/,
+    )
+    assert.match(
+      saved,
+      /"reason":"Workers repeatedly ask about media"/,
+    )
+    commands.hydra([
+      'worker-notes',
+      'set',
+      '--hydra',
+      'alpha',
+      '--text',
+      'Keep full links.',
+      '--reason',
+      'Owner preference',
+    ])
+    const created = await commands.task([
+      'create',
+      '--title',
+      'Media',
+      '--project',
+      f.folder,
+      '--hydra',
+      'alpha',
+    ])
+    const card = loadHydra({ hydraId: 'alpha' }).state.cards[(created.card as { id: string }).id]!
+    const prompt = () => taskPrompt({
+      hydraId: 'alpha',
+      card,
+    })
+    assert.ok(prompt().includes(`Keep full links.\n${text}`))
+    assert.equal(
+      prompt().split(text).length,
+      2,
+    )
+    await project([
+      'worker-notes',
+      'forget',
+      '--project',
+      'repo',
+      '--hydra',
+      'alpha',
+      '--reason',
+      'No longer needed',
+    ])
+    assert.doesNotMatch(
+      prompt(),
+      /Upload screenshots/,
+    )
+    assert.equal(
+      notices().filter(message => message.text.startsWith('Standing worker instructions for repo')).length,
+      2,
+    )
+    assert.equal(
+      notices().at(-1)!.actor,
+      'pnyx',
+    )
+  },
+)
+
+test(
+  'Hydra worker notes require a reason and respect the Hydra memory budget',
+  t => {
+    fixture({ t })
+    const save = ({
+      text,
+      reason,
+    }: {
+      text: string
+      reason?: string
+    }) => commands.hydra([
+      'worker-notes',
+      'set',
+      '--hydra',
+      'alpha',
+      '--text',
+      text,
+      ...(reason ? [
+        '--reason',
+        reason,
+      ] : []),
+    ])
+    assert.throws(
+      () => save({ text: 'Keep links.' }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => save({
+        text: 'x'.repeat(1501),
+        reason: 'Too much',
+      }),
+      { code: 'MEMORY_FULL' },
+    )
+    save({
+      text: 'x'.repeat(1500),
+      reason: 'Standing instruction',
+    })
+    save({
+      text: 'x'.repeat(1500),
+      reason: 'Unchanged',
+    })
+    const state = () => loadHydra({ hydraId: 'alpha' }).state
+    assert.equal(
+      state().hydraMemory!.workers!.text.length,
+      1500,
+    )
+    assert.equal(
+      state().hydraMessages!.length,
+      1,
+    )
+    assert.equal(
+      state().hydraMessages![0]!.text,
+      'Standing worker instructions for Hydra alpha changed: Standing instruction',
+    )
+    const saved = readEvents({ hydraId: 'alpha' }).find(event => event.type === 'hydra.memory')
+    assert.equal(
+      saved?.reason,
+      'Standing instruction',
+    )
+    assert.ok(saved?.type === 'hydra.memory')
+    assert.equal(
+      saved.data.key,
+      'workers',
+    )
+    commands.hydra([
+      'worker-notes',
+      'forget',
+      '--hydra',
+      'alpha',
+      '--reason',
+      'Retired',
+    ])
+    assert.equal(
+      state().hydraMemory!.workers,
+      undefined,
+    )
+    assert.equal(
+      state().hydraMessages!.length,
+      2,
+    )
+  },
+)
+
+for (const scope of [
+  'project',
+  'Hydra',
+]) {
+  test(
+    `an ordinary ${scope} note save recovers a notice lost after the edit persisted`,
+    async t => {
+      const f = fixture({ t })
+      await project([
+        'add',
+        f.folder,
+        '--hydra',
+        'alpha',
+      ])
+
+      const save = async () => {
+        const args = [
+          'worker-notes',
+          'set',
+          '--text',
+          'Upload media.',
+          '--reason',
+          'Repeated media questions',
+          '--hydra',
+          'alpha',
+        ]
+
+        if (scope === 'project') {
+          return project([
+            ...args,
+            '--project',
+            f.folder,
+          ])
+        }
+
+        return commands.hydra(args)
+      }
+
+      const writeSync = fs.writeSync
+      let failNotice = true
+      t.mock.method(
+        fs,
+        'writeSync',
+        // eslint-disable-next-line pnyx/object-params -- Implements node:fs writeSync.
+        (
+          fd: number,
+          data: Buffer,
+          ...rest: []
+        ) => {
+          if (failNotice && String(data).includes('Standing worker instructions for')) {
+            throw new Error('Notice write failed')
+          }
+
+          return writeSync(
+            fd,
+            data,
+            ...rest,
+          )
+        },
+      )
+      syncBuiltinESMExports()
+
+      try {
+        await assert.rejects(
+          save(),
+          /Notice write failed/,
+        )
+        const state = () => loadHydra({ hydraId: 'alpha' }).state
+        const documents = (await f.memory()).memory as Record<string, string>
+        const notes = scope === 'project' ? documents.workers : state().hydraMemory?.workers?.text
+        assert.equal(
+          notes,
+          'Upload media.',
+        )
+        assert.equal(
+          state().hydraMessages?.length ?? 0,
+          0,
+        )
+        failNotice = false
+        await save()
+        await save()
+        const notices = state().hydraMessages!
+        assert.equal(
+          notices.length,
+          1,
+        )
+        assert.equal(
+          notices[0]!.actor,
+          'pnyx',
+        )
+        assert.match(
+          notices[0]!.text,
+          /changed: Repeated media questions$/,
+        )
+      } finally {
+        t.mock.restoreAll()
+        syncBuiltinESMExports()
+      }
+    },
+  )
+}

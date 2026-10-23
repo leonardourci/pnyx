@@ -51,6 +51,10 @@ export function projectWorkerContext({
       key,
       title,
     ]) => {
+      if (key === 'workers') {
+        return []
+      }
+
       const document = key === 'learnings' && view.learnings?.length ? learningDigest({
         lines: view.learnings,
         now: new Date().toISOString(),

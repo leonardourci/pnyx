@@ -650,8 +650,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .markdown > :last-child, .markdown > .message-block:last-child > :last-child { margin-bottom: 0; }
 
-.hydra-chat .message:not(.mine) .markdown { max-width: 72ch; }
-
 .markdown h1, .markdown h2, .markdown h3, .markdown h4, .markdown h5, .markdown h6 { font-family: var(--font-chat); font-size: var(--text-pane); font-weight: 700; line-height: 1.35; margin: 1.2em 0 .5em; }
 
 .markdown h1 { font-size: var(--text-pane); }
@@ -928,21 +926,39 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .composer-settings .select > .button { padding: 3px 5px; }
 
-.hydra-chat { position: relative; border-radius: 12px; overflow: visible; flex-shrink: 0; }
+/* --chat-inset adds the stream's measured scrollbar gutter, so the composer and running line share the column's edges. */
+.hydra-chat { --chat-max: 960px; --chat-pad: 24px; --chat-gap: 24px; --chat-inset: max(calc(var(--chat-pad) + var(--chat-scrollbar, 0px)), calc((100% - var(--chat-max)) / 2)); position: relative; border-radius: 12px; overflow: visible; flex-shrink: 0; }
 
 .hydra-head { display: flex; align-items: center; justify-content: flex-start; gap: 8px; padding: 10px 14px; font-size: var(--text-pane); }
 
 .hydra-body { position: relative; flex: 1; min-height: 0; display: flex; flex-direction: column; }
 
 /* The bottom gap matches the fade, and stays clear of the running line while a reply streams. */
-.hydra-messages { padding: 10px 16px var(--chat-end); display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; }
+.hydra-messages { padding: 10px var(--chat-pad) var(--chat-end); display: block; flex: 1; min-height: 0; overflow: auto; overflow-anchor: none; scrollbar-gutter: stable both-edges; }
+
+.hydra-stream { max-width: var(--chat-max); margin-inline: auto; }
+
+.hydra-chat .messages { gap: var(--chat-gap); }
+
+.hydra-chat .message.mine { max-width: 100%; }
+
+/* Times, turn footers and consecutive traces keep their tuck under the message at any gap. */
+.hydra-chat .message-meta { margin-top: calc(6px - var(--chat-gap)); }
+
+.hydra-chat .turn-foot { margin-top: calc(8px - var(--chat-gap)); }
+
+.hydra-chat .message:is(.tool, .thinking) + .message:is(.tool, .thinking) { margin-top: calc(4px - var(--chat-gap)); }
 
 /* Away from the bottom, the browser keeps what the owner reads in place as images and replies above it grow. */
 .hydra-messages[data-away] { overflow-anchor: auto; }
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.hydra-chat > :is(.composer, .send-error) { margin-inline: 12px; }
+.hydra-chat > :is(.composer, .send-error, .waiting-decisions) { margin-inline: var(--chat-inset); }
+
+.hydra-chat > .waiting-decisions { padding-inline: 0; }
+
+.hydra-chat .chat-running { left: var(--chat-inset); max-width: calc(100% - 2 * var(--chat-inset)); }
 
 .hydra-chat > .composer { margin-bottom: 12px; }
 
