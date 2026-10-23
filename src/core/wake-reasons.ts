@@ -109,7 +109,7 @@ function slotFree({ state }: { state: HydraState }): WakeReason[] {
 }
 
 // Hydra may merge once checks are green: the task's rule lets it, and its worker no longer declares working on it.
-const mergeApproved = ({
+export const mergeApproved = ({
   state,
   card,
 }: {
