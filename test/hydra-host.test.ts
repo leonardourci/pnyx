@@ -1776,7 +1776,8 @@ for (const resumeFails of [
         '--hydra',
         'lab',
       ])
-      await until({ check: () => first.calls[0]?.messages.length === 2 && finished() })
+      const handledWake = () => Object.keys(state().eventIds).find(turnId => /^wake:\d+:handled$/.test(turnId))
+      await until({ check: () => handledWake() !== undefined })
       first.control.hold = true
       first.control.leaveTurnUnfinishedOnClose = true
       await commands.task([
@@ -1787,7 +1788,7 @@ for (const resumeFails of [
         'lab',
       ])
       await until({ check: () => first.calls[0]?.messages.length === 3 })
-      const handledThrough = Object.keys(state().eventIds).find(turnId => /^wake:\d+:handled$/.test(turnId))!.split(':')[1]!
+      const handledThrough = handledWake()!.split(':')[1]!
       const cutWakeTurnId = Object.keys(state().eventIds).findLast(turnId => /^wake:\d+:hosted$/.test(turnId))!
       const wakeThroughSeq = cutWakeTurnId.split(':')[1]!
       await server.close()
