@@ -324,6 +324,27 @@ test(
 )
 
 test(
+  'an owner message reaches Hydra while the server is too busy to answer for over a second',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const sent = send({ text: 'Hello while busy' })
+    // The server shares this event loop, so holding it delays the server's health answer.
+    const busyUntil = Date.now() + 1500
+
+    while (Date.now() < busyUntil) {
+      // Busy, as spend counting over large transcripts holds a real server.
+    }
+
+    await sent
+    await until({ check: () => sdk.calls.length === 1 && finished() })
+  },
+)
+
+test(
   'Hydra exposes provider failures and Firstmate Hydras never start a hosted agent',
   async () => {
     const sdk = hydraSdk(); sdk.control.fail = true
