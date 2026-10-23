@@ -357,7 +357,7 @@ function updateRow({
       if (reportActor({ actor: event.actor ?? '' }) && typeof data.text === 'string' && data.text.trim()) {
         return {
           kind: 'report',
-          state: 'Reported to Hydra',
+          state: data.kind === 'progress' ? 'Progress' : 'Reported to Hydra',
           note: data.text,
         }
       }

@@ -125,6 +125,8 @@ export interface Host {
     seq: number
     card: string
   }): void
+  // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
+  unread({ seq }: { seq: number }): void
   // The changes waiting for Hydra's next check turn and the ones its running turn is reading.
   queue(): HydraQueue
   // Recovers hosted sessions and resumes a cut Hydra turn once.
@@ -408,6 +410,7 @@ export function createHost({
   stallDelay = STALL_MS,
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
+  pauseDelay = PAUSE_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -425,6 +428,7 @@ export function createHost({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -1434,7 +1438,7 @@ export function createHost({
     }
   }
 
-  // When a paused task's wait ends: its --until, or PAUSE_MS after a worker paused without one.
+  // When a paused task's wait ends: its --until, never for a hold, or pauseDelay after a worker's pause with neither.
   const waitEnd = ({ card }: { card: Card }): number | undefined => {
     const declaration = pausedDeclaration({ card })
 
@@ -1446,6 +1450,11 @@ export function createHost({
       return Date.parse(declaration.until)
     }
 
+    // A hold keeps its worker out of stall checks too, until the owner or Hydra resumes it.
+    if (declaration.hold) {
+      return Infinity
+    }
+
     // Hydra or the owner parking a task, or a task with no worker, is not a wait.
     const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
       || !card.sessionIds?.length
@@ -1454,7 +1463,7 @@ export function createHost({
       return undefined
     }
 
-    return Date.parse(declaration.at) + PAUSE_MS
+    return Date.parse(declaration.at) + pauseDelay
   }
 
   // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
@@ -1748,11 +1757,13 @@ export function createHost({
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
-    for (const item of [
+    const fired = [
       ...stalls,
       ...waits,
       ...unconfirmed,
-    ]) {
+    ]
+
+    for (const item of fired) {
       const count = stalled.get(item.id)?.count ?? 0
       stalled.set(
         item.id,
@@ -1767,10 +1778,21 @@ export function createHost({
       state,
       fallback: wakeStart ?? 0,
     })
+    // The next alarm counts from when Hydra got this one, so a slow delivery never shortens the gap it sees.
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
       text: `<pnyx-wake>${found.join(' ')} Run \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.</pnyx-wake>`,
+    }).then(() => {
+      const delivered = Date.now()
+
+      for (const item of fired) {
+        const entry = stalled.get(item.id)
+
+        if (entry) {
+          entry.at = delivered
+        }
+      }
     })
   }
 
@@ -2945,6 +2967,10 @@ export function createHost({
       armWake()
     },
 
+    unread: ({ seq }) => {
+      wakeStart ??= seq - 1
+    },
+
     queue: () => ({
       waiting: updates.filter(update => update.seq > readThrough),
       reading: updates.filter(update => update.seq <= readThrough),
@@ -3232,8 +3258,9 @@ function findHydraTurnToResume({
   const unansweredMessageSeqs = events.filter(event => {
     const isNewMessage = event.seq > lastFinishedTurnSeq && event.type === 'hydra.message'
     const sentToHydra = event.actor !== HYDRA_ACTOR
+    const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
 
-    return isNewMessage && sentToHydra
+    return isNewMessage && sentToHydra && !progress
   }).map(event => event.seq)
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
   const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)

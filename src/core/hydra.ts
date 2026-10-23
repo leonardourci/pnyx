@@ -336,10 +336,14 @@ export function validateColumns({ columns }: { columns: HydraColumn[] }): void {
   }
 }
 
-// A declared state as shown to people and Hydra: a paused wait names its end.
-export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until'> }): string {
+// A declared state as shown to people and Hydra: a paused wait names its end, a hold says it has none.
+export function declaredState({ declaration }: { declaration: Pick<TaskDeclaration, 'state' | 'until' | 'hold'> }): string {
   if (declaration.until) {
     return `${declaration.state} until ${declaration.until}`
+  }
+
+  if (declaration.hold) {
+    return `${declaration.state} on hold`
   }
 
   return declaration.state
@@ -356,6 +360,7 @@ export function declareTask({
   until,
   waitingFor,
   restores,
+  hold,
 }: {
   state: HydraState
   ref: string
@@ -367,6 +372,7 @@ export function declareTask({
   until?: string
   waitingFor?: string[]
   restores?: string
+  hold?: boolean
 }): Decision {
   const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
 
@@ -389,6 +395,20 @@ export function declareTask({
   if (until !== undefined && normalized !== 'paused') {
     throw new HydraError({
       message: '--until goes only with paused',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (hold && normalized !== 'paused') {
+    throw new HydraError({
+      message: '--hold goes only with paused',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (hold && until !== undefined) {
+    throw new HydraError({
+      message: 'a hold has no end; use --hold or --until, not both',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -422,6 +442,10 @@ export function declareTask({
     data.until = until
   }
 
+  if (hold) {
+    data.hold = true
+  }
+
   return hydraEvent({
     state,
     meta,
@@ -442,7 +466,7 @@ const AGENT_ACTOR = /^(pnyx$|hook:|session:|worker:)/
 export const reportActor = ({ actor }: { actor: string }) => actor !== 'pnyx' && AGENT_ACTOR.test(actor)
 
 // The exact text Hydra receives, so its transcript copy of a report is known by identity, never by markup.
-export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 'actor' | 'task' | 'text' | 'details' | 'context'> }) {
+export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 'actor' | 'task' | 'kind' | 'text' | 'details' | 'context'> }) {
   const said = [
     message.text,
     message.details,
@@ -463,8 +487,9 @@ export function hydraDelivery({ message }: { message: Pick<HydraMessage, 'id' | 
     '&quot;',
   )}"`
   const task = message.task ? ` task=${quoted({ value: message.task })}` : ''
+  const kind = message.kind ? ` kind=${quoted({ value: message.kind })}` : ''
 
-  return `<pnyx-report from=${quoted({ value: message.actor })}${task} message=${quoted({ value: message.id })}>\n${body}\n</pnyx-report>`
+  return `<pnyx-report from=${quoted({ value: message.actor })}${task}${kind} message=${quoted({ value: message.id })}>\n${body}\n</pnyx-report>`
 }
 
 // Hydra is a session the Pnyx server runs, not a Firstmate home or an outside agent.
@@ -549,9 +574,10 @@ export function wakesHydra({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  // A worker's report waits in the same queue as its status changes, whatever card it names, and starts a Hydra Pnyx has not run yet.
+  // A worker's report waits in the same queue as its status changes, whatever card it names, and starts a Hydra Pnyx has not run yet;
+  // a progress report only joins the next wake.
   if (event.type === 'hydra.message') {
-    return reportActor({ actor: event.actor }) && pnyxRunsHydra({ state })
+    return reportActor({ actor: event.actor }) && event.data.kind !== 'progress' && pnyxRunsHydra({ state })
   }
 
   const card = state.cards[event.cardId]

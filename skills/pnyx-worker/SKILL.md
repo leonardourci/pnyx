@@ -19,7 +19,7 @@ Successful task/agent operations record their own lifecycle facts. Declare meani
 pnyx-axi task status <task> working --note "<what you are doing>" --hydra <hydra>
 pnyx-axi task status <task> needs_you --note "<the question>" --hydra <hydra>
 pnyx-axi task status <task> blocked --note "<what stops you>" --hydra <hydra>
-pnyx-axi task status <task> paused --note "<why, and what resumes it>" [--until <time>] --hydra <hydra>
+pnyx-axi task status <task> paused --note "<why, and what resumes it>" [--until <time> | --hold] --hydra <hydra>
 pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydra>
 ```
 
@@ -32,12 +32,13 @@ pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydr
 - An investigation answers with a report that stands alone. Store it with `pnyx-axi task report <task> --file <path> --hydra <hydra>`, then declare `done`; `done` is refused until it is stored. A report does not authorize building. If the owner turns it into the build, a message tells you so: start a fresh branch from the up-to-date default branch and carry over only the changes the build needs.
 - Declare `blocked` and stop when the same obstacle defeats two attempts; name the obstacle and the evidence from both attempts.
 - Declare a deliberate wait with `task status <task> paused --note "<what ends the wait, and when to check again>"`; name the condition that lets work resume. When it clears, a delivered resume reply restores working, or declare `working` with a resumption note.
+- When the owner or Hydra stops you, declare `paused --hold --note "<what resumes it>"`: a hold waits for their word and never wakes Hydra on a timer. A pause with neither `--until` nor `--hold` wakes Hydra after 4 hours.
 - Mention every pull request by its full URL in reports and status notes.
 - A completion note accounts for each part of the saved owner's ask, with results and proof or the remaining limitation.
 - Your declarations place your card: `working` moves it to In progress, `needs_you` or `blocked` to Needs you, and `done` to Done; `paused` parks it with its note and wait deadline. Answering the actual owner question or permission restores the previous phase unless another owner gate remains.
 - Silence changes nothing: idling, finishing a turn or exiting never moves the task. Declare a phase change once, not every step. Ending your turn while still declared `working` reads as a stall after a few minutes, so declare what you wait on before you stop.
 
-Send a report that needs no answer with `pnyx-axi hydra send --task <task> --text "<what changed>" --hydra <hydra>`; Hydra reads it as yours, never as the owner's words, and it never answers a question.
+Send routine progress with `pnyx-axi hydra send --task <task> --kind progress --text "<what changed>" --hydra <hydra>`: it updates your card and reaches Hydra with its next wake, without waking it. A report Hydra must act on now, such as a page link to hand the owner, leaves out `--kind progress`. Questions, blockers and results never go this way: they take `task ask` and `task status`. Hydra reads every report as yours, never as the owner's words, and a report never answers a question.
 
 Replies reach you as ordinary messages in your session, even in the middle of a turn. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 
@@ -48,7 +49,7 @@ When Lavish (`lavish-axi`) is installed and the owner should review something on
 - Build it with Lavish in your copy and keep it out of your commits. Open it with `lavish-axi <page>`, which prints the page's link.
 - Arm its listener so each round of the owner's comments comes straight to you, never to Hydra. After opening the page, and again after every round, run in the background:
   `lavish-axi poll <page> [--agent-reply "<what you changed>"] | pnyx-axi reply <task> --file - --actor hook:lavish --hydra <hydra>`
-- Apply each round, reply on the page itself (the `--agent-reply` above), then send Hydra one short line: `pnyx-axi hydra send --task <task> --text "<round N: what changed>" --hydra <hydra>`. The first line carries the page's link so Hydra can hand it to the owner.
+- Apply each round, reply on the page itself (the `--agent-reply` above), then send Hydra one short line: `pnyx-axi hydra send --task <task> --text "<round N: what changed>" --hydra <hydra>`. The first line carries the page's link so Hydra can hand it to the owner; later rounds add `--kind progress`.
 - A round that needs a decision only the owner can make goes through `task ask`, not the page line.
 
 Pnyx usually starts you in your task's own copy of the project, on its own branch. Commit your work there and link its pull request: once the task is done, Pnyx removes the copy only if nothing is left uncommitted and the work has landed.

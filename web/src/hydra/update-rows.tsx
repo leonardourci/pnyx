@@ -162,7 +162,7 @@ export function UpdateEntry({ update }: { update: TaskUpdate }) {
             plain
             title={(
               <>
-                <span>Reported to Hydra</span>
+                <span>{update.state}</span>
                 <span className="update-fold-chevron" aria-hidden="true">
                   <Icon name="chevron_right" size={14} />
                 </span>
