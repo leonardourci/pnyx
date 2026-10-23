@@ -33,6 +33,9 @@ const TOOLS: Record<string, string> = {
   'mcpServer/elicitation/request': 'MCP input',
 }
 const ASKS = Object.keys(TOOLS)
+const REQUEST_TIMEOUT_MS = 30_000
+// Opening a thread starts every configured MCP server and plugin first, which can pass 30 seconds.
+const OPEN_TIMEOUT_MS = 300_000
 // Items that run while the turn waits on them, such as a shell command or a subagent.
 const TOOL_ITEMS = [
   'commandExecution',
@@ -364,9 +367,11 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     async request({
       method,
       params,
+      timeout = REQUEST_TIMEOUT_MS,
     }: {
       method: string
       params: ObjectValue
+      timeout?: number
     }): Promise<ObjectValue> {
       const id = ++next
       let timer: ReturnType<typeof setTimeout> | undefined
@@ -381,7 +386,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               pending.delete(id)
               reject(new Error(`Codex ${method} timed out`))
             },
-            30000,
+            timeout,
           ).unref()
           pending.set(
             id,
@@ -745,6 +750,7 @@ export function codexProvider({
         const policy = () => (options.mode === BYPASS ? NEVER : options.mode ?? '')
         const result = await rpc.request({
           method: agent ? 'thread/resume' : 'thread/start',
+          timeout: OPEN_TIMEOUT_MS,
           params: {
             ...(agent ? { threadId: agent.sessionId } : {}),
             cwd,
