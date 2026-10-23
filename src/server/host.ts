@@ -2194,13 +2194,14 @@ export function createHost({
           }
 
           const detail = `Hydra could not start: ${(error as Error).message}. Check the harness login and settings, then send a message to retry.`
+          // Hydra stays idle rather than interrupted, so the next worker report tries the start again instead of waiting for the owner.
           write({
             fn: ({ writer }) => {
               if (previous?.agent?.host === 'pnyx') {
                 record({
                   writer,
                   agent: previous.agent,
-                  input: { activity: 'interrupted' },
+                  input: { activity: 'finished' },
                   actor: 'pnyx',
                 })
               }
@@ -2210,7 +2211,7 @@ export function createHost({
                 decision: decidePush({
                   state: writer.state,
                   key: HYDRA_CARD,
-                  input: { activity: 'interrupted' },
+                  input: { activity: 'finished' },
                   meta: {
                     at: at(),
                     actor: 'pnyx',
