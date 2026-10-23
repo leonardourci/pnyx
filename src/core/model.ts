@@ -602,6 +602,7 @@ export interface HydraConfig {
   // The command makes its own folder, so starts through it skip the task copy.
   commandOwnsFolder?: boolean
   doneAfterHours?: number
+  reviewMinutes?: number
 }
 export interface HydraMessage {
   id: string
@@ -638,6 +639,13 @@ export type HydraChange = EventBase & (
       order?: string[]
       column: Column
       note?: string
+    }
+  }
+  | {
+    type: 'hydra.review'
+    data: {
+      block: string
+      reminders: string[]
     }
   }
   | {
@@ -1041,6 +1049,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.mirrored',
   'hydra.message',
   'hydra.status',
+  'hydra.review',
   'hydra.dispatch-proposed',
   'hydra.dispatch-resolved',
   'hydra.dispatch-progress',
@@ -1079,6 +1088,12 @@ export interface HydraState {
   // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean
   configRevision?: number
+  hydraReview?: {
+    at: string
+    seq: number
+    block: string
+    reminders: Record<string, string>
+  }
   hydraMessages?: HydraMessage[]
   // seq is the event that set it, so a recap can list what came after Hydra went down.
   hydraStatus?: HydraStatus & { seq: number }

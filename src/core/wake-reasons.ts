@@ -1,4 +1,5 @@
 import { clip } from './digest.ts'
+import { openAsks } from './asks.ts'
 import { ownerGates } from './gates.ts'
 import { agentActor, HYDRA_CARD, hostedHydra, hydraConfig, pnyxRunsHydra, reportActor, roleColumn, unwatchedPullRequests } from './hydra.ts'
 import { cardLanding, failedChecks, HYDRA_ACTOR, pendingChecks, ranChecks, type Card, type HydraEvent, type HydraState, type Link, type PushedEvent, type TaskStatus } from './model.ts'
@@ -8,7 +9,7 @@ import { taskMention } from '../mentions/mentions.ts'
 // The fixed words a reason line names its fact with; the pnyx-hydra skill and the README list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
-  | 'queued' | 'kind' | 'permission' | 'slot free'
+  | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
 
 export interface WakeReason {
   kind: WakeKind
@@ -84,7 +85,7 @@ export function readyBacklog({ state }: { state: HydraState }): Card[] {
     const started = card.agent || card.sessionIds?.length || card.queue
 
     return card.id !== HYDRA_CARD && !started && !onHold({ card }) && card.status?.state !== 'done'
-      && !ownerGates({ card }).length
+      && !ownerGates({ card }).length && !openAsks({ card }).length
   })
 }
 
@@ -252,6 +253,14 @@ function eventReasons({
   state: HydraState
   event: HydraEvent
 }): WakeReason[] {
+  if (event.type === 'hydra.review') {
+    return pnyxRunsHydra({ state }) ? [{ kind: 'timed review' }] : []
+  }
+
+  if (event.type === 'task.session' && event.data.before && !event.data.after && hostedHydra({ state })) {
+    return slotFree({ state })
+  }
+
   // A worker's report starts a Hydra Pnyx has not run yet, whatever card it names; a progress report only joins the next wake.
   if (event.type === 'hydra.message') {
     const {

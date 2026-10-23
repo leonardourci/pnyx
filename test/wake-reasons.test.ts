@@ -796,8 +796,8 @@ test(
           }),
         ],
       }),
-      [],
-      'a detach is often a replacement, so it frees nothing',
+      [free],
+      'a detached worker also makes Hydra look for ready work',
     )
   },
 )

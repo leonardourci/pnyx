@@ -2072,6 +2072,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       'command-folder': { type: 'string' },
       base: { type: 'string' },
       'done-after-hours': { type: 'string' },
+      'review-minutes': { type: 'string' },
     },
     positionals: 2,
   })
@@ -2235,6 +2236,20 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         }
 
         data.doneAfterHours = hours
+      }
+
+      if (values['review-minutes'] !== undefined) {
+        const minutes = Number(values['review-minutes'])
+
+        if (!String(values['review-minutes']).trim() || !Number.isFinite(minutes) || minutes < 0
+          || minutes * 60_000 > 2_147_483_647) {
+          throw new HydraError({
+            message: '--review-minutes must be a non-negative number within the timer range (0 turns reviews off)',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        data.reviewMinutes = minutes
       }
 
       delete data.command
@@ -3704,6 +3719,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
+    case 'hydra.review': return 'Timed review'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
@@ -4236,11 +4252,12 @@ const COMMAND_HELP: Record<string, string> = {
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>]
+pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>] [--review-minutes <n>]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+--review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
