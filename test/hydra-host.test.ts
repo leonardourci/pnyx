@@ -23,6 +23,7 @@ import { readThread } from '../src/thread/read.ts'
 import { thinkingSdk } from './thinking-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
+import type { SpawnCodex } from '../src/server/codex.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
 
 let server: RunningServer | undefined
@@ -438,6 +439,158 @@ test(
     const inputs = () => fixed.messages().filter(m => m.method === 'turn/start')
       .map(m => (m.params!.input as { text: string }[])[0]!.text)
     await until({ check: () => inputs().some(text => text.includes('A worker question')) && finished() })
+  },
+)
+
+// A Codex that refuses to resume until `up` is set, as a harness that cannot open Hydra's thread for a while.
+const outage = async () => {
+  codexRule()
+  const first = fakeCodex({ root: home })
+  server = await startServer({
+    hydraId: 'lab',
+    spawnCodex: first.spawnCodex,
+  })
+  await send({ text: 'Hello Codex' })
+  await until({ check: finished })
+  await server.close()
+  const refusing = fakeCodex({
+    root: home,
+    refuse: 'thread/resume',
+  })
+  const fixed = fakeCodex({ root: home })
+  const codex = { up: false }
+
+  return {
+    codex,
+    spawnCodex: (({
+      cwd,
+      env,
+    }) => (codex.up ? fixed : refusing).spawnCodex({
+      cwd,
+      env,
+    })) satisfies SpawnCodex,
+    resumes: () => fixed.messages().filter(m => m.method === 'thread/resume'),
+    inputs: () => fixed.messages().filter(m => m.method === 'turn/start')
+      .map(m => (m.params!.input as { text: string }[])[0]!.text),
+  }
+}
+
+const pnyxLines = () => (state().hydraMessages ?? []).filter(m => m.actor === 'pnyx').map(m => m.text)
+
+test(
+  'a failed Hydra start marks it down in Pnyx\'s voice, retries quietly on a backoff and recaps the outage once back',
+  async () => {
+    commands.task([
+      'create',
+      '--key',
+      'quick',
+      '--title',
+      'Task quick',
+      '--hydra',
+      'lab',
+    ])
+    const quick = state().keys.quick!
+    const {
+      codex,
+      spawnCodex,
+      resumes,
+      inputs,
+    } = await outage()
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex,
+      wakeDelay: 50,
+      retryDelays: [
+        100,
+        200,
+      ],
+    })
+    await send({ text: 'Lost to the outage' })
+    await until({ check: () => state().hydraStatus?.state === 'down' })
+    assert.equal(
+      state().hydraStatus?.detail,
+      'fixture refused thread',
+    )
+    assert.equal(
+      pnyxLines().length,
+      1,
+    )
+    assert.match(
+      pnyxLines()[0]!,
+      /^Hydra could not start: .*Pnyx keeps trying/,
+    )
+    await commands.hydra([
+      'send',
+      '--hydra',
+      'lab',
+      '--task',
+      quick,
+      '--text',
+      'A worker result',
+      '--actor',
+      `worker:${quick}`,
+    ])
+    // Timer retries and the report's wake fail without another line.
+    await until({ check: () => resumes().length >= 4 })
+    assert.equal(
+      pnyxLines().length,
+      1,
+    )
+    codex.up = true
+    await until({ check: () => state().hydraStatus?.state === 'up' && inputs().some(text => text.includes('back after outage')) && finished() })
+    assert.match(
+      pnyxLines()[1]!,
+      /^Hydra is back after \d+ min\.$/,
+    )
+    const recap = inputs().find(text => text.includes('back after outage'))!
+    assert.match(
+      recap,
+      /the owner at \S+: Lost to the outage/,
+    )
+    assert.match(
+      recap,
+      /a worker on \[@Task quick\]\(pnyx-task:[^)]+\) at \S+: A worker result/,
+    )
+    // The check starts before the message that met the failure.
+    const lost = state().hydraMessages!.find(m => m.text === 'Lost to the outage')!
+    const after = Number(/hydra check --after (\d+) /.exec(recap.slice(recap.indexOf('<pnyx-wake>')))?.[1])
+    assert.ok(after < state().eventIds[lost.id]!)
+    await sleep({ ms: 400 })
+    assert.equal(
+      inputs().filter(text => text.includes('back after outage')).length,
+      1,
+    )
+  },
+)
+
+test(
+  'an owner message while Hydra is down tries the start again and reaches Hydra, then the recap names what it missed',
+  async () => {
+    const {
+      codex,
+      spawnCodex,
+      inputs,
+    } = await outage()
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex,
+      retryDelays: [60_000],
+    })
+    await send({ text: 'Lost to the outage' })
+    await until({ check: () => state().hydraStatus?.state === 'down' })
+    codex.up = true
+    await send({ text: 'is it working now?' })
+    await until({ check: () => inputs().some(text => text.includes('back after outage')) && finished() })
+    assert.ok(inputs()[0]!.includes('is it working now?'))
+    const recap = inputs().find(text => text.includes('back after outage'))!
+    assert.match(
+      recap,
+      /Lost to the outage/,
+    )
+    assert.doesNotMatch(
+      recap,
+      /is it working now/,
+    )
   },
 )
 

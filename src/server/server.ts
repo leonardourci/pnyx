@@ -275,12 +275,13 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most and an open-ended worker pause lasts; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts and a failed Hydra start waits before each retry; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  retryDelays?: number[]
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -602,6 +603,7 @@ async function mountHydra({
   busyDelay,
   stallRepeatMax,
   pauseDelay,
+  retryDelays,
   open,
   hydrasChanged,
 }: {
@@ -617,6 +619,7 @@ async function mountHydra({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  retryDelays?: number[]
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -635,6 +638,7 @@ async function mountHydra({
       busyDelay,
       stallRepeatMax,
       pauseDelay,
+      retryDelays,
       open,
       release,
       hydrasChanged,
@@ -657,6 +661,7 @@ async function mountOwnedHydra({
   busyDelay,
   stallRepeatMax,
   pauseDelay,
+  retryDelays,
   open,
   release,
   hydrasChanged,
@@ -672,6 +677,7 @@ async function mountOwnedHydra({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  retryDelays?: number[]
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -1603,6 +1609,7 @@ async function mountOwnedHydra({
     busyDelay,
     stallRepeatMax,
     pauseDelay,
+    retryDelays,
     changed: () => kick(),
     queued: () => {
       for (const ws of wss.clients) {
