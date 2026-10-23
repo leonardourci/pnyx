@@ -1,3 +1,4 @@
+import { requireUnheld } from '../core/holds.ts'
 import { findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
 import { HydraError, type HydraState } from '../core/model.ts'
@@ -42,6 +43,8 @@ export function decideQueue({
   let order: string[] | undefined
 
   if (behind !== undefined) {
+    requireUnheld({ card })
+
     if (card.sessionIds?.length || card.status?.state === 'done' || card.outcome || card.copy?.state === 'active') {
       throw new HydraError({
         message: 'queue only an unstarted task without an active copy',

@@ -1766,3 +1766,73 @@ test(
     )
   },
 )
+
+test(
+  'a discussion hold stops an already queued task from taking the worker after landing',
+  async t => {
+    const f = await lab({ t })
+    f.queue({ key: 'two' })
+    await f.task({
+      args: [
+        'hold',
+        'two',
+        '--reason',
+        'Discuss before building',
+      ],
+    })
+    f.commit()
+    f.land()
+    await f.task({
+      args: [
+        'status',
+        'one',
+        'done',
+      ],
+    })
+    const branch = git({
+      cwd: f.folder,
+      args: [
+        'branch',
+        '--show-current',
+      ],
+    })
+    await advanceQueues({
+      hydraId: 'lab',
+      presence: async () => [
+        {
+          task: f.card({ key: 'one' }).id,
+          session: 'claude-code:worker',
+          harness: 'claude-code',
+          folder: f.folder,
+          via: 'pnyx',
+          started: 'unknown',
+          activity: 'finished',
+          lastSeen: 'unknown',
+          quiet: 'unknown',
+          state: 'present',
+          detail: 'fixture',
+        },
+      ],
+    })
+    assert.ok(f.card({ key: 'two' }).hold)
+    assert.ok(f.card({ key: 'two' }).queue)
+    assert.deepEqual(
+      f.card({ key: 'two' }).sessionIds,
+      [],
+    )
+    assert.equal(
+      f.state().sessions!['claude-code:worker']!.taskId,
+      f.card({ key: 'one' }).id,
+    )
+    assert.equal(
+      git({
+        cwd: f.folder,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      }),
+      branch,
+    )
+  },
+)
