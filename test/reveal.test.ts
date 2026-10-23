@@ -5,8 +5,8 @@ import { Marked, type Token, type Tokens } from 'marked'
 import {
   CATCHUP,
   FINISH,
-  MIN,
-  WINDOW,
+  MIN_SPEED,
+  arrivalRate,
   mountShown,
   revealSpeed,
   revealStep,
@@ -149,7 +149,7 @@ test(
         backlog: 1,
         ended: false,
       }),
-      MIN,
+      MIN_SPEED,
     )
   },
 )
@@ -209,7 +209,15 @@ test(
     assert.equal(
       at({ text: 'Done.\n\n```ts' }),
       7,
-      'a fence line shows whole',
+      'an unfinished fence line waits',
+    )
+    assert.equal(
+      at({
+        text: 'Done.\n\n```ts\nx',
+        end: 8,
+      }),
+      12,
+      'a finished fence line shows whole',
     )
     assert.equal(
       at({ text: 'Done.\n\n| a | b |\n| --' }),
@@ -228,6 +236,52 @@ test(
       }),
       13,
       'never stop inside a closing run',
+    )
+    assert.equal(
+      at({ text: 'See [the docs](https://exa' }),
+      4,
+      'a link waits for its )',
+    )
+    assert.equal(
+      at({ text: 'Some **bold\nmo' }),
+      5,
+      'an opener on an earlier line of the paragraph waits',
+    )
+    assert.equal(
+      at({
+        text: 'Done.\n\n- item',
+        end: 8,
+      }),
+      9,
+      'a list marker shows with its space',
+    )
+    assert.equal(
+      at({ text: 'Done.\n\n| a | b |\n| - | - |\n| 1 | 2' }),
+      27,
+      'a half-arrived body row waits',
+    )
+
+    for (const text of [
+      'Edit snake_case now',
+      'Open ~/.pnyx now',
+      'a \\*b now',
+    ]) {
+      assert.equal(
+        at({ text }),
+        text.length,
+        `${text} opens nothing`,
+      )
+    }
+
+    assert.equal(
+      safeEnd({
+        text: '```py\nf(**kw',
+        end: 12,
+        final: false,
+        fenced: true,
+      }),
+      12,
+      'nothing is held inside a fence',
     )
   },
 )
@@ -254,7 +308,13 @@ test(
           ...state.done,
           live,
         ]) {
-          assert.equal(text.slice(block.offset, block.offset + block.raw.length), block.raw)
+          assert.equal(
+            text.slice(
+              block.offset,
+              block.offset + block.raw.length,
+            ),
+            block.raw,
+          )
         }
 
         assert.deepEqual(
@@ -354,20 +414,12 @@ test(
             push.len,
           )
           final = !!push.final
-          arrivals.push({
-            t: now,
-            len: push.len,
-          })
-          const old = arrivals.findLastIndex(arrival => arrival.t <= now - WINDOW)
-          arrivals.splice(
-            0,
-            Math.max(
-              0,
-              old,
-            ),
-          )
           speed = revealSpeed({
-            rate: (push.len - arrivals[0]!.len) / WINDOW,
+            rate: arrivalRate({
+              arrivals,
+              now,
+              length: push.len,
+            }),
             backlog: push.len - cursor,
             ended: final,
           })
@@ -505,32 +557,108 @@ test(
   'a message mounted mid-reply shows what arrived, minus half-written Markdown',
   () => {
     const text = 'word '.repeat(100) + 'then `partial'
+    const mount = ({
+      text,
+      fromStart = true,
+    }: {
+      text: string
+      fromStart?: boolean
+    }) => mountShown({
+      text,
+      fromStart,
+      lex,
+    })
 
     assert.equal(
-      mountShown({
-        text,
-        streaming: true,
-        lex,
-      }),
+      mount({ text }),
       text.indexOf('`'),
     )
     assert.equal(
-      mountShown({
-        text: 'Short reply',
-        streaming: true,
-        lex,
-      }),
+      mount({ text: 'Short reply' }),
       0,
       'a short streaming reply types from the start',
     )
     assert.equal(
-      mountShown({
-        text,
-        streaming: false,
-        lex,
+      mount({
+        text: 'Short **reply',
+        fromStart: false,
       }),
-      text.length,
-      'a settled message never animates',
+      6,
+      'with reduced motion it shows what arrived',
+    )
+
+    const fenced = 'word '.repeat(100) + '\n\n```py\nf(**kw'
+    assert.equal(
+      mount({ text: fenced }),
+      fenced.length,
+      'nothing is held inside an open fence',
+    )
+  },
+)
+
+test(
+  'typing holds a growing word until it ends, except a long one or the last word of a reply',
+  () => {
+    const typed = ({
+      text,
+      cursor,
+      final = false,
+    }: {
+      text: string
+      cursor: number
+      final?: boolean
+    }) => revealStep({
+      text,
+      cursor,
+      shown: 0,
+      speed: 0,
+      elapsed: 0,
+      final,
+      fenced: false,
+    }).shown
+
+    assert.equal(
+      typed({
+        text: 'one two three',
+        cursor: 5,
+      }),
+      7,
+      'the word under the cursor goes in whole',
+    )
+    assert.equal(
+      typed({
+        text: 'one two',
+        cursor: 5,
+      }),
+      4,
+      'a word touching the end may still grow',
+    )
+    assert.equal(
+      typed({
+        text: 'one two',
+        cursor: 5,
+        final: true,
+      }),
+      7,
+    )
+
+    const url = 'see https://example.com/a/very/long/path'
+    assert.equal(
+      typed({
+        text: url,
+        cursor: 20,
+      }),
+      20,
+      'a long word types as it comes',
+    )
+    const emoji = 'x'.repeat(30) + '😀' + 'x'.repeat(5) + ' more'
+    assert.equal(
+      typed({
+        text: emoji,
+        cursor: 31,
+      }),
+      32,
+      'never split a surrogate pair',
     )
   },
 )

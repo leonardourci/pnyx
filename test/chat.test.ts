@@ -1050,3 +1050,122 @@ test(
     )
   },
 )
+
+test(
+  'only the settled entry that continues a streamed reply takes its key',
+  () => {
+    const message = ({
+      id,
+      text,
+      role = 'assistant',
+      streaming,
+    }: {
+      id: string
+      text: string
+      role?: string
+      streaming?: boolean
+    }): ThreadEntry => ({
+      id,
+      kind: 'message',
+      role,
+      text,
+      streaming,
+    })
+    const keys = ({
+      previous,
+      entries,
+    }: {
+      previous: ThreadEntry[]
+      entries: ThreadEntry[]
+    }) => keepStreamedKeys({
+      entries,
+      previous,
+      keys: new Map(),
+    }).map(entry => entry.renderKey)
+
+    assert.deepEqual(
+      keys({
+        previous: [
+          message({
+            id: 'live:msg_2',
+            text: 'Here is the plan',
+            streaming: true,
+          }),
+        ],
+        entries: [
+          message({
+            id: '7:m0',
+            text: 'Let me check the repo.',
+          }),
+          message({
+            id: '7:m1',
+            text: 'Here is the plan in full.',
+            role: 'user',
+          }),
+          message({
+            id: '7:m2',
+            text: 'Here is the plan in full.',
+          }),
+        ],
+      }),
+      [
+        undefined,
+        undefined,
+        'live:msg_2',
+      ],
+    )
+    assert.deepEqual(
+      keys({
+        previous: [
+          message({
+            id: 'live:a',
+            text: 'First',
+            streaming: true,
+          }),
+          message({
+            id: 'live:b',
+            text: '',
+            streaming: true,
+          }),
+        ],
+        entries: [
+          message({
+            id: '8:m0',
+            text: 'First part.',
+          }),
+          message({
+            id: '8:m1',
+            text: 'Second part.',
+          }),
+        ],
+      }),
+      [
+        'live:a',
+        'live:b',
+      ],
+      'each settled entry takes at most one key',
+    )
+    const live = message({
+      id: 'live:c',
+      text: 'Still',
+      streaming: true,
+    })
+    assert.deepEqual(
+      keys({
+        previous: [live],
+        entries: [
+          live,
+          message({
+            id: '9:m0',
+            text: 'Still going.',
+          }),
+        ],
+      }),
+      [
+        undefined,
+        undefined,
+      ],
+      'a reply still streaming hands out no key',
+    )
+  },
+)
