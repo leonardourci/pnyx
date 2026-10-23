@@ -2265,6 +2265,105 @@ test(
 )
 
 test(
+  'health checks and the event loop stay responsive while a large transcript is counted',
+  async () => {
+    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+    const card = fixture.state.keys.layout!
+    const at = new Date().toISOString()
+    const usage = ({
+      from,
+      count,
+    }: {
+      from: number
+      count: number
+    }) => Array.from(
+      { length: count },
+      (
+        _,
+        i,
+      ) => `${JSON.stringify({
+        type: 'assistant',
+        timestamp: at,
+        message: {
+          id: `usage-${from + i}`,
+          content: [
+            {
+              type: 'text',
+              text: 'Counting a long transcript.',
+            },
+          ],
+          usage: {
+            input_tokens: 2,
+            output_tokens: 1,
+          },
+        },
+      })}\n`,
+    ).join('')
+    writeFileSync(
+      fixture.transcript,
+      usage({
+        from: 0,
+        count: 1,
+      }),
+    )
+    server = await startServer({ hydraId: 'default' })
+    const t = await tab()
+    await t.next()
+    assert.equal(
+      (await t.spend())[card]?.total,
+      3,
+    )
+    const records = 200_000
+    const grown = usage({
+      from: 1,
+      count: records,
+    })
+    appendFileSync(
+      fixture.transcript,
+      grown,
+    )
+    let gap = 0
+    let tick = performance.now()
+    const ticker = setInterval(
+      () => {
+        const now = performance.now()
+        gap = Math.max(
+          gap,
+          now - tick,
+        )
+        tick = now
+      },
+      5,
+    )
+    const started = performance.now()
+    let counted = false
+    const spend = t.spend().then(spend => {
+      counted = true
+
+      return spend
+    })
+    const checks: boolean[] = []
+
+    while (!counted) {
+      checks.push(!!await readServer({ hydraId: 'default' }))
+    }
+
+    const countMs = performance.now() - started
+    clearInterval(ticker)
+    assert.equal(
+      (await spend)[card]?.total,
+      (records + 1) * 3,
+    )
+    assert.ok(checks.length > 0 && checks.every(Boolean))
+    assert.ok(
+      gap < countMs / 2,
+      `the event loop stalled ${Math.round(gap)} ms while counting took ${Math.round(countMs)} ms`,
+    )
+    t.ws.close()
+  },
+)
+
+test(
   "each card gets its conversation's last message, pushed again as the transcript grows",
   async () => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })

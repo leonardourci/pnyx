@@ -365,18 +365,3 @@ export function taskSpend({
     }),
   })[task]!
 }
-
-export function hydraSpend({
-  state,
-  events,
-}: {
-  state: HydraState
-  events: HydraEvent[]
-}): Record<string, TaskSpend> {
-  return spendFor({
-    inputs: spendInputs({
-      state,
-      events,
-    }),
-  })
-}
