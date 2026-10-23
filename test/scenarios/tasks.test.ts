@@ -6,7 +6,7 @@ import { openPage, scenarioGroup, until } from './harness.ts'
 const pnyx = scenarioGroup()
 
 test(
-  'Hydra creates and starts a task only with a reason, a repeated start runs one worker, and the worker’s declarations place its card and wake Hydra when they need it',
+  'Hydra creates and starts a task only with a reason, a start repeated with its event id runs one worker, the worker’s declarations place its card, needs_you and blocked wake Hydra, and the card reads the same after a restart',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
@@ -94,12 +94,12 @@ test(
       state,
       flags,
       role,
-      wakes,
+      wakes = false,
     }: {
       state: string
       flags: string[]
       role: string
-      wakes: boolean
+      wakes?: boolean
     }) => {
       const heard = hydraAgent.received.length
       await worker.run({
@@ -147,7 +147,6 @@ test(
       state: 'paused',
       flags: ['--hold'],
       role: 'parked',
-      wakes: false,
     })
     await declare({
       state: 'working',
@@ -156,17 +155,27 @@ test(
         'Reproduced it',
       ],
       role: 'in_progress',
-      wakes: false,
     })
     await pnyx.restart()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const after = await page.shows({
+      what: 'the restarted server to show the card',
+      check: ({ state }) => state.cards[card.id],
+    })
+    page.close()
     assert.deepEqual(
       [
-        s.task({ key: 'crash' }).status?.state,
-        s.task({ key: 'crash' }).status?.note,
+        after.status?.state,
+        after.status?.note,
+        after.column,
       ],
       [
         'working',
         'Reproduced it',
+        s.column({ role: 'in_progress' }),
       ],
     )
   },
@@ -206,7 +215,7 @@ test(
 
     const ask = async ({ question }: { question: string }) => {
       const heard = hydraAgent.received.length
-      const id = /^ask: (\S+)$/m.exec(await worker.run({
+      const output = await worker.run({
         args: [
           'task',
           'ask',
@@ -218,7 +227,8 @@ test(
           '--choice',
           'Offset',
         ],
-      }))![1]!
+      })
+      const id = /^ask: (\S+)$/m.exec(output)![1]!
       await until({
         what: 'Hydra to hear the question',
         check: () => hydraAgent.received.slice(heard).some(text => text.includes(question)),
@@ -256,14 +266,20 @@ test(
     )
 
     const size = await ask({ question: 'Default page size?' })
-    const say = async ({ text }: { text: string }) => /^message: (\S+)$/m.exec(await s.owner({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        text,
-      ],
-    }))![1]!
+
+    const say = async ({ text }: { text: string }) => {
+      const output = await s.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          text,
+        ],
+      })
+
+      return /^message: (\S+)$/m.exec(output)![1]!
+    }
+
     const early = await say({ text: 'Keep the defaults.' })
     await hydra.run({
       args: [
@@ -294,9 +310,9 @@ test(
       await hydra.refused({ args: relay({ message: early }) }),
       'VALIDATION_ERROR',
     )
-    const owner = await say({ text: 'Use 50 per page.' })
+    const answerMessage = await say({ text: 'Use 50 per page.' })
     await hydra.run({
-      args: relay({ message: owner }),
+      args: relay({ message: answerMessage }),
     })
     await until({
       what: 'the worker to get the owner’s answer',
@@ -336,7 +352,7 @@ test(
           true,
           true,
         ],
-        owner,
+        answerMessage,
         'Use 50 per page.',
         true,
       ],

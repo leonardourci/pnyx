@@ -70,7 +70,7 @@ test(
     )
     await until({
       what: 'the request to wake Hydra',
-      check: () => hydraAgent.received.length > heard,
+      check: () => hydraAgent.received.slice(heard).some(text => text.startsWith('<pnyx-wake>')),
     })
     assert.match(
       await hydra.run({
