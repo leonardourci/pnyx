@@ -1109,7 +1109,7 @@ async function mountOwnedHydra({
   }
 
   const watchWorkingTranscripts = () => {
-    const working = new Set(Object.values(state.cards).flatMap(c => c.activity === 'working' ? threadPath({ card: c }) ?? [] : []))
+    const working = new Set(Object.values(state.cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
 
     for (const path of transcripts.keys()) {
       if (!working.has(path)) {
