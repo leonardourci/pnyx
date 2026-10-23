@@ -710,3 +710,21 @@ test(
     )
   },
 )
+
+test(
+  'A read target keeps its filename when its directory exceeds the display limit',
+  () => {
+    const target = `/repo/${'nested/'.repeat(30)}hydra.ts`
+    const calls = recordCalls({
+      record: claudeCall({
+        id: 'long-read',
+        name: 'Read',
+        input: { file_path: target },
+      }),
+    }).calls
+    assert.equal(
+      calls[0]?.file,
+      'hydra.ts',
+    )
+  },
+)
