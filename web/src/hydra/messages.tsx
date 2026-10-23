@@ -768,6 +768,7 @@ export function Messages({
               })}
               data-streaming={entry.streaming || undefined}
               data-sending={entry.sending || undefined}
+              data-pnyx={entry.role === 'Pnyx' || undefined}
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
