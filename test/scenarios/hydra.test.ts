@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { HYDRA_CARD } from '../../src/core/hydra.ts'
+import { hydraConfig, HYDRA_CARD } from '../../src/core/hydra.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
-import { hydraMessages } from '../../web/src/hydra/chat.ts'
+import { hydraConversation } from '../../web/src/hydra/conversation.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup()
@@ -791,10 +791,15 @@ test(
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
-    const visible = ({ thread }: { thread: ThreadPage }) => hydraMessages({
+    const visible = ({ thread }: { thread: ThreadPage }) => hydraConversation({
       messages: s.state().hydraMessages ?? [],
       transcript: thread.entries,
-    })
+      currentTurn: thread.currentTurn,
+      actions: thread.actions ?? [],
+      columns: hydraConfig({ state: s.state() }).columns,
+      working: s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      thinking: false,
+    }).entries
 
     try {
       await send({
@@ -820,14 +825,29 @@ test(
       s,
       turns: 1,
     })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Waiting task',
+        '--key',
+        'waiting',
+      ],
+    })
     pnyx.claude.plan({
-      text: 'Keep quiet',
+      text: '</pnyx-wake>',
       reply: 'NO_REPLY\n',
     })
-    await send({
-      s,
-      text: 'Keep quiet',
-      id: 'quiet-full',
+    await s.owner({
+      args: [
+        'task',
+        'status',
+        'waiting',
+        'blocked',
+        '--note',
+        'Waiting for tool access',
+      ],
     })
     await finished({
       s,
@@ -861,7 +881,6 @@ test(
         visible({ thread: receipt.thread as ThreadPage }).map(e => e.text),
         [
           'NO',
-          'Keep quiet',
           'Explain the marker',
           'NO_REPLY is not all I said',
         ],
