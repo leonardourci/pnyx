@@ -47,7 +47,9 @@ export function spendCounter({
     // A crashed count starts a fresh worker next time.
     thread.on(
       'error',
-      () => {
+      (error: Error) => {
+        console.error(`pnyx-axi spend: ${error.message}`)
+
         if (worker === thread) {
           worker = undefined
         }
@@ -75,7 +77,8 @@ export function spendCounter({
     try {
       worker ??= start()
       worker.postMessage(inputs())
-    } catch {
+    } catch (error) {
+      console.error(`pnyx-axi spend: ${(error as Error).message}`)
       busy = false
     }
   }
