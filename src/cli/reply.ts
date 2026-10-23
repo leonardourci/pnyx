@@ -1,3 +1,4 @@
+import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
@@ -400,7 +401,11 @@ export async function sendReply({
         }
       }
 
-      let text = request.text
+      const entered = resolveSkillReferences({
+        text: request.text,
+        provider: card.agent?.provider,
+      })
+      let text = entered
       let keys: KeyStep[] | undefined
       let answers: string | undefined
       let answerDecision: RepliedEvent['data']['decision']
@@ -555,7 +560,7 @@ export async function sendReply({
         decision: answerDecision,
         resumes,
         text: [
-          request.ask ? text : request.text,
+          request.ask ? text : entered,
           context,
         ].filter(Boolean).join('\n\n'),
       }
