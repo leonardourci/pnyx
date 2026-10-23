@@ -86,12 +86,11 @@ export function TaskUpdates({
   })
   const questionPending = hasTaskQuestion({
     card,
-    answered: timeline.some(update => update.id === card.status?.id && !!update.decision),
   })
   // An open question to the owner shows in the pending panel, not twice.
   const history = timeline.filter(update => (!questionPending || update.id !== card.status?.id
     || update.state !== 'needs_you' || !!update.decision)
-    && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered))
+    && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
   const groups = groupUpdates({ updates: history.toReversed() })
   const shown = oldestFirst ? groups : groups.toReversed()
   const pending = questionPending ? (

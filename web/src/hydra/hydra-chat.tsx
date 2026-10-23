@@ -660,7 +660,7 @@ export function HydraChat({
         )}
       </div>
       <WaitingDecisions
-        decisions={decisions.filter(decision => !decision.ask.answered)}
+        decisions={decisions.filter(decision => !decision.ask.answered && !decision.ask.closed)}
         jump={jumpDecision}
         loading={loadingEarlier}
       />
