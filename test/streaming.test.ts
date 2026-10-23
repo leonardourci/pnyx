@@ -213,9 +213,16 @@ test(
       )
       await session.interrupt()
       stopped()
-      assert.equal(
-        (await events.next()).value,
-        'finished',
+      // The host hears that the message waits for the next turn, then that the stopped turn ended.
+      assert.deepEqual(
+        [
+          (await events.next()).value,
+          (await events.next()).value,
+        ],
+        [
+          'carried',
+          'finished',
+        ],
       )
       assert.deepEqual(
         fixture.messages().find(message => message.method === 'turn/interrupt')?.params,

@@ -775,7 +775,7 @@ export function codexProvider({
             let inputDone = false
             // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
             const carried: string[] = []
-            // text may lead with the context; the images come only from what was said.
+            // text may lead with the context.
             const turnInput = ({
               text,
               said,
@@ -909,6 +909,7 @@ export function codexProvider({
                   // A turn being stopped answers nothing more, so the message waits for a turn of its own.
                   if (interrupted) {
                     carried.push(message)
+                    yield 'carried'
 
                     continue
                   }
@@ -928,6 +929,7 @@ export function codexProvider({
                   } catch (error) {
                     console.error(`pnyx-axi serve: Codex did not take a message into its running turn, so it starts the next turn: ${(error as Error).message}`)
                     carried.push(message)
+                    yield 'carried'
                   }
 
                   continue
