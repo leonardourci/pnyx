@@ -95,28 +95,35 @@ test(
       resumed,
       first,
     )
+    const opened = ({ requests }: { requests?: string[] }) => requests!.filter(m => m.startsWith('thread/') || m === 'turn/start')
     assert.deepEqual(
       [
-        first.requests,
-        resumed.requests,
+        opened(first),
+        opened(resumed),
+        resumed.id,
       ],
       [
         [
-          'initialize',
           'thread/start',
           'turn/start',
           'turn/start',
         ],
         [
-          'initialize',
           'thread/resume',
           'turn/start',
         ],
+        first.id,
       ],
     )
-    assert.equal(
-      s.task({ key: 'notes' }).agent?.sessionId,
-      card.agent?.sessionId,
+    assert.deepEqual(
+      [
+        card.agent?.sessionId,
+        s.task({ key: 'notes' }).agent?.sessionId,
+      ],
+      [
+        first.id,
+        first.id,
+      ],
     )
   },
 )

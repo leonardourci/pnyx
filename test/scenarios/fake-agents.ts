@@ -1,6 +1,8 @@
 // Fake Claude Code and Codex that replay the real sessions recorded in test/fixtures/agents/
 // (`pnpm refresh-agent-fixtures`), so scenarios run Pnyx's own provider code over real agent output.
+import assert from 'node:assert/strict'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { EventEmitter } from 'node:events'
 import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -46,6 +48,9 @@ export const codexRecording = recording<{
 
 // What one agent session was started with and every message it received, in order.
 export interface AgentSession {
+  // The Claude session or Codex thread.
+  id: string
+  resumed: boolean
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
@@ -53,7 +58,7 @@ export interface AgentSession {
   requests?: string[]
 }
 
-const said = ({ message }: { message: SDKUserMessage }) => {
+const textOf = ({ message }: { message: SDKUserMessage }) => {
   const { content } = message.message
 
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
@@ -81,10 +86,14 @@ export function replayClaude() {
       }
     }
 
+    // Without its own environment an agent's commands would reach the owner's real Pnyx.
+    assert.ok(options.env)
     const id = options.sessionId ?? options.resume!
     const session: AgentSession = {
+      id,
+      resumed: Boolean(options.resume),
       cwd: options.cwd!,
-      env: options.env ?? {},
+      env: options.env,
       received: [],
     }
     sessions.push(session)
@@ -117,7 +126,7 @@ export function replayClaude() {
 
     async function* run() {
       for await (const message of prompt) {
-        const text = said({ message })
+        const text = textOf({ message })
         session.received.push(text)
         record({
           role: 'user',
@@ -153,24 +162,26 @@ export function replayClaude() {
   return {
     query,
     sessions,
-    reply,
   }
 }
 
 // An app-server in this process: each request gets its recorded result, followed by the notifications
-// recorded after it. thread/resume answers as thread/start did, so a resumed thread keeps its id.
+// recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
 export function replayCodex() {
   const sessions: AgentSession[] = []
-  const reply = codexRecording.session.flatMap(entry => {
-    const item = 'notification' in entry && entry.notification.method === 'item/completed'
-      ? (entry.notification.params as { item: Message }).item
-      : undefined
-
-    return item?.type === 'agentMessage' ? [String(item.text)] : []
-  }).join('')
+  const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
+  const reply = notifications
+    .filter(n => n.method === 'item/completed')
+    .map(n => (n.params as { item: Message }).item)
+    .filter(item => item.type === 'agentMessage')
+    .map(item => String(item.text))
+    .join('')
+  const started = codexRecording.session.find(entry => 'method' in entry && entry.method === 'thread/start')
+  const recordedThread = ((started as { result: Message }).result.thread as Message).id as string
 
   const answer = ({ method }: { method: string }) => {
-    const at = codexRecording.session.findIndex(entry => 'method' in entry && entry.method === (method === 'thread/resume' ? 'thread/start' : method))
+    const recordedMethod = method === 'thread/resume' ? 'thread/start' : method
+    const at = codexRecording.session.findIndex(entry => 'method' in entry && entry.method === recordedMethod)
 
     if (at === -1) {
       return undefined
@@ -195,12 +206,16 @@ export function replayCodex() {
     env,
   }) => {
     const session: AgentSession = {
+      id: '',
+      resumed: false,
       cwd,
       env,
       received: [],
       requests: [],
     }
-    const stdin = new PassThrough(), stdout = new PassThrough(), stderr = new PassThrough()
+    const stdin = new PassThrough()
+    const stdout = new PassThrough()
+    const stderr = new PassThrough()
     let exited = false
     const child = Object.assign(
       new EventEmitter(),
@@ -226,7 +241,10 @@ export function replayCodex() {
 
     const send = ({ message }: { message: Message }) => {
       if (!exited) {
-        stdout.write(`${JSON.stringify(message)}\n`)
+        stdout.write(`${JSON.stringify(message).replaceAll(
+          recordedThread,
+          session.id,
+        )}\n`)
       }
     }
 
@@ -243,6 +261,9 @@ export function replayCodex() {
 
         // A model or config read is not a session; one that opens a thread is.
         if (message.method === 'thread/start' || message.method === 'thread/resume') {
+          session.resumed = message.method === 'thread/resume'
+          const { threadId } = message.params as { threadId?: string }
+          session.id = session.resumed ? threadId! : randomUUID()
           sessions.push(session)
         }
 

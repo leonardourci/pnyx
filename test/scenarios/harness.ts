@@ -52,7 +52,7 @@ export async function until<T>({
   }
 }
 
-export interface Run {
+interface Run {
   status: number | null
   stdout: string
   stderr: string
@@ -84,6 +84,7 @@ function pnyxAxi({
       ],
       {
         env,
+        timeout: TIMEOUT_MS,
         stdio: [
           'ignore',
           'pipe',
@@ -91,7 +92,8 @@ function pnyxAxi({
         ],
       },
     )
-    let stdout = '', stderr = ''
+    let stdout = ''
+    let stderr = ''
     child.stdout.on(
       'data',
       data => stdout += String(data),
@@ -162,11 +164,6 @@ export async function openPage({
   let next = 0
 
   return {
-    state: () => until({
-      what: 'the page snapshot',
-      check: () => state,
-    }),
-    // What the page shows once check passes on it.
     shows: <T>({
       what,
       check,
@@ -259,8 +256,10 @@ export function scenarioGroup() {
   mkdirSync(process.env.HOME!)
   // Accounts claude:test and codex:test, and a quota-axi on PATH that reports them usable.
   fakeDispatch({ root })
-  const claude = replayClaude(), codex = replayCodex()
-  let server: RunningServer | undefined, scenarios = 0
+  const claude = replayClaude()
+  const codex = replayCodex()
+  let server: RunningServer | undefined
+  let scenarios = 0
 
   const start = async () => {
     server = await startServer({
@@ -283,8 +282,6 @@ export function scenarioGroup() {
   })
 
   return {
-    root,
-    claude,
     codex,
     port: () => server!.port,
     // Stops the server and starts it again on the same files, as a Pnyx restart does.
@@ -337,7 +334,7 @@ function hydraScenario({
     return env
   }
 
-  const cli = async ({
+  const cli = ({
     args,
     env,
   }: {
@@ -352,8 +349,7 @@ function hydraScenario({
     env,
   })
 
-  // Runs a command that must succeed and returns what it printed.
-  const ok = async ({
+  const mustSucceed = async ({
     args,
     env,
   }: {
@@ -373,8 +369,7 @@ function hydraScenario({
     return run.stdout
   }
 
-  // Runs a command that must be refused and returns its error code.
-  const refused = async ({
+  const mustBeRefused = async ({
     args,
     env,
   }: {
@@ -398,7 +393,6 @@ function hydraScenario({
 
   return {
     hydraId,
-    // A folder of this scenario's own, for a task to work in.
     folder: ({ name }: { name: string }) => {
       const path = join(
         root,
@@ -412,21 +406,21 @@ function hydraScenario({
 
       return path
     },
-    owner: ({ args }: { args: string[] }) => ok({
+    owner: ({ args }: { args: string[] }) => mustSucceed({
       args,
       env: ownerEnv(),
     }),
-    ownerRefused: ({ args }: { args: string[] }) => refused({
+    ownerRefused: ({ args }: { args: string[] }) => mustBeRefused({
       args,
       env: ownerEnv(),
     }),
     // An agent runs pnyx-axi with the environment Pnyx started it with, so its identity is its own.
     as: ({ agent }: { agent: AgentSession }) => ({
-      run: ({ args }: { args: string[] }) => ok({
+      run: ({ args }: { args: string[] }) => mustSucceed({
         args,
         env: agent.env,
       }),
-      refused: ({ args }: { args: string[] }) => refused({
+      refused: ({ args }: { args: string[] }) => mustBeRefused({
         args,
         env: agent.env,
       }),
@@ -447,7 +441,14 @@ function hydraScenario({
     received: ({ cwd }: { cwd: string }) => sessions().filter(s => s.cwd === cwd)
       .flatMap(s => s.received),
     state,
-    task: ({ key }: { key: string }) => state().cards[state().keys[key]!]!,
+    task: ({ key }: { key: string }) => {
+      const {
+        cards,
+        keys,
+      } = state()
+
+      return cards[keys[key]!]!
+    },
     column: ({ role }: { role: string }) => state().config?.columns.find(c => c.role === role)?.id,
     events: (): HydraEvent[] => readEvents({ hydraId }),
   }

@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { taskTimeline } from '../../web/src/hydra/task-updates.ts'
+import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup()
@@ -63,7 +64,6 @@ test(
       s.column({ role: 'in_progress' }),
     )
 
-    // The question wakes Hydra, which hands it to the owner under the same id.
     const hydraAgent = await s.agent({ hydra: true })
     await until({
       what: 'Hydra to hear the question',
@@ -142,7 +142,6 @@ test(
       `worker:${taskId}`,
     )
 
-    // Only the owner answers it now, and a worker cannot pass for the page.
     for (const [
       agent,
       args,
@@ -231,20 +230,23 @@ test(
       answers().join('\n---\n'),
       /^Answer from the owner to your question .*: Delete the legacy theme\?\nKeep it one more release\.$/,
     )
-    await page.shows({
+    const shown = await page.shows({
       what: 'the task back in progress',
-      check: ({ state }) => state.cards[taskId]?.column === s.column({ role: 'in_progress' }),
+      check: ({ state }) => state.cards[taskId]?.column === s.column({ role: 'in_progress' }) && state,
     })
-    const card = s.task({ key: 'ship' })
+    const history = await page.command({
+      name: 'history',
+      args: [
+        '--card',
+        taskId,
+        '--full',
+        '--updates',
+      ],
+    })
     const decision = taskTimeline({
-      card,
-      events: s.events().filter(e => e.cardId === taskId)
-        .map(e => ({
-          ...e,
-          summary: '',
-          data: e.data as Record<string, unknown>,
-        })),
-      columns: s.state().config!.columns,
+      card: shown.cards[taskId]!,
+      events: history.events as Parameters<typeof taskTimeline>[0]['events'],
+      columns: shown.config!.columns,
     }).find(u => u.id === id)!.decision!
     assert.deepEqual(
       [
@@ -261,6 +263,13 @@ test(
       ],
     )
     page.close()
+    await until({
+      what: 'the worker and Hydra to finish their turns',
+      check: () => [
+        s.task({ key: 'ship' }),
+        s.state().cards[HYDRA_CARD],
+      ].every(card => card?.sessionActivity !== 'working'),
+    })
 
     await pnyx.restart()
     const after = await openPage({
@@ -300,6 +309,17 @@ test(
     assert.equal(
       answers().length,
       1,
+    )
+    const resumed = await s.agent({ cwd: folder })
+    assert.deepEqual(
+      [
+        resumed.resumed,
+        resumed.id,
+      ],
+      [
+        true,
+        s.task({ key: 'ship' }).agent?.sessionId,
+      ],
     )
     after.close()
   },
