@@ -268,11 +268,12 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy and a repeat stall waits at most; tests shorten them.
+  // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most and an open-ended worker pause lasts; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
@@ -592,6 +593,7 @@ async function mountHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
+  pauseDelay,
   open,
   hydrasChanged,
 }: {
@@ -606,6 +608,7 @@ async function mountHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
 }): Promise<MountedHydra> {
@@ -623,6 +626,7 @@ async function mountHydra({
       stallDelay,
       busyDelay,
       stallRepeatMax,
+      pauseDelay,
       open,
       release,
       hydrasChanged,
@@ -644,6 +648,7 @@ async function mountOwnedHydra({
   stallDelay,
   busyDelay,
   stallRepeatMax,
+  pauseDelay,
   open,
   release,
   hydrasChanged,
@@ -658,6 +663,7 @@ async function mountOwnedHydra({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
@@ -1556,6 +1562,7 @@ async function mountOwnedHydra({
     stallDelay,
     busyDelay,
     stallRepeatMax,
+    pauseDelay,
     changed: () => kick(),
     queued: () => {
       for (const ws of wss.clients) {

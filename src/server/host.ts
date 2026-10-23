@@ -408,6 +408,7 @@ export function createHost({
   stallDelay = STALL_MS,
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
+  pauseDelay = PAUSE_MS,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -425,6 +426,7 @@ export function createHost({
   stallDelay?: number
   busyDelay?: number
   stallRepeatMax?: number
+  pauseDelay?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -1434,7 +1436,7 @@ export function createHost({
     }
   }
 
-  // When a paused task's wait ends: its --until, or PAUSE_MS after a worker paused without one.
+  // When a paused task's wait ends: its --until, or pauseDelay after a worker paused without one or a hold.
   const waitEnd = ({ card }: { card: Card }): number | undefined => {
     const declaration = pausedDeclaration({ card })
 
@@ -1446,15 +1448,15 @@ export function createHost({
       return Date.parse(declaration.until)
     }
 
-    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
-    const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
-      || !card.sessionIds?.length
+    // Hydra or the owner parking a task, a hold they asked for, or a task with no worker, is not a wait.
+    const parked = declaration.hold || declaration.actor === HYDRA_ACTOR
+      || ownerActor({ actor: declaration.actor }) || !card.sessionIds?.length
 
     if (parked) {
       return undefined
     }
 
-    return Date.parse(declaration.at) + PAUSE_MS
+    return Date.parse(declaration.at) + pauseDelay
   }
 
   // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
