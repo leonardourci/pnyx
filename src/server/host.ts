@@ -3242,8 +3242,9 @@ function findHydraTurnToResume({
   const unansweredMessageSeqs = events.filter(event => {
     const isNewMessage = event.seq > lastFinishedTurnSeq && event.type === 'hydra.message'
     const sentToHydra = event.actor !== HYDRA_ACTOR
+    const progress = event.type === 'hydra.message' && event.data.kind === 'progress'
 
-    return isNewMessage && sentToHydra
+    return isNewMessage && sentToHydra && !progress
   }).map(event => event.seq)
   const wakeThroughSeq = WAKE_TURN.exec(cutHydraTurn.id)?.[1]
   const isStallCheck = /^(stall|wait|unconfirmed):/.test(cutHydraTurn.id)
