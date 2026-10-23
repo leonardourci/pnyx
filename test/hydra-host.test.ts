@@ -1412,6 +1412,10 @@ test(
       stalls()[0]!,
       /permission: Bash has waited \d+ s for an answer/,
     )
+    assert.match(
+      stalls()[0]!,
+      new RegExp(`\\nOpen decisions \\(1\\):\\n- \\[@Fix add\\]\\(pnyx-task:${task().id}\\) permission, [^:]+: ${request.id} Bash\\n`),
+    )
     await sleep({ ms: 500 })
     assert.equal(
       stalls().length,
@@ -1433,6 +1437,10 @@ test(
     assert.match(
       stalls()[1]!,
       /ended its turn/,
+    )
+    assert.match(
+      stalls()[1]!,
+      /\nOpen decisions: none\n/,
     )
     sdk.control.hold = true
     await sendReply({
@@ -3149,6 +3157,92 @@ async function startedWorker({ key }: { key: string }) {
     }),
   }
 }
+
+test(
+  'every change wake lists the open decisions until they are answered, and says none when nothing waits',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      wakeDelay: 10,
+    })
+    await send({ text: 'Watch for results' })
+    await until({ check: finished })
+    await commands.task([
+      'create',
+      '--key',
+      'scope',
+      '--title',
+      'Pick a scope',
+      '--hydra',
+      'lab',
+    ])
+    const id = state().keys.scope!
+    const wakes = () => sdk.calls.flatMap(call => call.messages).filter(m => m.startsWith('<pnyx-wake>'))
+
+    const report = async ({ text }: { text: string }) => {
+      await commands.hydra([
+        'send',
+        '--task',
+        id,
+        '--text',
+        text,
+        '--actor',
+        `worker:${id}`,
+        '--hydra',
+        'lab',
+      ])
+    }
+
+    await report({ text: 'Started' })
+    await until({ check: () => wakes().length === 1 && finished() })
+    assert.match(
+      wakes()[0]!,
+      /\nOpen decisions: none\n/,
+    )
+
+    const question = await commands.task([
+      'ask',
+      id,
+      '--question',
+      'Which scope?',
+      '--to',
+      'owner',
+      '--actor',
+      'hydra',
+      '--reason',
+      'Owner choice',
+      '--hydra',
+      'lab',
+    ])
+    await report({ text: 'Waiting on the scope' })
+    await until({ check: () => wakes().length === 2 && finished() })
+    // The age is pinned in the decisions unit test; here it depends on the clock.
+    assert.match(
+      wakes()[1]!,
+      new RegExp(`\\nOpen decisions \\(1\\):\\n- \\[@Pick a scope\\]\\(pnyx-task:${id}\\) owner question, [^:]+: ${String(question.ask)} "Which scope\\?"\\n`),
+    )
+
+    await commands.task([
+      'answer',
+      id,
+      String(question.ask),
+      '--text',
+      'The narrow one',
+      '--actor',
+      'cli',
+      '--hydra',
+      'lab',
+    ])
+    await report({ text: 'Got the scope' })
+    await until({ check: () => wakes().length === 3 && finished() })
+    assert.match(
+      wakes()[2]!,
+      /\nOpen decisions: none\n/,
+    )
+  },
+)
 
 test(
   'a worker\'s needs_you wakes Hydra with its note and task link, sealed inside the wake, and a turn that declared it adds no turn-ended reason',
