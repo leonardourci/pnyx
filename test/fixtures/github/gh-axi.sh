@@ -3,6 +3,19 @@
 # gh-axi's TOON shape; `pr view 8 --repo o/r` prints a draft with a check still
 # running and comments; `pr view <n> --repo <repo>` prints any other pull request as
 # open with no checks; anything else fails like an unknown pull request.
+# Scenarios script their pull requests instead: with PNYX_FAKE_GITHUB set, `pr view`
+# prints $PNYX_FAKE_GITHUB/<repo>/<n> when it exists, and `pr merge` marks it merged
+# and records the merge in $PNYX_FAKE_GITHUB/<repo>/<n>.merges.
+pr="$PNYX_FAKE_GITHUB/$5/$3"
+if [ -n "$PNYX_FAKE_GITHUB" ] && [ "$1 $2 $4" = "pr view --repo" ] && [ -f "$pr" ]; then
+  cat "$pr"
+  exit 0
+fi
+if [ -n "$PNYX_FAKE_GITHUB" ] && [ "$1 $2 $4 $6" = "pr merge --repo --merge" ] && [ -f "$pr" ]; then
+  sed 's/^  state: open$/  state: merged/' "$pr" > "$pr.next" && mv "$pr.next" "$pr"
+  echo merged >> "$pr.merges"
+  exit 0
+fi
 if [ "$1 $2 $3 $4 $5 $6" = "pr view 42 --repo o/r --full" ]; then
   cat <<'TOON'
 pull_request:

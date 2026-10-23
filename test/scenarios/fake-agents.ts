@@ -8,7 +8,7 @@ import { appendFileSync, mkdirSync, readFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
-import type { ModelInfo, Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
+import type { ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '../../src/server/claude.ts'
 import type { SpawnCodex } from '../../src/server/codex.ts'
 
@@ -57,6 +57,14 @@ export interface AgentSession {
   model?: string
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
+  // Claude only: the agent calls a tool that needs permission, as Claude Code does mid-turn, and gets Pnyx's decision.
+  useTool?({
+    tool,
+    input,
+  }: {
+    tool: string
+    input: Record<string, unknown>
+  }): Promise<PermissionResult | null>
 }
 
 const textOf = ({ message }: { message: SDKUserMessage }) => {
@@ -148,6 +156,18 @@ export function replayClaude() {
       env: options.env,
       received: [],
       model: options.model,
+      useTool: ({
+        tool,
+        input,
+      }) => options.canUseTool!(
+        tool,
+        input,
+        {
+          signal: new AbortController().signal,
+          toolUseID: randomUUID(),
+          requestId: randomUUID(),
+        },
+      ),
     }
     sessions.push(session)
     const path = transcriptPath({

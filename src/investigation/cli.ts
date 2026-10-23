@@ -2,9 +2,9 @@ import { commit, required, type Output } from '../cli/commands.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideMove, findCard, type Meta } from '../core/decide.ts'
 import { declareTask, hydraConfig, roleColumn } from '../core/hydra.ts'
-import { HydraError, type HydraState, type LandingRule } from '../core/model.ts'
+import { HydraError, type LandingRule } from '../core/model.ts'
 import { landingLine, taskLanding } from '../landing/rule.ts'
-import { loadHydra, withWriter } from '../store/hydra-store.ts'
+import { loadHydra, type Writer } from '../store/hydra-store.ts'
 import { decideBuild, decideReport, readReport, readReportFile } from './report.ts'
 
 // task report <task> [--file <path>] stores a report, or prints the stored one.
@@ -95,50 +95,45 @@ function buildMessage({
 function reopen({
   hydraId,
   ref,
+  writer,
 }: {
   hydraId: string
   ref: string
-}): HydraState {
-  return withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      const card = findCard({
-        state: writer.state,
-        ref,
-      })
-      const meta = {
-        actor: 'pnyx',
-        at: new Date().toISOString(),
-      }
-      const queued = roleColumn({
-        columns: hydraConfig({
-          state: writer.state,
-          id: hydraId,
-        }).columns,
-        role: 'queued',
-      })
-      const decision = card.sessionIds?.length
-        ? declareTask({
-          state: writer.state,
-          ref: card.id,
-          status: 'working',
-          note: 'Building from its investigation',
-          meta,
-        })
-        : decideMove({
-          state: writer.state,
-          ref: card.id,
-          column: queued ?? card.column,
-          meta,
-        })
-
-      if ('event' in decision) {
-        writer.append({ event: decision.event })
-      }
-
-      return writer.state
-    },
+  writer: Writer
+}): void {
+  const card = findCard({
+    state: writer.state,
+    ref,
   })
+  const meta = {
+    actor: 'pnyx',
+    at: new Date().toISOString(),
+  }
+  const queued = roleColumn({
+    columns: hydraConfig({
+      state: writer.state,
+      id: hydraId,
+    }).columns,
+    role: 'queued',
+  })
+  const decision = card.sessionIds?.length
+    ? declareTask({
+      state: writer.state,
+      ref: card.id,
+      status: 'working',
+      note: 'Building from its investigation',
+      meta,
+    })
+    : decideMove({
+      state: writer.state,
+      ref: card.id,
+      column: queued ?? card.column,
+      meta,
+    })
+
+  if ('event' in decision) {
+    writer.append({ event: decision.event })
+  }
 }
 
 // task build <task> turns an investigation into its build and tells its worker, which keeps the context.
@@ -164,10 +159,19 @@ export async function buildCommand({
       type: 'task.kind',
       card: task,
     },
-    decide: ({ state }) => decideBuild({
+    decide: ({
+      state,
+      meta: decided,
+    }) => decideBuild({
       state,
       ref: task,
-      meta,
+      meta: decided,
+    }),
+    // The card leaves Done before it becomes a build: a build in Done would settle away the copy its worker keeps.
+    prepare: ({ writer }) => reopen({
+      hydraId,
+      ref: task,
+      writer,
     }),
   })
   const event = receipt.event as { id?: string } | undefined
@@ -176,10 +180,7 @@ export async function buildCommand({
     return receipt
   }
 
-  const state = reopen({
-    hydraId,
-    ref: task,
-  })
+  const state = loadHydra({ hydraId }).state
   const card = findCard({
     state,
     ref: task,

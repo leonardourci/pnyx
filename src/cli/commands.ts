@@ -80,7 +80,7 @@ import { showsUpdate, tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
@@ -429,11 +429,14 @@ export function commit(
     decide,
     confirmation,
     create,
+    prepare,
   }: {
     hydraId: string
     create?: boolean
     meta: Meta
     intent: Intent
+    // Writes that must come first, under the same lock, once the decision stands; it is then made again on their state.
+    prepare?: ({ writer }: { writer: Writer }) => void
     decide: ({
       state,
       meta,
@@ -481,6 +484,17 @@ export function commit(
           state: writer.state,
           meta,
         })
+
+        if ('event' in decision && prepare) {
+          prepare({ writer })
+          decision = decide({
+            state: writer.state,
+            meta: {
+              ...meta,
+              ifRevision: undefined,
+            },
+          })
+        }
 
         if ('event' in decision && decision.event.type === 'task.session' && decision.event.data.before) {
           harvestTranscripts({
