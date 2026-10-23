@@ -54,7 +54,7 @@ const moveReason = ({
   return stage === 'done' ? 'Declared done' : 'Declared working'
 }
 
-// Only a stage change moves a card, so a manual move holds until the next one.
+// A manual move holds until a change selects a different rule destination.
 export function lifecycleMoves({
   before,
   state,
@@ -68,7 +68,9 @@ export function lifecycleMoves({
   column: Column
   reason: string
 }[] {
-  if (state.config?.hydra.kind === 'firstmate') {
+  const migrating = event?.type === 'board.columns' && event.actor === 'pnyx'
+
+  if (state.config?.hydra.kind === 'firstmate' || migrating) {
     return []
   }
 

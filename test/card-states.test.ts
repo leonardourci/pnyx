@@ -4,6 +4,7 @@ import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
 import { cardFacts, placeCard } from '../src/core/columns.ts'
+import { lifecycleMoves } from '../src/core/lifecycle.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
 import type { Card, CardFact, HydraColumn, HydraEvent, TaskStatus } from '../src/core/model.ts'
@@ -37,6 +38,133 @@ const agent = {
   provider: 'claude-code',
   sessionId: 'test',
 }
+
+test(
+  'Firstmate records keep placement when worker or owner-question facts change',
+  () => {
+    const before = emptyHydra()
+    before.configured = true
+    before.config = {
+      id: 'firstmate',
+      name: 'Firstmate',
+      hydra: {
+        id: 'hydra',
+        name: 'Hydra',
+        kind: 'firstmate',
+      },
+      columns: structuredClone(DEFAULT_COLUMNS),
+    }
+    before.cards[task.id] = {
+      ...task,
+      tracking: 'declared',
+    }
+
+    for (const change of [
+      {
+        type: 'task.declared' as const,
+        data: {
+          state: 'working' as const,
+          note: 'In flight',
+        },
+      },
+      {
+        type: 'task.asked' as const,
+        data: {
+          id: 'ask',
+          audience: 'owner' as const,
+          question: 'Which scope?',
+        },
+      },
+    ]) {
+      const event: HydraEvent = {
+        v: 1,
+        id: 'change',
+        seq: 2,
+        at,
+        actor: 'cli',
+        cardId: task.id,
+        ...change,
+      }
+      const state = reduce({
+        state: before,
+        event,
+      })
+      assert.equal(
+        state.cards[task.id]!.column,
+        'queued',
+      )
+      assert.deepEqual(
+        lifecycleMoves({
+          before,
+          state,
+          event,
+        }),
+        [],
+      )
+    }
+  },
+)
+
+test(
+  'worker facts follow the recorded session rather than stale card activity',
+  () => {
+    const card = {
+      ...task,
+      agent,
+      sessionIds: ['claude-code:test'],
+      activity: 'ended',
+      sessionActivity: 'ended',
+      stoppedAt: at,
+    }
+    const state = emptyHydra()
+    state.sessions = {
+      'claude-code:test': {
+        id: 'claude-code:test',
+        agent,
+        originCardId: task.id,
+        taskId: task.id,
+        sessionActivity: 'working',
+        attention: [],
+        sourceRefs: [],
+      },
+    }
+    assert.ok(cardFacts({
+      card,
+      state,
+    }).includes('worker:working'))
+    assert.equal(
+      placeCard({
+        card: cardFacts({
+          card,
+          state,
+        }),
+        columns: DEFAULT_COLUMNS,
+      }),
+      'in_progress',
+    )
+    state.sessions['claude-code:test']!.sessionActivity = 'ended'
+    const staleWorking = {
+      ...card,
+      activity: 'working',
+      sessionActivity: 'working',
+      stoppedAt: undefined,
+    }
+    assert.ok(cardFacts({
+      card: staleWorking,
+      state,
+    }).includes('worker:ended'))
+    assert.equal(
+      placeCard({
+        card: cardFacts({
+          card: staleWorking,
+          state,
+        }),
+        columns: DEFAULT_COLUMNS,
+      }),
+      'parked',
+    )
+  },
+)
 
 test(
   'default column rules place cards from recorded facts',
