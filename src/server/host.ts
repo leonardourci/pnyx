@@ -1485,11 +1485,8 @@ export function createHost({
 
     const key = sessionId({ agent: card.agent })
     const entry = live.get(key)
-    const asking = card.attention.some(a => a.blocking && !a.answered)
-    // A worker that ended its turn still declaring working stopped without saying why; its finished turn alone never wakes Hydra.
-    const idle = entry?.activity === 'finished' && card.status?.state === 'working' && !asking
 
-    if (entry?.activity !== 'working' && !idle) {
+    if (entry?.activity !== 'working') {
       return []
     }
 
@@ -1527,17 +1524,51 @@ export function createHost({
       return []
     }
 
-    const quietFor = Math.round((now - seen) / 1000)
-    let text = `the worker on ${card.id} has been working with no sign of life for ${quietFor} s`
+    return [
+      {
+        id: `stall:${card.id}:${seen}`,
+        text: `the worker on ${card.id} has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+      },
+    ]
+  }
 
-    if (idle) {
-      text = `the worker on ${card.id} ended its turn ${quietFor} s ago and still declares working`
+  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; its finished turn never wakes Hydra.
+  const idleStall = ({
+    state,
+    card,
+    now,
+  }: {
+    state: HydraState
+    card: Card & { agent: AgentRef }
+    now: number
+  }): {
+    id: string
+    text: string
+  }[] => {
+    const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
+    const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
+    const asking = card.attention.some(a => a.blocking && !a.answered)
+
+    if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
+      return []
+    }
+
+    const session = state.sessions?.[sessionId({ agent: card.agent })]
+
+    if (!session) {
+      return []
+    }
+
+    const seen = seenAt({ session })
+
+    if (!seen || now - seen < stallDelay) {
+      return []
     }
 
     return [
       {
-        id: `stall:${card.id}:${seen}`,
-        text,
+        id: `stall:${card.id}:idle:${seen}`,
+        text: `the worker on ${card.id} ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
       },
     ]
   }
@@ -1614,13 +1645,24 @@ export function createHost({
 
     const now = Date.now()
     const stalls = Object.values(state.cards).flatMap(card => {
-      if (card.id === HYDRA_CARD || !card.agent || card.agent.host !== 'pnyx') {
+      if (card.id === HYDRA_CARD || !card.agent) {
         return []
+      }
+
+      const worker = card as Card & { agent: AgentRef }
+      const idle = idleStall({
+        state,
+        card: worker,
+        now,
+      })
+
+      if (idle.length || card.agent.host !== 'pnyx') {
+        return idle
       }
 
       return workerStalls({
         state,
-        card: card as Card & { agent: AgentRef },
+        card: worker,
         now,
       })
     })

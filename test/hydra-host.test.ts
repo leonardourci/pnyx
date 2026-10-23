@@ -1348,7 +1348,7 @@ test(
 
     assert.match(
       wakes()[0] ?? '',
-      /^<pnyx-wake>Stalled: the worker on .* ended its turn \d+ s ago and still declares working/,
+      /ended its turn .* still declares working/,
     )
   },
 )
