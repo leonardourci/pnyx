@@ -1,12 +1,13 @@
-import { useEffect, useRef, useState, type HTMLAttributes } from 'react'
-
-export const DOUBLE_CLICK_MS = 500
+import { useEffect, useRef, type HTMLAttributes } from 'react'
 
 export function EditableTitle({
   value,
   label,
   editingLabel,
   activate,
+  editing,
+  edit,
+  finished,
   save,
   notify,
   disabled = false,
@@ -17,23 +18,16 @@ export function EditableTitle({
   label: string
   editingLabel: string
   activate({ pointer }: { pointer: boolean }): void
+  editing: boolean
+  edit(): void
+  finished(): void
   save({ title }: { title: string }): Promise<unknown>
   notify({ text }: { text: string }): void
   disabled?: boolean
 } & HTMLAttributes<HTMLDivElement>) {
   const element = useRef<HTMLDivElement>(null)
-  const click = useRef<ReturnType<typeof setTimeout> | undefined>(undefined)
   const active = useRef(false)
   const initial = useRef(value)
-  const [
-    editing,
-    setEditing,
-  ] = useState(false)
-  const clearClick = () => clearTimeout(click.current)
-  useEffect(
-    () => clearClick,
-    [],
-  )
   useEffect(
     () => {
       if (!editing && element.current) {
@@ -46,31 +40,33 @@ export function EditableTitle({
     ],
   )
 
-  const begin = () => {
-    clearClick()
-
-    if (disabled) {
-      return
-    }
-
-    active.current = true
-    setEditing(true)
-    requestAnimationFrame(() => {
-      const title = element.current
-
-      if (!title || !active.current) {
+  useEffect(
+    () => {
+      if (!editing) {
         return
       }
 
-      title.focus()
-      const range = document.createRange()
-      range.selectNodeContents(title)
-      range.collapse(false)
-      const selection = window.getSelection()
-      selection?.removeAllRanges()
-      selection?.addRange(range)
-    })
-  }
+      active.current = true
+      const frame = requestAnimationFrame(() => {
+        const title = element.current
+
+        if (!title || !active.current) {
+          return
+        }
+
+        title.focus({ preventScroll: true })
+        const range = document.createRange()
+        range.selectNodeContents(title)
+        range.collapse(false)
+        const selection = window.getSelection()
+        selection?.removeAllRanges()
+        selection?.addRange(range)
+      })
+
+      return () => cancelAnimationFrame(frame)
+    },
+    [editing],
+  )
 
   const finish = async ({ cancel = false }: { cancel?: boolean }) => {
     if (!active.current) {
@@ -82,7 +78,7 @@ export function EditableTitle({
       /\s+/g,
       ' ',
     ).trim() ?? ''
-    setEditing(false)
+    finished()
 
     if (element.current) {
       element.current.textContent = value
@@ -107,32 +103,19 @@ export function EditableTitle({
       role={editing ? 'textbox' : 'button'}
       aria-label={editing ? editingLabel : label}
       aria-expanded={editing ? undefined : props['aria-expanded']}
-      aria-description="Double-click or press F2 to edit the title"
+      aria-description="Press F2 to edit the title"
       contentEditable={editing ? 'plaintext-only' : false}
       suppressContentEditableWarning
       onClick={event => {
         event.stopPropagation()
 
         if (!editing) {
-          clearClick()
-
-          if (event.detail === 0) {
-            activate({ pointer: false })
-          } else if (event.detail === 1 && props['aria-expanded'] !== true) {
-            activate({ pointer: true })
-          } else if (event.detail === 1) {
-            // Only closing waits, so a double-click on an open card edits without closing it.
-            click.current = setTimeout(
-              () => activate({ pointer: true }),
-              DOUBLE_CLICK_MS,
-            )
-          }
+          activate({ pointer: event.detail > 0 })
         }
       }}
       onDoubleClick={event => {
         event.preventDefault()
         event.stopPropagation()
-        begin()
       }}
       onBlur={() => void finish({})}
       onKeyDown={event => {
@@ -144,12 +127,11 @@ export function EditableTitle({
           event.preventDefault()
           event.stopPropagation()
           void finish({ cancel: event.key === 'Escape' })
-        } else if (!editing && event.key === 'F2') {
+        } else if (!editing && !disabled && event.key === 'F2') {
           event.preventDefault()
           event.stopPropagation()
-          begin()
+          edit()
         } else if (!editing && (event.key === 'Enter' || event.key === ' ')) {
-          clearClick()
           event.preventDefault()
           event.stopPropagation()
           activate({ pointer: false })
