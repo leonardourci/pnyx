@@ -161,6 +161,52 @@ const refused = async ({
 }
 
 test(
+  'the worker opening prompt routes a decision into a saved question',
+  async () => {
+    const f = await lab()
+    const call = f.workerCall()
+    assert.ok(call)
+    const prompt = call.messages[0]
+    assert.ok(prompt)
+    const command = prompt.match(/`pnyx-axi task (ask [^`]+)`/)?.[1]
+    assert.ok(
+      command,
+      'the opening prompt must give the worker a task ask command',
+    )
+    const filled = command.replace(
+      '<question>',
+      'Keep the approved conversation-wide numbering?',
+    )
+    const words = filled.match(/"[^"]*"|\S+/g)
+    assert.ok(words)
+    const args = words.map(arg => arg.replace(
+      /^"|"$/g,
+      '',
+    ))
+    await commands.task([
+      ...args,
+      '--actor',
+      `worker:${f.task().id}`,
+    ])
+    const ask = f.task().asks?.[0]
+    assert.ok(ask)
+    assert.equal(
+      ask.question,
+      'Keep the approved conversation-wide numbering?',
+    )
+    assert.equal(
+      ask.audience,
+      'hydra',
+    )
+    assert.equal(
+      ask.answered,
+      undefined,
+    )
+    await until({ check: () => f.hydraHeard({ report: `Question ${ask.id}:` }) })
+  },
+)
+
+test(
   'a question needs real words; choices and recommendations must name what exists',
   async () => {
     const f = await lab({ worker: false })
