@@ -20,6 +20,7 @@ import { createHost } from '../src/server/host.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
+import { thinkingSdk } from './thinking-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
@@ -3184,6 +3185,74 @@ test(
           force: true,
         },
       )
+    }
+  },
+)
+
+test(
+  'reasoning pushes Thinking, yields to a running command, and clears at block and turn end',
+  async () => {
+    fakeDispatch({ root: home })
+    const sdk = thinkingSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      port: 0,
+    })
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/lab/ws?token=${localToken()}`)
+    const actions: unknown[] = []
+    ws.on(
+      'message',
+      raw => {
+        const message = JSON.parse(String(raw))
+
+        if (message.type === 'latest' && HYDRA_CARD in message.actions) {
+          actions.push(message.actions[HYDRA_CARD])
+        }
+      },
+    )
+    await new Promise<void>(resolve => ws.once(
+      'open',
+      resolve,
+    ))
+
+    try {
+      await send({ text: 'Check the change' })
+      await until({
+        check: () => actions.some(action => (action as { thinking?: boolean })?.thinking),
+      })
+      const thinkingCount = actions.length
+      await sleep({ ms: 150 })
+      assert.equal(
+        actions.length,
+        thinkingCount,
+        'reasoning tokens do not push label updates',
+      )
+      sdk.advance()
+      await until({
+        check: () => (actions.at(-1) as { calls?: { tool: string }[] })?.calls?.[0]?.tool === 'Bash',
+      })
+      assert.equal(
+        (actions.at(-1) as { thinking?: boolean }).thinking,
+        undefined,
+      )
+      sdk.advance()
+      await until({ check: () => (actions.at(-1) as { thinking?: boolean })?.thinking === true })
+      sdk.advance()
+      await until({ check: () => (actions.at(-1) as { done?: boolean })?.done === true })
+      assert.equal(
+        (actions.at(-1) as { thinking?: boolean }).thinking,
+        undefined,
+      )
+      sdk.advance()
+      await until({ check: finished })
+      assert.equal(
+        (actions.at(-1) as { thinking?: boolean }).thinking,
+        undefined,
+      )
+    } finally {
+      ws.close()
+      sdk.advance()
     }
   },
 )

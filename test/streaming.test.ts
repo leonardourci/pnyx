@@ -81,6 +81,10 @@ test(
           },
         }
         yield stream({
+          type: 'content_block_stop',
+          index: 0,
+        })
+        yield stream({
           type: 'content_block_start',
           index: 1,
           content_block: {
@@ -138,10 +142,20 @@ test(
     assert.deepEqual(
       events.slice(
         0,
-        3,
+        5,
       ),
       [
         'working',
+        {
+          type: 'thinking',
+          id: 'reply:0',
+          running: true,
+        },
+        {
+          type: 'thinking',
+          id: 'reply:0',
+          running: false,
+        },
         {
           type: 'text',
           id: 'reply:1',
@@ -160,7 +174,10 @@ test(
       events.at(-1),
       'finished',
     )
-    assert.ok(events.every(e => typeof e === 'string' || (e as { id: string }).id === 'reply:1'))
+    assert.ok(events.every(e => typeof e === 'string' || [
+      'reply:0',
+      'reply:1',
+    ].includes((e as { id: string }).id)))
     assert.deepEqual(
       live.page({
         page: {

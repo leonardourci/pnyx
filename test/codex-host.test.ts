@@ -1278,3 +1278,67 @@ test(
     )
   },
 )
+
+test(
+  'Codex reasoning emits boundaries without streaming its text',
+  async () => {
+    const root = realpathSync(mkdtempSync(join(
+      tmpdir(),
+      'pnyx-codex-tool-',
+    )))
+    const codex = fakeCodex({ root })
+    const session = await codexProvider({ spawnCodex: codex.spawnCodex }).open({
+      cwd: root,
+      settings: {},
+      env: {
+        ...process.env,
+        CODEX_HOME: root,
+      },
+      signal: new AbortController().signal,
+    })
+
+    const input = async function* () {
+      yield 'THINKING'
+    }
+
+    const events: HostedEvent[] = []
+
+    for await (const event of session.run({
+      input: input(),
+      permission: async () => ({
+        behavior: 'deny',
+        message: 'no',
+      }),
+    })) {
+      events.push(event)
+    }
+
+    assert.equal(
+      JSON.stringify(events).includes('private reasoning'),
+      false,
+    )
+    session.close()
+    rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+    assert.deepEqual(
+      events.filter(event => typeof event !== 'string' && event.type === 'thinking'),
+      [
+        {
+          type: 'thinking',
+          id: 'reason-1',
+          running: true,
+        },
+        {
+          type: 'thinking',
+          id: 'reason-1',
+          running: false,
+        },
+      ],
+    )
+  },
+)

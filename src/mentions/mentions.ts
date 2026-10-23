@@ -158,10 +158,18 @@ export function matchingTasks({
   excerpt: string
 }[] {
   const search = query.trim().toLocaleLowerCase()
+  const compactSearch = search.replace(
+    /\s/g,
+    '',
+  )
 
   return cards.filter(card => card.id !== HYDRA_CARD && liveTask({ card })).flatMap(card => {
     const prompt = card.initialPrompt ?? card.brief ?? ''
-    const inTitle = card.title.toLocaleLowerCase().includes(search)
+    const title = card.title.toLocaleLowerCase()
+    const inTitle = title.includes(search) || compactSearch.length > 0 && title.replace(
+      /\s/g,
+      '',
+    ).includes(compactSearch)
     const index = prompt.toLocaleLowerCase().indexOf(search)
 
     if (!inTitle && index < 0) {

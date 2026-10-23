@@ -751,3 +751,23 @@ test(
     )
   },
 )
+
+test(
+  'hosted reasoning uses the same Thinking label for every harness',
+  () => {
+    assert.deepEqual(
+      currentLabel({
+        action: {
+          calls: [],
+          done: false,
+          thinking: true,
+        },
+        lookup,
+      }),
+      {
+        icon: 'thinking',
+        sentence: ['Thinking'],
+      },
+    )
+  },
+)

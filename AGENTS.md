@@ -22,7 +22,7 @@ Tests use Node's built-in test runner and run TypeScript directly through Node's
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder. There are no per-folder READMEs; usage and setup live in the root README. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. Usage and setup live in the root README; the only per-folder README is `test/README.md`, for the test harness. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|

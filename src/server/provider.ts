@@ -51,8 +51,13 @@ export type HostedTool = {
   id: string
   running: boolean
 }
+export type HostedThinking = {
+  type: 'thinking'
+  id: string
+  running: boolean
+}
 // carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
-export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage | HostedTool
+export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage | HostedTool | HostedThinking
 export type AskPermission = ({
   tool,
   input,
