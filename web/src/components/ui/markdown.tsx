@@ -1,6 +1,6 @@
 import { TaskReference } from './task-reference.tsx'
 import { decodeValue, mentionId } from '../../../../src/mentions/mentions.ts'
-import { Fragment, useMemo, type ReactNode } from 'react'
+import { Fragment, memo, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { IMAGE, imageNames } from '../../../../src/attachments/images.ts'
 import { ImageChip } from './attached-image.tsx'
@@ -272,29 +272,34 @@ type Render = {
   base?: number
 }
 
-export function Markdown({
+type BlockWrap = ({
+  index,
+  offset,
+  quote,
+  children,
+}: MarkdownBlock & { children: ReactNode }) => ReactNode
+
+type Blocks = {
+  text: string
+  tokens: Token[]
+  // Where `text` starts in the message, and the index of its first block.
+  offset?: number
+  index?: number
+  block?: BlockWrap
+} & TaskLink
+
+// Each `block` call is counted by blockCount in reveal.ts; keep the two in step.
+const renderBlocks = ({
   text,
+  tokens,
+  offset: start = 0,
+  index: first = 0,
   block,
   openTask,
   columnLook,
-}: {
-  text: string
-  block?({
-    index,
-    offset,
-    quote,
-    children,
-  }: MarkdownBlock & { children: ReactNode }): ReactNode
-} & TaskLink) {
-  const tokens = useMemo(
-    () => markdown.lexer(text),
-    [text],
-  )
-  const images = useMemo(
-    () => imageNames({ text }),
-    [text],
-  )
-  let index = 0
+  images,
+}: Blocks): ReactNode => {
+  let index = first
 
   const wrap = ({
     offset,
@@ -303,7 +308,7 @@ export function Markdown({
   }: Omit<MarkdownBlock, 'index'> & { children: ReactNode }) =>
     block ? block({
       index: index++,
-      offset,
+      offset: start + offset,
       quote: quote.trim(),
       children,
     }) : children
@@ -456,5 +461,40 @@ export function Markdown({
     )
   }
 
-  return <div className="markdown">{render({ tokens })}</div>
+  return render({ tokens })
+}
+
+// A run of a message's top-level tokens, rendered on its own so a streamed reply
+// renders each completed block once.
+export const MarkdownBlocks = memo(renderBlocks)
+
+export function Markdown({
+  text,
+  block,
+  openTask,
+  columnLook,
+}: {
+  text: string
+  block?: BlockWrap
+} & TaskLink) {
+  const tokens = useMemo(
+    () => markdown.lexer(text),
+    [text],
+  )
+  const images = useMemo(
+    () => imageNames({ text }),
+    [text],
+  )
+
+  return (
+    <div className="markdown">{renderBlocks({
+      text,
+      tokens,
+      block,
+      openTask,
+      columnLook,
+      images,
+    })}
+    </div>
+  )
 }
