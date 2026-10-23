@@ -2252,6 +2252,15 @@ test(
       sdk.calls.length,
       0,
     )
+    await commands.task([
+      'status',
+      'ship',
+      'blocked',
+      '--note',
+      'waiting on the canary',
+      '--hydra',
+      'lab',
+    ])
     const started = await fresh({ id: 'fresh-1' })
     assert.equal(
       (started.agent as { host: string }).host,
@@ -2272,7 +2281,7 @@ test(
     )
     assert.match(
       sdk.calls[0]!.messages[0]!,
-      /replaces the lost session claude-code:native-session; your folder keeps its work/,
+      /replaces the lost session claude-code:native-session; your folder keeps its work[\s\S]*Its last declaration was blocked: waiting on the canary\./,
     )
     assert.equal(
       sdk.calls[0]!.options.resume,

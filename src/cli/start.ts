@@ -166,7 +166,8 @@ function replacingNote({
   const lines = [`This start replaces the lost session ${replacing}; your folder keeps its work, so continue from where it stopped instead of starting over.`]
 
   if (card.status) {
-    lines.push(`Its last declaration was ${declaredState({ declaration: card.status })}: ${card.status.note || '(no note)'}.`)
+    const note = card.status.note ? `: ${card.status.note}` : ''
+    lines.push(`Its last declaration was ${declaredState({ declaration: card.status })}${note}.`)
   }
 
   return lines.join(' ')
