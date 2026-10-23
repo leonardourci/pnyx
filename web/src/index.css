@@ -385,7 +385,7 @@ h3 { font-weight: 600; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line)); position: relative; display: flex; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line)); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
 .composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
