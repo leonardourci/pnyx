@@ -224,9 +224,27 @@ function sameChosenSettings({
   ]) => current?.[key] === value)
 }
 
-const wakeId = ({ through }: { through: number }) => `wake:${through}`
-const WAKE_ID = /^wake:(\d+)$/
-const WAKE_TURN = /^wake:(\d+):hosted$/
+// A wake offered again after its turn failed gets a fresh id, as each id starts one turn: wake:<through>.<try>.
+const wakeId = ({
+  through,
+  state,
+}: {
+  through: number
+  state: HydraState
+}) => {
+  let id = `wake:${through}`
+
+  for (let attempt = 2; `${id}:hosted` in state.eventIds; attempt += 1) {
+    id = `wake:${through}.${attempt}`
+  }
+
+  return id
+}
+
+const WAKE_ID = /^wake:(\d+)(?:\.\d+)?$/
+const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
+// The finished record of the turn that read a wake carries this id.
+const WAKE_HANDLED = /^wake:(\d+):handled$/
 
 // One check turn: the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 function wakeText({
@@ -265,7 +283,25 @@ function wakeText({
   return `<pnyx-wake>${lines.join('\n')}</pnyx-wake>`
 }
 
-// A wake counts once its turn starts, as its prompt is then in Hydra's session.
+// The highest change a wake id matching pattern covers, or 0.
+function wakesThrough({
+  state,
+  pattern,
+}: {
+  state: HydraState
+  pattern: RegExp
+}): number {
+  const covered = Object.keys(state.eventIds).flatMap(id => pattern.exec(id)?.[1] ?? [])
+    .map(Number)
+
+  return Math.max(
+    0,
+    ...covered,
+  )
+}
+
+// A wake counts once the turn that read it finishes, so a failed turn's updates are offered again.
+// Logs from before handled wakes were recorded count a wake once its turn started.
 function wakeCursor({
   state,
   fallback,
@@ -273,10 +309,16 @@ function wakeCursor({
   state: HydraState
   fallback: number
 }): number {
-  const covered = Object.keys(state.eventIds).flatMap(id => WAKE_TURN.exec(id)?.[1] ?? [])
-    .map(Number)
+  const handled = wakesThrough({
+    state,
+    pattern: WAKE_HANDLED,
+  })
+  const started = wakesThrough({
+    state,
+    pattern: WAKE_TURN,
+  })
 
-  return covered.length ? Math.max(...covered) : fallback
+  return handled || started || fallback
 }
 
 function isFolder({ path }: { path: string }): boolean {
@@ -1111,12 +1153,27 @@ export function createHost({
         if (activity !== entry.activity) {
           entry.activity = activity
           note({
-            fn: ({ writer }) => record({
-              writer,
-              agent: card.agent,
-              input: { activity },
-              actor: 'pnyx',
-            }),
+            fn: ({ writer }) => {
+              const handledThrough = wakesThrough({
+                state: writer.state,
+                pattern: WAKE_HANDLED,
+              })
+              // The wake this turn read counts as handled only now that the turn finished.
+              const handledWake = card.id === HYDRA_CARD && activity === 'finished' && readThrough > handledThrough
+              let eventId: string | undefined
+
+              if (handledWake) {
+                eventId = `wake:${readThrough}:handled`
+              }
+
+              record({
+                writer,
+                agent: card.agent,
+                input: { activity },
+                actor: 'pnyx',
+                eventId,
+              })
+            },
           })
           clearTimeout(entry.idle)
 
@@ -1151,8 +1208,14 @@ export function createHost({
       entry,
     })
 
-    // A check turn that failed is over: its updates are not offered again, as Hydra stays interrupted until the owner continues it.
-    if (card.id === HYDRA_CARD) {
+    // A check turn cut before it finished hands its updates back; they reach Hydra once the owner continues it.
+    if (card.id === HYDRA_CARD && entry.activity === 'working') {
+      readThrough = wakeCursor({
+        state: loadHydra({ hydraId }).state,
+        fallback: wakeStart ?? 0,
+      })
+      queued()
+    } else if (card.id === HYDRA_CARD) {
       finishReading()
     }
 
@@ -1313,7 +1376,10 @@ export function createHost({
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
       && !reportSeqs.has(update.seq))
     void host.hydra({
-      id: wakeId({ through }),
+      id: wakeId({
+        through,
+        state,
+      }),
       actor: 'pnyx',
       text: wakeText({
         hydraId,
@@ -2826,6 +2892,7 @@ export function createHost({
       let cutHydraTurn: {
         resumeAttemptId: string
         resumeMessage: string
+        wakeThrough: number
       } | undefined
       const cutWorkerTurns: {
         task: string
@@ -2930,13 +2997,17 @@ export function createHost({
           id,
           seq,
         ]) => id.endsWith(':hosted') ? [seq] : [])
-        const after = wakeCursor({
-          state,
-          fallback: Math.max(
-            0,
-            ...turns,
-          ),
-        })
+        // The resumed turn answers the wake it continues, so that wake's changes are not offered twice.
+        const after = Math.max(
+          wakeCursor({
+            state,
+            fallback: Math.max(
+              0,
+              ...turns,
+            ),
+          }),
+          cutHydraTurn?.wakeThrough ?? 0,
+        )
 
         // A Hydra that never ran has no cursor yet; its first missed report sets one.
         if (hostedHydra({ state })) {
@@ -3025,6 +3096,7 @@ function findHydraTurnToResume({
 }): {
   resumeAttemptId: string
   resumeMessage: string
+  wakeThrough: number
 } | undefined {
   const events = readEvents({ hydraId })
   const cutHydraTurn = events.findLast(event => {
@@ -3106,6 +3178,7 @@ function findHydraTurnToResume({
 
   return {
     resumeAttemptId,
+    wakeThrough: Number(wakeThroughSeq ?? 0),
     resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.</pnyx-wake>`,
   }
 }

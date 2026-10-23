@@ -1044,7 +1044,7 @@ test(
 )
 
 test(
-  'a busy Hydra gets one wake after its turn, and a failed wake waits for the owner',
+  'a busy Hydra gets one wake after its turn, and a failed wake is offered again once the owner continues',
   async () => {
     await commands.task([
       'create',
@@ -1092,21 +1092,26 @@ test(
     assert.ok(Number(/--after (\d+)/.exec(wakes()[1]!)![1]) < first)
 
     // A wake whose turn fails leaves Hydra interrupted: later changes wait for the owner's
-    // next message, and the wake after it starts where the last started wake ended.
-    const started = () => Math.max(...Object.keys(state().eventIds)
-      .flatMap(id => /^wake:(\d+):hosted$/.exec(id)?.[1] ?? [])
+    // next message, and the wake after it offers the failed wake's changes again.
+    const handled = () => Math.max(...Object.keys(state().eventIds)
+      .flatMap(id => /^wake:(\d+):handled$/.exec(id)?.[1] ?? [])
       .map(Number))
     await server.close()
     sdk.control.fail = true
     declare({ status: 'done' })
+    const failed = state().seq
     server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
       wakeDelay: 50,
     })
     await until({ check: interrupted })
-    const calls = sdk.calls.length, through = started()
-    declare({ status: 'working' })
+    const calls = sdk.calls.length, through = handled()
+    // The failed wake started its turn, yet the cursor stays before it.
+    const startedAfter = Object.keys(state().eventIds)
+      .some(id => Number(/^wake:(\d+):hosted$/.exec(id)?.[1] ?? 0) > through)
+    assert.ok(through < failed && startedAfter)
+    declare({ status: 'blocked' })
     await sleep({ ms: 300 })
     assert.equal(
       sdk.calls.length,
@@ -1611,6 +1616,8 @@ for (const resumeFails of [
           second.calls[0]!.messages.length,
           1,
         )
+        // The resumed turn answered the cut wake, so its changes are not offered again.
+        assert.ok(`wake:${wakeThroughSeq}:handled` in state().eventIds)
 
         return
       }
