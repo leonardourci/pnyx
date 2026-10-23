@@ -74,16 +74,17 @@ function cardDecisions({
       card,
       detail: quote({ text: prompt.text || asked({ questions: prompt.questions }) || prompt.kind }),
     }))
-  const approved = mergeApproved({
-    state,
-    card,
-  })
-  const merges = approved ? card.links.filter(l => l.kind === 'github_pr' && l.state === 'open' && !l.draft)
+  const merges = card.links.filter(link => link.kind === 'github_pr' && link.state === 'open' && !link.draft
+    && mergeApproved({
+      state,
+      card,
+      url: link.url,
+    }))
     .map((link): OpenDecision => ({
       kind: 'approved merge',
       card,
       detail: mergeDetail({ link }),
-    })) : []
+    }))
 
   return [
     ...asks,

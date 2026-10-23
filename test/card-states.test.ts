@@ -305,3 +305,50 @@ test(
     )
   },
 )
+
+test(
+  'worker needs_you and blocked notes are flags In progress, while owner gates take precedence',
+  () => {
+    for (const state of [
+      'needs_you',
+      'blocked',
+    ] as const) {
+      const card: Card = {
+        ...task,
+        status: {
+          id: 'note',
+          at,
+          actor: 'worker:test',
+          state,
+          note: 'Waiting on checks',
+        },
+      }
+      assert.equal(
+        lifecycleStage({ card }),
+        'in_progress',
+      )
+      assert.equal(
+        card.status?.state,
+        state,
+      )
+      assert.equal(
+        lifecycleStage({
+          card: {
+            ...card,
+            permissions: [
+              {
+                id: 'permission',
+                session: 'test',
+                status: 'pending',
+                at,
+                tool: 'Shell',
+                input: {},
+              },
+            ],
+          },
+        }),
+        'needs_you',
+      )
+    }
+  },
+)

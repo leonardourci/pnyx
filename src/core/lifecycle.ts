@@ -19,21 +19,15 @@ export const lifecycleMove = ({ id }: { id: string }) => id.endsWith(MOVE)
 
 // A question still waiting on Hydra does not count as waiting on the owner.
 export function asksOwner({ card }: { card: Card }): boolean {
-  return card.attention.some(a => a.blocking && !a.answered)
-    || !!card.permissions?.some(p => p.status === 'pending')
-    || !!card.asks?.some(a => a.audience === 'owner' && !a.answered)
-    || card.status?.state === 'needs_you' || card.status?.state === 'blocked'
+  return ownerGates({ card }).length > 0 || !!card.reminder?.dueAt
 }
 
 const DECLARED: Partial<Record<TaskStatus, Stage>> = {
   working: 'in_progress',
+  needs_you: 'in_progress',
+  blocked: 'in_progress',
   paused: 'parked',
   done: 'done',
-}
-
-const ASKED: Partial<Record<TaskStatus, string>> = {
-  needs_you: 'Declared needs you',
-  blocked: 'Declared blocked',
 }
 
 // A turn the server cut short waits for someone to continue it, not for the owner's answer.
@@ -50,20 +44,23 @@ export function lifecycleStage({ card }: { card: Card }): Stage | undefined {
     return 'needs_you'
   }
 
+  if (card.status?.state === 'paused' && !card.status.hold
+    && card.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
+    return 'in_progress'
+  }
+
   return card.status && DECLARED[card.status.state]
 }
 
 const moveReason = ({
-  card,
   stage,
   answered,
 }: {
-  card: Card
   stage: Stage | 'queued'
   answered: boolean
 }) => {
   if (stage === 'needs_you') {
-    return (card.status && ASKED[card.status.state]) ?? 'Waiting for the owner'
+    return 'Waiting for the owner'
   }
 
   if (answered) {
@@ -122,7 +119,6 @@ export function lifecycleMoves({
         cardId: card.id,
         column,
         reason: moveReason({
-          card,
           stage,
           answered,
         }),
@@ -209,12 +205,21 @@ export function operationDeclarations({
     return changes
   }
 
+  if (event.type === 'task.asked' && event.data.kind === 'merge') {
+    changes.push({
+      cardId: card.id,
+      status: 'needs_you',
+      note: `Pull request ready for owner review: ${event.data.url}`,
+      waitingFor: ownerGates({ card }),
+    })
+  }
+
   const previousReply = event.type === 'card.replied'
     ? previous.replies?.find(r => r.id === event.data.reply) : undefined
   const deliveredReply = event.type === 'card.replied' && event.data.state === 'delivered'
   const answeredPermission = event.type === 'task.permission'
     && (event.data.status === 'allow' || event.data.status === 'deny')
-  const answeredQuestion = event.type === 'hydra.message' && !!event.data.answers
+  const answeredQuestion = (event.type === 'hydra.message' && !!event.data.answers) || event.type === 'task.ask.closed'
   const answered = deliveredReply || answeredPermission || answeredQuestion
   const waiting = card.status?.waitingFor
 

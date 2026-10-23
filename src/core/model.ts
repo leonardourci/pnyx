@@ -249,6 +249,15 @@ export interface Ask {
   at: string
   actor: string
   audience: AskAudience
+  kind?: 'merge'
+  url?: string
+  choice?: string
+  closed?: {
+    id: string
+    at: string
+    reason: string
+    evidence: string
+  }
   question: string
   context?: string
   details?: string
@@ -771,7 +780,22 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'task.asked'
-    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage'>
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage' | 'choice' | 'closed'>
+  }
+  | {
+    type: 'task.ask.closed'
+    data: {
+      ask: string
+      reason: string
+      evidence: string
+    }
+  }
+  | {
+    type: 'task.ask.reopened'
+    data: {
+      ask: string
+      answer: string
+    }
   }
   | {
     type: 'task.ask.escalated'
@@ -1038,6 +1062,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.declared',
   'task.asked',
   'task.ask.escalated',
+  'task.ask.closed',
+  'task.ask.reopened',
   'task.mirrored',
   'hydra.message',
   'hydra.status',
