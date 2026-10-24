@@ -1658,6 +1658,7 @@ async function mountOwnedHydra({
         clearTimeout(expiryTimer)
         const deadlines = [
           sourceDeadline({ state }),
+          sources.deadline(),
           doneDeadline({ state }),
           reminderDeadline({ state }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))

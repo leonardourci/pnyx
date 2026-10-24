@@ -15,6 +15,24 @@ let child: ChildProcess | undefined
 let timer: ReturnType<typeof setTimeout> | undefined
 let stopping = false
 
+function decodeOutput({
+  bytes,
+  limit,
+}: {
+  bytes: Buffer
+  limit: number
+}): string {
+  const decoded = Buffer.from(bytes.toString('utf8'))
+
+  return new TextDecoder().decode(
+    decoded.subarray(
+      0,
+      limit,
+    ),
+    { stream: true },
+  )
+}
+
 function killSource() {
   if (child?.pid) {
     try {
@@ -173,11 +191,20 @@ process.once(
           return
         }
 
+        const capturedStdout = decodeOutput({
+          bytes: stdout,
+          limit: source.maxBytes,
+        })
+        const remaining = source.maxBytes - Buffer.byteLength(capturedStdout)
+        const capturedStderr = decodeOutput({
+          bytes: stderr,
+          limit: remaining,
+        })
         finish({
           result: {
             outcome: outcome ?? (code === 0 ? 'completed' : 'failed'),
-            stdout: stdout.toString('utf8'),
-            stderr: stderr.toString('utf8'),
+            stdout: capturedStdout,
+            stderr: capturedStderr,
             detail: detail || `Child exited with code ${code}, signal ${signal ?? 'none'}`,
           },
         })

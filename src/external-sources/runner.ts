@@ -6,6 +6,7 @@ import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
 import { sameClaim, steeringClaim } from '../task-inbox/state.ts'
 import type { ChildResult } from './child.ts'
+import { bufferCapture, bufferedCaptures, commitCapture } from './capture.ts'
 import type { ExternalSource } from './model.ts'
 import { appendSource, captureResult, resultText, sourceById } from './sources.ts'
 import { sourceHeld } from './state.ts'
@@ -14,21 +15,46 @@ interface RunningSource {
   card: string
   source: string
   run: string
+  registration: string
   stop(): void
   finished: Promise<void>
+}
+
+const CAPTURE_RETRY_MS = 1000
+
+function startSourceChild({ entry }: { entry: URL }) {
+  return fork(
+    entry,
+    [],
+    {
+      stdio: [
+        'ignore',
+        'ignore',
+        'ignore',
+        'ipc',
+      ],
+    },
+  )
 }
 
 export function createSourceRunner({
   hydraId,
   changed,
+  spawnSource = startSourceChild,
+  commit = commitCapture,
+  tell = sendReply,
 }: {
   hydraId: string
   changed(): void
+  spawnSource?: typeof startSourceChild
+  commit?: typeof commitCapture
+  tell?: typeof sendReply
 }) {
   const server = randomUUID()
   const running = new Map<string, RunningSource>()
   let closed = false
   let reconciling: Promise<void> | undefined
+  let capturePending = false
   const metadata = () => ({
     actor: 'pnyx',
     at: new Date().toISOString(),
@@ -48,30 +74,29 @@ export function createSourceRunner({
     job: RunningSource
     result: ChildResult
   }) => {
-    withWriter({
+    const captured = {
+      card: job.card,
+      source: job.source,
+      registration: job.registration,
+      run: job.run,
+      at: new Date().toISOString(),
+      result,
+    }
+    const path = bufferCapture({
       hydraId,
-      fn: ({ writer }) => {
-        const card = writer.state.cards[job.card]
-        const source = card?.externalSources?.find(source => source.id === job.source)
-
-        if (!card || !source || source.run?.id !== job.run) {
-          return
-        }
-
-        captureResult({
-          writer,
-          card,
-          source,
-          run: job.run,
-          outcome: result.outcome,
-          stdout: result.stdout,
-          stderr: result.stderr,
-          detail: result.detail,
-          meta: metadata(),
-        })
-      },
+      capture: captured,
     })
-    changed()
+    capturePending = true
+
+    try {
+      commit({
+        hydraId,
+        path,
+        capture: captured,
+      })
+    } finally {
+      changed()
+    }
   }
 
   const launch = ({
@@ -86,18 +111,7 @@ export function createSourceRunner({
       import.meta.url.endsWith('.ts') ? './child.ts' : './child.js',
       import.meta.url,
     )
-    const child = fork(
-      entry,
-      [],
-      {
-        stdio: [
-          'ignore',
-          'ignore',
-          'ignore',
-          'ipc',
-        ],
-      },
-    )
+    const child = spawnSource({ entry })
     let received: ChildResult | undefined
     let failure: Error | undefined
     let stopRequested = false
@@ -109,6 +123,7 @@ export function createSourceRunner({
       card: card.id,
       source: source.id,
       run: run.id,
+      registration: source.registration,
       finished,
       stop() {
         stopRequested = true
@@ -186,7 +201,28 @@ export function createSourceRunner({
     )
   }
 
-  const prepare = () => withWriter({
+  const flushCaptures = () => {
+    const pending = new Set<string>()
+
+    for (const buffered of bufferedCaptures({ hydraId })) {
+      try {
+        commit({
+          hydraId,
+          path: buffered.path,
+          capture: buffered.capture,
+        })
+      } catch (error) {
+        pending.add(buffered.capture.run)
+        console.error(`pnyx-axi source capture: ${(error as Error).message}`)
+      }
+    }
+
+    capturePending = pending.size > 0
+
+    return pending
+  }
+
+  const prepare = ({ pending }: { pending: Set<string> }) => withWriter({
     hydraId,
     fn: ({ writer }) => {
       const launches: {
@@ -217,7 +253,13 @@ export function createSourceRunner({
             job.stop()
           }
 
-          if (source.state === 'running' && source.run?.server !== server) {
+          if (source.run && pending.has(source.run.id)) {
+            continue
+          }
+
+          const missingListener = source.run?.server !== server || !job
+
+          if (source.state === 'running' && missingListener && !pending.has(source.run!.id)) {
             captureResult({
               writer,
               card,
@@ -304,30 +346,19 @@ export function createSourceRunner({
           return
         }
 
-        enqueueSteering({
-          writer,
-          ref: card.id,
-          id: result.message,
-          text: resultText({
-            source,
-            result,
-          }),
-          source: `external:${source.registration}`,
-          meta: metadata(),
-        })
         const held = sourceHeld({ card })
         const stale = !sameClaim({
           current: steeringClaim({ card }),
           claim: source.owner,
         })
-        const messages = writer.state.cards[cardId]!.steering!
-        const message = messages.find(message => message.id === result.message)!
+        const existing = card.steering?.find(message => message.id === result.message)
         const workerFinished = card.sessionActivity === 'finished' || card.sessionActivity === 'ended'
-        const handlingOwed = Boolean(message.ack && workerFinished)
+        const handlingOwed = Boolean(existing?.ack && workerFinished)
+        const alertNeeded = result.outcome !== 'completed' || held || stale || handlingOwed || card.hidden
 
-        if (!result.alerted && (result.outcome !== 'completed' || held || stale || handlingOwed)) {
+        if (!result.alerted && alertNeeded) {
           const detail = `External source ${id}, result ${sequence}: ${result.outcome}. ${result.detail}`
-          + ' Read the result; it remains owed until its worker acknowledges and handles it.'
+            + ' Read the result; it remains owed until its worker acknowledges and handles it.'
           appendSource({
             writer,
             card,
@@ -342,6 +373,24 @@ export function createSourceRunner({
             },
           })
         }
+
+        if (card.hidden) {
+          return
+        }
+
+        enqueueSteering({
+          writer,
+          ref: card.id,
+          id: result.message,
+          text: resultText({
+            source,
+            result,
+          }),
+          source: `external:${source.registration}`,
+          meta: metadata(),
+        })
+        const messages = writer.state.cards[cardId]!.steering!
+        const message = messages.find(message => message.id === result.message)!
 
         const claim = steeringClaim({ card })
 
@@ -373,7 +422,7 @@ export function createSourceRunner({
     let detail = ''
 
     try {
-      const receipt = await sendReply({
+      const receipt = await tell({
         hydraId,
         request: {
           card,
@@ -447,9 +496,34 @@ export function createSourceRunner({
   }
 
   const reconcile = async () => {
-    for (const launchSource of prepare()) {
+    const pending = flushCaptures()
+
+    for (const launchSource of prepare({ pending })) {
       if (!closed) {
-        launch(launchSource)
+        try {
+          launch(launchSource)
+        } catch (error) {
+          const {
+            card,
+            source,
+          } = launchSource
+          capture({
+            job: {
+              card: card.id,
+              source: source.id,
+              registration: source.registration,
+              run: source.run!.id,
+              stop() {},
+              finished: Promise.resolve(),
+            },
+            result: {
+              outcome: 'failed',
+              stdout: '',
+              stderr: '',
+              detail: `Listener could not start: ${(error as Error).message}`,
+            },
+          })
+        }
       }
     }
 
@@ -462,14 +536,18 @@ export function createSourceRunner({
             return
           }
 
-          const notification = announce({
-            cardId: card.id,
-            id: source.id,
-            sequence: result.sequence,
-          })
+          try {
+            const notification = announce({
+              cardId: card.id,
+              id: source.id,
+              sequence: result.sequence,
+            })
 
-          if (notification) {
-            await deliver(notification)
+            if (notification) {
+              await deliver(notification)
+            }
+          } catch (error) {
+            console.error(`pnyx-axi source notification: ${(error as Error).message}`)
           }
         }
       }
@@ -477,6 +555,9 @@ export function createSourceRunner({
   }
 
   return {
+    deadline() {
+      return capturePending ? Date.now() + CAPTURE_RETRY_MS : undefined
+    },
     reconcile() {
       if (closed || reconciling) {
         return
