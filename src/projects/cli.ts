@@ -369,10 +369,13 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
 export const project = guard({ handler: projectCommand })
 export const PROJECT_HELP = `pnyx-axi project worker-notes set|forget --project <name|path> [--text <text>] --reason <why> [--hydra <id>]
 Standing worker instructions (1500 characters) are included verbatim in each new worker header.
-pnyx-axi project memory list|set|forget|confirm --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
+pnyx-axi project memory list|set|forget|confirm|save|archive --project <name|path> [--key profile|preferences|learnings|workers] [--text <text>] [--sources <fingerprint>] [--hydra <id>]
 
 Project memory is shared by normalized git remote (canonical path without a remote), with one ${PROJECT_MEMORY_BUDGET}-character budget.
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
+New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
+Use memory save at the end of inscribe; --used "<exact lines, newline-separated>" with --reason refreshes used lines and advances only the others.
+Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
 Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
 
 pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
