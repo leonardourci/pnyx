@@ -628,10 +628,14 @@ export async function startServer({
     watcher.close()
     clearInterval(retry)
     pendingLogs.forEach(stop => stop())
-    const all = await Promise.allSettled(mounts.values())
-    await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
-    http.closeAllConnections()
-    await new Promise(r => http.close(r))
+
+    try {
+      const all = await Promise.allSettled(mounts.values())
+      await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+    } finally {
+      http.closeAllConnections()
+      await new Promise(r => http.close(r))
+    }
   }
 
   try {

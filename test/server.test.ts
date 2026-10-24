@@ -5,7 +5,7 @@ import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, writeSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
@@ -14,7 +14,7 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
-import { hydraDir, hydrasDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { acquireLock, hydraDir, hydrasDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
@@ -3587,6 +3587,55 @@ test(
     assert.equal(
       (await readServer({ hydraId: 'late' }))?.url,
       `http://127.0.0.1:${server.port}/hydra/late/`,
+    )
+  },
+)
+
+test(
+  'server shutdown releases its ownership without taking an active Hydra writer lock',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const dir = hydraDir({ hydraId: 'default' })
+    const release = acquireLock({ dir })
+
+    try {
+      await assert.doesNotReject(server.close())
+      assert.ok(!existsSync(join(
+        dir,
+        'server.lock',
+      )))
+      assert.equal(
+        readFileSync(
+          join(
+            dir,
+            'writer.lock',
+          ),
+          'utf8',
+        ),
+        String(process.pid),
+      )
+    } finally {
+      release()
+    }
+  },
+)
+
+test(
+  'server shutdown closes HTTP even when releasing a missing ownership claim fails',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const url = server.url
+    rmSync(join(
+      hydraDir({ hydraId: 'default' }),
+      'server.lock',
+    ))
+    await assert.rejects(
+      server.close(),
+      { code: 'ENOENT' },
+    )
+    await assert.rejects(
+      fetch(url),
+      /fetch failed/,
     )
   },
 )
