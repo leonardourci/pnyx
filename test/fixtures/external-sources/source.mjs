@@ -1,4 +1,5 @@
-import { appendFileSync, existsSync, watch, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { appendFileSync, existsSync, mkdirSync, watch, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 
 const [
@@ -14,7 +15,33 @@ appendFileSync(
   `${process.pid}\n`,
 )
 
-if (mode === 'wait') {
+if (mode === 'wait' || mode === 'wait-tree') {
+  if (mode === 'wait-tree') {
+    const descendantFolder = join(
+      folder,
+      'descendant',
+    )
+    mkdirSync(descendantFolder)
+    const descendant = spawn(
+      process.execPath,
+      [
+        process.argv[1],
+        'wait',
+        descendantFolder,
+      ],
+      {
+        stdio: 'ignore',
+      },
+    )
+    writeFileSync(
+      join(
+        folder,
+        'descendant-pid',
+      ),
+      String(descendant.pid),
+    )
+  }
+
   process.stdout.write('listening\n')
 
   const finish = () => {
@@ -41,6 +68,13 @@ if (mode === 'wait') {
   finish()
 } else if (mode === 'overflow') {
   process.stdout.write('x'.repeat(16_384))
+} else if (mode === 'unicode') {
+  process.stdout.write('🌊'.repeat(4096))
+} else if (mode === 'binary') {
+  process.stdout.write(Buffer.alloc(
+    16_384,
+    0xff,
+  ))
 } else {
   process.stdout.write(payload)
   process.stderr.write('fixture diagnostic')

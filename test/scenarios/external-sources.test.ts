@@ -127,6 +127,19 @@ const source = ({
 }) =>
   s.task({ key: 'work' }).externalSources!.find(source => source.id === id)!
 
+function exited({ pid }: { pid: number }): boolean {
+  try {
+    process.kill(
+      pid,
+      0,
+    )
+
+    return false
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'ESRCH'
+  }
+}
+
 async function captured({
   s,
   id,
@@ -319,6 +332,10 @@ test(
       1,
     )
     const resumed = s.as({ agent: await s.agent({ cwd: folder }) })
+    assert.equal(
+      s.received({ cwd: folder }).filter(text => text.includes(result.message)).length,
+      1,
+    )
     await resumed.run({
       args: [
         'task',
@@ -475,6 +492,13 @@ test(
       what: 'one persisted held-result alert',
       check: () =>
         s.events().filter(event => event.type === 'task.source.alerted').length === 1,
+    })
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'Hydra to hear the actionable result',
+      check: () =>
+        s.received({ cwd: hydra.cwd }).some(text => text.includes('External source held, result 1')
+        && text.includes('acknowledges and handles')),
     })
     await pnyx.restart()
     await s.owner({
@@ -1081,6 +1105,13 @@ test(
         'ready',
       )),
     })
+    const oldListenerPid = Number(readFileSync(
+      join(
+        command.folder,
+        'ready',
+      ),
+      'utf8',
+    ))
     await s.owner({
       args: [
         'task',
@@ -1091,6 +1122,10 @@ test(
     const result = await captured({
       s,
       id: 'replace',
+    })
+    await until({
+      what: 'the replaced listener stopped',
+      check: () => exited({ pid: oldListenerPid }),
     })
     assert.equal(
       result.outcome,
@@ -1241,6 +1276,22 @@ test(
           id: 'timeout',
         }).results[0]!.alerted,
     })
+    const launches = join(
+      command.folder,
+      'launches',
+    )
+
+    if (existsSync(launches)) {
+      const childPid = Number(readFileSync(
+        launches,
+        'utf8',
+      ).trim())
+      await until({
+        what: 'the timed out child stopped',
+        check: () => exited({ pid: childPid }),
+      })
+    }
+
     await handle({
       s,
       worker,
@@ -1253,5 +1304,315 @@ test(
       }).state,
       'retired',
     )
+  },
+)
+
+test(
+  'hidden source tasks retain an actionable result without blocking another worker',
+  async () => {
+    const s = await pnyx.scenario()
+    const { worker } = await workerTask({ s })
+    const command = fixture({
+      s,
+      name: 'hidden',
+      mode: 'wait',
+    })
+    await worker.run({
+      args: registration({
+        id: 'hidden',
+        command,
+      }),
+    })
+    const childPid = await until({
+      what: 'the source listening before hiding',
+      check: () =>
+        existsSync(join(
+          command.folder,
+          'ready',
+        )) && Number(readFileSync(
+          join(
+            command.folder,
+            'ready',
+          ),
+          'utf8',
+        )),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'hide',
+        'work',
+      ],
+    })
+    const result = await until({
+      what: 'hidden source result and alert retained',
+      check: () => {
+        const result = source({
+          s,
+          id: 'hidden',
+        }).results[0]
+
+        if (!result?.alerted) {
+          return
+        }
+
+        return result
+      },
+    })
+    assert.equal(
+      result.outcome,
+      'stale',
+    )
+    await until({
+      what: 'the hidden listener stopped',
+      check: () => exited({ pid: childPid }),
+    })
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'source',
+          'read',
+          'work',
+          'hidden',
+        ],
+      }),
+      /stale/,
+    )
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'Hydra informed about hidden work',
+      check: () =>
+        s.received({ cwd: hydra.cwd }).some(text => text.includes('External source hidden, result 1')),
+    })
+
+    const otherFolder = s.folder({ name: 'other-worker' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'other',
+        '--title',
+        'Other work',
+        '--folder',
+        otherFolder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'other',
+      ],
+    })
+    await s.agent({ cwd: otherFolder })
+    const otherCommand = fixture({
+      s,
+      name: 'other-source',
+      payload: 'other task feedback',
+    })
+    const otherArgs = registration({
+      id: 'other',
+      command: otherCommand,
+    })
+    otherArgs[3] = 'other'
+    await s.owner({ args: otherArgs })
+    await until({
+      what: 'the later task result delivered',
+      check: () =>
+        s.task({ key: 'other' }).steering?.some(message => message.text.includes('other task feedback')),
+    })
+    await pnyx.restart()
+    assert.equal(
+      source({
+        s,
+        id: 'hidden',
+      }).results.length,
+      1,
+    )
+    assert.equal(
+      s.events().filter(event => event.type === 'task.source.alerted'
+    && event.data.source === 'hidden').length,
+      1,
+    )
+    await s.owner({
+      args: [
+        'task',
+        'unhide',
+        'work',
+      ],
+    })
+    await captured({
+      s,
+      id: 'hidden',
+    })
+    await handle({
+      s,
+      worker,
+      id: 'hidden',
+    })
+  },
+)
+
+test(
+  'a registered source survives restart under a hold and launches exactly once after release',
+  async () => {
+    const s = await pnyx.scenario()
+    const {
+      worker,
+      folder,
+    } = await workerTask({ s })
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'work',
+        'paused',
+        '--hold',
+        '--note',
+        'Wait before listening',
+      ],
+    })
+    const command = fixture({
+      s,
+      name: 'registered-restart',
+      payload: 'original argv after restart',
+    })
+    await worker.run({
+      args: registration({
+        id: 'registered',
+        command,
+      }),
+    })
+    const configuration = source({
+      s,
+      id: 'registered',
+    }).command
+    assert.equal(
+      source({
+        s,
+        id: 'registered',
+      }).state,
+      'registered',
+    )
+    await pnyx.restart()
+    assert.deepEqual(
+      source({
+        s,
+        id: 'registered',
+      }).command,
+      configuration,
+    )
+    assert.equal(
+      source({
+        s,
+        id: 'registered',
+      }).runs,
+      0,
+    )
+    assert.equal(
+      existsSync(join(
+        command.folder,
+        'launches',
+      )),
+      false,
+    )
+    const resumed = s.as({ agent: await s.agent({ cwd: folder }) })
+    await resumed.run({
+      args: [
+        'task',
+        'status',
+        'work',
+        'working',
+        '--note',
+        'Listen now',
+      ],
+    })
+    const result = await captured({
+      s,
+      id: 'registered',
+    })
+    assert.equal(
+      result.stdout,
+      'original argv after restart',
+    )
+    assert.equal(
+      source({
+        s,
+        id: 'registered',
+      }).runs,
+      1,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          command.folder,
+          'launches',
+        ),
+        'utf8',
+      ).trim()
+        .split('\n').length,
+      1,
+    )
+    await handle({
+      s,
+      worker: resumed,
+      id: 'registered',
+    })
+  },
+)
+
+test(
+  'multibyte and invalid UTF-8 output stay within the persisted byte limit after replay',
+  async () => {
+    const s = await pnyx.scenario()
+    const { worker } = await workerTask({ s })
+    const byteLimit = 5
+
+    for (const mode of [
+      'unicode',
+      'binary',
+    ]) {
+      const command = fixture({
+        s,
+        name: mode,
+        mode,
+      })
+      await worker.run({
+        args: registration({
+          id: mode,
+          command,
+          flags: [
+            '--max-bytes',
+            String(byteLimit),
+          ],
+        }),
+      })
+      const result = await captured({
+        s,
+        id: mode,
+      })
+      assert.equal(
+        result.outcome,
+        'overflow',
+      )
+      assert.ok(Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr) <= byteLimit)
+      await handle({
+        s,
+        worker,
+        id: mode,
+      })
+    }
+
+    const restored = replay({
+      state: emptyHydra(),
+      events: s.events(),
+    })
+
+    for (const registered of restored.cards[s.task({ key: 'work' }).id]!.externalSources!) {
+      const result = registered.results[0]!
+      assert.ok(Buffer.byteLength(result.stdout) + Buffer.byteLength(result.stderr) <= byteLimit)
+    }
   },
 )
