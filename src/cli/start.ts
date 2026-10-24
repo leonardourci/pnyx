@@ -600,6 +600,15 @@ function askFirstmate({
   prompt?: string
   meta: Meta
 }): Output {
+  const initial = findCard({
+    state: loadHydra({ hydraId }).state,
+    ref: task,
+  })
+  const brief = taskPrompt({
+    hydraId,
+    card: initial,
+    prompt: prompt ? `Request: ${prompt}` : undefined,
+  })
   const queued = withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -608,6 +617,13 @@ function askFirstmate({
         state: writer.state,
         ref: task,
       })
+
+      if (card.revision !== initial.revision) {
+        throw new HydraError({
+          message: 'Task changed while preparing its worker brief',
+          code: 'REVISION_CONFLICT',
+        })
+      }
 
       requireUnheld({ card })
       requireReady({
@@ -637,11 +653,7 @@ function askFirstmate({
 
       const text = [
         `Pnyx Hydra ${hydraId} asks for a worker on task ${card.id} "${card.title}"${card.folder ? ` in ${card.folder}` : ''}.`,
-        `Task brief (give this to the worker as its first prompt):\n${taskPrompt({
-          hydraId,
-          card,
-          prompt: prompt ? `Request: ${prompt}` : undefined,
-        })}`,
+        `Task brief (give this to the worker as its first prompt):\n${brief}`,
         `Use the pnyx-hydra skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
       ].join('\n')
       const id = meta.id ?? randomUUID()

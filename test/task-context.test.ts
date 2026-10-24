@@ -1,3 +1,4 @@
+import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
@@ -1109,7 +1110,7 @@ test(
 
 test(
   'attaching hands the brief to the agent once and Firstmate start includes it',
-  async () => {
+  async t => {
     const f = fixture()
 
     try {
@@ -1292,6 +1293,10 @@ test(
           'detach',
           'work',
         ],
+      })
+      checkRegistryLockOrder({
+        t,
+        hydraId: 'default',
       })
       await startTask({
         hydraId: 'default',
