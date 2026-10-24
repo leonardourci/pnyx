@@ -293,6 +293,17 @@ test(
       'TASK_NOT_READY',
     )
 
+    await s.owner({
+      args: [
+        'task',
+        'report-review',
+        'research',
+        '--report',
+        s.task({ key: 'research' }).report!.id,
+        '--none',
+      ],
+    })
+
     for (const status of [
       'blocked',
       'paused',
@@ -992,6 +1003,16 @@ test(
         'research',
         '--file',
         report,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'report-review',
+        'research',
+        '--report',
+        s.task({ key: 'research' }).report!.id,
+        '--none',
       ],
     })
     await s.owner({
