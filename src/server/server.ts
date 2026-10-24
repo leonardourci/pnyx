@@ -7,7 +7,7 @@ import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
 import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
-import { candidates } from '../dispatch/config.ts'
+import { candidates, effectiveDispatch } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
@@ -21,7 +21,8 @@ import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import type { CurrentAction } from '../thread/calls.ts'
-import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
+import type { Catalog, CatalogLocations } from '../thread/catalog.ts'
+import { createCatalogIndex } from '../thread/catalog-index.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { wakeReasons } from '../core/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
@@ -951,6 +952,61 @@ async function mountOwnedHydra({
     state,
     offset,
   } = loadHydra({ hydraId })
+  const catalogIndex = createCatalogIndex({ locations: catalogLocations })
+
+  const catalogCard = ({
+    card,
+    provider,
+  }: {
+    card: Card
+    provider?: string
+  }): Card => {
+    if (card.id !== HYDRA_CARD) {
+      return card
+    }
+
+    const cwd = card.agent?.cwd ?? join(
+      dir,
+      'agent',
+    )
+
+    if (!card.agent?.cwd) {
+      mkdirSync(
+        cwd,
+        { recursive: true },
+      )
+    }
+
+    return {
+      ...card,
+      agent: {
+        ...card.agent,
+        sessionId: card.agent?.sessionId ?? '',
+        cwd,
+        provider: provider ?? card.agent?.provider ?? 'claude',
+      },
+    }
+  }
+
+  const warmCatalog = async () => {
+    const card = state.cards[HYDRA_CARD]
+
+    if (!card) {
+      return
+    }
+
+    await Promise.all([
+      'claude',
+      'codex',
+    ].map(provider => catalogIndex.read({
+      card: catalogCard({
+        card,
+        provider,
+      }),
+      projects: state.projects,
+    })))
+  }
+
   // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
   let firstmate: ReturnType<typeof watchHomes> | undefined
   let watchedHome: string | undefined
@@ -1385,6 +1441,14 @@ async function mountOwnedHydra({
         event,
       })
       recent.push(event)
+
+      if (event.type === 'hydra.project') {
+        void warmCatalog().catch(error => console.error(
+          'pnyx catalog warmup:',
+          error,
+        ))
+      }
+
       broadcast({ event })
       touchLatest({ ids: [event.cardId] })
 
@@ -1932,8 +1996,13 @@ async function mountOwnedHydra({
     })
   }
 
+  await warmCatalog().catch(error => console.error(
+    'pnyx catalog warmup:',
+    error,
+  ))
+
   const catalogReads = new WeakMap<WebSocket, {
-    card: string
+    scope: string
     read: Promise<Catalog>
   }>()
 
@@ -2036,16 +2105,47 @@ async function mountOwnedHydra({
             state,
             ref: args[0],
           })
+          const config = hydraConfig({ state })
+          const effective = effectiveDispatch({
+            hydraId,
+            state,
+          })
+          const receiving = card.id === HYDRA_CARD
+            ? config.hydra.agent?.harness
+              ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
+              ?? effective.dispatch.default[0]?.harness
+            : card.agent?.provider
+          const currentCard = catalogCard({
+            card,
+            provider: receiving,
+          })
+          const scope = JSON.stringify([
+            card.id,
+            receiving,
+            state.projectsRevision,
+          ])
           let entry = catalogReads.get(ws)
 
-          if (entry?.card !== card.id) {
+          if (entry?.scope !== scope) {
             const previous = entry?.read.catch(() => undefined)
             const next = {
-              card: card.id,
-              read: Promise.resolve(previous).then(() => readCatalog({
-                card,
-                locations: catalogLocations,
-              })),
+              scope,
+              read: Promise.resolve(previous).then(async () => {
+                const native = await agents.catalogCommands({ card })
+                const catalog = await catalogIndex.read({
+                  card: currentCard,
+                  projects: state.projects,
+                })
+
+                return {
+                  ...catalog,
+                  suggestions: [
+                    ...catalog.suggestions,
+                    ...((receiving === 'codex') === (card.agent?.provider === 'codex') ? native : []),
+                  ],
+                  provider: receiving,
+                }
+              }),
             }
             catalogReads.set(
               ws,
@@ -2742,6 +2842,7 @@ async function mountOwnedHydra({
     await queueRun
     firstmate?.close()
     review.close()
+    catalogIndex.close()
     agents.close()
     await spend.close()
 

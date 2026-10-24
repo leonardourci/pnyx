@@ -131,7 +131,6 @@ test(
         'ship',
       ],
     })
-    // The catalog lists the skills in Hydra's own folder once its session has one.
     await s.owner({
       args: [
         'hydra',
@@ -150,15 +149,16 @@ test(
     await page.click({ selector: '.hydra-chat textarea' })
     await page.type({ text: '/ins' })
     await page.shows({
-      what: 'Hydra’s own skill among the matching session commands',
+      what: 'Hydra’s own skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
-        .find(o => o.querySelector('strong')?.textContent === '/inscribe' && o.querySelector('small')?.textContent === 'Project skill'),
+        .find(o => o.querySelector('strong')?.textContent === '/inscribe'
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx Hydra'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
     await page.shows({
-      what: 'the command in the draft',
-      check: () => (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === '/inscribe '
+      what: 'the skill badge in the draft',
+      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/inscribe')
         && !document.querySelector('.slash-menu'),
     })
 

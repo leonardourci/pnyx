@@ -6,6 +6,8 @@ import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
 import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
+import { resolveSkillReferences } from '../thread/skill-reference.ts'
+import { effectiveDispatch } from '../dispatch/config.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
@@ -3269,12 +3271,28 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
       }
 
-      const text = task
+      const entered = task
         ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
         : required({
           value: values.text as string | undefined,
           what: '--text',
         })
+      const config = hydraConfig({
+        state,
+        id: hydraId,
+      })
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const provider = config.hydra.agent?.harness
+        ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
+        ?? effective.dispatch.default[0]?.harness
+        ?? state.cards[HYDRA_CARD]?.agent?.provider
+      const text = resolveSkillReferences({
+        text: entered,
+        provider,
+      })
       const context = mentionContext({
         state,
         text,

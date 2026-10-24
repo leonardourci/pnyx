@@ -171,13 +171,10 @@ export const slashPrefix = ({
 }: {
   text: string
   cursor: number
-}) => /^\/[a-z0-9_.:-]*$/i.test(text.slice(
+}) => /(?:^|\s)(\/[a-z0-9_.:-]*)$/i.exec(text.slice(
   0,
   cursor,
-)) ? text.slice(
-    0,
-    cursor,
-  ) : null
+))?.[1] ?? null
 export const slashMatches = ({
   command,
   prefix,

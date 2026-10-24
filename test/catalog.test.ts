@@ -254,7 +254,7 @@ test(
       second,
     )
     assert.deepEqual(
-      first.suggestions.map(s => s.command),
+      first.suggestions.map(s => s.command).sort(),
       [
         '/check',
         '/good:extra',
@@ -263,7 +263,7 @@ test(
       ],
     )
     assert.equal(
-      first.suggestions.at(-1)?.description,
+      first.suggestions.find(s => s.command === '/review')?.description,
       'Personal wins',
     )
     assert.equal(
@@ -325,7 +325,7 @@ test(
       locations,
     })
     assert.deepEqual(
-      result.suggestions.map(s => s.command),
+      result.suggestions.map(s => s.command).sort(),
       [
         '$project',
         '$review',
@@ -333,7 +333,7 @@ test(
       ],
     )
     assert.equal(
-      result.suggestions.at(-1)?.description,
+      result.suggestions.find(s => s.command === '/prompts:draft')?.description,
       'Draft from $ARGUMENTS',
     )
   },
@@ -446,6 +446,219 @@ test(
         locations,
       })).unavailable!,
       /no supported/,
+    )
+  },
+)
+
+test(
+  'catalog groups both global sources, agent skills and every attached project without registering foreign skills',
+  async t => {
+    const {
+      home,
+      cwd,
+      card,
+      locations,
+    } = setup({
+      t,
+      provider: 'codex',
+    })
+    const native = join(
+      home,
+      'project',
+    )
+    write({
+      path: join(
+        native,
+        '.agents/skills/local/SKILL.md',
+      ),
+      text: skill({ name: 'local' }),
+    })
+    write({
+      path: join(
+        home,
+        '.agents/skills/global/SKILL.md',
+      ),
+      text: skill({ name: 'global' }),
+    })
+    write({
+      path: join(
+        locations.claude,
+        'skills/other-global/SKILL.md',
+      ),
+      text: skill({ name: 'other-global' }),
+    })
+    write({
+      path: join(
+        locations.codex,
+        'skills/.system/system-skill/SKILL.md',
+      ),
+      text: skill({ name: 'system-skill' }),
+    })
+    const projects = [
+      {
+        path: native,
+        name: 'native',
+        detached: false,
+      },
+    ]
+
+    for (const name of [
+      'ledger',
+      'docs-site',
+      'detached',
+    ]) {
+      const path = join(
+        home,
+        name,
+      )
+      write({
+        path: join(
+          path,
+          '.agents/skills/deploy/SKILL.md',
+        ),
+        text: `---\nname: deploy\ndescription: |\n  Deploy ${name} safely.\n  A longer description stays in the skill file.\n---\n`,
+      })
+      symlinkSync(
+        join(
+          path,
+          '.agents',
+        ),
+        join(
+          path,
+          '.claude',
+        ),
+        'dir',
+      )
+      projects.push({
+        path,
+        name,
+        detached: name === 'detached',
+      })
+    }
+
+    const result = await readCatalog({
+      card,
+      locations,
+      projects,
+    })
+    assert.equal(
+      card.agent?.cwd,
+      cwd,
+    )
+    assert.equal(
+      result.suggestions.find(item => item.command === '$local')?.file,
+      undefined,
+    )
+    assert.equal(
+      result.suggestions.find(item => item.command === '$local')?.project,
+      'native',
+    )
+    assert.equal(
+      result.suggestions.find(item => item.command === '$global')?.file,
+      undefined,
+    )
+    assert.equal(
+      result.suggestions.find(item => item.command === '$system-skill')?.source,
+      'Agent skills',
+    )
+    assert.equal(
+      result.suggestions.find(item => item.command === '$other-global')?.file,
+      join(
+        locations.claude,
+        'skills/other-global/SKILL.md',
+      ),
+    )
+    const deployments = result.suggestions.filter(item => item.command === '$deploy')
+    assert.deepEqual(
+      deployments.map(item => item.project).sort(),
+      [
+        'docs-site',
+        'ledger',
+      ],
+    )
+
+    for (const item of deployments) {
+      assert.equal(
+        item.file,
+        join(
+          home,
+          item.project!,
+          '.agents/skills/deploy/SKILL.md',
+        ),
+      )
+      assert.equal(
+        item.projectPath,
+        join(
+          home,
+          item.project!,
+        ),
+      )
+      assert.equal(
+        item.description,
+        `Deploy ${item.project} safely.`,
+      )
+    }
+
+    assert.equal(
+      result.note,
+      undefined,
+    )
+  },
+)
+
+test(
+  'attached projects with the same name retain distinct skill file identities',
+  async t => {
+    const {
+      home,
+      card,
+      locations,
+    } = setup({
+      t,
+      provider: 'codex',
+    })
+    const projects = [
+      'team-a',
+      'team-b',
+    ].map(team => ({
+      path: join(
+        home,
+        team,
+        'shared',
+      ),
+      name: 'shared',
+      detached: false,
+    }))
+
+    for (const project of projects) {
+      write({
+        path: join(
+          project.path,
+          '.agents/skills/deploy/SKILL.md',
+        ),
+        text: skill({ name: 'deploy' }),
+      })
+    }
+
+    const catalog = await readCatalog({
+      card,
+      locations,
+      projects,
+    })
+    assert.deepEqual(
+      catalog.suggestions.filter(item => item.command === '$deploy').map(item => ({
+        name: item.project,
+        path: item.projectPath,
+        file: item.file,
+      })),
+      projects.map(project => ({
+        name: 'shared',
+        path: project.path,
+        file: join(
+          project.path,
+          '.agents/skills/deploy/SKILL.md',
+        ),
+      })),
     )
   },
 )

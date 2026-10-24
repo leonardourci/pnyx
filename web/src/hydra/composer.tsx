@@ -1,4 +1,4 @@
-import type { Card, HydraColumn, HydraProject } from '../../../src/core/model.ts'
+import type { Card, HydraColumn, HydraProject, SavedLabelColor } from '../../../src/core/model.ts'
 import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
@@ -6,7 +6,11 @@ import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
-import type { Catalog } from '../../../src/thread/catalog.ts'
+import { readSkillReference, skillReference } from '../../../src/thread/skill-reference.ts'
+import { SkillBadge } from '../components/ui/skill-badge.tsx'
+import { Label } from '../components/ui/label.tsx'
+import { SuggestionPicker } from '../components/ui/suggestion-picker.tsx'
+import { useSkillsCatalog } from './skills-catalog.ts'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
@@ -21,7 +25,7 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
-import { cardChip, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 function DraftCard({
   chip,
@@ -66,6 +70,8 @@ export function Composer({
   thread,
   command,
   connected,
+  catalogHarness,
+  labelColors,
   notify,
   settings,
   meter,
@@ -86,6 +92,8 @@ export function Composer({
   thread: ThreadPage | null
   command: Command
   connected: boolean
+  catalogHarness?: string
+  labelColors?: SavedLabelColor[]
   notify({ text }: { text: string }): void
   settings?: ReactNode
   meter?: ReactNode
@@ -111,7 +119,7 @@ export function Composer({
   const [
     active,
     setActive,
-  ] = useState(-1)
+  ] = useState(0)
   const [
     mention,
     setMention,
@@ -204,11 +212,17 @@ export function Composer({
     cursor: number
   }) => {
     const shown = draftView({ text })
+    setPrefix(slashPrefix({
+      text: shown.display,
+      cursor,
+    }))
     const found = mentionQuery({
       text: shown.display,
       cursor,
     })
-    setMention(found && !shown.chips.some(chip => chip.from === found.start) ? found : null)
+    const insideChip = found && shown.chips.some(chip =>
+      chip.from <= found.start && found.start < chip.to)
+    setMention(insideChip ? null : found)
     setMentionActive(0)
   }
 
@@ -411,74 +425,48 @@ export function Composer({
     draft,
     comments,
   }
-  const { label } = useKeyboard(), [
-    catalog,
-    setCatalog,
-  ] = useState<Catalog | null>(null)
+  const { label } = useKeyboard()
+  const catalogOpen = prefix !== null
+  const agent = cards.find(item => item.id === card)?.agent
+  const receiving = catalogHarness ?? agent?.provider ?? 'claude'
+  const catalog = useSkillsCatalog({
+    identity: JSON.stringify([
+      card,
+      agent?.provider,
+      agent?.cwd,
+      agent?.sessionId,
+      receiving === 'claude-code' ? 'claude' : receiving,
+    ]),
+    card,
+    command,
+    connected,
+    open: catalogOpen,
+  })
   const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
     command: s.command,
     prefix: prefix ?? '',
   }))
-  const catalogOpen = prefix !== null
-  useEffect(
-    () => {
-      if (!catalogOpen || !connected) {
-        return
-      }
-
-      let cancelled = false; setCatalog(null)
-      const timer = setTimeout(
-        () => {
-          void command({
-            name: 'catalog',
-            args: [card],
-          }).then(r => {
-            if (!cancelled) {
-              setCatalog(r.catalog as Catalog)
-            }
-          })
-            .catch(() => {
-              if (!cancelled) {
-                setCatalog({
-                  suggestions: [],
-                  unavailable: 'Catalog unavailable. Your command stays literal.',
-                })
-              }
-            })
-        },
-        120,
-      )
-
-      return () => {
-        cancelled = true; clearTimeout(timer)
-      }
-    },
-    [
-      card,
-      catalogOpen,
-      command,
-      connected,
-    ],
-  )
-  useEffect(
-    () => {
-      document.getElementById(`suggestion-${card}-${active}`)?.scrollIntoView({ block: 'nearest' })
-    },
-    [
-      card,
-      active,
-    ],
-  )
 
   const choose = ({ command }: { command: string }) => {
     const cursor = input.current?.selectionStart ?? display.length
+    const query = slashPrefix({
+      text: display,
+      cursor,
+    })
+
+    if (query === null || query !== prefix) {
+      setPrefix(null)
+
+      return
+    }
+
     write(replaceDisplay({
       text: draft,
-      from: 0,
+      from: cursor - query.length,
       to: cursor,
       insert: `${command} `,
     }))
-    setPrefix(null); setActive(-1); input.current?.focus()
+    setPrefix(null); setActive(0); input.current?.focus()
   }
 
   const insertBlock = ({ block }: { block: string }) => {
@@ -554,7 +542,7 @@ export function Composer({
         caret: 0,
       })
       setComments({ items: comments.filter(comment => !sendableComment({ comment })) })
-      setMention(null); setPrefix(null); setActive(-1)
+      setMention(null); setPrefix(null); setActive(0)
     }
 
     let problem: string | null = null
@@ -671,7 +659,7 @@ export function Composer({
         return false
       }
 
-      setPrefix(null); setActive(-1); setMention(null)
+      setPrefix(null); setActive(0); setMention(null)
 
       return true
     },
@@ -739,33 +727,41 @@ export function Composer({
             />
           )}
           {prefix !== null && (
-            <div className="slash-menu">
-              <span className="eyebrow">Session commands</span>
-              <div id={`suggestions-${card}`} role="listbox" aria-label="Session commands">
-                {suggestions.map((
-                  s,
-                  n,
-                ) => (
-                  <Button
-                    role="option"
-                    aria-selected={n === active}
-                    id={`suggestion-${card}-${n}`}
-                    key={s.command}
-                    className={n === active ? 'active' : ''}
-                    onMouseDown={e => e.preventDefault()}
-                    onClick={() => choose({ command: s.command })}
-                  >
-                    <strong>{s.command}</strong>
-                    <span>
-                      {s.description}
-                      <small>{s.source}</small>
-                    </span>
-                  </Button>
-                ))}
-              </div>
-              {!suggestions.length && <p role="status">{!catalog ? 'Loading local commands…' : catalog.unavailable ?? 'No matching local command.'}</p>}
-              {catalog?.note && <p>{catalog.note}</p>}
-            </div>
+            <SuggestionPicker
+              id={`suggestions-${card}`}
+              anchor={input}
+              label="Skills and commands"
+              className="slash-menu"
+              active={Math.min(
+                active,
+                suggestions.length - 1,
+              )}
+              matches={suggestions.map(item => ({
+                ...item,
+                key: `${item.projectPath ?? item.source}:${item.file ?? item.command}`,
+                title: `/${item.command.replace(
+                  /^[$/]/,
+                  '',
+                )}`,
+                detail: '',
+                badge: item.project ? (
+                  <Label
+                    project
+                    label={item.projectPath ?? item.project}
+                    text={item.project}
+                    colors={labelColors}
+                  />
+                ) : undefined,
+                group: item.source,
+                excerpt: item.description,
+
+              }))}
+              choose={({ item }) => choose({ command: skillReference({ item }) })}
+              loading={!catalog}
+              empty={catalog?.unavailable ?? 'No matching skill or command.'}
+              footer={catalog?.note ? <p>{catalog.note}</p> : undefined}
+
+            />
           )}
           <Textarea
             ref={input}
@@ -777,7 +773,10 @@ export function Composer({
             aria-label={`Reply to ${title}`}
             aria-controls={mention ? mentionList : catalogOpen ? `suggestions-${card}` : undefined}
             aria-activedescendant={mention && matches.length ? `${mentionList}-${picked}`
-              : active >= 0 && suggestions[active] ? `suggestion-${card}-${active}` : undefined}
+              : active >= 0 && suggestions[active] ? `suggestions-${card}-${Math.min(
+                active,
+                suggestions.length - 1,
+              )}` : undefined}
             onScroll={event => {
               if (mirror.current) {
                 mirror.current.scrollTop = event.currentTarget.scrollTop
@@ -833,7 +832,7 @@ export function Composer({
                 text: shown,
                 cursor: edit.caret,
               }))
-              setActive(-1)
+              setActive(0)
               trackMention({
                 text: edit.text,
                 cursor: edit.caret,
@@ -844,33 +843,58 @@ export function Composer({
                 return
               }
 
-              if (mention && [
+              const pickerCount = mention ? matches.length : suggestions.length
+
+              const dismissEmptyPicker = pickerCount === 0
+                && (e.key === 'Tab' || mention !== null || catalog !== null)
+
+              if ((mention || catalogOpen) && dismissEmptyPicker
+                && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                setMention(null)
+                setPrefix(null)
+
+                return
+              }
+
+              if ((mention || catalogOpen) && [
                 'ArrowDown',
                 'ArrowUp',
                 'Enter',
                 'Tab',
                 'Escape',
-              ].includes(e.key) && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.key === 'Tab' && e.shiftKey)) {
-                e.preventDefault(); e.stopPropagation()
+              ].includes(e.key)
+                && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.key === 'Tab' && e.shiftKey)) {
+                e.preventDefault()
+                e.stopPropagation()
+                const count = mention ? matches.length : suggestions.length
+                const index = mention ? picked : Math.min(
+                  active,
+                  count - 1,
+                )
 
                 if (e.key === 'Escape') {
                   setMention(null)
+                  setPrefix(null)
                 } else if (e.key === 'Enter' || e.key === 'Tab') {
-                  const selected = matches[picked]
-
-                  if (selected) {
-                    chooseMention({ item: selected })
-                  } else {
-                    setMention(null)
+                  if (mention && matches[index]) {
+                    chooseMention({ item: matches[index] })
+                  } else if (!mention && suggestions[index]) {
+                    choose({ command: skillReference({ item: suggestions[index] }) })
                   }
                 } else {
-                  setMentionActive(index => Math.max(
+                  const next = Math.max(
                     0,
                     Math.min(
-                      matches.length - 1,
+                      count - 1,
                       index + (e.key === 'ArrowDown' ? 1 : -1),
                     ),
-                  ))
+                  )
+
+                  if (mention) {
+                    setMentionActive(next)
+                  } else {
+                    setActive(next)
+                  }
                 }
 
                 return
@@ -894,28 +918,7 @@ export function Composer({
 
               if (e.key === 'Tab') {
                 setMention(null)
-                setPrefix(null); setActive(-1)
-              }
-
-              if (prefix !== null && suggestions.length && [
-                'ArrowDown',
-                'ArrowUp',
-              ].includes(e.key)) {
-                e.preventDefault(); setActive(n => Math.max(
-                  0,
-                  Math.min(
-                    suggestions.length - 1,
-                    n + (e.key === 'ArrowDown' ? 1 : -1),
-                  ),
-                ))
-
-                return
-              }
-
-              if (prefix !== null && active >= 0 && e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
-                e.preventDefault(); choose({ command: suggestions[active].command })
-
-                return
+                setPrefix(null); setActive(0)
               }
 
               if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
@@ -951,18 +954,30 @@ export function Composer({
                   chip.from,
                 )
 
-                return cardChip({ chip }) ? (
-                  <Fragment key={chip.start}>
-                    {before}
+                const skill = chip.kind === 'skill' ? readSkillReference({
+                  value: chip.value,
+                }) : undefined
+
+                let token: ReactNode
+
+                if (skill) {
+                  token = (
+                    <SkillBadge
+                      skill={skill}
+                      colors={labelColors}
+                      remove={() => removeCard({ chip })}
+                    />
+                  )
+                } else if (cardChip({ chip })) {
+                  token = (
                     <DraftCard
                       chip={chip}
                       open={() => openChip({ chip })}
                       remove={() => removeCard({ chip })}
                     />
-                  </Fragment>
-                ) : (
-                  <Fragment key={chip.start}>
-                    {before}
+                  )
+                } else {
+                  token = (
                     <span
                       className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${look?.tone ?? ''}`}
                       data-kind={chip.kind}
@@ -972,10 +987,27 @@ export function Composer({
                     >
                       {look ? (
                         <>
-                          {look.icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
-                          {chip.name}
+                          {look.icons.map((
+                            icon,
+                            index,
+                          ) => (
+                            <Fragment key={icon}>
+                              {index > 0 && WORD_JOINER}
+                              <span className="chip-icon">{ICON_SPACE}<Icon name={icon} size={14} /></span>
+                            </Fragment>
+                          ))}
+                          {CHIP_JOIN}{chip.name}
                         </>
                       ) : chip.label}
+                    </span>
+                  )
+                }
+
+                return (
+                  <Fragment key={chip.start}>
+                    {before}
+                    <span className="draft-token" data-from={chip.from} data-to={chip.to}>
+                      {CHIP_SPACE}{token}{CHIP_SPACE}
                     </span>
                   </Fragment>
                 )

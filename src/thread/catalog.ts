@@ -3,17 +3,24 @@ import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
-import type { Card } from '../core/model.ts'
+import { HYDRA_SKILLS, skillSource } from '../integrations/skills/install.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
+import type { Card, HydraProject } from '../core/model.ts'
 
 export interface Suggestion {
   command: string
   description: string
   source: string
+  kind?: 'skill' | 'command'
+  file?: string
+  project?: string
+  projectPath?: string
 }
 export interface Catalog {
   suggestions: Suggestion[]
   unavailable?: string
   note?: string
+
 }
 export interface CatalogLocations {
   home: string
@@ -52,7 +59,10 @@ const sort = ({
 class Reader {
   remaining = 1000
   partial = false
+  observe?: ({ path }: { path: string }) => void
   async text({ path }: { path: string }): Promise<string | undefined> {
+    this.observe?.({ path })
+
     if (--this.remaining < 0) {
       this.partial = true
 
@@ -115,6 +125,8 @@ class Reader {
   }
 
   async list({ path }: { path: string }): Promise<string[]> {
+    this.observe?.({ path })
+
     if (--this.remaining < 0) {
       this.partial = true
 
@@ -214,6 +226,8 @@ async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
 
 export async function readCatalog({
   card,
+  projects = [],
+  observe,
   locations = {
     home: homedir(),
     claude: process.env.CLAUDE_CONFIG_DIR || join(
@@ -227,6 +241,8 @@ export async function readCatalog({
   },
 }: {
   card: Card
+  projects?: HydraProject[]
+  observe?: ({ path }: { path: string }) => void
   locations?: CatalogLocations
 }): Promise<Catalog> {
   if (!card.agent?.cwd || !isAbsolute(card.agent.cwd)) {
@@ -265,19 +281,29 @@ export async function readCatalog({
   }
 
   const reader = new Reader()
+  reader.observe = observe
   const folders = await projectFolders({ cwd })
   const suggestions = new Map<string, Suggestion>()
+  const skillFiles = new Set<string>()
 
   const add = ({
     command,
     meta,
     source,
+    kind = 'skill',
+    file,
+    project,
+    projectPath,
   }: {
     command: string
     meta: Record<string, unknown>
     source: string
+    kind?: Suggestion['kind']
+    file?: string
+    project?: string
+    projectPath?: string
   }) => {
-    if (meta['user-invocable'] === false || suggestions.has(command)) {
+    if (meta['user-invocable'] === false || suggestions.has(file ?? command)) {
       return
     }
 
@@ -288,11 +314,15 @@ export async function readCatalog({
     }
 
     suggestions.set(
-      command,
+      file ?? command,
       {
         command,
+        kind,
+        file,
+        project,
+        projectPath,
         source,
-        description: typeof meta.description === 'string' ? meta.description.slice(
+        description: typeof meta.description === 'string' ? meta.description.split(/\r?\n/)[0]!.slice(
           0,
           240,
         ) : 'Local harness command',
@@ -305,12 +335,16 @@ export async function readCatalog({
       root,
       source,
       prefix,
-      disabled = {},
+      project,
+      projectPath,
+      foreign = false,
     }: {
       root: string
       source: string
       prefix: string
-      disabled?: Record<string, unknown>
+      project?: string
+      projectPath?: string
+      foreign?: boolean
     },
   ) => {
     for (const entry of await reader.list({ path: root })) {
@@ -318,13 +352,28 @@ export async function readCatalog({
         continue
       }
 
-      const meta = await reader.metadata({
-        path: join(
-          root,
-          entry,
-          'SKILL.md',
-        ),
-      })
+      const path = join(
+        root,
+        entry,
+        'SKILL.md',
+      )
+      let resolved: string
+
+      try {
+        resolved = await realpath(path)
+      } catch {
+        reader.observe?.({ path })
+        continue
+      }
+
+      const identity = `${projectPath ?? ''}:${resolved}`
+
+      if (skillFiles.has(identity)) {
+        continue
+      }
+
+      skillFiles.add(identity)
+      const meta = await reader.metadata({ path })
 
       if (!meta) {
         continue
@@ -332,11 +381,14 @@ export async function readCatalog({
 
       const name = validName({ value: meta.name ?? entry })
 
-      if (name && disabled[name] !== 'off') {
+      if (name) {
         add({
           command: prefix + name,
           meta,
           source,
+          file: foreign ? path : undefined,
+          project,
+          projectPath,
         })
       }
     }
@@ -365,6 +417,7 @@ export async function readCatalog({
       return
     }
 
+    reader.observe?.({ path: root })
     let actual: string
 
     try {
@@ -402,6 +455,7 @@ export async function readCatalog({
             command: prefix + name,
             meta,
             source,
+            kind: 'command',
           })
         }
       } else if (recursive) {
@@ -421,26 +475,152 @@ export async function readCatalog({
     }
   }
 
-  if (provider === 'codex') {
+  const prefix = provider === 'codex' ? '$' : '/'
+
+  for (const name of card.id === HYDRA_CARD ? HYDRA_SKILLS.filter(name => name !== 'pnyx-hydra') : []) {
+    const path = skillSource({ name })
+    const meta = await reader.metadata({ path })
+
+    if (meta) {
+      add({
+        command: prefix + name,
+        meta,
+        source: 'Pnyx Hydra',
+      })
+    }
+  }
+
+  const activeProjects = projects.filter(project => !project.detached)
+  const attached = await Promise.all(activeProjects.map(async project => {
+    try {
+      return {
+        ...project,
+        resolved: await realpath(project.path),
+      }
+    } catch {
+      return {
+        ...project,
+        resolved: project.path,
+      }
+    }
+  }))
+  const ownProject = attached.find(project => folders.includes(project.resolved))
+  const sessionSource = ownProject ? `Project · ${ownProject.name}` : 'Session skills'
+
+  const localSkills = async ({
+    family,
+    foreign,
+  }: {
+    family: '.agents' | '.claude'
+    foreign: boolean
+  }) => {
     for (const folder of folders) {
       await skills({
         root: join(
           folder,
-          '.agents/skills',
+          family,
+          'skills',
         ),
-        source: 'Project skill',
-        prefix: '$',
+        source: sessionSource,
+        prefix,
+        foreign,
+        project: ownProject?.name,
+        projectPath: ownProject?.path,
       })
     }
+  }
 
+  if (provider === 'codex') {
+    await localSkills({
+      family: '.agents',
+      foreign: false,
+    })
+    await skills({
+      root: join(
+        locations.codex,
+        'skills',
+      ),
+      source: 'Agent skills',
+      prefix,
+    })
+    await skills({
+      root: join(
+        locations.codex,
+        'skills/.system',
+      ),
+      source: 'Agent skills',
+      prefix,
+    })
     await skills({
       root: join(
         locations.home,
         '.agents/skills',
       ),
-      source: 'Personal skill',
-      prefix: '$',
+      source: 'Global · .agents',
+      prefix,
     })
+    await skills({
+      root: join(
+        locations.claude,
+        'skills',
+      ),
+      source: 'Global · .claude',
+      prefix,
+      foreign: true,
+    })
+    await localSkills({
+      family: '.claude',
+      foreign: true,
+    })
+  } else {
+    await skills({
+      root: join(
+        locations.claude,
+        'skills',
+      ),
+      source: 'Global · .claude',
+      prefix,
+    })
+    await localSkills({
+      family: '.claude',
+      foreign: false,
+    })
+    await skills({
+      root: join(
+        locations.home,
+        '.agents/skills',
+      ),
+      source: 'Global · .agents',
+      prefix,
+      foreign: true,
+    })
+    await localSkills({
+      family: '.agents',
+      foreign: true,
+    })
+  }
+
+  for (const project of attached.filter(project => !folders.includes(project.resolved))) {
+    for (const family of [
+      '.agents',
+      '.claude',
+    ]) {
+      await skills({
+        root: join(
+          project.path,
+          family,
+          'skills',
+        ),
+        source: `Project · ${project.name}`,
+        prefix,
+        foreign: true,
+        project: project.name,
+        projectPath: project.path,
+      })
+    }
+  }
+
+  if (provider === 'codex') {
     await commands({
       root: join(
         locations.codex,
@@ -483,26 +663,14 @@ export async function readCatalog({
       {},
       ...settings.map(s => object({ value: s.skillOverrides })),
     ) as Record<string, unknown>
-    await skills({
-      root: join(
-        locations.claude,
-        'skills',
-      ),
-      source: 'Personal skill',
-      prefix: '/',
-      disabled: overrides,
-    })
 
-    for (const folder of folders) {
-      await skills({
-        root: join(
-          folder,
-          '.claude/skills',
-        ),
-        source: 'Project skill',
-        prefix: '/',
-        disabled: overrides,
-      })
+    for (const [
+      key,
+      item,
+    ] of suggestions) {
+      if (overrides[item.command.slice(1)] === 'off') {
+        suggestions.delete(key)
+      }
     }
 
     for (const folder of folders) {
@@ -624,14 +792,22 @@ export async function readCatalog({
     }
   }
 
+  const sourceRank = ({ source }: { source: string }) => {
+    if (source === 'Pnyx Hydra') {
+      return 0
+    }
+
+    return source.startsWith('Global') ? 1 : 2
+  }
+
   return {
     suggestions: [...suggestions.values()].sort((
       a,
       b,
-    ) => sort({
-      a: a.command,
-      b: b.command,
+    ) => sourceRank(a) - sourceRank(b) || sort({
+      a: `${a.source}:${a.command}`,
+      b: `${b.source}:${b.command}`,
     })),
-    note: reader.partial ? 'Some local catalog files could not be read or exceeded the discovery limit.' : 'Local files; the harness may require a reload or have additional availability rules. Inserted text stays literal.',
+    note: reader.partial ? 'Some local catalog files could not be read or exceeded the discovery limit.' : undefined,
   }
 }
