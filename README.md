@@ -218,6 +218,19 @@ The default limits are one hour, 64 KiB combined stdout/stderr and a one-day reg
 
 The server owns one listener per registration. Its child supervisor stops the source's process group when the server connection closes. Restart replays unread results and records a lost listener as interrupted. Holds retain captures and queue their inbox messages without resuming the worker; expired registrations and replaced workers cannot launch old commands. Failure, uncertainty, hidden or held results, and acknowledged results left unfinished after a worker turn create one durable Hydra alert per result. These alerts can start Hydra even before its first chat message. Hidden results remain readable and enter the task inbox when the task returns. Firstmate-owned tasks continue using Firstmate's external-source lifecycle.
 
+Workers can put an already-open Lavish page on the same durable transport:
+
+```sh
+pnyx-axi task source lavish <task> page-1 --page .lavish/review.html --executable "$(command -v lavish-axi)" --hydra work
+pnyx-axi task source read <task> page-1 --hydra work
+# After incorporating the round and acknowledging its inbox message:
+pnyx-axi task source lavish <task> page-2 --page .lavish/review.html --executable "$(command -v lavish-axi)" --after page-1 --sequence 1 --session <session> --generation <number> --agent-reply-file reply.md --hydra work
+```
+
+The worker owns the page and its feedback; Hydra relays its link. A registration binds the canonical page, worker claim, exact predecessor round and optional reply text/identity. The server posts a staged reply once through `lavish-axi reply`, saves its acceptance receipt, then launches `poll`. Registration alone does not mean listening: inspect the source's running state and reply acceptance first. A failed or interrupted post remains an unread result and never starts a poll. Repeating the same registration preserves its identity; a round cannot acquire a second successor. Apply and checkpoint all feedback before acknowledging it. Re-arm handles that exact acknowledged round and registers its successor together. Real owner choices use `task ask` and the existing report-review inventory.
+
+An empty End or feedback with `session_ended` remains owed until handled, then retires; re-arm is refused. Unknown responses and disconnected sessions also stop for worker attention. Polls use the existing one-day limit and capture bounds. A server restart preserves registrations, receipts and unread rounds. A lost running poll produces an interrupted result; the worker checks the uncertainty and explicitly re-arms instead of blindly replaying a destructive read. Expired, stale-assignment and explicitly stopped registrations can also be recovered by the current worker after acknowledgement; none restarts automatically. Lavish consumes feedback when returning it, so output lost before reaching the source supervisor cannot be recovered by Pnyx. Reply acceptance has no remote idempotency key: an uncertain post requires inspection before another explicit publication.
+
 ## Starting workers and Hydra
 
 Hold an idea for discussion with `pnyx-axi task create --title "Idea" --hold` or `task hold <task> --reason "Discuss first"`. It stays in Backlog marked **Talking** and cannot start, build, queue or continue. Once Hydra has played back its understanding, it asks `task ask <task> --to owner --kind go --question "Ready to build?"`; the card moves to Needs you. Answering **Go** releases the hold and closes the question together. **Hold** keeps the discussion held. Hydra can also release with `task release <task> --from-message <owner-message-id> --reason "Owner approved"`, quoting an owner message newer than the hold.
