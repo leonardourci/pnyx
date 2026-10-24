@@ -1229,6 +1229,25 @@ test(
     })
     const current = s.task({ key: 'current' })
     const folder = current.copy!.path
+    const branch = current.copy!.branch!
+    const repositoryUrl = `https://github.com/o/${s.hydraId}.git`
+    git({
+      cwd: project,
+      args: [
+        'config',
+        `url.${project}.git.insteadOf`,
+        repositoryUrl,
+      ],
+    })
+    git({
+      cwd: project,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        repositoryUrl,
+      ],
+    })
     await s.agent({ cwd: folder })
     await until({
       what: 'current worker idle',
@@ -1287,7 +1306,7 @@ test(
         'push',
         '-q',
         'origin',
-        'HEAD:feature',
+        `HEAD:${branch}`,
       ],
     })
     const landing = s.folder({ name: 'landing' })
@@ -1305,7 +1324,7 @@ test(
       args: [
         'merge',
         '--squash',
-        'origin/feature',
+        `origin/${branch}`,
       ],
     })
     git({
@@ -1365,6 +1384,8 @@ test(
         return {
           head,
           merge,
+          branch,
+          base: 'main',
         }
       },
     })
@@ -1398,6 +1419,8 @@ test(
     const readLanding = async () => ({
       head,
       merge,
+      branch,
+      base: 'main',
     })
     await Promise.all([
       advanceQueues({
