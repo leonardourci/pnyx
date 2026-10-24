@@ -1,3 +1,4 @@
+import type { ProjectRefresh } from '../projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '../helper/state.ts'
 import type { ExternalSource, ExternalSourceEvent } from '../external-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
@@ -398,6 +399,7 @@ export interface TaskHold {
 }
 
 export interface Card {
+  projectRefresh?: Record<string, ProjectRefresh>
   prerequisites?: string[]
   hold?: TaskHold
   id: string
@@ -766,6 +768,10 @@ export interface HydraStatus {
   after?: number
 }
 export type HydraChange = EventBase & (
+  | {
+    type: 'project.refreshed'
+    data: ProjectRefresh
+  }
   | {
     type: 'task.dependencies'
     data: {
@@ -1211,6 +1217,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.source.result',
   'task.source.alerted',
   'task.source.handled',
+  'project.refreshed',
   'task.steering.queued',
   'task.steering.notified',
   'task.steering.handled',

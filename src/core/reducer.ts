@@ -506,6 +506,11 @@ function apply({
           }
         }
       }
+    } else if (event.type === 'project.refreshed') {
+      card.projectRefresh = {
+        ...card.projectRefresh,
+        [event.data.url]: { ...event.data },
+      }
     } else if (event.type === 'card.noted') {
       const {
         kind,
