@@ -1,3 +1,4 @@
+import { inboxCommand } from '../task-inbox/cli.ts'
 import { columnRule, parseColumnRule } from '../core/columns.ts'
 import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
@@ -938,6 +939,10 @@ export const TASK_OPTIONS: Options = {
 }
 
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'inbox') {
+    return inboxCommand({ args: args.slice(1) })
+  }
+
   const {
     values,
     positionals,
@@ -3864,6 +3869,9 @@ function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
+    case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
+    case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
@@ -4509,6 +4517,13 @@ pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<a
 Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
+pnyx-axi task inbox read <task> [--all]
+pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
+pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
+pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
+Inbox reads return the active session/generation claim and pending instructions in order. Acknowledge the oldest instruction after incorporating it.
+A blocked acknowledgement requires --note; it records why incorporation could not proceed. Delivery receipts never mark an instruction handled.
+Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]

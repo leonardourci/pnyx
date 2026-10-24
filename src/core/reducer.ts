@@ -1,4 +1,5 @@
 import { applyHelper } from '../helper/state.ts'
+import { applySteering } from '../task-inbox/state.ts'
 import {
   AUTO_TITLE_SOURCES,
   EVENT_VERSION,
@@ -160,7 +161,10 @@ function apply({
     colors: event.labelColors,
   })
 
-  if (applyQueue({
+  if (applySteering({
+    state,
+    event,
+  }) || applyQueue({
     state,
     event,
   }) || applyReminder({
@@ -226,10 +230,24 @@ function apply({
   let card = state.cards[event.cardId]
 
   if (event.type === 'task.session') {
+    const attached = state.sessions?.[event.data.session]?.taskId === event.data.before
     applyAttachment({
       state,
       event,
     })
+
+    if (attached) {
+      for (const id of [
+        event.data.before,
+        event.data.after,
+      ]) {
+        const task = id && state.cards[id]
+
+        if (task) {
+          task.steeringGeneration = event.seq
+        }
+      }
+    }
 
     if (event.undoes) {
       state.undone[event.undoes] = event.id
