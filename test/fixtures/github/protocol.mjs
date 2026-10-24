@@ -99,13 +99,13 @@ if (args[0] === 'pr' && args[1] === 'view') {
   checks: ${JSON.stringify(pr.checks)}
   comment_count: ${pr.comments}
   review_count: 0`)
-} else if (args.includes('PUT') || (args[0] === 'pr' && args[1] === 'merge')) {
+} else if (args.includes('PUT')) {
   appendFileSync(
     `${file}.arguments`,
     `${JSON.stringify(args)}\n`,
   )
   const fields = args.filter(arg => arg.includes('=') && !arg.startsWith('/'))
-  const sha = args[0] === 'pr' ? pr.head : fields.find(arg => arg.startsWith('sha='))?.slice(4)
+  const sha = fields.find(arg => arg.startsWith('sha='))?.slice(4)
 
   if (pr.pushBeforeMerge) {
     pr.head = pr.pushBeforeMerge
@@ -116,15 +116,15 @@ if (args[0] === 'pr' && args[1] === 'view') {
   }
 
   if (sha !== pr.head) {
-    fail({ message: 'Head branch was modified' })
+    fail({ message: 'HTTP 409: Head branch was modified' })
   }
 
-  if (!fields.includes('merge_method=merge') && !args.includes('--merge')) {
+  if (!fields.includes('merge_method=merge')) {
     fail({ message: 'merge method is required' })
   }
 
   if (pr.mergeBehavior === 'rejected') {
-    fail({ message: 'Pull request is not mergeable' })
+    fail({ message: 'HTTP 405: Pull request is not mergeable' })
   }
 
   appendFileSync(
@@ -200,20 +200,16 @@ if (args[0] === 'pr' && args[1] === 'view') {
 
   emitPayload({ value: pageItems({ items: pr.statuses }) })
 } else if (path?.includes('/pulls/')) {
-  if (args.includes('.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring)')) {
-    console.log(`response:\n  body: "${pr.head} ${pr.merge} ${pr.state === 'merged'}"`)
-  } else {
-    emitPayload({
-      value: {
-        head: { sha: pr.head },
-        base: { ref: pr.base },
-        merged: pr.state === 'merged',
-        merge_commit_sha: pr.state === 'merged' ? pr.merge : null,
-        state: pr.state === 'open' ? 'open' : 'closed',
-        draft: pr.draft,
-      },
-    })
-  }
+  emitPayload({
+    value: {
+      head: { sha: pr.head },
+      base: { ref: pr.base },
+      merged: pr.state === 'merged',
+      merge_commit_sha: pr.state === 'merged' ? pr.merge : null,
+      state: pr.state === 'open' ? 'open' : 'closed',
+      draft: pr.draft,
+    },
+  })
 } else if (args.includes('graphql')) {
   if (!args.includes('POST')) {
     fail({ message: 'GraphQL queries require POST' })
@@ -235,7 +231,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
                 requiresStatusChecks: pr.legacy.length > 0,
                 requiredStatusChecks: pr.legacy.map(check => ({
                   context: check.context,
-                  app: check.app ? { databaseId: check.app } : null,
+                  app: check.app ? { databaseId: pr.unreadable === 'legacy-app' ? null : check.app } : null,
                 })),
               },
             },

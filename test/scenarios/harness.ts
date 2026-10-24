@@ -358,9 +358,10 @@ export function scenarioGroup({ retryDelays }: {
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.
-    restart: async () => {
+    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
       const { port } = server!
       await server!.close()
+      await whileStopped?.()
       await start({ port })
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
@@ -627,7 +628,7 @@ function hydraScenario({
         .split('\n')
         .map(line => JSON.parse(line) as string[]) : []
     },
-    // How many times `pr merge` merged that pull request.
+    // Accepted requests include queued merges, so this detects duplicate submissions.
     merges: ({ number }: { number: number }) => {
       const log = join(
         repo,

@@ -3,9 +3,6 @@
 # gh-axi's TOON shape; `pr view 8 --repo o/r` prints a draft with a check still
 # running and comments; `pr view <n> --repo <repo>` prints any other pull request as
 # open with no checks; anything else fails like an unknown pull request.
-# Scenarios script their pull requests instead: with PNYX_FAKE_GITHUB set, `pr view`
-# prints $PNYX_FAKE_GITHUB/<repo>/<n> when it exists, and `pr merge` marks it merged
-# and records the merge in $PNYX_FAKE_GITHUB/<repo>/<n>.merges.
 if [ -n "$PNYX_FAKE_GITHUB" ]; then
   exec node "$(dirname "$0")/protocol.mjs" "$@"
 fi

@@ -28,7 +28,7 @@ export interface FakePullRequest {
     context: string
     state: string
   }[]
-  unreadable?: 'rules' | 'legacy' | 'runs' | 'statuses'
+  unreadable?: 'rules' | 'legacy' | 'legacy-app' | 'runs' | 'statuses'
   mergeBehavior?: 'merged' | 'queued' | 'open' | 'readback-failed' | 'rejected'
   pushBeforeMerge?: string
 }
