@@ -423,6 +423,9 @@ export async function sendReply({
         text: request.text,
         provider: card.agent?.provider,
       })
+      const nativeCommand = route.kind === 'pnyx'
+        && /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
+      const control = Boolean(request.control || request.key || request.setting || nativeCommand)
       let text = entered
       let keys: KeyStep[] | undefined
       let answers: string | undefined
@@ -538,8 +541,7 @@ export async function sendReply({
         }) : ''
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
-      const resumes = !request.control && !request.key && !request.setting
-        && !request.taskMessage && !answers && !resolveKey
+      const resumes = !control && !request.taskMessage && !answers && !resolveKey
       const data = {
         reply,
         resumes,
@@ -551,7 +553,7 @@ export async function sendReply({
         text,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
-        ...(request.control || request.key || request.setting ? { control: true } : {}),
+        ...(control ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
         ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
@@ -561,7 +563,7 @@ export async function sendReply({
         context,
       ].filter(Boolean).join('\n\n')
       const steering = route.kind === 'pnyx' && card.id !== HYDRA_CARD
-        && !request.control && !request.key && !request.setting && !answers && !resolveKey
+        && !control && !answers && !resolveKey
         ? reply : undefined
 
       if (steering) {
@@ -593,6 +595,7 @@ export async function sendReply({
         state: 'queued' as ReplyState,
         route,
         resend: true,
+        control,
         steering,
         keys,
         answers,
@@ -652,7 +655,7 @@ export async function sendReply({
           }),
           ...outcome,
           resumes: queued.resumes,
-          ...(request.control || request.key || request.setting ? { control: true } : {}),
+          ...(queued.control ? { control: true } : {}),
           ...(request.taskMessage ? { taskMessage: true } : {}),
           ...(queued.decision ? { decision: queued.decision } : {}),
           ...(answers ? { answers } : {}),
