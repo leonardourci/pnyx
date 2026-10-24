@@ -390,7 +390,7 @@ for (const harness of [
   )
 
   test(
-    `${harness}: a held instruction stays pending and follows only its replacement worker`,
+    `${harness}: a busy held worker stays stopped across restart and its pending ID follows replacement`,
     async () => {
       const s = await pnyx.scenario()
       const folder = s.folder({ name: 'worker' })
@@ -421,120 +421,175 @@ for (const harness of [
         what: 'opening turn finishes',
         check: () => s.task({ key: 'work' }).sessionActivity === 'finished',
       })
-      await worker.run({
-        args: [
-          'task',
-          'status',
-          'work',
-          'paused',
-          '--hold',
-          '--note',
-          'Wait for go',
-        ],
-      })
-      const received = original.received.length
-      await s.owner({
-        args: [
-          'reply',
-          'work',
-          '--idempotency-key',
-          'held',
-          '--text',
-          'Keep this instruction',
-        ],
-      })
-      assert.equal(
-        pausedDeclaration({ card: s.task({ key: 'work' }) })?.hold,
-        true,
-      )
-      assert.equal(
-        s.task({ key: 'work' }).replies!.find(reply => reply.id === 'held')!.state,
-        'delivery_unknown',
-      )
-      await pnyx.restart()
-      assert.equal(
-        pausedDeclaration({ card: s.task({ key: 'work' }) })?.hold,
-        true,
-      )
-      assert.equal(
-        original.received.length,
-        received,
-      )
-      assert.equal(
-        s.task({ key: 'work' }).steering![0]!.attempts.length,
-        0,
-      )
-      await worker.run({
-        args: [
-          'task',
-          'status',
-          'work',
-          'working',
-          '--note',
-          'Continue with replacement',
-        ],
-      })
-      await s.owner({
-        args: [
-          'task',
-          'detach',
-          'work',
-        ],
-      })
-      await s.owner({
-        args: [
-          'task',
-          'start',
-          'work',
-          '--harness',
-          harness,
-          '--folder',
-          folder,
-        ],
-      })
-      const replacement = await s.agent({ cwd: folder })
-      const notice = steeringNotice({
+      const activeNotice = steeringNotice({
         task: s.task({ key: 'work' }).id,
         hydraId: s.hydraId,
-        ids: ['held'],
+        ids: ['active'],
       })
-      await until({
-        what: 'replacement receives retained ID',
-        check: () => replacement.received.includes(notice),
+      const held = pnyx[harness].plan({
+        text: activeNotice,
+        hold: true,
       })
-      assert.equal(
-        original.received.length,
-        received,
-      )
-      assert.equal(
-        await worker.refused({
+
+      try {
+        await s.owner({
+          args: [
+            'reply',
+            'work',
+            '--idempotency-key',
+            'active',
+            '--text',
+            'Work until paused',
+          ],
+        })
+        await until({
+          what: 'busy worker receives input',
+          check: () => original.received.includes(activeNotice),
+        })
+        const claim = s.task({ key: 'work' })
+        await worker.run({
           args: [
             'task',
             'inbox',
             'read',
             'work',
           ],
-        }),
-        'STALE_CLAIM',
-      )
-      const card = s.task({ key: 'work' })
-      await s.as({ agent: replacement }).run({
-        args: [
-          'task',
-          'inbox',
-          'ack',
-          'work',
-          'held',
-          '--session',
-          card.sessionIds![0]!,
-          '--generation',
-          String(card.steeringGeneration),
-        ],
-      })
-      assert.equal(
-        s.task({ key: 'work' }).steering![0]!.ack!.outcome,
-        'incorporated',
-      )
+        })
+        await worker.run({
+          args: [
+            'task',
+            'inbox',
+            'ack',
+            'work',
+            'active',
+            '--session',
+            claim.sessionIds![0]!,
+            '--generation',
+            String(claim.steeringGeneration),
+          ],
+        })
+        await worker.run({
+          args: [
+            'task',
+            'status',
+            'work',
+            'paused',
+            '--hold',
+            '--note',
+            'Wait for go',
+          ],
+        })
+        const received = s.received({ cwd: folder }).length
+        const openings = pnyx[harness].sessions.filter(session => session.cwd === folder).length
+        await s.owner({
+          args: [
+            'reply',
+            'work',
+            '--idempotency-key',
+            'held',
+            '--text',
+            'Keep this instruction',
+          ],
+        })
+        assert.equal(
+          pausedDeclaration({ card: s.task({ key: 'work' }) })?.hold,
+          true,
+        )
+        assert.equal(
+          s.task({ key: 'work' }).replies!.find(reply => reply.id === 'held')!.state,
+          'delivery_unknown',
+        )
+        await pnyx.restart()
+        assert.equal(
+          pnyx[harness].sessions.filter(session => session.cwd === folder).length,
+          openings,
+        )
+        assert.equal(
+          pausedDeclaration({ card: s.task({ key: 'work' }) })?.hold,
+          true,
+        )
+        assert.equal(
+          s.received({ cwd: folder }).length,
+          received,
+        )
+        assert.equal(
+          s.task({ key: 'work' }).steering![1]!.attempts.length,
+          0,
+        )
+        await s.owner({
+          args: [
+            'task',
+            'detach',
+            'work',
+          ],
+        })
+        await s.owner({
+          args: [
+            'task',
+            'status',
+            'work',
+            'working',
+            '--note',
+            'Owner resumes with a replacement',
+          ],
+        })
+        await s.owner({
+          args: [
+            'task',
+            'start',
+            'work',
+            '--harness',
+            harness,
+            '--folder',
+            folder,
+          ],
+        })
+        const replacement = await s.agent({ cwd: folder })
+        const notice = steeringNotice({
+          task: s.task({ key: 'work' }).id,
+          hydraId: s.hydraId,
+          ids: ['held'],
+        })
+        await until({
+          what: 'replacement receives retained ID',
+          check: () => replacement.received.includes(notice),
+        })
+        assert.equal(
+          original.received.length,
+          received,
+        )
+        assert.equal(
+          await worker.refused({
+            args: [
+              'task',
+              'inbox',
+              'read',
+              'work',
+            ],
+          }),
+          'STALE_CLAIM',
+        )
+        const card = s.task({ key: 'work' })
+        await s.as({ agent: replacement }).run({
+          args: [
+            'task',
+            'inbox',
+            'ack',
+            'work',
+            'held',
+            '--session',
+            card.sessionIds![0]!,
+            '--generation',
+            String(card.steeringGeneration),
+          ],
+        })
+        assert.equal(
+          s.task({ key: 'work' }).steering![1]!.ack!.outcome,
+          'incorporated',
+        )
+      } finally {
+        held.release()
+      }
     },
   )
 }
