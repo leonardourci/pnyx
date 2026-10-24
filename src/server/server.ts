@@ -8,6 +8,7 @@ import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
+import { steeringToFollow } from '../task-inbox/follow-up.ts'
 import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
 import { candidates, effectiveDispatch } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
@@ -1614,12 +1615,27 @@ async function mountOwnedHydra({
         }
 
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
-        repliesPending = repliesToFollow({ state })
+        repliesPending = repliesToFollow({ state }) || steeringToFollow({ state })
 
         if (!replyRun && repliesPending && replyCheckDue) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
+              if (steeringToFollow({ state })) {
+                await runFile(
+                  process.execPath,
+                  [
+                    REPLY_WORKER,
+                    'inbox-follow',
+                    hydraId,
+                  ],
+                  {
+                    timeout: REPLY_WORKER_TIMEOUT_MS,
+                    maxBuffer: MAX_BODY,
+                  },
+                )
+              }
+
               await followUpReplies({
                 hydraId,
                 tried: triedResends,

@@ -9,7 +9,8 @@ import { taskMention } from '../mentions/mentions.ts'
 // The fixed words a reason line names its fact with; the pnyx-hydra skill and the README list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
-  | 'project refresh' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
+  | 'instruction unread' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
+  | 'project refresh'
 
 export interface WakeReason {
   kind: WakeKind
@@ -497,6 +498,23 @@ function eventReasons({
   state: HydraState
   event: HydraEvent
 }): WakeReason[] {
+  if (event.type === 'task.steering.recovery' && event.data.recovery.result === 'exhausted') {
+    const card = state.cards[event.cardId]
+    const message = card?.steering?.find(message => message.id === event.data.message)
+
+    if (!message || message.ack || card?.hidden) {
+      return []
+    }
+
+    return [
+      {
+        kind: 'instruction unread',
+        card: event.cardId,
+        detail: `instruction ${message.id} remains unread: ${event.data.recovery.detail}. Read it with pnyx-axi task inbox read ${event.cardId}; review the worker route or hold before resuming`,
+      },
+    ]
+  }
+
   const reasons = ordinaryReasons({
     state,
     event,

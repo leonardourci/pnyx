@@ -1,6 +1,8 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
 import type { Key } from '../../core/control.ts'
-import type { ReplyState } from '../../core/model.ts'
+import { HOOK } from './observe.ts'
+import { notificationState, type NotificationResult } from '../../task-inbox/notice.ts'
+import type { Card, ReplyState } from '../../core/model.ts'
 import type { TerminalRoute } from '../../core/route.ts'
 import type { KeyStep } from './answer.ts'
 
@@ -723,4 +725,151 @@ export function pressKeys({
   }
 
   return { state: 'delivered' }
+}
+
+export function terminalNotice({
+  route,
+  text,
+  card,
+  execute = run,
+  send = typeInto,
+}: {
+  route: TerminalRoute
+  text: string
+  card: Card
+  execute?: typeof run
+  send?: typeof typeInto
+}): NotificationResult {
+  const observedProcess = execute({
+    command: 'ps',
+    args: [
+      '-o',
+      'tty=',
+      '-p',
+      String(route.pid),
+    ],
+  })
+
+  const processExited = observedProcess.status === 1
+    || (observedProcess.status === 0 && !observedProcess.stdout.trim())
+
+  if (processExited) {
+    return {
+      result: 'gone',
+      detail: 'worker process exited; attach a live worker to read the inbox',
+    }
+  }
+
+  if (observedProcess.status !== 0) {
+    return {
+      result: 'unknown',
+      detail: 'cannot inspect the worker process; nothing was typed',
+    }
+  }
+
+  if (`/dev/${observedProcess.stdout.trim()}` !== route.tty) {
+    return {
+      result: 'gone',
+      detail: 'worker process moved to another terminal; nothing was typed',
+    }
+  }
+
+  if (card.attention.some(request =>
+    request.blocking && !request.answered && request.key.startsWith(HOOK))) {
+    return {
+      result: 'deferred',
+      detail: 'worker is waiting on a permission or question; answer it before notifying',
+    }
+  }
+
+  if ((card.sessionActivity ?? card.activity) === 'working') {
+    return {
+      result: 'deferred',
+      detail: 'terminal worker is busy; notification waits for an idle composer',
+    }
+  }
+
+  if (route.kind !== 'tmux') {
+    return {
+      result: 'unknown',
+      detail: `cannot verify an empty composer on ${route.kind}; read the pending inbox in the worker session`,
+    }
+  }
+
+  const position = execute({
+    command: 'tmux',
+    args: [
+      '-S',
+      route.socket,
+      'display-message',
+      '-p',
+      '-t',
+      route.pane,
+      '#{pane_tty}\t#{cursor_y}',
+    ],
+  })
+  const [
+    tty,
+    cursorRow,
+  ] = (position.stdout ?? '').trim().split('\t')
+
+  if (position.status !== 0 || tty !== route.tty || !/^\d+$/.test(cursorRow ?? '')) {
+    return {
+      result: 'unknown',
+      detail: 'cannot verify the tmux pane and cursor; nothing was typed',
+    }
+  }
+
+  const screen = execute({
+    command: 'tmux',
+    args: [
+      '-S',
+      route.socket,
+      'capture-pane',
+      '-p',
+      '-t',
+      route.pane,
+    ],
+  })
+  const lines = (screen.stdout ?? '').split('\n')
+  const row = Number(cursorRow)
+  const line = lines[row]?.trim()
+
+  if (screen.status !== 0 || !line || !/^[❯›]/u.test(line)) {
+    return {
+      result: 'unknown',
+      detail: 'cannot identify an idle Claude Code or Codex composer; nothing was typed',
+    }
+  }
+
+  if (!/^[❯›]\s*$/u.test(line)) {
+    return {
+      result: 'deferred',
+      detail: 'the terminal composer contains a draft; clear or submit it before notifying',
+    }
+  }
+
+  const belowCursor = lines.slice(row + 1)
+  const lowerBorder = belowCursor.findIndex(line => /^─{3,}\s*$/u.test(line.trim()))
+  const remainingComposer = lowerBorder < 0 ? belowCursor : belowCursor.slice(
+    0,
+    lowerBorder,
+  )
+
+  if (remainingComposer.some(line => line.trim())) {
+    return {
+      result: 'deferred',
+      detail: 'the terminal composer contains multiline text; nothing was typed',
+    }
+  }
+
+  const delivered = send({
+    route,
+    text,
+  })
+
+  return {
+    result: notificationState({ state: delivered.state }),
+    detail: delivered.detail,
+  }
 }

@@ -1,5 +1,10 @@
+import { pausedDeclaration } from '../core/lifecycle.ts'
 import type { Card, HydraEvent, HydraState, SteeringClaim } from '../core/model.ts'
 import { cardSessionId } from '../core/tasks.ts'
+
+export function steeringHeld({ card }: { card: Card }): boolean {
+  return Boolean(card.hold || pausedDeclaration({ card })?.hold)
+}
 
 export function steeringClaim({ card }: { card: Card }): SteeringClaim | undefined {
   const session = cardSessionId({ card })
@@ -47,7 +52,7 @@ export function applySteering({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  if (event.type !== 'task.steering.queued' && event.type !== 'task.steering.notified' && event.type !== 'task.steering.handled') {
+  if (event.type !== 'task.steering.queued' && event.type !== 'task.steering.notified' && event.type !== 'task.steering.handled' && event.type !== 'task.steering.recovery') {
     return false
   }
 
@@ -76,6 +81,23 @@ export function applySteering({
     }
 
     message.attempts.push(structuredClone(event.data.attempt))
+  } else if (event.type === 'task.steering.recovery') {
+    const message = card.steering?.find(message => message.id === event.data.message)
+
+    if (!message || message.ack) {
+      return true
+    }
+
+    const recovery = message.recovery ?? []
+    const index = recovery.findIndex(attempt => attempt.id === event.data.recovery.id)
+
+    if (index < 0) {
+      recovery.push(structuredClone(event.data.recovery))
+    } else {
+      recovery[index] = structuredClone(event.data.recovery)
+    }
+
+    message.recovery = recovery
   } else {
     const message = card.steering?.find(message => !message.ack)
 
