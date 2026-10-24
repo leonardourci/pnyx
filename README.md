@@ -199,6 +199,23 @@ Workers run `pnyx-axi task inbox read <task>` to read pending instructions in nu
 
 `task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred` records a notification attempt separately from handling. The inbox is rebuilt from the append-only event log through the normal snapshot projection. Existing reply receipts retain their delivery meaning; ordinary reply routing and automatic re-ringing are separate from these inbox commands. Firstmate-owned tasks keep Firstmate's inbox.
 
+Native tasks can register external jobs or listeners for the existing server to supervise outside agent turns:
+
+```sh
+pnyx-axi task source register <task> job --executable /absolute/path/to/tool --argv '["listen","job-id"]' --cwd /absolute/project --hydra work
+pnyx-axi task source list <task> --hydra work
+pnyx-axi task source read <task> job --hydra work
+pnyx-axi task inbox ack <task> <result-message-id> --session <session> --generation <number> --hydra work
+pnyx-axi task source handled <task> job <sequence> --session <session> --generation <number> --hydra work
+pnyx-axi task source stop <task> job --hydra work
+```
+
+Registration binds an assigned worker's session/generation, the executable's real path and SHA-256, exact argv and working folder. Arguments are passed directly without a shell. Register only a trusted command; files named in argv remain that command's responsibility. The same source ID and configuration is idempotent; choose a new ID for changed configuration or a replacement worker. Results are saved before their stable inbox message is queued or a notification is sent. A process exit or successful notification leaves its result unread. A worker acknowledges the inbox message when addressed, then the current worker explicitly marks the result handled when fully resolved; terminal handling retires the source. `read --all` includes handled results.
+
+The default limits are one hour, 64 KiB combined stdout/stderr and a one-day registration expiry. Set `--timeout-ms` (up to one day), `--max-bytes` (up to 1 MiB), or `--expires <ISO-time>` explicitly. `--restart on-failure --max-runs <1–10>` allows another confirmed failed run only after its result is handled; the run count survives server restarts. Successful, stopped, expired, oversized, interrupted and stale-owner results are terminal. An interrupted listener has an uncertain external outcome: verify the external job before registering another source. The server never guesses that rerunning an interrupted command is safe.
+
+The server owns one listener per registration. Its child supervisor stops the source's process group when the server connection closes. Restart replays unread results and records a lost listener as interrupted. Holds retain captures and queue their inbox messages without resuming the worker; expired registrations and replaced workers cannot launch old commands. Failure, uncertainty and held results create one durable Hydra alert per result. Firstmate-owned tasks continue using Firstmate's external-source lifecycle.
+
 ## Starting workers and Hydra
 
 Hold an idea for discussion with `pnyx-axi task create --title "Idea" --hold` or `task hold <task> --reason "Discuss first"`. It stays in Backlog marked **Talking** and cannot start, build, queue or continue. Once Hydra has played back its understanding, it asks `task ask <task> --to owner --kind go --question "Ready to build?"`; the card moves to Needs you. Answering **Go** releases the hold and closes the question together. **Hold** keeps the discussion held. Hydra can also release with `task release <task> --from-message <owner-message-id> --reason "Owner approved"`, quoting an owner message newer than the hold.
