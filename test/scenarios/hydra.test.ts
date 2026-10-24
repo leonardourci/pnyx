@@ -7,6 +7,7 @@ import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
 import { hydraConversation } from '../../web/src/hydra/conversation.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
+import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
 
 const pnyx = scenarioGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
@@ -1071,10 +1072,11 @@ test(
 )
 
 test(
-  'Lavish comments piped into reply go once to the page’s worker and never enter Hydra’s owner chat',
+  'durable Lavish rounds reach the page worker once and stay out of Hydra owner chat',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'review-page' })
+    const fixture = lavishFixture({ folder })
     await s.owner({
       args: [
         'task',
@@ -1094,9 +1096,10 @@ test(
         'page',
       ],
     })
-    const worker = await s.agent({ cwd: folder })
+    const agent = await s.agent({ cwd: folder })
+    const worker = s.as({ agent })
     await until({
-      what: 'the worker opening turn',
+      what: 'worker opening turn',
       check: () => s.task({ key: 'page' }).sessionActivity === 'finished',
     })
     await send({
@@ -1109,70 +1112,69 @@ test(
       turns: 1,
     })
     const hydra = await s.agent({ hydra: true })
-    const comments = '## Comments on the review page\n\nUse a larger chart and keep the legend.'
-    const args = [
-      'reply',
-      'page',
-      '--file',
-      '-',
-      '--actor',
-      'hook:lavish',
-      '--idempotency-key',
-      'comments',
-    ]
-    await s.owner({
-      args,
-      input: comments,
+    await worker.run({
+      args: fixture.arm({
+        task: 'page',
+        id: 'comments',
+      }),
     })
     await until({
-      what: 'Lavish feedback at its worker',
-      check: () => worker.received.at(-1)?.includes('instruction IDs ["comments"]') === true && s.task({ key: 'page' }).sessionActivity === 'finished',
+      what: 'page listening',
+      check: () => existsSync(join(
+        folder,
+        'listening',
+      )),
     })
-    await s.owner({
-      args,
-      input: comments,
+    const comments = 'session:\n  status: feedback\n  session_ended: true\nprompts[1]{tag,text}:\n  message,"Use a larger chart and keep the legend."\n'
+    fixture.deliver({ body: comments })
+    await until({
+      what: 'captured feedback delivered to worker',
+      check: () => {
+        const message = s.task({ key: 'page' }).steering?.[0]
+
+        return message && s.received({ cwd: folder }).some(text => text.includes(message.id))
+          && s.task({ key: 'page' }).sessionActivity === 'finished'
+      },
     })
-    const pageTask = s.task({ key: 'page' })
-    await s.as({ agent: worker }).run({
-      args: [
-        'task',
-        'inbox',
-        'ack',
-        'page',
-        'comments',
-        '--session',
-        pageTask.sessionIds![0]!,
-        '--generation',
-        String(pageTask.steeringGeneration),
-      ],
-    })
+    const message = s.task({ key: 'page' }).steering![0]!
     await pnyx.restart()
-    await s.owner({
-      args: [
-        'reply',
-        'page',
-        '--text',
-        'Apply the next round',
-      ],
+    await readAndAck({
+      s,
+      worker,
+      task: 'page',
+      id: 'comments',
     })
-    await until({
-      what: 'the next round at the resumed worker',
-      check: () => s.received({ cwd: folder }).at(-1)
-        ?.includes(JSON.stringify(s.task({ key: 'page' }).steering!.at(-1)!.id)) === true,
-    })
+    const handled = [
+      'task',
+      'source',
+      'handled',
+      'page',
+      'comments',
+      '1',
+      ...claimFlags({ card: s.task({ key: 'page' }) }),
+    ]
+    await worker.run({ args: handled })
+    await worker.run({ args: handled })
     await send({
       s,
       text: 'Continue the review',
       id: 'continue',
     })
-    // The worker's finished turns wake Hydra too, so wait for the owner's message rather than a turn count.
     await until({
-      what: 'Hydra to finish the owner\'s next message',
+      what: 'Hydra handles the next owner message',
       check: () => s.received({ cwd: hydra.cwd }).includes('Continue the review')
         && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     assert.equal(
-      s.received({ cwd: folder }).filter(text => text.includes('instruction IDs ["comments"]')).length,
+      s.task({ key: 'page' }).steering!.filter(item => item.id === message.id).length,
+      1,
+    )
+    assert.equal(
+      s.task({ key: 'page' }).externalSources![0]!.state,
+      'retired',
+    )
+    assert.equal(
+      s.events().filter(event => event.type === 'task.source.handled').length,
       1,
     )
     assert.equal(
@@ -1180,17 +1182,12 @@ test(
       false,
     )
     assert.equal(
-      s.state().hydraMessages?.some(m => m.text.includes(comments)),
+      s.state().hydraMessages?.some(item => item.text.includes(comments)),
       false,
     )
     assert.equal(
-      s.task({ key: 'page' }).steering![0]!.text,
-      comments,
-    )
-    const reply = s.events().find(e => e.type === 'card.replied' && e.data.text === comments)
-    assert.equal(
-      reply?.actor,
-      'hook:lavish',
+      fixture.calls().length,
+      1,
     )
   },
 )

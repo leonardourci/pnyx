@@ -10,6 +10,7 @@ import { bufferedCaptures, commitCapture } from '../src/external-sources/capture
 import { createSourceRunner } from '../src/external-sources/runner.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { until } from './scenarios/harness.ts'
+import { lavishFixture } from './scenarios/lavish-fixture.ts'
 
 let root = ''
 const runners: ReturnType<typeof createSourceRunner>[] = []
@@ -140,6 +141,145 @@ const delivered = async () => ({
   state: 'delivered' as const,
   sent: true,
 })
+
+test(
+  'Lavish delivery failure preserves one complete round across runner replacement',
+  async () => {
+    const fixture = lavishFixture({ folder: root })
+    await commands.task([
+      ...fixture.arm({
+        task: 'work',
+        id: 'lavish',
+      }).slice(1),
+      '--hydra',
+      'lab',
+    ])
+    let notices = 0
+    const runner = createSourceRunner({
+      hydraId: 'lab',
+      changed() {},
+      tell: async () => {
+        notices++
+        throw new Error('Injected Lavish delivery failure')
+      },
+    })
+    runners.push(runner)
+    runner.reconcile()
+    await until({
+      what: 'fixture listening',
+      check: () => existsSync(join(
+        root,
+        'listening',
+      )),
+    })
+    const body = 'session:\n  status: feedback\nprompts[1]{tag,text}:\n  message,"Keep every annotation"\n'
+    fixture.deliver({ body })
+    await until({
+      what: 'round captured',
+      check: () => task().externalSources![0]!.results.length > 0,
+    })
+    runner.reconcile()
+    await until({
+      what: 'failed delivery recorded',
+      check: () => task().steering?.[0]?.attempts.length === 1,
+    })
+    await runner.close()
+    const replacement = createSourceRunner({
+      hydraId: 'lab',
+      changed() {},
+      tell: delivered,
+    })
+    runners.push(replacement)
+    replacement.reconcile()
+    await replacement.close()
+    assert.equal(
+      notices,
+      1,
+    )
+    assert.equal(
+      task().externalSources![0]!.results[0]!.stdout,
+      body,
+    )
+    assert.equal(
+      task().externalSources![0]!.results[0]!.handled,
+      undefined,
+    )
+    assert.equal(
+      task().steering!.length,
+      1,
+    )
+    assert.equal(
+      fixture.calls().length,
+      1,
+    )
+  },
+)
+
+test(
+  'a buffered reply receipt survives runner replacement without posting the staged reply twice',
+  async () => {
+    const fixture = lavishFixture({ folder: root })
+    await commands.task([
+      ...fixture.arm({
+        task: 'work',
+        id: 'lavish',
+      }).slice(1),
+      '--agent-reply-file',
+      fixture.reply,
+      '--hydra',
+      'lab',
+    ])
+    let failures = 0
+    const runner = createSourceRunner({
+      hydraId: 'lab',
+      changed() {},
+      tell: delivered,
+      commit: () => {
+        failures++
+        throw new Error('Injected unavailable receipt writer')
+      },
+    })
+    runners.push(runner)
+    runner.reconcile()
+    await until({
+      what: 'accepted receipt buffered',
+      check: () => failures > 0 && bufferedCaptures({ hydraId: 'lab' }).length === 1,
+    })
+    assert.equal(
+      task().externalSources![0]!.lavish!.reply!.accepted,
+      undefined,
+    )
+    await runner.close()
+    const replacement = createSourceRunner({
+      hydraId: 'lab',
+      changed() {},
+      tell: delivered,
+    })
+    runners.push(replacement)
+    replacement.reconcile()
+    await until({
+      what: 'buffer replay started a poll',
+      check: () => existsSync(join(
+        root,
+        'listening',
+      )),
+    })
+    const source = task().externalSources![0]!
+    assert.ok(source.lavish!.reply!.accepted)
+    assert.equal(
+      source.results.length,
+      0,
+    )
+    assert.equal(
+      fixture.calls().filter(call => call.action === 'reply').length,
+      1,
+    )
+    assert.equal(
+      fixture.calls().filter(call => call.action === 'poll').length,
+      1,
+    )
+  },
+)
 
 test(
   'a capture buffered during writer failure survives runner replacement with its original output',
