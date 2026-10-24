@@ -1,6 +1,6 @@
 import { readOwnerEntries } from '../store/owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
-import { dateLearnings, type Learning } from '../memory/learnings.ts'
+import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -28,6 +28,7 @@ export interface ProjectMemoryEvent {
   actor: string
   reason?: string
   confirmed?: string
+  learning?: LearningChange
   hydra: string
   identity: string
   key: ProjectMemoryKey
@@ -40,6 +41,7 @@ export interface ProjectMemoryEvent {
 export interface ProjectMemory {
   revision: number
   learnings?: Learning[]
+  archived: Learning[]
   documents: Partial<Record<ProjectMemoryKey, string>>
   sources: Record<string, string>
   events: ProjectMemoryEvent[]
@@ -70,6 +72,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
   const file = memoryPath({ id })
   const memory: ProjectMemory = {
     revision: 0,
+    archived: [],
     documents: {},
     sources: {},
     events: [],
@@ -130,6 +133,12 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
       })
     }
 
+    const retired = memory.learnings?.find(line => line.text === event.learning?.archive)
+
+    if (retired) {
+      memory.archived.push(retired)
+    }
+
     if (event.after === null) {
       delete memory.documents[event.key]
     } else {
@@ -146,6 +155,7 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
         at: event.at,
         confirmed: event.confirmed,
         evidence: event.reason,
+        change: event.learning,
       })
     }
 
@@ -219,6 +229,7 @@ export function writeProjectMemory({
   sources,
   meta,
   confirmed,
+  learning,
 }: {
   path: string
   hydraId: string
@@ -227,6 +238,7 @@ export function writeProjectMemory({
   sources?: string
   meta: Meta
   confirmed?: string
+  learning?: LearningChange
 }) {
   if (key === 'workers') {
     checkWorkerNotes({
@@ -288,9 +300,12 @@ export function writeProjectMemory({
 
       const before = view.documents[key] ?? null
 
-      if (confirmed !== undefined) {
-        after = before
-      }
+      after = learningText({
+        before,
+        after,
+        confirmed,
+        change: learning,
+      })
 
       const used = checkProjectMemoryBudget({
         memory: view,
@@ -298,7 +313,7 @@ export function writeProjectMemory({
         after,
       })
 
-      if (confirmed !== undefined && key !== 'learnings') {
+      if ((confirmed !== undefined || learning !== undefined) && key !== 'learnings') {
         throw new HydraError({
           message: 'Only learnings need reconfirmation',
           code: 'VALIDATION_ERROR',
@@ -312,10 +327,11 @@ export function writeProjectMemory({
           at: meta.at,
           confirmed,
           evidence: meta.reason,
+          change: learning,
         })
       }
 
-      if (before === after && confirmed === undefined && (key !== 'profile' || !view.changed.length)) {
+      if (before === after && confirmed === undefined && learning === undefined && (key !== 'profile' || !view.changed.length)) {
         const saved = view.events.findLast(event => event.key === key)
 
         if (saved) {
@@ -346,6 +362,10 @@ export function writeProjectMemory({
 
       if (confirmed !== undefined) {
         event.confirmed = confirmed
+      }
+
+      if (learning) {
+        event.learning = learning
       }
 
       const dir = join(

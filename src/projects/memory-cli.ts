@@ -1,4 +1,5 @@
-import { staleLearnings } from '../memory/learnings.ts'
+import { memoryConditions } from '../memory/conditions.ts'
+import { learningChange, staleLearnings } from '../memory/learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '../cli/commands.ts'
 import { HydraError } from '../core/model.ts'
 import { loadHydra } from '../store/hydra-store.ts'
@@ -18,6 +19,9 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
       key: { type: 'string' },
       text: { type: 'string' },
       sources: { type: 'string' },
+      kind: { type: 'string' },
+      until: { type: 'string' },
+      used: { type: 'string' },
     },
     positionals: 1,
   })
@@ -30,6 +34,13 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     attached: true,
   })
   const action = positionals[0] ?? 'list'
+  const learning = learningChange({
+    action,
+    kind: values.kind as string | undefined,
+    until: values.until as string | undefined,
+    used: values.used as string | undefined,
+    text: values.text as string | undefined,
+  })
 
   if (action === 'list') {
     const view = projectMemoryView(project)
@@ -41,8 +52,10 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
       revision: view.revision,
       profile: view.status,
       learnings: view.learnings ?? [],
+      archived: view.archived,
       stale: staleLearnings({
         lines: view.learnings ?? [],
+        conditions: memoryConditions(),
         now: new Date().toISOString(),
       }),
       memory: Object.keys(view.documents).length ? view.documents : 'none: no project memory yet',
@@ -62,6 +75,17 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
         'Read changed files at the listed ref (git show <ref>:<file>); profile saves need --sources <fingerprint>. Do not refresh from a worker branch.',
       ],
     }
+  }
+
+  if (action === 'save' || action === 'archive') {
+    return writeProjectMemory({
+      path: project.path,
+      hydraId,
+      key: 'learnings',
+      after: null,
+      learning,
+      meta: meta({ values }),
+    })
   }
 
   if (action === 'confirm') {
@@ -90,7 +114,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     key,
   )) {
     throw new HydraError({
-      message: 'Use project memory list|set|forget|confirm --project <name|path>; keys are profile, preferences, learnings and workers',
+      message: 'Use project memory list|set|forget|confirm|save|archive --project <name|path>; keys are profile, preferences, learnings and workers',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -116,6 +140,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
     key,
     after,
     sources: values.sources as string | undefined,
+    learning,
     meta: m,
   })
 }

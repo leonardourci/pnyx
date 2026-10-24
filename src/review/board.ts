@@ -67,10 +67,12 @@ export function boardReview({
   state,
   now,
   workerSeenAt = {},
+  memory = [],
 }: {
   state: HydraState
   now: number
   workerSeenAt?: Record<string, number>
+  memory?: string[]
 }) {
   const decisions = openDecisions({ state })
   const ready = readyBacklog({ state })
@@ -91,7 +93,10 @@ export function boardReview({
     card,
   }).unmet.length > 0)
   const flags: ReviewFlag[] = []
-  const lines = ['Timed review:']
+  const lines = [
+    'Timed review:',
+    ...memory,
+  ]
 
   for (const card of live) {
     const ref = mention({ card })
@@ -243,7 +248,7 @@ export function boardReview({
   }))
 
   return {
-    live: tasks.some(card => active({ card }))
+    live: memory.length > 0 || tasks.some(card => active({ card }))
       || decisions.length > 0 || ready.length > 0 || live.some(card => taskReadiness({
       state,
       card,

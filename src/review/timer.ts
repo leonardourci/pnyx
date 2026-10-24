@@ -1,3 +1,4 @@
+import { memoryReview } from './memory.ts'
 import { HYDRA_CARD, hydraEvent, pnyxRunsHydra } from '../core/hydra.ts'
 import { INTERRUPTED } from '../core/tasks.ts'
 import type { HydraState } from '../core/model.ts'
@@ -64,6 +65,10 @@ export function startReviewTimer({
         return
       }
 
+      const memory = memoryReview({
+        state,
+        now: new Date(time).toISOString(),
+      })
       const recorded = withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -79,6 +84,7 @@ export function startReviewTimer({
           }
 
           const review = boardReview({
+            memory,
             state: current,
             now: time,
             workerSeenAt: Object.fromEntries(Object.values(current.sessions ?? {}).map(session => [

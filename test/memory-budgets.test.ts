@@ -38,6 +38,7 @@ test(
     const memory = {
       documents: { preferences: 'x'.repeat(PROJECT_MEMORY_BUDGET + 2) },
       revision: 1,
+      archived: [],
       sources: {},
       events: [],
     }

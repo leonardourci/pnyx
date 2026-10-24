@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
+import type { LearningChange } from '../memory/learnings.ts'
 import type { ProjectMemoryEvent } from '../projects/memory.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -11,6 +12,7 @@ export interface OwnerEntry {
   actor: string
   reason?: string
   confirmed?: string
+  learning?: LearningChange
   key: string
   before: string | null
   after: string | null
