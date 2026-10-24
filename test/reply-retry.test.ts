@@ -1,4 +1,10 @@
-import { enqueueSteering } from '../src/task-inbox/inbox.ts'
+import { followUpSteering, steeringToFollow, STEERING_GRACE_MS, STEERING_RING_LIMIT, STEERING_DEFERRAL_LIMIT } from '../src/task-inbox/follow-up.ts'
+import type { NotificationResult } from '../src/task-inbox/notice.ts'
+import { notifySteering } from '../src/task-inbox/delivery.ts'
+import { steeringClaim } from '../src/task-inbox/state.ts'
+import { pausedDeclaration } from '../src/core/lifecycle.ts'
+import { wakeReasons } from '../src/core/wake-reasons.ts'
+import { acknowledgeSteering, enqueueSteering } from '../src/task-inbox/inbox.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -640,6 +646,360 @@ test(
     assert.equal(
       task().steering![0]!.ack,
       undefined,
+    )
+  },
+)
+
+function queuedSteer({ id = 'durable' }: { id?: string } = {}) {
+  withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => enqueueSteering({
+      writer,
+      ref: task().id,
+      id,
+      text: 'Olá 🌊\nSecond line',
+      source: 'test',
+      reply: id,
+      meta: {
+        at: new Date(SENT).toISOString(),
+        actor: 'test',
+      },
+    }),
+  })
+}
+
+function acknowledgeOldest() {
+  withWriter({
+    hydraId: 'lab',
+    fn: ({ writer }) => {
+      const card = writer.state.cards[task().id]!
+      const message = card.steering!.find(message => !message.ack)!
+      const claim = steeringClaim({ card })!
+      const actor = `worker:${card.id}`
+      acknowledgeSteering({
+        writer,
+        ref: card.id,
+        id: message.id,
+        ack: {
+          at: new Date(SENT + MINUTE).toISOString(),
+          actor,
+          claim,
+          outcome: 'incorporated',
+        },
+        meta: {
+          at: new Date(SENT + MINUTE).toISOString(),
+          actor,
+        },
+      })
+    },
+  })
+}
+
+for (const result of [
+  'delivered',
+  'unknown',
+  'failed',
+  'deferred',
+  'gone',
+] as const) {
+  test(
+    `durable ${result} notifications exhaust once, survive replay and keep the payload pending`,
+    async () => {
+      queuedSteer()
+      let notifications = 0
+      const limit = result === 'deferred' ? 2 : result === 'gone' ? 1 : 3
+
+      const notify: typeof notifySteering = async () => {
+        notifications++
+
+        return {
+          result,
+          detail: `${result} route evidence`,
+        }
+      }
+
+      for (let tick = 1; tick <= limit + 2; tick++) {
+        await followUpSteering({
+          hydraId: 'lab',
+          now: SENT + tick * STEERING_GRACE_MS,
+          notify,
+        })
+        rmSync(
+          join(
+            process.env.PNYX_HOME!,
+            'hydras',
+            'lab',
+            'snapshot.json',
+          ),
+          { force: true },
+        )
+      }
+
+      assert.equal(
+        notifications,
+        limit,
+      )
+      const message = task().steering![0]!
+      assert.equal(
+        message.ack,
+        undefined,
+      )
+      assert.equal(
+        message.text,
+        'Olá 🌊\nSecond line',
+      )
+      assert.equal(
+        message.recovery!.filter(attempt => attempt.result === 'exhausted').length,
+        1,
+      )
+      const events = readEvents({ hydraId: 'lab' })
+      const reasons = wakeReasons({
+        state: loadHydra({ hydraId: 'lab' }).state,
+        events,
+      })
+      assert.equal(
+        reasons.filter(reason => reason.includes('instruction unread')).length,
+        1,
+      )
+      assert.ok(reasons.some(reason => reason.includes('durable') && reason.includes('read')))
+      assert.equal(
+        steeringToFollow({ state: loadHydra({ hydraId: 'lab' }).state }),
+        false,
+      )
+      acknowledgeOldest()
+      queuedSteer({ id: 'next' })
+      await followUpSteering({
+        hydraId: 'lab',
+        now: SENT + 20 * STEERING_GRACE_MS,
+        notify,
+      })
+      assert.equal(
+        notifications,
+        limit + 1,
+      )
+      assert.equal(
+        task().steering!.length,
+        2,
+      )
+    },
+  )
+}
+
+test(
+  'acknowledgement racing recovery suppresses escalation and a duplicate scheduler cannot reserve twice',
+  async () => {
+    queuedSteer()
+    let notifications = 0
+
+    const notify: typeof notifySteering = async () => {
+      notifications++
+      await followUpSteering({
+        hydraId: 'lab',
+        now: SENT + STEERING_GRACE_MS,
+        notify: async () => assert.fail('an in-flight reservation must prevent another notification'),
+      })
+      acknowledgeOldest()
+
+      return {
+        result: 'gone',
+        detail: 'stale result after ack',
+      }
+    }
+
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify,
+    })
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 10 * STEERING_GRACE_MS,
+      notify,
+    })
+    assert.equal(
+      notifications,
+      1,
+    )
+    assert.equal(
+      task().steering![0]!.ack!.outcome,
+      'incorporated',
+    )
+    assert.equal(
+      task().steering![0]!.recovery!.some(attempt => attempt.result === 'exhausted'),
+      false,
+    )
+  },
+)
+
+test(
+  'a crash after reserving consumes the durable budget, and younger instructions never bypass the oldest',
+  async () => {
+    queuedSteer()
+    queuedSteer({ id: 'second' })
+    const neverFinishes = new Promise<NotificationResult>(() => {})
+    const inFlight = followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify: () => neverFinishes,
+    })
+    rmSync(
+      join(
+        process.env.PNYX_HOME!,
+        'hydras',
+        'lab',
+        'snapshot.json',
+      ),
+      { force: true },
+    )
+    const reserved = task().steering![0]!.recovery![0]!
+    assert.equal(
+      reserved.result,
+      'reserved',
+    )
+    let notifications = 0
+
+    for (let tick = 2; tick <= STEERING_RING_LIMIT + 2; tick++) {
+      await followUpSteering({
+        hydraId: 'lab',
+        now: SENT + tick * STEERING_GRACE_MS,
+        notify: async ({ message }) => {
+          assert.equal(
+            message,
+            'durable',
+          )
+          notifications++
+
+          return { result: 'delivered' }
+        },
+      })
+    }
+
+    assert.equal(
+      notifications,
+      2,
+    )
+    assert.equal(
+      task().steering![1]!.recovery,
+      undefined,
+    )
+    assert.equal(
+      task().steering![0]!.recovery!.at(-1)!.result,
+      'exhausted',
+    )
+    assert.ok(inFlight instanceof Promise)
+  },
+)
+
+test(
+  'an intentional hold consumes only the deferral budget and never wakes its worker',
+  async () => {
+    queuedSteer()
+    await commands.task([
+      'status',
+      'ship',
+      'paused',
+      '--hold',
+      '--reason',
+      'Wait for owner',
+      '--hydra',
+      'lab',
+    ])
+
+    for (let tick = 1; tick <= STEERING_DEFERRAL_LIMIT + 1; tick++) {
+      await followUpSteering({
+        hydraId: 'lab',
+        now: SENT + tick * STEERING_GRACE_MS,
+      })
+    }
+
+    const card = task()
+    assert.equal(
+      card.steering![0]!.attempts.length,
+      0,
+    )
+    assert.equal(
+      card.steering![0]!.recovery!.at(-1)!.result,
+      'exhausted',
+    )
+    assert.match(
+      card.steering![0]!.recovery!.at(-1)!.detail!,
+      /held/,
+    )
+    assert.equal(
+      pausedDeclaration({ card })?.hold,
+      true,
+    )
+  },
+)
+
+test(
+  'recovery policy bounds are three notifications and two deferrals',
+  () => {
+    assert.equal(
+      STEERING_RING_LIMIT,
+      3,
+    )
+    assert.equal(
+      STEERING_DEFERRAL_LIMIT,
+      2,
+    )
+  },
+)
+
+test(
+  'a stale dead-endpoint result cannot escalate a replacement assignment or reset the budget',
+  async () => {
+    queuedSteer()
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + STEERING_GRACE_MS,
+      notify: async () => {
+        await commands.task([
+          'detach',
+          'ship',
+          '--hydra',
+          'lab',
+        ])
+        await commands.task([
+          'attach',
+          'ship',
+          '--session',
+          'claude-code:terminal-session',
+          '--hydra',
+          'lab',
+        ])
+
+        return {
+          result: 'gone',
+          detail: 'old endpoint disappeared',
+        }
+      },
+    })
+    assert.equal(
+      task().steering![0]!.recovery![0]!.result,
+      'unknown',
+    )
+    let notifications = 0
+
+    for (let tick = 2; tick <= 4; tick++) {
+      await followUpSteering({
+        hydraId: 'lab',
+        now: SENT + tick * STEERING_GRACE_MS,
+        notify: async () => {
+          notifications++
+
+          return { result: 'delivered' }
+        },
+      })
+    }
+
+    assert.equal(
+      notifications,
+      2,
+    )
+    assert.equal(
+      task().steering![0]!.recovery!.at(-1)!.result,
+      'exhausted',
     )
   },
 )
