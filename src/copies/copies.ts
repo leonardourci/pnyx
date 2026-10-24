@@ -1,3 +1,4 @@
+import { COPY_TIMEOUT_MS, git } from './git.ts'
 import { workerQueue } from '../queue/state.ts'
 import { spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -11,46 +12,10 @@ import { projectsFor } from '../projects/read.ts'
 import { canonical } from '../store/paths.ts'
 import { hydraDir, hydraIds, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
-const COPY_TIMEOUT_MS = 120_000
+export { git } from './git.ts'
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
-
-export function git({
-  cwd,
-  args,
-}: {
-  cwd: string
-  args: string[]
-}): {
-  ok: boolean
-  out: string
-  err: string
-} {
-  const run = spawnSync(
-    'git',
-    [
-      '-C',
-      cwd,
-      ...args,
-    ],
-    {
-      encoding: 'utf8',
-      timeout: COPY_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
-      },
-    },
-  )
-
-  return {
-    ok: run.status === 0,
-    out: (run.stdout ?? '').trim(),
-    err: (run.stderr ?? '').trim().slice(-500),
-  }
-}
 
 export function isFolder({ path }: { path: string }): boolean {
   try {
