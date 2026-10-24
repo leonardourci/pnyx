@@ -980,8 +980,8 @@ test(
     await page.press({ key: 'Enter' })
     await page.shows({
       what: 'Enter on the first question reaches its first answer option',
-      check: () => document.activeElement?.matches('.hydra-chat .ask-option')
-      && document.activeElement.textContent?.includes('Keep compact'),
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+      && document.activeElement.getAttribute('aria-label')?.includes('Keep compact'),
     })
     await page.press({ key: 'ArrowUp' })
     await page.shows({
@@ -998,16 +998,28 @@ test(
     await page.press({ key: 'ArrowDown' })
     await page.shows({
       what: 'Down returns from question text to the first choice',
-      check: () => document.activeElement?.matches('.hydra-chat .ask-option')
-      && document.activeElement.textContent?.includes('Keep compact'),
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+      && document.activeElement.getAttribute('aria-label')?.includes('Keep compact'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the first choice label as text',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Keep compact'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.shows({
       what: 'Down reaches the adjacent second choice',
-      check: () => document.activeElement?.matches('.hydra-chat .ask-option')
-        && document.activeElement.textContent?.includes('Use roomy'),
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+        && document.activeElement.getAttribute('aria-label')?.includes('Use roomy'),
     })
     await page.press({ key: 'Enter' })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the selected choice label as text',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Use roomy'),
+    })
     await page.press({ key: 'ArrowDown' })
     await page.shows({
       what: 'Down enters the optional note',
@@ -1022,9 +1034,16 @@ test(
     })
     await page.press({ key: 'ArrowUp' })
     await page.shows({
-      what: 'Up past the note returns to the selected option',
-      check: () => document.activeElement?.matches('.hydra-chat .ask-option[aria-pressed=true]'),
+      what: 'Up past the note reaches the selected choice label',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Use roomy'),
     })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up from the label returns to the selected option',
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+    })
+    await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'ArrowDown' })
     await page.shows({
       what: 'the note retains the draft and can be left from its last line',
@@ -1075,7 +1094,7 @@ test(
     await page.shows({
       what: 'Escape leaves an open question without submitting its draft',
       check: () => document.activeElement?.matches('.hydra-chat .composer textarea')
-      && document.querySelector('.hydra-chat .ask-option[aria-pressed=true]'),
+      && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
     })
     await page.close()
   },
