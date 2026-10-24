@@ -3846,6 +3846,9 @@ function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
+    case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
+    case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`

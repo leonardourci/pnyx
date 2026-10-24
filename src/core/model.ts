@@ -194,6 +194,62 @@ export interface Reply {
   detail?: string
 }
 
+export interface SteeringClaim {
+  session: string
+  generation: number
+}
+
+export interface SteeringAttempt {
+  id: string
+  at: string
+  actor: string
+  claim: SteeringClaim
+  result: 'delivered' | 'unknown' | 'failed' | 'deferred'
+  detail?: string
+}
+
+export interface SteeringAck {
+  at: string
+  actor: string
+  claim: SteeringClaim
+  outcome: 'incorporated' | 'blocked'
+  note?: string
+}
+
+export interface SteeringMessage {
+  id: string
+  order: number
+  text: string
+  source: string
+  reply?: string
+  at: string
+  actor: string
+  queuedFor?: SteeringClaim
+  attempts: SteeringAttempt[]
+  ack?: SteeringAck
+}
+
+export type SteeringEvent = EventBase & (
+  | {
+    type: 'task.steering.queued'
+    data: { message: SteeringMessage }
+  }
+  | {
+    type: 'task.steering.notified'
+    data: {
+      message: string
+      attempt: SteeringAttempt
+    }
+  }
+  | {
+    type: 'task.steering.handled'
+    data: {
+      message: string
+      ack: SteeringAck
+    }
+  }
+)
+
 export interface Note {
   kind: NoteKind
   source: string
@@ -374,6 +430,8 @@ export interface Card {
   sourceRefs: SourceRef[]
   outcome?: Outcome
   replies?: Reply[]
+  steering?: SteeringMessage[]
+  steeringGeneration?: number
   notes?: NoteRef[]
   // The column and the position in it are set only by creation and explicit moves.
   // A lower rank sorts first; a card never moved ranks by its createdSeq.
@@ -1090,6 +1148,7 @@ export type ChatEvent = EventBase & {
 }
 
 export type HydraEvent =
+  | SteeringEvent
   | PushedEvent
   | MovedEvent
   | LinkedEvent
@@ -1103,6 +1162,9 @@ export type HydraEvent =
   | PermissionEvent
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
+  'task.steering.queued',
+  'task.steering.notified',
+  'task.steering.handled',
   'card.pushed',
   'card.moved',
   'card.linked',
