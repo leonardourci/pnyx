@@ -190,6 +190,16 @@ test(
     await worker.run({
       args: [
         'task',
+        'report-review',
+        'slow',
+        '--report',
+        s.task({ key: 'slow' }).report!.id,
+        '--none',
+      ],
+    })
+    await worker.run({
+      args: [
+        'task',
         'status',
         'slow',
         'done',
@@ -316,6 +326,16 @@ test(
           name: 'misses.md',
           text: 'The cache key ignores the locale.\n',
         }),
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'report-review',
+        'misses',
+        '--report',
+        s.task({ key: 'misses' }).report!.id,
+        '--none',
       ],
     })
     await s.owner({

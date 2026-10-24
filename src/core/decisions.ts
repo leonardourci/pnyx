@@ -109,17 +109,19 @@ function cardDecisions({
     })
 
   return [
-    ...asks,
-    ...permissions,
-    ...prompts,
-    ...merges,
+    ...asks.filter(item => !card.hidden
+      || card.asks?.some(ask => ask.id === item.id && ask.origin)),
+    ...(card.hidden ? [] : permissions),
+    ...(card.hidden ? [] : prompts),
+    ...(card.hidden ? [] : merges),
   ]
 }
 
-// Everything on a live task still waiting on the owner, on Hydra or on checks: oldest first, then what carries no time.
+// Report choices remain owed even when an older client hid their task.
 export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
   const items = Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+    .filter(card => card.id !== HYDRA_CARD
+      && (liveTask({ card }) || openAsks({ card }).some(ask => ask.origin)))
     .flatMap(card => cardDecisions({
       state,
       card,

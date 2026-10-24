@@ -5,7 +5,7 @@ import { declareTask, hydraConfig, roleColumn } from '../core/hydra.ts'
 import { HydraError, type LandingRule } from '../core/model.ts'
 import { landingLine, taskLanding } from '../landing/rule.ts'
 import { loadHydra, type Writer } from '../store/hydra-store.ts'
-import { decideBuild, decideReport, readReport, readReportFile } from './report.ts'
+import { decideBuild, decideReport, decideReportReview, readReport, readReportFile } from './report.ts'
 
 // task report <task> [--file <path>] stores a report, or prints the stored one.
 export function reportCommand({
@@ -42,7 +42,9 @@ export function reportCommand({
       }
       : {
         task: card.id,
+        id: card.report!.id,
         at: card.report!.at,
+        inventory: card.report!.review ?? 'not reviewed',
         report,
       }
   }
@@ -227,4 +229,46 @@ export async function buildCommand({
       worker: `not told: ${error.message}`,
     }
   }
+}
+
+export function reportReviewCommand({
+  hydraId,
+  ref,
+  report,
+  calls,
+  none,
+  meta,
+}: {
+  hydraId: string
+  ref?: string
+  report?: string
+  calls: string[]
+  none: boolean
+  meta: Meta
+}): Output {
+  const task = required({
+    value: ref,
+    what: 'task id',
+  })
+  const reportId = required({
+    value: report,
+    what: '--report <report-id>',
+  })
+
+  return commit({
+    hydraId,
+    meta,
+    intent: {
+      type: 'task.report-reviewed',
+      card: task,
+    },
+    decide: ({ state }) => decideReportReview({
+      state,
+      ref: task,
+      report: reportId,
+      calls,
+      none,
+      meta,
+    }),
+  })
 }

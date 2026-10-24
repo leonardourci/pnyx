@@ -1,3 +1,4 @@
+import { reportReviewGaps } from '../investigation/inventory.ts'
 import { HydraError, type Card, type HydraState } from '../core/model.ts'
 import { git, isFolder, landedWork } from '../copies/copies.ts'
 import { taskLanding } from './rule.ts'
@@ -13,7 +14,10 @@ export function doneGaps({
   hydraId: string
 }): string[] {
   if (card.kind === 'investigation') {
-    return card.report ? [] : [`no stored report: store it with \`pnyx-axi task report ${card.id} --file <path> --hydra ${hydraId}\``]
+    return card.report ? reportReviewGaps({
+      state,
+      card,
+    }) : [`no stored report: store it with \`pnyx-axi task report ${card.id} --file <path> --hydra ${hydraId}\``]
   }
 
   const copy = card.copy
@@ -116,7 +120,7 @@ export function refuseEarlyDone({
     message: `not done yet: ${gaps.join('; ')}`,
     code: 'NOT_LANDED',
     help: card.kind === 'investigation'
-      ? ['Store the report, then declare done again']
+      ? ['Store the report and review its owner decision inventory, then declare done again']
       : [
         `Land the work as the project's rule says and link its pull request with \`pnyx-axi link ${card.id} --url <url> --hydra ${hydraId}\``,
         `A ready pull request waiting for its merge is \`pnyx-axi task status ${card.id} needs_you\`, not done; Pnyx marks the task done when it merges`,

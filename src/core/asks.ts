@@ -133,6 +133,7 @@ export function decideAsk({
   ref,
   id,
   audience,
+  fromReport,
   kind,
   question,
   context,
@@ -146,6 +147,7 @@ export function decideAsk({
   id: string
   kind?: string
   audience: AskAudience
+  fromReport?: string
   question: string
   context?: string
   details?: string
@@ -157,6 +159,28 @@ export function decideAsk({
     state,
     ref,
   })
+
+  let origin: Ask['origin']
+
+  if (fromReport !== undefined) {
+    if (audience !== 'owner') {
+      throw invalid({ message: '--from-report links an owner question; ask Hydra to file it on separate gated work' })
+    }
+
+    const source = askableTask({
+      state,
+      ref: fromReport,
+    })
+
+    if (source.id === card.id || !source.report) {
+      throw invalid({ message: '--from-report must name a different task with a stored report' })
+    }
+
+    origin = {
+      task: source.id,
+      report: source.report.id,
+    }
+  }
 
   if (audience === 'owner' && meta.actor !== HYDRA_ACTOR) {
     throw new HydraError({
@@ -258,6 +282,7 @@ export function decideAsk({
       data: {
         id,
         audience,
+        ...(origin ? { origin } : {}),
         ...(kind === 'go' ? {
           kind,
           hold: structuredClone(card.hold),
@@ -665,7 +690,7 @@ export function reconcileAsks({
     card,
     audience: 'owner',
   })) {
-    if (ask.kind === 'go' && ask.hold?.id === card.hold?.id) {
+    if (ask.origin || (ask.kind === 'go' && ask.hold?.id === card.hold?.id)) {
       continue
     }
 
