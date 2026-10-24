@@ -20,6 +20,10 @@ import { project } from '../src/projects/cli.ts'
 import { readEvents, loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
+process.env.PNYX_GH_AXI = join(
+  import.meta.dirname,
+  'fixtures/github/gh-axi.sh',
+)
 const PR = 'https://github.com/o/r/pull/7'
 
 const git = ({
@@ -663,7 +667,7 @@ test(
 )
 
 test(
-  'done goes through once the work landed: a pushed commit whose pull request merged, or a commit on the default branch',
+  'a merged link does not finish unproved work; the fetched default branch does',
   async () => {
     const merged = await lab()
     merged.change({ file: 'a.txt' })
@@ -684,10 +688,9 @@ test(
       '--state',
       'merged',
     ])
-    merged.done()
-    assert.equal(
-      merged.card().status?.state,
-      'done',
+    assert.throws(
+      () => merged.done(),
+      /does not prove the current work landed/,
     )
 
     const onMain = await lab()
