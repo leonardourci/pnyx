@@ -36,7 +36,7 @@ const describe = ({ details }: { details: ExceptionDetails }) =>
   details.exception?.description ?? details.text
 
 // The keys the journeys press; a key with text also types it, as Enter does in a field.
-const KEYS: Record<'Enter' | 'ArrowDown', {
+const KEYS: Record<'Enter' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
   keyCode: number
   text?: string
 }> = {
@@ -45,6 +45,11 @@ const KEYS: Record<'Enter' | 'ArrowDown', {
     text: '\r',
   },
   ArrowDown: { keyCode: 40 },
+  ArrowUp: { keyCode: 38 },
+  ArrowLeft: { keyCode: 37 },
+  ArrowRight: { keyCode: 39 },
+  Tab: { keyCode: 9 },
+  Escape: { keyCode: 27 },
 }
 
 // Starts Chrome before the file's tests and stops it after; call it at the top level of the file.
