@@ -110,6 +110,6 @@ export function copyCommand({
     task: card.id,
     copy: copy ?? 'none: this task has no copy of its own',
     ...(check ? { check } : {}),
-    ...(copy?.state === 'flagged' ? { help: ['Land its work and run task copy remove again, or confirm it is safe with --safe'] } : {}),
+    ...(copy?.state === 'flagged' ? { help: ['Land its current work and run task copy remove again; discarding it needs the owner'] } : {}),
   }
 }
