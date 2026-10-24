@@ -1,3 +1,4 @@
+import { incorporateInboxNotice } from '../inbox-fixture.ts'
 // Fake Claude Code and Codex that replay the real sessions recorded in test/fixtures/agents/
 // (`pnpm refresh-agent-fixtures`), so scenarios run Pnyx's own provider code over real agent output.
 import assert from 'node:assert/strict'
@@ -136,7 +137,9 @@ function plannedTurns() {
 }
 
 // Each message starts the recorded turn again under the session's own id; the transcript is written as Claude Code writes it.
-export function replayClaude() {
+export function replayClaude(
+  { incorporateSteering = false }: { incorporateSteering?: boolean } = {},
+) {
   const sessions: AgentSession[] = []
   const turns = plannedTurns()
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
@@ -213,7 +216,11 @@ export function replayClaude() {
 
     async function* run() {
       for await (const message of prompt) {
-        const text = textOf({ message })
+        const input = textOf({ message })
+        const text = incorporateSteering ? incorporateInboxNotice({
+          text: input,
+          env: session.env,
+        }) : input
         session.received.push(text)
         images.push(...imagesOf({ message }))
         record({
@@ -295,7 +302,9 @@ export function replayClaude() {
 
 // An app-server in this process: each request gets its recorded result, followed by the notifications
 // recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
-export function replayCodex() {
+export function replayCodex(
+  { incorporateSteering = false }: { incorporateSteering?: boolean } = {},
+) {
   const sessions: AgentSession[] = []
   const turns = plannedTurns()
   // refuse: a method answered with an error while set, as a harness that cannot open a thread; refused counts them.
@@ -420,7 +429,11 @@ export function replayCodex() {
 
         if (message.method === 'turn/start' || message.method === 'turn/steer') {
           const input = (message.params as { input?: { text?: string }[] }).input ?? []
-          const text = input.map(part => part.text ?? '').join('\n')
+          const received = input.map(part => part.text ?? '').join('\n')
+          const text = incorporateSteering ? incorporateInboxNotice({
+            text: received,
+            env: session.env,
+          }) : received
           session.received.push(text)
           plan = turns.take({ text })
         }

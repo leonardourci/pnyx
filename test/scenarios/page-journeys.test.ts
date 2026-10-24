@@ -7,7 +7,7 @@ import { browserGroup } from './browser.ts'
 import { scenarioGroup, until } from './harness.ts'
 
 // The owner's own journeys on the built page, in one headless Chrome against one Pnyx.
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ incorporateSteering: true })
 const chrome = browserGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
 
@@ -457,6 +457,7 @@ test(
       },
     })
     await page.click({ selector: '.waiting-decisions button' })
+    await page.click({ selector: '[aria-label="Items waiting on you"] button' })
     await page.shows({
       what: 'the question back in view in the chat',
       arg: { question },

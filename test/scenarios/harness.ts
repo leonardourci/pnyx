@@ -246,7 +246,11 @@ export async function openPage({
 
 // Starts one disposable Pnyx for the test file (temporary PNYX_HOME, random port, fake agents);
 // call it at the top level of the file. Nothing outside its temporary folder is read or written.
-export function scenarioGroup({ retryDelays }: {
+export function scenarioGroup({
+  retryDelays,
+  incorporateSteering = false,
+}: {
+  incorporateSteering?: boolean
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
 } = {}) {
@@ -324,8 +328,8 @@ export function scenarioGroup({ retryDelays }: {
     ),
     JSON.stringify({ 'search.semantic': 'off' }),
   )
-  const claude = replayClaude()
-  const codex = replayCodex()
+  const claude = replayClaude({ incorporateSteering })
+  const codex = replayCodex({ incorporateSteering })
   let server: RunningServer | undefined
   let scenarios = 0
 

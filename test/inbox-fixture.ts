@@ -66,7 +66,8 @@ export function incorporateInboxNotice({
         throw new Error('Notice names an unknown steering ID')
       }
 
-      const messages = (card.steering ?? []).filter(message => !message.ack)
+      const messages = (card.steering ?? []).filter(message =>
+        !message.ack && ids.includes(message.id))
 
       for (const message of messages) {
         acknowledgeSteering({

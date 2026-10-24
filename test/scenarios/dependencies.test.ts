@@ -11,7 +11,7 @@ import { startAgent } from '../../src/integrations/paseo/launch.ts'
 import type { Connect } from '../../src/integrations/paseo/client.ts'
 import { git, scenarioGroup, until } from './harness.ts'
 
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ incorporateSteering: true })
 
 test(
   'dependencies persist, reject invalid graphs, and leave independent tasks available in parallel',
