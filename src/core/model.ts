@@ -1,4 +1,5 @@
 import type { HelperChange, HelperState } from '../helper/state.ts'
+import type { ExternalSource, ExternalSourceEvent } from '../external-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 
 export const EVENT_VERSION = 1 as const
@@ -459,6 +460,7 @@ export interface Card {
   replies?: Reply[]
   steering?: SteeringMessage[]
   steeringGeneration?: number
+  externalSources?: ExternalSource[]
   notes?: NoteRef[]
   // The column and the position in it are set only by creation and explicit moves.
   // A lower rank sorts first; a card never moved ranks by its createdSeq.
@@ -487,7 +489,7 @@ export interface PushFields {
   attention?: Attention[]
 }
 
-interface EventBase {
+export interface EventBase {
   labelColors?: SavedLabelColor[]
   v: typeof EVENT_VERSION
   seq: number
@@ -1189,6 +1191,7 @@ export type ChatEvent = EventBase & {
 }
 
 export type HydraEvent =
+  | ExternalSourceEvent
   | SteeringEvent
   | PushedEvent
   | MovedEvent
@@ -1203,6 +1206,11 @@ export type HydraEvent =
   | PermissionEvent
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
+  'task.source.registered',
+  'task.source.started',
+  'task.source.result',
+  'task.source.alerted',
+  'task.source.handled',
   'task.steering.queued',
   'task.steering.notified',
   'task.steering.handled',

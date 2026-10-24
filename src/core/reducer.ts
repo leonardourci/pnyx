@@ -1,6 +1,7 @@
 import { applyDependencies } from './dependencies.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
+import { applyExternalSource } from '../external-sources/state.ts'
 import {
   AUTO_TITLE_SOURCES,
   EVENT_VERSION,
@@ -162,7 +163,10 @@ function apply({
     colors: event.labelColors,
   })
 
-  if (applySteering({
+  if (applyExternalSource({
+    state,
+    event,
+  }) || applySteering({
     state,
     event,
   }) || applyDependencies({
