@@ -514,8 +514,10 @@ function inbox() {
       })
       wake?.()
     },
-    pending() {
-      return items.length
+    pending({ includes }: {
+      includes?({ steeringIds }: { steeringIds?: string[] }): boolean
+    } = {}) {
+      return includes ? items.filter(includes).length : items.length
     },
     end() {
       done = true
@@ -564,6 +566,17 @@ interface Live {
   tools: Map<string, number>
 }
 
+function steeringHeld({ card }: { card: Card }): boolean {
+  return Boolean(card.hold || pausedDeclaration({ card })?.hold)
+}
+
+function steeringAssignment({ card }: { card: Card }): string {
+  return JSON.stringify([
+    card.steeringGeneration ?? card.createdSeq,
+    steeringHeld({ card }),
+  ])
+}
+
 export function createHost({
   hydraId,
   query,
@@ -607,6 +620,11 @@ export function createHost({
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
+    .map(card => [
+      card.id,
+      steeringAssignment({ card }),
+    ]))
   // The latest size and spend each session reported, kept after its process idles out.
   const usages = new Map<string, Omit<HostedUsage, 'type'>>()
   const pending = new Map<string, {
@@ -1136,6 +1154,26 @@ export function createHost({
     })
   }
 
+  const pendingSteeringIds = ({
+    card,
+    key,
+    generation,
+    ids,
+  }: {
+    card?: Card
+    key: string
+    generation?: number
+    ids: string[]
+  }) => {
+    if (!card?.agent || !liveTask({ card }) || sessionId({ agent: card.agent }) !== key
+      || card.steeringGeneration !== generation || steeringHeld({ card })) {
+      return []
+    }
+
+    return (card.steering ?? []).filter(message => !message.ack && ids.includes(message.id))
+      .map(message => message.id)
+  }
+
   const inboxNotice = ({
     card,
     ids,
@@ -1201,7 +1239,7 @@ export function createHost({
     message?: string
     attempt?: string
   }) => {
-    if (card.id === HYDRA_CARD || card.hold || pausedDeclaration({ card })?.hold) {
+    if (card.id === HYDRA_CARD || !liveTask({ card }) || steeringHeld({ card })) {
       return
     }
 
@@ -1229,10 +1267,7 @@ export function createHost({
     }
 
     entry.input.push({
-      text: inboxNotice({
-        card,
-        ids,
-      }),
+      text: '',
       steeringIds: ids,
     })
     write({
@@ -1350,17 +1385,18 @@ export function createHost({
           if (item.steeringIds) {
             const current = loadHydra({ hydraId }).state.cards[card.id]
 
-            if (!current?.agent || sessionId({ agent: current.agent }) !== key
-              || current.steeringGeneration !== card.steeringGeneration
-              || current.hold || pausedDeclaration({ card: current })?.hold) {
-              continue
-            }
+            const ids = pendingSteeringIds({
+              card: current,
+              key,
+              generation: card.steeringGeneration,
+              ids: item.steeringIds,
+            })
 
-            const notifiedIds = item.steeringIds
-            const ids = (current.steering ?? []).filter(message =>
-              !message.ack && notifiedIds.includes(message.id)).map(message => message.id)
+            if (!current || !ids.length) {
+              for (const id of item.steeringIds) {
+                entry.steering.delete(id)
+              }
 
-            if (!ids.length) {
               continue
             }
 
@@ -1552,8 +1588,26 @@ export function createHost({
           streamed({ session: key })
         }
 
-        if (activity === 'finished' && entry.input.pending()) {
-          continue
+        if (activity === 'finished') {
+          const current = loadHydra({ hydraId }).state.cards[card.id]
+          const pending = entry.input.pending({
+            includes: ({ steeringIds }) => {
+              if (!steeringIds) {
+                return true
+              }
+
+              return pendingSteeringIds({
+                card: current,
+                key,
+                generation: card.steeringGeneration,
+                ids: steeringIds,
+              }).length > 0
+            },
+          })
+
+          if (pending) {
+            continue
+          }
         }
 
         if (activity !== entry.activity) {
@@ -1800,7 +1854,7 @@ export function createHost({
             })
           }
 
-          if (card.hold || pausedDeclaration({ card })?.hold) {
+          if (steeringHeld({ card })) {
             return writer.state.cards[card.id] as Card & { agent: AgentRef }
           }
 
@@ -1857,7 +1911,7 @@ export function createHost({
       return
     }
 
-    if (!direct && (card.hold || pausedDeclaration({ card })?.hold)) {
+    if (!direct && steeringHeld({ card })) {
       return { deferred: true }
     }
 
@@ -3906,6 +3960,38 @@ export function createHost({
           expire({ id })
         }
       }
+
+      for (const card of Object.values(state.cards)) {
+        const assignment = steeringAssignment({ card })
+        const previous = observedAssignments.get(card.id)
+        observedAssignments.set(
+          card.id,
+          assignment,
+        )
+
+        if (!previous || previous === assignment || !liveTask({ card })
+          || card.id === HYDRA_CARD || card.agent?.host !== 'pnyx' || steeringHeld({ card })) {
+          continue
+        }
+
+        const oldest = card.steering?.find(message => !message.ack)
+
+        if (!oldest) {
+          continue
+        }
+
+        try {
+          send({
+            card: card.id,
+            text: '',
+            actor: 'pnyx',
+            steering: oldest.id,
+            attempt: `reconcile:${card.id}:${state.seq}`,
+          })
+        } catch (error) {
+          console.error(`pnyx-axi serve: ${card.id} inbox assignment could not resume: ${(error as Error).message}`)
+        }
+      }
     },
 
     recover: async () => {
@@ -3950,6 +4036,7 @@ export function createHost({
             }
 
             let resumeAttemptId: string | undefined
+            const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
             if (session.id === writer.state.config?.hydra.session
               && hostedHydra({ state: writer.state })) {
@@ -3962,9 +4049,8 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
-            } else if (session.taskId && session.id !== writer.state.config?.hydra.session
-              && !writer.state.cards[session.taskId]?.hold
-              && !pausedDeclaration({ card: writer.state.cards[session.taskId]! })?.hold) {
+            } else if (task && liveTask({ card: task }) && !steeringHeld({ card: task })
+              && session.id !== writer.state.config?.hydra.session) {
               resumeAttemptId = findWorkerTurnToResume({
                 hydraId,
                 state: writer.state,
@@ -3973,7 +4059,7 @@ export function createHost({
 
               if (resumeAttemptId) {
                 cutWorkerTurns.push({
-                  task: session.taskId,
+                  task: task.id,
                   resumeAttemptId,
                 })
               }
@@ -4013,7 +4099,7 @@ export function createHost({
       }
 
       for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
-        if (card.id === HYDRA_CARD || card.agent?.host !== 'pnyx' || card.hold || pausedDeclaration({ card })?.hold) {
+        if (card.id === HYDRA_CARD || !liveTask({ card }) || card.agent?.host !== 'pnyx' || steeringHeld({ card })) {
           continue
         }
 

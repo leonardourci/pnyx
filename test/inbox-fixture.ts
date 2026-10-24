@@ -21,7 +21,23 @@ export function incorporateInboxNotice({
     throw new Error('Inbox notice requires a worker environment')
   }
 
+  const notice = /^Pnyx steering inbox has pending instruction IDs (\[[^\n]*?\])\. Run `pnyx-axi task inbox read (\S+) --hydra (\S+)`/.exec(text)
+
+  if (!notice) {
+    throw new Error('Malformed steering notice')
+  }
+
+  const ids: unknown = JSON.parse(notice[1]!)
+
+  if (!Array.isArray(ids) || !ids.length || !ids.every(id => typeof id === 'string')) {
+    throw new Error('Malformed steering IDs')
+  }
+
   const ref = actor.slice('worker:'.length)
+
+  if (notice[2] !== ref || notice[3] !== hydraId) {
+    throw new Error('Notice targets another task or Hydra')
+  }
 
   if (ref === HYDRA_CARD) {
     throw new Error('Hydra does not use a worker inbox')
@@ -44,6 +60,10 @@ export function incorporateInboxNotice({
 
       if (!claim) {
         throw new Error('Inbox notice requires an attached worker')
+      }
+
+      if (!ids.every(id => card.steering?.some(message => message.id === id))) {
+        throw new Error('Notice names an unknown steering ID')
       }
 
       const messages = (card.steering ?? []).filter(message => !message.ack)
