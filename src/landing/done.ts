@@ -1,6 +1,8 @@
 import { reportReviewGaps } from '../investigation/inventory.ts'
 import { HydraError, type Card, type HydraState } from '../core/model.ts'
-import { git, isFolder, landedWork } from '../copies/copies.ts'
+import { isFolder } from '../copies/copies.ts'
+import { git } from '../copies/git.ts'
+import { landedWork } from './proof.ts'
 import { taskLanding } from './rule.ts'
 
 // What still stands between a task and done; empty when its work has landed by its project's rule.
@@ -44,9 +46,8 @@ export function doneGaps({
     ],
   })
 
-  // A folder Pnyx cannot read as git is the copy tool's own; nothing here to check.
   if (!status.ok || !head.ok) {
-    return []
+    return ['could not read the current copy; its landing is unproved']
   }
 
   const gaps: string[] = []
@@ -88,7 +89,9 @@ export function doneGaps({
   }
 
   if (card.links.some(l => l.kind === 'github_pr' && l.state !== 'closed')) {
-    gaps.push('its pull request has not merged')
+    gaps.push(card.links.some(l => l.kind === 'github_pr' && l.state === 'merged')
+      ? 'its merged pull request does not prove the current work landed'
+      : 'its pull request has not merged')
   } else {
     gaps.push('no linked pull request')
   }

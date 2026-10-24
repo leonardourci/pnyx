@@ -1,3 +1,4 @@
+import { landingContext, provesLanding } from '../landing/proof.ts'
 import { execFile, spawnSync } from 'node:child_process'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
@@ -246,30 +247,6 @@ async function landedBranch({
     throw new Error('The worker folder has uncommitted changes')
   }
 
-  await git({
-    cwd,
-    args: [
-      'fetch',
-      'origin',
-    ],
-  })
-  await git({
-    cwd,
-    args: [
-      'remote',
-      'set-head',
-      'origin',
-      '--auto',
-    ],
-  })
-  const base = await git({
-    cwd,
-    args: [
-      'symbolic-ref',
-      '--short',
-      'refs/remotes/origin/HEAD',
-    ],
-  })
   const head = await git({
     cwd,
     args: [
@@ -277,67 +254,67 @@ async function landedBranch({
       'HEAD',
     ],
   })
-  const tip = await git({
-    cwd,
-    args: [
-      'rev-parse',
-      base,
-    ],
-  })
-
-  try {
-    await git({
+  const copy = card.copy ?? {
+    path: cwd,
+    project: card.project,
+    via: 'worktree' as const,
+    state: 'active' as const,
+    branch: await git({
       cwd,
       args: [
-        'merge-base',
-        '--is-ancestor',
-        head,
-        tip,
+        'branch',
+        '--show-current',
       ],
-    })
+    }),
+  }
+  const context = landingContext({
+    copy: {
+      ...copy,
+      base: undefined,
+    },
+  })
 
-    return {
-      cwd,
-      base,
-      tip,
-      head,
-      root,
-    }
-  } catch {
-    const pr = card.links.find(l => l.kind === 'github_pr' && l.state === 'merged')
+  if (!context.tip || context.reason) {
+    throw new Error(context.reason ?? 'The fetched default branch could not be read')
+  }
 
-    if (!pr) {
-      return undefined
-    }
+  const prepared = {
+    cwd,
+    base: `origin/${context.base}`,
+    tip: context.tip,
+    head,
+    root,
+  }
 
+  if (provesLanding({
+    copy,
+    head,
+    context,
+  })) {
+    return prepared
+  }
+
+  const merged = card.links.filter(link => link.kind === 'github_pr' && link.state === 'merged')
+
+  if (!merged.length) {
+    return undefined
+  }
+
+  for (const pr of merged) {
     const landing = await readLanding({ url: pr.url })
 
-    if (landing?.head === head) {
-      try {
-        await git({
-          cwd,
-          args: [
-            'merge-base',
-            '--is-ancestor',
-            landing.merge,
-            tip,
-          ],
-        })
-      } catch {
-        throw new Error('The merged pull request has not landed on the fetched default branch')
-      }
-
-      return {
-        cwd,
-        base,
-        tip,
-        head,
-        root,
-      }
+    if (provesLanding({
+      copy,
+      head,
+      context,
+      url: pr.url,
+      landing,
+    })) {
+      return prepared
     }
-
-    throw new Error('Local commits are outside the merged pull request')
   }
+
+  throw new Error('Local commits are outside the merged pull request or its fetched default branch')
 }
 
 async function refreshLinks({

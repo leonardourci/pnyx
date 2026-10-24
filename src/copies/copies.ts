@@ -1,3 +1,6 @@
+import { COPY_TIMEOUT_MS, git } from './git.ts'
+import { landedWork } from '../landing/proof.ts'
+
 import { workerQueue } from '../queue/state.ts'
 import { spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
@@ -11,46 +14,9 @@ import { projectsFor } from '../projects/read.ts'
 import { canonical } from '../store/paths.ts'
 import { hydraDir, hydraIds, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
 
-const COPY_TIMEOUT_MS = 120_000
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
-
-export function git({
-  cwd,
-  args,
-}: {
-  cwd: string
-  args: string[]
-}): {
-  ok: boolean
-  out: string
-  err: string
-} {
-  const run = spawnSync(
-    'git',
-    [
-      '-C',
-      cwd,
-      ...args,
-    ],
-    {
-      encoding: 'utf8',
-      timeout: COPY_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        GIT_TERMINAL_PROMPT: '0',
-        GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
-      },
-    },
-  )
-
-  return {
-    ok: run.status === 0,
-    out: (run.stdout ?? '').trim(),
-    err: (run.stderr ?? '').trim().slice(-500),
-  }
-}
 
 export function isFolder({ path }: { path: string }): boolean {
   try {
@@ -522,6 +488,74 @@ function freshSlot({
   }
 }
 
+function releasedCopyLanded({
+  hydraId,
+  path,
+}: {
+  hydraId: string
+  path: string
+}): boolean {
+  const state = loadHydra({ hydraId }).state
+  const branch = git({
+    cwd: path,
+    args: [
+      'branch',
+      '--show-current',
+    ],
+  }).out
+  const previous = Object.values(state.cards).find(card => card.copy?.path === path
+    && card.copy.state === 'removed' && card.copy.branch === branch)
+
+  if (!previous?.copy) {
+    return false
+  }
+
+  const check = checkCopy({
+    card: previous,
+    copy: previous.copy,
+  })
+
+  if (!('reason' in check)) {
+    return true
+  }
+
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const current = writer.state.cards[previous.id]
+
+      if (current?.copy?.path !== path || current.copy.state !== 'removed') {
+        return
+      }
+
+      apply({
+        writer,
+        decision: hydraEvent({
+          state: writer.state,
+          cardId: current.id,
+          meta: {
+            actor: 'pnyx',
+            at: new Date().toISOString(),
+          },
+          change: {
+            type: 'task.copy',
+            data: {
+              before: current.copy,
+              after: {
+                ...current.copy,
+                state: 'flagged',
+                reason: check.reason,
+              },
+            },
+          },
+        }),
+      })
+    },
+  })
+
+  return false
+}
+
 // The slot it returns stays claimed until the caller records it.
 function worktreeCopy({
   hydraId,
@@ -594,7 +628,10 @@ function worktreeCopy({
       card,
       path,
     })) {
-      if (reusable({
+      if (releasedCopyLanded({
+        hydraId,
+        path,
+      }) && reusable({
         path,
         common,
       }) && checkout({
@@ -893,47 +930,6 @@ export type CopyCheck = {
     reason: string
   }
 
-// Landed: the commit is on the default branch, or the task's linked pull request merged.
-export function landedWork({
-  card,
-  copy,
-  head,
-}: {
-  card: Card
-  copy: TaskCopy
-  head: string
-}): {
-  landed: boolean
-  refs: string[]
-} {
-  const remote = originHead({ cwd: copy.path })
-  const refs = [
-    ...new Set([
-      remote,
-      remote?.replace(
-        /^origin\//,
-        '',
-      ),
-      copy.base,
-    ].filter((r): r is string => Boolean(r))),
-  ]
-  const merged = refs.some(ref => git({
-    cwd: copy.path,
-    args: [
-      'merge-base',
-      '--is-ancestor',
-      head,
-      ref,
-    ],
-  }).ok)
-  const pr = card.links.some(l => l.kind === 'github_pr' && l.state === 'merged')
-
-  return {
-    landed: merged || pr,
-    refs,
-  }
-}
-
 export function checkCopy({
   card,
   copy,
@@ -975,11 +971,37 @@ export function checkCopy({
   const {
     landed,
     refs,
+    reason,
   } = landedWork({
     card,
     copy,
     head: head.out,
   })
+  const currentHead = git({
+    cwd: copy.path,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  })
+  const currentStatus = git({
+    cwd: copy.path,
+    args: [
+      'status',
+      '--porcelain',
+    ],
+  })
+
+  const changed = currentHead.out !== head.out || currentStatus.out !== status.out
+
+  if (!currentHead.ok || !currentStatus.ok || changed) {
+    return {
+      clean: false,
+      landed: false,
+      reason: 'its work changed during the landing check; its copy was kept',
+    }
+  }
+
   const clean = status.out === ''
 
   if (clean && landed) {
@@ -992,7 +1014,8 @@ export function checkCopy({
   return {
     clean,
     landed,
-    reason: !clean ? 'it has uncommitted changes' : `its work has not landed on ${refs.join(' or ') || 'the default branch'}`,
+    reason: !clean ? 'it has uncommitted changes'
+      : reason ?? `its work has not landed on ${refs.join(' or ') || 'the default branch'}`,
   }
 }
 
@@ -1126,11 +1149,11 @@ export function settleCopy({
     copy,
   })
 
-  if (mode === 'safe' && !check.clean && copy.via === 'worktree') {
+  if (mode === 'safe' && copy.via === 'worktree' && (!check.clean || !check.landed)) {
     throw new HydraError({
-      message: `the copy of ${card.id} has uncommitted changes, so it is not safe to remove`,
+      message: `the copy of ${card.id} has uncommitted changes or unproved work, so it is not safe to remove`,
       code: 'CONFLICT',
-      help: ['Land or commit them first; discarding them needs the owner'],
+      help: ['Land the current work first; discarding it needs the owner'],
     })
   }
 
@@ -1226,7 +1249,7 @@ export function settleCopy({
 
       if (after.state === 'flagged') {
         const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
-          + `Land its work, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`; if it is already merged or empty, confirm with \`--safe\`. `
+          + `Prove its current work landed, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`. `
           + `Discarding work that never landed needs the owner: \`pnyx-axi task copy ${now.id} remove --discard --hydra ${hydraId}\`.`
         apply({
           writer,

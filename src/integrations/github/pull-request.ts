@@ -127,44 +127,92 @@ export async function pullRequestState({ url }: { url: string }): Promise<LinkSt
 export interface PullRequestLanding {
   head: string
   merge: string
+  branch?: string
+  base?: string
 }
 
-export async function pullRequestLanding(
-  { url }: { url: string },
-): Promise<PullRequestLanding | undefined> {
+function landingArgs({ url }: { url: string }): string[] | undefined {
   const pr = PR_URL.exec(url)
 
-  if (!pr) {
+  return pr ? [
+    'api',
+    `/repos/${pr[1]}/${pr[2]}/pulls/${pr[3]}`,
+    '--jq',
+    '.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring) + " " + .head.ref + " " + .base.ref',
+  ] : undefined
+}
+
+function parseLanding({ out }: { out: string }): PullRequestLanding | undefined {
+  const [
+    head,
+    merge,
+    merged,
+    branch,
+    base,
+  ] = (field({
+    out,
+    key: 'body',
+  }) ?? '').split(' ')
+
+  if (merged !== 'true' || !head || !merge
+    || !/^[a-f0-9]{40,64}$/.test(head) || !/^[a-f0-9]{40,64}$/.test(merge)) {
     return undefined
   }
 
-  const { stdout } = await promisify(execFile)(
+  const landing: PullRequestLanding = {
+    head,
+    merge,
+  }
+
+  if (branch) {
+    landing.branch = branch
+  }
+
+  if (base) {
+    landing.base = base
+  }
+
+  return landing
+}
+
+export function pullRequestLandingSync({ url }: { url: string }): PullRequestLanding | undefined {
+  const args = landingArgs({ url })
+
+  if (!args) {
+    return undefined
+  }
+
+  const result = spawnSync(
     process.env.PNYX_GH_AXI || 'gh-axi',
-    [
-      'api',
-      `/repos/${pr[1]}/${pr[2]}/pulls/${pr[3]}`,
-      '--jq',
-      '.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring)',
-    ],
+    args,
     {
       encoding: 'utf8',
       timeout: VIEW_TIMEOUT_MS,
     },
   )
-  const [
-    head,
-    merge,
-    merged,
-  ] = (field({
-    out: stdout,
-    key: 'body',
-  }) ?? '').split(' ')
 
-  return merged === 'true' && head && merge && /^[a-f0-9]{40,64}$/.test(head) && /^[a-f0-9]{40,64}$/.test(merge)
-    ? {
-      head,
-      merge,
-    } : undefined
+  return result.status === 0 ? parseLanding({ out: result.stdout }) : undefined
+}
+
+export async function pullRequestLanding(
+  { url }: { url: string },
+): Promise<PullRequestLanding | undefined> {
+  const args = landingArgs({ url })
+
+  if (!args) {
+    return undefined
+  }
+
+  const { stdout } = await promisify(execFile)(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    args,
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
+
+  return parseLanding({ out: stdout })
 }
 
 export interface PullRequestChecks {
