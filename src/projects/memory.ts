@@ -9,7 +9,7 @@ import { privateDir, withRegistryLock, withWriter } from '../store/hydra-store.t
 import { pnyxHome } from '../store/paths.ts'
 import { projectIdentity, projectSources } from './sources.ts'
 
-export const PROJECT_MEMORY_BUDGET = 3000
+export const PROJECT_MEMORY_BUDGET = 10000
 export const PROJECT_MEMORY_NEARLY_FULL = 0.8
 export const PROJECT_MEMORY_DOCUMENTS = {
   profile: 'Profile',
@@ -19,7 +19,7 @@ export const PROJECT_MEMORY_DOCUMENTS = {
 } as const
 export type ProjectMemoryKey = keyof typeof PROJECT_MEMORY_DOCUMENTS
 
-interface MemoryEvent {
+export interface ProjectMemoryEvent {
   v: 1
   id: string
   seq: number
@@ -33,6 +33,7 @@ interface MemoryEvent {
   before: string | null
   after: string | null
   sources?: Record<string, string>
+  importedLearning?: Learning
 }
 
 export interface ProjectMemory {
@@ -40,7 +41,7 @@ export interface ProjectMemory {
   learnings?: Learning[]
   documents: Partial<Record<ProjectMemoryKey, string>>
   sources: Record<string, string>
-  events: MemoryEvent[]
+  events: ProjectMemoryEvent[]
 }
 
 export const projectMemorySize = ({ documents }: Pick<ProjectMemory, 'documents'>) => Object.values(documents).reduce(
@@ -61,6 +62,10 @@ function memoryPath({ id }: { id: string }) {
 }
 
 export function readProjectMemory({ id }: { id: string }): ProjectMemory {
+  return withRegistryLock({ fn: () => readProjectMemoryLog({ id }) })
+}
+
+function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
   const file = memoryPath({ id })
   const memory: ProjectMemory = {
     revision: 0,
@@ -86,7 +91,7 @@ export function readProjectMemory({ id }: { id: string }): ProjectMemory {
   }
 
   for (const line of text.split('\n').filter(Boolean)) {
-    let event: MemoryEvent
+    let event: ProjectMemoryEvent
 
     try {
       event = JSON.parse(line)
@@ -155,8 +160,12 @@ function profileStatus({
 }
 
 export function projectMemoryView({ path }: { path: string }) {
+  return withRegistryLock({ fn: () => projectMemoryViewUnderLock({ path }) })
+}
+
+export function projectMemoryViewUnderLock({ path }: { path: string }) {
   const identity = projectIdentity({ path })
-  const memory = readProjectMemory(identity)
+  const memory = readProjectMemoryLog(identity)
   const sources = projectSources({ path })
   const changed = [
     ...new Set([
@@ -207,11 +216,11 @@ export function writeProjectMemory({
 
   return withRegistryLock({
     fn: () => {
-      const view = projectMemoryView({ path })
+      const view = projectMemoryViewUnderLock({ path })
 
       const previous = view.events.find(event => event.id === meta.id)
 
-      const notify = ({ event }: { event: MemoryEvent }) => {
+      const notify = ({ event }: { event: ProjectMemoryEvent }) => {
         if (event.key !== 'workers') {
           return
         }
@@ -262,15 +271,11 @@ export function writeProjectMemory({
         after = before
       }
 
-      const used = view.used - (before?.length ?? 0) + (after?.length ?? 0)
-
-      if (after !== null && used > PROJECT_MEMORY_BUDGET && used > view.used) {
-        throw new HydraError({
-          message: `Project memory would use ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
-          code: 'MEMORY_FULL',
-          help: ['Load inscribe: merge, shorten or forget project entries, then save again'],
-        })
-      }
+      const used = checkProjectMemoryBudget({
+        memory: view,
+        key,
+        after,
+      })
 
       if (confirmed !== undefined && key !== 'learnings') {
         throw new HydraError({
@@ -303,7 +308,7 @@ export function writeProjectMemory({
         }
       }
 
-      const event: MemoryEvent = {
+      const event: ProjectMemoryEvent = {
         v: 1,
         id: meta.id ?? randomUUID(),
         seq: view.revision + 1,
@@ -345,4 +350,27 @@ export function writeProjectMemory({
       }
     },
   })
+}
+
+export function checkProjectMemoryBudget({
+  memory,
+  key,
+  after,
+}: {
+  memory: ProjectMemory
+  key: ProjectMemoryKey
+  after: string | null
+}): number {
+  const current = projectMemorySize(memory)
+  const used = current - (memory.documents[key]?.length ?? 0) + (after?.length ?? 0)
+
+  if (after !== null && used > PROJECT_MEMORY_BUDGET && used > current) {
+    throw new HydraError({
+      message: `Project memory would use ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
+      code: 'MEMORY_FULL',
+      help: ['Load inscribe: merge, shorten or forget project entries, then save again'],
+    })
+  }
+
+  return used
 }
