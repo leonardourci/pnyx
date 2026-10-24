@@ -798,7 +798,7 @@ test(
         messages.includes(`The copy of task ${id} \\"copy-fix\\" at ${copies[0]} was kept: its work has not landed`),
       ],
       [
-        'its work has not landed on origin/main or main',
+        'its work has not landed on origin/main',
         true,
       ],
     )
