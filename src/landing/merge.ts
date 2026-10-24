@@ -187,9 +187,19 @@ export async function mergeCommand({
       fn: ({ writer }) => {
         const currentCard = writer.state.cards[card.id]
         const current = currentCard?.links.find(current => current.url === link.url)
-        if (currentCard && !owner && taskLanding({ state: writer.state, card: currentCard })?.merge !== 'hydra'
-          && !mergeApproval({ card: currentCard, url: link.url })) {
-          refuse({ message: 'the owner’s merge approval was withdrawn', code: 'FORBIDDEN' })
+
+        if (currentCard && !owner && taskLanding({
+          state: writer.state,
+          card: currentCard,
+        })?.merge !== 'hydra'
+          && !mergeApproval({
+            card: currentCard,
+            url: link.url,
+          })) {
+          refuse({
+            message: 'the owner’s merge approval was withdrawn',
+            code: 'FORBIDDEN',
+          })
         }
 
         if (!current || current.mergeAttempt || current.state === 'closed' || current.state === 'merged') {
