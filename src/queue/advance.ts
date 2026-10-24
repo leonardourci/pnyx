@@ -75,15 +75,22 @@ function releaseQueue({
   hydraId,
   session,
   reason,
+  task,
 }: {
   hydraId: string
   session: string
   reason: string
+  task: AgentSession['taskId'] | undefined
 }) {
   withWriter({
     hydraId,
     fn: ({ writer }) => {
       const current = writer.state.sessions?.[session]?.taskId
+
+      if (current !== task) {
+        return
+      }
+
       const previous = current && writer.state.cards[current]
       const note = `Continue after ${previous ? `"${previous.title}" (${previous.id})` : session}. ${reason}. Read its task history before starting a fresh worker.`
       const column = roleColumn({
@@ -487,6 +494,7 @@ export async function advanceQueues({
       releaseQueue({
         hydraId,
         session: id,
+        task: session?.taskId,
         reason,
       })
       continue
@@ -511,6 +519,11 @@ export async function advanceQueues({
         readLanding,
       })
       state = loadHydra({ hydraId }).state
+
+      if (state.sessions?.[id]?.taskId !== current.id) {
+        continue
+      }
+
       const card = state.cards[current.id]!
       const prs = card.links.filter(l => l.kind === 'github_pr')
 
@@ -672,6 +685,7 @@ export async function advanceQueues({
         releaseQueue({
           hydraId,
           session: id,
+          task: current.id,
           reason: (error as Error).message,
         })
       }
