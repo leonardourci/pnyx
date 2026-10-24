@@ -1,9 +1,9 @@
-import { mkdirSync, appendFileSync } from 'node:fs'
+import { mkdirSync, appendFileSync, utimesSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
 import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 
-export function hydraSdk() {
+export function hydraSdk({ now }: { now?: () => number } = {}) {
   // messages leave out the digest Pnyx puts before a session's first message; raw keeps it.
   const calls: {
     options: Options
@@ -79,23 +79,35 @@ export function hydraSdk() {
       dirname(path),
       { recursive: true },
     )
+
     const record = ({
       role,
       text,
     }: {
       role: string
       text: string
-    }) => appendFileSync(
-      path,
-      JSON.stringify({
-        type: role,
-        timestamp: new Date().toISOString(),
-        message: {
-          role,
-          content: text,
-        },
-      }) + '\n',
-    )
+    }) => {
+      appendFileSync(
+        path,
+        JSON.stringify({
+          type: role,
+          timestamp: new Date().toISOString(),
+          message: {
+            role,
+            content: text,
+          },
+        }) + '\n',
+      )
+
+      if (now) {
+        const at = new Date(now())
+        utimesSync(
+          path,
+          at,
+          at,
+        )
+      }
+    }
 
     async function* run() {
       if (control.fail) {
