@@ -1,3 +1,5 @@
+import { openAsks } from './asks.ts'
+import { requireReportReview } from '../investigation/inventory.ts'
 import { ownerGates } from './gates.ts'
 import { columnRule, validateColumnRule } from './columns.ts'
 import { ownerActor, HydraError, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
@@ -307,6 +309,24 @@ export function hydraEvent({
     return { skipped: 'duplicate' }
   }
 
+  if (change.type === 'task.visibility' && 'after' in change.data && change.data.after === true) {
+    const card = state.cards[cardId]
+
+    if (card) {
+      requireReportReview({
+        state,
+        card,
+      })
+
+      if (openAsks({ card }).some(ask => ask.origin)) {
+        throw new HydraError({
+          message: 'answer or evidence-close the report question before hiding its task',
+          code: 'OWNER_DECISION_PENDING',
+        })
+      }
+    }
+  }
+
   const revision = cardId === '$projects' ? state.projectsRevision ?? 0 : cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
@@ -413,6 +433,13 @@ export function declareTask({
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
+    })
+  }
+
+  if (status === 'done') {
+    requireReportReview({
+      state,
+      card,
     })
   }
 
@@ -897,7 +924,7 @@ export function applyHydra({
     return true
   }
 
-  if (event.type === 'task.kind' || event.type === 'task.report' || event.type === 'task.landing') {
+  if (event.type === 'task.kind' || event.type === 'task.report' || event.type === 'task.report-reviewed' || event.type === 'task.landing') {
     const card = state.cards[event.cardId]
 
     if (!card) {
@@ -914,6 +941,15 @@ export function applyHydra({
         at: event.at,
         actor: event.actor,
         chars: event.data.text.length,
+      }
+    }
+
+    if (event.type === 'task.report-reviewed' && card.report?.id === event.data.report) {
+      card.report.review = {
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+        calls: structuredClone(event.data.calls),
       }
     }
 

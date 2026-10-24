@@ -1,3 +1,5 @@
+import { openAsks } from './asks.ts'
+import { reportReviewGaps } from '../investigation/inventory.ts'
 import type { Card, HydraState } from './model.ts'
 
 export const DEFAULT_DONE_HOURS = 24
@@ -38,7 +40,9 @@ export function cardDoneDeadline({
 }): number | undefined {
   const delay = card.doneAfterHours ?? hours
 
-  if (card.hidden || card.keepDone || !card.doneAt || delay === 0) {
+  const pendingReportChoice = openAsks({ card }).some(ask => ask.origin)
+
+  if (pendingReportChoice || card.hidden || card.keepDone || !card.doneAt || delay === 0) {
     return undefined
   }
 
@@ -51,6 +55,13 @@ export function doneDeadline({ state }: { state: HydraState }): number | undefin
   let next: number | undefined
 
   for (const card of Object.values(state.cards)) {
+    if (reportReviewGaps({
+      state,
+      card,
+    }).length) {
+      continue
+    }
+
     const deadline = cardDoneDeadline({
       card,
       hours: state.config?.doneAfterHours,
