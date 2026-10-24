@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../src/integrations/github/merge-evidence.ts'
-import { pullRequestLanding, pullRequestState } from '../src/integrations/github/pull-request.ts'
+import { pullRequestLanding, pullRequestLandingSync, pullRequestState } from '../src/integrations/github/pull-request.ts'
 import { scriptPullRequest, type FakePullRequest } from './scenarios/github.ts'
 
 async function evidence({
@@ -46,6 +46,7 @@ async function evidence({
       outcome: await pullRequestMergeOutcome({ url }),
       landing: await pullRequestLanding({ url }).catch(() => undefined),
       state: await pullRequestState({ url }).catch(() => undefined),
+      landingSync: pullRequestLandingSync({ url }),
     }
   } finally {
     if (previous.fake === undefined) {
@@ -251,7 +252,13 @@ test(
       {
         head: 'a'.repeat(40),
         merge: 'b'.repeat(40),
+        branch: 'feature',
+        base: 'main',
       },
+    )
+    assert.deepEqual(
+      merged.landingSync,
+      merged.landing,
     )
     assert.deepEqual(
       merged.outcome,

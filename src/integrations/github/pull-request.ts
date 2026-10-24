@@ -140,29 +140,70 @@ export interface PullRequestLanding {
 export async function pullRequestLanding(
   { url }: { url: string },
 ): Promise<PullRequestLanding | undefined> {
+  if (!pullRequestRef({ url })) {
+    return undefined
+  }
+
   const details = await pullRequestDetails({ url })
 
   return landingFromDetails({ details })
 }
 
-function landingFromDetails({ details }: { details: PullRequestDetails }): PullRequestLanding | undefined {
-  if (!details.merged || !details.merge) return undefined
-  const landing: PullRequestLanding = { head: details.head, merge: details.merge }
-  if (details.branch) { landing.branch = details.branch; landing.base = details.base }
+function landingFromDetails({ details }: {
+  details: PullRequestDetails
+}): PullRequestLanding | undefined {
+  if (!details.merged || !details.merge) {
+    return undefined
+  }
+
+  const landing: PullRequestLanding = {
+    head: details.head,
+    merge: details.merge,
+  }
+
+  if (details.branch) {
+    landing.branch = details.branch
+    landing.base = details.base
+  }
+
   return landing
 }
 
 export function pullRequestLandingSync({ url }: { url: string }): PullRequestLanding | undefined {
   const pr = pullRequestRef({ url })
-  if (!pr) return undefined
-  const result = spawnSync(process.env.PNYX_GH_AXI || 'gh-axi', [
-    'api', `/repos/${pr.repo}/pulls/${pr.number}`, '--jq', '{payload: tojson}', '--full',
-  ], { encoding: 'utf8', timeout: VIEW_TIMEOUT_MS })
-  if (result.status !== 0) return undefined
+
+  if (!pr) {
+    return undefined
+  }
+
+  const result = spawnSync(
+    process.env.PNYX_GH_AXI || 'gh-axi',
+    [
+      'api',
+      `/repos/${pr.repo}/pulls/${pr.number}`,
+      '--jq',
+      '{payload: tojson}',
+      '--full',
+    ],
+    {
+      encoding: 'utf8',
+      timeout: VIEW_TIMEOUT_MS,
+    },
+  )
+
+  if (result.status !== 0) {
+    return undefined
+  }
+
   try {
     const encoded = /^payload: (.+)$/m.exec(result.stdout)?.[1]
-    if (!encoded) return undefined
+
+    if (!encoded) {
+      return undefined
+    }
+
     const details = parsePullRequestDetails({ input: JSON.parse(JSON.parse(encoded) as string) })
+
     return landingFromDetails({ details })
   } catch {
     return undefined
@@ -215,7 +256,10 @@ export async function pullRequestDetails({ url }: { url: string }): Promise<Pull
 
 function parsePullRequestDetails({ input }: { input: unknown }): PullRequestDetails {
   const value = input as {
-    head?: { sha?: unknown, ref?: unknown }
+    head?: {
+      sha?: unknown
+      ref?: unknown
+    }
     base?: { ref?: unknown }
     merged?: unknown
     merge_commit_sha?: unknown
