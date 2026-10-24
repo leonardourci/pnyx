@@ -1010,7 +1010,7 @@ test(
           '--hydra',
           'default',
         ]) as unknown as string,
-        /Owner memory uses 8000 of 8000 characters\. Load the inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the inscribe skill/,
+        /Owner memory uses 24000 of 24000 characters\. Load the inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the inscribe skill/,
       )
     } finally {
       rmSync(

@@ -8,7 +8,7 @@ import { askWording, openAsks } from './asks.ts'
 import { HydraError, type Card, type HydraState } from './model.ts'
 
 // Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
-export const OWNER_MEMORY_BUDGET = 8000
+export const OWNER_MEMORY_BUDGET = 24000
 // Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
 export const HYDRA_MEMORY_BUDGET = 1500
 // The skill Hydra loads to curate and save its memory before a reset.
