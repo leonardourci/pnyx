@@ -250,6 +250,10 @@ export interface Ask {
   at: string
   actor: string
   audience: AskAudience
+  origin?: {
+    task: string
+    report: string
+  }
   kind?: 'merge' | 'go'
   hold?: TaskHold
   url?: string
@@ -286,12 +290,23 @@ export const TASK_KINDS = [
 ] as const
 export type TaskKind = (typeof TASK_KINDS)[number]
 
+export interface ReportCall {
+  task: string
+  ask: string
+}
+
 // The text stays in the log, on the task.report event this names.
 export interface TaskReport {
   id: string
   at: string
   actor: string
   chars: number
+  review?: {
+    id: string
+    at: string
+    actor: string
+    calls: ReportCall[]
+  }
 }
 
 export interface TaskReminder {
@@ -779,6 +794,13 @@ export type HydraChange = EventBase & (
     }
   }
   | {
+    type: 'task.report-reviewed'
+    data: {
+      report: string
+      calls: ReportCall[]
+    }
+  }
+  | {
     type: 'task.landing'
     data: {
       before: LandingRule | null
@@ -1148,6 +1170,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.released',
   'task.kind',
   'task.report',
+  'task.report-reviewed',
   'task.landing',
 ]
 
