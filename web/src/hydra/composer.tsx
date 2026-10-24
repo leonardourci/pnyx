@@ -840,6 +840,19 @@ export function Composer({
                 return
               }
 
+              const pickerCount = mention ? matches.length : suggestions.length
+
+              const dismissEmptyPicker = pickerCount === 0
+                && (e.key === 'Tab' || mention !== null || catalog !== null)
+
+              if ((mention || catalogOpen) && dismissEmptyPicker
+                && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                setMention(null)
+                setPrefix(null)
+
+                return
+              }
+
               if ((mention || catalogOpen) && [
                 'ArrowDown',
                 'ArrowUp',

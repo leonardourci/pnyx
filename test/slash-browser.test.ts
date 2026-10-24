@@ -771,6 +771,26 @@ test(
       ],
     )
 
+    const unmatchedKeys = await browser({
+      args: ['run'],
+      script: `
+        for (const query of ['/missing-skill', '@missing-task']) {
+          await page.fill('.hydra-chat textarea', query);
+          await page.press('Tab');
+          console.log(await page.eval(() => document.activeElement !== document.querySelector('.hydra-chat textarea')
+            && !document.querySelector('.slash-menu') && !document.querySelector('.mention-menu')));
+        }
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.deepEqual(
+      unmatchedKeys.trim().split('\n'),
+      [
+        'true',
+        'true',
+      ],
+    )
+
     const projectSkills = await browser({
       args: ['run'],
       script: `
