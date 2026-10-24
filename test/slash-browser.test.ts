@@ -827,7 +827,7 @@ for (const geometry of [
       await page.type('then report.');
       console.log(await page.eval(() => {
         const badge = document.querySelector('.draft-skill'), label = badge.querySelector('.project-label');
-        const taskLabel = [...document.querySelectorAll('.card .project-label')].find(item => item.textContent === label.textContent);
+        const taskLabel = [...document.querySelectorAll('.card .project-label')].find(item => item.textContent === label.textContent.replaceAll('\\u2060', ''));
         return !!taskLabel && taskLabel.dataset.labelColor === label.dataset.labelColor
           && document.querySelector('.hydra-chat textarea').value.endsWith('then report.');
       }));
