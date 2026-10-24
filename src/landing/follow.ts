@@ -209,6 +209,10 @@ export async function followPullRequests({
       continue
     }
 
+    if (!active()) {
+      return
+    }
+
     let outcome: MergeOutcome | undefined
 
     if (status.state === 'merged' || link.mergeAttempt) {
@@ -217,6 +221,10 @@ export async function followPullRequests({
       if (status.state === 'merged' && outcome.outcome !== 'merged') {
         continue
       }
+    }
+
+    if (!active()) {
+      return
     }
 
     const observedState = outcome?.outcome === 'merged' ? 'merged' : status.state
