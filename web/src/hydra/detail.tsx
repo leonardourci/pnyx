@@ -1,5 +1,4 @@
-import { Disclosure } from '../components/ui/disclosure.tsx'
-import { Markdown } from '../components/ui/markdown.tsx'
+import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState, Card } from '../../../src/core/model.ts'
 import { columnsFor } from './view.ts'
@@ -24,7 +23,7 @@ export function Detail({
     <section aria-label={`Details for ${card.title}`} className="detail inline">
       {card.brief ? (
         <Disclosure title="Hydra's build instructions">
-          <Markdown text={card.brief} />
+          <CollapsibleText text={card.brief} />
         </Disclosure>
       ) : null}
       <TaskUpdates

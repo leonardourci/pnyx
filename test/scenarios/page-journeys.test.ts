@@ -476,8 +476,7 @@ test(
       check: () => document.activeElement?.closest('.card .ask'),
     })
     await page.click({
-      selector: '.card .ask-option',
-      text: 'Keep',
+      selector: '.card .ask-option button[aria-label="Choose Keep"]',
     })
     await page.click({ selector: '.card .ask textarea' })
     await page.type({ text: 'Keep it for one more release' })
@@ -528,5 +527,191 @@ test(
       answers().length,
       1,
     )
+  },
+)
+
+test(
+  'card Markdown stays compact, expands on demand and keeps option links independent of selection',
+  async () => {
+    const s = await pnyx.scenario()
+    const { worker } = await startedTask({ s })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Reference task',
+        '--key',
+        'reference',
+      ],
+    })
+    const reference = s.task({ key: 'reference' })
+    const task = s.task({ key: 'ship' })
+    const card = `.card[data-task="${task.id}"]`
+    const markdown = `**Ready for review**
+
+- First item
+- Second item
+
+\`\`\`sh
+pnpm run lint
+\`\`\`
+
+| Check | Result |
+| --- | --- |
+| Layout | Ready |
+
+[Reference task](pnyx-task:${reference.id})
+
+End of the long update.`
+    await s.owner({
+      args: [
+        'task',
+        'brief',
+        'ship',
+        '--brief',
+        markdown,
+      ],
+    })
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'working',
+        '--note',
+        markdown,
+      ],
+    })
+    const page = await openHydra({ s })
+    await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    await page.shows({
+      what: 'formatted update clamped to three compact lines',
+      arg: { card },
+      check: ({ card }) => {
+        const row = [...document.querySelectorAll(`${card} .update-line`)]
+          .find(row => row.querySelector('strong')?.textContent === 'Ready for review')
+        const preview = row?.querySelector<HTMLElement>('.text-preview')
+
+        return preview && preview.scrollHeight > preview.clientHeight
+          && getComputedStyle(preview.querySelector('.markdown')!).fontSize === '12px'
+          && row?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+      },
+    })
+    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.shows({
+      what: 'the full Markdown update after Show more',
+      arg: { card },
+      check: ({ card }) => {
+        const expanded = document.querySelector(`${card} .update-line .show-more[aria-expanded=true]`)?.parentElement
+
+        return expanded?.querySelector('li')?.textContent === 'First item'
+          && expanded.querySelector('pre code')?.textContent?.includes('pnpm run lint')
+          && expanded.querySelector('td')?.textContent === 'Layout'
+          && expanded.querySelector('button.task-reference')?.textContent?.includes('Reference task')
+          && !expanded.querySelector('.text-preview')
+      },
+    })
+    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.shows({
+      what: 'Show less restores the preview',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .update-line .text-preview`)
+        && document.querySelector(`${card} .update-line .show-more`)?.getAttribute('aria-expanded') === 'false',
+    })
+    await page.click({
+      selector: `${card} .disclosure > summary`,
+      text: "Hydra's build instructions",
+    })
+    await page.shows({
+      what: 'the build instructions formatted as Markdown',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .disclosure[open] .markdown strong`)?.textContent === 'Ready for review',
+    })
+    const asked = await worker.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--question',
+        '**Keep** this approach?',
+        '--context',
+        markdown,
+        '--choice',
+        '**Keep**: Preserve the existing layout',
+        '--choice',
+        `Review: [Reference task](pnyx-task:${reference.id})`,
+        '--recommend',
+        '1',
+      ],
+    })
+    const question = /^ask: (\S+)$/m.exec(asked)?.[1]
+    assert.ok(
+      question,
+      asked,
+    )
+    await s.as({ agent: await s.agent({ hydra: true }) }).run({
+      args: [
+        'task',
+        'escalate',
+        'ship',
+        question,
+        '--reason',
+        'Owner decision',
+      ],
+    })
+    await page.shows({
+      what: 'formatted question and option with its accessible description',
+      arg: { card },
+      check: ({ card }) => {
+        const option = document.querySelector(`${card} .ask-option`)
+        const pick = option?.querySelector('.ask-option-pick')
+        const description = document.getElementById(pick?.getAttribute('aria-describedby') ?? '')
+
+        return document.querySelector(`${card} .ask-headline strong`)?.textContent === 'Keep'
+          && option?.querySelector('.ask-label strong')?.textContent === 'Keep'
+          && description?.textContent?.includes('Recommended') && description.textContent.includes('Preserve the existing layout')
+          && !document.querySelector('button button, button a')
+      },
+    })
+    await page.click({
+      selector: `${card} .ask-option`,
+      text: 'Keep',
+    })
+    await page.shows({
+      what: 'clicking the option row selects it',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'true',
+    })
+    await page.press({ key: 'Enter' })
+    await page.shows({
+      what: 'keyboard activation toggles the focused option',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'false',
+    })
+    await page.click({ selector: `${card} .ask-option .task-reference` })
+    await page.shows({
+      what: 'the option reference opens its task',
+      check: () => document.querySelector('.card-open[aria-label="Open task Reference task"]')?.getAttribute('aria-expanded') === 'true',
+    })
+    await page.shows({
+      what: 'following the reference did not select the option',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'false',
+    })
+    await page.click({ selector: `${card} .ask-option-pick[aria-label="Choose Keep"]` })
+    await page.click({ selector: `${card} .ask textarea` })
+    await page.type({ text: '**Approved** with `coverage`' })
+    await page.click({
+      selector: `${card} .ask button`,
+      text: 'Send answer',
+    })
+    await page.shows({
+      what: 'the recorded decision renders the Markdown answer',
+      arg: { card },
+      check: ({ card }) => [...document.querySelectorAll(`${card} .decision-answer-text strong`)]
+        .some(element => element.textContent === 'Approved'),
+    })
+    await page.close()
   },
 )

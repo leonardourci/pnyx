@@ -23,7 +23,13 @@ export function Disclosure({
   )
 }
 
-export function CollapsibleText({ text }: { text: string }) {
+export function CollapsibleText({
+  text,
+  className = '',
+}: {
+  text: string
+  className?: string
+}) {
   const [
       expanded,
       setExpanded,
@@ -55,7 +61,7 @@ export function CollapsibleText({ text }: { text: string }) {
   )
 
   return (
-    <div className="collapsible-text">
+    <div className={`collapsible-text ${className}`}>
       <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><Markdown text={text} /></div>
       {(long || expanded) && (
         <Button

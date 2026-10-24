@@ -1,3 +1,4 @@
+import { useTaskReferences } from './task-references.ts'
 import { loadEarlierMessages, mergeThreadPages } from './conversation-history.ts'
 import { hydraConversation } from './conversation.ts'
 import { chatDecisions, ChatDecisionCard, WaitingDecisions, type ChatDecision } from './chat-decisions.tsx'
@@ -24,7 +25,6 @@ import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
-import { cardState } from './view.ts'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
 
@@ -451,29 +451,7 @@ export function HydraChat({
     route: true,
     watching: 'unknown',
   }
-  const references = Object.fromEntries(Object.values(state.cards)
-    .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)
-    .map(c => {
-      const column = config.columns.find(column => column.id === c.column)
-      const status = cardState({
-        card: c,
-        hours: state.config?.doneAfterHours,
-        now: Date.now(),
-      })
-
-      return [
-        c.id,
-        {
-          title: c.title,
-          state: status.kind === 'asks' ? 'Needs you' : status.text.replace(
-            /^./,
-            letter => letter.toUpperCase(),
-          ),
-          kind: status.kind,
-          column: column?.role ?? column?.id ?? 'custom',
-        },
-      ]
-    }))
+  const references = useTaskReferences({ state })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
   const queueShown = queue.waiting.length > 0 || queueReading.length > 0

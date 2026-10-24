@@ -467,7 +467,7 @@ const renderBlocks = ({
 // Memoized, so a streamed reply's completed blocks skip the typing frames between pushes.
 export const MarkdownBlocks = memo(renderBlocks)
 
-export function Markdown({
+export const Markdown = memo(function Markdown({
   text,
   block,
   openTask,
@@ -496,4 +496,4 @@ export function Markdown({
     })}
     </div>
   )
-}
+})

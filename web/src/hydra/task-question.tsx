@@ -1,5 +1,6 @@
 import type { Card } from '../../../src/core/model.ts'
 import { answerPrompt } from '../../../src/core/answer.ts'
+import { CollapsibleText } from '../components/ui/disclosure.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
@@ -70,7 +71,7 @@ export function TaskQuestion({
       ))}
       {!permissions.length && !structured && !asks.length && text && (
         <div className="pending-decision">
-          <p>{text}</p>
+          <CollapsibleText text={text} />
           <div className="pending-decision-actions">
             <span className="muted small">Awaiting your answer</span>
             <Button variant="surface" onClick={() => answer({ card })}>Answer</Button>

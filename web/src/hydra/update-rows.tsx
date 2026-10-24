@@ -198,7 +198,7 @@ function Answer({ decision }: { decision: NonNullable<TaskUpdate['decision']> })
     <div className="decision-answer">
       <UpdateIcon kind={you ? 'ask' : 'hydra'} label={`Answered by ${you ? 'you' : decision.actor}`} />
       <div className="decision-answer-text">
-        {decision.choice && <strong>{decision.choice}</strong>}
+        {decision.choice && <CollapsibleText text={decision.choice} />}
         {decision.answer !== decision.choice && <CollapsibleText text={decision.answer} />}
       </div>
     </div>
@@ -225,17 +225,18 @@ function AskParts({
             i,
           ) => (
             <li key={option.label} aria-current={choice === option.label || undefined}>
-              <span>{option.label}</span>
+              <CollapsibleText text={option.label} />
               {ask.recommended === i + 1 && <span className="decision-recommended">Recommended</span>}
-              {option.description && <span className="muted"> · {option.description}</span>}
+              {option.description && <CollapsibleText className="muted" text={option.description} />}
             </li>
           ))}
         </ol>
       )}
       {escalation && (
         <div className="decision-escalation">
-          <p className="decision-from">Hydra asked you{escalation.reason ? `: ${escalation.reason}` : ''}</p>
-          {escalation.question && <p className="decision-headline">{escalation.question}</p>}
+          <p className="decision-from">Hydra asked you</p>
+          {escalation.reason && <CollapsibleText className="decision-from" text={escalation.reason} />}
+          {escalation.question && <CollapsibleText className="decision-headline" text={escalation.question} />}
           {escalation.context && <CollapsibleText text={escalation.context} />}
         </div>
       )}
@@ -262,9 +263,7 @@ function Decisions({ updates }: { updates: TaskUpdate[] }) {
           <li key={update.id}>
             <div className="decision-question">
               {many && <span className="decision-number">{index + 1}</span>}
-              {update.decision.ask
-                ? <p className="decision-headline">{update.decision.question}</p>
-                : <CollapsibleText text={update.decision.question} />}
+              <CollapsibleText className="decision-headline" text={update.decision.question} />
             </div>
             {update.decision.ask && (
               <AskParts
@@ -273,7 +272,7 @@ function Decisions({ updates }: { updates: TaskUpdate[] }) {
               />
             )}
             <Answer decision={update.decision} />
-            {update.decision.reason && <p className="decision-why">{update.decision.reason}</p>}
+            {update.decision.reason && <CollapsibleText className="decision-why" text={update.decision.reason} />}
           </li>
         ))}
       </ol>
@@ -320,7 +319,7 @@ function Moment({ updates }: { updates: TaskUpdate[] }) {
       {rest.map(update => (
         <div key={update.id} className="update-part">
           <UpdateTitle update={update} />
-          {update.note && <span className="muted"> · {update.note}</span>}
+          {update.note && <CollapsibleText className="muted" text={update.note} />}
         </div>
       ))}
     </UpdateLine>
