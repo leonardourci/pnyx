@@ -40,7 +40,9 @@ pnyx-axi task status <task> done --note "<the result, with links>" --hydra <hydr
 
 Send routine progress with `pnyx-axi hydra send --task <task> --kind progress --text "<what changed>" --hydra <hydra>`: it updates your card and reaches Hydra with its next wake, without waking it. A report Hydra must act on now, such as a page link to hand the owner, leaves out `--kind progress`. Questions, blockers and results never go this way: they take `task ask` and `task status`. Hydra reads every report as yours, never as the owner's words, and a report never answers a question.
 
-Replies reach you as ordinary messages in your session, even in the middle of a turn. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
+For a native hosted worker (`PNYX_STEERING_WORKER` is set), replies arrive as durable inbox notices, including during a turn. Run `pnyx-axi task inbox read <task> --hydra <hydra>` at startup, on each notice and before ending a turn. Read pending messages in order. Incorporate each instruction, then run `pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <generation> --hydra <hydra>` using the claim returned by read. If incorporation is blocked, acknowledge with `--outcome blocked --note "<why>"` and file any owner question separately. An acknowledgement is an incorporation checkpoint, not completion of the assigned build. Duplicate notices do not create new instructions. Checkpoint side effects and verify them after a crash before repeating work whose acknowledgement was lost. Never acknowledge an unread message or infer handling from transport delivery. Firstmate workers keep Firstmate's own inbox contract.
+
+Other replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 
 ## Review pages
 

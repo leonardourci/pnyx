@@ -179,6 +179,7 @@ export function workerHeader({
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
+    `Native steering: when PNYX_STEERING_WORKER is set, read \`pnyx-axi task inbox read ${id} --hydra ${hydraId}\` at startup, on an inbox notice and before ending a turn. Handle pending IDs in order; after incorporating each instruction, run \`pnyx-axi task inbox ack ${id} <message-id> --session <session> --generation <generation> --hydra ${hydraId}\` with the claim returned by read. If incorporation is blocked, record the reason with --outcome blocked --note "<why>" and file any needed question separately. Delivery is not acknowledgement. Checkpoint side effects before acknowledging; after a crash, verify an existing effect before repeating it.`,
     ...stops,
     ...standing,
     '</pnyx-worker>',
