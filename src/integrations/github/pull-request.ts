@@ -131,88 +131,117 @@ export interface PullRequestLanding {
   base?: string
 }
 
-function landingArgs({ url }: { url: string }): string[] | undefined {
-  const pr = PR_URL.exec(url)
+export async function pullRequestLanding(
+  { url }: { url: string },
+): Promise<PullRequestLanding | undefined> {
+  const details = await pullRequestDetails({ url })
 
-  return pr ? [
-    'api',
-    `/repos/${pr[1]}/${pr[2]}/pulls/${pr[3]}`,
-    '--jq',
-    '.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring) + " " + .head.ref + " " + .base.ref',
-  ] : undefined
+  return landingFromDetails({ details })
 }
 
-function parseLanding({ out }: { out: string }): PullRequestLanding | undefined {
-  const [
-    head,
-    merge,
-    merged,
-    branch,
-    base,
-  ] = (field({
-    out,
-    key: 'body',
-  }) ?? '').split(' ')
-
-  if (merged !== 'true' || !head || !merge
-    || !/^[a-f0-9]{40,64}$/.test(head) || !/^[a-f0-9]{40,64}$/.test(merge)) {
-    return undefined
-  }
-
-  const landing: PullRequestLanding = {
-    head,
-    merge,
-  }
-
-  if (branch) {
-    landing.branch = branch
-  }
-
-  if (base) {
-    landing.base = base
-  }
-
+function landingFromDetails({ details }: { details: PullRequestDetails }): PullRequestLanding | undefined {
+  if (!details.merged || !details.merge) return undefined
+  const landing: PullRequestLanding = { head: details.head, merge: details.merge }
+  if (details.branch) { landing.branch = details.branch; landing.base = details.base }
   return landing
 }
 
 export function pullRequestLandingSync({ url }: { url: string }): PullRequestLanding | undefined {
-  const args = landingArgs({ url })
-
-  if (!args) {
+  const pr = pullRequestRef({ url })
+  if (!pr) return undefined
+  const result = spawnSync(process.env.PNYX_GH_AXI || 'gh-axi', [
+    'api', `/repos/${pr.repo}/pulls/${pr.number}`, '--jq', '{payload: tojson}', '--full',
+  ], { encoding: 'utf8', timeout: VIEW_TIMEOUT_MS })
+  if (result.status !== 0) return undefined
+  try {
+    const encoded = /^payload: (.+)$/m.exec(result.stdout)?.[1]
+    if (!encoded) return undefined
+    const details = parsePullRequestDetails({ input: JSON.parse(JSON.parse(encoded) as string) })
+    return landingFromDetails({ details })
+  } catch {
     return undefined
   }
-
-  const result = spawnSync(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    args,
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
-
-  return result.status === 0 ? parseLanding({ out: result.stdout }) : undefined
 }
 
-export async function pullRequestLanding(
-  { url }: { url: string },
-): Promise<PullRequestLanding | undefined> {
-  const args = landingArgs({ url })
-
-  if (!args) {
-    return undefined
-  }
-
+export async function githubApi({ args }: { args: string[] }): Promise<unknown> {
   const { stdout } = await promisify(execFile)(
     process.env.PNYX_GH_AXI || 'gh-axi',
-    args,
+    [
+      'api',
+      ...args,
+      '--jq',
+      '{payload: tojson}',
+      '--full',
+    ],
     {
       encoding: 'utf8',
       timeout: VIEW_TIMEOUT_MS,
     },
   )
+  const encoded = /^payload: (.+)$/m.exec(stdout)?.[1]
 
-  return parseLanding({ out: stdout })
+  if (!encoded) {
+    throw new Error('gh-axi returned no API payload')
+  }
+
+  return JSON.parse(JSON.parse(encoded) as string) as unknown
+}
+
+export interface PullRequestDetails {
+  head: string
+  branch?: string
+  base: string
+  merged: boolean
+  merge?: string
+  open: boolean
+  draft: boolean
+}
+
+export async function pullRequestDetails({ url }: { url: string }): Promise<PullRequestDetails> {
+  const pr = pullRequestRef({ url })
+
+  if (!pr) {
+    throw new Error(`not a GitHub pull request: ${url}`)
+  }
+
+  return parsePullRequestDetails({ input: await githubApi({ args: [`/repos/${pr.repo}/pulls/${pr.number}`] }) })
+}
+
+function parsePullRequestDetails({ input }: { input: unknown }): PullRequestDetails {
+  const value = input as {
+    head?: { sha?: unknown, ref?: unknown }
+    base?: { ref?: unknown }
+    merged?: unknown
+    merge_commit_sha?: unknown
+    state?: unknown
+    draft?: unknown
+  } | null
+  const head = value?.head?.sha
+  const base = value?.base?.ref
+  const merge = value?.merge_commit_sha
+
+  if (typeof head !== 'string' || !/^[a-f0-9]{40,64}$/.test(head)
+    || typeof base !== 'string' || !base || typeof value?.merged !== 'boolean'
+    || typeof value.draft !== 'boolean' || ![
+    'open',
+    'closed',
+  ].includes(String(value.state))) {
+    throw new Error('GitHub pull request metadata is unreadable')
+  }
+
+  if (value.merged && (typeof merge !== 'string' || !/^[a-f0-9]{40,64}$/.test(merge))) {
+    throw new Error('GitHub merge confirmation has no merge commit')
+  }
+
+  return {
+    head,
+    branch: typeof value.head?.ref === 'string' ? value.head.ref : undefined,
+    base,
+    merged: value.merged,
+    merge: value.merged ? merge as string : undefined,
+    open: value.state === 'open',
+    draft: value.draft,
+  }
 }
 
 export interface PullRequestChecks {
@@ -309,26 +338,31 @@ export async function pullRequestStatus(
 }
 
 // Merges with a merge commit, so every commit of the pull request stays on the base branch.
-export async function mergePullRequest({ url }: { url: string }): Promise<void> {
+export async function mergePullRequest({
+  url,
+  head,
+}: {
+  url: string
+  head?: string
+}): Promise<void> {
   const pr = pullRequestRef({ url })
 
   if (!pr) {
     throw new Error(`not a GitHub pull request: ${url}`)
   }
 
-  await promisify(execFile)(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
-      'pr',
-      'merge',
-      pr.number,
-      '--repo',
-      pr.repo,
-      '--merge',
+  if (typeof head !== 'string' || !/^[a-f0-9]{40,64}$/.test(head)) {
+    throw new Error('a verified head is required')
+  }
+
+  await githubApi({
+    args: [
+      'PUT',
+      `/repos/${pr.repo}/pulls/${pr.number}/merge`,
+      '--field',
+      `sha=${head}`,
+      '--field',
+      'merge_method=merge',
     ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
+  })
 }

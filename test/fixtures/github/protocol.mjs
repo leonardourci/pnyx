@@ -66,6 +66,14 @@ const file = join(
   directory,
   number,
 )
+const page = Number(new URL(
+  path ?? '/',
+  'https://github.test',
+).searchParams.get('page') ?? 1)
+const pageItems = ({ items }) => items.slice(
+  (page - 1) * 100,
+  page * 100,
+)
 const pr = JSON.parse(readFileSync(
   file,
   'utf8',
@@ -152,7 +160,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
   }
 
   emitPayload({
-    value: pr.required.length ? [
+    value: page > 1 ? [] : pr.required.length ? [
       {
         type: 'required_status_checks',
         parameters: {
@@ -172,7 +180,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
   const head = path.split('/')[5]
   emitPayload({
     value: {
-      check_runs: head === pr.head ? pr.runs.map((
+      check_runs: head === pr.head ? pageItems({ items: pr.runs }).map((
         run,
         index,
       ) => ({
@@ -190,7 +198,7 @@ if (args[0] === 'pr' && args[1] === 'view') {
     fail({ message: 'commit statuses unreadable' })
   }
 
-  emitPayload({ value: pr.statuses })
+  emitPayload({ value: pageItems({ items: pr.statuses }) })
 } else if (path?.includes('/pulls/')) {
   if (args.includes('.head.sha + " " + (.merge_commit_sha // "") + " " + (.merged|tostring)')) {
     console.log(`response:\n  body: "${pr.head} ${pr.merge} ${pr.state === 'merged'}"`)
@@ -207,6 +215,10 @@ if (args[0] === 'pr' && args[1] === 'view') {
     })
   }
 } else if (args.includes('graphql')) {
+  if (!args.includes('POST')) {
+    fail({ message: 'GraphQL queries require POST' })
+  }
+
   const query = args.find(arg => arg.startsWith('query=')) ?? ''
 
   if (query.includes('branchProtectionRule')) {
