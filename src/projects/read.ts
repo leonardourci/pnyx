@@ -1,6 +1,7 @@
+import { canonicalProjectPath, sameProjectPath } from './identity.ts'
 import { projectLabel } from '../core/decide.ts'
-import { realpathSync, statSync } from 'node:fs'
-import { basename, resolve } from 'node:path'
+import { statSync } from 'node:fs'
+import { basename } from 'node:path'
 import { HydraError, landingRule, type HydraProject, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
 import { hydraIds, loadHydra } from '../store/hydra-store.ts'
@@ -47,14 +48,11 @@ export function findProject({
   attached?: boolean
 }): HydraProject {
   const projects = projectsFor({ state }).filter(p => !attached || !p.detached)
-  let path = resolve(ref)
-
-  try {
-    path = realpathSync(path)
-  } catch { /* Detached folders may no longer exist. */ }
-
   const pathRef = ref.includes('/') || ref === '.' || ref === '..'
-  const exact = projects.find(p => p.path === ref || (pathRef && p.path === path))
+  const exact = projects.find(p => p.path === ref || (pathRef && sameProjectPath({
+    left: p.path,
+    right: ref,
+  })))
   const matches = exact ? [exact] : projects.filter(p => p.name === ref)
 
   const [
@@ -105,9 +103,9 @@ export function taskProject({
 
 export function projectFolder({ path }: { path: string }): string {
   try {
-    const real = realpathSync(resolve(path))
+    const real = canonicalProjectPath({ path })
 
-    if (statSync(real).isDirectory()) {
+    if (real && statSync(real).isDirectory()) {
       return real
     }
   } catch { /* Missing paths cannot be attached. */ }
@@ -129,7 +127,10 @@ export function sharingHydras({
     .flatMap(id => {
       const state = loadHydra({ hydraId: id }).state
 
-      if (!projectsFor({ state }).some(p => !p.detached && p.path === path)) {
+      if (!projectsFor({ state }).some(p => !p.detached && sameProjectPath({
+        left: p.path,
+        right: path,
+      }))) {
         return []
       }
 

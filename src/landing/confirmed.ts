@@ -1,3 +1,4 @@
+import { refreshConfirmedProject } from '../projects/refresh-confirmed.ts'
 import { declareTask } from '../core/hydra.ts'
 import type { Link } from '../core/model.ts'
 import { withWriter, type Writer } from '../store/hydra-store.ts'
@@ -54,14 +55,14 @@ export async function confirmedMerge({
   url: string
   proof: NonNullable<Link['mergeProof']>
 }): Promise<void> {
-  withWriter({
+  const confirmed = withWriter({
     hydraId,
     fn: ({ writer }) => {
       const link = writer.state.cards[cardId]?.links.find(link => link.url === url)
 
       if (link?.state !== 'merged' || link.mergeProof?.head !== proof.head
       || link.mergeProof.commit !== proof.commit) {
-        return
+        return false
       }
 
       declareMerged({
@@ -70,6 +71,17 @@ export async function confirmedMerge({
         url,
         at: proof.confirmedAt,
       })
+
+      return true
     },
   })
+
+  if (confirmed) {
+    await refreshConfirmedProject({
+      hydraId,
+      cardId,
+      url,
+      proof,
+    })
+  }
 }

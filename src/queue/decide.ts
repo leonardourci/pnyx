@@ -1,3 +1,4 @@
+import { sameProjectPath } from '../projects/identity.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { findCard, type Decision, type Meta } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
@@ -77,7 +78,10 @@ export function decideQueue({
       })
     }
 
-    if (!card.project || card.project !== current.project) {
+    if (!sameProjectPath({
+      left: card.project,
+      right: current.project,
+    })) {
       throw new HydraError({
         message: 'queued tasks must use the worker’s project',
         code: 'CONFLICT',

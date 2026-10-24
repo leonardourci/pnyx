@@ -1,3 +1,4 @@
+import { matchesProject } from '../projects/identity.ts'
 import { COPY_TIMEOUT_MS, git } from './git.ts'
 import { landedWork } from '../landing/proof.ts'
 
@@ -45,7 +46,10 @@ function taskProject({
   state: HydraState
   card: Card
 }): HydraProject | undefined {
-  return projectsFor({ state }).find(p => !p.detached && p.path === card.project)
+  return projectsFor({ state }).find(p => !p.detached && matchesProject({
+    project: p,
+    ref: card.project,
+  }))
 }
 
 // ponytail: an attached session stands for a live worker; a presence check could replace it.
@@ -777,7 +781,10 @@ export function taskFolder({
   }
 
   if (given) {
-    if (projectsFor({ state }).some(p => !p.detached && p.path === given)) {
+    if (projectsFor({ state }).some(p => !p.detached && matchesProject({
+      project: p,
+      ref: given,
+    }))) {
       refuseShared({
         hydraId,
         path: given,
@@ -1071,7 +1078,10 @@ function staysInPool({
   state: HydraState
   copy: TaskCopy
 }): boolean {
-  const project = projectsFor({ state }).find(p => !p.detached && p.path === copy.project)
+  const project = projectsFor({ state }).find(p => !p.detached && matchesProject({
+    project: p,
+    ref: copy.project,
+  }))
   const path = realpathSync(copy.path)
   const common = project && commonDir({ cwd: project.path })
   const pooled = project ? slots({

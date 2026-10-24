@@ -9,7 +9,7 @@ import { taskMention } from '../mentions/mentions.ts'
 // The fixed words a reason line names its fact with; the pnyx-hydra skill and the README list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
-  | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
+  | 'project refresh' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
 
 export interface WakeReason {
   kind: WakeKind
@@ -345,6 +345,14 @@ function ordinaryReasons({
   }
 
   switch (event.type) {
+    case 'project.refreshed':
+      return event.data.state === 'needs-attention' || event.data.state === 'unknown' ? [
+        {
+          kind: 'project refresh',
+          card: card.id,
+          detail: `${event.data.path}: ${event.data.reason}. The pull request remains confirmed merged.`,
+        },
+      ] : []
     case 'task.declared': {
       const {
         state: declared,

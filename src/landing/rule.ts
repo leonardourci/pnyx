@@ -1,3 +1,4 @@
+import { matchesProject } from '../projects/identity.ts'
 import { HydraError, LANDINGS, MERGERS, cardLanding, type Card, type HydraState, type Landing, type LandingRule, type Merger } from '../core/model.ts'
 import { investigationLine, reportLine } from '../investigation/report.ts'
 import { projectsFor } from '../projects/read.ts'
@@ -10,9 +11,18 @@ export function taskLanding({
   state: HydraState
   card: Card
 }): LandingRule | undefined {
+  const projects = projectsFor({ state })
+  const project = projects.find(project => !project.detached && matchesProject({
+    project,
+    ref: card.project,
+  }))
+
   return cardLanding({
-    card,
-    projects: projectsFor({ state }),
+    card: {
+      ...card,
+      project: project?.path ?? card.project,
+    },
+    projects,
   })
 }
 

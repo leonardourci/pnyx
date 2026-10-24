@@ -1,3 +1,4 @@
+import { matchesProject } from '../projects/identity.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { projectIdentity } from '../projects/sources.ts'
@@ -222,7 +223,10 @@ export function taskPrompt({
   })
   const state = loadHydra({ hydraId }).state
   const attachedProject = projectsFor({ state }).find(project => !project.detached
-    && (project.path === card.project || project.name === card.project))
+    && matchesProject({
+      project,
+      ref: card.project,
+    }))
   let projectNotes = ''
 
   if (attachedProject) {

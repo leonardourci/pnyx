@@ -1,3 +1,4 @@
+import { sameProjectPath } from '../projects/identity.ts'
 import { landingContext, provesLanding } from '../landing/proof.ts'
 import { taskReadiness } from '../core/dependencies.ts'
 import { execFile, spawnSync } from 'node:child_process'
@@ -532,7 +533,10 @@ export async function advanceQueues({
         continue
       }
 
-      if (next.project !== card.project || next.hidden || next.sessionIds?.length
+      if (!sameProjectPath({
+        left: next.project,
+        right: card.project,
+      }) || next.hidden || next.sessionIds?.length
         || !next.brief?.trim()
         || next.copy && next.copy.state !== 'removed'
         || card.copy?.state === 'removed' || card.copy?.via === 'command') {

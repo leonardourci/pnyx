@@ -274,6 +274,11 @@ function updateRow({
   const data = event.data ?? {}
 
   switch (event.type) {
+    case 'project.refreshed': return {
+      kind: 'status',
+      state: `Project copy ${data.state}`,
+      note: `${data.path}${data.reason ? `: ${data.reason}` : ''}`,
+    }
     case 'card.replied': {
       const reply = data as RepliedEvent['data']
 
