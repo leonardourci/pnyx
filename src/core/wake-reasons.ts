@@ -459,6 +459,7 @@ function changesReadiness({
     case 'task.released':
     case 'task.kind':
     case 'task.report':
+    case 'task.report-reviewed':
     case 'task.landing':
     case 'task.project':
     case 'task.asked':

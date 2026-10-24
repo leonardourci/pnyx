@@ -228,6 +228,19 @@ test(
         state,
         card: dependent,
       }).ready,
+      false,
+    )
+    base.report.review = {
+      id: 'review',
+      at: AT,
+      actor: 'cli',
+      calls: [],
+    }
+    assert.equal(
+      taskReadiness({
+        state,
+        card: dependent,
+      }).ready,
       true,
     )
   },

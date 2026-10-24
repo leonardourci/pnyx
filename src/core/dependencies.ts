@@ -1,3 +1,4 @@
+import { reportReviewGaps } from '../investigation/inventory.ts'
 import { openAsks } from './asks.ts'
 import { ownerGates } from './gates.ts'
 import { cardLanding, HydraError, type Card, type HydraEvent, type HydraState } from './model.ts'
@@ -57,8 +58,15 @@ function completionGaps({
     gaps.push(declared ?? 'not completed')
   }
 
-  if (card.kind === 'investigation' && !card.report) {
-    gaps.push('no stored investigation report')
+  if (card.kind === 'investigation') {
+    if (!card.report) {
+      gaps.push('no stored investigation report')
+    } else {
+      gaps.push(...reportReviewGaps({
+        state,
+        card,
+      }))
+    }
   }
 
   const branchLanding = cardLanding({
