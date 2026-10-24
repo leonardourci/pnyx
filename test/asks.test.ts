@@ -70,6 +70,8 @@ async function lab({ worker = true }: { worker?: boolean } = {}) {
   await workerCommands.hydra([
     'create',
     'lab',
+    '--helper',
+    'off',
     '--hydra',
     'lab',
   ])

@@ -11,6 +11,7 @@ export function hydraSdk() {
     raw: string[]
   }[] = []
   const control = {
+    onInput: undefined as (({ text }: { text: string }) => void) | undefined,
     hold: false,
     fail: false,
     ask: false,
@@ -109,6 +110,7 @@ export function hydraSdk() {
           /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
           '',
         ))
+        control.onInput?.({ text })
         const delayInputRecord = control.delayInputRecord
 
         if (!delayInputRecord) {

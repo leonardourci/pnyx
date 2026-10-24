@@ -1,4 +1,8 @@
 import { requireUnheld } from '../core/holds.ts'
+import { createRoutineHelper } from '../helper/runner.ts'
+import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
+import { outcomeLines, wakeHandled } from '../helper/state.ts'
+import { isHelper, taskLease } from '../helper/leases.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
@@ -548,6 +552,7 @@ export function createHost({
   stallRepeatMax = STALL_REPEAT_MAX_MS,
   pauseDelay = PAUSE_MS,
   retryDelays = RETRY_MS,
+  helperBound,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -567,6 +572,7 @@ export function createHost({
   stallRepeatMax?: number
   pauseDelay?: number
   retryDelays?: number[]
+  helperBound?: number
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -936,16 +942,19 @@ export function createHost({
 
   let memoryStamp: string | undefined
 
-  const digest = () => {
+  const digest = ({ remember = true }: { remember?: boolean } = {}) => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
 
     const projects = projectDigest({ state })
-    memoryStamp = JSON.stringify({
-      owner,
-      hydra: state.hydraMemory,
-      projects,
-    })
+
+    if (remember) {
+      memoryStamp = JSON.stringify({
+        owner,
+        hydra: state.hydraMemory,
+        projects,
+      })
+    }
 
     return hydraDigest({
       hydraId,
@@ -1350,6 +1359,35 @@ export function createHost({
                 eventId = `wake:${readThrough}:handled`
               }
 
+              if (card.id === HYDRA_CARD && activity === 'finished') {
+                const batches = [...helperBatchesPresented]
+
+                if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
+                  apply({
+                    writer,
+                    decision: hydraEvent({
+                      state: writer.state,
+                      cardId: HYDRA_CARD,
+                      meta: {
+                        at: at(),
+                        actor: 'pnyx',
+                      },
+                      change: {
+                        type: 'hydra.helper-acknowledged',
+                        data: {
+                          batches,
+                          through: outcomesPresented,
+                        },
+                      },
+                    }),
+                  })
+                }
+              }
+
+              if (card.id === HYDRA_CARD && activity === 'finished') {
+                helperBatchesPresented.clear()
+              }
+
               record({
                 writer,
                 agent: card.agent,
@@ -1543,9 +1581,16 @@ export function createHost({
     entry.input.push({ text })
   }
 
+  const helperPending = () => {
+    const state = loadHydra({ hydraId }).state
+
+    return outcomeLines({ state }).length > 0
+      || Object.values(state.helper?.runs ?? {}).some(batch => batch.error)
+  }
+
   // One check turn at a time; a busy Hydra is woken when its turn finishes.
   const armWake = () => {
-    if (!closing && !wakeTimer && wakeThrough) {
+    if (!closing && !wakeTimer && (wakeThrough || helperPending())) {
       wakeTimer = setTimeout(
         fireWake,
         wakeDelay,
@@ -1660,6 +1705,59 @@ export function createHost({
     retries += 1
   }
 
+  let outcomesPresented = 0
+  const helperBatchesPresented = new Set<string>()
+  const helper = createRoutineHelper({
+    hydraId,
+    provider: ({ harness }) => providers[harness === 'claude' ? 'claude-code' : 'codex'],
+    environment: ({
+      harness,
+      actor,
+    }) => {
+      const effective = effectiveDispatch({
+        hydraId,
+        state: loadHydra({ hydraId }).state,
+      })
+      const name = harnessAccount({
+        effective,
+        harness,
+      })
+      const account = name ? effective.accounts[name] : undefined
+      const env = {
+        ...environment({ hydra: true }),
+        PNYX_ACTOR: actor,
+      }
+
+      return account ? accountEnvironment({
+        account,
+        env,
+      }) : env
+    },
+    context: () => digest({ remember: false }),
+    changed: () => {
+      changed()
+      armWake()
+    },
+    bound: helperBound,
+    agentFor: () => {
+      const state = loadHydra({ hydraId }).state
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const main = state.config?.hydra.agent
+        ?? effective.dispatch.rules.hydra?.candidates[0]
+        ?? effective.dispatch.default[0]
+
+      return helperAgent({
+        state,
+        main,
+      })
+    },
+    handback: armWake,
+    outcomesReady: armWake,
+  })
+
   const fireWake = () => {
     wakeTimer = undefined
     const state = loadHydra({ hydraId }).state
@@ -1671,10 +1769,22 @@ export function createHost({
     })
 
     // An interrupted Hydra waits for the owner; the next change after that wakes it.
-    if (closing || !pnyxRunsHydra({ state }) || wakeThrough <= after
+    if (closing || !pnyxRunsHydra({ state })
       || (card?.sessionActivity ?? card?.activity) === 'interrupted'
       || card?.attention.some(a => a.key === INTERRUPTED)
       || queuedHydra.size || (session && live.get(session)?.activity === 'working')) {
+      return
+    }
+
+    if (wakeThrough <= after) {
+      if (helperPending()) {
+        void host.hydra({
+          id: `helper-outcomes:${state.seq}`,
+          actor: 'pnyx',
+          text: '<pnyx-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</pnyx-wake>',
+        })
+      }
+
       return
     }
 
@@ -1684,7 +1794,7 @@ export function createHost({
 
       const unread = seq !== undefined && seq > after && seq <= through
 
-      return unread && reportActor({ actor: message.actor })
+      return unread && reportActor({ actor: message.actor }) && !state.helper?.handled.includes(seq)
     })
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
@@ -1700,22 +1810,53 @@ export function createHost({
       reviewText = review.block
     }
 
+    const text = wakeText({
+      hydraId,
+      state,
+      now: Date.now(),
+      after,
+      reasons,
+      reports,
+      check: otherChanges || !reports.length,
+      review: reviewText,
+    })
+    const batch = updates.filter(update => update.seq > after && update.seq <= through)
+    const events = readEvents({ hydraId })
+      .filter(event => batch.some(update => update.seq === event.seq))
+    const tasks = events.map(event => helperEvent({
+      state,
+      event,
+    }))
+    const routine = tasks.length > 0 && tasks.every(task => task !== undefined)
+
+    if (helperAgent({ state }) && routine && !helper.busy()
+      && helper.offer({
+        tasks: tasks.filter(task => task !== undefined),
+        prompt: text,
+        seqs: batch.map(update => update.seq),
+      })) {
+      const claimed = new Set(batch.map(update => update.seq))
+      updates = updates.filter(update => !claimed.has(update.seq))
+      wakeThrough = Math.max(
+        0,
+        ...updates.map(update => update.seq),
+      )
+      queued()
+
+      return
+    }
+
+    if (routine && helperAgent({ state }) && helper.busy()) {
+      return
+    }
+
     void host.hydra({
       id: wakeId({
         through,
         state,
       }),
       actor: 'pnyx',
-      text: wakeText({
-        hydraId,
-        state,
-        now: Date.now(),
-        after,
-        reasons,
-        reports,
-        check: otherChanges || !reports.length,
-        review: reviewText,
-      }),
+      text,
     })
   }
 
@@ -1935,7 +2076,10 @@ export function createHost({
 
     const id = `wait:${declaration.id}`
 
-    if (`${id}:hosted` in state.eventIds) {
+    if (wakeHandled({
+      state,
+      id,
+    })) {
       return []
     }
 
@@ -1957,7 +2101,10 @@ export function createHost({
 
   const missingReplies = ({ state }: { state: HydraState }): StallItem[] => {
     for (const id of unconfirmedReplies.keys()) {
-      if (`${id}:hosted` in state.eventIds) {
+      if (wakeHandled({
+        state,
+        id,
+      })) {
         unconfirmedReplies.delete(id)
       }
     }
@@ -2069,14 +2216,29 @@ export function createHost({
       state,
       fallback: wakeStart ?? 0,
     })
-    // The next alarm counts from when Hydra got this one, so a slow delivery never shortens the gap it sees.
+    const text = `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${decisionsText({
+      state,
+      now,
+    })}\n${REPLY_RULES}</pnyx-wake>`
+    const routine = fired.every(item => helperReason({
+      state,
+      task: item.card,
+      kind: item.kind,
+    }))
+
+    if (helperAgent({ state }) && routine && helper.offer({
+      tasks: fired.map(item => item.card),
+      prompt: text,
+      seqs: [],
+      once: fired.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
+    })) {
+      return
+    }
+
     void host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
-      text: `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${decisionsText({
-        state,
-        now,
-      })}\n${REPLY_RULES}</pnyx-wake>`,
+      text,
     }).then(() => {
       const delivered = Date.now()
 
@@ -2202,6 +2364,11 @@ export function createHost({
         }
 
         let state = loadHydra({ hydraId }).state
+
+        if (id.startsWith('helper-outcomes:') && !helperPending()) {
+          return { state: 'queued' }
+        }
+
         const config = hydraConfig({
           state,
           id: hydraId,
@@ -2485,13 +2652,33 @@ export function createHost({
             outage = undefined
           }
 
+          const helperState = loadHydra({ hydraId }).state
+          const helperLines = outcomeLines({ state: helperState })
+          let helperText = ''
+
+          if (helperLines.length) {
+            outcomesPresented = Math.max(
+              outcomesPresented,
+              ...helperState.helper!.outcomes.map(outcome => outcome.seq),
+            )
+            helperText = `\n<pnyx-wake>Helper outcomes to relay, one line each:\n${sealed({ text: helperLines.join('\n') })}\n${REPLY_RULES}</pnyx-wake>`
+          }
+
+          const pendingBatches = Object.values(helperState.helper?.runs ?? {})
+            .filter(batch => batch.error)
+
+          for (const batch of pendingBatches) {
+            helperBatchesPresented.add(batch.id)
+            helperText += `\n<pnyx-wake>Helper hand-back: ${sealed({ text: batch.error ?? 'interrupted' })}. Check current task state before acting.\n${sealed({ text: batch.prompt })}</pnyx-wake>`
+          }
+
+          const inputText = recap ?? (memoryNote ? text.replace(
+            REPLY_RULES,
+            `${memoryNote}\n${REPLY_RULES}`,
+          ) : text)
           entry.activity = 'working'
           entry.input.push({
-            // The note stays inside the wake, so the chat never shows it as the owner's.
-            text: recap ?? (memoryNote ? text.replace(
-              REPLY_RULES,
-              `${memoryNote}\n${REPLY_RULES}`,
-            ) : text),
+            text: inputText + helperText,
             id,
           })
           const wakeThroughSeq = WAKE_ID.exec(id)?.[1]
@@ -3487,6 +3674,8 @@ export function createHost({
         }
       }
 
+      helper.recover()
+
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
 
@@ -3529,13 +3718,21 @@ export function createHost({
         }
 
         // Changes from while the server was stopped can only be read against the state now.
-        for (const event of readEvents({ hydraId }).filter(event => event.seq > after)) {
+        const missed = readEvents({ hydraId })
+          .filter(event => event.seq > after && !state.helper?.handled.includes(event.seq))
+
+        for (const event of missed) {
           const reasons = wakeReasons({
             state,
             events: [event],
           })
 
-          if (reasons.length) {
+          const progress = helperProgress({
+            state,
+            event,
+          })
+
+          if (reasons.length || progress) {
             host.wake({
               seq: event.seq,
               card: event.cardId,
@@ -3548,6 +3745,7 @@ export function createHost({
 
     close: () => {
       closing = true
+      helper.close()
       clearTimeout(wakeTimer)
       clearTimeout(retryTimer)
       clearInterval(stallTimer)
@@ -3807,7 +4005,7 @@ const field = ({
   return value
 }
 
-export async function hostRequest({
+async function hostRequestUnlocked({
   host,
   body: raw,
 }: {
@@ -4107,5 +4305,68 @@ export async function hostRequest({
         message: 'action must be hydra, start, models, continue, send, set or permission',
         code: 'VALIDATION_ERROR',
       })
+  }
+}
+
+export async function hostRequest({
+  host,
+  body,
+}: {
+  host: Host
+  body: unknown
+}): Promise<Record<string, unknown>> {
+  const request = typeof body === 'object' && body !== null ? body as Record<string, unknown> : {}
+  const actor = typeof request.actor === 'string' ? request.actor : 'cli'
+  const helper = isHelper({ actor })
+  const action = request.action
+
+  if (helper && action !== 'send' && action !== 'continue') {
+    throw new HydraError({
+      message: 'This action belongs to the main Hydra',
+      code: 'MAIN_ONLY',
+    })
+  }
+
+  const ref = request.task ?? request.card
+  let release = () => {}
+
+  if (typeof ref === 'string' && [
+    'start',
+    'continue',
+    'send',
+    'set',
+    'permission',
+  ].includes(String(action))) {
+    const state = loadHydra({ hydraId: host.hydraId }).state
+    const card = findCard({
+      state,
+      ref,
+    })
+
+    if (helper && !helperGrant({
+      state,
+      task: card.id,
+      actor,
+    })) {
+      throw new HydraError({
+        message: 'This task now belongs to the main Hydra',
+        code: 'MAIN_ONLY',
+      })
+    }
+
+    release = taskLease({
+      hydraId: host.hydraId,
+      task: card.id,
+      actor: helper ? actor : 'main',
+    })
+  }
+
+  try {
+    return await hostRequestUnlocked({
+      host,
+      body,
+    })
+  } finally {
+    release()
   }
 }

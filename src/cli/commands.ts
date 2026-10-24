@@ -1,4 +1,5 @@
 import { decideHold, requireUnheld } from '../core/holds.ts'
+import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
@@ -867,6 +868,62 @@ function untilTime({
   })
 }
 
+export const TASK_OPTIONS: Options = {
+  ...WRITE,
+  title: { type: 'string' },
+  project: { type: 'string' },
+  brief: { type: 'string' },
+  ask: { type: 'string' },
+  message: { type: 'string' },
+  key: { type: 'string' },
+  folder: { type: 'string' },
+  session: { type: 'string' },
+  'replace-session': { type: 'string' },
+  parent: { type: 'string' },
+  column: { type: 'string' },
+  note: { type: 'string' },
+  limit: { type: 'string' },
+  before: { type: 'string' },
+  behind: { type: 'string' },
+  full: { type: 'boolean' },
+  harness: { type: 'string' },
+  prompt: { type: 'string' },
+  'paseo-url': { type: 'string' },
+  check: { type: 'boolean' },
+  via: { type: 'string' },
+  command: { type: 'string' },
+  rule: { type: 'string' },
+  answer: { type: 'string' },
+  model: { type: 'string' },
+  effort: { type: 'string' },
+  mode: { type: 'string' },
+  fast: { type: 'string' },
+  'in-place': { type: 'boolean' },
+  safe: { type: 'boolean' },
+  discard: { type: 'boolean' },
+  question: { type: 'string' },
+  context: { type: 'string' },
+  evidence: { type: 'string' },
+  choice: {
+    type: 'string',
+    multiple: true,
+  },
+  recommend: { type: 'string' },
+  'details-file': { type: 'string' },
+  text: { type: 'string' },
+  to: { type: 'string' },
+  undelivered: { type: 'boolean' },
+  'from-message': { type: 'string' },
+  kind: { type: 'string' },
+  file: { type: 'string' },
+  url: { type: 'string' },
+  landing: { type: 'string' },
+  merge: { type: 'string' },
+  clear: { type: 'boolean' },
+  until: { type: 'string' },
+  hold: { type: 'boolean' },
+}
+
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const {
     values,
@@ -874,61 +931,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     hydraId,
   } = parse({
     args,
-    options: {
-      ...WRITE,
-      title: { type: 'string' },
-      project: { type: 'string' },
-      brief: { type: 'string' },
-      ask: { type: 'string' },
-      message: { type: 'string' },
-      key: { type: 'string' },
-      folder: { type: 'string' },
-      session: { type: 'string' },
-      'replace-session': { type: 'string' },
-      parent: { type: 'string' },
-      column: { type: 'string' },
-      note: { type: 'string' },
-      limit: { type: 'string' },
-      before: { type: 'string' },
-      behind: { type: 'string' },
-      full: { type: 'boolean' },
-      harness: { type: 'string' },
-      prompt: { type: 'string' },
-      'paseo-url': { type: 'string' },
-      check: { type: 'boolean' },
-      via: { type: 'string' },
-      command: { type: 'string' },
-      rule: { type: 'string' },
-      answer: { type: 'string' },
-      model: { type: 'string' },
-      effort: { type: 'string' },
-      mode: { type: 'string' },
-      fast: { type: 'string' },
-      'in-place': { type: 'boolean' },
-      safe: { type: 'boolean' },
-      discard: { type: 'boolean' },
-      question: { type: 'string' },
-      context: { type: 'string' },
-      evidence: { type: 'string' },
-      choice: {
-        type: 'string',
-        multiple: true,
-      },
-      recommend: { type: 'string' },
-      'details-file': { type: 'string' },
-      text: { type: 'string' },
-      to: { type: 'string' },
-      undelivered: { type: 'boolean' },
-      'from-message': { type: 'string' },
-      kind: { type: 'string' },
-      file: { type: 'string' },
-      url: { type: 'string' },
-      landing: { type: 'string' },
-      merge: { type: 'string' },
-      clear: { type: 'boolean' },
-      until: { type: 'string' },
-      hold: { type: 'boolean' },
-    },
+    options: TASK_OPTIONS,
     positionals: 4,
   })
   const action = positionals[0]
@@ -2114,6 +2117,9 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       base: { type: 'string' },
       'done-after-hours': { type: 'string' },
       'review-minutes': { type: 'string' },
+      helper: { type: 'string' },
+      'helper-model': { type: 'string' },
+      'helper-effort': { type: 'string' },
     },
     positionals: 2,
   })
@@ -2277,6 +2283,37 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         }
 
         data.doneAfterHours = hours
+      }
+
+      if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
+        const harness = values.helper ?? (current.helper && current.helper.harness) ?? current.hydra.agent?.harness ?? 'claude'
+
+        if (harness === 'off') {
+          data.helper = false
+        } else if (harness === 'auto') {
+          delete data.helper
+        } else if (harness === 'claude' || harness === 'codex') {
+          let previous: Exclude<typeof current.helper, false>
+
+          if (current.helper && current.helper.harness === harness) {
+            previous = current.helper
+          }
+
+          data.helper = {
+            harness,
+            model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
+          }
+          const effort = values['helper-effort'] ?? previous?.effort
+
+          if (effort !== undefined) {
+            data.helper.effort = String(effort)
+          }
+        } else {
+          throw new HydraError({
+            message: '--helper takes auto, off, claude or codex',
+            code: 'VALIDATION_ERROR',
+          })
+        }
       }
 
       if (values['review-minutes'] !== undefined) {
@@ -3762,6 +3799,9 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
+    case 'hydra.helper-started': return 'Routine helper started'
+    case 'hydra.helper-finished': return event.data.error ? `Helper handed back: ${event.data.error}` : 'Routine helper outcomes recorded'
+    case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Hydra'
     case 'hydra.review': return 'Timed review'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
@@ -4233,24 +4273,26 @@ const layout = guard({
   },
 })
 
-export const commands = {
-  layout,
-  column: columnCommandHandler,
-  hydra: hydraCommandHandler,
-  owner,
-  task,
-  view,
-  push,
-  card,
-  harvest,
-  move,
-  link,
-  outcome,
-  history,
-  undo,
-  repair,
-  setup,
-}
+export const commands = supervisedCommands({
+  commands: {
+    layout,
+    column: columnCommandHandler,
+    hydra: hydraCommandHandler,
+    owner,
+    task,
+    view,
+    push,
+    card,
+    harvest,
+    move,
+    link,
+    outcome,
+    history,
+    undo,
+    repair,
+    setup,
+  },
+})
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
@@ -4302,6 +4344,7 @@ Each Hydra has one orchestrator identity. Changing that identity preserves tasks
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+--helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.

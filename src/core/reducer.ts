@@ -1,3 +1,4 @@
+import { applyHelper } from '../helper/state.ts'
 import {
   AUTO_TITLE_SOURCES,
   EVENT_VERSION,
@@ -171,6 +172,10 @@ function apply({
       event,
     })
     || applyAsk({
+      state,
+      event,
+    })
+    || applyHelper({
       state,
       event,
     })

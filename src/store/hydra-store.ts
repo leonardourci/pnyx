@@ -1,3 +1,5 @@
+import { guardTaskLease, isHelper } from '../helper/leases.ts'
+import { helperGrant } from '../helper/route.ts'
 import { reconcileAsks } from '../core/asks.ts'
 import { spawnSync } from 'node:child_process'
 import { randomInt } from 'node:crypto'
@@ -26,7 +28,7 @@ import {
 import { basename, dirname, join } from 'node:path'
 import { HydraError, EVENT_TYPES, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
 import { emptyHydra, reduce, replay } from '../core/reducer.ts'
-import { declareTask, migrateColumns } from '../core/hydra.ts'
+import { agentActor, declareTask, migrateColumns } from '../core/hydra.ts'
 import { decideMove } from '../core/decide.ts'
 import { lifecycleMoveId, lifecycleMoves, operationDeclarations } from '../core/lifecycle.ts'
 import { pnyxHome } from './paths.ts'
@@ -519,7 +521,7 @@ function takeOver({
 }
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-function acquireLock({ dir }: { dir: string }): () => void {
+export function acquireLock({ dir }: { dir: string }): () => void {
   const path = join(
     dir,
     'writer.lock',
@@ -641,6 +643,29 @@ export function withWriter<T>({
           return state
         },
         append({ event }) {
+          if (!agentActor({ actor: event.actor }) && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
+            const task = event.type === 'hydra.message' ? event.data.task : event.cardId
+
+            if (task && state.cards[task]) {
+              guardTaskLease({
+                dir,
+                task,
+                actor: event.actor,
+              })
+            }
+
+            if (isHelper({ actor: event.actor }) && (!task || !helperGrant({
+              state,
+              task,
+              actor: event.actor,
+            }))) {
+              throw new HydraError({
+                message: 'Helper mutation is outside its task scope',
+                code: 'MAIN_ONLY',
+              })
+            }
+          }
+
           if (event.seq !== state.seq + 1) {
             throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
           }

@@ -1,3 +1,4 @@
+import type { HelperChange, HelperState } from '../helper/state.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 
 export const EVENT_VERSION = 1 as const
@@ -610,6 +611,7 @@ export interface TaskCopy {
 }
 
 export interface HydraConfig {
+  helper?: AgentConfig | false
   id: string
   name: string
   hydra: HydraIdentity
@@ -649,6 +651,7 @@ export interface HydraStatus {
   after?: number
 }
 export type HydraChange = EventBase & (
+  | HelperChange
   | {
     type: 'task.queue'
     data: {
@@ -1097,6 +1100,9 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.message',
   'hydra.status',
   'hydra.review',
+  'hydra.helper-started',
+  'hydra.helper-finished',
+  'hydra.helper-acknowledged',
   'hydra.dispatch-proposed',
   'hydra.dispatch-resolved',
   'hydra.dispatch-progress',
@@ -1137,6 +1143,7 @@ export interface HydraState {
   // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean
   configRevision?: number
+  helper?: HelperState
   hydraReview?: {
     at: string
     seq: number
