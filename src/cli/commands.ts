@@ -34,7 +34,7 @@ import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
-import { ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
+import { moveOwnerLearning, ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { askCommand, askRows } from './asks.ts'
@@ -3460,6 +3460,7 @@ const owner = guard({
     const {
       values,
       positionals,
+      hydraId,
     } = parse({
       args,
       // Owner memory has no events or cards, so it takes only the write flags it honours.
@@ -3470,10 +3471,11 @@ const owner = guard({
         'if-revision': WRITE['if-revision']!,
         key: { type: 'string' },
         text: { type: 'string' },
+        project: { type: 'string' },
       },
       positionals: 2,
     })
-    const usage = 'use owner memory list|set|forget|confirm'
+    const usage = 'use owner memory list|set|forget|confirm|move'
 
     if (positionals[0] !== 'memory') {
       throw new HydraError({
@@ -3493,6 +3495,27 @@ const owner = guard({
         }),
         revision: ownerRevision(),
       }
+    }
+
+    if (action === 'move') {
+      const project = findProject({
+        state: loadHydra({ hydraId }).state,
+        ref: required({
+          value: values.project as string | undefined,
+          what: '--project <name|path>',
+        }),
+        attached: true,
+      })
+
+      return moveOwnerLearning({
+        path: project.path,
+        hydraId,
+        text: required({
+          value: values.text as string | undefined,
+          what: '--text <existing learning line>',
+        }),
+        meta: meta({ values }),
+      })
     }
 
     if (action === 'confirm') {
@@ -4550,10 +4573,11 @@ except its chat lines, which are listed but never end a wait; with --wait it blo
 and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
 for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
 `,
-  owner: `usage: pnyx-axi owner memory list|set|forget|confirm [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
+  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
 Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
 one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
+Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
 Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
   column: `usage: pnyx-axi column list
