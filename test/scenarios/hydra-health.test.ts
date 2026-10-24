@@ -68,6 +68,22 @@ test(
       pnyxLines,
       statuses,
     } = await codexHydra()
+    pnyx.codex.control.refuse = 'thread/resume'
+
+    await say({ text: 'is it working now?' })
+    const down = await page.shows({
+      what: 'Hydra down on the page',
+      check: ({ state }) => state.hydraStatus?.state === 'down' && state.hydraStatus,
+    })
+    assert.match(
+      down.detail ?? '',
+      /refused thread\/resume/,
+    )
+    assert.deepEqual(
+      pnyxLines().map(line => /^Hydra could not start: .+ Pnyx is retrying/.test(line)),
+      [true],
+    )
+
     const folder = s.folder({ name: 'app' })
     await s.owner({
       args: [
@@ -89,21 +105,6 @@ test(
       ],
     })
     const worker = s.as({ agent: await s.agent({ cwd: folder }) })
-    pnyx.codex.control.refuse = 'thread/resume'
-
-    await say({ text: 'is it working now?' })
-    const down = await page.shows({
-      what: 'Hydra down on the page',
-      check: ({ state }) => state.hydraStatus?.state === 'down' && state.hydraStatus,
-    })
-    assert.match(
-      down.detail ?? '',
-      /refused thread\/resume/,
-    )
-    assert.deepEqual(
-      pnyxLines().map(line => /^Hydra could not start: .+ Pnyx is retrying/.test(line)),
-      [true],
-    )
 
     // Each owner message tries again and hears of its own failure; a worker's wake and the timer stay quiet.
     await say({ text: 'how is the release going?' })
