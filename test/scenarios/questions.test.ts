@@ -4,7 +4,7 @@ import { taskTimeline } from '../../web/src/hydra/task-updates.ts'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ incorporateSteering: true })
 
 test(
   'a worker asks, Hydra escalates, the owner answers on the page, the worker gets it once, and it stays answered after a restart',

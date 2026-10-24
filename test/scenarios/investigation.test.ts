@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { REPORT_MAX_CHARS } from '../../src/investigation/report.ts'
 import { scenarioGroup, until } from './harness.ts'
 
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ incorporateSteering: true })
 
 test(
   'an investigation is done only with a stored report, and the owner turns it into a build its worker continues in the same copy, which still has to land',
