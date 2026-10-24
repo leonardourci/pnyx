@@ -1115,3 +1115,89 @@ test(
     )
   },
 )
+
+test(
+  'project lookup recognizes a real path behind a saved alias and preserves its display path',
+  async () => {
+    const {
+      root,
+      folder,
+      state,
+      run,
+    } = fixture()
+    const alias = join(
+      root,
+      'configured-alias',
+    )
+    symlinkSync(
+      folder,
+      alias,
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const decision = hydraEvent({
+          state: writer.state,
+          cardId: '$projects',
+          meta: {
+            actor: 'cli',
+            at: new Date().toISOString(),
+          },
+          change: {
+            type: 'hydra.project',
+            data: {
+              before: null,
+              after: {
+                path: alias,
+                name: 'configured-alias',
+                detached: false,
+              },
+              sharedWith: [],
+            },
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
+    assert.equal(
+      findProject({
+        state: state(),
+        ref: folder,
+      }).path,
+      alias,
+    )
+    commands.task([
+      'create',
+      '--title',
+      'Use the saved project',
+      '--key',
+      'alias-task',
+      '--project',
+      folder,
+    ])
+    const saved = state()
+    assert.equal(
+      saved.cards[saved.keys['alias-task']!]!.project,
+      alias,
+    )
+    assert.equal(
+      saved.projects?.[0]?.path,
+      alias,
+    )
+    await run({
+      args: [
+        'add',
+        folder,
+      ],
+    })
+    assert.equal(
+      state().projects?.length,
+      1,
+    )
+    assert.equal(
+      state().projects?.[0]?.path,
+      alias,
+    )
+  },
+)

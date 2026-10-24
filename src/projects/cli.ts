@@ -1,3 +1,4 @@
+import { sameProjectPath } from './identity.ts'
 import { PROJECT_MEMORY_BUDGET } from './memory.ts'
 import { projectMemoryCommand } from './memory-cli.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
@@ -313,12 +314,15 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
           })
         }
 
-        const before = state.projects?.find(p => p.path === path) ?? null
+        const before = state.projects?.find(p => sameProjectPath({
+          left: p.path,
+          right: path,
+        })) ?? null
 
         const detached = action === 'remove'
         const after = {
           ...before,
-          path,
+          path: before?.path ?? path,
           name: before?.name ?? projectName({ path }),
           detached,
         }
