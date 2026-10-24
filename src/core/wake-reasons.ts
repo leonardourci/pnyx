@@ -329,20 +329,22 @@ function ordinaryReasons({
 
   const card = state.cards[event.cardId]
 
+  if (event.type === 'task.source.alerted' && card && pnyxRunsHydra({ state })) {
+    return [
+      {
+        kind: 'not confirmed',
+        card: card.id,
+        detail: event.data.detail,
+      },
+    ]
+  }
+
   if (event.actor === HYDRA_ACTOR || event.cardId === HYDRA_CARD || !card || card.automaticTask
     || !hostedHydra({ state })) {
     return []
   }
 
   switch (event.type) {
-    case 'task.source.alerted':
-      return [
-        {
-          kind: 'not confirmed',
-          card: card.id,
-          detail: event.data.detail,
-        },
-      ]
     case 'task.declared': {
       const {
         state: declared,

@@ -30,13 +30,16 @@ export function applyExternalSource({
   }
 
   if (event.type === 'task.source.registered') {
-    card.externalSources ??= []
+    const sources = card.externalSources ?? []
 
-    if (card.externalSources.some(source => source.id === event.data.source.id)) {
+    if (sources.some(source => source.id === event.data.source.id)) {
       return true
     }
 
-    card.externalSources.push(structuredClone(event.data.source))
+    card.externalSources = [
+      ...sources,
+      structuredClone(event.data.source),
+    ]
   } else if (event.type === 'task.source.started' || event.type === 'task.source.result'
     || event.type === 'task.source.alerted' || event.type === 'task.source.handled') {
     const source = card.externalSources?.find(source => source.id === event.data.source)

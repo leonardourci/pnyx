@@ -50,7 +50,7 @@ export interface ExternalSource {
   results: SourceResult[]
 }
 
-export type ExternalSourceEvent = EventBase & (
+export type ExternalSourceChange =
   | {
     type: 'task.source.registered'
     data: { source: ExternalSource }
@@ -85,4 +85,5 @@ export type ExternalSourceEvent = EventBase & (
       handled: NonNullable<SourceResult['handled']>
     }
   }
-)
+
+export type ExternalSourceEvent = EventBase & ExternalSourceChange

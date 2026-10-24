@@ -1,12 +1,13 @@
 import { createHash, randomUUID } from 'node:crypto'
 import { accessSync, constants, readFileSync, realpathSync, statSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
-import type { Meta } from '../core/decide.ts'
+import { findCard, type Meta } from '../core/decide.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
 import { EVENT_VERSION, HydraError, ownerActor, type Card, type SteeringClaim } from '../core/model.ts'
 import type { Writer } from '../store/hydra-store.ts'
-import { inboxTask, requireSteeringWorker } from '../task-inbox/inbox.ts'
+import { requireSteeringWorker } from '../task-inbox/inbox.ts'
 import { sameClaim, steeringClaim } from '../task-inbox/state.ts'
-import type { ExternalSource, ExternalSourceEvent, SourceCommand, SourceOutcome, SourceResult } from './model.ts'
+import type { ExternalSource, ExternalSourceChange, SourceCommand, SourceOutcome, SourceResult } from './model.ts'
 
 export const SOURCE_TIMEOUT_MS = 3_600_000
 export const SOURCE_MAX_TIMEOUT_MS = 86_400_000
@@ -77,10 +78,15 @@ export function sourceTask({
   meta: Meta
   worker?: string
 }): Card {
-  const card = inboxTask({
-    writer,
+  const card = findCard({
+    state: writer.state,
     ref,
   })
+
+  if (card.id === HYDRA_CARD || card.automaticTask || card.mirror
+    || card.sourceRefs.some(source => source.adapter === 'firstmate')) {
+    invalidSource({ message: 'Choose a native task for external sources' })
+  }
 
   if (meta.actor.startsWith('worker:')) {
     requireSteeringWorker({
@@ -124,8 +130,7 @@ export function appendSource({
   writer: Writer
   card: Card
   meta: Meta
-  change: ExternalSourceEvent extends infer E ? E extends ExternalSourceEvent
-    ? Pick<E, 'type' | 'data'> : never : never
+  change: ExternalSourceChange
 }): void {
   writer.append({
     event: {
@@ -136,7 +141,7 @@ export function appendSource({
       actor: meta.actor,
       at: meta.at,
       ...change,
-    } as ExternalSourceEvent,
+    },
   })
 }
 
@@ -176,7 +181,7 @@ export function registerSource({
   const expiry = expiresAt ?? known?.expiresAt
     ?? new Date(Date.parse(meta.at) + SOURCE_MAX_TIMEOUT_MS).toISOString()
 
-  if (!owner) {
+  if (!owner || card.hidden) {
     invalidSource({ message: 'An external source needs an assigned worker' })
   }
 
