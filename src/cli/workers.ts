@@ -1,3 +1,4 @@
+import { memoryConditions } from '../memory/conditions.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
 import { queuePosition } from '../queue/state.ts'
@@ -391,6 +392,7 @@ const hydraDigestHandler = guard({
     const state = loadHydra({ hydraId }).state
 
     return hydraDigest({
+      conditions: memoryConditions(),
       hydraId,
       owner,
       state,
