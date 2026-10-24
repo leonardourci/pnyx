@@ -2,12 +2,14 @@
 // osascript) and ps is the fake in test/fixtures/hosts on PATH: tests never type
 // into a real session.
 import assert from 'node:assert/strict'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, spawnSync } from 'node:child_process'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
+import { terminalNotice } from '../src/integrations/hooks/terminal.ts'
+import type { TerminalRoute } from '../src/core/route.ts'
 import type { Card } from '../src/core/model.ts'
 import { confirms, findOption, inputReason } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
@@ -1654,6 +1656,151 @@ test(
         ],
       }),
       /state: delivered/,
+    )
+  },
+)
+
+test(
+  'inbox doorbells protect drafts and prompts, detect dead workers and only submit a verified empty tmux composer',
+  () => {
+    const route = {
+      kind: 'tmux' as const,
+      socket: '/tmp/fake.sock',
+      pane: '%1',
+      tty: TTY,
+      pid: 4242,
+    }
+    let screen = 'history\n❯ \n'
+    let processStatus = 0
+    const sent: string[] = []
+    const base = card({ fields: { activity: 'finished' } })
+    const ring = ({
+      worker = base,
+      target = route,
+    }: {
+      worker?: Card
+      target?: TerminalRoute
+    } = {}) => terminalNotice({
+      route: target,
+      text: 'inbox notice with exact IDs',
+      card: worker,
+      execute: ({
+        command,
+        args,
+      }) => {
+        const stdout = command === 'ps' ? 'ttys042\n'
+          : args.includes('capture-pane') ? screen : `${TTY}\t1\n`
+
+        return {
+          pid: 0,
+          output: [
+            '',
+            stdout,
+            '',
+          ],
+          stdout,
+          stderr: '',
+          status: command === 'ps' ? processStatus : 0,
+          signal: null,
+        }
+      },
+      send: ({ text }) => {
+        sent.push(text)
+
+        return { state: 'delivered' }
+      },
+    })
+    assert.equal(
+      ring().result,
+      'delivered',
+    )
+    screen = 'history\n❯ my unsent human draft\n'
+    assert.equal(
+      ring().result,
+      'deferred',
+    )
+    screen = 'history\n❯ \nsecond line of a human draft\n────────\nstatus'
+    assert.equal(
+      ring().result,
+      'deferred',
+    )
+    screen = 'history\nApprove?\n'
+    assert.equal(
+      ring().result,
+      'unknown',
+    )
+    assert.equal(
+      ring({
+        worker: {
+          ...base,
+          activity: 'working',
+        },
+      }).result,
+      'deferred',
+    )
+    assert.equal(
+      ring({
+        worker: {
+          ...base,
+          attention: [
+            {
+              kind: 'permission',
+              key: 'hook:permission',
+              blocking: true,
+              text: 'Allow?',
+            },
+          ],
+        },
+      }).result,
+      'deferred',
+    )
+    processStatus = 1
+    assert.equal(
+      ring().result,
+      'gone',
+    )
+    processStatus = 0
+    assert.equal(
+      ring({
+        target: {
+          kind: 'iterm2',
+          tty: TTY,
+          pid: 4242,
+        },
+      }).result,
+      'unknown',
+    )
+    assert.deepEqual(
+      sent,
+      ['inbox notice with exact IDs'],
+    )
+    const missingHost = terminalNotice({
+      route,
+      text: 'inbox notice',
+      card: base,
+      execute: ({ command }) => command === 'ps'
+        ? {
+          pid: 0,
+          output: [
+            '',
+            'ttys042',
+            '',
+          ],
+          stdout: 'ttys042',
+          stderr: '',
+          status: 0,
+          signal: null,
+        }
+        : spawnSync(
+          'pnyx-inbox-fixture-missing-command',
+          [],
+          { encoding: 'utf8' },
+        ),
+      send: () => assert.fail('an unavailable host must receive nothing'),
+    })
+    assert.equal(
+      missingHost.result,
+      'unknown',
     )
   },
 )
