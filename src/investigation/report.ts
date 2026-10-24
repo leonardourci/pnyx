@@ -1,8 +1,10 @@
+import { isDeepStrictEqual } from 'node:util'
+import { reportCalls, requireReportReview } from './inventory.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { readFileSync } from 'node:fs'
 import { findCard, type Meta } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
-import { HydraError, TASK_KINDS, type Card, type HydraState, type TaskKind } from '../core/model.ts'
+import { HydraError, TASK_KINDS, type Card, type HydraState, type TaskKind, type ReportCall } from '../core/model.ts'
 import { readEvents } from '../store/hydra-store.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.
@@ -15,7 +17,7 @@ export function investigationLine({
   hydraId: string
   id: string
 }): string {
-  return `Investigation: answer the brief with a report that stands alone (what was asked, what you found, the evidence, and what you recommend). Store it with \`pnyx-axi task report ${id} --file <path> --hydra ${hydraId}\`, then declare done. A report does not authorize building: change nothing beyond what the investigation needs, and leave nothing in your copy that the report depends on.`
+  return `Investigation: answer the brief with a report that stands alone (what was asked, what you found, the evidence, and what you recommend). Store it with \`pnyx-axi task report ${id} --file <path> --hydra ${hydraId}\`, review the whole report for owner choices with \`pnyx-axi task report-review ${id} --report <report-id> --none --hydra ${hydraId}\` or \`--call <task>/<ask>\` for every durable owner question on a separate gated task, then declare done. A report does not authorize building: change nothing beyond what the investigation needs, and leave nothing in your copy that the report depends on.`
 }
 
 export function reportLine({
@@ -155,6 +157,11 @@ export function decideBuild({
     })
   }
 
+  requireReportReview({
+    state,
+    card,
+  })
+
   return hydraEvent({
     state,
     meta,
@@ -164,6 +171,114 @@ export function decideBuild({
       data: {
         before: 'investigation',
         after: 'build',
+      },
+    },
+  })
+}
+
+export function decideReportReview({
+  state,
+  ref,
+  report,
+  calls,
+  none,
+  meta,
+}: {
+  state: HydraState
+  ref: string
+  report: string
+  calls: string[]
+  none: boolean
+  meta: Meta
+}) {
+  const card = findCard({
+    state,
+    ref,
+  })
+
+  if (!card.report || card.report.id !== report) {
+    throw new HydraError({
+      message: '--report must name the current stored report id',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const hasCalls = calls.length > 0
+  const invalidInventoryChoice = (none && hasCalls) || (!none && !hasCalls)
+
+  if (invalidInventoryChoice) {
+    throw new HydraError({
+      message: 'review the whole report and pass --none or every --call <task>/<ask>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const records: ReportCall[] = calls.map(call => {
+    const [
+      taskRef,
+      askId,
+      extra,
+    ] = call.split('/')
+    const task = findCard({
+      state,
+      ref: taskRef ?? '',
+    })
+    const ask = task.asks?.find(ask => ask.id === askId)
+
+    if (extra !== undefined || task.id === card.id || !ask || ask.audience !== 'owner'
+      || ask.origin?.task !== card.id || ask.origin.report !== report) {
+      throw new HydraError({
+        message: `call ${call} must name an owner question linked to this report on a separate task`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    return {
+      task: task.id,
+      ask: ask.id,
+    }
+  }).sort((
+    a,
+    b,
+  ) => `${a.task}/${a.ask}`.localeCompare(`${b.task}/${b.ask}`))
+
+  const recordedCalls = new Set(records.map(call => `${call.task}/${call.ask}`))
+
+  if (recordedCalls.size !== records.length) {
+    throw new HydraError({
+      message: 'each report call must be listed once',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  const missing = reportCalls({
+    state,
+    card,
+  }).some(call => !recordedCalls.has(`${call.task}/${call.ask}`))
+
+  if (missing) {
+    throw new HydraError({
+      message: 'the inventory omits an unresolved report question',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (isDeepStrictEqual(
+    card.report.review?.calls,
+    records,
+  )) {
+    return { skipped: 'unchanged' as const }
+  }
+
+  return hydraEvent({
+    state,
+    meta,
+    cardId: card.id,
+    change: {
+      type: 'task.report-reviewed',
+      data: {
+        report,
+        calls: records,
       },
     },
   })
