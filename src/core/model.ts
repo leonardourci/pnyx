@@ -229,6 +229,14 @@ export interface SteeringAck {
   note?: string
 }
 
+export interface SteeringRecovery {
+  id: string
+  at: string
+  claim?: SteeringClaim
+  result: 'reserved' | 'delivered' | 'unknown' | 'failed' | 'deferred' | 'exhausted'
+  detail?: string
+}
+
 export interface SteeringMessage {
   id: string
   order: number
@@ -239,10 +247,18 @@ export interface SteeringMessage {
   actor: string
   queuedFor?: SteeringClaim
   attempts: SteeringAttempt[]
+  recovery?: SteeringRecovery[]
   ack?: SteeringAck
 }
 
 export type SteeringEvent = EventBase & (
+  | {
+    type: 'task.steering.recovery'
+    data: {
+      message: string
+      recovery: SteeringRecovery
+    }
+  }
   | {
     type: 'task.steering.queued'
     data: { message: SteeringMessage }
@@ -1221,6 +1237,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.queued',
   'task.steering.notified',
   'task.steering.handled',
+  'task.steering.recovery',
   'card.pushed',
   'card.moved',
   'card.linked',

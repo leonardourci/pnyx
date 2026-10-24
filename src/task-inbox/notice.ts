@@ -1,3 +1,27 @@
+import type { ReplyState } from '../core/model.ts'
+
+export interface NotificationResult {
+  result: 'delivered' | 'unknown' | 'failed' | 'deferred' | 'gone'
+  detail?: string
+}
+
+export function notificationState({ state }: { state: ReplyState }): NotificationResult['result'] {
+  switch (state) {
+    case 'delivered': return 'delivered'
+    case 'failed': return 'failed'
+    default: return 'unknown'
+  }
+}
+
+export function notificationReceipt({ result }: NotificationResult): ReplyState {
+  switch (result) {
+    case 'delivered': return 'delivered'
+    case 'failed':
+    case 'gone': return 'failed'
+    default: return 'delivery_unknown'
+  }
+}
+
 export function steeringNotice({
   task,
   hydraId,
