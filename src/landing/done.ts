@@ -24,9 +24,9 @@ export function doneGaps({
 
   const copy = card.copy
 
-  // Without a copy to read, a linked pull request still open is the one thing left to land.
+  // Without a copy to read, an unconfirmed pull request is the remaining landing evidence.
   if (copy?.state !== 'active' || !isFolder({ path: copy.path })) {
-    const waiting = card.links.some(l => l.kind === 'github_pr' && l.state === 'open')
+    const waiting = card.links.some(l => l.kind === 'github_pr' && l.state !== 'merged' && l.state !== 'closed')
 
     return waiting ? ['its pull request has not merged'] : []
   }

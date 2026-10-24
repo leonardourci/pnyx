@@ -1,25 +1,13 @@
+import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
+import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from '../projects/memory.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
 import type { Meta } from '../core/decide.ts'
 import { hydraIds, loadHydra, pnyxHome, privateDir, withRegistryLock, withWriter, writeDurably } from './hydra-store.ts'
-
-// One replacement or removal of an owner memory key; the log is only appended, so every old version stays.
-interface OwnerEntry {
-  v: 1
-  seq: number
-  at: string
-  actor: string
-  reason?: string
-  confirmed?: string
-  learning?: LearningChange
-  key: string
-  before: string | null
-  after: string | null
-}
 
 interface OwnerLog {
   memory: Memory
@@ -33,49 +21,21 @@ const ownerDir = () => join(
   pnyxHome(),
   'owner',
 )
-const logPath = () => join(
-  ownerDir(),
-  'memory.jsonl',
-)
 const migratedPath = () => join(
   ownerDir(),
   'migrated',
 )
 
 function readLog(): OwnerLog {
-  let text = ''
-
-  try {
-    text = readFileSync(
-      logPath(),
-      'utf8',
-    )
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-  }
-
-  // Keys come from disk, so a key such as __proto__ must stay an ordinary key.
+  const {
+    entries,
+    corrupt,
+  } = readOwnerEntries()
   const memory: Memory = Object.create(null) as Memory
   const archived: Learning[] = []
   let revision = 0
-  let corrupt = Boolean(text) && !text.endsWith('\n')
 
-  for (const line of text.split('\n').filter(Boolean)) {
-    let entry: OwnerEntry | undefined
-
-    try {
-      entry = JSON.parse(line) as OwnerEntry
-    } catch {
-      entry = undefined
-    }
-
-    if (typeof entry?.key !== 'string' || (entry.after !== null && typeof entry.after !== 'string')) {
-      corrupt = true
-      continue
-    }
-
+  for (const entry of entries) {
     revision = entry.seq
 
     const retired = memory.learnings?.lines?.find(line => line.text === entry.learning?.archive)
@@ -121,6 +81,7 @@ function append({
   meta,
   budget,
   confirmed,
+  projectMove,
   learning,
 }: {
   key: string
@@ -128,6 +89,7 @@ function append({
   meta: Meta
   budget?: number
   confirmed?: string
+  projectMove?: OwnerEntry['projectMove']
   learning?: LearningChange
 }): OwnerEntry | undefined {
   const log = readLog()
@@ -201,6 +163,10 @@ function append({
 
   if (confirmed !== undefined) {
     entry.confirmed = confirmed
+  }
+
+  if (projectMove) {
+    entry.projectMove = projectMove
   }
 
   if (learning) {
@@ -401,5 +367,84 @@ export function saveOwnerMemory({
       confirmed,
       learning,
     }),
+  })
+}
+
+export function moveOwnerLearning({
+  path,
+  hydraId,
+  text,
+  meta,
+}: {
+  path: string
+  hydraId: string
+  text: string
+  meta: Meta
+}) {
+  tryMigrate()
+
+  return withRegistryLock({
+    fn: () => {
+      const owner = readLog()
+      const before = owner.memory.learnings?.text ?? ''
+      const lines = before.split('\n')
+
+      if (!text.trim() || text.includes('\n') || !lines.includes(text)) {
+        throw new HydraError({
+          message: 'Move one existing owner learning line exactly',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      const project = projectMemoryViewUnderLock({ path })
+      const projectBefore = project.documents.learnings ?? null
+      const projectLines = (projectBefore ?? '').split('\n')
+      let projectAfter = projectBefore ?? ''
+
+      if (!projectLines.includes(text)) {
+        projectAfter = [
+          projectBefore,
+          text,
+        ].filter(Boolean).join('\n')
+      }
+
+      checkProjectMemoryBudget({
+        memory: project,
+        key: 'learnings',
+        after: projectAfter,
+      })
+      const projectEvent: ProjectMemoryEvent = {
+        v: 1,
+        id: `owner-move:${owner.revision + 1}`,
+        seq: project.revision + 1,
+        at: meta.at,
+        actor: meta.actor,
+        reason: meta.reason,
+        hydra: hydraId,
+        identity: project.identity,
+        key: 'learnings',
+        before: projectBefore,
+        after: projectAfter,
+        importedLearning: owner.memory.learnings?.lines?.find(line => line.text === text.trim()),
+      }
+      const remaining = lines.filter(line => line !== text).join('\n')
+      const entry = append({
+        key: 'learnings',
+        change: () => remaining || null,
+        meta,
+        budget: OWNER_MEMORY_BUDGET,
+        projectMove: {
+          project: project.id,
+          event: projectEvent,
+        },
+      })
+
+      return {
+        memory: 'learnings',
+        state: 'moved',
+        project: project.id,
+        revision: entry?.seq,
+      }
+    },
   })
 }

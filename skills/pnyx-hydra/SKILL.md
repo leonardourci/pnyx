@@ -35,7 +35,7 @@ When a profile is missing, run `pnyx-axi project memory list --project <name|pat
 
 When a profile is out of date, re-read only the changed files at that ref, including new files, and remove facts from deleted sources. Save the whole updated profile with `project memory set --project <name|path> --key profile --text "<profile>" --sources <fingerprint> --reason "<why>" --hydra <hydra>`, using the fingerprint from the list. A changed fingerprint refuses the save: list and read again. Profile refreshes leave project preferences and learnings alone. Do not re-read unchanged sources each turn.
 
-Before starting or supervising work in a project, load its memory on demand. Before assigning work, read the project profile and name the project skills that apply, with their paths and when to use them, in the agent's brief. Workers also read their current copy's AGENTS.md and CLAUDE.md plus the relevant skills, docs and context files they point to. Use chat and `inscribe` to curate memory; all three project documents share 3000 characters. Keep project facts and preferences there, general owner preferences and learnings in owner memory, and Hydra-specific notes in Hydra memory.
+Before starting or supervising work in a project, load its memory on demand. Before assigning work, read the project profile and name the project skills that apply, with their paths and when to use them, in the agent's brief. Workers also read their current copy's AGENTS.md and CLAUDE.md plus the relevant skills, docs and context files they point to. Use chat and `inscribe` to curate memory; all project documents share 10000 characters. Keep project facts and preferences there, general owner preferences and learnings in owner memory, and Hydra-specific notes in Hydra memory.
 
 ## Supervise
 
@@ -136,7 +136,7 @@ Your chat is where the owner learns what needs them and what finished. Pnyx show
 
 Memory has three layers, and each fact goes in the most specific one that fits. Owner and Hydra memory are printed in full session digests, so they hold only what you cannot rediscover.
 
-- Owner memory is Pnyx-wide and every Hydra reads it (8000 characters): the owner's preferences (how they want things done, decisions that hold) under the key `preferences`, and general learnings about tools, workers and routes under `learnings`. Keep one line per entry and save the whole document: `pnyx-axi owner memory set --key preferences --text "<document>" --reason "<why>"`.
+- Owner memory is Pnyx-wide and every Hydra reads it (24000 characters): the owner's preferences (how they want things done, decisions that hold) under the key `preferences`, and general learnings about tools, workers and routes under `learnings`. Keep one line per entry and save the whole document: `pnyx-axi owner memory set --key preferences --text "<document>" --reason "<why>"`.
 - Project memory holds what is true of one project: its profile, the owner's preferences for it, its learnings and standing worker instructions (`project memory`, see `inscribe`). The `workers` document holds up to 1500 characters; Pnyx adds it verbatim after the Hydra-wide worker notes in every new worker header and posts a Pnyx chat line on each edit.
 - Hydra memory holds only what this Hydra needs (1500 characters): its scope, where it left off, its check cursor, each under its own key: `pnyx-axi hydra memory set --key scope --text "<text>" --reason "<why>" --hydra <hydra>`.
 - Save a new preference or learning when it comes up; task progress and conversations already have their own records.

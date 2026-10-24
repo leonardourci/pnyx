@@ -1,3 +1,4 @@
+import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { steeringNotice } from '../src/task-inbox/notice.ts'
 import { pullRequestLanding, pullRequestLandingSync } from '../src/integrations/github/pull-request.ts'
 import assert from 'node:assert/strict'
@@ -558,6 +559,10 @@ for (const staleFailure of [
         '--hydra',
         'lab',
       ])
+      checkRegistryLockOrder({
+        t,
+        hydraId: 'lab',
+      })
       f.commit()
       f.queue({ key: 'two' })
       f.queue({

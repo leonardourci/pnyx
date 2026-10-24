@@ -1,3 +1,4 @@
+import { followPullRequests } from '../../src/landing/follow.ts'
 import assert from 'node:assert/strict'
 import { writeFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
@@ -1354,97 +1355,107 @@ test(
     const url = s.pullRequest({
       number: 9,
       state: 'merged',
-    })
-    await s.owner({
-      args: [
-        'link',
-        'current',
-        '--url',
-        url,
-      ],
-    })
-    await until({
-      what: 'current accepted as complete',
-      check: () => s.task({ key: 'current' }).status?.state === 'done',
-    })
-    let proofRead = false
-    await advanceQueues({
-      hydraId: s.hydraId,
-      readLanding: async () => {
-        proofRead = true
-        await s.owner({
-          args: [
-            'task',
-            'status',
-            'gate',
-            'working',
-          ],
-        })
-
-        return {
-          head,
-          merge,
-          branch,
-          base: 'main',
-        }
-      },
-    })
-    assert.equal(
-      proofRead,
-      true,
-    )
-    assert.ok(s.task({ key: 'next' }).queue)
-    assert.equal(
-      s.task({ key: 'next' }).sessionIds?.length ?? 0,
-      0,
-    )
-    assert.equal(
-      git({
-        cwd: folder,
-        args: [
-          'rev-parse',
-          'HEAD',
-        ],
-      }),
-      head,
-    )
-    await s.owner({
-      args: [
-        'task',
-        'status',
-        'gate',
-        'done',
-      ],
-    })
-    const readLanding = async () => ({
       head,
       merge,
       branch,
       base: 'main',
     })
-    await Promise.all([
-      advanceQueues({
-        hydraId: s.hydraId,
-        readLanding,
-      }),
-      advanceQueues({
-        hydraId: s.hydraId,
-        readLanding,
-      }),
-    ])
+    await pnyx.restart({
+      whileStopped: async () => {
+        await s.owner({
+          args: [
+            'link',
+            'current',
+            '--url',
+            url,
+          ],
+        })
+        await followPullRequests({ hydraId: s.hydraId })
+        assert.equal(
+          s.task({ key: 'current' }).status?.state,
+          'done',
+        )
+        let proofRead = false
+        await advanceQueues({
+          hydraId: s.hydraId,
+          readLanding: async () => {
+            proofRead = true
+            await s.owner({
+              args: [
+                'task',
+                'status',
+                'gate',
+                'working',
+              ],
+            })
+
+            return {
+              head,
+              merge,
+              branch,
+              base: 'main',
+            }
+          },
+        })
+        assert.equal(
+          proofRead,
+          true,
+        )
+        assert.ok(s.task({ key: 'next' }).queue)
+        assert.equal(
+          s.task({ key: 'next' }).sessionIds?.length ?? 0,
+          0,
+        )
+        assert.equal(
+          git({
+            cwd: folder,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          }),
+          head,
+        )
+        await s.owner({
+          args: [
+            'task',
+            'status',
+            'gate',
+            'done',
+          ],
+        })
+        const readLanding = async () => ({
+          head,
+          merge,
+          branch,
+          base: 'main',
+        })
+        await Promise.all([
+          advanceQueues({
+            hydraId: s.hydraId,
+            readLanding,
+          }),
+          advanceQueues({
+            hydraId: s.hydraId,
+            readLanding,
+          }),
+        ])
+        const next = s.task({ key: 'next' })
+        assert.equal(
+          next.sessionIds?.[0],
+          current.sessionIds?.[0],
+        )
+        assert.equal(
+          next.queue,
+          undefined,
+        )
+        assert.equal(
+          s.events().filter(event => event.type === 'task.session' && event.data.after === next.id).length,
+          1,
+        )
+      },
+    })
     const next = s.task({ key: 'next' })
-    assert.equal(
-      next.sessionIds?.[0],
-      current.sessionIds?.[0],
-    )
-    assert.equal(
-      next.queue,
-      undefined,
-    )
-    assert.equal(
-      s.events().filter(event => event.type === 'task.session' && event.data.after === next.id).length,
-      1,
-    )
     await until({
       what: 'one prepared brief',
       check: () => s.received({ cwd: folder }).filter(text => text.includes(`pnyx-worker task="${next.id}"`)).length === 1,
