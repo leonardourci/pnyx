@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import { commands, type Output } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
-import { decidePush } from '../src/core/decide.ts'
+import { decideLink, decidePush } from '../src/core/decide.ts'
 import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src/core/digest.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
@@ -1385,6 +1385,67 @@ test(
           'utf8',
         )),
         /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nVerify the canary\.\n\nThen report the result\.$/,
+      )
+    } finally {
+      rmSync(
+        f.home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a linked pull request with an unknown state prevents early completion',
+  async () => {
+    const f = fixture()
+
+    try {
+      await f.run({
+        name: 'task',
+        args: [
+          'create',
+          '--key',
+          'unread-pr',
+          '--title',
+          'Wait for merge evidence',
+        ],
+      })
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const decision = decideLink({
+            state: writer.state,
+            ref: 'unread-pr',
+            url: 'https://github.com/example/project/pull/1',
+            link: {
+              kind: 'github_pr',
+              url: 'https://github.com/example/project/pull/1',
+            },
+            meta: {
+              at: '2026-10-24T00:00:00Z',
+              actor: 'fixture',
+            },
+          })
+
+          if ('event' in decision) {
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+      assert.throws(
+        () => f.run({
+          name: 'task',
+          args: [
+            'status',
+            'unread-pr',
+            'done',
+          ],
+        }),
+        { code: 'NOT_LANDED' },
       )
     } finally {
       rmSync(
