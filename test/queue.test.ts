@@ -1798,7 +1798,10 @@ test(
 
     const fixture = ({ merged }: { merged: boolean }) => {
       const body = JSON.stringify({
-        head: { sha: head, ref: 'pnyx/task' },
+        head: {
+          sha: head,
+          ref: 'pnyx/task',
+        },
         base: { ref: 'main' },
         merge_commit_sha: merged ? merge : null,
         merged,
@@ -1812,7 +1815,8 @@ test(
       )
     }
 
-    fixture({ merged: true })    assert.deepEqual(
+    fixture({ merged: true })
+    assert.deepEqual(
       await pullRequestLanding({ url: 'https://github.com/example/app/pull/1' }),
       {
         head,

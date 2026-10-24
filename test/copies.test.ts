@@ -2052,8 +2052,18 @@ test(
           const merged = outcome !== 'queued'
           writeFileSync(
             response,
-            outcome === 'unknown' ? 'api_response:\n  body: unreadable\n'
-              : `api_response:\n  body: "${head} ${merge} ${merged} ${branch} main"\n`,
+            outcome === 'unknown' ? 'payload: "unreadable"\n'
+              : `payload: ${JSON.stringify(JSON.stringify({
+                head: {
+                  sha: head,
+                  ref: branch,
+                },
+                base: { ref: 'main' },
+                merged,
+                merge_commit_sha: merged ? merge : null,
+                state: merged ? 'closed' : 'open',
+                draft: false,
+              }))}\n`,
           )
           let concurrentWorker = ''
 

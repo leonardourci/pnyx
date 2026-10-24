@@ -8,6 +8,7 @@ export interface FakePullRequest {
   checks?: string
   comments?: number
   head?: string
+  branch?: string
   merge?: string
   base?: string
   required?: {
@@ -53,6 +54,7 @@ export function scriptPullRequest({
     head: 'a'.repeat(40),
     merge: 'b'.repeat(40),
     base: 'main',
+    branch: 'feature',
     required: [],
     legacy: [],
     runs: [],

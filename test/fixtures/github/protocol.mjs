@@ -202,7 +202,10 @@ if (args[0] === 'pr' && args[1] === 'view') {
 } else if (path?.includes('/pulls/')) {
   emitPayload({
     value: {
-      head: { sha: pr.head },
+      head: {
+        sha: pr.head,
+        ref: pr.branch,
+      },
       base: { ref: pr.base },
       merged: pr.state === 'merged',
       merge_commit_sha: pr.state === 'merged' ? pr.merge : null,
