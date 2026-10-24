@@ -10,7 +10,7 @@ import { readSkillReference, skillReference } from '../../../src/thread/skill-re
 import { SkillBadge } from '../components/ui/skill-badge.tsx'
 import { Label } from '../components/ui/label.tsx'
 import { SuggestionPicker } from '../components/ui/suggestion-picker.tsx'
-import type { Catalog } from '../../../src/thread/catalog.ts'
+import { useSkillsCatalog } from './skills-catalog.ts'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
@@ -70,7 +70,7 @@ export function Composer({
   thread,
   command,
   connected,
-  catalogVersion,
+  catalogHarness,
   labelColors,
   notify,
   settings,
@@ -92,7 +92,7 @@ export function Composer({
   thread: ThreadPage | null
   command: Command
   connected: boolean
-  catalogVersion?: string
+  catalogHarness?: string
   labelColors?: SavedLabelColor[]
   notify({ text }: { text: string }): void
   settings?: ReactNode
@@ -423,58 +423,27 @@ export function Composer({
     draft,
     comments,
   }
-  const { label } = useKeyboard(), [
-    catalog,
-    setCatalog,
-  ] = useState<Catalog | null>(null)
+  const { label } = useKeyboard()
+  const catalogOpen = prefix !== null
+  const agent = cards.find(item => item.id === card)?.agent
+  const receiving = catalogHarness ?? agent?.provider ?? 'claude'
+  const catalog = useSkillsCatalog({
+    identity: JSON.stringify([
+      card,
+      agent?.provider,
+      agent?.cwd,
+      agent?.sessionId,
+      receiving === 'claude-code' ? 'claude' : receiving,
+    ]),
+    card,
+    command,
+    connected,
+    open: catalogOpen,
+  })
   const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
     command: s.command,
     prefix: prefix ?? '',
   }))
-  const catalogOpen = prefix !== null
-  useEffect(
-    () => {
-      if (!catalogOpen || !connected) {
-        return
-      }
-
-      let cancelled = false
-      setCatalog(null)
-
-      const read = async () => {
-        try {
-          const result = await command({
-            name: 'catalog',
-            args: [card],
-          })
-
-          if (!cancelled) {
-            setCatalog(result.catalog as Catalog)
-          }
-        } catch {
-          if (!cancelled) {
-            setCatalog({
-              suggestions: [],
-              unavailable: 'Commands unavailable. Close and reopen to retry.',
-            })
-          }
-        }
-      }
-
-      read()
-
-      return () => {
-        cancelled = true
-      }
-    },
-    [
-      card,
-      catalogOpen,
-      catalogVersion,
-      command,
-      connected,
-    ],
-  )
 
   const choose = ({ command }: { command: string }) => {
     const cursor = input.current?.selectionStart ?? display.length

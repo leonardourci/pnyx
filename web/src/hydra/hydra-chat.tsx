@@ -657,7 +657,7 @@ export function HydraChat({
           return true
         }}
         card={HYDRA_CARD}
-        catalogVersion={JSON.stringify(config.hydra.agent)}
+        catalogHarness={config.hydra.agent?.harness}
         labelColors={state.labelColors}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}

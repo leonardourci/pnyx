@@ -235,6 +235,39 @@ test(
         )
       },
     })
+
+    for (const [
+      family,
+      name,
+    ] of [
+        [
+          'codex',
+          'native-codex',
+        ],
+        [
+          'claude',
+          'native-claude',
+        ],
+      ]) {
+      const directory = join(
+        root,
+        family!,
+        'skills',
+        name!,
+      )
+      mkdirSync(
+        directory,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          directory,
+          'SKILL.md',
+        ),
+        `---\nname: ${name}\ndescription: Native ${family} skill\n---\n`,
+      )
+    }
+
     const codex = fakeCodex({
       root,
       models: ['gpt-6.1-sol'],
@@ -289,6 +322,7 @@ test(
           args,
           {
             env: browserEnv,
+            cwd: tmpdir(),
             timeout: 45_000,
             maxBuffer: 2 * 1024 * 1024,
           },
@@ -348,6 +382,24 @@ test(
         ],
       })
     }
+
+    const prefetched = await browser({
+      args: ['run'],
+      script: `
+        let loaded = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          loaded = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
+            && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '$native-codex')));
+          if (loaded) break;
+          await page.wait(50);
+        }
+        console.log(loaded && await page.eval(() => !document.querySelector('.slash-menu')));
+      `,
+    })
+    assert.equal(
+      prefetched.trim(),
+      'true',
+    )
 
     const initial = await browser({
       args: ['run'],
@@ -425,25 +477,43 @@ test(
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
             if (typeof payload === 'string' && JSON.parse(payload).name === 'catalog') {
-              waiting.push(() => send.call(this, payload));
+              waiting.push(() => new Promise(resolve => {
+                const id = JSON.parse(payload).id;
+                const received = event => {
+                  if (JSON.parse(event.data).id !== id) return;
+                  this.removeEventListener('message', received);
+                  resolve();
+                };
+                this.addEventListener('message', received);
+                send.call(this, payload);
+              }));
             } else {
               send.call(this, payload);
             }
           };
-          window.releaseCatalog = () => {
+          window.releaseCatalog = async () => {
             WebSocket.prototype.send = send;
-            for (const release of waiting) release();
+            await Promise.all(waiting.map(release => release()));
           };
         });
         await page.fill('.hydra-chat textarea', '/');
-        await page.wait('.slash-menu [role="status"]');
+        await page.wait('.slash-menu [role="option"]');
         console.log(await page.eval(() => {
           const menu = document.querySelector('.slash-menu'), bounds = menu.getBoundingClientRect();
-          return menu.querySelector('[role="status"]').textContent.includes('Loading')
+          return !menu.querySelector('[role="status"]')
+            && menu.querySelector('[role="option"][aria-selected="true"]') !== null
             && menu.contains(document.elementFromPoint(bounds.x + 15, bounds.y + 15));
         }));
+        await page.press('ArrowDown');
+        await page.eval(() => {
+          window.selectedSkill = document.querySelector('.slash-menu [aria-selected="true"]').textContent;
+        });
         await page.eval(() => window.releaseCatalog());
-        await page.wait('.slash-menu [role="option"]');
+        await page.wait(50);
+        console.log(await page.eval(() => document.querySelector('.slash-menu [aria-selected="true"]').textContent
+          === window.selectedSkill && !document.querySelector('.slash-menu [role="status"]')));
+        await page.press('Enter');
+        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes('/pnyx-hydra-columns')));
         await page.fill('.hydra-chat textarea', '/missing');
         await page.wait('.slash-menu [role="status"]');
         console.log(await page.eval(() => {
@@ -469,8 +539,238 @@ test(
         'true',
         'true',
         'true',
+        'true',
+        'true',
       ],
     )
+    const restoredCatalog = await browser({
+      args: ['run'],
+      script: `
+        await page.eval(() => {
+          const key = Object.keys(sessionStorage).find(key => key.includes(':skills:')
+            && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '$native-codex'));
+          const saved = JSON.parse(sessionStorage.getItem(key));
+          saved.suggestions.push({command: '$cache-restored', description: 'Last loaded skill', source: 'Agent skills'});
+          sessionStorage.setItem(key, JSON.stringify(saved));
+        });
+        await page.open(${JSON.stringify(url)});
+        await page.wait('.hydra-chat textarea');
+        await page.eval(() => {
+          const send = WebSocket.prototype.send, waiting = [];
+          WebSocket.prototype.send = function(payload) {
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            else send.call(this, payload);
+          };
+          window.releaseCatalog = () => {
+            WebSocket.prototype.send = send;
+            for (const release of waiting) release();
+          };
+        });
+        await page.fill('.hydra-chat textarea', '/cache-restored');
+        await page.wait('.slash-menu [role="option"]');
+        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="status"]')
+          && document.querySelector('.slash-menu [role="option"]').textContent.includes('/cache-restored')));
+        await page.eval(() => window.releaseCatalog());
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.equal(
+      restoredCatalog.trim(),
+      'true',
+    )
+
+    const discovered = join(
+      root,
+      '.agents/skills/cache-discovery',
+    )
+    mkdirSync(
+      discovered,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        discovered,
+        'SKILL.md',
+      ),
+      '---\nname: cache-discovery\ndescription: Newly discovered skill\n---\n',
+    )
+
+    const addedCatalog = await browser({
+      args: ['run'],
+      script: `
+        let added = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          await page.fill('.hydra-chat textarea', '/cache-discovery');
+          await page.wait(50);
+          added = await page.eval(() => !!document.querySelector('.slash-menu [role="option"]'));
+          if (added) break;
+          await page.fill('.hydra-chat textarea', '');
+        }
+        console.log(added);
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.equal(
+      addedCatalog.trim(),
+      'true',
+    )
+    rmSync(
+      discovered,
+      {
+        recursive: true,
+        force: true,
+      },
+    )
+
+    const removedCatalog = await browser({
+      args: ['run'],
+      script: `
+        let removed = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          await page.fill('.hydra-chat textarea', '/cache-discovery');
+          await page.wait(50);
+          removed = await page.eval(() => !document.querySelector('.slash-menu [role="option"]')
+            && !document.querySelector('.slash-menu')?.textContent.includes('Loading'));
+          if (removed) break;
+          await page.fill('.hydra-chat textarea', '');
+        }
+        console.log(removed);
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.equal(
+      removedCatalog.trim(),
+      'true',
+    )
+
+    const switchHarness = ({ harness }: { harness: 'claude' | 'codex' }) => {
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const config = structuredClone(hydraConfig({ state: writer.state }))
+          config.hydra.agent = {
+            harness,
+            model: 'default',
+          }
+          const decision = hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              actor: 'fixture',
+              at: '2026-10-23T10:00:02Z',
+            },
+            change: {
+              type: 'board.configured',
+              data: config,
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({ event: decision.event })
+        },
+      })
+    }
+
+    switchHarness({ harness: 'claude' })
+    const nativeClaude = await browser({
+      args: ['run'],
+      script: `
+        let prefetched = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          prefetched = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
+            && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '/native-claude')));
+          if (prefetched) break;
+          await page.wait(50);
+        }
+        console.log(prefetched && await page.eval(() => !document.querySelector('.slash-menu')));
+        await page.eval(() => {
+          const send = WebSocket.prototype.send, waiting = [];
+          WebSocket.prototype.send = function(payload) {
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            else send.call(this, payload);
+          };
+          window.releaseCatalog = () => {
+            WebSocket.prototype.send = send;
+            for (const release of waiting) release();
+          };
+        });
+        await page.fill('.hydra-chat textarea', '/native-');
+        await page.wait('.slash-menu [role="option"]');
+        console.log(await page.eval(() => document.querySelector('.slash-menu').textContent.includes('/native-claude')
+          && !document.querySelector('.slash-menu').textContent.includes('/native-codex')
+          && !document.querySelector('.slash-menu [role="status"]')));
+      `,
+    })
+    assert.deepEqual(
+      nativeClaude.trim().split('\n'),
+      [
+        'true',
+        'true',
+      ],
+    )
+    switchHarness({ harness: 'codex' })
+    const nativeCodex = await browser({
+      args: ['run'],
+      script: `
+        let switched = false;
+        for (let attempt = 0; attempt < 60; attempt++) {
+          switched = await page.eval(() => document.querySelector('.slash-menu')?.textContent.includes('/native-codex'));
+          if (switched) break;
+          await page.wait(50);
+        }
+        console.log(switched && await page.eval(() => !document.querySelector('.slash-menu [role="status"]')));
+        await page.eval(() => window.releaseCatalog());
+        await page.wait(100);
+        console.log(await page.eval(() => document.querySelector('.slash-menu').textContent.includes('/native-codex')));
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.deepEqual(
+      nativeCodex.trim().split('\n'),
+      [
+        'true',
+        'true',
+      ],
+    )
+
+    const hydraIsolation = await browser({
+      args: ['run'],
+      script: `
+        await page.eval(() => {
+          const meta = document.querySelector('meta[name=pnyx-hydra]');
+          window.originalHydra = meta.content;
+          meta.content = 'alternate-cache-fixture';
+          const send = WebSocket.prototype.send, waiting = [];
+          WebSocket.prototype.send = function(payload) {
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            else send.call(this, payload);
+          };
+          window.releaseCatalog = () => {
+            WebSocket.prototype.send = send;
+            for (const release of waiting) release();
+          };
+        });
+        await page.fill('.hydra-chat textarea', '/native-');
+        await page.wait('.slash-menu [role="status"]');
+        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="option"]')
+          && document.querySelector('.slash-menu').textContent.includes('Loading')));
+        await page.eval(() => { document.querySelector('meta[name=pnyx-hydra]').content = window.originalHydra; });
+        await page.fill('.hydra-chat textarea', '');
+        await page.fill('.hydra-chat textarea', '/native-');
+        await page.wait('.slash-menu [role="option"]');
+        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="status"]')
+          && document.querySelector('.slash-menu').textContent.includes('/native-codex')));
+        await page.eval(() => window.releaseCatalog());
+        await page.fill('.hydra-chat textarea', '');
+      `,
+    })
+    assert.deepEqual(
+      hydraIsolation.trim().split('\n'),
+      [
+        'true',
+        'true',
+      ],
+    )
+
     const projectSkills = await browser({
       args: ['run'],
       script: `
