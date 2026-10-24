@@ -17,7 +17,8 @@ import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
-  enterNote, leaveNote, noteBetween, selectionFocus,
+  enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
+  controlBetween, leaveQuestionControl, enterControl,
 } from './caret.ts'
 import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
@@ -556,12 +557,51 @@ export function Messages({
       metaKey,
     } = event
 
-    if (event.target !== host || event.nativeEvent.isComposing) {
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+
+    const plain = !shiftKey && !altKey && !ctrlKey && !metaKey
+    const control = event.target instanceof HTMLElement ? event.target : null
+
+    if (control !== host) {
+      if (!plain || !control?.matches('.chat-decision .ask :is(button, textarea, input, summary)')) {
+        return
+      }
+
+      if (key === 'Escape') {
+        event.preventDefault(); event.stopPropagation(); focusComposer({ host })
+      } else if (key === 'ArrowUp' || key === 'ArrowDown') {
+        const direction = key === 'ArrowUp' ? 'backward' : 'forward'
+
+        if (control instanceof HTMLTextAreaElement && !onNoteEdgeLine({
+          note: control,
+          direction,
+        })) {
+          return
+        }
+
+        event.preventDefault(); event.stopPropagation(); leaveQuestionControl({
+          host,
+          control,
+          direction,
+        })
+      }
+
       return
     }
 
     if (key === 'Escape' && !shiftKey && !altKey && !ctrlKey && !metaKey) {
-      event.preventDefault(); window.getSelection()?.removeAllRanges(); host.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
+      const node = window.getSelection()?.focusNode
+      const element = node instanceof Element ? node : node?.parentElement
+      event.preventDefault()
+      window.getSelection()?.removeAllRanges()
+
+      if (element?.closest('.chat-decision')) {
+        focusComposer({ host })
+      } else {
+        host.closest<HTMLElement>('.thread')?.focus({ preventScroll: true })
+      }
 
       return
     }
@@ -592,24 +632,22 @@ export function Messages({
 
     const before = caretBounds(), top = (before?.top ?? 0) + scroller.scrollTop
     const from = selectionFocus()
-    const plain = !shiftKey && !altKey && !ctrlKey && !metaKey
     const line = (key === 'ArrowUp' || key === 'ArrowDown') && plain
     setTimeout(() => {
       const after = caretBounds()
       const moved = after ? Math.abs(after.top + scroller.scrollTop - top) : 0
       const stuck = !after || moved < (before?.height ?? 0) / 2
       const direction = key === 'ArrowUp' ? 'backward' : 'forward'
-      // A line move that steps over a comment card stops in its note.
-      const note = line && from ? noteBetween({
+      const control = line && from ? controlBetween({
         host,
         from,
         to: stuck ? null : selectionFocus(),
         direction,
       }) : null
 
-      if (note) {
-        enterNote({
-          note,
+      if (control) {
+        enterControl({
+          control,
           direction,
         })
       } else if (key === 'ArrowDown' && before && stuck && line) {

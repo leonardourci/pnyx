@@ -14,7 +14,7 @@ export function Disclosure({
 }) {
   return (
     <details className={`disclosure ${className}`}>
-      <summary>
+      <summary contentEditable={false}>
         {title}
         <span className="disclosure-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
       </summary>
@@ -65,6 +65,7 @@ export function CollapsibleText({
       <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><Markdown text={text} /></div>
       {(long || expanded) && (
         <Button
+          contentEditable={false}
           className="show-more"
           aria-expanded={expanded}
           aria-controls={id}

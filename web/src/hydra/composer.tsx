@@ -70,6 +70,7 @@ export function Composer({
   settings,
   meter,
   stop,
+  focusAbove,
 }: {
   card: string
   cards: Card[]
@@ -90,6 +91,7 @@ export function Composer({
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   stop?(): Promise<void>
+  focusAbove?(): boolean
 }) {
   const [
     failure,
@@ -912,6 +914,14 @@ export function Composer({
 
               if (prefix !== null && active >= 0 && e.key === 'Enter' && !e.metaKey && !e.ctrlKey) {
                 e.preventDefault(); choose({ command: suggestions[active].command })
+
+                return
+              }
+
+              if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
+                && prefix === null && mention === null && e.currentTarget.selectionEnd === 0
+                && focusAbove?.()) {
+                e.preventDefault(); e.stopPropagation()
 
                 return
               }

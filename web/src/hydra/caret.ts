@@ -8,11 +8,13 @@ export const CARET_SUPPORTED = CSS.supports(
 export const CARET_HOST = 'data-caret-host'
 export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
 const MESSAGE_CONTROLS = '.comment-pill, .comment-card, .comment-annotations, .receipt, .code-language, .trace summary'
-const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention`
+const QUESTION_CONTROLS = '.chat-decision .ask :is(button, textarea, input, summary)'
+const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention, ${QUESTION_CONTROLS}`
 export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 
 const selectableMessageText = ({ node }: { node: Text }) =>
-  !!node.data.trim() && !node.parentElement?.closest(NON_MESSAGE_TEXT)
+  !!node.data.trim() && !!node.parentElement?.getClientRects().length
+  && !node.parentElement.closest(NON_MESSAGE_TEXT)
 
 function* messageText({
   root,
@@ -225,43 +227,6 @@ export const selectionFocus = (): Position | null => {
   } : null
 }
 
-// The first comment note past from, short of to, in the move's direction; to null searches to the edge.
-export function noteBetween({
-  host,
-  from,
-  to,
-  direction,
-}: {
-  host: HTMLElement
-  from: Position
-  to: Position | null
-  direction: CaretDirection
-}): HTMLTextAreaElement | null {
-  const forward = direction === 'forward'
-  const notes = [...host.querySelectorAll<HTMLTextAreaElement>(NOTE_SELECTOR)]
-
-  const between = ({ note }: { note: HTMLTextAreaElement }) => {
-    const at = beside({
-      element: note,
-      direction: 'backward',
-    })
-    const past = comparePositions({
-      a: at,
-      b: from,
-    })
-    const short = !to || comparePositions({
-      a: at,
-      b: to,
-    }) * (forward ? -1 : 1) > 0
-
-    return (forward ? past > 0 : past < 0) && short
-  }
-
-  const matches = notes.filter(note => between({ note }))
-
-  return (forward ? matches[0] : matches.at(-1)) ?? null
-}
-
 const textBesideNote = ({
   host,
   note,
@@ -395,7 +360,7 @@ export function leaveNote({
     note,
     direction,
   })
-  const next = noteBetween({
+  const next = controlBetween({
     host,
     from: beside({
       element: cardOf({ note }),
@@ -406,8 +371,8 @@ export function leaveNote({
   })
 
   if (next) {
-    enterNote({
-      note: next,
+    enterControl({
+      control: next,
       direction,
     })
   } else if (text) {
@@ -490,3 +455,112 @@ export const onNoteEdgeLine = ({
   note,
   offset: direction === 'backward' ? 0 : note.value.length,
 })
+
+export function controlBetween({
+  host,
+  from,
+  to,
+  direction,
+  exclude,
+}: {
+  host: HTMLElement
+  from: Position
+  to: Position | null
+  direction: CaretDirection
+  exclude?: HTMLElement
+}): HTMLElement | undefined {
+  const controls = [...host.querySelectorAll<HTMLElement>(`${QUESTION_CONTROLS}, ${NOTE_SELECTOR}`)]
+    .filter(element => element !== exclude && !element.matches(':disabled') && element.getClientRects().length > 0)
+  const forward = direction === 'forward'
+  const matches = controls.filter(element => {
+    const at = beside({
+      element,
+      direction: 'backward',
+    })
+    const past = comparePositions({
+      a: at,
+      b: from,
+    })
+    const short = !to || comparePositions({
+      a: at,
+      b: to,
+    }) * (forward ? -1 : 1) > 0
+
+    return (forward ? past >= 0 : past <= 0) && short
+  })
+
+  return forward ? matches[0] : matches.at(-1)
+}
+
+export function leaveQuestionControl({
+  host,
+  control,
+  direction,
+}: {
+  host: HTMLElement
+  control: HTMLElement
+  direction: CaretDirection
+}) {
+  const from = beside({
+    element: control,
+    direction,
+  })
+  const texts = [...messageText({ root: host })]
+  const text = direction === 'forward'
+    ? texts.find(node => comparePositions({
+      a: {
+        node,
+        offset: 0,
+      },
+      b: from,
+    }) > 0)
+    : texts.findLast(node => comparePositions({
+      a: {
+        node,
+        offset: node.length,
+      },
+      b: from,
+    }) < 0)
+  const to = text ? {
+    node: text,
+    offset: direction === 'forward' ? 0 : text.length,
+  } : null
+  const next = controlBetween({
+    host,
+    from,
+    to,
+    direction,
+    exclude: control,
+  })
+
+  if (next) {
+    enterControl({
+      control: next,
+      direction,
+    })
+  } else if (to) {
+    placeCaret({
+      host,
+      position: to,
+    })
+  } else if (direction === 'forward') {
+    focusComposer({ host })
+  }
+}
+
+export function enterControl({
+  control,
+  direction,
+}: {
+  control: HTMLElement
+  direction: CaretDirection
+}) {
+  if (control instanceof HTMLTextAreaElement) {
+    enterNote({
+      note: control,
+      direction,
+    })
+  } else {
+    control.focus()
+  }
+}

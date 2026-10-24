@@ -338,16 +338,12 @@ h3 { font-weight: 600; }
 .chat-running { position: absolute; left: 16px; bottom: 6px; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; padding: 2px 8px 2px 0; border-radius: 10px; background: var(--color-surface); color: var(--color-muted); font-size: var(--text-meta); font-variant-numeric: tabular-nums; }
 
 .chat-running .working-dots i { width: 5px; height: 5px; }
-.chat-queue-room { height: 40px; }
 
 /* The words share the dots' row; the task chips take a row of their own, so their titles have room. */
 .chat-running-status { display: inline-flex; align-items: center; gap: 8px; min-width: 0; max-width: 100%; }
 
-.chat-queue-chip { display: inline-flex; min-width: 0; max-width: 100%; animation: reply-appear 140ms ease-out; }
 
-.chat-queue-tasks { display: flex; flex: 0 0 100%; flex-wrap: wrap; align-items: center; gap: 4px 6px; min-width: 0; }
 
-@media (prefers-reduced-motion: reduce) { .chat-queue-chip { animation: none; } }
 
 .chat-running { max-width: calc(100% - 32px); }
 
@@ -1458,9 +1454,16 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .chat-decision .decided { color: var(--color-muted); font-size: var(--text-meta); }
 .chat-decision .decided > summary { font-size: inherit; }
 .chat-decision blockquote { margin: 0; padding-left: 10px; border-left: 2px solid var(--color-line); }
-.waiting-decisions { display: flex; flex-wrap: nowrap; align-items: center; overflow-x: auto; white-space: nowrap; line-height: 1.5; gap: 4px 8px; padding: 6px 12px; font-size: var(--text-meta); color: var(--color-muted); }
-.waiting-decisions > span { flex: none; }
-.waiting-decisions .button { flex: none; min-height: 0; padding: 2px 4px; font-size: inherit; line-height: inherit; color: var(--color-gold); }
+.waiting-decisions { flex: none; padding-block: 6px; font-size: var(--text-meta); color: var(--color-muted); }
+.waiting-decisions > .popover { max-width: 100%; }
+.waiting-decisions > .popover > .button { display: flex; width: 100%; justify-content: space-between; min-height: 0; padding: 6px 0; gap: 8px; color: var(--color-gold); font-size: inherit; border-top: 1px solid var(--color-line); }
+.waiting-decision-summary { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 58%; color: var(--color-muted); }
+.waiting-decisions ul { list-style: none; padding: 0; margin: 0; }
+.waiting-decisions .popover-panel { padding: 5px; max-height: min(40vh, 360px); }
+.waiting-decisions li .button { display: flex; flex-direction: column; align-items: flex-start; width: 100%; min-height: 0; padding: 7px; text-align: left; white-space: normal; overflow-wrap: anywhere; font-size: inherit; line-height: 1.5; }
+.waiting-decision-task { color: var(--color-muted); }
+.waiting-decision-question { color: var(--color-gold); }
+.hydra-chat .chat-running { position: static; margin-inline: var(--chat-inset); max-width: calc(100% - 2 * var(--chat-inset)); padding: 4px 0; flex: none; }
 @media (prefers-reduced-motion: reduce) { .turn-actions > .disclosure > summary > .disclosure-chevron { transition: none; } }
 
 .card .markdown :is(h1, h2, h3, h4, h5, h6), .ask .markdown :is(h1, h2, h3, h4, h5, h6) { font-size: 1em; margin: .5em 0 .25em; }
