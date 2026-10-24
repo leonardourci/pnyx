@@ -1,3 +1,4 @@
+import { incorporateInboxNotice } from '../../inbox-fixture.ts'
 import { appendFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
@@ -265,10 +266,14 @@ createInterface({ input: process.stdin }).on(
       const turnId = `turn-${++turn}`
       active = turnId
       // The turn answers the message, past the digest Pnyx puts first.
-      const text = params.input[0].text.replace(
+      const rawText = params.input[0].text.replace(
         /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
         '',
       )
+      const text = incorporateInboxNotice({
+        text: rawText,
+        env: process.env,
+      })
       appendFileSync(
         path,
         `${JSON.stringify({
@@ -485,7 +490,10 @@ createInterface({ input: process.stdin }).on(
             content: [
               {
                 type: 'input_text',
-                text: params.input[0].text,
+                text: incorporateInboxNotice({
+                  text: params.input[0].text,
+                  env: process.env,
+                }),
               },
             ],
           },

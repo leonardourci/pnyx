@@ -1,5 +1,8 @@
-import { steeringWorkerIdentity } from '../task-inbox/state.ts'
 import { requireReady } from '../core/dependencies.ts'
+import { attachedImages } from '../attachments/images.ts'
+import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
+import { steeringClaim, sameClaim, steeringWorkerIdentity } from '../task-inbox/state.ts'
+import { steeringNotice } from '../task-inbox/notice.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
 import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
@@ -104,7 +107,10 @@ export interface Host {
     card: string
     text: string
     actor: string
-  }): void
+    steering?: string
+    attempt?: string
+    direct?: boolean
+  }): { deferred?: boolean } | void
   set({
     card,
     setting,
@@ -221,6 +227,8 @@ const WORKER_COMMANDS = [
   'task history',
   'task status',
   'task chat',
+  'task inbox read',
+  'task inbox ack',
   'hydra send',
   'link',
 ].map(command => `pnyx-axi ${command}`)
@@ -485,6 +493,7 @@ function inbox() {
   const items: {
     text: string
     id?: string
+    steeringIds?: string[]
   }[] = []
   let wake: (() => void) | undefined, done = false
 
@@ -492,13 +501,16 @@ function inbox() {
     push({
       text,
       id,
+      steeringIds,
     }: {
       text: string
       id?: string
+      steeringIds?: string[]
     }) {
       items.push({
         text,
         ...(id ? { id } : {}),
+        steeringIds,
       })
       wake?.()
     },
@@ -512,6 +524,7 @@ function inbox() {
     async* [Symbol.asyncIterator](): AsyncGenerator<{
       text: string
       id?: string
+      steeringIds?: string[]
     }> {
       for (;;) {
         if (items.length) {
@@ -535,6 +548,10 @@ interface Live {
   // The provider may still be loading when the first message arrives.
   session?: HostedSession
   activity: string
+  steering: Set<string>
+  task: string
+  generation?: number
+  replaced?: boolean
   // When its latest message went in, so a turn that has not written yet is not read as quiet.
   sentAt?: number
   // A setting this process could not take: it is replaced once its turn is over.
@@ -1119,6 +1136,142 @@ export function createHost({
     })
   }
 
+  const inboxNotice = ({
+    card,
+    ids,
+  }: {
+    card: Card
+    ids: string[]
+  }) => {
+    const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
+    const images = messages.flatMap(message => attachedImages({
+      text: message.text,
+      hydras: join(
+        pnyxHome(),
+        'hydras',
+      ),
+    }))
+
+    return [
+      steeringNotice({
+        task: card.id,
+        hydraId,
+        ids,
+      }),
+      ...new Set(images.map(path => `[image: ${path}]`)),
+    ].join('\n')
+  }
+
+  const unnotifiedSteering = ({
+    card,
+    entry,
+    message: ref,
+    attempt,
+  }: {
+    card: Card
+    entry?: Live
+    message?: string
+    attempt?: string
+  }) => {
+    const sameOpening = entry?.task === card.id && entry.generation === card.steeringGeneration
+
+    return (card.steering ?? []).filter(message => {
+      if (message.ack) {
+        return false
+      }
+
+      if (attempt) {
+        const alreadyAttempted = message.attempts.some(known => known.id === attempt)
+
+        return message.id === ref && !alreadyAttempted
+      }
+
+      return !sameOpening || !entry.steering.has(message.id)
+    })
+  }
+
+  const ringSteering = ({
+    card,
+    entry,
+    message: ref,
+    attempt,
+  }: {
+    card: Card
+    entry: Live
+    message?: string
+    attempt?: string
+  }) => {
+    if (card.id === HYDRA_CARD || card.hold || pausedDeclaration({ card })?.hold) {
+      return
+    }
+
+    const claim = steeringClaim({ card })
+
+    if (!claim) {
+      return
+    }
+
+    const messages = unnotifiedSteering({
+      card,
+      entry,
+      message: ref,
+      attempt,
+    })
+
+    if (!messages.length) {
+      return
+    }
+
+    const ids = messages.map(message => message.id)
+
+    for (const id of ids) {
+      entry.steering.add(id)
+    }
+
+    entry.input.push({
+      text: inboxNotice({
+        card,
+        ids,
+      }),
+      steeringIds: ids,
+    })
+    write({
+      fn: ({ writer }) => {
+        const current = writer.state.cards[card.id]
+
+        if (!current || !sameClaim({
+          current: steeringClaim({ card: current }),
+          claim,
+        })) {
+          return
+        }
+
+        for (const message of messages) {
+          if (current.steering?.find(stored => stored.id === message.id)?.ack) {
+            continue
+          }
+
+          recordSteeringAttempt({
+            writer,
+            ref: card.id,
+            id: message.id,
+            attempt: {
+              id: attempt ?? randomUUID(),
+              claim,
+              at: at(),
+              actor: 'pnyx',
+              result: 'delivered',
+            },
+            meta: {
+              actor: 'pnyx',
+              at: at(),
+            },
+          })
+        }
+      },
+    })
+  }
+
   const consume = async ({
     key,
     card,
@@ -1159,6 +1312,16 @@ export function createHost({
         return
       }
 
+      const current = loadHydra({ hydraId }).state.cards[card.id]
+
+      if (current?.agent && sessionId({ agent: current.agent }) === key
+        && current.steeringGeneration === card.steeringGeneration) {
+        ringSteering({
+          card: current,
+          entry,
+        })
+      }
+
       // Messages taken between turns open the next turn together; one taken mid-turn joins the running turn.
       // ponytail: the agent may split or merge what it read ahead, so a turn's answers can be credited one turn off; the agent naming what each turn took would make it exact.
       const opening: {
@@ -1184,6 +1347,29 @@ export function createHost({
 
       const input = async function* () {
         for await (const item of entry.input) {
+          if (item.steeringIds) {
+            const current = loadHydra({ hydraId }).state.cards[card.id]
+
+            if (!current?.agent || sessionId({ agent: current.agent }) !== key
+              || current.steeringGeneration !== card.steeringGeneration
+              || current.hold || pausedDeclaration({ card: current })?.hold) {
+              continue
+            }
+
+            const notifiedIds = item.steeringIds
+            const ids = (current.steering ?? []).filter(message =>
+              !message.ack && notifiedIds.includes(message.id)).map(message => message.id)
+
+            if (!ids.length) {
+              continue
+            }
+
+            item.text = inboxNotice({
+              card: current,
+              ids,
+            })
+          }
+
           if (!turnRunning) {
             opening.push({
               id: item.id,
@@ -1224,6 +1410,10 @@ export function createHost({
           form,
         }),
       })) {
+        if (entry.replaced || !closing && live.get(key) !== entry) {
+          return
+        }
+
         if (typeof activity !== 'string' && activity.type === 'usage') {
           const before = usages.get(key) ?? {}
           usages.set(
@@ -1448,6 +1638,10 @@ export function createHost({
       failure = (error as Error).message
     }
 
+    if (entry.replaced || !closing && live.get(key) !== entry) {
+      return
+    }
+
     retire({
       key,
       entry,
@@ -1512,7 +1706,11 @@ export function createHost({
     const key = sessionId({ agent: card.agent })
     const running = live.get(key)
 
-    if (running?.stale && running.activity !== 'working') {
+    const reassigned = running && (running.task !== card.id
+      || running.generation !== card.steeringGeneration)
+
+    if (running && (reassigned || running.stale && running.activity !== 'working')) {
+      running.replaced = true
       retire({
         key,
         entry: running,
@@ -1528,6 +1726,9 @@ export function createHost({
       input: inbox(),
       replies: liveReplies(),
       activity: 'finished',
+      steering: new Set(),
+      task: card.id,
+      generation: card.steeringGeneration,
       session,
       thinking: new Set(),
       tools: new Map(),
@@ -1551,18 +1752,71 @@ export function createHost({
     text,
     actor,
     eventId,
+    steering,
+    attempt,
+    direct,
   }: {
     card: string
     text: string
     actor: string
     eventId?: string
+    steering?: string
+    attempt?: string
+    direct?: boolean
   }) => {
+    if (attempt !== undefined && (!attempt.trim() || !steering)) {
+      throw new HydraError({
+        message: 'A notification attempt needs a persisted steering ID',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
     const card = write({
       fn: ({ writer }) => {
         const card = hosted({
           writer,
           ref,
         })
+
+        if (!direct && card.id !== HYDRA_CARD) {
+          if (steering) {
+            if (!card.steering?.some(message => message.id === steering)) {
+              throw new HydraError({
+                message: 'Steering message was not persisted',
+                code: 'VALIDATION_ERROR',
+              })
+            }
+          } else {
+            enqueueSteering({
+              writer,
+              ref: card.id,
+              id: randomUUID(),
+              text,
+              source: actor,
+              meta: {
+                actor,
+                at: at(),
+              },
+            })
+          }
+
+          if (card.hold || pausedDeclaration({ card })?.hold) {
+            return writer.state.cards[card.id] as Card & { agent: AgentRef }
+          }
+
+          const current = writer.state.cards[card.id]!
+          const running = live.get(sessionId({ agent: card.agent }))
+          const unread = unnotifiedSteering({
+            card: current,
+            entry: running,
+            message: steering,
+            attempt,
+          }).length
+
+          if (!unread) {
+            return undefined
+          }
+        }
 
         if (!live.has(sessionId({ agent: card.agent }))) {
           folderOf({ card })
@@ -1598,10 +1852,29 @@ export function createHost({
         return writer.state.cards[card.id] as Card & { agent: AgentRef }
       },
     })
+
+    if (!card) {
+      return
+    }
+
+    if (!direct && (card.hold || pausedDeclaration({ card })?.hold)) {
+      return { deferred: true }
+    }
+
     const entry = open({ card })
     entry.activity = 'working'
     entry.sentAt = Date.now()
-    entry.input.push({ text })
+
+    if (direct || card.id === HYDRA_CARD) {
+      entry.input.push({ text })
+    } else {
+      ringSteering({
+        card,
+        entry,
+        message: steering,
+        attempt,
+      })
+    }
   }
 
   const helperPending = () => {
@@ -3689,7 +3962,9 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
-            } else if (session.taskId && session.id !== writer.state.config?.hydra.session) {
+            } else if (session.taskId && session.id !== writer.state.config?.hydra.session
+              && !writer.state.cards[session.taskId]?.hold
+              && !pausedDeclaration({ card: writer.state.cards[session.taskId]! })?.hold) {
               resumeAttemptId = findWorkerTurnToResume({
                 hydraId,
                 state: writer.state,
@@ -3730,9 +4005,33 @@ export function createHost({
             text: WORKER_RESUME,
             actor: 'pnyx',
             eventId: `${cut.resumeAttemptId}:turn`,
+            direct: true,
           })
         } catch (error) {
           console.error(`pnyx-axi serve: ${cut.task} could not resume: ${(error as Error).message}`)
+        }
+      }
+
+      for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
+        if (card.id === HYDRA_CARD || card.agent?.host !== 'pnyx' || card.hold || pausedDeclaration({ card })?.hold) {
+          continue
+        }
+
+        const oldest = card.steering?.find(message => !message.ack)
+
+        if (!oldest) {
+          continue
+        }
+
+        try {
+          send({
+            card: card.id,
+            text: '',
+            actor: 'pnyx',
+            steering: oldest.id,
+          })
+        } catch (error) {
+          console.error(`pnyx-axi serve: ${card.id} inbox could not resume: ${(error as Error).message}`)
         }
       }
 
@@ -4317,20 +4616,42 @@ async function hostRequestUnlocked({
         check: body.check === true,
       })
 
-    case 'send':
-      host.send({
+    case 'send': {
+      const steering = field({
+        body,
+        name: 'steering',
+        optional: true,
+      })
+      let text = ''
+
+      if (!steering) {
+        text = field({
+          body,
+          name: 'text',
+        })!
+      }
+
+      const result = host.send({
+        steering,
+        attempt: field({
+          body,
+          name: 'attempt',
+          optional: true,
+        }),
+        direct: body.direct === true,
         card: field({
           body,
           name: 'card',
         })!,
-        text: field({
-          body,
-          name: 'text',
-        })!,
+        text,
         actor,
       })
 
-      return { sent: true }
+      return {
+        sent: !result?.deferred,
+        deferred: result?.deferred ?? false,
+      }
+    }
     case 'set': {
       const setting = field({
         body,
