@@ -1,3 +1,4 @@
+import { readOwnerEntries } from '../store/owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { dateLearnings, type Learning } from '../memory/learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
@@ -74,14 +75,26 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
     events: [],
   }
 
-  if (!existsSync(file)) {
-    return memory
+  const owner = readOwnerEntries()
+
+  if (owner.corrupt) {
+    throw new HydraError({
+      message: 'Owner memory has an unreadable line; inspect its log before reading project moves',
+      code: 'LOG_CORRUPT',
+    })
   }
 
-  const text = readFileSync(
+  const events = owner.entries.flatMap(entry => {
+    if (entry.projectMove?.project === id) {
+      return [entry.projectMove.event]
+    }
+
+    return []
+  })
+  const text = existsSync(file) ? readFileSync(
     file,
     'utf8',
-  )
+  ) : ''
 
   if (text && !text.endsWith('\n')) {
     throw new HydraError({
@@ -91,17 +104,22 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
   }
 
   for (const line of text.split('\n').filter(Boolean)) {
-    let event: ProjectMemoryEvent
-
     try {
-      event = JSON.parse(line)
+      events.push(JSON.parse(line))
     } catch {
       throw new HydraError({
         message: 'Project memory contains an invalid event',
         code: 'LOG_CORRUPT',
       })
     }
+  }
 
+  events.sort((
+    left,
+    right,
+  ) => (left?.seq ?? 0) - (right?.seq ?? 0))
+
+  for (const event of events) {
     if (!event || typeof event !== 'object' || event.v !== 1 || event.seq !== memory.revision + 1 || !Object.hasOwn(
       PROJECT_MEMORY_DOCUMENTS,
       event.key,
@@ -120,7 +138,10 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
 
     if (event.key === 'learnings') {
       memory.learnings = dateLearnings({
-        before: memory.learnings,
+        before: mergeImportedLearning({
+          learnings: memory.learnings ?? [],
+          imported: event.importedLearning,
+        }),
         after: event.after,
         at: event.at,
         confirmed: event.confirmed,
@@ -373,4 +394,27 @@ export function checkProjectMemoryBudget({
   }
 
   return used
+}
+
+function mergeImportedLearning({
+  learnings,
+  imported,
+}: {
+  learnings: Learning[]
+  imported?: Learning
+}): Learning[] {
+  if (!imported) {
+    return learnings
+  }
+
+  const existing = learnings.find(line => line.text === imported.text)
+
+  if (existing && Date.parse(existing.at) >= Date.parse(imported.at)) {
+    return learnings
+  }
+
+  return [
+    ...learnings.filter(line => line.text !== imported.text),
+    imported,
+  ]
 }
