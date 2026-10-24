@@ -1,3 +1,4 @@
+import { taskReadiness } from './dependencies.ts'
 import { describeColumnRule } from './columns.ts'
 import { learningDigest, type Learning } from '../memory/learnings.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
@@ -118,6 +119,10 @@ function taskLine({
     : 'no worker'
   const unwatched = unwatchedPullRequests({ card })
   const waiting = [
+    ...taskReadiness({
+      state,
+      card,
+    }).unmet.map(item => `${item.title} (${item.id}): ${item.reason}`),
     ...card.attention.filter(a => a.blocking && !a.answered).map(a => `${a.kind}${a.text ? ` "${clip({
       text: a.text,
       size: 100,

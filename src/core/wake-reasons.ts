@@ -1,7 +1,6 @@
+import { taskReadiness } from './dependencies.ts'
 import { mergeApproval } from './asks.ts'
 import { clip } from './digest.ts'
-import { openAsks } from './asks.ts'
-import { ownerGates } from './gates.ts'
 import { agentActor, HYDRA_CARD, hostedHydra, hydraConfig, pnyxRunsHydra, reportActor, roleColumn, unwatchedPullRequests } from './hydra.ts'
 import { cardLanding, failedChecks, HYDRA_ACTOR, pendingChecks, ranChecks, type Card, type HydraEvent, type HydraState, type Link, type PushedEvent, type TaskStatus } from './model.ts'
 import { columnCards } from './tasks.ts'
@@ -10,7 +9,7 @@ import { taskMention } from '../mentions/mentions.ts'
 // The fixed words a reason line names its fact with; the pnyx-hydra skill and the README list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
-  | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
+  | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'
 
 export interface WakeReason {
   kind: WakeKind
@@ -49,8 +48,6 @@ export const quote = ({ text }: { text: string }) => `"${clip({
   size: QUOTE_CHARS,
 })}"`
 
-const onHold = ({ card }: { card: Card }) => card.status?.state === 'paused' && card.status.hold === true
-
 // Every check on an open, ready pull request has finished, and the result or the readiness is new.
 function checksSettled({
   before,
@@ -85,8 +82,10 @@ export function readyBacklog({ state }: { state: HydraState }): Card[] {
   }).filter(card => {
     const started = card.agent || card.sessionIds?.length || card.queue
 
-    return card.id !== HYDRA_CARD && !started && !card.hold && !onHold({ card }) && card.status?.state !== 'done'
-      && !ownerGates({ card }).length && !openAsks({ card }).length
+    return card.id !== HYDRA_CARD && !started && card.status?.state !== 'done' && taskReadiness({
+      state,
+      card,
+    }).ready
   })
 }
 
@@ -260,7 +259,7 @@ function pushReasons({
 }
 
 // The facts in one change that need a hosted Hydra's judgment; never Hydra's own writes or card.
-function eventReasons({
+function ordinaryReasons({
   state,
   event,
 }: {
@@ -413,6 +412,147 @@ function eventReasons({
     default:
       return []
   }
+}
+
+function changesReadiness({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): boolean {
+  switch (event.type) {
+    case 'task.declared': {
+      const history = state.cards[event.cardId]?.statusLog ?? []
+      const index = history.findIndex(declaration => declaration.id === event.id)
+      const previous = history[index - 1]
+
+      return previous?.state !== event.data.state || previous?.hold !== event.data.hold
+    }
+    case 'card.linked':
+      return Boolean(event.data.before) !== Boolean(event.data.after)
+        || event.data.before?.state !== event.data.after?.state
+    case 'card.outcome':
+      return Boolean(event.undoes) || event.data.before?.state !== event.data.after?.state
+        || event.data.before?.closed !== event.data.after?.closed
+    case 'card.pushed': {
+      if (!event.data.attention) {
+        return false
+      }
+
+      const blocking = ({ attention }: { attention?: Card['attention'] }) => (attention ?? [])
+        .filter(item => item.blocking && !item.answered).map(item => item.key)
+        .sort()
+        .join(',')
+
+      const beforeBlocking = blocking({ attention: event.data.before?.attention })
+      const afterBlocking = blocking({ attention: event.data.attention })
+
+      return beforeBlocking !== afterBlocking
+    }
+    case 'hydra.message':
+      return Boolean(event.data.answers)
+    case 'card.replied':
+      return event.data.state === 'delivered' && Boolean(event.data.answers || event.data.decision)
+    case 'task.dependencies':
+    case 'task.held':
+    case 'task.released':
+    case 'task.kind':
+    case 'task.report':
+    case 'task.report-reviewed':
+    case 'task.landing':
+    case 'task.project':
+    case 'task.asked':
+    case 'task.ask.closed':
+    case 'task.ask.reopened':
+    case 'task.permission':
+      return true
+    default:
+      return false
+  }
+}
+
+function eventReasons({
+  state,
+  event,
+}: {
+  state: HydraState
+  event: HydraEvent
+}): WakeReason[] {
+  const reasons = ordinaryReasons({
+    state,
+    event,
+  })
+
+  if (!hostedHydra({ state }) || !changesReadiness({
+    state,
+    event,
+  })) {
+    return reasons
+  }
+
+  const affected = event.type === 'hydra.message' ? event.data.task : event.cardId
+
+  if (!affected) {
+    return reasons
+  }
+
+  const dependsOnChange = ({
+    card,
+    visited,
+  }: {
+    card: Card
+    visited: Set<string>
+  }): boolean => {
+    if (visited.has(card.id)) {
+      return false
+    }
+
+    visited.add(card.id)
+
+    return (card.prerequisites ?? []).some(id => id === affected
+      || Boolean(state.cards[id] && dependsOnChange({
+        card: state.cards[id],
+        visited,
+      })))
+  }
+
+  for (const card of Object.values(state.cards)) {
+    const changedOwnReadiness = card.id === affected
+      && (event.type === 'task.dependencies' || Boolean(card.prerequisites?.length))
+
+    if (card.hidden || card.automaticTask || (!changedOwnReadiness && !dependsOnChange({
+      card,
+      visited: new Set(),
+    }))) {
+      continue
+    }
+
+    const readiness = taskReadiness({
+      state,
+      card,
+    })
+    const assigned = Boolean(card.sessionIds?.length || card.agent)
+    let detail = 'prerequisites cleared; ready for dispatch'
+
+    if (!readiness.ready) {
+      detail = readiness.reasons.join('; ')
+
+      if (assigned && card.status?.state !== 'done') {
+        detail += '; worker already assigned, Hydra must review'
+      }
+    } else if (assigned || card.status?.state === 'done') {
+      continue
+    }
+
+    reasons.push({
+      kind: 'prerequisite',
+      card: card.id,
+      detail,
+    })
+  }
+
+  return reasons
 }
 
 // A change wakes a hosted Hydra for a check turn exactly when it has a reason to give.

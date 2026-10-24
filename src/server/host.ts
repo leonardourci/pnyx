@@ -1,4 +1,5 @@
 import { steeringWorkerIdentity } from '../task-inbox/state.ts'
+import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
 import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
@@ -842,6 +843,10 @@ export function createHost({
       ref,
     })
     requireUnheld({ card })
+    requireReady({
+      state: writer.state,
+      card,
+    })
 
     const previous = outsideSession({
       writer,

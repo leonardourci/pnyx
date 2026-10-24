@@ -1,4 +1,5 @@
 import { landingContext, provesLanding } from '../landing/proof.ts'
+import { taskReadiness } from '../core/dependencies.ts'
 import { execFile, spawnSync } from 'node:child_process'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
@@ -374,17 +375,20 @@ async function deliverHandoffs({
   hydraId: string
   active(): boolean
 }) {
-  const state = loadHydra({ hydraId }).state
   const events = readEvents({ hydraId }).filter((e): e is SessionEvent =>
     e.type === 'task.session' && Boolean(e.data.handoff))
 
   for (const event of events) {
+    const state = loadHydra({ hydraId }).state
     const card = state.cards[event.cardId]
     const id = `brief:${event.id}`
 
     const receipt = card?.replies?.find(r => r.id === id)
 
-    if (!active() || card?.hold || card?.sessionIds?.[0] !== event.data.session
+    if (!active() || !card || !taskReadiness({
+      state,
+      card,
+    }).ready || card.sessionIds?.[0] !== event.data.session
       || receipt && receipt.state !== 'failed') {
       continue
     }
@@ -493,7 +497,10 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next || next.hold) {
+      if (!next || !taskReadiness({
+        state,
+        card: next,
+      }).ready) {
         continue
       }
 
@@ -526,7 +533,10 @@ export async function advanceQueues({
           })[0]
 
           if (source?.revision !== card.revision || target?.id !== next.id
-            || target.hold || target.revision !== next.revision
+            || !taskReadiness({
+              state: writer.state,
+              card: target,
+            }).ready || target.revision !== next.revision
           || source.sessionIds?.[0] !== id || source.activity === 'working') {
             return
           }

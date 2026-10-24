@@ -1,3 +1,4 @@
+import { applyDependencies } from './dependencies.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
 import {
@@ -162,6 +163,9 @@ function apply({
   })
 
   if (applySteering({
+    state,
+    event,
+  }) || applyDependencies({
     state,
     event,
   }) || applyQueue({
