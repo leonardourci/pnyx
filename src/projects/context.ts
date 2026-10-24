@@ -1,3 +1,4 @@
+import { memoryConditions } from '../memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'
 import type { HydraState } from '../core/model.ts'
@@ -13,12 +14,15 @@ export function projectDigest({ state }: { state: HydraState }): string[] {
     return []
   }
 
+  const conditions = memoryConditions()
+
   return [
     'Projects (load memory on demand with pnyx-axi project show <name|path>):',
     ...projects.map(project => {
       const view = projectMemoryView(project)
       const stale = staleLearnings({
         lines: view.learnings ?? [],
+        conditions,
         now: new Date().toISOString(),
       })
       const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
@@ -61,6 +65,7 @@ export function projectWorkerContext({
 
       const document = key === 'learnings' && view.learnings?.length ? learningDigest({
         lines: view.learnings,
+        conditions: memoryConditions(),
         now: new Date().toISOString(),
       }) : view.documents[key as keyof typeof PROJECT_MEMORY_DOCUMENTS]
       const text = document?.replace(

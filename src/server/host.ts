@@ -1,3 +1,4 @@
+import { memoryConditions } from '../memory/conditions.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
@@ -1005,6 +1006,7 @@ export function createHost({
     }
 
     return hydraDigest({
+      conditions: memoryConditions(),
       hydraId,
       state,
       owner,

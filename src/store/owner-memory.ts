@@ -1,4 +1,4 @@
-import { dateLearnings } from '../memory/learnings.ts'
+import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
@@ -15,6 +15,7 @@ interface OwnerEntry {
   actor: string
   reason?: string
   confirmed?: string
+  learning?: LearningChange
   key: string
   before: string | null
   after: string | null
@@ -23,6 +24,7 @@ interface OwnerEntry {
 interface OwnerLog {
   memory: Memory
   revision: number
+  archived: Learning[]
   // A line that does not parse; reads skip it, writes refuse until someone inspects the log.
   corrupt: boolean
 }
@@ -56,6 +58,7 @@ function readLog(): OwnerLog {
 
   // Keys come from disk, so a key such as __proto__ must stay an ordinary key.
   const memory: Memory = Object.create(null) as Memory
+  const archived: Learning[] = []
   let revision = 0
   let corrupt = Boolean(text) && !text.endsWith('\n')
 
@@ -75,6 +78,12 @@ function readLog(): OwnerLog {
 
     revision = entry.seq
 
+    const retired = memory.learnings?.lines?.find(line => line.text === entry.learning?.archive)
+
+    if (retired) {
+      archived.push(retired)
+    }
+
     if (entry.after === null) {
       delete memory[entry.key]
     } else {
@@ -91,6 +100,7 @@ function readLog(): OwnerLog {
           at: entry.at,
           confirmed: entry.confirmed,
           evidence: entry.reason,
+          change: entry.learning,
         })
       }
     }
@@ -99,6 +109,7 @@ function readLog(): OwnerLog {
   return {
     memory,
     revision,
+    archived,
     corrupt,
   }
 }
@@ -110,12 +121,14 @@ function append({
   meta,
   budget,
   confirmed,
+  learning,
 }: {
   key: string
   change: ({ before }: { before: string | null }) => string | null
   meta: Meta
   budget?: number
   confirmed?: string
+  learning?: LearningChange
 }): OwnerEntry | undefined {
   const log = readLog()
 
@@ -136,9 +149,14 @@ function append({
   }
 
   const before = log.memory[key]?.text ?? null
-  const after = change({ before })
+  const after = learningText({
+    before,
+    after: change({ before }),
+    confirmed,
+    change: learning,
+  })
 
-  if (confirmed !== undefined && key !== 'learnings') {
+  if ((confirmed !== undefined || learning !== undefined) && key !== 'learnings') {
     throw new HydraError({
       message: 'Only learnings need reconfirmation',
       code: 'VALIDATION_ERROR',
@@ -152,10 +170,11 @@ function append({
       at: meta.at,
       confirmed,
       evidence: meta.reason,
+      change: learning,
     })
   }
 
-  if (before === after && confirmed === undefined) {
+  if (before === after && confirmed === undefined && learning === undefined) {
     return undefined
   }
 
@@ -182,6 +201,10 @@ function append({
 
   if (confirmed !== undefined) {
     entry.confirmed = confirmed
+  }
+
+  if (learning) {
+    entry.learning = learning
   }
 
   privateDir({ dir: ownerDir() })
@@ -346,6 +369,10 @@ export function ownerMemory(): Memory {
   return readLog().memory
 }
 
+export function ownerArchive(): Learning[] {
+  return readLog().archived
+}
+
 export function ownerRevision(): number {
   return readLog().revision
 }
@@ -355,11 +382,13 @@ export function saveOwnerMemory({
   after,
   meta,
   confirmed,
+  learning,
 }: {
   key: string
   after: string | null
   meta: Meta
   confirmed?: string
+  learning?: LearningChange
 }): OwnerEntry | undefined {
   tryMigrate()
 
@@ -370,6 +399,7 @@ export function saveOwnerMemory({
       meta,
       budget: OWNER_MEMORY_BUDGET,
       confirmed,
+      learning,
     }),
   })
 }
