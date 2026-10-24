@@ -10,7 +10,7 @@ import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '../../src/core/model.ts'
 import { emptyHydra, reduce } from '../../src/core/reducer.ts'
 import { startServer, type RunningServer, type ServerMessage } from '../../src/server/server.ts'
-import { infoPath, localToken } from '../../src/server/state.ts'
+import { localToken } from '../../src/server/state.ts'
 import { loadHydra, readEvents } from '../../src/store/hydra-store.ts'
 import type { HydraQueue } from '../../src/server/host.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
@@ -384,10 +384,7 @@ export function scenarioGroup({ retryDelays }: {
           'off',
         ],
       })
-      await until({
-        what: `the server to serve Hydra ${hydraId}`,
-        check: () => existsSync(infoPath({ hydraId })),
-      })
+      await server!.open({ id: hydraId })
 
       return s
     },

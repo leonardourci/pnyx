@@ -1,6 +1,7 @@
 import { inboxCommand } from '../task-inbox/cli.ts'
 import { taskReadiness } from '../core/dependencies.ts'
 import { decideDependencies } from '../core/dependency-decisions.ts'
+import { sourceCommand } from '../external-sources/cli.ts'
 import { columnRule, parseColumnRule } from '../core/columns.ts'
 import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
@@ -947,6 +948,10 @@ export const TASK_OPTIONS: Options = {
 }
 
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'source') {
+    return sourceCommand({ args: args.slice(1) })
+  }
+
   if (args[0] === 'inbox') {
     return inboxCommand({ args: args.slice(1) })
   }
@@ -3932,6 +3937,11 @@ function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'task.source.registered': return `External source ${event.data.source.id} registered`
+    case 'task.source.started': return `External source ${event.data.source} listening`
+    case 'task.source.result': return `External source ${event.data.source} result ${event.data.result.sequence}: ${event.data.result.outcome}`
+    case 'task.source.alerted': return event.data.detail
+    case 'task.source.handled': return `External source ${event.data.source} result ${event.data.sequence} handled`
     case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
     case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
@@ -4583,6 +4593,11 @@ Attests that the whole report was reviewed. Each call names an owner question on
 pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task inbox read <task> [--all]
+pnyx-axi task source register <task> <source-id> --executable <absolute-path> --argv <json-array> --cwd <absolute-path> [--timeout-ms <n> --max-bytes <n> --expires <ISO-time> --restart never|on-failure --max-runs <n>]
+pnyx-axi task source list <task>
+pnyx-axi task source read <task> <source-id> [--all]
+pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
+pnyx-axi task source stop <task> <source-id>
 pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
 pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
 pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
