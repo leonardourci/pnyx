@@ -1,3 +1,4 @@
+import { steeringWorkerIdentity } from '../task-inbox/state.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
 import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
@@ -924,9 +925,11 @@ export function createHost({
   const environment = ({
     hydra = false,
     task,
+    steeringWorker,
   }: {
     hydra?: boolean
     task?: string
+    steeringWorker?: string
   } = {}) => ({
     ...Object.fromEntries(Object.entries(process.env).filter(([name]) => !INHERITED.test(name))),
     PNYX_HOME: pnyxHome(),
@@ -934,7 +937,10 @@ export function createHost({
     ...(hydra ? {
       PNYX_ACTOR: HYDRA_ACTOR,
       PNYX_HOSTED: 'hydra',
-    } : task ? { PNYX_ACTOR: `worker:${task}` } : {}),
+    } : task ? {
+      PNYX_ACTOR: `worker:${task}`,
+      PNYX_STEERING_WORKER: steeringWorker,
+    } : {}),
   })
 
   const hydraInstructions = () =>
@@ -1112,7 +1118,13 @@ export function createHost({
     entry: Live
   }) => {
     let failure: string | undefined
-    const env = environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id })
+    const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
+      task: card.id,
+      steeringWorker: steeringWorkerIdentity({
+        state: loadHydra({ hydraId }).state,
+        card,
+      }),
+    })
 
     try {
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
@@ -2941,8 +2953,14 @@ export function createHost({
               provider: dispatch.provider,
               folder: dispatch.folder,
             },
-            env: environment({ task: target.id }),
-          }) : environment({ task: target.id }),
+            env: environment({
+              task: target.id,
+              steeringWorker: `${id}:session`,
+            }),
+          }) : environment({
+            task: target.id,
+            steeringWorker: `${id}:session`,
+          }),
           signal: controller.signal,
         })
         session = prepared
