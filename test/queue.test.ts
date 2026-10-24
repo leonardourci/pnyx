@@ -599,6 +599,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     assert.equal(
       f.card({ key: 'two' }).agent,
@@ -608,6 +618,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     await until({ check: () => f.sdk.calls[0]?.messages.length === 1 && f.card({ key: 'two' }).activity === 'finished' })
     assert.equal(
@@ -689,6 +709,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     assert.equal(
       f.sdk.calls[0]!.messages.length,
@@ -1765,13 +1795,24 @@ test(
     process.env.PNYX_GH_AXI = gh
     const head = 'a'.repeat(40)
     const merge = 'b'.repeat(40)
-    const fixture = ({ result }: { result: string }) => writeFileSync(
-      gh,
-      `#!/bin/sh\nprintf '%s\\n' 'api_response:' '  body: ${result}'\n`,
-      { mode: 0o755 },
-    )
-    fixture({ result: `${head} ${merge} true pnyx/task main` })
-    assert.deepEqual(
+
+    const fixture = ({ merged }: { merged: boolean }) => {
+      const body = JSON.stringify({
+        head: { sha: head, ref: 'pnyx/task' },
+        base: { ref: 'main' },
+        merge_commit_sha: merged ? merge : null,
+        merged,
+        state: merged ? 'closed' : 'open',
+        draft: false,
+      })
+      writeFileSync(
+        gh,
+        `#!/bin/sh\nprintf '%s\\n' 'payload: ${JSON.stringify(body)}'\n`,
+        { mode: 0o755 },
+      )
+    }
+
+    fixture({ merged: true })    assert.deepEqual(
       await pullRequestLanding({ url: 'https://github.com/example/app/pull/1' }),
       {
         head,
@@ -1784,7 +1825,7 @@ test(
       pullRequestLandingSync({ url: 'https://github.com/example/app/pull/1' })?.branch,
       'pnyx/task',
     )
-    fixture({ result: `${head} ${merge} false` })
+    fixture({ merged: false })
     assert.equal(
       await pullRequestLanding({ url: 'https://github.com/example/app/pull/1' }),
       undefined,

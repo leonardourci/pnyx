@@ -7,7 +7,8 @@ import { decideLink, decideSession, type Decision } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
 import type { AgentSession, Card, HydraState, LinkState, SessionEvent } from '../core/model.ts'
 import { taskPrompt } from '../cli/start.ts'
-import { declareMerged } from '../landing/follow.ts'
+import { confirmedMerge } from '../landing/confirmed.ts'
+import { mergeObservation } from '../landing/merge-observation.ts'
 import { sendReply } from '../cli/reply.ts'
 import { pullRequestLanding, pullRequestState } from '../integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from '../integrations/presence/check.ts'
@@ -322,13 +323,22 @@ async function refreshLinks({
   hydraId,
   card,
   readPR,
+  readLanding,
 }: {
   hydraId: string
   card: Card
   readPR: typeof pullRequestState
+  readLanding: typeof pullRequestLanding
 }) {
   for (const link of card.links.filter(l => l.kind === 'github_pr' && l.state !== 'merged')) {
     const state = await readPR({ url: link.url })
+    const landing = state === 'merged' ? await readLanding({ url: link.url }) : undefined
+
+    if (state === 'merged' && !landing) {
+      continue
+    }
+
+    const at = meta().at
 
     if (state && state !== link.state) {
       withWriter({
@@ -337,33 +347,50 @@ async function refreshLinks({
           const current = writer.state.cards[card.id]?.links.find(l => l.url === link.url)
 
           if (current && current.state !== 'merged' && current.state !== state) {
-            const at = meta().at
+            let observed: typeof current = {
+              ...current,
+              state,
+              checkedAt: at,
+            }
+
+            if (landing) {
+              observed = mergeObservation({
+                link: observed,
+                at,
+                outcome: {
+                  outcome: 'merged',
+                  head: landing.head,
+                  commit: landing.merge,
+                },
+              })
+            }
+
             append({
               writer,
               decision: decideLink({
                 state: writer.state,
                 ref: card.id,
                 url: link.url,
-                link: {
-                  ...current,
-                  state,
-                  checkedAt: at,
-                },
+                link: observed,
                 meta: meta(),
               }),
             })
-
-            if (state === 'merged') {
-              declareMerged({
-                writer,
-                cardId: card.id,
-                url: link.url,
-                at,
-              })
-            }
           }
         },
       })
+
+      if (landing) {
+        await confirmedMerge({
+          hydraId,
+          cardId: card.id,
+          url: link.url,
+          proof: {
+            head: landing.head,
+            commit: landing.merge,
+            confirmedAt: at,
+          },
+        })
+      }
     }
   }
 }
@@ -480,6 +507,7 @@ export async function advanceQueues({
         hydraId,
         card: current,
         readPR,
+        readLanding,
       })
       state = loadHydra({ hydraId }).state
       const card = state.cards[current.id]!
