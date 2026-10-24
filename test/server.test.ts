@@ -5,11 +5,11 @@ import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
@@ -2550,61 +2550,129 @@ test(
   },
 )
 
-test(
-  "each card gets its conversation's last message, pushed again as the transcript grows",
-  async () => {
-    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-    const card = fixture.state.keys.layout!
-    server = await startServer({ hydraId: 'default' })
-    const t = await tab(); await t.next()
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.',
-        at: '2026-10-13T10:49:00Z',
-      },
-    )
-    appendFileSync(
-      fixture.transcript,
-      assistantLine({
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      }),
-    )
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    const later = await tab(); await later.next()
-    assert.deepEqual(
-      await later.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    t.ws.send(JSON.stringify({ type: 'resync' }))
-    assert.equal(
-      (await t.next()).type,
-      'snapshot',
-    )
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    t.ws.close(); later.ws.close()
-  },
-)
+for (const activity of [
+  'idle',
+  'working',
+] as const) {
+  test(
+    `each card gets its conversation's last message after native notices are lost (${activity})`,
+    async context => {
+      const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+      const card = fixture.state.keys.layout!
+
+      if (activity === 'working') {
+        withWriter({
+          hydraId: 'default',
+          fn: ({ writer }) => {
+            const decision = decidePush({
+              state: writer.state,
+              newCardId: card,
+              key: 'layout',
+              input: { activity },
+              meta: {
+                actor: 'test',
+                at: new Date().toISOString(),
+              },
+            })
+            assert.ok('event' in decision)
+            writer.append({ event: decision.event })
+          },
+        })
+      }
+
+      const watching = context.mock.method(
+        fs,
+        'watch',
+      )
+      syncBuiltinESMExports()
+      context.after(() => {
+        watching.mock.restore()
+        syncBuiltinESMExports()
+      })
+      server = await startServer({ hydraId: 'default' })
+      const t = await tab(); await t.next()
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.',
+          at: '2026-10-13T10:49:00Z',
+        },
+      )
+
+      // Simulate missing native notifications without changing the transcript path.
+      for (const call of watching.mock.calls) {
+        const path = call.arguments[0]
+
+        if (path === fixture.transcript || path === dirname(fixture.transcript)) {
+          call.result?.close()
+        }
+      }
+
+      appendFileSync(
+        fixture.transcript,
+        assistantLine({
+          text: 'Shipped.',
+          at: '2026-10-13T11:02:00Z',
+        }),
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Shipped.',
+          at: '2026-10-13T11:02:00Z',
+        },
+      )
+      const replacement = `${fixture.transcript}.replacement`
+      writeFileSync(
+        replacement,
+        readFileSync(
+          fixture.transcript,
+          'utf8',
+        ) + assistantLine({
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        }),
+      )
+      renameSync(
+        replacement,
+        fixture.transcript,
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      const later = await tab(); await later.next()
+      assert.deepEqual(
+        await later.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      t.ws.send(JSON.stringify({ type: 'resync' }))
+      assert.equal(
+        (await t.next()).type,
+        'snapshot',
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      t.ws.close(); later.ws.close()
+    },
+  )
+}
 
 test(
   "a tab whose snapshot alone fills its send buffer still gets every card's last message",

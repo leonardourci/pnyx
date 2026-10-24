@@ -1167,8 +1167,7 @@ async function mountOwnedHydra({
   // Each card's last conversation message, read from its transcript tail and pushed
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
-  // A working card's transcript file is watched as well, for its card and open conversations:
-  // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
+  // File watches and stat polling cover content writes a native folder watch does not report.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   // Task tokens, counted off the event loop; tabs get them once the first count is in.
   let spendNow: { spend?: Record<string, TaskSpend> } = {}
@@ -1202,6 +1201,7 @@ async function mountOwnedHydra({
   const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
   const transcripts = new Map<string, FSWatcher>()
+  const transcriptPolls = new Map<string, { close(): void }>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -1215,6 +1215,21 @@ async function mountOwnedHydra({
     transcripts.delete(path)
   }
 
+  const transcriptChanged = ({ path }: { path: string }) => {
+    touchPath({ path })
+
+    for (const map of threadSubscriptions) {
+      for (const [
+        ws,
+        sub,
+      ] of map) {
+        if (sub.path === path) {
+          refreshThread({ ws })
+        }
+      }
+    }
+  }
+
   const watchTranscript = ({ path }: { path: string }) => {
     if (closed || transcripts.has(path)) {
       return
@@ -1223,20 +1238,7 @@ async function mountOwnedHydra({
     try {
       const watcher = watch(
         path,
-        () => {
-          touchPath({ path })
-
-          for (const map of threadSubscriptions) {
-            for (const [
-              ws,
-              sub,
-            ] of map) {
-              if (sub.path === path) {
-                refreshThread({ ws })
-              }
-            }
-          }
-        },
+        () => transcriptChanged({ path }),
       )
       watcher.on(
         'error',
@@ -1313,6 +1315,46 @@ async function mountOwnedHydra({
     }
   }
 
+  const pollTranscripts = () => {
+    const wanted = new Set(Object.values(state.cards).flatMap(c => threadPath({ card: c }) ?? []))
+
+    for (const [
+      path,
+      poll,
+    ] of transcriptPolls) {
+      if (!wanted.has(path)) {
+        poll.close()
+        transcriptPolls.delete(path)
+      }
+    }
+
+    for (const path of wanted) {
+      if (transcriptPolls.has(path)) {
+        continue
+      }
+
+      const changed = () => transcriptChanged({ path })
+      // Native notices can miss content writes; stat polling follows replaced and recreated paths.
+      watchFile(
+        path,
+        {
+          interval: EVENT_POLL_MS,
+          persistent: false,
+        },
+        changed,
+      )
+      transcriptPolls.set(
+        path,
+        {
+          close: () => unwatchFile(
+            path,
+            changed,
+          ),
+        },
+      )
+    }
+  }
+
   // Keeps a card's value and notes it in changes when it differs from the one last sent.
   const track = <Value>({
     store,
@@ -1383,6 +1425,7 @@ async function mountOwnedHydra({
 
     unread.clear()
     watchWorkingTranscripts()
+    pollTranscripts()
     spend.count()
 
     if (Object.keys(changed).length || Object.keys(changedActions).length) {
@@ -2790,6 +2833,7 @@ async function mountOwnedHydra({
       ...watchers,
       ...folders.values(),
       ...transcripts.values(),
+      ...transcriptPolls.values(),
       ...threads,
     ]) {
       w.close()
@@ -2797,6 +2841,7 @@ async function mountOwnedHydra({
 
     folders.clear()
     transcripts.clear()
+    transcriptPolls.clear()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)
