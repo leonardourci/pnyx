@@ -1,6 +1,6 @@
 import { taskReadiness } from './dependencies.ts'
 import { describeColumnRule } from './columns.ts'
-import { learningDigest, type Learning } from '../memory/learnings.ts'
+import { learningConditions, learningDigest, type LearningConditions, type Learning } from '../memory/learnings.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
@@ -171,6 +171,7 @@ export function hydraDigest({
   projects = [],
   setup = [],
   now = new Date().toISOString(),
+  conditions = learningConditions({ states: { [hydraId]: state } }),
 }: {
   hydraId: string
   state: HydraState
@@ -178,6 +179,7 @@ export function hydraDigest({
   projects?: string[]
   setup?: string[]
   now?: string
+  conditions?: LearningConditions
 }): string {
   const config = hydraConfig({
     state,
@@ -245,6 +247,7 @@ export function hydraDigest({
       `${title} (owner memory key ${key}):`,
       key === 'learnings' && owner[key]?.lines?.length ? learningDigest({
         lines: owner[key]!.lines!,
+        conditions,
         now,
       }) : owner[key]?.text ?? 'none yet',
       '',
