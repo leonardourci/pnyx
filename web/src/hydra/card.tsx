@@ -5,7 +5,7 @@ import { ReminderEditor, ReminderLabel } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
-import { Markdown } from '../components/ui/markdown.tsx'
+import { CollapsibleText } from '../components/ui/disclosure.tsx'
 import { EditableTitle } from '../components/ui/editable-title.tsx'
 import { useCardHeight } from './card-height.ts'
 import { Button } from '../components/ui/controls.tsx'
@@ -32,7 +32,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message">
       <strong>Agent update</strong>
-      <Markdown text={message.text} />
+      <CollapsibleText text={message.text} />
     </div>
   )
 }
@@ -356,8 +356,8 @@ export function HydraCard({
             {labels}
             <CardLinks links={card.links} expanded />
             <ReminderLabel card={card} />
-            {card.copy?.state === 'flagged' && <p className="copy-warning">{card.copy.reason}</p>}
-            {card.launch?.dispatch && <p className="muted small" aria-label="Heads dispatch choice">{card.launch.dispatch}</p>}
+            {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
+            {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
           </div>
         )}
         {selected && (
@@ -373,7 +373,7 @@ export function HydraCard({
         {!selected && question && (
           <div className="card-question" aria-label="Task question">
             <strong className="eyebrow">Question</strong>
-            <p>{question}</p>
+            <CollapsibleText text={question} />
             <Button
               variant="primary"
               onClick={async () => {
