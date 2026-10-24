@@ -70,7 +70,7 @@ function requiredCheck({
   app: unknown
 }): RequiredCheck {
   if (typeof context !== 'string' || !context || (app !== null && app !== undefined
-    && (typeof app !== 'number' || !Number.isInteger(app) || app < -1))) {
+    && (typeof app !== 'number' || !Number.isInteger(app) || app < -1 || app === 0))) {
     throw new Error('required check identity is unreadable')
   }
 
@@ -158,9 +158,21 @@ async function readClassicRequirements({
     if (rule.requiresStatusChecks) {
       for (const value of checks) {
         const check = object({ value })
+        let app: number | null = null
+
+        if (check.app !== null) {
+          const identity = object({ value: check.app }).databaseId
+
+          if (typeof identity !== 'number' || !Number.isInteger(identity) || identity <= 0) {
+            throw new Error('required producer identity is unreadable')
+          }
+
+          app = identity
+        }
+
         required.push(requiredCheck({
           context: check.context,
-          app: check.app === null ? null : object({ value: check.app }).databaseId,
+          app,
         }))
       }
     }

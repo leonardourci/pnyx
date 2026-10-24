@@ -121,8 +121,14 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
 export async function pullRequestState({ url }: { url: string }): Promise<LinkState | undefined> {
   const status = await pullRequestStatus({ url })
 
+  if (status?.state === 'merged' && !await pullRequestLanding({ url })) {
+    return undefined
+  }
+
   return status?.state
 }
+
+export class MergeRejectedError extends Error {}
 
 export interface PullRequestLanding {
   head: string
@@ -355,14 +361,30 @@ export async function mergePullRequest({
     throw new Error('a verified head is required')
   }
 
-  await githubApi({
-    args: [
-      'PUT',
-      `/repos/${pr.repo}/pulls/${pr.number}/merge`,
-      '--field',
-      `sha=${head}`,
-      '--field',
-      'merge_method=merge',
-    ],
-  })
+  try {
+    await githubApi({
+      args: [
+        'PUT',
+        `/repos/${pr.repo}/pulls/${pr.number}/merge`,
+        '--field',
+        `sha=${head}`,
+        '--field',
+        'merge_method=merge',
+      ],
+    })
+  } catch (error) {
+    const output = (error as Error & {
+      stdout?: string
+      stderr?: string
+    })
+    const message = `${output.stdout || ''}\n${output.stderr || ''}`
+    const rejected = /HTTP (?:400|401|403|404|405|409|422)\b/.test(message)
+      || /^code: (?:FORBIDDEN|AUTH_REQUIRED|NOT_FOUND|VALIDATION_ERROR|GH_NOT_INSTALLED)$/m.test(message)
+
+    if (rejected) {
+      throw new MergeRejectedError((error as Error).message)
+    }
+
+    throw error
+  }
 }

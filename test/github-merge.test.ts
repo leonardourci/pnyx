@@ -4,10 +4,16 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../src/integrations/github/merge-evidence.ts'
-import { pullRequestLanding } from '../src/integrations/github/pull-request.ts'
+import { pullRequestLanding, pullRequestState } from '../src/integrations/github/pull-request.ts'
 import { scriptPullRequest, type FakePullRequest } from './scenarios/github.ts'
 
-async function evidence({ input }: { input: Omit<FakePullRequest, 'number'> }) {
+async function evidence({
+  input,
+  confirmOnly = false,
+}: {
+  input: Omit<FakePullRequest, 'number'>
+  confirmOnly?: boolean
+}) {
   const root = mkdtempSync(join(
     tmpdir(),
     'pnyx-github-evidence-',
@@ -33,9 +39,13 @@ async function evidence({ input }: { input: Omit<FakePullRequest, 'number'> }) {
 
   try {
     return {
-      eligibility: await pullRequestMergeEvidence({ url }),
+      eligibility: confirmOnly ? {
+        head: '',
+        problems: [] as string[],
+      } : await pullRequestMergeEvidence({ url }),
       outcome: await pullRequestMergeOutcome({ url }),
       landing: await pullRequestLanding({ url }).catch(() => undefined),
+      state: await pullRequestState({ url }).catch(() => undefined),
     }
   } finally {
     if (previous.fake === undefined) {
@@ -133,7 +143,7 @@ test(
 )
 
 test(
-  'a missing check beyond the first page is still required',
+  'successful and failing checks on page two both affect eligibility',
   async () => {
     const required = Array.from(
       { length: 101 },
@@ -145,10 +155,7 @@ test(
         app: 10,
       }),
     )
-    const runs = required.slice(
-      0,
-      100,
-    ).map(check => ({
+    const runs = required.map(check => ({
       name: check.context,
       app: 10,
       conclusion: 'success',
@@ -161,7 +168,24 @@ test(
     })
     assert.deepEqual(
       eligibility.problems,
-      ['missing required check: check-100 (app 10)'],
+      [],
+    )
+    const failing = await evidence({
+      input: {
+        required,
+        runs: runs.map((
+          run,
+          index,
+        ) =>
+          ({
+            ...run,
+            conclusion: index === 100 ? 'failure' : run.conclusion,
+          })),
+      },
+    })
+    assert.deepEqual(
+      failing.eligibility.problems,
+      ['check is not green: check-100'],
     )
   },
 )
@@ -242,10 +266,19 @@ test(
         state: 'merged',
         merge: 'invalid',
       },
-    }).catch(error => error as Error)
-    assert.match(
-      (malformed as Error).message,
-      /no merge commit/,
+      confirmOnly: true,
+    })
+    assert.equal(
+      malformed.outcome.outcome,
+      'unknown',
+    )
+    assert.equal(
+      malformed.landing,
+      undefined,
+    )
+    assert.equal(
+      malformed.state,
+      undefined,
     )
   },
 )
