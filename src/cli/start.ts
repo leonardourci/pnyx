@@ -1,3 +1,5 @@
+import { matchesProject } from '../projects/identity.ts'
+import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { projectIdentity } from '../projects/sources.ts'
 import { readProjectMemory } from '../projects/memory.ts'
@@ -105,6 +107,10 @@ export function freeTask({
   }
 
   requireUnheld({ card })
+  requireReady({
+    state,
+    card,
+  })
 
   if (card.queue) {
     throw new HydraError({
@@ -174,6 +180,7 @@ export function workerHeader({
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,
+    `Native steering: when PNYX_STEERING_WORKER is set, read \`pnyx-axi task inbox read ${id} --hydra ${hydraId}\` at startup, on an inbox notice and before ending a turn. Handle pending IDs in order; after incorporating each instruction, run \`pnyx-axi task inbox ack ${id} <message-id> --session <session> --generation <generation> --hydra ${hydraId}\` with the claim returned by read. If incorporation is blocked, record the reason with --outcome blocked --note "<why>" and file any needed question separately. Delivery is not acknowledgement. Checkpoint side effects before acknowledging; after a crash, verify an existing effect before repeating it.`,
     ...stops,
     ...standing,
     '</pnyx-worker>',
@@ -216,7 +223,10 @@ export function taskPrompt({
   })
   const state = loadHydra({ hydraId }).state
   const attachedProject = projectsFor({ state }).find(project => !project.detached
-    && (project.path === card.project || project.name === card.project))
+    && matchesProject({
+      project,
+      ref: card.project,
+    }))
   let projectNotes = ''
 
   if (attachedProject) {
@@ -358,6 +368,10 @@ export async function startTask({
   })
 
   requireUnheld({ card })
+  requireReady({
+    state,
+    card,
+  })
 
   if (card.queue) {
     throw new HydraError({
@@ -495,11 +509,15 @@ export async function startTask({
   const ownsFolder = commandName
     ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
   const ownFolder = command && ownsFolder
-  requireUnheld({
-    card: findCard({
-      state: loadHydra({ hydraId }).state,
-      ref: task,
-    }),
+  const currentState = loadHydra({ hydraId }).state
+  const currentCard = findCard({
+    state: currentState,
+    ref: task,
+  })
+  requireUnheld({ card: currentCard })
+  requireReady({
+    state: currentState,
+    card: currentCard,
   })
 
   const folder = replacement ? given
@@ -592,6 +610,10 @@ function askFirstmate({
       })
 
       requireUnheld({ card })
+      requireReady({
+        state: writer.state,
+        card,
+      })
 
       if (!liveTask({ card }) || card.id === HYDRA_CARD) {
         throw new HydraError({

@@ -1,3 +1,4 @@
+import { ChoiceOption } from '../components/ui/choice-option.tsx'
 import { useState } from 'react'
 import type { Ask, Card } from '../../../src/core/model.ts'
 import { askWording } from '../../../src/core/asks.ts'
@@ -72,31 +73,29 @@ export function AskPanel({
 
   return (
     <article className="ask ask-structured" aria-label="Question for you">
-      <p className="ask-headline">{question}</p>
+      <CollapsibleText className="ask-headline" text={question} />
       {context && <CollapsibleText text={context} />}
-      {question !== ask.question && <p className="decision-from">The worker asked: {ask.question}</p>}
+      {question !== ask.question && <div className="decision-from">The worker asked:<CollapsibleText text={ask.question} /></div>}
       {!!options.length && (
         <div className="ask-options" role="group" aria-label="Choices">
           {options.map((
             option,
             i,
           ) => (
-            <Button
+            <ChoiceOption
               key={option.label}
-              className="ask-option"
-              aria-pressed={pick === i + 1}
-              onClick={() => setPick(pick === i + 1 ? undefined : i + 1)}
+              label={option.label}
+              description={option.description}
+              selected={pick === i + 1}
+              choose={() => setPick(pick === i + 1 ? undefined : i + 1)}
             >
-              <span className="ask-label">
-                {option.label}
-                {ask.recommended === i + 1 && <span className="decision-recommended">Recommended</span>}
-              </span>
-              {option.description && <span className="ask-description">{option.description}</span>}
-            </Button>
+              {ask.recommended === i + 1 && <span className="decision-recommended">Recommended</span>}
+            </ChoiceOption>
           ))}
         </div>
       )}
       <Textarea
+        contentEditable={false}
         aria-label="Your answer"
         placeholder={options.length ? 'Add a note, or answer in your own words' : 'Your answer'}
         rows={2}
@@ -109,8 +108,14 @@ export function AskPanel({
         </Disclosure>
       )}
       <div className="pending-decision-actions">
-        <span className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason ? `: ${ask.escalated.reason}` : ''}</span>
-        <Button variant="surface" disabled={busy || (!pick && !text.trim())} onClick={() => void send()}>Send answer</Button>
+        <div className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
+        <Button
+          contentEditable={false}
+          variant="surface"
+          disabled={busy || (!pick && !text.trim())}
+          onClick={() => void send()}
+        >Send answer
+        </Button>
       </div>
     </article>
   )

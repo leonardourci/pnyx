@@ -11,6 +11,8 @@ type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'block
 
 export interface OpenDecision {
   kind: DecisionKind
+  id: string
+  text: string
   card: Pick<Card, 'id' | 'title'>
   // When it started waiting; a blocking prompt and a merge carry no time.
   at?: string
@@ -24,6 +26,10 @@ const waitingPrompt = ({ prompt }: { prompt: Attention }) => prompt.blocking && 
 const asked = ({ questions }: { questions?: { question: string }[] }) => questions?.map(q => q.question).join(' ')
 
 function mergeDetail({ link }: { link: Link }): string {
+  if (link.mergeAttempt && link.state !== 'merged') {
+    return `${link.url} ${link.mergeAttempt.outcome === 'queued' ? 'merge queued' : 'merge unconfirmed'}; wait for GitHub confirmation`
+  }
+
   const { checks } = link
   let state = 'checks green: merge it'
 
@@ -46,13 +52,19 @@ function cardDecisions({
   const asks = openAsks({ card }).map((ask): OpenDecision => {
     const choice = ask.recommended ? ask.options?.[ask.recommended - 1]?.label : undefined
 
+    const wording = askWording({ ask }).question
+
     return ask.audience === 'owner' ? {
       kind: 'owner question',
+      id: ask.id,
+      text: wording,
       card,
       at: ask.escalated?.at ?? ask.at,
-      detail: `${ask.id} ${quote({ text: askWording({ ask }).question })}${choice ? ` (recommended: ${choice})` : ''}`,
+      detail: `${ask.id} ${quote({ text: wording })}${choice ? ` (recommended: ${choice})` : ''}`,
     } : {
       kind: 'worker question',
+      id: ask.id,
+      text: ask.question,
       card,
       at: ask.at,
       detail: `${ask.id} to you ${quote({ text: ask.question })}`,
@@ -63,41 +75,57 @@ function cardDecisions({
 
     return {
       kind: 'permission',
+      id: p.id,
+      text: questions || `Allow ${p.tool}?`,
       card,
       at: p.at,
       detail: `${p.id} ${p.tool}${questions ? ` ${quote({ text: questions })}` : ''}`,
     }
   })
   const prompts = card.attention.filter(prompt => waitingPrompt({ prompt }))
-    .map((prompt): OpenDecision => ({
-      kind: 'blocking prompt',
-      card,
-      detail: quote({ text: prompt.text || asked({ questions: prompt.questions }) || prompt.kind }),
-    }))
+    .map((prompt): OpenDecision => {
+      const text = prompt.text || asked({ questions: prompt.questions }) || prompt.kind
+
+      return {
+        kind: 'blocking prompt',
+        id: prompt.key,
+        text,
+        card,
+        detail: quote({ text }),
+      }
+    })
   const merges = card.links.filter(link => link.kind === 'github_pr' && link.state === 'open' && !link.draft
     && mergeApproved({
       state,
       card,
       url: link.url,
     }))
-    .map((link): OpenDecision => ({
-      kind: 'approved merge',
-      card,
-      detail: mergeDetail({ link }),
-    }))
+    .map((link): OpenDecision => {
+      const detail = mergeDetail({ link })
+
+      return {
+        kind: 'approved merge',
+        id: link.url,
+        text: detail,
+        card,
+        detail,
+      }
+    })
 
   return [
-    ...asks,
-    ...permissions,
-    ...prompts,
-    ...merges,
+    ...asks.filter(item => !card.hidden
+      || card.asks?.some(ask => ask.id === item.id && ask.origin)),
+    ...(card.hidden ? [] : permissions),
+    ...(card.hidden ? [] : prompts),
+    ...(card.hidden ? [] : merges),
   ]
 }
 
-// Everything on a live task still waiting on the owner, on Hydra or on checks: oldest first, then what carries no time.
+// Report choices remain owed even when an older client hid their task.
 export function openDecisions({ state }: { state: HydraState }): OpenDecision[] {
   const items = Object.values(state.cards)
-    .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
+    .filter(card => card.id !== HYDRA_CARD
+      && (liveTask({ card }) || openAsks({ card }).some(ask => ask.origin)))
     .flatMap(card => cardDecisions({
       state,
       card,

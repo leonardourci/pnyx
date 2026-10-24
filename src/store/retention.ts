@@ -1,3 +1,4 @@
+import { reportReviewGaps } from '../investigation/inventory.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
 import { loadHydra, withWriter } from './hydra-store.ts'
@@ -22,6 +23,13 @@ export function hideDone({
       let hidden = 0
 
       for (const card of Object.values(writer.state.cards)) {
+        if (reportReviewGaps({
+          state: writer.state,
+          card,
+        }).length) {
+          continue
+        }
+
         const deadline = cardDoneDeadline({
           card,
           hours: writer.state.config?.doneAfterHours,

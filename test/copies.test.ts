@@ -16,6 +16,10 @@ import { project } from '../src/projects/cli.ts'
 import { hydraDir, loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
+process.env.PNYX_GH_AXI = join(
+  import.meta.dirname,
+  'fixtures/github/gh-axi.sh',
+)
 const meta = {
   at: '2026-10-15T00:00:00Z',
   actor: 'test',
@@ -1323,7 +1327,7 @@ test(
 )
 
 test(
-  'a merged linked pull request counts as landed when Hydra settles a flagged copy',
+  'a merged link without current-head evidence keeps a flagged copy',
   async () => {
     const {
       run,
@@ -1397,7 +1401,7 @@ test(
     })
     assert.equal(
       card().copy?.state,
-      'removed',
+      'flagged',
     )
     assert.ok(existsSync(path))
   },
@@ -1735,24 +1739,23 @@ test(
         'loose',
       ],
     })
-    await run({
-      args: [
-        'task',
-        'copy',
-        task,
-        'remove',
-        '--safe',
-        '--actor',
-        'hydra',
-      ],
-    })
-    assert.equal(
-      card().copy?.state,
-      'flagged',
+    assert.throws(
+      () => run({
+        args: [
+          'task',
+          'copy',
+          task,
+          'remove',
+          '--safe',
+          '--actor',
+          'hydra',
+        ],
+      }),
+      /unproved work/,
     )
     assert.equal(
-      card().copy?.reason,
-      'its commit is on no branch',
+      card().copy?.state,
+      'active',
     )
     assert.ok(existsSync(path))
   },
@@ -1832,6 +1835,439 @@ test(
         meta,
       }),
       /either --folder or --in-place/,
+    )
+  },
+)
+
+test(
+  'copy settlement proves the actual head before squash-merge cleanup and reuse',
+  async t => {
+    for (const outcome of [
+      'landed',
+      'later commit',
+      'dirty',
+      'untracked',
+      'wrong repository',
+      'wrong branch',
+      'unknown',
+      'queued',
+      'divergent',
+      'changed during proof',
+    ]) {
+      await t.test(
+        outcome,
+        async () => {
+          const f = await lab({ remote: true })
+          await f.start({ id: f.task })
+          const copy = f.card().copy!
+          const cwd = copy.path
+
+          for (const file of [
+            'first.txt',
+            'second.txt',
+          ]) {
+            writeFileSync(
+              join(
+                cwd,
+                file,
+              ),
+              `${file}\n`,
+            )
+            git({
+              cwd,
+              args: [
+                'add',
+                '.',
+              ],
+            })
+            git({
+              cwd,
+              args: [
+                'commit',
+                '-qm',
+                file,
+              ],
+            })
+          }
+
+          const head = git({
+            cwd,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          })
+          git({
+            cwd,
+            args: [
+              'push',
+              '-q',
+              'origin',
+              copy.branch!,
+            ],
+          })
+          git({
+            cwd: f.repo,
+            args: [
+              'merge',
+              '--squash',
+              copy.branch!,
+            ],
+          })
+          git({
+            cwd: f.repo,
+            args: [
+              'commit',
+              '-qm',
+              'squash both changes',
+            ],
+          })
+          const merge = git({
+            cwd: f.repo,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          })
+          git({
+            cwd: f.repo,
+            args: [
+              'push',
+              '-q',
+              'origin',
+              'main',
+            ],
+          })
+          git({
+            cwd,
+            args: [
+              'push',
+              '-q',
+              'origin',
+              '--delete',
+              copy.branch!,
+            ],
+          })
+          const origin = join(
+            f.root,
+            'origin.git',
+          )
+          git({
+            cwd: f.repo,
+            args: [
+              'config',
+              `url.${origin}.insteadOf`,
+              'https://github.com/example/app.git',
+            ],
+          })
+          git({
+            cwd: f.repo,
+            args: [
+              'remote',
+              'set-url',
+              'origin',
+              'https://github.com/example/app.git',
+            ],
+          })
+
+          if (outcome === 'later commit' || outcome === 'divergent') {
+            if (outcome === 'divergent') {
+              git({
+                cwd,
+                args: [
+                  'reset',
+                  '--hard',
+                  'HEAD~1',
+                ],
+              })
+            }
+
+            writeFileSync(
+              join(
+                cwd,
+                'local.txt',
+              ),
+              'keep this local work\n',
+            )
+            git({
+              cwd,
+              args: [
+                'add',
+                '.',
+              ],
+            })
+            git({
+              cwd,
+              args: [
+                'commit',
+                '-qm',
+                'local work after the merged head',
+              ],
+            })
+          }
+
+          if (outcome === 'dirty') {
+            writeFileSync(
+              join(
+                cwd,
+                'first.txt',
+              ),
+              'uncommitted tracked work\n',
+            )
+          }
+
+          if (outcome === 'untracked') {
+            writeFileSync(
+              join(
+                cwd,
+                'draft.txt',
+              ),
+              'untracked work\n',
+            )
+          }
+
+          let current = git({
+            cwd,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          })
+          const status = git({
+            cwd,
+            args: [
+              'status',
+              '--porcelain',
+            ],
+          })
+          const response = join(
+            f.root,
+            'landing.toon',
+          )
+          const gh = join(
+            f.root,
+            'gh-axi',
+          )
+          const branch = outcome === 'wrong branch' ? 'another-branch' : copy.branch!
+          const merged = outcome !== 'queued'
+          writeFileSync(
+            response,
+            outcome === 'unknown' ? 'payload: "unreadable"\n'
+              : `payload: ${JSON.stringify(JSON.stringify({
+                head: {
+                  sha: head,
+                  ref: branch,
+                },
+                base: { ref: 'main' },
+                merged,
+                merge_commit_sha: merged ? merge : null,
+                state: merged ? 'closed' : 'open',
+                draft: false,
+              }))}\n`,
+          )
+          let concurrentWorker = ''
+
+          if (outcome === 'changed during proof') {
+            concurrentWorker = `printf 'concurrent work\\n' > '${cwd}/concurrent.txt'\ngit -C '${cwd}' add .\nGIT_AUTHOR_NAME=Test GIT_AUTHOR_EMAIL=test@example.com GIT_COMMITTER_NAME=Test GIT_COMMITTER_EMAIL=test@example.com git -C '${cwd}' commit -qm 'concurrent worker'\n`
+          }
+
+          writeFileSync(
+            gh,
+            `#!/bin/sh\n${concurrentWorker}cat '${response}'\n`,
+            { mode: 0o755 },
+          )
+          const previousGh = process.env.PNYX_GH_AXI
+          process.env.PNYX_GH_AXI = gh
+
+          try {
+            const repository = outcome === 'wrong repository' ? 'another/app' : 'example/app'
+            f.run({
+              args: [
+                'link',
+                f.task,
+                '--url',
+                `https://github.com/${repository}/pull/7`,
+                '--state',
+                'merged',
+              ],
+            })
+            f.done({ id: f.task })
+            settleDone({ hydraId: 'lab' })
+
+            if (outcome === 'changed during proof') {
+              const changedHead = git({
+                cwd,
+                args: [
+                  'rev-parse',
+                  'HEAD',
+                ],
+              })
+              assert.notEqual(
+                changedHead,
+                current,
+              )
+              current = changedHead
+              assert.equal(
+                readFileSync(
+                  join(
+                    cwd,
+                    'concurrent.txt',
+                  ),
+                  'utf8',
+                ),
+                'concurrent work\n',
+              )
+            }
+
+            assert.equal(
+              f.card().copy?.state,
+              outcome === 'landed' ? 'removed' : 'flagged',
+            )
+            assert.ok(existsSync(cwd))
+            assert.equal(
+              git({
+                cwd,
+                args: [
+                  'rev-parse',
+                  'HEAD',
+                ],
+              }),
+              current,
+            )
+            assert.equal(
+              git({
+                cwd,
+                args: [
+                  'status',
+                  '--porcelain',
+                ],
+              }),
+              status,
+            )
+            assert.equal(
+              git({
+                cwd,
+                args: [
+                  'cat-file',
+                  '-t',
+                  head,
+                ],
+              }),
+              'commit',
+            )
+
+            if (outcome !== 'landed') {
+              assert.throws(
+                () => f.run({
+                  args: [
+                    'task',
+                    'copy',
+                    f.task,
+                    'remove',
+                    '--safe',
+                    '--actor',
+                    'hydra',
+                  ],
+                }),
+                /unproved work/,
+              )
+            }
+
+            const next = f.create({ key: 'follow-up' })
+            await f.start({ id: next })
+            assert.equal(
+              f.cardOf({ id: next }).copy?.path === cwd,
+              outcome === 'landed',
+            )
+            assert.equal(
+              git({
+                cwd: f.repo,
+                args: [
+                  'rev-parse',
+                  copy.branch!,
+                ],
+              }),
+              current,
+            )
+          } finally {
+            process.env.PNYX_GH_AXI = previousGh
+          }
+        },
+      )
+    }
+  },
+)
+
+test(
+  'a commit added after release is flagged again before a pool slot can be reused',
+  async () => {
+    const f = await lab()
+    await f.start({ id: f.task })
+    const copy = f.card().copy!
+    f.done({ id: f.task })
+    settleDone({ hydraId: 'lab' })
+    assert.equal(
+      f.card().copy?.state,
+      'removed',
+    )
+    writeFileSync(
+      join(
+        copy.path,
+        'after-release.txt',
+      ),
+      'keep after release\n',
+    )
+    git({
+      cwd: copy.path,
+      args: [
+        'add',
+        '.',
+      ],
+    })
+    git({
+      cwd: copy.path,
+      args: [
+        'commit',
+        '-qm',
+        'unlanded after release',
+      ],
+    })
+    const head = git({
+      cwd: copy.path,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    const next = f.create({ key: 'next' })
+    await f.start({ id: next })
+    assert.equal(
+      f.card().copy?.state,
+      'flagged',
+    )
+    assert.notEqual(
+      f.cardOf({ id: next }).copy?.path,
+      copy.path,
+    )
+    assert.equal(
+      git({
+        cwd: copy.path,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      head,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          copy.path,
+          'after-release.txt',
+        ),
+        'utf8',
+      ),
+      'keep after release\n',
     )
   },
 )

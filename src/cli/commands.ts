@@ -1,9 +1,18 @@
+import { inboxCommand } from '../task-inbox/cli.ts'
+import { taskReadiness } from '../core/dependencies.ts'
+import { decideDependencies } from '../core/dependency-decisions.ts'
+import { sourceCommand } from '../external-sources/cli.ts'
+import { columnRule, parseColumnRule } from '../core/columns.ts'
+import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
+import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
+import { resolveSkillReferences } from '../thread/skill-reference.ts'
+import { effectiveDispatch } from '../dispatch/config.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
-import { buildCommand, reportCommand } from '../investigation/cli.ts'
+import { buildCommand, reportCommand, reportReviewCommand } from '../investigation/cli.ts'
 import { parseKind } from '../investigation/report.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
 import { taskSpend } from '../spend/tasks.ts'
@@ -362,6 +371,10 @@ function confirmationPreview({
       from: before.map(c => c.id),
       to: columns.map(c => c.id),
       removed: before.filter(c => !columns.some(next => next.id === c.id)).map(c => c.id),
+      rules: columns.map(column => ({
+        id: column.id,
+        rule: columnRule({ column }),
+      })),
       affectedCards: Object.keys(placements ?? {}).length,
       ...(fallback ? { fallback } : {}),
     }
@@ -867,73 +880,105 @@ function untilTime({
   })
 }
 
+export const TASK_OPTIONS: Options = {
+  ...WRITE,
+  title: { type: 'string' },
+  project: { type: 'string' },
+  brief: { type: 'string' },
+  ask: { type: 'string' },
+  message: { type: 'string' },
+  key: { type: 'string' },
+  folder: { type: 'string' },
+  session: { type: 'string' },
+  'replace-session': { type: 'string' },
+  parent: { type: 'string' },
+  column: { type: 'string' },
+  note: { type: 'string' },
+  limit: { type: 'string' },
+  before: { type: 'string' },
+  behind: { type: 'string' },
+  on: {
+    type: 'string',
+    multiple: true,
+  },
+  full: { type: 'boolean' },
+  harness: { type: 'string' },
+  prompt: { type: 'string' },
+  'paseo-url': { type: 'string' },
+  check: { type: 'boolean' },
+  via: { type: 'string' },
+  command: { type: 'string' },
+  rule: { type: 'string' },
+  answer: { type: 'string' },
+  model: { type: 'string' },
+  effort: { type: 'string' },
+  mode: { type: 'string' },
+  fast: { type: 'string' },
+  'in-place': { type: 'boolean' },
+  safe: { type: 'boolean' },
+  discard: { type: 'boolean' },
+  question: { type: 'string' },
+  context: { type: 'string' },
+  evidence: { type: 'string' },
+  choice: {
+    type: 'string',
+    multiple: true,
+  },
+  recommend: { type: 'string' },
+  'details-file': { type: 'string' },
+  text: { type: 'string' },
+  to: { type: 'string' },
+  undelivered: { type: 'boolean' },
+  'from-message': { type: 'string' },
+  'from-report': { type: 'string' },
+  report: { type: 'string' },
+  none: { type: 'boolean' },
+  call: {
+    type: 'string',
+    multiple: true,
+  },
+  kind: { type: 'string' },
+  file: { type: 'string' },
+  url: { type: 'string' },
+  landing: { type: 'string' },
+  merge: { type: 'string' },
+  clear: { type: 'boolean' },
+  until: { type: 'string' },
+  hold: { type: 'boolean' },
+}
+
 function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
+  if (args[0] === 'source') {
+    return sourceCommand({ args: args.slice(1) })
+  }
+
+  if (args[0] === 'inbox') {
+    return inboxCommand({ args: args.slice(1) })
+  }
+
   const {
     values,
     positionals,
     hydraId,
   } = parse({
     args,
-    options: {
-      ...WRITE,
-      title: { type: 'string' },
-      project: { type: 'string' },
-      brief: { type: 'string' },
-      ask: { type: 'string' },
-      message: { type: 'string' },
-      key: { type: 'string' },
-      folder: { type: 'string' },
-      session: { type: 'string' },
-      'replace-session': { type: 'string' },
-      parent: { type: 'string' },
-      column: { type: 'string' },
-      note: { type: 'string' },
-      limit: { type: 'string' },
-      before: { type: 'string' },
-      behind: { type: 'string' },
-      full: { type: 'boolean' },
-      harness: { type: 'string' },
-      prompt: { type: 'string' },
-      'paseo-url': { type: 'string' },
-      check: { type: 'boolean' },
-      via: { type: 'string' },
-      command: { type: 'string' },
-      rule: { type: 'string' },
-      answer: { type: 'string' },
-      model: { type: 'string' },
-      effort: { type: 'string' },
-      mode: { type: 'string' },
-      fast: { type: 'string' },
-      'in-place': { type: 'boolean' },
-      safe: { type: 'boolean' },
-      discard: { type: 'boolean' },
-      question: { type: 'string' },
-      context: { type: 'string' },
-      evidence: { type: 'string' },
-      choice: {
-        type: 'string',
-        multiple: true,
-      },
-      recommend: { type: 'string' },
-      'details-file': { type: 'string' },
-      text: { type: 'string' },
-      to: { type: 'string' },
-      undelivered: { type: 'boolean' },
-      'from-message': { type: 'string' },
-      kind: { type: 'string' },
-      file: { type: 'string' },
-      url: { type: 'string' },
-      landing: { type: 'string' },
-      merge: { type: 'string' },
-      clear: { type: 'boolean' },
-      until: { type: 'string' },
-      hold: { type: 'boolean' },
-    },
+    options: TASK_OPTIONS,
     positionals: 4,
   })
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'report-review') {
+    return reportReviewCommand({
+      hydraId,
+      ref: positionals[1],
+      report: values.report as string | undefined,
+      calls: (values.call ?? []) as string[],
+      none: values.none === true,
+      meta: m,
+    })
+  }
 
   if (action === 'report') {
     return reportCommand({
@@ -1170,6 +1215,37 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }))
 
     return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
+  }
+
+  if (action === 'depend' || action === 'undepend') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const prerequisites = values.on as string[] | undefined
+
+    if (!prerequisites?.length) {
+      throw new HydraError({
+        message: 'pass --on <prerequisite task>; repeat --on for several tasks',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'task.dependencies',
+        card: ref,
+      },
+      decide: ({ state }) => decideDependencies({
+        state,
+        ref,
+        prerequisites,
+        remove: action === 'undepend',
+        meta: m,
+      }),
+    })
   }
 
   if (action === 'hold' || action === 'release') {
@@ -1437,6 +1513,14 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
             card: task,
           }),
         } : {}),
+        prerequisites: (task.prerequisites ?? []).map(id => ({
+          id,
+          title: state.cards[id]?.title ?? id,
+        })),
+        readiness: taskReadiness({
+          state,
+          card: task,
+        }),
         ...(task.queueNote ? { handoff: task.queueNote } : {}),
         next: task.sessionIds?.[0] ? workerQueue({
           state,
@@ -2114,6 +2198,9 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       base: { type: 'string' },
       'done-after-hours': { type: 'string' },
       'review-minutes': { type: 'string' },
+      helper: { type: 'string' },
+      'helper-model': { type: 'string' },
+      'helper-effort': { type: 'string' },
     },
     positionals: 2,
   })
@@ -2277,6 +2364,37 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         }
 
         data.doneAfterHours = hours
+      }
+
+      if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
+        const harness = values.helper ?? (current.helper && current.helper.harness) ?? current.hydra.agent?.harness ?? 'claude'
+
+        if (harness === 'off') {
+          data.helper = false
+        } else if (harness === 'auto') {
+          delete data.helper
+        } else if (harness === 'claude' || harness === 'codex') {
+          let previous: Exclude<typeof current.helper, false>
+
+          if (current.helper && current.helper.harness === harness) {
+            previous = current.helper
+          }
+
+          data.helper = {
+            harness,
+            model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
+          }
+          const effort = values['helper-effort'] ?? previous?.effort
+
+          if (effort !== undefined) {
+            data.helper.effort = String(effort)
+          }
+        } else {
+          throw new HydraError({
+            message: '--helper takes auto, off, claude or codex',
+            code: 'VALIDATION_ERROR',
+          })
+        }
       }
 
       if (values['review-minutes'] !== undefined) {
@@ -2550,6 +2668,11 @@ function columnCommand({ args }: { args: string[] }): Output {
       title: { type: 'string' },
       description: { type: 'string' },
       width: { type: 'string' },
+      when: {
+        type: 'string',
+        multiple: true,
+      },
+      clear: { type: 'boolean' },
       id: { type: 'string' },
       to: { type: 'string' },
       before: { type: 'string' },
@@ -2565,12 +2688,22 @@ function columnCommand({ args }: { args: string[] }): Output {
       columns: hydraConfig({
         state,
         id: hydraId,
-      }).columns,
+      }).columns.map(column => ({
+        ...column,
+        rule: columnRule({ column }),
+      })),
       revision: state.configRevision ?? 0,
     }
   }
 
   const m = meta({ values })
+
+  if (action === 'rule' && !m.reason?.trim()) {
+    throw new HydraError({
+      message: 'column rule needs --reason <why>',
+      code: 'VALIDATION_ERROR',
+    })
+  }
 
   if (action === 'resize') {
     const ref = required({
@@ -2616,10 +2749,17 @@ function columnCommand({ args }: { args: string[] }): Output {
     })
   }
 
+  let confirmation: { token?: string } | undefined
+  const changesPlacement = action === 'delete' || action === 'reorder' || action === 'rule'
+
+  if (m.actor !== 'web' && changesPlacement) {
+    confirmation = { token: values.confirm as string | undefined }
+  }
+
   return commit({
     hydraId,
     meta: m,
-    ...(m.actor !== 'web' && (action === 'delete' || action === 'reorder') ? { confirmation: { token: values.confirm as string | undefined } } : {}),
+    confirmation,
     intent: {
       type: 'board.columns',
       card: '$board',
@@ -2669,7 +2809,19 @@ function columnCommand({ args }: { args: string[] }): Output {
             what: '--title',
           }),
           description: String(values.description ?? ''),
+          rule: [],
         })
+      } else if (action === 'rule') {
+        const when = values.when as string[] | undefined ?? []
+
+        if ((!values.clear && !when.length) || (values.clear && when.length)) {
+          throw new HydraError({
+            message: 'pass --when <fact[,fact]> (repeat for OR), or --clear for manual placement',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        selected!.rule = parseColumnRule({ when })
       } else if (action === 'rename') {
         selected!.title = required({
           value: values.title as string,
@@ -2722,7 +2874,7 @@ function columnCommand({ args }: { args: string[] }): Output {
         }
       } else {
         throw new HydraError({
-          message: 'Use column list, create, rename, describe, resize, delete or reorder',
+          message: 'Use column list, create, rename, describe, rule, resize, delete or reorder',
           code: 'VALIDATION_ERROR',
         })
       }
@@ -2747,6 +2899,34 @@ function columnCommand({ args }: { args: string[] }): Output {
             after: fallback ?? columns[0]!.id,
           },
         ]))
+
+      if (changesPlacement) {
+        const config = hydraConfig({
+          state,
+          id: hydraId,
+        })
+        const proposed = {
+          ...state,
+          config: {
+            ...config,
+            columns,
+          },
+        }
+
+        for (const move of lifecycleMoves({
+          before: state,
+          state: proposed,
+        })) {
+          if (placements[move.cardId]) {
+            continue
+          }
+
+          placements[move.cardId] = {
+            before: state.cards[move.cardId]!.column,
+            after: move.column,
+          }
+        }
+      }
 
       return hydraEvent({
         state,
@@ -3096,12 +3276,28 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
       }
 
-      const text = task
+      const entered = task
         ? String(values.text ?? `${action === 'worker' ? 'Create a worker for' : 'Work with me on'} task ${task.id}: ${task.title}. Read its task history and current record before continuing.`)
         : required({
           value: values.text as string | undefined,
           what: '--text',
         })
+      const config = hydraConfig({
+        state,
+        id: hydraId,
+      })
+      const effective = effectiveDispatch({
+        hydraId,
+        state,
+      })
+      const provider = config.hydra.agent?.harness
+        ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
+        ?? effective.dispatch.default[0]?.harness
+        ?? state.cards[HYDRA_CARD]?.agent?.provider
+      const text = resolveSkillReferences({
+        text: entered,
+        provider,
+      })
       const context = mentionContext({
         state,
         text,
@@ -3741,12 +3937,24 @@ function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'task.source.registered': return `External source ${event.data.source.id} registered`
+    case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
+    case 'task.source.started': return `External source ${event.data.source} run started`
+    case 'task.source.result': return `External source ${event.data.source} result ${event.data.result.sequence}: ${event.data.result.outcome}`
+    case 'task.source.alerted': return event.data.detail
+    case 'task.source.handled': return `External source ${event.data.source} result ${event.data.sequence} handled`
+    case 'project.refreshed': return `Project copy ${event.data.state}: ${event.data.path}${event.data.reason ? ` (${event.data.reason})` : ''}`
+    case 'task.steering.recovery': return `Steering ${event.data.message} recovery: ${event.data.recovery.result}${event.data.recovery.detail ? `: ${event.data.recovery.detail}` : ''}`
+    case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
+    case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
+    case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
     case 'chat.message': return `${event.data.role}: ${event.data.text}`
     case 'board.configured': return `Hydra ${event.data.name}; Hydra ${event.data.hydra.id}`
     case 'board.columns': return `Columns: ${event.data.columns.map(c => c.title).join(', ')}`
     case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
+    case 'task.report-reviewed': return `Report decisions reviewed (${event.data.calls.length} calls)`
     case 'task.report': return `Report stored (${event.data.text.length} characters)`
     case 'task.landing': return event.data.after
       ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
@@ -3762,6 +3970,9 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
+    case 'hydra.helper-started': return 'Routine helper started'
+    case 'hydra.helper-finished': return event.data.error ? `Helper handed back: ${event.data.error}` : 'Routine helper outcomes recorded'
+    case 'hydra.helper-acknowledged': return 'Helper outcomes handled by Hydra'
     case 'hydra.review': return 'Timed review'
     case 'hydra.memory': return `${event.data.after === null ? 'Forgot' : 'Saved'} Hydra memory: ${event.data.key}`
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
@@ -3777,6 +3988,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
@@ -4233,24 +4445,26 @@ const layout = guard({
   },
 })
 
-export const commands = {
-  layout,
-  column: columnCommandHandler,
-  hydra: hydraCommandHandler,
-  owner,
-  task,
-  view,
-  push,
-  card,
-  harvest,
-  move,
-  link,
-  outcome,
-  history,
-  undo,
-  repair,
-  setup,
-}
+export const commands = supervisedCommands({
+  commands: {
+    layout,
+    column: columnCommandHandler,
+    hydra: hydraCommandHandler,
+    owner,
+    task,
+    view,
+    push,
+    card,
+    harvest,
+    move,
+    link,
+    outcome,
+    history,
+    undo,
+    repair,
+    setup,
+  },
+})
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
 description: Pnyx shows every agent and its work in Hydras
@@ -4258,7 +4472,7 @@ commands:
   pnyx-axi                                   Show the Hydra summary
   hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
   project add|list|set|remove                   Attach, list or detach projects
-  column create|rename|describe|resize|delete|reorder|list  Edit columns
+  column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
   task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
   task start|continue <task>                  Start a worker or host an ended outside session
   hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
@@ -4302,6 +4516,7 @@ Each Hydra has one orchestrator identity. Changing that identity preserves tasks
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+--helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
@@ -4345,16 +4560,23 @@ Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/
 pnyx-axi column create --title <title> [--id custom:<id>]
 pnyx-axi column rename <id> --title <title>
 pnyx-axi column describe <id> --description <text>
+pnyx-axi column rule <id> --when <fact[,fact]> [--when <fact[,fact]>] --reason <why>
+pnyx-axi column rule <id> --clear --reason <why>
 pnyx-axi column resize <id> --width <pixels>
 pnyx-axi column delete <id> [--to <remaining-column>]
 pnyx-axi column reorder <id> [--before <id>]
 All columns, including template columns, can be edited. Deletion moves cards to the fallback;
-the final column cannot be deleted. Reorder and delete first return confirmation: needed and a token;
+the final column cannot be deleted. Rule edits, reorder and delete first return confirmation: needed and a token;
 repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
+Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
+The first matching column in display order wins; --clear makes a column manual only.
+Facts: worker:none|working|checks|blocked|hydra|paused|ended, owner-question, held,
+pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, done, reminder-due, queued.
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
 pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
@@ -4368,9 +4590,24 @@ pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] 
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
-or, for an investigation, before its report is stored. The owner can still move the card to Done.
+or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
+pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
+Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
+pnyx-axi task inbox read <task> [--all]
+pnyx-axi task source register <task> <source-id> --executable <absolute-path> --argv <json-array> --cwd <absolute-path> [--timeout-ms <n> --max-bytes <n> --expires <ISO-time> --restart never|on-failure --max-runs <n>]
+pnyx-axi task source lavish <task> <source-id> --page <path> --executable <absolute-lavish-axi> [--agent-reply-file <path>] [--after <source-id> --sequence <n> --session <session> --generation <n>]
+pnyx-axi task source list <task>
+pnyx-axi task source read <task> <source-id> [--all]
+pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
+pnyx-axi task source stop <task> <source-id>
+pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
+pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
+pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
+Inbox reads return the active session/generation claim and pending instructions in order. Acknowledge the oldest instruction after incorporating it.
+A blocked acknowledgement requires --note; it records why incorporation could not proceed. Delivery receipts never mark an instruction handled.
+Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
@@ -4409,6 +4646,7 @@ pnyx-axi task reorder <task> --behind <task|session>
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
+Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
@@ -4479,7 +4717,8 @@ Sources are only read. Each note is kept once, so running it again appends only 
   move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
 Puts the card in the column just above the --before card, or at the end of the column without it.
 First returns confirmation: needed and a token; repeat with --confirm <token> to act.
-Hydra places a card only in response to its own agent’s actions, using the descriptions from \`pnyx-axi column list\`.
+Pnyx applies column rules on phase changes; a manual move lasts until the next rule result changes.
+Hydra uses manual placement for an exceptional correction with a reason. Read rules with \`pnyx-axi column list\`.
 Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
 `,
   link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]

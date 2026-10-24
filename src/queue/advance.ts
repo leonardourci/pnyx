@@ -1,3 +1,6 @@
+import { sameProjectPath } from '../projects/identity.ts'
+import { landingContext, provesLanding } from '../landing/proof.ts'
+import { taskReadiness } from '../core/dependencies.ts'
 import { execFile, spawnSync } from 'node:child_process'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
@@ -5,7 +8,8 @@ import { decideLink, decideSession, type Decision } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
 import type { AgentSession, Card, HydraState, LinkState, SessionEvent } from '../core/model.ts'
 import { taskPrompt } from '../cli/start.ts'
-import { declareMerged } from '../landing/follow.ts'
+import { confirmedMerge } from '../landing/confirmed.ts'
+import { mergeObservation } from '../landing/merge-observation.ts'
 import { sendReply } from '../cli/reply.ts'
 import { pullRequestLanding, pullRequestState } from '../integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from '../integrations/presence/check.ts'
@@ -246,30 +250,6 @@ async function landedBranch({
     throw new Error('The worker folder has uncommitted changes')
   }
 
-  await git({
-    cwd,
-    args: [
-      'fetch',
-      'origin',
-    ],
-  })
-  await git({
-    cwd,
-    args: [
-      'remote',
-      'set-head',
-      'origin',
-      '--auto',
-    ],
-  })
-  const base = await git({
-    cwd,
-    args: [
-      'symbolic-ref',
-      '--short',
-      'refs/remotes/origin/HEAD',
-    ],
-  })
   const head = await git({
     cwd,
     args: [
@@ -277,80 +257,89 @@ async function landedBranch({
       'HEAD',
     ],
   })
-  const tip = await git({
-    cwd,
-    args: [
-      'rev-parse',
-      base,
-    ],
-  })
-
-  try {
-    await git({
+  const copy = card.copy ?? {
+    path: cwd,
+    project: card.project,
+    via: 'worktree' as const,
+    state: 'active' as const,
+    branch: await git({
       cwd,
       args: [
-        'merge-base',
-        '--is-ancestor',
-        head,
-        tip,
+        'branch',
+        '--show-current',
       ],
-    })
+    }),
+  }
+  const context = landingContext({
+    copy: {
+      ...copy,
+      base: undefined,
+    },
+  })
 
-    return {
-      cwd,
-      base,
-      tip,
-      head,
-      root,
-    }
-  } catch {
-    const pr = card.links.find(l => l.kind === 'github_pr' && l.state === 'merged')
+  if (!context.tip || context.reason) {
+    throw new Error(context.reason ?? 'The fetched default branch could not be read')
+  }
 
-    if (!pr) {
-      return undefined
-    }
+  const prepared = {
+    cwd,
+    base: `origin/${context.base}`,
+    tip: context.tip,
+    head,
+    root,
+  }
 
+  if (provesLanding({
+    copy,
+    head,
+    context,
+  })) {
+    return prepared
+  }
+
+  const merged = card.links.filter(link => link.kind === 'github_pr' && link.state === 'merged')
+
+  if (!merged.length) {
+    return undefined
+  }
+
+  for (const pr of merged) {
     const landing = await readLanding({ url: pr.url })
 
-    if (landing?.head === head) {
-      try {
-        await git({
-          cwd,
-          args: [
-            'merge-base',
-            '--is-ancestor',
-            landing.merge,
-            tip,
-          ],
-        })
-      } catch {
-        throw new Error('The merged pull request has not landed on the fetched default branch')
-      }
-
-      return {
-        cwd,
-        base,
-        tip,
-        head,
-        root,
-      }
+    if (provesLanding({
+      copy,
+      head,
+      context,
+      url: pr.url,
+      landing,
+    })) {
+      return prepared
     }
-
-    throw new Error('Local commits are outside the merged pull request')
   }
+
+  throw new Error('Local commits are outside the merged pull request or its fetched default branch')
 }
 
 async function refreshLinks({
   hydraId,
   card,
   readPR,
+  readLanding,
 }: {
   hydraId: string
   card: Card
   readPR: typeof pullRequestState
+  readLanding: typeof pullRequestLanding
 }) {
   for (const link of card.links.filter(l => l.kind === 'github_pr' && l.state !== 'merged')) {
     const state = await readPR({ url: link.url })
+    const landing = state === 'merged' ? await readLanding({ url: link.url }) : undefined
+
+    if (state === 'merged' && !landing) {
+      continue
+    }
+
+    const at = meta().at
 
     if (state && state !== link.state) {
       withWriter({
@@ -359,33 +348,50 @@ async function refreshLinks({
           const current = writer.state.cards[card.id]?.links.find(l => l.url === link.url)
 
           if (current && current.state !== 'merged' && current.state !== state) {
-            const at = meta().at
+            let observed: typeof current = {
+              ...current,
+              state,
+              checkedAt: at,
+            }
+
+            if (landing) {
+              observed = mergeObservation({
+                link: observed,
+                at,
+                outcome: {
+                  outcome: 'merged',
+                  head: landing.head,
+                  commit: landing.merge,
+                },
+              })
+            }
+
             append({
               writer,
               decision: decideLink({
                 state: writer.state,
                 ref: card.id,
                 url: link.url,
-                link: {
-                  ...current,
-                  state,
-                  checkedAt: at,
-                },
+                link: observed,
                 meta: meta(),
               }),
             })
-
-            if (state === 'merged') {
-              declareMerged({
-                writer,
-                cardId: card.id,
-                url: link.url,
-                at,
-              })
-            }
           }
         },
       })
+
+      if (landing) {
+        await confirmedMerge({
+          hydraId,
+          cardId: card.id,
+          url: link.url,
+          proof: {
+            head: landing.head,
+            commit: landing.merge,
+            confirmedAt: at,
+          },
+        })
+      }
     }
   }
 }
@@ -397,17 +403,20 @@ async function deliverHandoffs({
   hydraId: string
   active(): boolean
 }) {
-  const state = loadHydra({ hydraId }).state
   const events = readEvents({ hydraId }).filter((e): e is SessionEvent =>
     e.type === 'task.session' && Boolean(e.data.handoff))
 
   for (const event of events) {
+    const state = loadHydra({ hydraId }).state
     const card = state.cards[event.cardId]
     const id = `brief:${event.id}`
 
     const receipt = card?.replies?.find(r => r.id === id)
 
-    if (!active() || card?.hold || card?.sessionIds?.[0] !== event.data.session
+    if (!active() || !card || !taskReadiness({
+      state,
+      card,
+    }).ready || card.sessionIds?.[0] !== event.data.session
       || receipt && receipt.state !== 'failed') {
       continue
     }
@@ -499,6 +508,7 @@ export async function advanceQueues({
         hydraId,
         card: current,
         readPR,
+        readLanding,
       })
       state = loadHydra({ hydraId }).state
       const card = state.cards[current.id]!
@@ -516,11 +526,17 @@ export async function advanceQueues({
         session: id,
       })[0]
 
-      if (!next || next.hold) {
+      if (!next || !taskReadiness({
+        state,
+        card: next,
+      }).ready) {
         continue
       }
 
-      if (next.project !== card.project || next.hidden || next.sessionIds?.length
+      if (!sameProjectPath({
+        left: next.project,
+        right: card.project,
+      }) || next.hidden || next.sessionIds?.length
         || !next.brief?.trim()
         || next.copy && next.copy.state !== 'removed'
         || card.copy?.state === 'removed' || card.copy?.via === 'command') {
@@ -549,7 +565,10 @@ export async function advanceQueues({
           })[0]
 
           if (source?.revision !== card.revision || target?.id !== next.id
-            || target.hold || target.revision !== next.revision
+            || !taskReadiness({
+              state: writer.state,
+              card: target,
+            }).ready || target.revision !== next.revision
           || source.sessionIds?.[0] !== id || source.activity === 'working') {
             return
           }

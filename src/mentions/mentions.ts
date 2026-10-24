@@ -8,10 +8,10 @@ export interface TaskMention {
   title: string
 }
 
-export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file'
+export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file' | 'skill'
 
 // A reference as Pnyx writes it: [@Label](pnyx-<kind>:<encoded value>).
-export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file):([\w%~.-]+)\)/
+export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file|skill):([\w%~.-]+)\)/
 
 export const referenceLabel = ({ label }: { label: string }) => label.replace(
   /\\(.)/g,

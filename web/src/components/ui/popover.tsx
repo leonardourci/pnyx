@@ -1,4 +1,4 @@
-import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { useId, useLayoutEffect, useRef, useState, type ReactNode, type RefObject } from 'react'
 import { Button } from './controls.tsx'
 
 export function Popover({
@@ -6,11 +6,13 @@ export function Popover({
   trigger,
   children,
   className = '',
+  triggerRef,
 }: {
   label: string
   trigger: ReactNode
   children({ close }: { close(): void }): ReactNode
   className?: string
+  triggerRef?: RefObject<HTMLButtonElement | null>
 }) {
   const [
     open,
@@ -114,7 +116,14 @@ export function Popover({
       }}
     >
       <Button
-        ref={button}
+        // eslint-disable-next-line pnyx/object-params -- React ref callback.
+        ref={element => {
+          button.current = element
+
+          if (triggerRef) {
+            triggerRef.current = element
+          }
+        }}
         aria-label={label}
         aria-haspopup="dialog"
         aria-expanded={open}

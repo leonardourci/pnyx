@@ -1,3 +1,4 @@
+import { incorporateInboxNotice } from './inbox-fixture.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
@@ -87,7 +88,10 @@ function fakeSdk() {
 
     async function* run() {
       for await (const message of prompt) {
-        call.messages.push(String(message.message.content))
+        call.messages.push(incorporateInboxNotice({
+          text: String(message.message.content),
+          env: options.env ?? process.env,
+        }))
         yield {
           type: 'system',
           subtype: 'session_state_changed',
@@ -1800,8 +1804,16 @@ test(
       [
         'expired',
         'deny',
-        1,
+        2,
       ],
+    )
+    assert.equal(
+      sdk.calls[0]!.closed,
+      true,
+    )
+    assert.equal(
+      sdk.calls[1]!.options.env?.PNYX_ACTOR,
+      `worker:${destination().id}`,
     )
   },
 )

@@ -14,7 +14,7 @@ export function Disclosure({
 }) {
   return (
     <details className={`disclosure ${className}`}>
-      <summary>
+      <summary contentEditable={false}>
         {title}
         <span className="disclosure-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
       </summary>
@@ -23,7 +23,13 @@ export function Disclosure({
   )
 }
 
-export function CollapsibleText({ text }: { text: string }) {
+export function CollapsibleText({
+  text,
+  className = '',
+}: {
+  text: string
+  className?: string
+}) {
   const [
       expanded,
       setExpanded,
@@ -55,10 +61,11 @@ export function CollapsibleText({ text }: { text: string }) {
   )
 
   return (
-    <div className="collapsible-text">
+    <div className={`collapsible-text ${className}`}>
       <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><Markdown text={text} /></div>
       {(long || expanded) && (
         <Button
+          contentEditable={false}
           className="show-more"
           aria-expanded={expanded}
           aria-controls={id}

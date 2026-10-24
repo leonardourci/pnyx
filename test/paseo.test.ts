@@ -5,13 +5,17 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { PaseoClient } from '@getpaseo/client'
+import { sendReply } from '../src/cli/reply.ts'
+import { steeringNotice } from '../src/task-inbox/notice.ts'
+import { acknowledgeSteering } from '../src/task-inbox/inbox.ts'
+import { steeringClaim } from '../src/task-inbox/state.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { localPaseoUrl } from '../src/core/paseo.ts'
 import { replyRoute } from '../src/core/route.ts'
 import { liveTask } from '../src/core/tasks.ts'
 import { openPaseo } from '../src/integrations/paseo/client.ts'
 import { paseoStatus, startAgent } from '../src/integrations/paseo/launch.ts'
-import { paseoReply } from '../src/integrations/paseo/reply.ts'
+import { paseoNotice, paseoReply } from '../src/integrations/paseo/reply.ts'
 import { paseoConversation } from '../src/integrations/paseo/thread.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startTask } from '../src/cli/start.ts'
@@ -715,6 +719,319 @@ test(
     assert.match(
       String(created.prompt),
       /^<pnyx-worker [^>]*>[\s\S]*<\/pnyx-worker>\n\nVerify the canary\.\n\n/,
+    )
+  },
+)
+
+test(
+  'Paseo inbox notices retain their attempt ID and recheck ownership after connecting',
+  async () => {
+    const paseo = fakePaseo()
+    const route = {
+      kind: 'paseo-agent' as const,
+      agent: 'lab-1',
+      url,
+    }
+    const text = 'Pnyx inbox notice: exact message IDs'
+    const delivered = await paseoNotice({
+      route,
+      text,
+      id: 'attempt-1',
+      connect: paseo.connect,
+    })
+    assert.equal(
+      delivered.result,
+      'delivered',
+    )
+    assert.deepEqual(
+      paseo.calls.sent,
+      [
+        {
+          agent: 'lab-1',
+          text,
+          id: 'attempt-1',
+        },
+      ],
+    )
+    assert.equal(
+      (await paseoNotice({
+        route,
+        text,
+        id: 'attempt-2',
+        connect: paseo.connect,
+        canSend: () => false,
+      })).result,
+      'failed',
+    )
+    assert.equal(
+      paseo.calls.sent.length,
+      1,
+    )
+    const unknown = fakePaseo({
+      send: async () => {
+        throw new Error('lost response')
+      },
+    })
+    assert.equal(
+      (await paseoNotice({
+        route,
+        text,
+        id: 'attempt-3',
+        connect: unknown.connect,
+      })).result,
+      'unknown',
+    )
+    assert.equal(
+      (await paseoNotice({
+        route,
+        text,
+        id: 'attempt-4',
+        connect: async () => {
+          throw new Error('daemon gone')
+        },
+      })).result,
+      'gone',
+    )
+  },
+)
+
+test(
+  'ordinary Paseo steering keeps one payload, retries a failed send and validates the task after connection',
+  async () => {
+    const {
+      folder,
+      state,
+    } = hydraId()
+    const paseo = fakePaseo()
+    await startAgent({
+      hydraId: 'lab',
+      task: 'work',
+      harness: 'codex',
+      prompt: 'Go',
+      folder,
+      url,
+      meta: {
+        at,
+        actor: 'test',
+      },
+      connect: paseo.connect,
+    })
+    const task = () => state().cards.c1!
+    const request = {
+      card: 'work',
+      text: 'Olá 🌊\nKeep all lines',
+      id: 'steer',
+      homes: [],
+    }
+    const failed = await sendReply({
+      hydraId: 'lab',
+      request,
+      connectPaseo: async () => {
+        throw new Error('daemon gone')
+      },
+    })
+    assert.equal(
+      failed.state,
+      'failed',
+    )
+    const delivered = await sendReply({
+      hydraId: 'lab',
+      request,
+      connectPaseo: paseo.connect,
+    })
+    assert.equal(
+      delivered.state,
+      'delivered',
+    )
+    assert.equal(
+      task().steering!.length,
+      1,
+    )
+    assert.equal(
+      task().steering![0]!.text,
+      request.text,
+    )
+    assert.equal(
+      task().steering![0]!.ack,
+      undefined,
+    )
+    assert.equal(
+      task().steering![0]!.attempts.length,
+      2,
+    )
+    assert.notEqual(
+      task().steering![0]!.attempts[0]!.id,
+      task().steering![0]!.attempts[1]!.id,
+    )
+    assert.equal(
+      paseo.calls.sent.length,
+      1,
+    )
+    assert.equal(
+      paseo.calls.sent[0]!.text,
+      steeringNotice({
+        task: task().id,
+        hydraId: 'lab',
+        ids: ['steer'],
+      }),
+    )
+
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const pushed = decidePush({
+          state: writer.state,
+          key: 'permission',
+          newCardId: 'unused',
+          input: {
+            agent: task().agent,
+            attention: [
+              {
+                kind: 'permission',
+                key: 'hook:permission',
+                blocking: true,
+                text: 'Allow?',
+              },
+            ],
+          },
+          meta: {
+            at,
+            actor: 'test',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+      },
+    })
+    const blocked = await sendReply({
+      hydraId: 'lab',
+      request: {
+        ...request,
+        id: 'permission',
+      },
+      connectPaseo: paseo.connect,
+    })
+    assert.equal(
+      blocked.state,
+      'delivery_unknown',
+    )
+    assert.equal(
+      paseo.calls.sent.length,
+      1,
+    )
+    assert.equal(
+      task().steering!.at(-1)!.attempts[0]!.result,
+      'deferred',
+    )
+
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const pushed = decidePush({
+          state: writer.state,
+          key: 'permission',
+          newCardId: 'unused',
+          input: {
+            agent: task().agent,
+            attention: [],
+          },
+          meta: {
+            at,
+            actor: 'test',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+      },
+    })
+    const raced = await sendReply({
+      hydraId: 'lab',
+      request: {
+        ...request,
+        id: 'raced',
+      },
+      connectPaseo: async () => {
+        withWriter({
+          hydraId: 'lab',
+          fn: ({ writer }) => {
+            const card = writer.state.cards.c1!
+
+            for (const message of card.steering!.filter(message => !message.ack)) {
+              acknowledgeSteering({
+                writer,
+                ref: card.id,
+                id: message.id,
+                ack: {
+                  at,
+                  actor: `worker:${card.id}`,
+                  claim: steeringClaim({ card })!,
+                  outcome: 'incorporated',
+                },
+                meta: {
+                  at,
+                  actor: `worker:${card.id}`,
+                },
+              })
+            }
+          },
+        })
+
+        return paseo.connect()
+      },
+    })
+    assert.equal(
+      raced.state,
+      'failed',
+    )
+    assert.equal(
+      paseo.calls.sent.length,
+      1,
+    )
+    assert.equal(
+      task().steering!.at(-1)!.ack!.outcome,
+      'incorporated',
+    )
+    const replaced = await sendReply({
+      hydraId: 'lab',
+      request: {
+        ...request,
+        id: 'replaced',
+      },
+      connectPaseo: async () => {
+        await commands.task([
+          'detach',
+          'work',
+          '--hydra',
+          'lab',
+        ])
+        await startAgent({
+          hydraId: 'lab',
+          task: 'work',
+          harness: 'codex',
+          prompt: 'Resume',
+          folder,
+          url,
+          meta: {
+            at,
+            actor: 'test',
+          },
+          connect: paseo.connect,
+        })
+
+        return paseo.connect()
+      },
+    })
+    assert.equal(
+      replaced.state,
+      'failed',
+    )
+    assert.equal(
+      paseo.calls.sent.length,
+      1,
+    )
+    assert.equal(
+      task().steering!.at(-1)!.ack,
+      undefined,
     )
   },
 )

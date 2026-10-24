@@ -1,3 +1,4 @@
+import { requireReady } from '../../core/dependencies.ts'
 import { requireUnheld } from '../../core/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '../../dispatch/select.ts'
 import { hydraEvent } from '../../core/hydra.ts'
@@ -83,6 +84,10 @@ export async function startAgent({
       }
 
       requireUnheld({ card })
+      requireReady({
+        state: writer.state,
+        card,
+      })
 
       if (meta.ifRevision !== undefined && meta.ifRevision !== card.revision) {
         throw new HydraError({
@@ -171,11 +176,14 @@ export async function startAgent({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        requireUnheld({
-          card: findCard({
-            state: writer.state,
-            ref: task,
-          }),
+        const card = findCard({
+          state: writer.state,
+          ref: task,
+        })
+        requireUnheld({ card })
+        requireReady({
+          state: writer.state,
+          card,
         })
       },
     }),
@@ -189,11 +197,14 @@ export async function startAgent({
       hydraId,
       fn: ({ writer }) => {
         drainSpool({ writer })
-        requireUnheld({
-          card: findCard({
-            state: writer.state,
-            ref: task,
-          }),
+        const card = findCard({
+          state: writer.state,
+          ref: task,
+        })
+        requireUnheld({ card })
+        requireReady({
+          state: writer.state,
+          card,
         })
         const pushed = decidePush({
           state: writer.state,

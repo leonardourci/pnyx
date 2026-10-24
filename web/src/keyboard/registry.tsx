@@ -116,9 +116,9 @@ export function KeyboardProvider({
         // Message blocks, comments and buttons inside the conversation share its scope.
         const scope = hints ? 'hints' : overlay ? 'overlay' : (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope ?? 'navigation') as KeyScope
         // These controls own their standard navigation and selection keys; buttons and
-        // links in the conversation keep Enter.
+        // links and disclosures in the conversation keep Enter.
         const owned = target.closest('[role=combobox],[role=listbox],[role=separator]')
-        || (scope === 'thread' && event.key === 'Enter' && target.closest('button,a'))
+        || (scope === 'thread' && event.key === 'Enter' && target.closest('button,a,summary'))
 
         if (!hints && target.hasAttribute(CARET_HOST) && CARET_KEY.test(event.key)) {
           return

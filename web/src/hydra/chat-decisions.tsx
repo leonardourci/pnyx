@@ -37,7 +37,7 @@ export function ChatDecisionCard({
   } = decision
 
   return (
-    <div className="chat-decision" contentEditable={false}>
+    <div className="chat-decision" contentEditable={ask.answered ? false : undefined}>
       <TaskReference id={card.id} />
       {ask.answered ? (
         <Decided
@@ -105,38 +105,6 @@ function Decided({
         }}
       >Undo answer
       </Button>
-    </div>
-  )
-}
-
-export function WaitingDecisions({
-  decisions,
-  jump,
-  loading,
-}: {
-  decisions: ChatDecision[]
-  jump({ decision }: { decision: ChatDecision }): Promise<void>
-  loading: boolean
-}) {
-  if (!decisions.length) {
-    return null
-  }
-
-  return (
-    <div className="waiting-decisions" aria-label="Decisions waiting">
-      <span>{decisions.length} {decisions.length === 1 ? 'decision' : 'decisions'} waiting</span>
-      {decisions.map(decision => (
-        <Button
-          key={decision.id}
-          disabled={loading}
-          title={askWording({ ask: decision.ask }).question}
-          onClick={async () => {
-            await jump({ decision })
-          }}
-        >
-          {decision.card.title}
-        </Button>
-      ))}
     </div>
   )
 }

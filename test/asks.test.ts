@@ -9,7 +9,8 @@ import { startTask } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { decideReply } from '../src/core/decide.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { lifecycleStage } from '../src/core/lifecycle.ts'
+import { cardFacts, placeCard } from '../src/core/columns.ts'
+import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import type { Card, HydraEvent } from '../src/core/model.ts'
 import { HYDRA_CARD, hydraDelivery, hydraEvent } from '../src/core/hydra.ts'
 import { readThread } from '../src/thread/read.ts'
@@ -70,6 +71,8 @@ async function lab({ worker = true }: { worker?: boolean } = {}) {
   await workerCommands.hydra([
     'create',
     'lab',
+    '--helper',
+    'off',
     '--hydra',
     'lab',
   ])
@@ -357,7 +360,7 @@ test(
     })
     assert.equal(
       f.task().column,
-      f.role({ name: 'queued' }),
+      f.role({ name: 'in_progress' }),
     )
 
     await refused({
@@ -387,7 +390,11 @@ test(
         'hydra',
       ],
     })
-    assert.ok(f.events().some(e => e.type === 'card.moved' && e.seq > through))
+    assert.equal(
+      f.task().column,
+      f.role({ name: 'in_progress' }),
+    )
+    assert.ok(!f.events().some(e => e.type === 'card.moved' && e.seq > through))
     const check = await workerCommands.hydra([
       'check',
       '--after',
@@ -450,7 +457,13 @@ test(
       ],
     )
     assert.equal(
-      lifecycleStage({ card: f.task() }),
+      placeCard({
+        card: cardFacts({
+          card: f.task(),
+          state: emptyHydra(),
+        }),
+        columns: DEFAULT_COLUMNS,
+      }),
       'in_progress',
     )
     assert.equal(
@@ -1759,7 +1772,7 @@ test(
 )
 
 test(
-  'an accepted start preserves the owner custom column',
+  'an accepted start changes phase and releases a manual placement',
   async () => {
     const f = await lab({ worker: false })
     await commands.column([
@@ -1794,7 +1807,7 @@ test(
     )
     assert.equal(
       f.task().column,
-      'custom:research',
+      f.role({ name: 'in_progress' }),
     )
   },
 )

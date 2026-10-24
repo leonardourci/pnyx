@@ -136,6 +136,8 @@ beforeEach(() => {
   commands.hydra([
     'create',
     'lab',
+    '--helper',
+    'off',
   ])
 })
 

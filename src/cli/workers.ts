@@ -22,6 +22,7 @@ import { COMMON, commands, guard, integer, parse, summarize, type Output } from 
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
+  'task.dependencies',
   'task.reminder',
   'task.reminder-due',
   'hydra.project',
@@ -33,6 +34,7 @@ const TRACKED: readonly EventType[] = [
   'task.released',
   'task.kind',
   'task.report',
+  'task.report-reviewed',
   'task.landing',
   'task.brief',
   'task.intent',

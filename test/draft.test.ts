@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '../src/mentions/mentions.ts'
 import { fileBlock } from '../src/attachments/files.ts'
-import { cardChip, cardLabel, draftView, editDraft, ICON_SPACE, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
+import { cardChip, cardLabel, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -10,9 +10,9 @@ const task = taskMention({
 })
 const image = '[image: /home/hydras/default/attachments/a.png]'
 const other = '[image: /home/hydras/default/attachments/b.png]'
-const card = ({ name }: { name: string }) => cardLabel({ name })
+const card = ({ name }: { name: string }) => CHIP_SPACE + cardLabel({ name }) + CHIP_SPACE
 // A task chip shows as its card and state icons, then its title.
-const label = `${ICON_SPACE}${ICON_SPACE}Fix [login]`
+const label = `${CHIP_SPACE}${ICON_SPACE}${WORD_JOINER}${ICON_SPACE}${CHIP_JOIN}Fix [login]${CHIP_SPACE}`
 
 test(
   'the draft shows references and attachments as chips over the Markdown',
@@ -29,7 +29,7 @@ test(
     const view = draftView({ text })
     assert.equal(
       view.display,
-      `Look at ${label} and\n\n${card({ name: 'Image 1' })}\n\n${card({ name: 'notes.txt' })}\n\nin @app`,
+      `Look at ${label} and\n\n${card({ name: 'Image 1' })}\n\n${card({ name: 'notes.txt' })}\n\nin ${CHIP_SPACE}@app${CHIP_SPACE}`,
     )
     assert.deepEqual(
       view.chips.map(chip => [
@@ -80,7 +80,7 @@ test(
         [
           'column',
           'custom:1',
-          `${ICON_SPACE}Needs you`,
+          `${ICON_SPACE}${CHIP_JOIN}Needs you`,
         ],
       ],
     )

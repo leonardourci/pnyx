@@ -1,3 +1,6 @@
+import type { ProjectRefresh } from '../projects/refresh-types.ts'
+import type { HelperChange, HelperState } from '../helper/state.ts'
+import type { ExternalSource, ExternalSourceEvent } from '../external-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 
 export const EVENT_VERSION = 1 as const
@@ -131,6 +134,17 @@ export interface Link {
   // A followed pull request's last seen checks summary and comment count, so only changes reach its worker.
   checks?: string
   comments?: number
+  mergeAttempt?: {
+    outcome: 'merged' | 'queued' | 'unknown'
+    head: string
+    requestedAt: string
+    detail?: string
+  }
+  mergeProof?: {
+    head: string
+    commit: string
+    confirmedAt: string
+  }
 }
 
 export interface Question {
@@ -193,6 +207,78 @@ export interface Reply {
   detail?: string
 }
 
+export interface SteeringClaim {
+  session: string
+  generation: number
+}
+
+export interface SteeringAttempt {
+  id: string
+  at: string
+  actor: string
+  claim: SteeringClaim
+  result: 'delivered' | 'unknown' | 'failed' | 'deferred'
+  detail?: string
+}
+
+export interface SteeringAck {
+  at: string
+  actor: string
+  claim: SteeringClaim
+  outcome: 'incorporated' | 'blocked'
+  note?: string
+}
+
+export interface SteeringRecovery {
+  id: string
+  at: string
+  claim?: SteeringClaim
+  result: 'reserved' | 'delivered' | 'unknown' | 'failed' | 'deferred' | 'exhausted'
+  detail?: string
+}
+
+export interface SteeringMessage {
+  id: string
+  order: number
+  text: string
+  source: string
+  reply?: string
+  at: string
+  actor: string
+  queuedFor?: SteeringClaim
+  attempts: SteeringAttempt[]
+  recovery?: SteeringRecovery[]
+  ack?: SteeringAck
+}
+
+export type SteeringEvent = EventBase & (
+  | {
+    type: 'task.steering.recovery'
+    data: {
+      message: string
+      recovery: SteeringRecovery
+    }
+  }
+  | {
+    type: 'task.steering.queued'
+    data: { message: SteeringMessage }
+  }
+  | {
+    type: 'task.steering.notified'
+    data: {
+      message: string
+      attempt: SteeringAttempt
+    }
+  }
+  | {
+    type: 'task.steering.handled'
+    data: {
+      message: string
+      ack: SteeringAck
+    }
+  }
+)
+
 export interface Note {
   kind: NoteKind
   source: string
@@ -249,6 +335,10 @@ export interface Ask {
   at: string
   actor: string
   audience: AskAudience
+  origin?: {
+    task: string
+    report: string
+  }
   kind?: 'merge' | 'go'
   hold?: TaskHold
   url?: string
@@ -285,12 +375,23 @@ export const TASK_KINDS = [
 ] as const
 export type TaskKind = (typeof TASK_KINDS)[number]
 
+export interface ReportCall {
+  task: string
+  ask: string
+}
+
 // The text stays in the log, on the task.report event this names.
 export interface TaskReport {
   id: string
   at: string
   actor: string
   chars: number
+  review?: {
+    id: string
+    at: string
+    actor: string
+    calls: ReportCall[]
+  }
 }
 
 export interface TaskReminder {
@@ -314,6 +415,8 @@ export interface TaskHold {
 }
 
 export interface Card {
+  projectRefresh?: Record<string, ProjectRefresh>
+  prerequisites?: string[]
   hold?: TaskHold
   id: string
   key: string
@@ -373,6 +476,9 @@ export interface Card {
   sourceRefs: SourceRef[]
   outcome?: Outcome
   replies?: Reply[]
+  steering?: SteeringMessage[]
+  steeringGeneration?: number
+  externalSources?: ExternalSource[]
   notes?: NoteRef[]
   // The column and the position in it are set only by creation and explicit moves.
   // A lower rank sorts first; a card never moved ranks by its createdSeq.
@@ -401,7 +507,7 @@ export interface PushFields {
   attention?: Attention[]
 }
 
-interface EventBase {
+export interface EventBase {
   labelColors?: SavedLabelColor[]
   v: typeof EVENT_VERSION
   seq: number
@@ -467,10 +573,38 @@ export interface HydraColumn {
   id: Column
   title: string
   description?: string
+  rule?: ColumnRule
   // Roles survive a rename. A task created in a role's column starts with its status,
   // and a card whose column is deleted falls back to the parked one.
   role?: (typeof COLUMNS)[number] | typeof LEGACY_IN_PROGRESS
 }
+export const CARD_FACTS = [
+  'worker:none',
+  'worker:working',
+  'worker:checks',
+  'worker:blocked',
+  'worker:hydra',
+  'worker:paused',
+  'worker:ended',
+  'owner-question',
+  'held',
+  'pr:none',
+  'pr:draft',
+  'pr:open',
+  'pr:pending',
+  'pr:green',
+  'pr:red',
+  'pr:merged',
+  'pr:closed',
+  'kind:build',
+  'kind:investigation',
+  'done',
+  'reminder-due',
+  'queued',
+] as const
+export type CardFact = (typeof CARD_FACTS)[number]
+export type ColumnCondition = CardFact | `!${CardFact}`
+export type ColumnRule = ColumnCondition[][]
 export const HARNESS_NAMES = [
   'claude',
   'codex',
@@ -610,6 +744,7 @@ export interface TaskCopy {
 }
 
 export interface HydraConfig {
+  helper?: AgentConfig | false
   id: string
   name: string
   hydra: HydraIdentity
@@ -649,6 +784,18 @@ export interface HydraStatus {
   after?: number
 }
 export type HydraChange = EventBase & (
+  | {
+    type: 'project.refreshed'
+    data: ProjectRefresh
+  }
+  | {
+    type: 'task.dependencies'
+    data: {
+      before: string[]
+      after: string[]
+    }
+  }
+  | HelperChange
   | {
     type: 'task.queue'
     data: {
@@ -745,6 +892,13 @@ export type HydraChange = EventBase & (
     type: 'task.report'
     data: {
       text: string
+    }
+  }
+  | {
+    type: 'task.report-reviewed'
+    data: {
+      report: string
+      calls: ReportCall[]
     }
   }
   | {
@@ -1059,6 +1213,8 @@ export type ChatEvent = EventBase & {
 }
 
 export type HydraEvent =
+  | ExternalSourceEvent
+  | SteeringEvent
   | PushedEvent
   | MovedEvent
   | LinkedEvent
@@ -1072,6 +1228,17 @@ export type HydraEvent =
   | PermissionEvent
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
+  'task.source.registered',
+  'task.source.lavish.published',
+  'task.source.started',
+  'task.source.result',
+  'task.source.alerted',
+  'task.source.handled',
+  'project.refreshed',
+  'task.steering.queued',
+  'task.steering.notified',
+  'task.steering.handled',
+  'task.steering.recovery',
   'card.pushed',
   'card.moved',
   'card.linked',
@@ -1097,6 +1264,9 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.message',
   'hydra.status',
   'hydra.review',
+  'hydra.helper-started',
+  'hydra.helper-finished',
+  'hydra.helper-acknowledged',
   'hydra.dispatch-proposed',
   'hydra.dispatch-resolved',
   'hydra.dispatch-progress',
@@ -1110,10 +1280,12 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder-due',
   'task.copy',
   'task.queue',
+  'task.dependencies',
   'task.held',
   'task.released',
   'task.kind',
   'task.report',
+  'task.report-reviewed',
   'task.landing',
 ]
 
@@ -1137,6 +1309,7 @@ export interface HydraState {
   // Set once a board.configured event applies; a column edit alone does not configure Hydra.
   configured?: boolean
   configRevision?: number
+  helper?: HelperState
   hydraReview?: {
     at: string
     seq: number

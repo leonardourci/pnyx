@@ -198,7 +198,7 @@ test(
     const ended = f.state()
     assert.equal(
       ended.cards[ended.keys.other].column,
-      'queued',
+      'parked',
     )
     f.run({
       args: [

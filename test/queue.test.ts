@@ -1,4 +1,4 @@
-import { pullRequestLanding } from '../src/integrations/github/pull-request.ts'
+import { pullRequestLanding, pullRequestLandingSync } from '../src/integrations/github/pull-request.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, truncateSync, writeFileSync } from 'node:fs'
@@ -599,6 +599,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     assert.equal(
       f.card({ key: 'two' }).agent,
@@ -608,6 +618,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     await until({ check: () => f.sdk.calls[0]?.messages.length === 1 && f.card({ key: 'two' }).activity === 'finished' })
     assert.equal(
@@ -689,6 +709,16 @@ test(
     await advanceQueues({
       hydraId: 'lab',
       readPR: async () => 'merged',
+      readLanding: async () => ({
+        head: git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        merge: defaultTip,
+      }),
     })
     assert.equal(
       f.sdk.calls[0]!.messages.length,
@@ -1349,6 +1379,23 @@ test(
     })
     const branch = f.card({ key: 'one' }).copy!.branch!
     git({
+      cwd: f.repo,
+      args: [
+        'config',
+        `url.${f.origin}.insteadOf`,
+        'https://github.com/example/app.git',
+      ],
+    })
+    git({
+      cwd: f.repo,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        'https://github.com/example/app.git',
+      ],
+    })
+    git({
       cwd: f.folder,
       args: [
         'push',
@@ -1416,6 +1463,8 @@ test(
           readLanding: async () => ({
             head,
             merge,
+            branch,
+            base: 'main',
           }),
         })
 
@@ -1746,22 +1795,47 @@ test(
     process.env.PNYX_GH_AXI = gh
     const head = 'a'.repeat(40)
     const merge = 'b'.repeat(40)
-    const fixture = ({ result }: { result: string }) => writeFileSync(
-      gh,
-      `#!/bin/sh\nprintf '%s\\n' 'api_response:' '  body: ${result}'\n`,
-      { mode: 0o755 },
-    )
-    fixture({ result: `${head} ${merge} true` })
+
+    const fixture = ({ merged }: { merged: boolean }) => {
+      const body = JSON.stringify({
+        head: {
+          sha: head,
+          ref: 'pnyx/task',
+        },
+        base: { ref: 'main' },
+        merge_commit_sha: merged ? merge : null,
+        merged,
+        state: merged ? 'closed' : 'open',
+        draft: false,
+      })
+      writeFileSync(
+        gh,
+        `#!/bin/sh\nprintf '%s\\n' 'payload: ${JSON.stringify(body)}'\n`,
+        { mode: 0o755 },
+      )
+    }
+
+    fixture({ merged: true })
     assert.deepEqual(
       await pullRequestLanding({ url: 'https://github.com/example/app/pull/1' }),
       {
         head,
         merge,
+        branch: 'pnyx/task',
+        base: 'main',
       },
     )
-    fixture({ result: `${head} ${merge} false` })
+    assert.equal(
+      pullRequestLandingSync({ url: 'https://github.com/example/app/pull/1' })?.branch,
+      'pnyx/task',
+    )
+    fixture({ merged: false })
     assert.equal(
       await pullRequestLanding({ url: 'https://github.com/example/app/pull/1' }),
+      undefined,
+    )
+    assert.equal(
+      pullRequestLandingSync({ url: 'https://github.com/example/app/pull/1' }),
       undefined,
     )
   },
@@ -1833,6 +1907,214 @@ test(
         ],
       }),
       branch,
+    )
+  },
+)
+
+test(
+  'a merged PR cannot hand a worker to its next task over a later local commit',
+  async t => {
+    const f = await lab({ t })
+    await f.server.close()
+    f.commit()
+    const copy = f.card({ key: 'one' }).copy!
+    const head = git({
+      cwd: f.folder,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    git({
+      cwd: f.folder,
+      args: [
+        'push',
+        'origin',
+        'HEAD:main',
+      ],
+    })
+    git({
+      cwd: f.repo,
+      args: [
+        'config',
+        `url.${f.origin}.insteadOf`,
+        'https://github.com/example/app.git',
+      ],
+    })
+    git({
+      cwd: f.repo,
+      args: [
+        'remote',
+        'set-url',
+        'origin',
+        'https://github.com/example/app.git',
+      ],
+    })
+    writeFileSync(
+      join(
+        f.folder,
+        'local.txt',
+      ),
+      'keep the tail\n',
+    )
+    git({
+      cwd: f.folder,
+      args: [
+        'add',
+        '.',
+      ],
+    })
+    git({
+      cwd: f.folder,
+      args: [
+        'commit',
+        '-qm',
+        'tail after merged head',
+      ],
+    })
+    const tail = git({
+      cwd: f.folder,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    commands.link([
+      'one',
+      '--url',
+      'https://github.com/example/app/pull/7',
+      '--state',
+      'merged',
+      '--hydra',
+      'lab',
+    ])
+    f.queue({ key: 'two' })
+    await advanceQueues({
+      hydraId: 'lab',
+      readLanding: async () => ({
+        head,
+        merge: head,
+        branch: copy.branch,
+        base: 'main',
+      }),
+    })
+    assert.equal(
+      f.card({ key: 'two' }).agent,
+      undefined,
+    )
+    assert.match(
+      f.card({ key: 'two' }).queueNote!,
+      /outside the merged pull request/,
+    )
+    assert.equal(
+      git({
+        cwd: f.folder,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      tail,
+    )
+    assert.equal(
+      git({
+        cwd: f.folder,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      }),
+      copy.branch,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.folder,
+          'local.txt',
+        ),
+        'utf8',
+      ),
+      'keep the tail\n',
+    )
+  },
+)
+
+test(
+  'unavailable merged-PR proof leaves a queued worker and all local work intact',
+  async t => {
+    const f = await lab({ t })
+    await f.server.close()
+    f.commit()
+    const copy = f.card({ key: 'one' }).copy!
+    const head = git({
+      cwd: f.folder,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+    const contents = readFileSync(
+      join(
+        f.folder,
+        'app.txt',
+      ),
+      'utf8',
+    )
+    commands.link([
+      'one',
+      '--url',
+      'https://github.com/example/app/pull/8',
+      '--state',
+      'merged',
+      '--hydra',
+      'lab',
+    ])
+    f.queue({ key: 'two' })
+    await advanceQueues({
+      hydraId: 'lab',
+      readLanding: async () => undefined,
+    })
+    assert.equal(
+      f.card({ key: 'two' }).agent,
+      undefined,
+    )
+    assert.equal(
+      f.card({ key: 'two' }).queue,
+      undefined,
+    )
+    assert.match(
+      f.card({ key: 'two' }).queueNote!,
+      /outside the merged pull request/,
+    )
+    assert.equal(
+      git({
+        cwd: f.folder,
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      head,
+    )
+    assert.equal(
+      git({
+        cwd: f.folder,
+        args: [
+          'branch',
+          '--show-current',
+        ],
+      }),
+      copy.branch,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.folder,
+          'app.txt',
+        ),
+        'utf8',
+      ),
+      contents,
     )
   },
 )

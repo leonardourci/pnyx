@@ -131,7 +131,6 @@ test(
         'ship',
       ],
     })
-    // The catalog lists the skills in Hydra's own folder once its session has one.
     await s.owner({
       args: [
         'hydra',
@@ -150,15 +149,16 @@ test(
     await page.click({ selector: '.hydra-chat textarea' })
     await page.type({ text: '/ins' })
     await page.shows({
-      what: 'Hydra’s own skill among the matching session commands',
+      what: 'Hydra’s own skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
-        .find(o => o.querySelector('strong')?.textContent === '/inscribe' && o.querySelector('small')?.textContent === 'Project skill'),
+        .find(o => o.querySelector('strong')?.textContent === '/inscribe'
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx Hydra'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
     await page.shows({
-      what: 'the command in the draft',
-      check: () => (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === '/inscribe '
+      what: 'the skill badge in the draft',
+      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/inscribe')
         && !document.querySelector('.slash-menu'),
     })
 
@@ -476,8 +476,7 @@ test(
       check: () => document.activeElement?.closest('.card .ask'),
     })
     await page.click({
-      selector: '.card .ask-option',
-      text: 'Keep',
+      selector: '.card .ask-option button[aria-label="Choose Keep"]',
     })
     await page.click({ selector: '.card .ask textarea' })
     await page.type({ text: 'Keep it for one more release' })
@@ -528,5 +527,575 @@ test(
       answers().length,
       1,
     )
+  },
+)
+
+test(
+  'card Markdown stays compact, expands on demand and keeps option links independent of selection',
+  async () => {
+    const s = await pnyx.scenario()
+    const { worker } = await startedTask({ s })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Reference task',
+        '--key',
+        'reference',
+      ],
+    })
+    const reference = s.task({ key: 'reference' })
+    const task = s.task({ key: 'ship' })
+    const card = `.card[data-task="${task.id}"]`
+    const markdown = `**Ready for review**
+
+- First item
+- Second item
+
+\`\`\`sh
+pnpm run lint
+\`\`\`
+
+| Check | Result |
+| --- | --- |
+| Layout | Ready |
+
+[Reference task](pnyx-task:${reference.id})
+
+End of the long update.`
+    await s.owner({
+      args: [
+        'task',
+        'brief',
+        'ship',
+        '--brief',
+        markdown,
+      ],
+    })
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'working',
+        '--note',
+        markdown,
+      ],
+    })
+    const page = await openHydra({ s })
+    await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    await page.shows({
+      what: 'formatted update clamped to three compact lines',
+      arg: { card },
+      check: ({ card }) => {
+        const row = [...document.querySelectorAll(`${card} .update-line`)]
+          .find(row => row.querySelector('strong')?.textContent === 'Ready for review')
+        const preview = row?.querySelector<HTMLElement>('.text-preview')
+
+        return preview && preview.scrollHeight > preview.clientHeight
+          && getComputedStyle(preview.querySelector('.markdown')!).fontSize === '12px'
+          && row?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+      },
+    })
+    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.shows({
+      what: 'the full Markdown update after Show more',
+      arg: { card },
+      check: ({ card }) => {
+        const expanded = document.querySelector(`${card} .update-line .show-more[aria-expanded=true]`)?.parentElement
+
+        return expanded?.querySelector('li')?.textContent === 'First item'
+          && expanded.querySelector('pre code')?.textContent?.includes('pnpm run lint')
+          && expanded.querySelector('td')?.textContent === 'Layout'
+          && expanded.querySelector('button.task-reference')?.textContent?.includes('Reference task')
+          && !expanded.querySelector('.text-preview')
+      },
+    })
+    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.shows({
+      what: 'Show less restores the preview',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .update-line .text-preview`)
+        && document.querySelector(`${card} .update-line .show-more`)?.getAttribute('aria-expanded') === 'false',
+    })
+    await page.click({
+      selector: `${card} .disclosure > summary`,
+      text: "Hydra's build instructions",
+    })
+    await page.shows({
+      what: 'the build instructions formatted as Markdown',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .disclosure[open] .markdown strong`)?.textContent === 'Ready for review',
+    })
+    const asked = await worker.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--question',
+        '**Keep** this approach?',
+        '--context',
+        markdown,
+        '--choice',
+        '**Keep**: Preserve the existing layout',
+        '--choice',
+        `Review: [Reference task](pnyx-task:${reference.id})`,
+        '--recommend',
+        '1',
+      ],
+    })
+    const question = /^ask: (\S+)$/m.exec(asked)?.[1]
+    assert.ok(
+      question,
+      asked,
+    )
+    await s.as({ agent: await s.agent({ hydra: true }) }).run({
+      args: [
+        'task',
+        'escalate',
+        'ship',
+        question,
+        '--reason',
+        'Owner decision',
+      ],
+    })
+    await page.shows({
+      what: 'formatted question and option with its accessible description',
+      arg: { card },
+      check: ({ card }) => {
+        const option = document.querySelector(`${card} .ask-option`)
+        const pick = option?.querySelector('.ask-option-pick')
+        const description = document.getElementById(pick?.getAttribute('aria-describedby') ?? '')
+
+        return document.querySelector(`${card} .ask-headline strong`)?.textContent === 'Keep'
+          && option?.querySelector('.ask-label strong')?.textContent === 'Keep'
+          && description?.textContent?.includes('Recommended') && description.textContent.includes('Preserve the existing layout')
+          && !document.querySelector('button button, button a')
+      },
+    })
+    await page.click({
+      selector: `${card} .ask-option`,
+      text: 'Keep',
+    })
+    await page.shows({
+      what: 'clicking the option row selects it',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'true',
+    })
+    await page.press({ key: 'Enter' })
+    await page.shows({
+      what: 'keyboard activation toggles the focused option',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'false',
+    })
+    await page.click({ selector: `${card} .ask-option .task-reference` })
+    await page.shows({
+      what: 'the option reference opens its task',
+      check: () => document.querySelector('.card-open[aria-label="Open task Reference task"]')?.getAttribute('aria-expanded') === 'true',
+    })
+    await page.shows({
+      what: 'following the reference did not select the option',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .ask-option-pick`)?.getAttribute('aria-pressed') === 'false',
+    })
+    await page.click({ selector: `${card} .ask-option-pick[aria-label="Choose Keep"]` })
+    await page.click({ selector: `${card} .ask textarea` })
+    await page.type({ text: '**Approved** with `coverage`' })
+    await page.click({
+      selector: `${card} .ask button`,
+      text: 'Send answer',
+    })
+    await page.shows({
+      what: 'the recorded decision renders the Markdown answer',
+      arg: { card },
+      check: ({ card }) => [...document.querySelectorAll(`${card} .decision-answer-text strong`)]
+        .some(element => element.textContent === 'Approved'),
+    })
+    await page.close()
+  },
+)
+
+test(
+  'Waiting on you lists each owner item, opens permissions, and removes only the item answered',
+  async () => {
+    const s = await pnyx.scenario()
+    const {
+      folder,
+      worker,
+    } = await startedTask({ s })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review the layout choices' }) })
+
+    for (const question of [
+      'Keep the compact layout?',
+      'Ship the new theme?',
+    ]) {
+      await hydra.run({
+        args: [
+          'task',
+          'ask',
+          'ship',
+          '--to',
+          'owner',
+          '--question',
+          question,
+        ],
+      })
+    }
+
+    await worker.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--to',
+        'hydra',
+        '--question',
+        'Which file should I edit?',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'palette',
+        '--title',
+        'Polish the palette',
+      ],
+    })
+    const palette = s.task({ key: 'palette' }).id
+    await s.owner({
+      args: [
+        'push',
+        '--key',
+        'palette',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        attention: [
+          {
+            key: 'fixture:question',
+            kind: 'question',
+            blocking: true,
+            text: 'Which preview should stay?',
+          },
+        ],
+      }),
+    })
+    const agent = await s.agent({ cwd: folder })
+    assert.ok(agent.useTool)
+    const permission = agent.useTool({
+      tool: 'Bash',
+      input: { command: 'echo preview' },
+    })
+    await until({
+      what: 'the pending permission',
+      check: () => s.task({ key: 'ship' }).permissions?.find(item => item.status === 'pending'),
+    })
+    const page = await openHydra({ s })
+    await page.click({ selector: '.waiting-decisions > .popover > button' })
+    await page.shows({
+      what: 'one row per owner question, permission and prompt above the composer',
+      check: () => {
+        const strip = document.querySelector('.waiting-decisions')
+        const rows = [...strip?.querySelectorAll('li') ?? []].map(row => row.textContent)
+        const composer = document.querySelector('.hydra-chat .composer')
+
+        return rows.length === 4 && rows[0]?.includes('Keep the compact layout?')
+          && rows[1]?.includes('Ship the new theme?') && rows[2]?.includes('Allow Bash?')
+          && rows[3]?.includes('Which preview should stay?')
+          && strip?.textContent?.includes('Waiting on you')
+          && composer
+          && strip.getBoundingClientRect().bottom <= composer.getBoundingClientRect().top
+      },
+    })
+    await page.click({
+      selector: '.waiting-decisions button',
+      text: 'Allow Bash?',
+    })
+    await page.shows({
+      what: 'the permission on its open task',
+      check: () => document.querySelector('.card .ask[aria-label="Tool permission"]'),
+    })
+    await page.click({
+      selector: '.card .ask button',
+      text: 'Allow',
+    })
+    await permission
+    await page.click({ selector: '.waiting-decisions > .popover > button' })
+    await page.shows({
+      what: 'only the permission removed from the strip',
+      check: () => {
+        const rows = [...document.querySelectorAll('.waiting-decisions li')]
+
+        return rows.length === 3 && rows.every(row => !row.textContent?.includes('Allow Bash?'))
+      },
+    })
+    await page.click({
+      selector: '.waiting-decisions button',
+      text: 'Which preview should stay?',
+    })
+    await page.shows({
+      what: 'the second task opens with its own prompt',
+      arg: { palette },
+      check: ({ palette }) => {
+        const card = document.querySelector(`[data-task="${palette}"].selected`)
+
+        return card?.textContent?.includes('Polish the palette')
+          && card.textContent.includes('Which preview should stay?')
+      },
+    })
+    await s.owner({
+      args: [
+        'push',
+        '--key',
+        'palette',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({ attention: [] }),
+    })
+    const questions = s.task({ key: 'ship' }).asks!.filter(ask => ask.audience === 'owner')
+
+    await page.shows({
+      what: 'only the two owner questions remain after clearing the prompt',
+      check: () => document.querySelector('.waiting-decisions button')?.textContent?.includes('Waiting on you · 2'),
+    })
+    await page.click({ selector: '.waiting-decisions > .popover > button' })
+    await page.shows({
+      what: 'both owner questions visible before answering either',
+      check: () => document.querySelectorAll('.waiting-decisions li').length === 2,
+    })
+
+    for (const ask of questions) {
+      await s.owner({
+        args: [
+          'task',
+          'answer',
+          'ship',
+          ask.id,
+          '--text',
+          'Yes',
+        ],
+      })
+
+      if (ask.id === questions[0].id) {
+        await page.shows({
+          what: 'answering one owner question leaves the other listed',
+          check: () => {
+            const rows = [...document.querySelectorAll('.waiting-decisions li')]
+
+            return rows.length === 1 && rows[0].textContent?.includes('Ship the new theme?')
+              && !rows[0].textContent?.includes('Keep the compact layout?')
+          },
+        })
+      }
+    }
+
+    await page.shows({
+      what: 'no strip remains when only Hydra’s question is open',
+      check: () => !document.querySelector('.waiting-decisions'),
+    })
+    await page.close()
+  },
+)
+
+test(
+  'Waiting on you supports the composer, chat caret, picker and every question control',
+  async () => {
+    const s = await pnyx.scenario()
+    await startedTask({ s })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review the release' }) })
+    await hydra.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--to',
+        'owner',
+        '--question',
+        'Keep the compact layout?',
+        '--context',
+        'Choose the spacing for the release.',
+        '--details',
+        'The compact layout fits narrow screens.',
+        '--choice',
+        'Keep compact',
+        '--choice',
+        'Use roomy',
+      ],
+    })
+    await hydra.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--to',
+        'owner',
+        '--question',
+        'Publish the theme?',
+      ],
+    })
+    const page = await openHydra({ s })
+    await page.shows({
+      what: 'both questions available in the waiting row',
+      check: () => document.querySelector('.waiting-decisions button')?.textContent?.includes('Waiting on you · 2'),
+    })
+    await page.click({ selector: '.hydra-chat .composer textarea' })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'the row focused without opening its picker',
+      check: () => document.activeElement?.matches('.waiting-decisions > .popover > button')
+      && document.activeElement.getAttribute('aria-expanded') === 'false',
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'a second Up enters the chat caret without opening a picker',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+      && !document.querySelector('.waiting-decisions [popover]') && !!window.getSelection()?.focusNode,
+    })
+    await page.click({ selector: '.hydra-chat .composer textarea' })
+    await page.press({ key: 'ArrowUp' })
+    await page.press({ key: 'Tab' })
+    await page.shows({
+      what: 'Tab opens an anchored picker and focuses its first question',
+      check: () => document.activeElement?.matches('.waiting-decisions li button')
+      && document.activeElement.textContent?.includes('Keep the compact layout?')
+      && document.querySelector('.waiting-decisions [popover]:popover-open'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down reaches the next question',
+      check: () => document.activeElement?.textContent?.includes('Publish the theme?'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down past the picker returns to the composer',
+      check: () => document.activeElement?.matches('.hydra-chat .composer textarea'),
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.press({ key: 'Enter' })
+    await page.press({ key: 'Enter' })
+    await page.shows({
+      what: 'Enter on the first question reaches its first answer option',
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+      && document.activeElement.getAttribute('aria-label')?.includes('Keep compact'),
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up leaves the choice for the question context caret',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+      && window.getSelection()?.focusNode?.textContent?.includes('Choose the spacing'),
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'the caret moves freely through the question headline',
+      check: () => window.getSelection()?.focusNode?.textContent?.includes('Keep the compact layout?'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down returns from question text to the first choice',
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+      && document.activeElement.getAttribute('aria-label')?.includes('Keep compact'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the first choice label as text',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Keep compact'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down reaches the adjacent second choice',
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick')
+        && document.activeElement.getAttribute('aria-label')?.includes('Use roomy'),
+    })
+    await page.press({ key: 'Enter' })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the selected choice label as text',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Use roomy'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the optional note',
+      check: () => document.activeElement?.matches('.hydra-chat .ask textarea'),
+    })
+    await page.type({ text: 'Keep this layout\nwith a note' })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up within a multiline note keeps editing the note',
+      check: () => document.activeElement?.matches('.hydra-chat .ask textarea')
+      && (document.activeElement as HTMLTextAreaElement).selectionStart < 'Keep this layout\n'.length,
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up past the note reaches the selected choice label',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+        && window.getSelection()?.focusNode?.textContent?.includes('Use roomy'),
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up from the label returns to the selected option',
+      check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'the note retains the draft and can be left from its last line',
+      check: () => {
+        const input = document.activeElement as HTMLTextAreaElement
+
+        if (!input.matches('.hydra-chat .ask textarea')) {
+          return false
+        }
+
+        input.setSelectionRange(
+          input.value.length,
+          input.value.length,
+        )
+
+        return input.value === 'Keep this layout\nwith a note'
+      },
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down reaches the details disclosure',
+      check: () => document.activeElement?.matches('.hydra-chat .decision-details summary'),
+    })
+    await page.press({ key: 'Enter' })
+    await page.shows({
+      what: 'Enter opens the details disclosure',
+      check: () => document.activeElement?.closest('details')?.open,
+    })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down enters the expanded details as text',
+      check: () => document.activeElement?.matches('.hydra-chat .messages')
+      && window.getSelection()?.focusNode?.textContent?.includes('fits narrow screens'),
+    })
+    await page.press({ key: 'ArrowUp' })
+    await page.shows({
+      what: 'Up leaves the details for their disclosure control',
+      check: () => document.activeElement?.matches('.hydra-chat .decision-details summary'),
+    })
+    await page.press({ key: 'Enter' })
+    await page.press({ key: 'ArrowDown' })
+    await page.press({ key: 'ArrowDown' })
+    await page.shows({
+      what: 'Down passes closed details and reaches Send answer',
+      check: () => document.activeElement?.matches('.hydra-chat .pending-decision-actions button'),
+    })
+    await page.press({ key: 'Escape' })
+    await page.shows({
+      what: 'Escape leaves an open question without submitting its draft',
+      check: () => document.activeElement?.matches('.hydra-chat .composer textarea')
+      && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+    })
+    await page.close()
   },
 )

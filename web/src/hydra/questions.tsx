@@ -1,7 +1,10 @@
+import { ChoiceOption } from '../components/ui/choice-option.tsx'
+import { CollapsibleText } from '../components/ui/disclosure.tsx'
 import { useState } from 'react'
 import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
 import type { Attention, Card, FormField, Question } from '../../../src/core/model.ts'
-import { Button, Input, Switch } from '../components/ui/controls.tsx'
+import { Button, Input } from '../components/ui/controls.tsx'
+import { markdownText } from '../components/ui/markdown.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
@@ -43,25 +46,21 @@ function QuestionField({
 
   return (
     <fieldset className="ask-question">
-      <legend>
-        {question.header && <span className="ask-header">{question.header}</span>}
-        {question.question}
-        {question.multiSelect && <span className="small muted"> · pick any</span>}
-      </legend>
+      <legend>Question {index + 1}{question.multiSelect && <span className="small muted"> · pick any</span>}</legend>
+      {question.header && <CollapsibleText className="ask-header" text={question.header} />}
+      <CollapsibleText text={question.question} />
       <div className="ask-options">
         {question.options.map((
           option,
           i,
         ) => (
-          <Button
+          <ChoiceOption
             key={option.label}
-            className="ask-option"
-            aria-pressed={draft.pick.includes(i + 1)}
-            onClick={() => toggle({ n: i + 1 })}
-          >
-            <span className="ask-label">{option.label}</span>
-            {option.description && option.description !== option.label && <span className="ask-description">{option.description}</span>}
-          </Button>
+            label={option.label}
+            description={option.description}
+            selected={draft.pick.includes(i + 1)}
+            choose={() => toggle({ n: i + 1 })}
+          />
         ))}
       </div>
       {!question.multiSelect && (
@@ -154,40 +153,47 @@ function FormInput({
 }) {
   const label = `${field.title ?? field.name}${field.required ? ' *' : ''}`
 
+  const name = markdownText({ text: label })
+
   if (field.type === 'boolean') {
     return (
-      <Switch label={label} checked={value === true} onChange={change} />
+      <ChoiceOption
+        label={label}
+        selected={value === true}
+        choose={() => change({ value: value !== true })}
+      />
     )
   }
 
   if (field.options) {
     return (
-      <fieldset className="ask-question">
-        <legend>{label}</legend>
+      <div className="ask-question" role="group" aria-label={name}>
+        <CollapsibleText text={label} />
         <div className="ask-options">
           {field.options.map(option => (
-            <Button
+            <ChoiceOption
               key={option}
-              className="ask-option"
-              aria-pressed={value === option}
-              onClick={() => change({ value: option })}
-            >
-              <span className="ask-label">{option}</span>
-            </Button>
+              label={option}
+              selected={value === option}
+              choose={() => change({ value: option })}
+            />
           ))}
         </div>
-      </fieldset>
+      </div>
     )
   }
 
   return (
-    <Input
-      aria-label={label}
-      placeholder={label}
-      inputMode={field.type === 'string' ? undefined : 'decimal'}
-      value={typeof value === 'string' ? value : ''}
-      onChange={e => change({ value: e.target.value })}
-    />
+    <div className="ask-question">
+      <CollapsibleText text={label} />
+      <Input
+        aria-label={name}
+        placeholder={name}
+        inputMode={field.type === 'string' ? undefined : 'decimal'}
+        value={typeof value === 'string' ? value : ''}
+        onChange={e => change({ value: e.target.value })}
+      />
+    </div>
   )
 }
 
@@ -399,7 +405,7 @@ export function InlineQuestions({
               <Icon name="agent" size={14} />
               {TITLE[request.kind] ?? 'Agent request'}
             </strong>
-            {request.kind !== 'question' && <p>{request.text}</p>}
+            {request.kind !== 'question' && <CollapsibleText text={request.text ?? ''} />}
             {request.answered
               ? <span className="receipt">Answered · waiting for the session to move on</span>
               : prompt?.kind === 'questions'

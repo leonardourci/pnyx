@@ -1,3 +1,4 @@
+import { taskReadiness } from '../core/dependencies.ts'
 import { askWording, openAsks } from '../core/asks.ts'
 import { openDecisions } from '../core/decisions.ts'
 import { HYDRA_CARD, hydraConfig, roleColumn } from '../core/hydra.ts'
@@ -10,7 +11,7 @@ export const MINUTE_MS = 60_000
 export const QUESTION_REMINDER_MS = 4 * 60 * MINUTE_MS
 
 export interface ReviewFlag {
-  kind: 'approved merge is green' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind'
+  kind: 'approved merge is green' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'prerequisite unmet'
   task: string
   detail: string
   reminder?: string
@@ -85,7 +86,10 @@ export function boardReview({
   const active = ({ card }: { card: Card }) => workerAttached({ card }) || openPr({ card })
   const live = tasks.filter(card => active({ card })
     || decisions.some(item => item.card.id === card.id) || ready.some(item => item.id === card.id)
-    || card.column === progress)
+    || card.column === progress || taskReadiness({
+    state,
+    card,
+  }).unmet.length > 0)
   const flags: ReviewFlag[] = []
   const lines = ['Timed review:']
 
@@ -110,6 +114,24 @@ export function boardReview({
       at: quietAt,
       now,
     })}`)
+
+    const readiness = taskReadiness({
+      state,
+      card,
+    })
+
+    for (const item of readiness.unmet) {
+      const detail = `waiting for ${item.title} (${item.id}): ${item.reason}`
+      lines.push(`  Prerequisite: ${detail}`)
+
+      if (workerAttached({ card }) && card.status?.state !== 'done') {
+        flags.push({
+          kind: 'prerequisite unmet',
+          task: card.id,
+          detail: `${detail}; worker already assigned, Hydra must review`,
+        })
+      }
+    }
 
     if (card.column === progress && !watching) {
       flags.push({
@@ -222,7 +244,10 @@ export function boardReview({
 
   return {
     live: tasks.some(card => active({ card }))
-      || decisions.length > 0 || ready.length > 0,
+      || decisions.length > 0 || ready.length > 0 || live.some(card => taskReadiness({
+      state,
+      card,
+    }).unmet.length > 0),
     block: lines.join('\n'),
     flags,
     reminders: flags.flatMap(flag => flag.reminder ? [flag.reminder] : []),

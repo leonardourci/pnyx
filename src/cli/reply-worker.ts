@@ -1,4 +1,5 @@
 // Isolates a native send from the servers event loop; all writes use the CLI command.
+import { followUpSteering } from '../task-inbox/follow-up.ts'
 import { AxiError } from 'axi-sdk-js'
 import { agent, reply } from './reply.ts'
 
@@ -7,7 +8,13 @@ try {
     command,
     ...args
   ] = process.argv.slice(2)
-  process.stdout.write(JSON.stringify(await (command === 'agent' ? agent : reply)(args)))
+
+  if (command === 'inbox-follow') {
+    await followUpSteering({ hydraId: args[0]! })
+    process.stdout.write('{}')
+  } else {
+    process.stdout.write(JSON.stringify(await (command === 'agent' ? agent : reply)(args)))
+  }
 } catch (error) {
   if (error instanceof AxiError) {
     process.stdout.write(JSON.stringify({

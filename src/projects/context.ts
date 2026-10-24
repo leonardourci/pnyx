@@ -1,3 +1,4 @@
+import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'
 import type { HydraState } from '../core/model.ts'
 import { projectsFor } from './read.ts'
@@ -37,7 +38,10 @@ export function projectWorkerContext({
   project?: string
 }): string {
   const project = projectsFor({ state }).filter(project => !project.detached)
-    .find(project => project.path === ref || project.name === ref)
+    .find(project => matchesProject({
+      project,
+      ref,
+    }))
 
   if (!project) {
     return ''

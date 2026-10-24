@@ -1,3 +1,4 @@
+import { requireReportReview } from '../investigation/inventory.ts'
 import { taskInstructions } from './intent.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
@@ -141,6 +142,18 @@ function decided({
 }): Decision {
   if (event.id in state.eventIds) {
     return { skipped: 'duplicate' }
+  }
+
+  const card = state.cards[event.cardId]
+  const movedToDone = event.type === 'card.moved'
+    && hydraConfig({ state }).columns.find(column => column.id === event.data.after)?.role === 'done'
+  const completed = event.type === 'card.outcome' && event.data.after?.state === 'done'
+
+  if (card && (movedToDone || completed)) {
+    requireReportReview({
+      state,
+      card,
+    })
   }
 
   checkRevision({
@@ -1622,6 +1635,7 @@ export function decideUndo({
     'task.declared',
     'task.kind',
     'task.report',
+    'task.report-reviewed',
     'task.landing',
     'task.mirrored',
     'task.permission',

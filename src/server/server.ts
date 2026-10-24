@@ -1,12 +1,16 @@
+import { helperProgress } from '../helper/route.ts'
 import { startReviewTimer } from '../review/timer.ts'
-import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
+import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '../landing/follow.ts'
+import { createSourceRunner } from '../external-sources/runner.ts'
+import { sourceDeadline } from '../external-sources/state.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
 import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
+import { steeringToFollow } from '../task-inbox/follow-up.ts'
 import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
-import { candidates } from '../dispatch/config.ts'
+import { candidates, effectiveDispatch } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
@@ -20,7 +24,8 @@ import { settleDone, settles } from '../copies/copies.ts'
 import { execFile } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import type { CurrentAction } from '../thread/calls.ts'
-import { readCatalog, type Catalog, type CatalogLocations } from '../thread/catalog.ts'
+import type { Catalog, CatalogLocations } from '../thread/catalog.ts'
+import { createCatalogIndex } from '../thread/catalog-index.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { wakeReasons } from '../core/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
@@ -182,6 +187,7 @@ export interface RunningServer {
   socket: string | null
   // Hydras that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
+  open({ id }: { id: string }): Promise<string>
   close(): Promise<void>
 }
 
@@ -643,6 +649,7 @@ export async function startServer({
     url: named.url,
     socket: named.socket,
     skipped: { ...skipped },
+    open,
     close,
   }
 }
@@ -1002,6 +1009,61 @@ async function mountOwnedHydra({
     state,
     offset,
   } = loadHydra({ hydraId })
+  const catalogIndex = createCatalogIndex({ locations: catalogLocations })
+
+  const catalogCard = ({
+    card,
+    provider,
+  }: {
+    card: Card
+    provider?: string
+  }): Card => {
+    if (card.id !== HYDRA_CARD) {
+      return card
+    }
+
+    const cwd = card.agent?.cwd ?? join(
+      dir,
+      'agent',
+    )
+
+    if (!card.agent?.cwd) {
+      mkdirSync(
+        cwd,
+        { recursive: true },
+      )
+    }
+
+    return {
+      ...card,
+      agent: {
+        ...card.agent,
+        sessionId: card.agent?.sessionId ?? '',
+        cwd,
+        provider: provider ?? card.agent?.provider ?? 'claude',
+      },
+    }
+  }
+
+  const warmCatalog = async () => {
+    const card = state.cards[HYDRA_CARD]
+
+    if (!card) {
+      return
+    }
+
+    await Promise.all([
+      'claude',
+      'codex',
+    ].map(provider => catalogIndex.read({
+      card: catalogCard({
+        card,
+        provider,
+      }),
+      projects: state.projects,
+    })))
+  }
+
   // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
   let firstmate: ReturnType<typeof watchHomes> | undefined
   let watchedHome: string | undefined
@@ -1479,6 +1541,14 @@ async function mountOwnedHydra({
         event,
       })
       recent.push(event)
+
+      if (event.type === 'hydra.project') {
+        void warmCatalog().catch(error => console.error(
+          'pnyx catalog warmup:',
+          error,
+        ))
+      }
+
       broadcast({ event })
       touchLatest({ ids: [event.cardId] })
 
@@ -1494,7 +1564,20 @@ async function mountOwnedHydra({
           reasons,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
-        agents.unread({ seq: event.seq })
+        const task = helperProgress({
+          state,
+          event,
+        })
+
+        if (task) {
+          agents.wake({
+            seq: event.seq,
+            card: task,
+            reasons: [],
+          })
+        } else {
+          agents.unread({ seq: event.seq })
+        }
       }
     }
 
@@ -1607,7 +1690,7 @@ async function mountOwnedHydra({
           })()
         }
 
-        const following = followedLinks({ state }).length > 0
+        const following = needsPullRequestFollow({ state })
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
           followCheckedAt = Date.now()
@@ -1627,12 +1710,27 @@ async function mountOwnedHydra({
         }
 
         const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
-        repliesPending = repliesToFollow({ state })
+        repliesPending = repliesToFollow({ state }) || steeringToFollow({ state })
 
         if (!replyRun && repliesPending && replyCheckDue) {
           replyCheckedAt = Date.now()
           replyRun = (async () => {
             try {
+              if (steeringToFollow({ state })) {
+                await runFile(
+                  process.execPath,
+                  [
+                    REPLY_WORKER,
+                    'inbox-follow',
+                    hydraId,
+                  ],
+                  {
+                    timeout: REPLY_WORKER_TIMEOUT_MS,
+                    maxBuffer: MAX_BODY,
+                  },
+                )
+              }
+
               await followUpReplies({
                 hydraId,
                 tried: triedResends,
@@ -1648,6 +1746,7 @@ async function mountOwnedHydra({
           })()
         }
 
+        sources.reconcile()
         review.check()
         fireReminders({ hydraId })
         pump()
@@ -1669,6 +1768,8 @@ async function mountOwnedHydra({
       } finally {
         clearTimeout(expiryTimer)
         const deadlines = [
+          sourceDeadline({ state }),
+          sources.deadline(),
           doneDeadline({ state }),
           reminderDeadline({ state }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
@@ -1676,7 +1777,7 @@ async function mountOwnedHydra({
         ]
           .filter((at): at is number => at !== undefined)
 
-        if (!followRun && followedLinks({ state }).length > 0) {
+        if (!followRun && needsPullRequestFollow({ state })) {
           deadlines.push(followCheckedAt + followDelay)
         }
 
@@ -1748,6 +1849,11 @@ async function mountOwnedHydra({
         }
       }
     },
+  })
+
+  const sources = createSourceRunner({
+    hydraId,
+    changed: kick,
   })
 
   const review = startReviewTimer({
@@ -2013,8 +2119,13 @@ async function mountOwnedHydra({
     })
   }
 
+  await warmCatalog().catch(error => console.error(
+    'pnyx catalog warmup:',
+    error,
+  ))
+
   const catalogReads = new WeakMap<WebSocket, {
-    card: string
+    scope: string
     read: Promise<Catalog>
   }>()
 
@@ -2117,16 +2228,47 @@ async function mountOwnedHydra({
             state,
             ref: args[0],
           })
+          const config = hydraConfig({ state })
+          const effective = effectiveDispatch({
+            hydraId,
+            state,
+          })
+          const receiving = card.id === HYDRA_CARD
+            ? config.hydra.agent?.harness
+              ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
+              ?? effective.dispatch.default[0]?.harness
+            : card.agent?.provider
+          const currentCard = catalogCard({
+            card,
+            provider: receiving,
+          })
+          const scope = JSON.stringify([
+            card.id,
+            receiving,
+            state.projectsRevision,
+          ])
           let entry = catalogReads.get(ws)
 
-          if (entry?.card !== card.id) {
+          if (entry?.scope !== scope) {
             const previous = entry?.read.catch(() => undefined)
             const next = {
-              card: card.id,
-              read: Promise.resolve(previous).then(() => readCatalog({
-                card,
-                locations: catalogLocations,
-              })),
+              scope,
+              read: Promise.resolve(previous).then(async () => {
+                const native = await agents.catalogCommands({ card })
+                const catalog = await catalogIndex.read({
+                  card: currentCard,
+                  projects: state.projects,
+                })
+
+                return {
+                  ...catalog,
+                  suggestions: [
+                    ...catalog.suggestions,
+                    ...((receiving === 'codex') === (card.agent?.provider === 'codex') ? native : []),
+                  ],
+                  provider: receiving,
+                }
+              }),
             }
             catalogReads.set(
               ws,
@@ -2821,8 +2963,10 @@ async function mountOwnedHydra({
       kick,
     )
     await queueRun
+    await sources.close()
     firstmate?.close()
     review.close()
+    catalogIndex.close()
     agents.close()
     await spend.close()
 

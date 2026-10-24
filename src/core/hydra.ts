@@ -1,4 +1,7 @@
+import { openAsks } from './asks.ts'
+import { requireReportReview } from '../investigation/inventory.ts'
 import { ownerGates } from './gates.ts'
+import { columnRule, validateColumnRule } from './columns.ts'
 import { ownerActor, HydraError, EVENT_VERSION, LEGACY_COLUMNS, LEGACY_IN_PROGRESS, TASK_STATES, type Card, type COLUMNS, type HydraColumn, type HydraConfig, type HydraEvent, type HydraMessage, type HydraState, type Column, type HydraChange, type Link, type TaskStatus, type TaskDeclaration } from './model.ts'
 import type { Meta, Decision } from './decide.ts'
 import { permissionAttention } from './permissions.ts'
@@ -7,7 +10,7 @@ import { assignDefined } from './tasks.ts'
 export const HYDRA_CARD = '$hydra'
 type Role = (typeof COLUMNS)[number]
 
-export const DEFAULT_COLUMNS: HydraColumn[] = [
+const ROLE_COLUMNS: HydraColumn[] = [
   {
     id: 'queued',
     title: 'Queued',
@@ -39,6 +42,11 @@ export const DEFAULT_COLUMNS: HydraColumn[] = [
     description: 'Work whose result has been checked and is complete.',
   },
 ]
+
+export const DEFAULT_COLUMNS = ROLE_COLUMNS.map(column => ({
+  ...column,
+  rule: structuredClone(columnRule({ column })),
+}))
 
 // A task created in an older layout's Workers on it column still starts working.
 const ROLE_STATUS: Partial<Record<NonNullable<HydraColumn['role']>, TaskStatus>> = {
@@ -102,10 +110,28 @@ export function roleColumn({
 function statusRole({ card }: { card: Card }): Role | undefined {
   const state = card.outcome?.state === 'done' ? 'done' : card.status?.state
 
-  return state === 'done' ? 'done'
-    : state === 'needs_you' || state === 'blocked' ? 'needs_you'
-      : state === 'paused' ? 'parked'
-        : state === 'working' || card.column === LEGACY_IN_PROGRESS ? 'in_progress' : undefined
+  if (state === 'done') {
+    return 'done'
+  }
+
+  if (ownerGates({ card }).length || card.reminder?.dueAt) {
+    return 'needs_you'
+  }
+
+  if (card.hold) {
+    return 'queued'
+  }
+
+  if (state === 'paused') {
+    return 'parked'
+  }
+
+  if (state === 'working' || state === 'needs_you' || state === 'blocked'
+    || card.column === LEGACY_IN_PROGRESS) {
+    return 'in_progress'
+  }
+
+  return undefined
 }
 
 // Rebuilt only for a legacy layout, or a Firstmate-linked Hydra missing a default role; the owner's own columns follow.
@@ -141,10 +167,15 @@ export function migrateColumns({
   meta: Meta
 }): Decision {
   const before = hydraConfig({ state }).columns
-  const columns = withDefaultColumns({
+  const layout = withDefaultColumns({
     columns: before,
     locked: state.config?.hydra.kind === 'firstmate',
   })
+  const missingRules = layout.some(column => column.rule === undefined)
+  const columns = missingRules ? layout.map(column => ({
+    ...column,
+    rule: structuredClone(columnRule({ column })),
+  })) : layout
   const fallback = fallbackColumn({ columns })
   const placements = Object.fromEntries(Object.values(state.cards)
     .filter(card => !columns.some(c => c.id === card.column))
@@ -278,6 +309,24 @@ export function hydraEvent({
     return { skipped: 'duplicate' }
   }
 
+  if (change.type === 'task.visibility' && 'after' in change.data && change.data.after === true) {
+    const card = state.cards[cardId]
+
+    if (card) {
+      requireReportReview({
+        state,
+        card,
+      })
+
+      if (openAsks({ card }).some(ask => ask.origin)) {
+        throw new HydraError({
+          message: 'answer or evidence-close the report question before hiding its task',
+          code: 'OWNER_DECISION_PENDING',
+        })
+      }
+    }
+  }
+
   const revision = cardId === '$projects' ? state.projectsRevision ?? 0 : cardId === '$board' ? state.configRevision ?? 0 : state.cards[cardId]?.revision ?? 0
 
   if (meta.ifRevision !== undefined && meta.ifRevision !== revision) {
@@ -320,6 +369,10 @@ export function validateColumns({ columns }: { columns: HydraColumn[] }): void {
   }
 
   for (const column of columns) {
+    if (column.rule !== undefined) {
+      validateColumnRule({ rule: column.rule })
+    }
+
     if (!column.title.trim() || column.title.length > 100) {
       throw new HydraError({
         message: 'column titles must have 1–100 characters',
@@ -380,6 +433,13 @@ export function declareTask({
     throw new HydraError({
       message: `task not found: ${ref}`,
       code: 'NOT_FOUND',
+    })
+  }
+
+  if (status === 'done') {
+    requireReportReview({
+      state,
+      card,
     })
   }
 
@@ -864,7 +924,7 @@ export function applyHydra({
     return true
   }
 
-  if (event.type === 'task.kind' || event.type === 'task.report' || event.type === 'task.landing') {
+  if (event.type === 'task.kind' || event.type === 'task.report' || event.type === 'task.report-reviewed' || event.type === 'task.landing') {
     const card = state.cards[event.cardId]
 
     if (!card) {
@@ -881,6 +941,15 @@ export function applyHydra({
         at: event.at,
         actor: event.actor,
         chars: event.data.text.length,
+      }
+    }
+
+    if (event.type === 'task.report-reviewed' && card.report?.id === event.data.report) {
+      card.report.review = {
+        id: event.id,
+        at: event.at,
+        actor: event.actor,
+        calls: structuredClone(event.data.calls),
       }
     }
 
