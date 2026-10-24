@@ -3608,9 +3608,18 @@ test(
     await send({ text: 'Hello' })
     await until({ check: finished })
 
-    await follow({
-      state: 'merged',
-      checks: '2 passed, 2 total',
+    await followPullRequests({
+      hydraId: 'lab',
+      readStatus: prStatus({
+        state: 'merged',
+        checks: '2 passed, 2 total',
+      }),
+      readOutcome: async () => ({
+        outcome: 'merged',
+        head: 'a'.repeat(40),
+        commit: 'b'.repeat(40),
+      }),
+      tell: async () => {},
     })
     await until({ check: () => wakes().length === 1 && finished() })
     const ref = ({ key }: { key: string }) => taskMention({
