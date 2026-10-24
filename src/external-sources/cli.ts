@@ -1,6 +1,7 @@
 import { COMMON, integer, meta, parse, required, type Output } from '../cli/commands.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { steeringClaim } from '../task-inbox/state.ts'
+import { armLavish } from './lavish.ts'
 import {
   captureResult, commandIdentity, handleResult, invalidSource, registerSource,
   SOURCE_MAX_BYTES, SOURCE_TIMEOUT_MS, sourceById, sourceTask,
@@ -28,6 +29,10 @@ export function sourceCommand({ args }: { args: string[] }): Output {
       session: { type: 'string' },
       generation: { type: 'string' },
       all: { type: 'boolean' },
+      page: { type: 'string' },
+      after: { type: 'string' },
+      sequence: { type: 'string' },
+      'agent-reply-file': { type: 'string' },
     },
   })
   const [
@@ -72,6 +77,7 @@ export function sourceCommand({ args }: { args: string[] }): Output {
       task: card.id,
       source: source.id,
       state: source.state,
+      lavish: source.lavish ?? 'none: generic source',
       claim: steeringClaim({ card }) ?? 'none: no worker',
       results: results.length ? results : 'none: no unread results',
     }
@@ -81,8 +87,9 @@ export function sourceCommand({ args }: { args: string[] }): Output {
     'register',
     'handled',
     'stop',
+    'lavish',
   ].includes(action ?? '')) {
-    invalidSource({ message: 'Use task source register|list|read|handled|stop' })
+    invalidSource({ message: 'Use task source register|lavish|list|read|handled|stop' })
   }
 
   const sourceId = required({
@@ -93,6 +100,52 @@ export function sourceCommand({ args }: { args: string[] }): Output {
   return withWriter({
     hydraId,
     fn: ({ writer }) => {
+      if (action === 'lavish') {
+        let claim
+
+        if (values.session || values.generation) {
+          claim = {
+            session: required({
+              value: values.session as string | undefined,
+              what: '--session',
+            }),
+            generation: integer({
+              value: required({
+                value: values.generation as string | undefined,
+                what: '--generation',
+              }),
+              flag: '--generation',
+            })!,
+          }
+        }
+
+        return {
+          source: armLavish({
+            writer,
+            ref: task,
+            id: sourceId,
+            page: required({
+              value: values.page as string | undefined,
+              what: '--page',
+            }),
+            executable: required({
+              value: values.executable as string | undefined,
+              what: '--executable',
+            }),
+            replyFile: values['agent-reply-file'] as string | undefined,
+            after: values.after as string | undefined,
+            sequence: integer({
+              value: values.sequence,
+              flag: '--sequence',
+            }),
+            claim,
+            meta: actor,
+            worker,
+          }),
+          next: 'Registration saved. Read task source list/read to confirm reply acceptance and a running listener before reporting listening.',
+        }
+      }
+
       if (action === 'handled') {
         return {
           result: handleResult({

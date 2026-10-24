@@ -293,6 +293,21 @@ export function createSourceRunner({
             continue
           }
 
+          const predecessor = source.lavish?.after
+
+          if (predecessor) {
+            const previousSource = card.externalSources?.find(
+              source => source.id === predecessor.source,
+            )
+            const previousResult = previousSource?.results.find(
+              result => result.sequence === predecessor.sequence,
+            )
+
+            if (!previousResult?.handled) {
+              continue
+            }
+          }
+
           appendSource({
             writer,
             card,

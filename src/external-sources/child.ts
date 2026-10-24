@@ -96,7 +96,14 @@ process.once(
 
       child = spawn(
         source.command.executable,
-        source.command.argv,
+        source.lavish?.reply && !source.lavish.reply.accepted
+          ? [
+            'reply',
+            source.lavish.page,
+            '--agent-reply',
+            source.lavish.reply.text,
+          ]
+          : source.command.argv,
         {
           cwd: source.command.cwd,
           shell: false,
