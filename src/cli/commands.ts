@@ -6,7 +6,7 @@ import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { mergeCommand } from '../landing/merge.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'
-import { buildCommand, reportCommand } from '../investigation/cli.ts'
+import { buildCommand, reportCommand, reportReviewCommand } from '../investigation/cli.ts'
 import { parseKind } from '../investigation/report.ts'
 import { refuseEarlyDone } from '../landing/done.ts'
 import { taskSpend } from '../spend/tasks.ts'
@@ -920,6 +920,13 @@ export const TASK_OPTIONS: Options = {
   to: { type: 'string' },
   undelivered: { type: 'boolean' },
   'from-message': { type: 'string' },
+  'from-report': { type: 'string' },
+  report: { type: 'string' },
+  none: { type: 'boolean' },
+  call: {
+    type: 'string',
+    multiple: true,
+  },
   kind: { type: 'string' },
   file: { type: 'string' },
   url: { type: 'string' },
@@ -943,6 +950,17 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const action = positionals[0]
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'report-review') {
+    return reportReviewCommand({
+      hydraId,
+      ref: positionals[1],
+      report: values.report as string | undefined,
+      calls: (values.call ?? []) as string[],
+      none: values.none === true,
+      meta: m,
+    })
+  }
 
   if (action === 'report') {
     return reportCommand({
@@ -3852,6 +3870,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.project': return `${event.data.before && event.data.before.detached === event.data.after.detached ? 'Updated' : event.data.after.detached ? 'Detached' : 'Attached'} project ${event.data.after.name}: ${event.data.after.path}${event.data.sharedWith.length ? `; shared with Hydra ${event.data.sharedWith.map(h => h.name).join(', ')}` : ''}`
     case 'task.project': return `Task project: ${event.data.after ?? 'none'}`
     case 'task.kind': return event.data.after === 'build' ? 'Investigation turned into the build' : `Task kind: ${event.data.after}`
+    case 'task.report-reviewed': return `Report decisions reviewed (${event.data.calls.length} calls)`
     case 'task.report': return `Report stored (${event.data.text.length} characters)`
     case 'task.landing': return event.data.after
       ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
@@ -4485,7 +4504,9 @@ pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] 
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
-or, for an investigation, before its report is stored. The owner can still move the card to Done.
+or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
+pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
+Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task build <id>

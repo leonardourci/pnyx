@@ -80,6 +80,7 @@ export const askRows = ({ card }: { card: Card }) => (card.asks ?? []).map((ask:
   id: ask.id,
   from: ask.actor,
   to: ask.audience,
+  ...(ask.origin ? { origin: `${ask.origin.task}/${ask.origin.report}` } : {}),
   question: askWording({ ask }).question,
   ...(ask.options?.length ? {
     choices: ask.options.map((
@@ -399,6 +400,7 @@ async function askOne({
         ref,
         id,
         audience: to as AskAudience,
+        fromReport: text({ value: values['from-report'] }),
         kind: text({ value: values.kind }),
         question: required({
           value: text({ value: values.question }),
