@@ -557,7 +557,7 @@ export async function sendReply({
         ...(answers ? { answers } : {}),
       }
       const payload = [
-        request.ask ? text : request.text,
+        request.ask ? text : entered,
         context,
       ].filter(Boolean).join('\n\n')
       const steering = route.kind === 'pnyx' && card.id !== HYDRA_CARD
@@ -598,10 +598,7 @@ export async function sendReply({
         answers,
         decision: answerDecision,
         resumes,
-        text: [
-          request.ask ? text : entered,
-          context,
-        ].filter(Boolean).join('\n\n'),
+        text: payload,
       }
     },
   })
@@ -795,6 +792,10 @@ export const reply = guard({
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if ('recordError' in receipt && receipt.recordError) {
       out.help = [`The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`]
+    } else if (loadHydra({ hydraId }).state.cards[receipt.card]?.steering
+      ?.some(message => message.reply === receipt.reply)
+      && receipt.state !== 'delivered') {
+      out.help = [`Instruction ${receipt.reply} is saved in the task inbox until the worker acknowledges it. Pending IDs replay when the worker opens or resumes; held workers wait for release. Retry with the same key to preserve its identity.`]
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
     } else if (receipt.state === 'delivery_unknown') {
@@ -1097,7 +1098,8 @@ export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <fi
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
 be passed with --home, and --resolve-key answers that open decision.
 --task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
-gets the text straight through the Hydra's server, which must be running. Any other agent session is
+gets an inbox notice from the Hydra's server after the instruction is persisted. Pending IDs survive
+a stopped server and replay on worker opening or resumption until acknowledged. Any other agent session is
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).
 The session's process must still own that TTY; the text is typed once, then submitted with Enter.
