@@ -1,3 +1,4 @@
+import { refreshTarget } from '../projects/refresh-confirmed.ts'
 import { confirmedMerge } from './confirmed.ts'
 import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '../cli/reply.ts'
@@ -42,6 +43,14 @@ export function needsPullRequestFollow({ state }: { state: HydraState }): boolea
   }
 
   return Object.values(state.cards).some(card => {
+    if (card.links.some(link => refreshTarget({
+      state,
+      card,
+      link,
+    }))) {
+      return true
+    }
+
     if (!liveTask({ card }) || card.status?.state === 'done') {
       return false
     }
@@ -151,18 +160,28 @@ export async function followPullRequests({
       return
     }
 
-    const confirmed = card.links.find(link => link.state === 'merged' && link.mergeProof)
+    for (const link of card.links) {
+      if (link.state !== 'merged' || !link.mergeProof) {
+        continue
+      }
 
-    if (card.status?.state === 'done' || !confirmed || !liveTask({ card })) {
-      continue
+      const pendingRefresh = refreshTarget({
+        state,
+        card,
+        link,
+      })
+
+      if (!pendingRefresh && (card.status?.state === 'done' || !liveTask({ card }))) {
+        continue
+      }
+
+      await confirmedMerge({
+        hydraId,
+        cardId: card.id,
+        url: link.url,
+        proof: link.mergeProof,
+      })
     }
-
-    await confirmedMerge({
-      hydraId,
-      cardId: card.id,
-      url: confirmed.url,
-      proof: confirmed.mergeProof!,
-    })
   }
 
   for (const {
