@@ -1074,8 +1074,10 @@ function moveBoards({ home }: { home: string }): Set<string> {
   try {
     release = acquireLock({ dir: boards })
   } catch (error) {
-    // Another process finished the move and removed the folder.
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    const code = (error as NodeJS.ErrnoException).code
+
+    // macOS can return EINVAL when a competing migration removes the directory during open.
+    if (code === 'ENOENT' || (code === 'EINVAL' && !existsSync(boards))) {
       return kept
     }
 

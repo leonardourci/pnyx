@@ -5,7 +5,7 @@ import { startServer } from '../src/server/server.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { commands } from '../src/cli/commands.ts'
@@ -420,9 +420,24 @@ for (const harness of [
       )
       const received = () => harness === 'claude'
         ? sdk.calls.flatMap(call => call.messages)
-        : codex.messages().filter(message => message.method === 'turn/start')
-          .flatMap(message => (message.params?.input as { text?: string }[] ?? [])
-            .flatMap(item => item.text ? [item.text] : []))
+        : readFileSync(
+          codex.transcript,
+          'utf8',
+        ).trim()
+          .split('\n')
+          .map(line => JSON.parse(line) as {
+            type: string
+            payload?: {
+              role?: string
+              content?: { text?: string }[]
+            }
+          })
+          .filter(entry => entry.type === 'response_item' && entry.payload?.role === 'user')
+          .flatMap(entry => {
+            const content = entry.payload?.content ?? []
+
+            return content.flatMap(item => item.text ? [item.text] : [])
+          })
       await until({ check: () => received().length >= 2 })
       assert.equal(
         received().at(-1),

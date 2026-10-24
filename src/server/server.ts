@@ -231,6 +231,7 @@ const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
   'http://localhost',
 ) ?? new URL(`http://localhost${url}`)
 const RETRY_MS = 60_000
+const CREATION_POLL_MS = 1000
 const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
@@ -295,6 +296,7 @@ export async function startServer({
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
   const served = new Map<string, MountedHydra>()
+  const pendingLogs = new Map<string, () => void>()
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false, summariesKey = ''
@@ -486,6 +488,49 @@ export async function startServer({
     origins.add(`http://${host}`)
   }
 
+  // A directory notification can precede its log, and later filesystem notifications may be lost.
+  const watchMissingLog = ({ id }: { id: string }) => {
+    if (closed || pendingLogs.has(id)) {
+      return
+    }
+
+    const path = join(
+      hydraDir({ hydraId: id }),
+      'events.jsonl',
+    )
+
+    const stop = () => {
+      unwatchFile(
+        path,
+        ready,
+      )
+      pendingLogs.delete(id)
+    }
+
+    const ready = () => {
+      if (closed || !existsSync(path)) {
+        return
+      }
+
+      stop()
+      mountAll()
+    }
+
+    pendingLogs.set(
+      id,
+      stop,
+    )
+    watchFile(
+      path,
+      {
+        interval: CREATION_POLL_MS,
+        persistent: false,
+      },
+      ready,
+    )
+    ready()
+  }
+
   const mount = ({ id }: { id: string }): Promise<MountedHydra> => {
     const known = mounts.get(id)
 
@@ -514,6 +559,8 @@ export async function startServer({
     )
     started.then(
       m => {
+        pendingLogs.get(id)?.()
+
         if (closed) {
           void m.close()
         } else {
@@ -528,6 +575,10 @@ export async function startServer({
       (error: Error) => {
         mounts.delete(id)
         skipped[id] = error.message
+
+        if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+          watchMissingLog({ id })
+        }
       },
     )
 
@@ -576,10 +627,15 @@ export async function startServer({
     closed = true
     watcher.close()
     clearInterval(retry)
-    const all = await Promise.allSettled(mounts.values())
-    await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
-    http.closeAllConnections()
-    await new Promise(r => http.close(r))
+    pendingLogs.forEach(stop => stop())
+
+    try {
+      const all = await Promise.allSettled(mounts.values())
+      await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+    } finally {
+      http.closeAllConnections()
+      await new Promise(r => http.close(r))
+    }
   }
 
   try {
@@ -1177,8 +1233,7 @@ async function mountOwnedHydra({
   // Each card's last conversation message, read from its transcript tail and pushed
   // to every tab. A card is read again when it gets an event or its transcript
   // changes: transcript folders are watched, as a live session writes between hook events.
-  // A working card's transcript file is watched as well, for its card and open conversations:
-  // on macOS a folder hears nothing of writes to a file kept open, as Codex keeps its rollout.
+  // File watches and stat polling cover content writes a native folder watch does not report.
   // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   // Task tokens, counted off the event loop; tabs get them once the first count is in.
   let spendNow: { spend?: Record<string, TaskSpend> } = {}
@@ -1212,6 +1267,7 @@ async function mountOwnedHydra({
   const reads = new Map<string, LatestRead>()
   const folders = new Map<string, FSWatcher>()
   const transcripts = new Map<string, FSWatcher>()
+  const transcriptPolls = new Map<string, { close(): void }>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
 
@@ -1225,6 +1281,21 @@ async function mountOwnedHydra({
     transcripts.delete(path)
   }
 
+  const transcriptChanged = ({ path }: { path: string }) => {
+    touchPath({ path })
+
+    for (const map of threadSubscriptions) {
+      for (const [
+        ws,
+        sub,
+      ] of map) {
+        if (sub.path === path) {
+          refreshThread({ ws })
+        }
+      }
+    }
+  }
+
   const watchTranscript = ({ path }: { path: string }) => {
     if (closed || transcripts.has(path)) {
       return
@@ -1233,20 +1304,7 @@ async function mountOwnedHydra({
     try {
       const watcher = watch(
         path,
-        () => {
-          touchPath({ path })
-
-          for (const map of threadSubscriptions) {
-            for (const [
-              ws,
-              sub,
-            ] of map) {
-              if (sub.path === path) {
-                refreshThread({ ws })
-              }
-            }
-          }
-        },
+        () => transcriptChanged({ path }),
       )
       watcher.on(
         'error',
@@ -1323,6 +1381,46 @@ async function mountOwnedHydra({
     }
   }
 
+  const pollTranscripts = () => {
+    const wanted = new Set(Object.values(state.cards).flatMap(c => threadPath({ card: c }) ?? []))
+
+    for (const [
+      path,
+      poll,
+    ] of transcriptPolls) {
+      if (!wanted.has(path)) {
+        poll.close()
+        transcriptPolls.delete(path)
+      }
+    }
+
+    for (const path of wanted) {
+      if (transcriptPolls.has(path)) {
+        continue
+      }
+
+      const changed = () => transcriptChanged({ path })
+      // Native notices can miss content writes; stat polling follows replaced and recreated paths.
+      watchFile(
+        path,
+        {
+          interval: EVENT_POLL_MS,
+          persistent: false,
+        },
+        changed,
+      )
+      transcriptPolls.set(
+        path,
+        {
+          close: () => unwatchFile(
+            path,
+            changed,
+          ),
+        },
+      )
+    }
+  }
+
   // Keeps a card's value and notes it in changes when it differs from the one last sent.
   const track = <Value>({
     store,
@@ -1393,6 +1491,7 @@ async function mountOwnedHydra({
 
     unread.clear()
     watchWorkingTranscripts()
+    pollTranscripts()
     spend.count()
 
     if (Object.keys(changed).length || Object.keys(changedActions).length) {
@@ -2882,6 +2981,7 @@ async function mountOwnedHydra({
       ...watchers,
       ...folders.values(),
       ...transcripts.values(),
+      ...transcriptPolls.values(),
       ...threads,
     ]) {
       w.close()
@@ -2889,6 +2989,7 @@ async function mountOwnedHydra({
 
     folders.clear()
     transcripts.clear()
+    transcriptPolls.clear()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)

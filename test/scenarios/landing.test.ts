@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { git, scenarioGroup, until } from './harness.ts'
 
-const pnyx = scenarioGroup()
+const pnyx = scenarioGroup({ incorporateSteering: true })
 
 const change = ({
   copy,
@@ -320,6 +320,11 @@ test(
       check: () => hydraAgent.received.some(text => text.includes('approved merge is green') && text.includes(url)),
     })
     const heard = hydraAgent.received.length
+    // The fake forge confirms a merge only after its remote contains the landed commit.
+    push({
+      copy,
+      to: 'HEAD:main',
+    })
     await hydra.run({
       args: [
         'task',
@@ -328,11 +333,6 @@ test(
         '--reason',
         'Owner approved and all checks passed',
       ],
-    })
-    // GitHub merged the branch into main.
-    push({
-      copy,
-      to: 'HEAD:main',
     })
     assert.equal(
       s.merges({ number: 1 }),

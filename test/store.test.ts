@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -1060,6 +1062,97 @@ test(
     )
   },
 )
+
+for (const removed of [
+  true,
+  false,
+]) {
+  test(
+    `a migration lock open returning EINVAL ${removed ? 'after removal uses the moved Hydras' : 'with the directory present stays visible'}`,
+    t => {
+      const home = process.env.PNYX_HOME!
+      const boards = join(
+        home,
+        'boards',
+      )
+      const hydras = join(
+        home,
+        'hydras',
+      )
+      seed({ files: { 'boards/one/events.jsonl': 'preserved\n' } })
+      const originalOpen = fs.openSync
+      const failure = Object.assign(
+        new Error('exclusive open failed'),
+        { code: 'EINVAL' },
+      )
+      const opening = t.mock.method(
+        fs,
+        'openSync',
+        // eslint-disable-next-line pnyx/object-params -- The mock keeps fs.openSync's external signature.
+        (...args: Parameters<typeof fs.openSync>) => {
+          if (args[0] === join(
+            boards,
+            'writer.lock',
+          )) {
+            if (removed) {
+              fs.renameSync(
+                boards,
+                hydras,
+              )
+            }
+
+            throw failure
+          }
+
+          return originalOpen(...args)
+        },
+      )
+      syncBuiltinESMExports()
+      t.after(() => {
+        opening.mock.restore()
+        syncBuiltinESMExports()
+      })
+
+      if (!removed) {
+        assert.throws(
+          () => hydraIds(),
+          error => error === failure,
+        )
+        assert.equal(
+          readFileSync(
+            join(
+              boards,
+              'one/events.jsonl',
+            ),
+            'utf8',
+          ),
+          'preserved\n',
+        )
+
+        return
+      }
+
+      assert.deepEqual(
+        hydraIds(),
+        ['one'],
+      )
+      assert.equal(
+        readFileSync(
+          join(
+            hydras,
+            'one/events.jsonl',
+          ),
+          'utf8',
+        ),
+        'preserved\n',
+      )
+      assert.equal(
+        existsSync(boards),
+        false,
+      )
+    },
+  )
+}
 
 test(
   'processes starting together move each Hydra once',

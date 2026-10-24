@@ -1,3 +1,4 @@
+import { steeringNotice } from '../src/task-inbox/notice.ts'
 import { once } from 'node:events'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
@@ -1423,7 +1424,16 @@ test(
         },
       })
       await done.promise
-      assert.ok(sdk.calls[0]!.messages.includes('Continue within the accepted scope.'))
+      const instruction = state().cards[task]!.steering!.at(-1)!
+      assert.equal(
+        instruction.text,
+        'Continue within the accepted scope.',
+      )
+      assert.ok(sdk.calls[0]!.messages.includes(steeringNotice({
+        task,
+        hydraId: 'lab',
+        ids: [instruction.id],
+      })))
     } finally {
       release(); host.close()
     }
