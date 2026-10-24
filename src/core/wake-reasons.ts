@@ -335,6 +335,14 @@ function ordinaryReasons({
   }
 
   switch (event.type) {
+    case 'task.source.alerted':
+      return [
+        {
+          kind: 'not confirmed',
+          card: card.id,
+          detail: event.data.detail,
+        },
+      ]
     case 'task.declared': {
       const {
         state: declared,

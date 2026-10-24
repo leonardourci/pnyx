@@ -1,6 +1,8 @@
 import { helperProgress } from '../helper/route.ts'
 import { startReviewTimer } from '../review/timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '../landing/follow.ts'
+import { createSourceRunner } from '../external-sources/runner.ts'
+import { sourceDeadline } from '../external-sources/state.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
 import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
@@ -184,6 +186,7 @@ export interface RunningServer {
   socket: string | null
   // Hydras that could not be loaded, with the reason; the others keep working.
   skipped: Record<string, string>
+  open({ id }: { id: string }): Promise<string>
   close(): Promise<void>
 }
 
@@ -593,6 +596,7 @@ export async function startServer({
     url: named.url,
     socket: named.socket,
     skipped: { ...skipped },
+    open,
     close,
   }
 }
@@ -1631,6 +1635,7 @@ async function mountOwnedHydra({
           })()
         }
 
+        sources.reconcile()
         review.check()
         fireReminders({ hydraId })
         pump()
@@ -1652,6 +1657,7 @@ async function mountOwnedHydra({
       } finally {
         clearTimeout(expiryTimer)
         const deadlines = [
+          sourceDeadline({ state }),
           doneDeadline({ state }),
           reminderDeadline({ state }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
@@ -1731,6 +1737,11 @@ async function mountOwnedHydra({
         }
       }
     },
+  })
+
+  const sources = createSourceRunner({
+    hydraId,
+    changed: kick,
   })
 
   const review = startReviewTimer({
@@ -2840,6 +2851,7 @@ async function mountOwnedHydra({
       kick,
     )
     await queueRun
+    await sources.close()
     firstmate?.close()
     review.close()
     catalogIndex.close()
