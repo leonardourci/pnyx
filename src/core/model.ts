@@ -1229,6 +1229,7 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
   'task.source.registered',
+  'task.source.lavish.published',
   'task.source.started',
   'task.source.result',
   'task.source.alerted',

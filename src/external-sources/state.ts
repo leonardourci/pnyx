@@ -40,7 +40,7 @@ export function applyExternalSource({
       ...sources,
       structuredClone(event.data.source),
     ]
-  } else if (event.type === 'task.source.started' || event.type === 'task.source.result'
+  } else if (event.type === 'task.source.lavish.published' || event.type === 'task.source.started' || event.type === 'task.source.result'
     || event.type === 'task.source.alerted' || event.type === 'task.source.handled') {
     const source = card.externalSources?.find(source => source.id === event.data.source)
 
@@ -48,7 +48,17 @@ export function applyExternalSource({
       return true
     }
 
-    if (event.type === 'task.source.started') {
+    if (event.type === 'task.source.lavish.published') {
+      const reply = source.lavish?.reply
+
+      if (!reply || reply.id !== event.data.reply || reply.accepted) {
+        return true
+      }
+
+      reply.accepted = structuredClone(event.data.accepted)
+      source.state = 'registered'
+      delete source.run
+    } else if (event.type === 'task.source.started') {
       source.run = structuredClone(event.data.run)
       source.runs++
       source.state = 'running'
@@ -71,7 +81,7 @@ export function applyExternalSource({
         result.alerted = event.data.detail
       } else {
         result.handled = structuredClone(event.data.handled)
-        source.state = result.terminal ? 'retired' : 'registered'
+        source.state = result.terminal || source.lavish ? 'retired' : 'registered'
       }
     }
   }

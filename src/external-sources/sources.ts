@@ -8,6 +8,7 @@ import type { Writer } from '../store/hydra-store.ts'
 import { requireSteeringWorker } from '../task-inbox/inbox.ts'
 import { sameClaim, steeringClaim } from '../task-inbox/state.ts'
 import type { ExternalSource, ExternalSourceChange, SourceCommand, SourceOutcome, SourceResult } from './model.ts'
+import { lavishCanRearm, lavishSession } from './lavish-output.ts'
 
 export const SOURCE_TIMEOUT_MS = 3_600_000
 export const SOURCE_MAX_TIMEOUT_MS = 86_400_000
@@ -155,6 +156,7 @@ export function registerSource({
   expiresAt,
   restart,
   maxRuns,
+  lavish,
   meta,
   worker,
 }: {
@@ -167,6 +169,7 @@ export function registerSource({
   expiresAt?: string
   restart: ExternalSource['restart']
   maxRuns: number
+  lavish?: ExternalSource['lavish']
   meta: Meta
   worker?: string
 }): ExternalSource {
@@ -238,6 +241,10 @@ export function registerSource({
     results: [],
   }
 
+  if (lavish) {
+    source.lavish = lavish
+  }
+
   if (known) {
     const configuration = ({ source }: { source: ExternalSource }) => JSON.stringify({
       owner: source.owner,
@@ -247,6 +254,14 @@ export function registerSource({
       expiresAt: source.expiresAt,
       restart: source.restart,
       maxRuns: source.maxRuns,
+      lavish: source.lavish && {
+        page: source.lavish.page,
+        after: source.lavish.after,
+        reply: source.lavish.reply && {
+          id: source.lavish.reply.id,
+          text: source.lavish.reply.text,
+        },
+      },
     })
 
     if (configuration({ source: known }) !== configuration({ source })) {
@@ -302,8 +317,39 @@ export function captureResult({
   }
 
   const sequence = (source.results.at(-1)?.sequence ?? 0) + 1
+  const publication = source.lavish?.reply
+
+  if (publication && !publication.accepted && outcome === 'completed') {
+    appendSource({
+      writer,
+      card,
+      meta,
+      change: {
+        type: 'task.source.lavish.published',
+        data: {
+          source: source.id,
+          reply: publication.id,
+          accepted: {
+            at: meta.at,
+            receipt: stdout,
+          },
+        },
+      },
+    })
+
+    return
+  }
+
   const retryable = outcome === 'failed' && source.restart === 'on-failure'
     && source.runs < source.maxRuns && Date.parse(source.expiresAt) > Date.parse(meta.at)
+  let terminal = !retryable
+
+  if (source.lavish && outcome === 'completed') {
+    const session = lavishSession({ stdout })
+    terminal = session.ended || session.status !== 'feedback'
+    detail = `Lavish ${session.status}${session.ended ? ' (final round)' : ''}. ${detail}`
+  }
+
   const result: SourceResult = {
     sequence,
     run,
@@ -312,7 +358,7 @@ export function captureResult({
     stdout,
     stderr,
     detail,
-    terminal: !retryable,
+    terminal,
     message: `external:${source.registration}:${sequence}`,
   }
   appendSource({
@@ -337,6 +383,7 @@ export function handleResult({
   claim,
   meta,
   worker,
+  validateOnly = false,
 }: {
   writer: Writer
   ref: string
@@ -345,6 +392,7 @@ export function handleResult({
   claim: SteeringClaim
   meta: Meta
   worker?: string
+  validateOnly?: boolean
 }): SourceResult {
   const card = sourceTask({
     writer,
@@ -389,6 +437,10 @@ export function handleResult({
     invalidSource({ message: 'Read and acknowledge this result’s steering message before handling it' })
   }
 
+  if (validateOnly) {
+    return result
+  }
+
   appendSource({
     writer,
     card,
@@ -421,6 +473,18 @@ export function resultText({
   source: ExternalSource
   result: SourceResult
 }): string {
+  if (source.lavish) {
+    const handling = !lavishCanRearm({ result })
+      ? 'Conclude this round, acknowledge its inbox message, then mark this source result handled. Do not re-arm or reopen this session.'
+      : `Apply every item once. File genuine owner choices with task ask; retain their IDs for the report inventory. Acknowledge inbox message ${result.message}, then re-arm with task source lavish <task> <new-source-id> --page ${JSON.stringify(source.lavish.page)} --executable ${JSON.stringify(source.command.executable)} --after ${source.id} --sequence ${result.sequence} --agent-reply-file <path> --session <session> --generation <generation>. This handles the old round and stages the reply before the next poll.`
+    const recovery = result.outcome === 'completed' ? ''
+      : ' Listening stopped. Inspect the retained uncertainty and verify prior effects and reply acceptance before any explicit recovery; never blindly repeat a post or destructive poll.'
+
+    return `Lavish source ${source.id}, round ${result.sequence}: ${result.outcome}. ${result.detail}\n`
+      + `Captured output (read completely):\n${result.stdout}\nstderr:\n${result.stderr}\n`
+      + `Read with task source read <task> ${source.id}. ${handling}${recovery}`
+  }
+
   return `External source ${source.id}, result ${result.sequence}: ${result.outcome}. ${result.detail}\n`
     + `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n`
     + `Read with task source read <task> ${source.id}; acknowledge inbox message ${result.message}, then task source handled <task> ${source.id} ${result.sequence} --session <session> --generation <generation>.`

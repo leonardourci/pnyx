@@ -3938,7 +3938,8 @@ function summary({ event }: { event: HydraEvent }): string {
 
   switch (event.type) {
     case 'task.source.registered': return `External source ${event.data.source.id} registered`
-    case 'task.source.started': return `External source ${event.data.source} listening`
+    case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
+    case 'task.source.started': return `External source ${event.data.source} run started`
     case 'task.source.result': return `External source ${event.data.source} result ${event.data.result.sequence}: ${event.data.result.outcome}`
     case 'task.source.alerted': return event.data.detail
     case 'task.source.handled': return `External source ${event.data.source} result ${event.data.sequence} handled`
@@ -4596,6 +4597,7 @@ pnyx-axi task report <id> [--file <path>]
 Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
 pnyx-axi task inbox read <task> [--all]
 pnyx-axi task source register <task> <source-id> --executable <absolute-path> --argv <json-array> --cwd <absolute-path> [--timeout-ms <n> --max-bytes <n> --expires <ISO-time> --restart never|on-failure --max-runs <n>]
+pnyx-axi task source lavish <task> <source-id> --page <path> --executable <absolute-lavish-axi> [--agent-reply-file <path>] [--after <source-id> --sequence <n> --session <session> --generation <n>]
 pnyx-axi task source list <task>
 pnyx-axi task source read <task> <source-id> [--all]
 pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
