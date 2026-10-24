@@ -809,7 +809,7 @@ test(
     })
     await until({ check: () => task().sessionActivity === 'finished' })
     await send({ text: 'HOLD' })
-    await until({ check: () => turns().length === 2 })
+    await until({ check: () => turns().length === 2 && task().sessionActivity === 'working' })
     await send({ text: 'Also check the docs' })
     await until({ check: () => steers().length === 1 })
     assert.deepEqual(
