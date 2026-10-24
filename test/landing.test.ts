@@ -16,6 +16,7 @@ import type { Card, Link, TaskCopy } from '../src/core/model.ts'
 import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
 import { mergeCommand } from '../src/landing/merge.ts'
+import { decideLink } from '../src/core/decide.ts'
 import { project } from '../src/projects/cli.ts'
 import { readEvents, loadHydra, withWriter } from '../src/store/hydra-store.ts'
 
@@ -25,6 +26,68 @@ process.env.PNYX_GH_AXI = join(
   'fixtures/github/gh-axi.sh',
 )
 const PR = 'https://github.com/o/r/pull/7'
+const HEAD = 'a'.repeat(40)
+const confirmedOutcome = async () => ({
+  outcome: 'merged' as const,
+  head: HEAD,
+  commit: 'b'.repeat(40),
+})
+const greenEvidence = async () => ({
+  head: HEAD,
+  problems: [] as string[],
+})
+
+test(
+  'following recovers Done from persisted merge proof without another forge command',
+  async () => {
+    const f = await lab()
+    const at = new Date().toISOString()
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const decision = decideLink({
+          state: writer.state,
+          ref: f.id,
+          url: PR,
+          link: {
+            kind: 'github_pr',
+            url: PR,
+            state: 'merged',
+            mergeProof: {
+              head: HEAD,
+              commit: 'b'.repeat(40),
+              confirmedAt: at,
+            },
+          },
+          meta: {
+            actor: 'pnyx',
+            at,
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
+    assert.notEqual(
+      f.card().status?.state,
+      'done',
+    )
+    await followPullRequests({
+      hydraId: 'default',
+      readStatus: async () => assert.fail('persisted proof needs no forge read'),
+    })
+    assert.equal(
+      f.card().status?.state,
+      'done',
+    )
+    const seq = loadHydra({ hydraId: 'default' }).state.seq
+    await followPullRequests({ hydraId: 'default' })
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.seq,
+      seq,
+    )
+  },
+)
 
 const git = ({
   cwd,
@@ -755,7 +818,9 @@ test(
         actor,
         at: new Date().toISOString(),
       },
+      readOutcome: confirmedOutcome,
       readStatus: async () => read,
+      readEvidence: greenEvidence,
       merge: async ({ url: target }) => {
         if (fail) {
           throw new Error('Pull request is not mergeable')
@@ -798,6 +863,24 @@ test(
       card().status?.state,
       'done',
     )
+
+    assert.equal(
+      card().links[0]?.mergeAttempt?.outcome,
+      'unknown',
+    )
+    commands.link([
+      id,
+      '--url',
+      PR,
+      '--remove',
+    ])
+    commands.link([
+      id,
+      '--url',
+      PR,
+      '--state',
+      'open',
+    ])
 
     commands.link([
       id,
@@ -852,7 +935,9 @@ test(
         actor: 'cli',
         at: new Date().toISOString(),
       },
+      readOutcome: confirmedOutcome,
       readStatus: async () => status({ state: 'merged' }),
+      readEvidence: greenEvidence,
       merge: async () => {
         calls++
       },
@@ -936,6 +1021,7 @@ test(
     ])
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     assert.equal(
@@ -992,6 +1078,7 @@ test(
     ])
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status({ draft: true }),
     })
     assert.equal(
@@ -1000,10 +1087,12 @@ test(
     )
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     const asks = openAsks({
@@ -1057,7 +1146,9 @@ test(
           actor: 'hydra',
           at: new Date().toISOString(),
         },
+        readOutcome: confirmedOutcome,
         readStatus: async () => status(),
+        readEvidence: greenEvidence,
         merge: async () => assert.fail('Hold cannot merge'),
       }),
       /owner merges/,
@@ -1073,6 +1164,7 @@ test(
     ]))
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     assert.equal(
@@ -1114,6 +1206,7 @@ test(
     ])
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status({
         failed: 1,
         summary: '0 passed, 1 failed, 1 total',
@@ -1179,7 +1272,9 @@ test(
         actor: 'hydra',
         at: '2026-10-23T19:32:29Z',
       },
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
+      readEvidence: greenEvidence,
       merge: async () => {},
     })
     await assert.rejects(
@@ -1190,10 +1285,12 @@ test(
           actor: 'hydra',
           at: '2026-10-23T19:05:50Z',
         },
+        readOutcome: confirmedOutcome,
         readStatus: async () => status({
           failed: 1,
           summary: '0 passed, 1 failed, 1 total',
         }),
+        readEvidence: greenEvidence,
         merge: async () => assert.fail('red checks cannot merge'),
       }),
       /checks are red/,
@@ -1201,6 +1298,7 @@ test(
     const cursor = loadHydra({ hydraId: 'default' }).state.seq
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     const state = loadHydra({ hydraId: 'default' }).state
@@ -1285,6 +1383,7 @@ test(
         ])
         await followPullRequests({
           hydraId: 'default',
+          readOutcome: confirmedOutcome,
           readStatus: async () => status({ state: outcome }),
         })
       }
@@ -1360,6 +1459,7 @@ test(
     ])
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
     const ask = openAsks({ card: f.card() })[0]!
@@ -1448,11 +1548,13 @@ test(
           actor: 'hydra',
           at: new Date().toISOString(),
         },
+        readOutcome: confirmedOutcome,
         readStatus: async () => {
           await undo()
 
           return status()
         },
+        readEvidence: greenEvidence,
         merge: async () => assert.fail('revoked approval must never merge'),
       }),
       /approval was withdrawn/,
@@ -1473,7 +1575,9 @@ test(
           actor: 'hydra',
           at: new Date().toISOString(),
         },
+        readOutcome: confirmedOutcome,
         readStatus: async () => status(),
+        readEvidence: greenEvidence,
         merge: async () => assert.fail('undo forbids merge'),
       }),
       /owner merges/,
@@ -1522,6 +1626,7 @@ test(
     ])
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status(),
     })
 
@@ -1543,6 +1648,7 @@ test(
 
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async ({ url }) => status({ state: url === PR ? 'closed' : 'open' }),
     })
     assert.ok(f.card().asks?.find(a => a.url === PR)?.closed)
@@ -1556,6 +1662,7 @@ test(
     )
     await followPullRequests({
       hydraId: 'default',
+      readOutcome: confirmedOutcome,
       readStatus: async () => status({ state: 'closed' }),
     })
     assert.equal(

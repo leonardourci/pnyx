@@ -1,9 +1,11 @@
+import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideLink } from '../core/decide.ts'
 import { declareTask, HYDRA_CARD } from '../core/hydra.ts'
 import { failedChecks, type Card, type HydraState, type Link } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
+import { pullRequestMergeOutcome, type MergeOutcome } from '../integrations/github/merge-evidence.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra, withWriter, type Writer } from '../store/hydra-store.ts'
 
@@ -150,12 +152,42 @@ export async function followPullRequests({
   readStatus = pullRequestStatus,
   tell = tellWorker,
   active = () => true,
+  readOutcome = pullRequestMergeOutcome,
 }: {
   hydraId: string
   readStatus?: typeof pullRequestStatus
   tell?: typeof tellWorker
   active?(): boolean
+  readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<void> {
+  const state = loadHydra({ hydraId }).state
+
+  if (!active() || state.config?.hydra.kind === 'firstmate') {
+    return
+  }
+
+  for (const card of Object.values(state.cards)) {
+    if (!active()) {
+      return
+    }
+
+    const confirmed = card.links.find(link => link.state === 'merged' && link.mergeProof)
+
+    if (card.status?.state === 'done' || !confirmed || !liveTask({ card })) {
+      continue
+    }
+
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => declareMerged({
+        writer,
+        cardId: card.id,
+        url: confirmed.url,
+        at: new Date().toISOString(),
+      }),
+    })
+  }
+
   for (const {
     card,
     link,
@@ -177,8 +209,20 @@ export async function followPullRequests({
       continue
     }
 
-    const known = link.state === status.state && link.checks === status.checks.summary
+    let outcome: MergeOutcome | undefined
+
+    if (status.state === 'merged' || link.mergeAttempt) {
+      outcome = await readOutcome({ url: link.url })
+
+      if (status.state === 'merged' && outcome.outcome !== 'merged') {
+        continue
+      }
+    }
+
+    const observedState = outcome?.outcome === 'merged' ? 'merged' : status.state
+    const known = link.state === observedState && link.checks === status.checks.summary
       && link.comments === status.comments && link.draft === status.draft
+      && (!outcome || link.mergeAttempt?.outcome === outcome.outcome)
 
     if (known) {
       continue
@@ -201,9 +245,20 @@ export async function followPullRequests({
           state: writer.state,
           ref: card.id,
           url: link.url,
-          link: {
+          link: outcome ? mergeObservation({
+            link: {
+              ...current,
+              state: observedState,
+              checks: status.checks.summary,
+              comments: status.comments,
+              draft: status.draft,
+              checkedAt: at,
+            },
+            outcome,
+            at,
+          }) : {
             ...current,
-            state: status.state,
+            state: observedState,
             checks: status.checks.summary,
             comments: status.comments,
             draft: status.draft,
@@ -221,7 +276,7 @@ export async function followPullRequests({
 
         writer.append({ event: decision.event })
 
-        if (status.state === 'merged') {
+        if (observedState === 'merged') {
           declareMerged({
             writer,
             cardId: card.id,
