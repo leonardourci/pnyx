@@ -2,7 +2,7 @@
 
 Pnyx is the app, a **Hydra** holds its tasks, search is the **Oracle**, and **inscribe** is how Hydra curates and saves its memory. Everything else uses its plain name.
 
-Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. Create tasks and columns inline, attach an interactive agent session, and follow its updates on the card. Ad-hoc agent sessions stay in recorded history without creating tasks.
+Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. The “Waiting on you” strip above Hydra’s composer lists each open owner question, permission and blocking prompt until it is answered. Select a row to reach its question or task. Create tasks and columns inline, attach an interactive agent session, and follow its updates on the card. Ad-hoc agent sessions stay in recorded history without creating tasks.
 
 A deterministic view of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
