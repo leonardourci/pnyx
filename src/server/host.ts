@@ -1,7 +1,7 @@
 import { requireReady } from '../core/dependencies.ts'
 import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
-import { steeringClaim, sameClaim, steeringWorkerIdentity } from '../task-inbox/state.ts'
+import { steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '../task-inbox/state.ts'
 import { steeringNotice } from '../task-inbox/notice.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
@@ -564,10 +564,6 @@ interface Live {
   thinking: Set<string>
   // The tool calls running now, by id, with when each started.
   tools: Map<string, number>
-}
-
-function steeringHeld({ card }: { card: Card }): boolean {
-  return Boolean(card.hold || pausedDeclaration({ card })?.hold)
 }
 
 function steeringAssignment({ card }: { card: Card }): string {
