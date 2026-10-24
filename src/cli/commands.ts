@@ -3943,6 +3943,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'task.source.alerted': return event.data.detail
     case 'task.source.handled': return `External source ${event.data.source} result ${event.data.sequence} handled`
     case 'project.refreshed': return `Project copy ${event.data.state}: ${event.data.path}${event.data.reason ? ` (${event.data.reason})` : ''}`
+    case 'task.steering.recovery': return `Steering ${event.data.message} recovery: ${event.data.recovery.result}${event.data.recovery.detail ? `: ${event.data.recovery.detail}` : ''}`
     case 'task.steering.queued': return `Steering ${event.data.message.order} queued: ${event.data.message.id}`
     case 'task.steering.notified': return `Steering ${event.data.message} notification: ${event.data.attempt.result}`
     case 'task.steering.handled': return `Steering ${event.data.message} handled: ${event.data.ack.outcome}`
