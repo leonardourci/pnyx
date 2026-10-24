@@ -1,7 +1,8 @@
 import { useTaskReferences } from './task-references.ts'
+import { WaitingDecisions } from './waiting-decisions.tsx'
 import { loadEarlierMessages, mergeThreadPages } from './conversation-history.ts'
 import { hydraConversation } from './conversation.ts'
-import { chatDecisions, ChatDecisionCard, WaitingDecisions, type ChatDecision } from './chat-decisions.tsx'
+import { chatDecisions, ChatDecisionCard, type ChatDecision } from './chat-decisions.tsx'
 import { DispatchProposals } from './dispatch-proposals.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { REDUCED_MOTION, WorkingDots } from '../components/ui/streaming.tsx'
@@ -12,8 +13,8 @@ import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
-import { TaskReference, TaskReferencesProvider } from '../components/ui/task-reference.tsx'
-import type { HydraQueue, QueuedUpdate } from '../../../src/server/host.ts'
+import { TaskReferencesProvider } from '../components/ui/task-reference.tsx'
+import type { HydraQueue } from '../../../src/server/host.ts'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
@@ -74,6 +75,8 @@ export function HydraChat({
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
 }) {
+  const waitingButton = useRef<HTMLButtonElement>(null)
+
   useEffect(
     () => {
       if (new URLSearchParams(location.search).has('new-chat')) {
@@ -293,10 +296,12 @@ export function HydraChat({
       }
 
       requestAnimationFrame(() => {
-        target()?.scrollIntoView({
+        const question = target()
+        question?.scrollIntoView({
           behavior: 'smooth',
           block: 'center',
         })
+        question?.querySelector<HTMLElement>('.ask button:not(:disabled), .ask textarea')?.focus()
       })
     } catch (error) {
       notify({ text: (error as Error).message })
@@ -454,14 +459,6 @@ export function HydraChat({
   const references = useTaskReferences({ state })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
-  const queueShown = queue.waiting.length > 0 || queueReading.length > 0
-  const queueCards = updatedTasks({
-    updates: [
-      ...queueReading,
-      ...queue.waiting,
-    ],
-    tasks: Object.keys(references),
-  })
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
   const pill = hydraPill({
@@ -599,11 +596,9 @@ export function HydraChat({
                 notify={notify}
               />
             )}
-            {/* ponytail: room for one wrapped row of task chips; more rows overlap the last message. */}
-            {queueCards.length > 0 && <div className="chat-queue-room" aria-hidden="true" />}
           </div>
         </div>
-        {(running || queueShown) && (
+        {running && (
           <TaskReferencesProvider references={references} openTask={openTask}>
             <Running
               since={running ? since : null}
@@ -611,7 +606,6 @@ export function HydraChat({
               label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
               reading={queueReading.length}
               waiting={queue.waiting.length}
-              cards={queueCards}
             >
               {running && <ActionBubble action={action} since={since} lookup={lookup} />}
             </Running>
@@ -638,11 +632,30 @@ export function HydraChat({
         )}
       </div>
       <WaitingDecisions
-        decisions={decisions.filter(decision => !decision.ask.answered && !decision.ask.closed)}
-        jump={jumpDecision}
+        triggerRef={waitingButton}
+        state={state}
+        open={async ({ decision }) => {
+          const question = decisions.find(item =>
+            item.card.id === decision.card.id && item.ask.id === decision.id)
+
+          if (decision.kind === 'owner question' && question) {
+            await jumpDecision({ decision: question })
+          } else {
+            openTask({ id: decision.card.id })
+          }
+        }}
         loading={loadingEarlier}
       />
       <Composer
+        focusAbove={() => {
+          if (!waitingButton.current || waitingButton.current.disabled) {
+            return false
+          }
+
+          waitingButton.current.focus()
+
+          return true
+        }}
         card={HYDRA_CARD}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}
@@ -690,15 +703,6 @@ export function HydraChat({
   )
 }
 
-// The tasks a group of updates is about, each once, leaving out any this Hydra does not show.
-const updatedTasks = ({
-  updates,
-  tasks,
-}: {
-  updates: QueuedUpdate[]
-  tasks: string[]
-}) => [...new Set(updates.map(update => update.card))].filter(card => tasks.includes(card))
-
 // The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
 function Running({
   since,
@@ -706,7 +710,6 @@ function Running({
   label,
   reading,
   waiting,
-  cards,
   children,
 }: {
   since: string | null
@@ -714,8 +717,6 @@ function Running({
   label: string
   reading: number
   waiting: number
-  // The tasks of the updates in Hydra's queue, each once.
-  cards: string[]
   children?: ReactNode
 }) {
   const [
@@ -737,10 +738,8 @@ function Running({
   const words = queueWords({
     reading,
     waiting,
-    cards: cards.length,
   })
 
-  // The chips stay outside the live status, so a change never re-reads them or moves focus off one.
   return (
     <div
       className="chat-running"
@@ -767,15 +766,7 @@ function Running({
           render={({ value }) => value}
         />
       </span>
-      {cards.length > 0 && (
-        <span className="chat-queue-tasks">
-          {cards.map(card => (
-            <span key={card} className="chat-queue-chip">
-              <TaskReference id={card} />
-            </span>
-          ))}
-        </span>
-      )}
+
     </div>
   )
 }
@@ -805,24 +796,22 @@ function statusName({
 function queueWords({
   reading,
   waiting,
-  cards,
 }: {
   reading: number
   waiting: number
-  cards: number
 }): string | null {
-  const colon = cards > 0 ? ':' : ''
+  const count = waiting > 0 ? `+${waiting} waiting` : null
 
   if (reading > 0 && waiting > 0) {
-    return `Hydra is reading, more waiting${colon}`
+    return `Reading ${reading} · ${count}`
   }
 
   if (reading > 0) {
-    return `Hydra is reading${colon}`
+    return `Reading ${reading}`
   }
 
   if (waiting > 0) {
-    return `Waiting for Hydra${colon}`
+    return count
   }
 
   return null

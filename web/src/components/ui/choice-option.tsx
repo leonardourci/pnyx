@@ -25,6 +25,7 @@ export function ChoiceOption({
   return (
     <div className="ask-option" data-selected={selected || undefined}>
       <Button
+        contentEditable={false}
         className="ask-option-pick"
         aria-label={`Choose ${name}`}
         aria-pressed={selected}

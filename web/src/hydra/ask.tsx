@@ -95,6 +95,7 @@ export function AskPanel({
         </div>
       )}
       <Textarea
+        contentEditable={false}
         aria-label="Your answer"
         placeholder={options.length ? 'Add a note, or answer in your own words' : 'Your answer'}
         rows={2}
@@ -108,7 +109,13 @@ export function AskPanel({
       )}
       <div className="pending-decision-actions">
         <div className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
-        <Button variant="surface" disabled={busy || (!pick && !text.trim())} onClick={() => void send()}>Send answer</Button>
+        <Button
+          contentEditable={false}
+          variant="surface"
+          disabled={busy || (!pick && !text.trim())}
+          onClick={() => void send()}
+        >Send answer
+        </Button>
       </div>
     </article>
   )
