@@ -2,7 +2,6 @@ import { declareTask } from '../core/hydra.ts'
 import type { Link } from '../core/model.ts'
 import { withWriter, type Writer } from '../store/hydra-store.ts'
 
-// Once every pull request of a task has merged, its work has landed: Pnyx declares it done, which settles its copy.
 function declareMerged({
   writer,
   cardId,
