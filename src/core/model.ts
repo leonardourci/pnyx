@@ -386,6 +386,7 @@ export interface TaskHold {
 }
 
 export interface Card {
+  prerequisites?: string[]
   hold?: TaskHold
   id: string
   key: string
@@ -752,6 +753,13 @@ export interface HydraStatus {
   after?: number
 }
 export type HydraChange = EventBase & (
+  | {
+    type: 'task.dependencies'
+    data: {
+      before: string[]
+      after: string[]
+    }
+  }
   | HelperChange
   | {
     type: 'task.queue'
@@ -1228,6 +1236,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.reminder-due',
   'task.copy',
   'task.queue',
+  'task.dependencies',
   'task.held',
   'task.released',
   'task.kind',
