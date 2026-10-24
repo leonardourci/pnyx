@@ -1126,11 +1126,25 @@ test(
     })
     await until({
       what: 'Lavish feedback at its worker',
-      check: () => worker.received.at(-1) === comments && s.task({ key: 'page' }).sessionActivity === 'finished',
+      check: () => worker.received.at(-1)?.includes('instruction IDs ["comments"]') === true && s.task({ key: 'page' }).sessionActivity === 'finished',
     })
     await s.owner({
       args,
       input: comments,
+    })
+    const pageTask = s.task({ key: 'page' })
+    await s.as({ agent: worker }).run({
+      args: [
+        'task',
+        'inbox',
+        'ack',
+        'page',
+        'comments',
+        '--session',
+        pageTask.sessionIds![0]!,
+        '--generation',
+        String(pageTask.steeringGeneration),
+      ],
     })
     await pnyx.restart()
     await s.owner({
@@ -1143,7 +1157,8 @@ test(
     })
     await until({
       what: 'the next round at the resumed worker',
-      check: () => s.received({ cwd: folder }).at(-1) === 'Apply the next round',
+      check: () => s.received({ cwd: folder }).at(-1)
+        ?.includes(JSON.stringify(s.task({ key: 'page' }).steering!.at(-1)!.id)) === true,
     })
     await send({
       s,
@@ -1157,7 +1172,7 @@ test(
         && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
     assert.equal(
-      s.received({ cwd: folder }).filter(text => text === comments).length,
+      s.received({ cwd: folder }).filter(text => text.includes('instruction IDs ["comments"]')).length,
       1,
     )
     assert.equal(
@@ -1167,6 +1182,10 @@ test(
     assert.equal(
       s.state().hydraMessages?.some(m => m.text.includes(comments)),
       false,
+    )
+    assert.equal(
+      s.task({ key: 'page' }).steering![0]!.text,
+      comments,
     )
     const reply = s.events().find(e => e.type === 'card.replied' && e.data.text === comments)
     assert.equal(
