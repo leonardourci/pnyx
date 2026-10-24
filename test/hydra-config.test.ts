@@ -1613,6 +1613,159 @@ test(
 )
 
 test(
+  'reordering matching rules previews placement and undo restores the order and cards',
+  t => {
+    const f = hydraId()
+    t.after(() => rmSync(
+      f.home,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    f.run({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+
+    for (const id of [
+      'custom:first',
+      'custom:second',
+    ]) {
+      f.run({
+        args: [
+          'column',
+          'create',
+          '--id',
+          id,
+          '--title',
+          id,
+        ],
+      })
+      f.run({
+        args: [
+          'column',
+          'reorder',
+          id,
+          '--before',
+          'queued',
+        ],
+      })
+      f.run({
+        args: [
+          'column',
+          'rule',
+          id,
+          '--when',
+          'kind:investigation,!owner-question,!held,!done',
+          '--reason',
+          'Group investigations',
+        ],
+      })
+    }
+
+    for (const key of [
+      'research',
+      'manual',
+    ]) {
+      f.run({
+        args: [
+          'task',
+          'create',
+          '--key',
+          key,
+          '--title',
+          key,
+          '--kind',
+          'investigation',
+        ],
+      })
+    }
+
+    f.run({
+      args: [
+        'move',
+        'manual',
+        'parked',
+      ],
+    })
+    const before = f.state()
+    const research = before.keys.research!
+    const manual = before.keys.manual!
+    assert.equal(
+      before.cards[research]!.column,
+      'custom:first',
+    )
+    assert.equal(
+      before.cards[manual]!.column,
+      before.config!.columns.find(column => column.role === 'parked')!.id,
+    )
+    const command = [
+      'column',
+      'reorder',
+      'custom:second',
+      '--before',
+      'custom:first',
+    ]
+    const preview = f.execute({ args: command })
+    assert.match(
+      preview,
+      /^confirmation: needed$/m,
+    )
+    assert.match(
+      preview,
+      /affectedCards: 2/,
+    )
+    assert.deepEqual(
+      f.state(),
+      before,
+    )
+    const token = /^token: (\S+)$/m.exec(preview)![1]!
+    const result = f.execute({
+      args: [
+        ...command,
+        '--confirm',
+        token,
+      ],
+    })
+    assert.equal(
+      f.state().config!.columns[0]!.id,
+      'custom:second',
+    )
+    assert.equal(
+      f.state().cards[research]!.column,
+      'custom:second',
+    )
+    assert.equal(
+      f.state().cards[manual]!.column,
+      'custom:second',
+    )
+    const event = /^ {2}id: (\S+)$/m.exec(result)![1]!
+    f.run({
+      args: [
+        'undo',
+        event,
+      ],
+    })
+    assert.deepEqual(
+      f.state().config!.columns,
+      before.config!.columns,
+    )
+    assert.equal(
+      f.state().cards[research]!.column,
+      'custom:first',
+    )
+    assert.equal(
+      f.state().cards[manual]!.column,
+      before.cards[manual]!.column,
+    )
+  },
+)
+
+test(
   'deleting a matching rule column previews and reverses every move while honoring its fallback',
   t => {
     const f = hydraId()
