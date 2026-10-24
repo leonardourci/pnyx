@@ -13,7 +13,7 @@ import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { openAsks, mergeApproval } from '../src/core/asks.ts'
 import { openDecisions } from '../src/core/decisions.ts'
 import type { Card, Link, TaskCopy } from '../src/core/model.ts'
-import { pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
+import { MergeRejectedError, pullRequestStatus, type PullRequestStatus } from '../src/integrations/github/pull-request.ts'
 import { followPullRequests, workerNews } from '../src/landing/follow.ts'
 import { mergeCommand } from '../src/landing/merge.ts'
 import { decideLink } from '../src/core/decide.ts'
@@ -36,6 +36,56 @@ const greenEvidence = async () => ({
   head: HEAD,
   problems: [] as string[],
 })
+
+test(
+  'a Hydra-to-owner rule change during evidence reads refuses submission without an attempt',
+  async () => {
+    const f = await lab()
+    commands.task([
+      'landing',
+      f.id,
+      '--landing',
+      'pr',
+      '--merge',
+      'hydra',
+    ])
+    commands.link([
+      f.id,
+      '--url',
+      PR,
+    ])
+    await assert.rejects(
+      mergeCommand({
+        hydraId: 'default',
+        ref: f.id,
+        meta: {
+          actor: 'hydra',
+          at: new Date().toISOString(),
+        },
+        readStatus: async () => status(),
+        readOutcome: confirmedOutcome,
+        readEvidence: async () => {
+          commands.task([
+            'landing',
+            f.id,
+            '--landing',
+            'pr',
+            '--merge',
+            'owner',
+          ])
+
+          return greenEvidence()
+        },
+        merge: async () => assert.fail('withdrawn authority must not submit a merge'),
+      }),
+      (error: Error & { code?: string }) => error.code === 'FORBIDDEN',
+    )
+    assert.equal(
+      f.card().links[0]?.mergeAttempt,
+      undefined,
+    )
+  },
+)
 
 test(
   'following recovers Done from persisted merge proof without another forge command',
@@ -823,7 +873,7 @@ test(
       readEvidence: greenEvidence,
       merge: async ({ url: target }) => {
         if (fail) {
-          throw new Error('Pull request is not mergeable')
+          throw new MergeRejectedError('Pull request is not mergeable')
         }
 
         merged.push(target)
@@ -865,22 +915,9 @@ test(
     )
 
     assert.equal(
-      card().links[0]?.mergeAttempt?.outcome,
-      'unknown',
+      card().links[0]?.mergeAttempt,
+      undefined,
     )
-    commands.link([
-      id,
-      '--url',
-      PR,
-      '--remove',
-    ])
-    commands.link([
-      id,
-      '--url',
-      PR,
-      '--state',
-      'open',
-    ])
 
     commands.link([
       id,
@@ -1549,12 +1586,12 @@ test(
           at: new Date().toISOString(),
         },
         readOutcome: confirmedOutcome,
-        readStatus: async () => {
+        readStatus: async () => status(),
+        readEvidence: async () => {
           await undo()
 
-          return status()
+          return greenEvidence()
         },
-        readEvidence: greenEvidence,
         merge: async () => assert.fail('revoked approval must never merge'),
       }),
       /approval was withdrawn/,

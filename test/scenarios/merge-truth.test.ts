@@ -5,6 +5,10 @@ import { test } from 'node:test'
 import { git, scenarioGroup, until } from './harness.ts'
 import type { FakePullRequest } from './github.ts'
 
+import { withWriter } from '../../src/store/hydra-store.ts'
+import { decideLink } from '../../src/core/decide.ts'
+import { advanceQueues } from '../../src/queue/advance.ts'
+
 const pnyx = scenarioGroup()
 const HEAD = 'a'.repeat(40)
 
@@ -55,9 +59,34 @@ for (const {
     error: /classic protection unreadable/,
   },
   {
+    name: 'unreadable required app identity',
+    input: {
+      unreadable: 'legacy-app',
+      legacy: [
+        {
+          context: 'build',
+          app: 10,
+        },
+      ],
+      runs: [
+        {
+          name: 'build',
+          app: 11,
+          conclusion: 'success',
+        },
+      ],
+    },
+    error: /required producer identity is unreadable/,
+  },
+  {
     name: 'unreadable producer evidence',
     input: { unreadable: 'runs' },
     error: /check producers unreadable/,
+  },
+  {
+    name: 'unreadable commit statuses',
+    input: { unreadable: 'statuses' },
+    error: /commit statuses unreadable/,
   },
   {
     name: 'a draft',
@@ -137,7 +166,7 @@ for (const {
 }
 
 test(
-  'a push after verification refuses the exact checked SHA and retains an unfinished attempt',
+  'a push after verification refuses the checked SHA and allows a fresh verified retry',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -196,10 +225,30 @@ test(
       ],
     )
     assert.equal(
-      s.task({ key: 'ship' }).links[0]?.mergeAttempt?.head,
-      HEAD,
+      s.task({ key: 'ship' }).links[0]?.mergeAttempt,
+      undefined,
     )
-    assert.notEqual(
+    assert.ok(s.events().some(event => event.type === 'card.linked' && event.data.after?.mergeAttempt?.head === HEAD))
+    s.pullRequest({
+      number: 1,
+      head: 'c'.repeat(40),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'merge',
+        'ship',
+      ],
+    })
+    assert.equal(
+      s.merges({ number: 1 }),
+      1,
+    )
+    assert.equal(
+      s.task({ key: 'ship' }).links[0]?.mergeProof?.head,
+      'c'.repeat(40),
+    )
+    assert.equal(
       s.task({ key: 'ship' }).status?.state,
       'done',
     )
@@ -281,6 +330,31 @@ for (const behavior of [
           'HEAD',
         ],
       })
+
+      if (behavior === 'open') {
+        await s.owner({
+          args: [
+            'task',
+            'create',
+            '--title',
+            'Wait for confirmed landing',
+            '--key',
+            'next',
+            '--project',
+            app,
+          ],
+        })
+        await s.owner({
+          args: [
+            'task',
+            'queue',
+            'next',
+            '--behind',
+            s.task({ key: 'ship' }).sessionIds![0]!,
+          ],
+        })
+      }
+
       const url = s.pullRequest({
         number: 1,
         head,
@@ -357,6 +431,58 @@ for (const behavior of [
         s.merges({ number: 1 }),
         1,
       )
+
+      if (behavior === 'readback-failed') {
+        s.pullRequest({
+          number: 1,
+          head,
+        })
+        await until({
+          what: 'readable unconfirmed detail to replace the read error',
+          check: () =>
+            s.task({ key: 'ship' }).links[0]?.mergeAttempt?.detail === 'GitHub has not confirmed a merge or a queue entry',
+        })
+      }
+
+      if (behavior === 'open') {
+        s.pullRequest({
+          number: 1,
+          head,
+          state: 'merged',
+          merge: 'invalid',
+        })
+        await until({
+          what: 'invalid forge confirmation to remain visibly unfinished',
+          check: () =>
+            s.task({ key: 'ship' }).links[0]?.mergeAttempt?.detail?.includes('no merge commit'),
+        })
+        assert.equal(
+          s.task({ key: 'ship' }).links[0]?.state,
+          'open',
+        )
+        assert.notEqual(
+          s.task({ key: 'ship' }).status?.state,
+          'done',
+        )
+        assert.notEqual(
+          s.task({ key: 'ship' }).copy?.state,
+          'removed',
+        )
+        await advanceQueues({ hydraId: s.hydraId })
+        assert.notEqual(
+          s.task({ key: 'ship' }).status?.state,
+          'done',
+        )
+        assert.notEqual(
+          s.task({ key: 'ship' }).copy?.state,
+          'removed',
+        )
+        assert.equal(
+          s.task({ key: 'next' }).sessionIds?.length ?? 0,
+          0,
+        )
+      }
+
       git({
         cwd: copy,
         args: [
@@ -375,6 +501,10 @@ for (const behavior of [
       await until({
         what: 'confirmed merge to finish the task',
         check: () => s.task({ key: 'ship' }).status?.state === 'done',
+      })
+      await until({
+        what: 'confirmed landing to settle the retained copy',
+        check: () => s.task({ key: 'ship' }).copy?.state === 'removed',
       })
       const confirmed = s.task({ key: 'ship' }).links[0]!
       assert.equal(
@@ -455,6 +585,78 @@ test(
     assert.equal(
       s.merges({ number: 1 }),
       1,
+    )
+  },
+)
+
+test(
+  'server restart schedules Done recovery when the last merged proof is the only remaining work',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Recover confirmed merge',
+        '--key',
+        'ship',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'status',
+        'ship',
+        'working',
+      ],
+    })
+    const url = s.pullRequest({
+      number: 1,
+      state: 'merged',
+    })
+    await pnyx.restart({
+      whileStopped: () => {
+        withWriter({
+          hydraId: s.hydraId,
+          fn: ({ writer }) => {
+            const at = new Date().toISOString()
+            const decision = decideLink({
+              state: writer.state,
+              ref: s.task({ key: 'ship' }).id,
+              url,
+              link: {
+                kind: 'github_pr',
+                url,
+                state: 'merged',
+                mergeProof: {
+                  head: HEAD,
+                  commit: 'b'.repeat(40),
+                  confirmedAt: at,
+                },
+              },
+              meta: {
+                actor: 'pnyx',
+                at,
+              },
+            })
+            assert.ok('event' in decision)
+            writer.append({ event: decision.event })
+          },
+        })
+        assert.notEqual(
+          s.task({ key: 'ship' }).status?.state,
+          'done',
+        )
+      },
+    })
+    await until({
+      what: 'restart to reconcile persisted merge proof',
+      check: () => s.task({ key: 'ship' }).status?.state === 'done',
+    })
+    assert.equal(
+      s.merges({ number: 1 }),
+      0,
     )
   },
 )

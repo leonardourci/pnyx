@@ -3,10 +3,10 @@ import { commit, required, type Output } from '../cli/commands.ts'
 import { decideLink, findCard, type Meta } from '../core/decide.ts'
 import { HYDRA_ACTOR, HydraError, ownerActor, type Link } from '../core/model.ts'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../integrations/github/merge-evidence.ts'
-import { mergePullRequest, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
+import { MergeRejectedError, mergePullRequest, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { mergeObservation } from './merge-observation.ts'
-import { declareMerged } from './follow.ts'
+import { confirmedMerge } from './confirmed.ts'
 import { taskLanding } from './rule.ts'
 
 // gh-axi's last lines say why a merge failed; the rest is its usage noise.
@@ -152,30 +152,6 @@ export async function mergeCommand({
       refuse({ message: evidence.problems.join('; ') })
     }
 
-    const latestState = loadHydra({ hydraId }).state
-    const latest = findCard({
-      state: latestState,
-      ref: card.id,
-    })
-    const currentRule = taskLanding({
-      state: latestState,
-      card: latest,
-    })
-
-    if (!latest.links.some(current => current.url === link.url && current.state !== 'closed')) {
-      refuse({ message: 'the linked pull request was removed or closed' })
-    }
-
-    if (!owner && currentRule?.merge !== 'hydra' && !mergeApproval({
-      card: latest,
-      url: link.url,
-    })) {
-      refuse({
-        message: 'the owner’s merge approval was withdrawn',
-        code: 'FORBIDDEN',
-      })
-    }
-
     attempt = {
       outcome: 'unknown',
       head: evidence.head,
@@ -202,7 +178,11 @@ export async function mergeCommand({
           })
         }
 
-        if (!current || current.mergeAttempt || current.state === 'closed' || current.state === 'merged') {
+        if (!current || current.state === 'closed') {
+          refuse({ message: 'the linked pull request was removed or closed' })
+        }
+
+        if (current.mergeAttempt || current.state === 'merged') {
           return false
         }
 
@@ -234,6 +214,39 @@ export async function mergeCommand({
           head: evidence.head,
         })
       } catch (error) {
+        if (error instanceof MergeRejectedError) {
+          commit({
+            hydraId,
+            meta,
+            intent: {
+              type: 'card.linked',
+              card: card.id,
+            },
+            decide: ({ state }) => {
+              const current = state.cards[card.id]?.links.find(current => current.url === link.url)
+
+              if (!current || current.mergeAttempt?.requestedAt !== attempt?.requestedAt) {
+                return { skipped: 'unchanged' }
+              }
+
+              return decideLink({
+                state,
+                ref: card.id,
+                url: link.url,
+                link: {
+                  ...current,
+                  mergeAttempt: undefined,
+                },
+                meta,
+              })
+            },
+          })
+          refuse({
+            message: `GitHub rejected the merge: ${(error as Error).message.trim().slice(-MERGE_ERROR_TAIL_CHARS)}`,
+            code: 'MERGE_FAILED',
+          })
+        }
+
         refuse({
           message: `gh-axi could not merge ${link.url}: ${(error as Error).message.trim().slice(-MERGE_ERROR_TAIL_CHARS)}; confirmation remains pending`,
           code: 'MERGE_FAILED',
@@ -280,24 +293,32 @@ export async function mergeCommand({
   })
 
   if (outcome.outcome === 'merged') {
-    withWriter({
+    await confirmedMerge({
       hydraId,
-      fn: ({ writer }) => declareMerged({
-        writer,
-        cardId: card.id,
-        url: link.url,
-        at,
-      }),
+      cardId: card.id,
+      url: link.url,
+      proof: {
+        head: outcome.head,
+        commit: outcome.commit,
+        confirmedAt: at,
+      },
     })
+  }
+
+  if (outcome.outcome === 'merged') {
+    return {
+      ...receipt,
+      merge: outcome.outcome,
+      url: link.url,
+      head: outcome.head,
+      commit: outcome.commit,
+    }
   }
 
   return {
     ...receipt,
     merge: outcome.outcome,
     url: link.url,
-    ...(outcome.outcome === 'merged' ? {
-      head: outcome.head,
-      commit: outcome.commit,
-    } : { detail: outcome.detail }),
+    detail: outcome.detail,
   }
 }
