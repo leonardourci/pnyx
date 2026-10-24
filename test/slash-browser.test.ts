@@ -18,6 +18,13 @@ import { readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 
+function visibleLabelText({ text }: { text: string | null | undefined }): string {
+  return (text ?? '').replaceAll(
+    '\u2060',
+    '',
+  )
+}
+
 for (const geometry of [
   false,
   true,
@@ -826,8 +833,9 @@ for (const geometry of [
       }));
       await page.type('then report.');
       console.log(await page.eval(() => {
+        ${visibleLabelText.toString()}
         const badge = document.querySelector('.draft-skill'), label = badge.querySelector('.project-label');
-        const taskLabel = [...document.querySelectorAll('.card .project-label')].find(item => item.textContent === label.textContent.replaceAll('\\u2060', ''));
+        const taskLabel = [...document.querySelectorAll('.card .project-label')].find(item => visibleLabelText({ text: item.textContent }) === visibleLabelText({ text: label.textContent }));
         return !!taskLabel && taskLabel.dataset.labelColor === label.dataset.labelColor
           && document.querySelector('.hydra-chat textarea').value.endsWith('then report.');
       }));
@@ -856,7 +864,8 @@ for (const geometry of [
           await page.wait('.slash-menu [role="option"]');
           console.log(await page.eval(() => {
             const options = [...document.querySelectorAll('.slash-menu [role="option"]')];
-            const shared = options.filter(option => option.querySelector('.project-label')?.textContent === 'shared');
+            ${visibleLabelText.toString()}
+            const shared = options.filter(option => visibleLabelText({ text: option.querySelector('.project-label')?.textContent }) === visibleLabelText({ text: 'shared' }));
             const option = shared.find(option => option.querySelector('.mention-excerpt')?.textContent === ${JSON.stringify(project.description)});
             const color = option?.querySelector('.project-label')?.dataset.labelColor;
             option?.click();
@@ -873,9 +882,10 @@ for (const geometry of [
           await page.open(${JSON.stringify(url)});
           await page.wait('.draft-skill');
           console.log(await page.eval(() => {
+            ${visibleLabelText.toString()}
             const badge = document.querySelector('.draft-skill');
             return badge.textContent.includes('/deploy')
-              && badge.querySelector('.project-label')?.textContent === 'shared'
+              && visibleLabelText({ text: badge.querySelector('.project-label')?.textContent }) === visibleLabelText({ text: 'shared' })
               && badge.querySelector('.project-label')?.dataset.labelColor === ${JSON.stringify(project.color)};
           }));
           await page.fill('.hydra-chat textarea', '/dep');
