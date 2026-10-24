@@ -554,6 +554,13 @@ export async function advanceQueues({
         continue
       }
 
+      const branch = `pnyx/${hydraId}-${next.id}`
+      const brief = taskPrompt({
+        hydraId,
+        card: next,
+        prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
+      })
+
       withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -583,7 +590,6 @@ export async function advanceQueues({
             session: session!,
             root: prepared.root,
           })
-          const branch = `pnyx/${hydraId}-${next.id}`
           const status = spawnSync(
             'git',
             [
@@ -657,12 +663,7 @@ export async function advanceQueues({
                 },
               } : {}),
             }
-            decision.event.data.brief = taskPrompt({
-              hydraId,
-              card: next,
-              prompt:
-            `The previous task "${source.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
-            })
+            decision.event.data.brief = brief
             writer.append({ event: decision.event })
           }
         },

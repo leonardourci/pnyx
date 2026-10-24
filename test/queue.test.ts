@@ -1,3 +1,4 @@
+import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { pullRequestLanding, pullRequestLandingSync } from '../src/integrations/github/pull-request.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -553,6 +554,10 @@ test(
       '--hydra',
       'lab',
     ])
+    checkRegistryLockOrder({
+      t,
+      hydraId: 'lab',
+    })
     f.commit()
     f.queue({ key: 'two' })
     f.queue({
