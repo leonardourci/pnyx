@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { steeringNotice } from '../../src/task-inbox/notice.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup()
@@ -72,6 +73,26 @@ test(
       ],
     })
     await finished({ turns: 2 })
+    const instruction = s.task({ key: 'notes' }).steering![0]!
+    assert.equal(
+      instruction.text,
+      'Add the release date.',
+    )
+    const worker = s.as({ agent: first })
+    const current = s.task({ key: 'notes' })
+    await worker.run({
+      args: [
+        'task',
+        'inbox',
+        'ack',
+        card.id,
+        instruction.id,
+        '--session',
+        current.sessionIds![0]!,
+        '--generation',
+        String(current.steeringGeneration),
+      ],
+    })
 
     await pnyx.restart()
     await s.owner({
@@ -86,8 +107,16 @@ test(
     assert.deepEqual(
       s.received({ cwd: folder }).slice(1),
       [
-        'Add the release date.',
-        'Ship it.',
+        steeringNotice({
+          task: card.id,
+          hydraId: s.hydraId,
+          ids: [instruction.id],
+        }),
+        steeringNotice({
+          task: card.id,
+          hydraId: s.hydraId,
+          ids: [s.task({ key: 'notes' }).steering![1]!.id],
+        }),
       ],
     )
     const resumed = await s.agent({ cwd: folder })

@@ -1,4 +1,6 @@
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
+import { enqueueSteering } from '../task-inbox/inbox.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
@@ -58,6 +60,7 @@ export interface ReplyRequest {
     undelivered?: boolean
   }
   reason?: string
+  steering?: string
 }
 
 export interface ReplyReceipt {
@@ -177,6 +180,8 @@ function deliver({
       hydraId,
       card,
       text,
+      steering: request.steering,
+      direct: !request.steering,
       setting: request.setting,
       actor: request.actor,
     })
@@ -236,16 +241,20 @@ async function hostReply({
   card,
   text,
   setting,
+  steering,
+  direct,
   actor,
 }: {
   hydraId: string
   card: string
   text: string
   setting?: ReplyRequest['setting']
+  steering?: string
+  direct?: boolean
   actor?: string
 }): Promise<Delivery> {
   try {
-    await askHost({
+    const accepted = await askHost({
       hydraId,
       body: setting
         ? {
@@ -259,9 +268,18 @@ async function hostReply({
           action: 'send',
           card,
           text,
+          steering,
+          direct,
           ...(actor ? { actor } : {}),
         },
     })
+
+    if (accepted.deferred) {
+      return {
+        state: 'delivery_unknown',
+        detail: 'instruction persisted; notification deferred while the worker is held',
+      }
+    }
 
     return { state: 'delivered' }
   } catch (error) {
@@ -405,6 +423,9 @@ export async function sendReply({
         text: request.text,
         provider: card.agent?.provider,
       })
+      const nativeCommand = route.kind === 'pnyx'
+        && /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
+      const control = Boolean(request.control || request.key || request.setting || nativeCommand)
       let text = entered
       let keys: KeyStep[] | undefined
       let answers: string | undefined
@@ -520,8 +541,7 @@ export async function sendReply({
         }) : ''
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
-      const resumes = !request.control && !request.key && !request.setting
-        && !request.taskMessage && !answers && !resolveKey
+      const resumes = !control && !request.taskMessage && !answers && !resolveKey
       const data = {
         reply,
         resumes,
@@ -533,11 +553,31 @@ export async function sendReply({
         text,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
-        ...(request.control || request.key || request.setting ? { control: true } : {}),
+        ...(control ? { control: true } : {}),
         ...(resolveKey ? { resolveKey } : {}),
         ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
       }
+      const payload = [
+        request.ask ? text : entered,
+        context,
+      ].filter(Boolean).join('\n\n')
+      const steering = route.kind === 'pnyx' && card.id !== HYDRA_CARD
+        && !control && !answers && !resolveKey
+        ? reply : undefined
+
+      if (steering) {
+        enqueueSteering({
+          writer,
+          ref: card.id,
+          id: steering,
+          text: payload,
+          source: request.actor ?? 'cli',
+          reply,
+          meta: meta(),
+        })
+      }
+
       const decision = decideReply({
         state: writer.state,
         ref: card.id,
@@ -555,14 +595,13 @@ export async function sendReply({
         state: 'queued' as ReplyState,
         route,
         resend: true,
+        control,
+        steering,
         keys,
         answers,
         decision: answerDecision,
         resumes,
-        text: [
-          request.ask ? text : entered,
-          context,
-        ].filter(Boolean).join('\n\n'),
+        text: payload,
       }
     },
   })
@@ -592,6 +631,7 @@ export async function sendReply({
     request: {
       ...request,
       text: queued.text ?? request.text,
+      steering: queued.steering,
     },
     keys,
   })
@@ -615,7 +655,7 @@ export async function sendReply({
           }),
           ...outcome,
           resumes: queued.resumes,
-          ...(request.control || request.key || request.setting ? { control: true } : {}),
+          ...(queued.control ? { control: true } : {}),
           ...(request.taskMessage ? { taskMessage: true } : {}),
           ...(queued.decision ? { decision: queued.decision } : {}),
           ...(answers ? { answers } : {}),
@@ -755,6 +795,10 @@ export const reply = guard({
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if ('recordError' in receipt && receipt.recordError) {
       out.help = [`The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`]
+    } else if (loadHydra({ hydraId }).state.cards[receipt.card]?.steering
+      ?.some(message => message.reply === receipt.reply)
+      && receipt.state !== 'delivered') {
+      out.help = [`Instruction ${receipt.reply} is saved in the task inbox until the worker acknowledges it. Pending IDs replay when the worker opens or resumes; held workers wait for release. Retry with the same key to preserve its identity.`]
     } else if (receipt.state === 'failed') {
       out.help = [`Fix the cause, then retry with --idempotency-key ${receipt.reply}`]
     } else if (receipt.state === 'delivery_unknown') {
@@ -1057,7 +1101,8 @@ export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <fi
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
 be passed with --home, and --resolve-key answers that open decision.
 --task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
-gets the text straight through the Hydra's server, which must be running. Any other agent session is
+gets an inbox notice from the Hydra's server after the instruction is persisted. Pending IDs survive
+a stopped server and replay on worker opening or resumption until acknowledged. Any other agent session is
 typed into the terminal its hooks recorded: a tmux pane, a Herdr pane, a Paseo terminal, or an
 iTerm2 or Terminal session found by its TTY (macOS asks once to allow controlling those apps).
 The session's process must still own that TTY; the text is typed once, then submitted with Enter.

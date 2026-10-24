@@ -426,6 +426,20 @@ export function replayCodex() {
         }
 
         if (message.method === 'turn/steer') {
+          if (plan?.fail) {
+            send({
+              message: {
+                id: message.id,
+                error: {
+                  code: -32000,
+                  message: plan.fail,
+                },
+              },
+            })
+
+            return
+          }
+
           send({
             message: {
               id: message.id,

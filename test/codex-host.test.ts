@@ -1,3 +1,4 @@
+import { steeringNotice } from '../src/task-inbox/notice.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -253,6 +254,7 @@ test(
           'shell_environment_policy.set.PNYX_ACTOR': `worker:${task().id}`,
           'shell_environment_policy.set.PNYX_HOME': process.env.PNYX_HOME,
           'shell_environment_policy.set.PNYX_HYDRA': 'lab',
+          'shell_environment_policy.set.PNYX_STEERING_WORKER': fixture.environments[0]!.PNYX_STEERING_WORKER,
           'features.default_mode_request_user_input': true,
         },
         model: 'gpt-6.1-sol',
@@ -819,7 +821,11 @@ test(
       ],
       [
         'turn-2',
-        'Also check the docs',
+        steeringNotice({
+          task: task().id,
+          hydraId: 'lab',
+          ids: [task().steering!.at(-1)!.id],
+        }),
         2,
         'working',
       ],
