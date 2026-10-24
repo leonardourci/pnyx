@@ -1,4 +1,6 @@
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
+import { enqueueSteering } from '../task-inbox/inbox.ts'
 import { mentionContext } from '../mentions/mentions.ts'
 import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
@@ -58,6 +60,7 @@ export interface ReplyRequest {
     undelivered?: boolean
   }
   reason?: string
+  steering?: string
 }
 
 export interface ReplyReceipt {
@@ -177,6 +180,8 @@ function deliver({
       hydraId,
       card,
       text,
+      steering: request.steering,
+      direct: !request.steering,
       setting: request.setting,
       actor: request.actor,
     })
@@ -236,16 +241,20 @@ async function hostReply({
   card,
   text,
   setting,
+  steering,
+  direct,
   actor,
 }: {
   hydraId: string
   card: string
   text: string
   setting?: ReplyRequest['setting']
+  steering?: string
+  direct?: boolean
   actor?: string
 }): Promise<Delivery> {
   try {
-    await askHost({
+    const accepted = await askHost({
       hydraId,
       body: setting
         ? {
@@ -259,9 +268,18 @@ async function hostReply({
           action: 'send',
           card,
           text,
+          steering,
+          direct,
           ...(actor ? { actor } : {}),
         },
     })
+
+    if (accepted.deferred) {
+      return {
+        state: 'delivery_unknown',
+        detail: 'instruction persisted; notification deferred while the worker is held',
+      }
+    }
 
     return { state: 'delivered' }
   } catch (error) {
@@ -538,6 +556,26 @@ export async function sendReply({
         ...(answerDecision ? { decision: answerDecision } : {}),
         ...(answers ? { answers } : {}),
       }
+      const payload = [
+        request.ask ? text : request.text,
+        context,
+      ].filter(Boolean).join('\n\n')
+      const steering = route.kind === 'pnyx' && card.id !== HYDRA_CARD
+        && !request.control && !request.key && !request.setting && !answers && !resolveKey
+        ? reply : undefined
+
+      if (steering) {
+        enqueueSteering({
+          writer,
+          ref: card.id,
+          id: steering,
+          text: payload,
+          source: request.actor ?? 'cli',
+          reply,
+          meta: meta(),
+        })
+      }
+
       const decision = decideReply({
         state: writer.state,
         ref: card.id,
@@ -555,6 +593,7 @@ export async function sendReply({
         state: 'queued' as ReplyState,
         route,
         resend: true,
+        steering,
         keys,
         answers,
         decision: answerDecision,
@@ -592,6 +631,7 @@ export async function sendReply({
     request: {
       ...request,
       text: queued.text ?? request.text,
+      steering: queued.steering,
     },
     keys,
   })

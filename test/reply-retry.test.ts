@@ -1,3 +1,4 @@
+import { enqueueSteering } from '../src/task-inbox/inbox.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -563,6 +564,82 @@ test(
         'delivered',
         'resent as r1~retry1',
       ],
+    )
+  },
+)
+
+test(
+  'inbox-backed instructions stay pending instead of being confirmed or resent by transcript guessing',
+  async () => {
+    receipt({
+      reply: 'durable',
+      state: 'queued',
+      text: 'Rebase onto main',
+      at: SENT,
+    })
+    receipt({
+      reply: 'durable',
+      state: 'delivery_unknown',
+      at: SENT,
+    })
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        enqueueSteering({
+          writer,
+          ref: task().id,
+          id: 'durable',
+          reply: 'durable',
+          text: 'Rebase onto main',
+          source: 'test',
+          meta: {
+            actor: 'test',
+            at: new Date(SENT).toISOString(),
+          },
+        })
+      },
+    })
+    appendFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'user',
+        timestamp: new Date(SENT).toISOString(),
+        message: {
+          role: 'user',
+          content: 'Rebase onto main',
+        },
+      })}\n`,
+    )
+    let resent = 0
+    let escalated = 0
+    await followUpReplies({
+      hydraId: 'lab',
+      now: SENT + 2 * MINUTE,
+      tried: new Map(),
+      resend: async () => {
+        resent++
+
+        return 'delivered'
+      },
+      unconfirmed: () => {
+        escalated++
+      },
+    })
+    assert.equal(
+      resent,
+      0,
+    )
+    assert.equal(
+      escalated,
+      0,
+    )
+    assert.equal(
+      task().replies!.find(reply => reply.id === 'durable')!.state,
+      'delivery_unknown',
+    )
+    assert.equal(
+      task().steering![0]!.ack,
+      undefined,
     )
   },
 )
