@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { steeringNotice } from '../../src/task-inbox/notice.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
@@ -261,6 +263,121 @@ for (const harness of [
   'claude',
   'codex',
 ] as const) {
+  test(
+    `${harness}: native commands stay direct and selected skills are resolved before durable enqueue`,
+    async () => {
+      const s = await pnyx.scenario()
+      const folder = s.folder({ name: 'worker' })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          'work',
+          '--title',
+          'Work',
+          '--folder',
+          folder,
+        ],
+      })
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'work',
+          '--harness',
+          harness,
+        ],
+      })
+      const agent = await s.agent({ cwd: folder })
+      await until({
+        what: 'opening turn finishes',
+        check: () => s.task({ key: 'work' }).sessionActivity === 'finished',
+      })
+      const reference = ({ value }: { value: Record<string, string> }) => `[@/selected](pnyx-skill:${encodeURIComponent(JSON.stringify(value))})`
+      await s.owner({
+        args: [
+          'reply',
+          'work',
+          '--idempotency-key',
+          'command',
+          '--text',
+          reference({
+            value: {
+              name: 'compact',
+              command: '/compact',
+            },
+          }),
+        ],
+      })
+      await until({
+        what: 'native command reaches provider directly',
+        check: () => agent.received.includes('/compact') && s.task({ key: 'work' }).sessionActivity === 'finished',
+      })
+      assert.equal(
+        s.task({ key: 'work' }).steering,
+        undefined,
+      )
+      const skill = join(
+        folder,
+        'SKILL.md',
+      )
+      writeFileSync(
+        skill,
+        'Read the task and checkpoint the instruction.\n',
+      )
+      await s.owner({
+        args: [
+          'reply',
+          'work',
+          '--idempotency-key',
+          'skill',
+          '--text',
+          reference({
+            value: {
+              name: 'check',
+              file: skill,
+            },
+          }),
+        ],
+      })
+      const notice = steeringNotice({
+        task: s.task({ key: 'work' }).id,
+        hydraId: s.hydraId,
+        ids: ['skill'],
+      })
+      await until({
+        what: 'skill instruction inbox notice',
+        check: () => agent.received.includes(notice),
+      })
+      const payload = s.task({ key: 'work' }).steering![0]!.text
+      assert.match(
+        payload,
+        /Read and follow the skill "check"/,
+      )
+      assert.equal(
+        payload.includes(skill),
+        true,
+      )
+      assert.equal(
+        payload.includes('pnyx-skill:'),
+        false,
+      )
+      const read = await s.as({ agent }).run({
+        args: [
+          'task',
+          'inbox',
+          'read',
+          'work',
+        ],
+      })
+      assert.equal(
+        read.includes(skill),
+        true,
+      )
+    },
+  )
+
   test(
     `${harness}: attaching a busy hosted session replays only its new task inbox and fences late output`,
     async () => {
