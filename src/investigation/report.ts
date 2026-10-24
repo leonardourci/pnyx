@@ -1,5 +1,6 @@
 import { isDeepStrictEqual } from 'node:util'
 import { reportCalls, requireReportReview } from './inventory.ts'
+import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { readFileSync } from 'node:fs'
 import { findCard, type Meta } from '../core/decide.ts'
@@ -134,6 +135,10 @@ export function decideBuild({
   })
 
   requireUnheld({ card })
+  requireReady({
+    state,
+    card,
+  })
 
   if (reportActor({ actor: meta.actor })) {
     throw new HydraError({

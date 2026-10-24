@@ -1,3 +1,4 @@
+import { requireReady } from '../core/dependencies.ts'
 import { commit, required, type Output } from '../cli/commands.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideMove, findCard, type Meta } from '../core/decide.ts'
@@ -199,6 +200,10 @@ export async function buildCommand({
   })
 
   try {
+    requireReady({
+      state,
+      card,
+    })
     const sent = await reply({
       hydraId,
       request: {
