@@ -757,6 +757,7 @@ export function Composer({
               choose={({ item }) => choose({ command: skillReference({ item }) })}
               loading={!catalog}
               empty={catalog?.unavailable ?? 'No matching skill or command.'}
+              footer={catalog?.note ? <p>{catalog.note}</p> : undefined}
 
             />
           )}
