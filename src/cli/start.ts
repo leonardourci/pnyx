@@ -1,3 +1,4 @@
+import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { projectIdentity } from '../projects/sources.ts'
 import { readProjectMemory } from '../projects/memory.ts'
@@ -105,6 +106,10 @@ export function freeTask({
   }
 
   requireUnheld({ card })
+  requireReady({
+    state,
+    card,
+  })
 
   if (card.queue) {
     throw new HydraError({
@@ -358,6 +363,10 @@ export async function startTask({
   })
 
   requireUnheld({ card })
+  requireReady({
+    state,
+    card,
+  })
 
   if (card.queue) {
     throw new HydraError({
@@ -495,11 +504,15 @@ export async function startTask({
   const ownsFolder = commandName
     ? selectedCommand?.bringsOwnFolder : Boolean(state.config?.commandOwnsFolder)
   const ownFolder = command && ownsFolder
-  requireUnheld({
-    card: findCard({
-      state: loadHydra({ hydraId }).state,
-      ref: task,
-    }),
+  const currentState = loadHydra({ hydraId }).state
+  const currentCard = findCard({
+    state: currentState,
+    ref: task,
+  })
+  requireUnheld({ card: currentCard })
+  requireReady({
+    state: currentState,
+    card: currentCard,
   })
 
   const folder = replacement ? given
@@ -592,6 +605,10 @@ function askFirstmate({
       })
 
       requireUnheld({ card })
+      requireReady({
+        state: writer.state,
+        card,
+      })
 
       if (!liveTask({ card }) || card.id === HYDRA_CARD) {
         throw new HydraError({

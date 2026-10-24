@@ -1,4 +1,6 @@
 import { inboxCommand } from '../task-inbox/cli.ts'
+import { taskReadiness } from '../core/dependencies.ts'
+import { decideDependencies } from '../core/dependency-decisions.ts'
 import { columnRule, parseColumnRule } from '../core/columns.ts'
 import { lifecycleMoves } from '../core/lifecycle.ts'
 import { decideHold, requireUnheld } from '../core/holds.ts'
@@ -892,6 +894,10 @@ export const TASK_OPTIONS: Options = {
   limit: { type: 'string' },
   before: { type: 'string' },
   behind: { type: 'string' },
+  on: {
+    type: 'string',
+    multiple: true,
+  },
   full: { type: 'boolean' },
   harness: { type: 'string' },
   prompt: { type: 'string' },
@@ -1204,6 +1210,37 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
   }
 
+  if (action === 'depend' || action === 'undepend') {
+    const ref = required({
+      value: positionals[1],
+      what: 'task id',
+    })
+    const prerequisites = values.on as string[] | undefined
+
+    if (!prerequisites?.length) {
+      throw new HydraError({
+        message: 'pass --on <prerequisite task>; repeat --on for several tasks',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    return commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'task.dependencies',
+        card: ref,
+      },
+      decide: ({ state }) => decideDependencies({
+        state,
+        ref,
+        prerequisites,
+        remove: action === 'undepend',
+        meta: m,
+      }),
+    })
+  }
+
   if (action === 'hold' || action === 'release') {
     const ref = required({
       value: positionals[1],
@@ -1469,6 +1506,14 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
             card: task,
           }),
         } : {}),
+        prerequisites: (task.prerequisites ?? []).map(id => ({
+          id,
+          title: state.cards[id]?.title ?? id,
+        })),
+        readiness: taskReadiness({
+          state,
+          card: task,
+        }),
         ...(task.queueNote ? { handoff: task.queueNote } : {}),
         next: task.sessionIds?.[0] ? workerQueue({
           state,
@@ -3912,6 +3957,7 @@ function summary({ event }: { event: HydraEvent }): string {
     case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
+    case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`
     case 'task.queue': return event.data.after ? `queued for ${event.data.after.session}` : `unqueued${event.data.note ? `: ${event.data.note}` : ''}`
     case 'task.session': return `${undo}session ${event.data.session}: ${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'board.view': return 'View preferences changed'
@@ -4499,6 +4545,7 @@ Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
 pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
@@ -4562,6 +4609,7 @@ pnyx-axi task reorder <task> --behind <task|session>
 pnyx-axi task sessions
 pnyx-axi task attach <task> --session <session-id|card-id|key|self>
 pnyx-axi task detach <task>
+Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
 Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
 Tasks accept one attached session. A second session cannot replace the recipient.
 attach moves an interactive session to the task; an occupied destination is rejected.
