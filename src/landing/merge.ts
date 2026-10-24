@@ -2,9 +2,11 @@ import { mergeApproval } from '../core/asks.ts'
 import { commit, required, type Output } from '../cli/commands.ts'
 import { decideLink, findCard, type Meta } from '../core/decide.ts'
 import { HYDRA_ACTOR, HydraError, ownerActor, type Link } from '../core/model.ts'
-import { mergePullRequest, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
+import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../integrations/github/merge-evidence.ts'
+import { MergeRejectedError, mergePullRequest, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
-import { declareMerged } from './follow.ts'
+import { mergeObservation } from './merge-observation.ts'
+import { confirmedMerge } from './confirmed.ts'
 import { taskLanding } from './rule.ts'
 
 // gh-axi's last lines say why a merge failed; the rest is its usage noise.
@@ -74,6 +76,8 @@ export async function mergeCommand({
   meta,
   readStatus = pullRequestStatus,
   merge = mergePullRequest,
+  readEvidence = pullRequestMergeEvidence,
+  readOutcome = pullRequestMergeOutcome,
 }: {
   hydraId: string
   ref?: string
@@ -81,6 +85,8 @@ export async function mergeCommand({
   meta: Meta
   readStatus?: typeof pullRequestStatus
   merge?: typeof mergePullRequest
+  readEvidence?: typeof pullRequestMergeEvidence
+  readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<Output> {
   const state = loadHydra({ hydraId }).state
   const card = findCard({
@@ -127,38 +133,130 @@ export async function mergeCommand({
     })
   }
 
-  if (status.state !== 'merged') {
-    mustBeGreen({ status })
-    const latestState = loadHydra({ hydraId }).state
-    const latest = findCard({
-      state: latestState,
-      ref: card.id,
-    })
-    const currentRule = taskLanding({
-      state: latestState,
-      card: latest,
-    })
+  let attempt = link.mergeAttempt
 
-    if (!owner && currentRule?.merge !== 'hydra' && !mergeApproval({
-      card: latest,
-      url: link.url,
-    })) {
+  if (status.state !== 'merged' && !attempt) {
+    mustBeGreen({ status })
+    let evidence
+
+    try {
+      evidence = await readEvidence({ url: link.url })
+    } catch (error) {
       refuse({
-        message: 'the owner’s merge approval was withdrawn',
-        code: 'FORBIDDEN',
+        message: `merge evidence unreadable: ${(error as Error).message}`,
+        code: 'UNAVAILABLE',
       })
     }
 
-    try {
-      await merge({ url: link.url })
-    } catch (error) {
-      refuse({
-        message: `gh-axi could not merge ${link.url}: ${(error as Error).message.trim().slice(-MERGE_ERROR_TAIL_CHARS)}`,
-        code: 'MERGE_FAILED',
-      })
+    if (evidence.problems.length) {
+      refuse({ message: evidence.problems.join('; ') })
+    }
+
+    attempt = {
+      outcome: 'unknown',
+      head: evidence.head,
+      requestedAt: meta.at,
+      detail: 'merge requested; awaiting GitHub confirmation',
+    }
+    const claimed = withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const currentCard = writer.state.cards[card.id]
+        const current = currentCard?.links.find(current => current.url === link.url)
+
+        if (currentCard && !owner && taskLanding({
+          state: writer.state,
+          card: currentCard,
+        })?.merge !== 'hydra'
+          && !mergeApproval({
+            card: currentCard,
+            url: link.url,
+          })) {
+          refuse({
+            message: 'the owner’s merge approval was withdrawn',
+            code: 'FORBIDDEN',
+          })
+        }
+
+        if (!current || current.state === 'closed') {
+          refuse({ message: 'the linked pull request was removed or closed' })
+        }
+
+        if (current.mergeAttempt || current.state === 'merged') {
+          return false
+        }
+
+        const decision = decideLink({
+          state: writer.state,
+          ref: card.id,
+          url: link.url,
+          link: {
+            ...current,
+            mergeAttempt: attempt,
+          },
+          meta,
+        })
+
+        if (!('event' in decision)) {
+          return false
+        }
+
+        writer.append({ event: decision.event })
+
+        return true
+      },
+    })
+
+    if (claimed) {
+      try {
+        await merge({
+          url: link.url,
+          head: evidence.head,
+        })
+      } catch (error) {
+        if (error instanceof MergeRejectedError) {
+          commit({
+            hydraId,
+            meta,
+            intent: {
+              type: 'card.linked',
+              card: card.id,
+            },
+            decide: ({ state }) => {
+              const current = state.cards[card.id]?.links.find(current => current.url === link.url)
+
+              if (!current || current.mergeAttempt?.requestedAt !== attempt?.requestedAt) {
+                return { skipped: 'unchanged' }
+              }
+
+              return decideLink({
+                state,
+                ref: card.id,
+                url: link.url,
+                link: {
+                  ...current,
+                  mergeAttempt: undefined,
+                },
+                meta,
+              })
+            },
+          })
+          refuse({
+            message: `GitHub rejected the merge: ${(error as Error).message.trim().slice(-MERGE_ERROR_TAIL_CHARS)}`,
+            code: 'MERGE_FAILED',
+          })
+        }
+
+        refuse({
+          message: `gh-axi could not merge ${link.url}: ${(error as Error).message.trim().slice(-MERGE_ERROR_TAIL_CHARS)}; confirmation remains pending`,
+          code: 'MERGE_FAILED',
+        })
+      }
     }
   }
 
+  const outcome = await readOutcome({ url: link.url })
+  const at = new Date().toISOString()
   const receipt = commit({
     hydraId,
     meta,
@@ -166,28 +264,61 @@ export async function mergeCommand({
       type: 'card.linked',
       card: card.id,
     },
-    decide: ({ state }) => decideLink({
-      state,
-      ref: card.id,
-      url: link.url,
-      link: {
-        ...link,
-        state: 'merged',
-        checks: status.checks.summary,
-        checkedAt: meta.at,
-      },
-      meta,
-    }),
-  })
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => declareMerged({
-      writer,
-      cardId: card.id,
-      url: link.url,
-      at: meta.at,
-    }),
+    decide: ({ state }) => {
+      const current = state.cards[card.id]?.links.find(current => current.url === link.url)
+
+      if (!current || current.state === 'merged') {
+        return { skipped: 'unchanged' }
+      }
+
+      return decideLink({
+        state,
+        ref: card.id,
+        url: link.url,
+        link: mergeObservation({
+          link: {
+            ...current,
+            checks: status.checks.summary,
+            checkedAt: at,
+          },
+          outcome,
+          at,
+        }),
+        meta: {
+          ...meta,
+          at,
+        },
+      })
+    },
   })
 
-  return receipt
+  if (outcome.outcome === 'merged') {
+    await confirmedMerge({
+      hydraId,
+      cardId: card.id,
+      url: link.url,
+      proof: {
+        head: outcome.head,
+        commit: outcome.commit,
+        confirmedAt: at,
+      },
+    })
+  }
+
+  if (outcome.outcome === 'merged') {
+    return {
+      ...receipt,
+      merge: outcome.outcome,
+      url: link.url,
+      head: outcome.head,
+      commit: outcome.commit,
+    }
+  }
+
+  return {
+    ...receipt,
+    merge: outcome.outcome,
+    url: link.url,
+    detail: outcome.detail,
+  }
 }

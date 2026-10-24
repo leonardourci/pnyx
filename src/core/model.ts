@@ -132,6 +132,17 @@ export interface Link {
   // A followed pull request's last seen checks summary and comment count, so only changes reach its worker.
   checks?: string
   comments?: number
+  mergeAttempt?: {
+    outcome: 'merged' | 'queued' | 'unknown'
+    head: string
+    requestedAt: string
+    detail?: string
+  }
+  mergeProof?: {
+    head: string
+    commit: string
+    confirmedAt: string
+  }
 }
 
 export interface Question {

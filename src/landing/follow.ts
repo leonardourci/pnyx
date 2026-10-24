@@ -1,11 +1,14 @@
+import { confirmedMerge } from './confirmed.ts'
+import { mergeObservation } from './merge-observation.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideLink } from '../core/decide.ts'
-import { declareTask, HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
 import { failedChecks, type Card, type HydraState, type Link } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
+import { pullRequestMergeOutcome, type MergeOutcome } from '../integrations/github/merge-evidence.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { loadHydra, withWriter, type Writer } from '../store/hydra-store.ts'
+import { loadHydra, withWriter } from '../store/hydra-store.ts'
 
 // GitHub changes on human time; once a minute keeps a few followed pull requests well inside gh's rate limit.
 export const FOLLOW_POLL_MS = 60_000
@@ -27,6 +30,27 @@ export function followedLinks({ state }: { state: HydraState }): {
         card,
         link,
       })))
+}
+
+export function needsPullRequestFollow({ state }: { state: HydraState }): boolean {
+  if (state.config?.hydra.kind === 'firstmate') {
+    return false
+  }
+
+  if (followedLinks({ state }).length > 0) {
+    return true
+  }
+
+  return Object.values(state.cards).some(card => {
+    if (!liveTask({ card }) || card.status?.state === 'done') {
+      return false
+    }
+
+    const links = card.links.filter(link => link.kind === 'github_pr' && link.state !== 'closed')
+
+    return links.length > 0 && links.every(link => link.state === 'merged')
+      && links.some(link => link.mergeProof)
+  })
 }
 
 // What the task's own worker should hear about this change, if anything. Comments count from the first read, which only sets their baseline.
@@ -65,48 +89,6 @@ export function workerNews({
   }
 
   return news.length ? news.join('\n\n') : undefined
-}
-
-// Once every pull request of a task has merged, its work has landed: Pnyx declares it done, which settles its copy.
-export function declareMerged({
-  writer,
-  cardId,
-  url,
-  at,
-}: {
-  writer: Writer
-  cardId: string
-  url: string
-  at: string
-}): void {
-  const card = writer.state.cards[cardId]
-
-  if (!card || card.status?.state === 'done') {
-    return
-  }
-
-  // A pull request closed without merging was abandoned; the work landed through the ones that merged.
-  const live = card.links.filter(l => l.kind === 'github_pr' && l.state !== 'closed')
-  const allMerged = live.length > 0 && live.every(l => l.state === 'merged')
-
-  if (!allMerged) {
-    return
-  }
-
-  const decision = declareTask({
-    state: writer.state,
-    ref: card.id,
-    status: 'done',
-    note: `Pull request ${url} merged`,
-    meta: {
-      actor: 'pnyx',
-      at,
-    },
-  })
-
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
 }
 
 async function tellWorker({
@@ -150,12 +132,39 @@ export async function followPullRequests({
   readStatus = pullRequestStatus,
   tell = tellWorker,
   active = () => true,
+  readOutcome = pullRequestMergeOutcome,
 }: {
   hydraId: string
   readStatus?: typeof pullRequestStatus
   tell?: typeof tellWorker
   active?(): boolean
+  readOutcome?: typeof pullRequestMergeOutcome
 }): Promise<void> {
+  const state = loadHydra({ hydraId }).state
+
+  if (!active() || state.config?.hydra.kind === 'firstmate') {
+    return
+  }
+
+  for (const card of Object.values(state.cards)) {
+    if (!active()) {
+      return
+    }
+
+    const confirmed = card.links.find(link => link.state === 'merged' && link.mergeProof)
+
+    if (card.status?.state === 'done' || !confirmed || !liveTask({ card })) {
+      continue
+    }
+
+    await confirmedMerge({
+      hydraId,
+      cardId: card.id,
+      url: confirmed.url,
+      proof: confirmed.mergeProof!,
+    })
+  }
+
   for (const {
     card,
     link,
@@ -177,8 +186,33 @@ export async function followPullRequests({
       continue
     }
 
-    const known = link.state === status.state && link.checks === status.checks.summary
+    if (!active()) {
+      return
+    }
+
+    let outcome: MergeOutcome | undefined
+
+    if (status.state === 'merged' || link.mergeAttempt) {
+      outcome = await readOutcome({ url: link.url })
+    }
+
+    if (!active()) {
+      return
+    }
+
+    let observedState = status.state
+
+    if (outcome?.outcome === 'merged') {
+      observedState = 'merged'
+    } else if (status.state === 'merged') {
+      observedState = link.state ?? 'open'
+    }
+
+    const sameOutcome = !link.mergeAttempt || (link.mergeAttempt.outcome === outcome?.outcome
+      && (outcome?.outcome === 'merged' || link.mergeAttempt.detail === outcome?.detail))
+    const known = link.state === observedState && link.checks === status.checks.summary
       && link.comments === status.comments && link.draft === status.draft
+      && sameOutcome
 
     if (known) {
       continue
@@ -197,18 +231,28 @@ export async function followPullRequests({
           return undefined
         }
 
+        let observedLink: Link = {
+          ...current,
+          state: observedState,
+          checks: status.checks.summary,
+          comments: status.comments,
+          draft: status.draft,
+          checkedAt: at,
+        }
+
+        if (outcome) {
+          observedLink = mergeObservation({
+            link: observedLink,
+            outcome,
+            at,
+          })
+        }
+
         const decision = decideLink({
           state: writer.state,
           ref: card.id,
           url: link.url,
-          link: {
-            ...current,
-            state: status.state,
-            checks: status.checks.summary,
-            comments: status.comments,
-            draft: status.draft,
-            checkedAt: at,
-          },
+          link: observedLink,
           meta: {
             actor: 'pnyx',
             at,
@@ -221,15 +265,6 @@ export async function followPullRequests({
 
         writer.append({ event: decision.event })
 
-        if (status.state === 'merged') {
-          declareMerged({
-            writer,
-            cardId: card.id,
-            url: link.url,
-            at,
-          })
-        }
-
         return {
           card: latest,
           link: current,
@@ -240,6 +275,19 @@ export async function followPullRequests({
 
     if (!recorded) {
       continue
+    }
+
+    if (outcome?.outcome === 'merged') {
+      await confirmedMerge({
+        hydraId,
+        cardId: card.id,
+        url: link.url,
+        proof: {
+          head: outcome.head,
+          commit: outcome.commit,
+          confirmedAt: at,
+        },
+      })
     }
 
     const news = workerNews({

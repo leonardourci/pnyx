@@ -26,6 +26,10 @@ const waitingPrompt = ({ prompt }: { prompt: Attention }) => prompt.blocking && 
 const asked = ({ questions }: { questions?: { question: string }[] }) => questions?.map(q => q.question).join(' ')
 
 function mergeDetail({ link }: { link: Link }): string {
+  if (link.mergeAttempt && link.state !== 'merged') {
+    return `${link.url} ${link.mergeAttempt.outcome === 'queued' ? 'merge queued' : 'merge unconfirmed'}; wait for GitHub confirmation`
+  }
+
   const { checks } = link
   let state = 'checks green: merge it'
 

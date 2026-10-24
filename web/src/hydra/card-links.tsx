@@ -42,7 +42,17 @@ export function LinkChip({
   const label = expanded && number && link.title ? `${number} · ${title}` : number || title
   const state = linkState({ link })
   const checks = link.checks && <span>Checks: {link.checks}</span>
-  const tooltip = <><strong>{title}</strong><span>{link.url}</span>{checks}</>
+  let pending: string | undefined
+
+  if (link.state !== 'merged' && link.mergeAttempt) {
+    pending = link.mergeAttempt.outcome === 'queued' ? 'merge queued' : 'merge unconfirmed'
+  }
+
+  const tooltip = (
+    <><strong>{title}</strong><span>{link.url}</span>{checks}
+      {pending && <span>{link.mergeAttempt?.detail || pending}</span>}
+    </>
+  )
   const icon = LINK_ICONS[link.kind]
 
   return (
@@ -55,7 +65,7 @@ export function LinkChip({
       >
         <Icon name={icon} size={13} />
         {state && <i className={`link-state link-${state}`} aria-label={state === 'failing' ? 'checks failed' : state} />}
-        <span>{label}</span>
+        <span>{label}{pending && ` · ${pending}`}</span>
       </a>
     </Tooltip>
   )

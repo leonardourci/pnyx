@@ -1,6 +1,6 @@
 import { helperProgress } from '../helper/route.ts'
 import { startReviewTimer } from '../review/timer.ts'
-import { FOLLOW_POLL_MS, followPullRequests, followedLinks } from '../landing/follow.ts'
+import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '../landing/follow.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'
 import { spendCounter } from '../spend/worker.ts'
 import { approval } from '../confirmations/commands.ts'
@@ -1590,7 +1590,7 @@ async function mountOwnedHydra({
           })()
         }
 
-        const following = followedLinks({ state }).length > 0
+        const following = needsPullRequestFollow({ state })
 
         if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
           followCheckedAt = Date.now()
@@ -1659,7 +1659,7 @@ async function mountOwnedHydra({
         ]
           .filter((at): at is number => at !== undefined)
 
-        if (!followRun && followedLinks({ state }).length > 0) {
+        if (!followRun && needsPullRequestFollow({ state })) {
           deadlines.push(followCheckedAt + followDelay)
         }
 

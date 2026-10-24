@@ -2,7 +2,7 @@
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See test/README.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before } from 'node:test'
@@ -13,6 +13,7 @@ import { startServer, type RunningServer, type ServerMessage } from '../../src/s
 import { infoPath, localToken } from '../../src/server/state.ts'
 import { loadHydra, readEvents } from '../../src/store/hydra-store.ts'
 import type { HydraQueue } from '../../src/server/host.ts'
+import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from '../dispatch-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 
@@ -357,9 +358,10 @@ export function scenarioGroup({ retryDelays }: {
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.
-    restart: async () => {
+    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
       const { port } = server!
       await server!.close()
+      await whileStopped?.()
       await start({ port })
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
@@ -608,48 +610,25 @@ function hydraScenario({
       return path
     },
     // A pull request on this scenario's own GitHub repository, as the fake gh-axi reports it; call again to change it.
-    pullRequest: ({
-      number,
-      state = 'open',
-      draft = false,
-      checks = '0 passed, 0 failed',
-      comments = 0,
-    }: {
-      number: number
-      state?: 'open' | 'merged' | 'closed'
-      draft?: boolean
-      checks?: string
-      comments?: number
-    }) => {
+    pullRequest: ({ ...input }: FakePullRequest) => scriptPullRequest({
+      repo,
+      hydraId,
+      ...input,
+    }),
+    mergeArguments: ({ number }: { number: number }) => {
       const file = join(
         repo,
-        String(number),
-      )
-      mkdirSync(
-        repo,
-        { recursive: true },
-      )
-      // Written whole and renamed, so the server's next read never sees half a pull request.
-      writeFileSync(
-        `${file}.next`,
-        `pull_request:
-  number: ${number}
-  title: "Pull request ${number}"
-  state: ${state}
-  draft: ${draft ? 'yes' : 'no'}
-  checks: "${checks}"
-  comment_count: ${comments}
-  review_count: 0
-`,
-      )
-      renameSync(
-        `${file}.next`,
-        file,
+        `${number}.arguments`,
       )
 
-      return `https://github.com/o/${hydraId}/pull/${number}`
+      return existsSync(file) ? readFileSync(
+        file,
+        'utf8',
+      ).trim()
+        .split('\n')
+        .map(line => JSON.parse(line) as string[]) : []
     },
-    // How many times `pr merge` merged that pull request.
+    // Accepted requests include queued merges, so this detects duplicate submissions.
     merges: ({ number }: { number: number }) => {
       const log = join(
         repo,
