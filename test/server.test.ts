@@ -1,18 +1,20 @@
 import { MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
 import { seedWebFixture } from './web-fixture.ts'
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { execFileSync, spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, writeFileSync, writeSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync, writeSync } from 'node:fs'
 import { request } from 'node:http'
 import { connect, createServer } from 'node:net'
 import { tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
-import { hydraDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { acquireLock, hydraDir, hydrasDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
@@ -2548,61 +2550,129 @@ test(
   },
 )
 
-test(
-  "each card gets its conversation's last message, pushed again as the transcript grows",
-  async () => {
-    const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
-    const card = fixture.state.keys.layout!
-    server = await startServer({ hydraId: 'default' })
-    const t = await tab(); await t.next()
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.',
-        at: '2026-10-13T10:49:00Z',
-      },
-    )
-    appendFileSync(
-      fixture.transcript,
-      assistantLine({
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      }),
-    )
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    const later = await tab(); await later.next()
-    assert.deepEqual(
-      await later.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    t.ws.send(JSON.stringify({ type: 'resync' }))
-    assert.equal(
-      (await t.next()).type,
-      'snapshot',
-    )
-    assert.deepEqual(
-      await t.latest({ card }),
-      {
-        role: 'assistant',
-        text: 'Shipped.',
-        at: '2026-10-13T11:02:00Z',
-      },
-    )
-    t.ws.close(); later.ws.close()
-  },
-)
+for (const activity of [
+  'idle',
+  'working',
+] as const) {
+  test(
+    `each card gets its conversation's last message after native notices are lost (${activity})`,
+    async context => {
+      const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
+      const card = fixture.state.keys.layout!
+
+      if (activity === 'working') {
+        withWriter({
+          hydraId: 'default',
+          fn: ({ writer }) => {
+            const decision = decidePush({
+              state: writer.state,
+              newCardId: card,
+              key: 'layout',
+              input: { activity },
+              meta: {
+                actor: 'test',
+                at: new Date().toISOString(),
+              },
+            })
+            assert.ok('event' in decision)
+            writer.append({ event: decision.event })
+          },
+        })
+      }
+
+      const watching = context.mock.method(
+        fs,
+        'watch',
+      )
+      syncBuiltinESMExports()
+      context.after(() => {
+        watching.mock.restore()
+        syncBuiltinESMExports()
+      })
+      server = await startServer({ hydraId: 'default' })
+      const t = await tab(); await t.next()
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'The first pass is ready to review. Try resizing a column or switching the conversation to inline in Settings.',
+          at: '2026-10-13T10:49:00Z',
+        },
+      )
+
+      // Simulate missing native notifications without changing the transcript path.
+      for (const call of watching.mock.calls) {
+        const path = call.arguments[0]
+
+        if (path === fixture.transcript || path === dirname(fixture.transcript)) {
+          call.result?.close()
+        }
+      }
+
+      appendFileSync(
+        fixture.transcript,
+        assistantLine({
+          text: 'Shipped.',
+          at: '2026-10-13T11:02:00Z',
+        }),
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Shipped.',
+          at: '2026-10-13T11:02:00Z',
+        },
+      )
+      const replacement = `${fixture.transcript}.replacement`
+      writeFileSync(
+        replacement,
+        readFileSync(
+          fixture.transcript,
+          'utf8',
+        ) + assistantLine({
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        }),
+      )
+      renameSync(
+        replacement,
+        fixture.transcript,
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      const later = await tab(); await later.next()
+      assert.deepEqual(
+        await later.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      t.ws.send(JSON.stringify({ type: 'resync' }))
+      assert.equal(
+        (await t.next()).type,
+        'snapshot',
+      )
+      assert.deepEqual(
+        await t.latest({ card }),
+        {
+          role: 'assistant',
+          text: 'Rotated.',
+          at: '2026-10-13T11:03:00Z',
+        },
+      )
+      t.ws.close(); later.ws.close()
+    },
+  )
+}
 
 test(
   "a tab whose snapshot alone fills its send buffer still gets every card's last message",
@@ -3470,6 +3540,102 @@ test(
     assert.equal(
       (await readServer({ hydraId: 'late' }))?.url,
       `http://127.0.0.1:${server.port}/hydra/late/`,
+    )
+  },
+)
+
+test(
+  'a Hydra whose folder was seen before its log is served even if directory notifications are lost',
+  async t => {
+    mkdirSync(
+      hydraDir({ hydraId: 'late' }),
+      { recursive: true },
+    )
+    const watching = t.mock.method(
+      fs,
+      'watch',
+    )
+    syncBuiltinESMExports()
+
+    try {
+      server = await startServer({ hydraId: 'default' })
+    } finally {
+      watching.mock.restore()
+      syncBuiltinESMExports()
+    }
+
+    assert.match(
+      server.skipped.late!,
+      /unknown Hydra: late/,
+    )
+    const directoryWatcher = watching.mock.calls.find(
+      call => call.arguments[0] === hydrasDir(),
+    )?.result
+    assert.ok(directoryWatcher)
+    directoryWatcher.close()
+    cli({
+      args: [
+        'hydra',
+        'create',
+        'late',
+      ],
+    })
+    await until({
+      check: () => existsSync(infoPath({ hydraId: 'late' })) ? true : undefined,
+      what: 'the completed Hydra to be served without waiting for the periodic retry',
+    })
+    assert.equal(
+      (await readServer({ hydraId: 'late' }))?.url,
+      `http://127.0.0.1:${server.port}/hydra/late/`,
+    )
+  },
+)
+
+test(
+  'server shutdown releases its ownership without taking an active Hydra writer lock',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const dir = hydraDir({ hydraId: 'default' })
+    const release = acquireLock({ dir })
+
+    try {
+      await assert.doesNotReject(server.close())
+      assert.ok(!existsSync(join(
+        dir,
+        'server.lock',
+      )))
+      assert.equal(
+        readFileSync(
+          join(
+            dir,
+            'writer.lock',
+          ),
+          'utf8',
+        ),
+        String(process.pid),
+      )
+    } finally {
+      release()
+    }
+  },
+)
+
+test(
+  'server shutdown closes HTTP even when releasing a missing ownership claim fails',
+  async () => {
+    server = await startServer({ hydraId: 'default' })
+    const url = server.url
+    rmSync(join(
+      hydraDir({ hydraId: 'default' }),
+      'server.lock',
+    ))
+    await assert.rejects(
+      server.close(),
+      { code: 'ENOENT' },
+    )
+    await assert.rejects(
+      fetch(url),
+      /fetch failed/,
     )
   },
 )

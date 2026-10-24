@@ -1,4 +1,5 @@
 import { checkRegistryLockOrder } from './registry-lock-order.ts'
+import { steeringNotice } from '../src/task-inbox/notice.ts'
 import { pullRequestLanding, pullRequestLandingSync } from '../src/integrations/github/pull-request.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
@@ -538,183 +539,93 @@ test(
   },
 )
 
-test(
-  'open PRs and working agents hold the queue; a merged PR advances once on a fetched fresh branch',
-  async t => {
-    const f = await lab({ t })
-    await project([
-      'memory',
-      'set',
-      '--project',
-      'app',
-      '--key',
-      'preferences',
-      '--text',
-      'Keep pagination changes small',
-      '--hydra',
-      'lab',
-    ])
-    checkRegistryLockOrder({
-      t,
-      hydraId: 'lab',
-    })
-    f.commit()
-    f.queue({ key: 'two' })
-    f.queue({
-      key: 'three',
-      behind: 'two',
-    })
-    f.task({
-      args: [
-        'status',
-        'one',
-        'needs_you',
-      ],
-    })
-    commands.link([
-      f.card({ key: 'one' }).id,
-      '--url',
-      'https://github.com/example/app/pull/1',
-      '--state',
-      'open',
-      '--hydra',
-      'lab',
-    ])
-    await advanceQueues({
-      hydraId: 'lab',
-      readPR: async () => 'open',
-    })
-    assert.equal(
-      f.card({ key: 'two' }).agent,
-      undefined,
-    )
-    assert.equal(
-      f.sdk.calls.length,
-      0,
-    )
-    f.land()
-    const defaultTip = git({
-      cwd: f.repo,
-      args: [
-        'rev-parse',
-        'HEAD',
-      ],
-    })
-    f.push({ input: { activity: 'working' } })
-    await advanceQueues({
-      hydraId: 'lab',
-      readPR: async () => 'merged',
-      readLanding: async () => ({
-        head: git({
-          cwd: f.folder,
-          args: [
-            'rev-parse',
-            'HEAD',
-          ],
-        }),
-        merge: defaultTip,
-      }),
-    })
-    assert.equal(
-      f.card({ key: 'two' }).agent,
-      undefined,
-    )
-    f.push({ input: { activity: 'finished' } })
-    await advanceQueues({
-      hydraId: 'lab',
-      readPR: async () => 'merged',
-      readLanding: async () => ({
-        head: git({
-          cwd: f.folder,
-          args: [
-            'rev-parse',
-            'HEAD',
-          ],
-        }),
-        merge: defaultTip,
-      }),
-    })
-    await until({ check: () => f.sdk.calls[0]?.messages.length === 1 && f.card({ key: 'two' }).activity === 'finished' })
-    assert.equal(
-      f.card({ key: 'one' }).status?.state,
-      'done',
-      'the merge that released the queue also declared its task done',
-    )
-    assert.equal(
-      f.card({ key: 'two' }).status?.state,
-      'working',
-    )
-    assert.equal(
-      f.card({ key: 'two' }).agent?.sessionId,
-      'worker',
-    )
-    assert.deepEqual(
-      f.card({ key: 'one' }).sessionIds,
-      [],
-    )
-    assert.equal(
-      f.card({ key: 'two' }).queue,
-      undefined,
-    )
-    assert.equal(
-      f.card({ key: 'three' }).queue?.session,
-      'claude-code:worker',
-    )
-    assert.equal(
-      f.card({ key: 'one' }).copy?.state,
-      'removed',
-    )
-    assert.equal(
-      f.card({ key: 'two' }).copy?.state,
-      'active',
-    )
-    assert.equal(
-      f.card({ key: 'two' }).folder,
-      f.folder,
-    )
-    assert.equal(
-      git({
-        cwd: f.folder,
+for (const staleFailure of [
+  false,
+  true,
+]) {
+  test(
+    `open PRs and working agents hold the queue; a merged PR advances once on a fetched fresh branch (stale failure: ${staleFailure})`,
+    async t => {
+      const f = await lab({ t })
+      await project([
+        'memory',
+        'set',
+        '--project',
+        'app',
+        '--key',
+        'preferences',
+        '--text',
+        'Keep pagination changes small',
+        '--hydra',
+        'lab',
+      ])
+      checkRegistryLockOrder({
+        t,
+        hydraId: 'lab',
+      })
+      f.commit()
+      f.queue({ key: 'two' })
+      f.queue({
+        key: 'three',
+        behind: 'two',
+      })
+      f.task({
+        args: [
+          'status',
+          'one',
+          'needs_you',
+        ],
+      })
+      commands.link([
+        f.card({ key: 'one' }).id,
+        '--url',
+        'https://github.com/example/app/pull/1',
+        '--state',
+        'open',
+        '--hydra',
+        'lab',
+      ])
+      await advanceQueues({
+        hydraId: 'lab',
+        readPR: async () => 'open',
+      })
+      assert.equal(
+        f.card({ key: 'two' }).agent,
+        undefined,
+      )
+      assert.equal(
+        f.sdk.calls.length,
+        0,
+      )
+      f.land()
+      const defaultTip = git({
+        cwd: f.repo,
         args: [
           'rev-parse',
           'HEAD',
         ],
-      }),
-      defaultTip,
-    )
-    assert.equal(
-      git({
-        cwd: f.folder,
-        args: [
-          'branch',
-          '--show-current',
-        ],
-      }),
-      `pnyx/lab-${f.card({ key: 'two' }).id}`,
-    )
-    assert.match(
-      f.sdk.calls[0]!.messages[0]!,
-      /Implement two.*fresh branch/s,
-    )
-    assert.match(
-      f.sdk.calls[0]!.messages[0]!,
-      /Keep pagination changes small/,
-    )
-    assert.equal(
-      f.sdk.calls[0]!.messages[0]!.split('Implement two').length - 1,
-      1,
-    )
-    assert.equal(
-      f.card({ key: 'two' }).column,
-      roleColumn({
-        columns: f.state().config!.columns,
-        role: 'in_progress',
-      }),
-    )
-    await advanceQueues({
-      hydraId: 'lab',
-      readPR: async () => 'merged',
-      readLanding: async () => ({
+      })
+      f.push({ input: { activity: 'working' } })
+      await advanceQueues({
+        hydraId: 'lab',
+        readPR: async () => 'merged',
+        readLanding: async () => ({
+          head: git({
+            cwd: f.folder,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          }),
+          merge: defaultTip,
+        }),
+      })
+      assert.equal(
+        f.card({ key: 'two' }).agent,
+        undefined,
+      )
+      f.push({ input: { activity: 'finished' } })
+      const landing = {
         head: git({
           cwd: f.folder,
           args: [
@@ -723,21 +634,153 @@ test(
           ],
         }),
         merge: defaultTip,
-      }),
-    })
-    assert.equal(
-      f.sdk.calls[0]!.messages.length,
-      1,
-    )
-    assert.deepEqual(
-      replay({
-        state: emptyHydra(),
-        events: readEvents({ hydraId: 'lab' }),
-      }),
-      f.state(),
-    )
-  },
-)
+      }
+      let resume = () => {}
+      let requested = false
+      const paused = new Promise<void>(resolve => {
+        resume = resolve
+      })
+      const stale = advanceQueues({
+        hydraId: 'lab',
+        readPR: async () => 'merged',
+        readLanding: async () => {
+          requested = true
+          await paused
+
+          if (staleFailure) {
+            throw new Error('late proof read failure')
+          }
+
+          return landing
+        },
+      })
+
+      try {
+        await until({ check: () => requested })
+        await advanceQueues({
+          hydraId: 'lab',
+          readPR: async () => 'merged',
+          readLanding: async () => landing,
+        })
+      } finally {
+        resume()
+        await stale
+      }
+
+      await until({ check: () => f.sdk.calls[0]?.messages.length === 1 && f.card({ key: 'two' }).activity === 'finished' })
+      assert.equal(
+        f.card({ key: 'one' }).status?.state,
+        'done',
+        'the merge that released the queue also declared its task done',
+      )
+      assert.equal(
+        f.card({ key: 'two' }).status?.state,
+        'working',
+      )
+      assert.equal(
+        f.card({ key: 'two' }).agent?.sessionId,
+        'worker',
+      )
+      assert.deepEqual(
+        f.card({ key: 'one' }).sessionIds,
+        [],
+      )
+      assert.equal(
+        f.card({ key: 'two' }).queue,
+        undefined,
+      )
+      assert.equal(
+        f.card({ key: 'three' }).queue?.session,
+        'claude-code:worker',
+      )
+      assert.equal(
+        f.card({ key: 'one' }).copy?.state,
+        'removed',
+      )
+      assert.equal(
+        f.card({ key: 'two' }).copy?.state,
+        'active',
+      )
+      assert.equal(
+        f.card({ key: 'two' }).folder,
+        f.folder,
+      )
+      assert.equal(
+        git({
+          cwd: f.folder,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        defaultTip,
+      )
+      assert.equal(
+        git({
+          cwd: f.folder,
+          args: [
+            'branch',
+            '--show-current',
+          ],
+        }),
+        `pnyx/lab-${f.card({ key: 'two' }).id}`,
+      )
+      const instruction = f.card({ key: 'two' }).steering![0]!
+      assert.equal(
+        f.sdk.calls[0]!.messages[0],
+        steeringNotice({
+          task: f.card({ key: 'two' }).id,
+          hydraId: 'lab',
+          ids: [instruction.id],
+        }),
+      )
+      assert.match(
+        instruction.text,
+        /Implement two.*fresh branch/s,
+      )
+      assert.match(
+        instruction.text,
+        /Keep pagination changes small/,
+      )
+      assert.equal(
+        instruction.text.split('Implement two').length - 1,
+        1,
+      )
+      assert.equal(
+        f.card({ key: 'two' }).column,
+        roleColumn({
+          columns: f.state().config!.columns,
+          role: 'in_progress',
+        }),
+      )
+      await advanceQueues({
+        hydraId: 'lab',
+        readPR: async () => 'merged',
+        readLanding: async () => ({
+          head: git({
+            cwd: f.folder,
+            args: [
+              'rev-parse',
+              'HEAD',
+            ],
+          }),
+          merge: defaultTip,
+        }),
+      })
+      assert.equal(
+        f.sdk.calls[0]!.messages.length,
+        1,
+      )
+      assert.deepEqual(
+        replay({
+          state: emptyHydra(),
+          events: readEvents({ hydraId: 'lab' }),
+        }),
+        f.state(),
+      )
+    },
+  )
+}
 
 test(
   'without a PR the queue waits until declared done work lands; Done cleanup retains the worker folder',

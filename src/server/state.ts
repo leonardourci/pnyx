@@ -283,18 +283,16 @@ export function claimServer({ hydraId }: { hydraId: string }): () => void {
     },
   })
 
-  return () => withWriter({
-    hydraId,
-    fn: () => {
-      if (readFileSync(
+  // A live owner cannot be replaced; releasing its claim does not write Hydra state.
+  return () => {
+    if (readFileSync(
+      path,
+      'utf8',
+    ) === owner) {
+      rmSync(
         path,
-        'utf8',
-      ) === owner) {
-        rmSync(
-          path,
-          { force: true },
-        )
-      }
-    },
-  })
+        { force: true },
+      )
+    }
+  }
 }
