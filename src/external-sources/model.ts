@@ -48,9 +48,35 @@ export interface ExternalSource {
   state: 'registered' | 'running' | 'ended' | 'retired'
   run?: SourceRun
   results: SourceResult[]
+  lavish?: {
+    page: string
+    after?: {
+      source: string
+      sequence: number
+    }
+    reply?: {
+      id: string
+      text: string
+      accepted?: {
+        at: string
+        receipt: string
+      }
+    }
+  }
 }
 
 export type ExternalSourceChange =
+  | {
+    type: 'task.source.lavish.published'
+    data: {
+      source: string
+      reply: string
+      accepted: {
+        at: string
+        receipt: string
+      }
+    }
+  }
   | {
     type: 'task.source.registered'
     data: { source: ExternalSource }

@@ -3938,7 +3938,8 @@ function summary({ event }: { event: HydraEvent }): string {
 
   switch (event.type) {
     case 'task.source.registered': return `External source ${event.data.source.id} registered`
-    case 'task.source.started': return `External source ${event.data.source} listening`
+    case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
+    case 'task.source.started': return `External source ${event.data.source} run started`
     case 'task.source.result': return `External source ${event.data.source} result ${event.data.result.sequence}: ${event.data.result.outcome}`
     case 'task.source.alerted': return event.data.detail
     case 'task.source.handled': return `External source ${event.data.source} result ${event.data.sequence} handled`
