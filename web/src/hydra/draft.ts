@@ -9,11 +9,13 @@ export type ChipKind = ReferenceKind
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
 const QUARTER_SPACE = '\u2005'
+export const CHIP_SPACE = QUARTER_SPACE + QUARTER_SPACE
 const NO_BREAK_SPACE = '\u00A0'
-const WORD_JOINER = '\u2060'
+export const WORD_JOINER = '\u2060'
+export const CHIP_JOIN = WORD_JOINER + NO_BREAK_SPACE + WORD_JOINER
 const REFERENCE_ROOM: Partial<Record<ChipKind, string>> = {
-  column: ICON_SPACE,
-  task: ICON_SPACE + ICON_SPACE,
+  column: ICON_SPACE + CHIP_JOIN,
+  task: ICON_SPACE + WORD_JOINER + ICON_SPACE + CHIP_JOIN,
 }
 const CARD_NAME_MAX = 20
 const LETTERS = new Intl.Segmenter(
@@ -24,6 +26,13 @@ const WORDS = new Intl.Segmenter(
   undefined,
   { granularity: 'word' },
 )
+
+export function skillProjectLabel({ text }: { text: string }): string {
+  return Array.from(
+    LETTERS.segment(text),
+    part => part.segment,
+  ).join(WORD_JOINER)
+}
 
 export const cardChip = ({ chip }: { chip: Pick<DraftChip, 'kind' | 'attached'> }) =>
   chip.kind === 'image' || (chip.kind === 'file' && chip.attached)
@@ -125,7 +134,8 @@ function draftChips({ text }: { text: string }): DraftChip[] {
       let label = `${prefix}${name}`
 
       if (skill) {
-        label = `${ICON_SPACE}${skill.project ? `${skill.project} ` : ''}/${skill.name}${ICON_SPACE}`
+        const project = skill.project ? skillProjectLabel({ text: skill.project }) + CHIP_JOIN : ''
+        label = `${ICON_SPACE}${CHIP_JOIN}${project}/${skill.name}${CHIP_JOIN}${ICON_SPACE}`
       }
 
       chips.push({
@@ -159,7 +169,7 @@ export function draftView({ text }: { text: string }): DraftView {
       chip.start,
     )
     const from = display.length
-    display += chip.label
+    display += CHIP_SPACE + chip.label + CHIP_SPACE
     cursor = chip.end
 
     return {

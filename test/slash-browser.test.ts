@@ -1,3 +1,6 @@
+import { skillReference } from '../src/thread/skill-reference.ts'
+import { taskMention, reference } from '../src/mentions/mentions.ts'
+import { fileBlock } from '../src/attachments/files.ts'
 import { project as projectCommand } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
@@ -15,377 +18,392 @@ import { readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 
-test(
-  'Hydra slash suggestions escape composer clipping and retain insertion, dismissal and mention behavior',
-  {
-    skip: process.env.PNYX_BROWSER_TESTS !== '1',
-    timeout: 120_000,
-  },
-  async t => {
-    const root = realpathSync(mkdtempSync(join(
-      tmpdir(),
-      'pnyx-slash-browser-',
-    )))
-    process.env.PNYX_HOME = join(
-      root,
-      'home',
-    )
-    process.env.PNYX_SEMANTIC = 'off'
-    process.env.CLAUDE_CONFIG_DIR = join(
-      root,
-      'claude',
-    )
-    process.env.CODEX_HOME = join(
-      root,
-      'codex',
-    )
-    const cwd = join(
-      root,
-      'home/hydras/default/agent',
-    )
-    const skill = join(
-      cwd,
-      '.agents/skills/inscribe',
-    )
-    mkdirSync(
-      skill,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
+for (const geometry of [
+  false,
+  true,
+]) {
+  test(
+    geometry ? 'Composer inline tokens keep text, caret and badges clear at edges and wrapped lines'
+      : 'Hydra slash suggestions escape composer clipping and retain insertion, dismissal and mention behavior',
+    {
+      skip: process.env.PNYX_BROWSER_TESTS !== '1',
+      timeout: 120_000,
+    },
+    async t => {
+      const root = realpathSync(mkdtempSync(join(
+        tmpdir(),
+        'pnyx-slash-browser-',
+      )))
+      process.env.PNYX_HOME = join(
+        root,
+        'home',
+      )
+      process.env.PNYX_SEMANTIC = 'off'
+      process.env.CLAUDE_CONFIG_DIR = join(
+        root,
+        'claude',
+      )
+      process.env.CODEX_HOME = join(
+        root,
+        'codex',
+      )
+      const cwd = join(
+        root,
+        'home/hydras/default/agent',
+      )
+      const skill = join(
+        cwd,
+        '.agents/skills/inscribe',
+      )
+      mkdirSync(
         skill,
-        'SKILL.md',
-      ),
-      '---\nname: inscribe\ndescription: Save Hydra memory\n---\n',
-    )
-    await commands.hydra([
-      'create',
-      'default',
-    ])
-
-    const sharedProjects = [
-      {
-        path: join(
-          root,
-          'team-a/shared',
-        ),
-        description: 'Deploy team A safely',
-        color: 'violet',
-      },
-      {
-        path: join(
-          root,
-          'team-b/shared',
-        ),
-        description: 'Deploy team B safely',
-        color: 'teal',
-      },
-    ] as const
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        const decision = hydraEvent({
-          state: writer.state,
-          cardId: HYDRA_CARD,
-          meta: {
-            actor: 'fixture',
-            at: '2026-10-23T09:00:00Z',
-          },
-          change: {
-            type: 'board.configured',
-            data: hydraConfig({ state: writer.state }),
-          },
-        })
-        assert.ok('event' in decision)
-        writer.append({
-          event: {
-            ...decision.event,
-            labelColors: sharedProjects.map(project => ({
-              label: project.path,
-              color: project.color,
-            })),
-          },
-        })
-      },
-    })
-
-    for (const {
-      path: folder,
-      description,
-    } of [
-        {
-          path: join(
-            root,
-            'ledger',
-          ),
-          description: 'Deploy ledger safely',
-        },
-        {
-          path: join(
-            root,
-            'docs-site',
-          ),
-          description: 'Deploy docs-site safely',
-        },
-        ...sharedProjects,
-      ]) {
-      const directory = join(
-        folder,
-        '.agents/skills/deploy',
-      )
-      mkdirSync(
-        directory,
         { recursive: true },
       )
       writeFileSync(
         join(
-          directory,
+          skill,
           'SKILL.md',
         ),
-        `---\nname: deploy\ndescription: ${description}\n---\n`,
+        '---\nname: inscribe\ndescription: Save Hydra memory\n---\n',
       )
-      const long = join(
-        folder,
-        '.claude/skills/review-cross-platform-accessibility-and-release-readiness',
-      )
-      mkdirSync(
-        long,
-        { recursive: true },
-      )
-      writeFileSync(
-        join(
-          long,
-          'SKILL.md',
-        ),
-        '---\nname: review-cross-platform-accessibility-and-release-readiness\ndescription: Review all release checks and report the complete accessibility findings\n---\n',
-      )
-      await projectCommand([
-        'add',
-        folder,
-      ])
-      commands.task([
+      await commands.hydra([
         'create',
-        '--title',
-        `Review ${description}`,
-        '--project',
-        folder,
+        'default',
       ])
-    }
 
-    const global = join(
-      root,
-      '.agents/skills/global-review',
-    )
-    mkdirSync(
-      global,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        global,
-        'SKILL.md',
-      ),
-      '---\nname: global-review\ndescription: Review local changes\n---\n',
-    )
-    withWriter({
-      hydraId: 'default',
-      fn: ({ writer }) => {
-        const pushed = decidePush({
-          state: writer.state,
-          key: 'codex:slash-fixture',
-          input: {
-            title: 'Hydra',
-            activity: 'finished',
-            agent: {
-              provider: 'codex',
-              sessionId: 'slash-fixture',
-              cwd,
+      const sharedProjects = [
+        {
+          path: join(
+            root,
+            'team-a/shared',
+          ),
+          description: 'Deploy team A safely',
+          color: 'violet',
+        },
+        {
+          path: join(
+            root,
+            'team-b/shared',
+          ),
+          description: 'Deploy team B safely',
+          color: 'teal',
+        },
+      ] as const
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const decision = hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              actor: 'fixture',
+              at: '2026-10-23T09:00:00Z',
             },
-          },
-          meta: {
-            actor: 'fixture',
-            at: '2026-10-23T10:00:00Z',
-          },
-        })
-        assert.ok('event' in pushed)
-        writer.append({ event: pushed.event })
-        const config = structuredClone(hydraConfig({ state: writer.state }))
-        config.hydra.session = 'codex:slash-fixture'
-        config.hydra.agent = {
-          harness: 'codex',
-          model: 'gpt-6.1-sol',
-        }
-        const configure = hydraEvent({
-          state: writer.state,
-          cardId: '$board',
-          meta: {
-            actor: 'fixture',
-            at: '2026-10-23T10:00:01Z',
-          },
-          change: {
-            type: 'board.configured',
-            data: config,
-          },
-        })
-        assert.ok('event' in configure)
-        writer.append({ event: configure.event })
-        assert.equal(
-          writer.state.cards[HYDRA_CARD]?.agent?.cwd,
-          cwd,
-        )
-      },
-    })
+            change: {
+              type: 'board.configured',
+              data: hydraConfig({ state: writer.state }),
+            },
+          })
+          assert.ok('event' in decision)
+          writer.append({
+            event: {
+              ...decision.event,
+              labelColors: sharedProjects.map(project => ({
+                label: project.path,
+                color: project.color,
+              })),
+            },
+          })
+        },
+      })
 
-    for (const [
-      family,
-      name,
-    ] of [
-        [
-          'codex',
-          'native-codex',
-        ],
-        [
-          'claude',
-          'native-claude',
-        ],
-      ]) {
-      const directory = join(
+      for (const {
+        path: folder,
+        description,
+      } of [
+          {
+            path: join(
+              root,
+              'ledger',
+            ),
+            description: 'Deploy ledger safely',
+          },
+          {
+            path: join(
+              root,
+              'docs-site',
+            ),
+            description: 'Deploy docs-site safely',
+          },
+          ...sharedProjects,
+        ]) {
+        const directory = join(
+          folder,
+          '.agents/skills/deploy',
+        )
+        mkdirSync(
+          directory,
+          { recursive: true },
+        )
+        writeFileSync(
+          join(
+            directory,
+            'SKILL.md',
+          ),
+          `---\nname: deploy\ndescription: ${description}\n---\n`,
+        )
+        const long = join(
+          folder,
+          '.claude/skills/review-cross-platform-accessibility-and-release-readiness',
+        )
+        mkdirSync(
+          long,
+          { recursive: true },
+        )
+        writeFileSync(
+          join(
+            long,
+            'SKILL.md',
+          ),
+          '---\nname: review-cross-platform-accessibility-and-release-readiness\ndescription: Review all release checks and report the complete accessibility findings\n---\n',
+        )
+        await projectCommand([
+          'add',
+          folder,
+        ])
+        commands.task([
+          'create',
+          '--title',
+          `Review ${description}`,
+          '--project',
+          folder,
+        ])
+      }
+
+      const global = join(
         root,
-        family!,
-        'skills',
-        name!,
+        '.agents/skills/global-review',
       )
       mkdirSync(
-        directory,
+        global,
         { recursive: true },
       )
       writeFileSync(
         join(
-          directory,
+          global,
           'SKILL.md',
         ),
-        `---\nname: ${name}\ndescription: Native ${family} skill\n---\n`,
+        '---\nname: global-review\ndescription: Review local changes\n---\n',
       )
-    }
-
-    const codex = fakeCodex({
-      root,
-      models: ['gpt-6.1-sol'],
-    })
-    const server = await startServer({
-      hydraId: 'default',
-      port: 0,
-      homes: [],
-      query: hydraSdk().query,
-      spawnCodex: codex.spawnCodex,
-      catalogLocations: {
-        home: root,
-        claude: process.env.CLAUDE_CONFIG_DIR,
-        codex: process.env.CODEX_HOME,
-      },
-    })
-    const listener = createServer()
-    await new Promise<void>(resolve => listener.listen(
-      0,
-      '127.0.0.1',
-      resolve,
-    ))
-    const address = listener.address()
-    assert.ok(address && typeof address === 'object')
-    await promisify(listener.close.bind(listener))()
-    const browserEnv = {
-      ...process.env,
-      CHROME_DEVTOOLS_AXI_SESSION: `pnyx-slash-${address.port}`,
-      CHROME_DEVTOOLS_AXI_PORT: String(address.port),
-      CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
-      CHROME_DEVTOOLS_AXI_BROWSER_URL: '',
-      CHROME_DEVTOOLS_AXI_MCP_SERVER_URL: '',
-      CHROME_DEVTOOLS_AXI_HEADED: '0',
-      CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
-        root,
-        'chrome',
-      ),
-    }
-    const browser = ({
-      args,
-      script,
-    }: {
-      args: string[]
-      script?: string
-    }): Promise<string> =>
-      new Promise((
-        resolve,
-        reject,
-      ) => {
-        const child = execFile(
-          'chrome-devtools-axi',
-          args,
-          {
-            env: browserEnv,
-            cwd: tmpdir(),
-            timeout: 45_000,
-            maxBuffer: 2 * 1024 * 1024,
-          },
-          (
-            error,
-            stdout,
-            stderr,
-          ) => {
-            if (error) {
-              reject(new Error(`${error.message}\n${stdout}\n${stderr}`))
-
-              return
-            }
-
-            resolve(stdout)
-          },
-        )
-        child.stdin?.end(script)
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          const pushed = decidePush({
+            state: writer.state,
+            key: 'codex:slash-fixture',
+            input: {
+              title: 'Hydra',
+              activity: 'finished',
+              agent: {
+                provider: 'codex',
+                sessionId: 'slash-fixture',
+                cwd,
+              },
+            },
+            meta: {
+              actor: 'fixture',
+              at: '2026-10-23T10:00:00Z',
+            },
+          })
+          assert.ok('event' in pushed)
+          writer.append({ event: pushed.event })
+          const config = structuredClone(hydraConfig({ state: writer.state }))
+          config.hydra.session = 'codex:slash-fixture'
+          config.hydra.agent = {
+            harness: 'codex',
+            model: 'gpt-6.1-sol',
+          }
+          const configure = hydraEvent({
+            state: writer.state,
+            cardId: '$board',
+            meta: {
+              actor: 'fixture',
+              at: '2026-10-23T10:00:01Z',
+            },
+            change: {
+              type: 'board.configured',
+              data: config,
+            },
+          })
+          assert.ok('event' in configure)
+          writer.append({ event: configure.event })
+          assert.equal(
+            writer.state.cards[HYDRA_CARD]?.agent?.cwd,
+            cwd,
+          )
+        },
       })
-    t.after(async () => {
-      try {
-        await browser({ args: ['stop'] })
-      } finally {
-        await server.close()
 
-        for (const child of codex.children) {
-          child.kill()
+      for (const [
+        family,
+        name,
+      ] of [
+          [
+            'codex',
+            'native-codex',
+          ],
+          [
+            'claude',
+            'native-claude',
+          ],
+        ]) {
+        const directory = join(
+          root,
+          family!,
+          'skills',
+          name!,
+        )
+        mkdirSync(
+          directory,
+          { recursive: true },
+        )
+        writeFileSync(
+          join(
+            directory,
+            'SKILL.md',
+          ),
+          `---\nname: ${name}\ndescription: Native ${family} skill\n---\n`,
+        )
+      }
+
+      const codex = fakeCodex({
+        root,
+        models: ['gpt-6.1-sol'],
+      })
+      const server = await startServer({
+        hydraId: 'default',
+        port: 0,
+        homes: [],
+        query: hydraSdk().query,
+        spawnCodex: codex.spawnCodex,
+        catalogLocations: {
+          home: root,
+          claude: process.env.CLAUDE_CONFIG_DIR,
+          codex: process.env.CODEX_HOME,
+        },
+      })
+      const listener = createServer()
+      await new Promise<void>(resolve => listener.listen(
+        0,
+        '127.0.0.1',
+        resolve,
+      ))
+      const address = listener.address()
+      assert.ok(address && typeof address === 'object')
+      await promisify(listener.close.bind(listener))()
+      const browserEnv = {
+        ...process.env,
+        CHROME_DEVTOOLS_AXI_SESSION: `pnyx-slash-${address.port}`,
+        CHROME_DEVTOOLS_AXI_PORT: String(address.port),
+        CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
+        CHROME_DEVTOOLS_AXI_BROWSER_URL: '',
+        CHROME_DEVTOOLS_AXI_MCP_SERVER_URL: '',
+        CHROME_DEVTOOLS_AXI_HEADED: '0',
+        CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
+          root,
+          'chrome',
+        ),
+      }
+      const browser = ({
+        args,
+        script,
+      }: {
+        args: string[]
+        script?: string
+      }): Promise<string> =>
+        new Promise((
+          resolve,
+          reject,
+        ) => {
+          const child = execFile(
+            'chrome-devtools-axi',
+            args,
+            {
+              env: browserEnv,
+              cwd: tmpdir(),
+              timeout: 45_000,
+              maxBuffer: 2 * 1024 * 1024,
+            },
+            (
+              error,
+              stdout,
+              stderr,
+            ) => {
+              if (error) {
+                reject(new Error(`${error.message}\n${stdout}\n${stderr}`))
+
+                return
+              }
+
+              resolve(stdout)
+            },
+          )
+          child.stdin?.end(script)
+        })
+      t.after(async () => {
+        try {
+          await browser({ args: ['stop'] })
+        } finally {
+          await server.close()
+
+          for (const child of codex.children) {
+            child.kill()
+          }
+
+          rmSync(
+            root,
+            {
+              recursive: true,
+              force: true,
+            },
+          )
+        }
+      })
+      const url = `http://127.0.0.1:${server.port}/hydra/default/`
+
+      try {
+        await browser({
+          args: [
+            'open',
+            url,
+          ],
+        })
+      } catch (error) {
+        if (!(error instanceof Error) || !error.message.includes('BRIDGE_NOT_READY')) {
+          throw error
         }
 
-        rmSync(
-          root,
-          {
-            recursive: true,
-            force: true,
-          },
+        await browser({
+          args: [
+            'open',
+            url,
+          ],
+        })
+      }
+
+      const artifacts = process.env.PNYX_BROWSER_ARTIFACTS
+
+      if (artifacts) {
+        mkdirSync(
+          artifacts,
+          { recursive: true },
         )
       }
-    })
-    const url = `http://127.0.0.1:${server.port}/hydra/default/`
 
-    try {
-      await browser({
-        args: [
-          'open',
-          url,
-        ],
-      })
-    } catch (error) {
-      if (!(error instanceof Error) || !error.message.includes('BRIDGE_NOT_READY')) {
-        throw error
-      }
-
-      await browser({
-        args: [
-          'open',
-          url,
-        ],
-      })
-    }
-
-    const prefetched = await browser({
-      args: ['run'],
-      script: `
+      if (!geometry) {
+        const prefetched = await browser({
+          args: ['run'],
+          script: `
         let loaded = false;
         for (let attempt = 0; attempt < 60; attempt++) {
           loaded = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
@@ -395,15 +413,15 @@ test(
         }
         console.log(loaded && await page.eval(() => !document.querySelector('.slash-menu')));
       `,
-    })
-    assert.equal(
-      prefetched.trim(),
-      'true',
-    )
+        })
+        assert.equal(
+          prefetched.trim(),
+          'true',
+        )
 
-    const initial = await browser({
-      args: ['run'],
-      script: `
+        const initial = await browser({
+          args: ['run'],
+          script: `
         await page.open(${JSON.stringify(url)});
         await page.wait('.hydra-chat textarea');
         await page.fill('.hydra-chat textarea', '');
@@ -424,36 +442,35 @@ test(
           };
         })));
       `,
-    })
-    const artifacts = process.env.PNYX_BROWSER_ARTIFACTS
+        })
 
-    if (artifacts) {
-      mkdirSync(
-        artifacts,
-        { recursive: true },
-      )
-      await browser({
-        args: [
-          'screenshot',
-          join(
+        if (artifacts) {
+          mkdirSync(
             artifacts,
-            'slash-menu.png',
-          ),
-        ],
-      })
-    }
+            { recursive: true },
+          )
+          await browser({
+            args: [
+              'screenshot',
+              join(
+                artifacts,
+                'slash-menu.png',
+              ),
+            ],
+          })
+        }
 
-    assert.deepEqual(
-      JSON.parse(initial),
-      {
-        command: '/inscribe',
-        reachable: true,
-        clipping: 'hidden',
-      },
-    )
-    const interactions = await browser({
-      args: ['run'],
-      script: `
+        assert.deepEqual(
+          JSON.parse(initial),
+          {
+            command: '/inscribe',
+            reachable: true,
+            clipping: 'hidden',
+          },
+        )
+        const interactions = await browser({
+          args: ['run'],
+          script: `
         await page.click('.slash-menu [role="option"]');
         console.log(await page.eval(() => {
           const input = document.querySelector('.hydra-chat textarea');
@@ -529,23 +546,23 @@ test(
         await page.press('Escape');
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.deepEqual(
-      interactions.trim().split('\n'),
-      [
-        'true',
-        'true',
-        'true',
-        'true',
-        'true',
-        'true',
-        'true',
-        'true',
-      ],
-    )
-    const restoredCatalog = await browser({
-      args: ['run'],
-      script: `
+        })
+        assert.deepEqual(
+          interactions.trim().split('\n'),
+          [
+            'true',
+            'true',
+            'true',
+            'true',
+            'true',
+            'true',
+            'true',
+            'true',
+          ],
+        )
+        const restoredCatalog = await browser({
+          args: ['run'],
+          script: `
         await page.eval(() => {
           const key = Object.keys(sessionStorage).find(key => key.includes(':skills:')
             && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '$native-codex'));
@@ -573,31 +590,31 @@ test(
         await page.eval(() => window.releaseCatalog());
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.equal(
-      restoredCatalog.trim(),
-      'true',
-    )
+        })
+        assert.equal(
+          restoredCatalog.trim(),
+          'true',
+        )
 
-    const discovered = join(
-      root,
-      '.agents/skills/cache-discovery',
-    )
-    mkdirSync(
-      discovered,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        discovered,
-        'SKILL.md',
-      ),
-      '---\nname: cache-discovery\ndescription: Newly discovered skill\n---\n',
-    )
+        const discovered = join(
+          root,
+          '.agents/skills/cache-discovery',
+        )
+        mkdirSync(
+          discovered,
+          { recursive: true },
+        )
+        writeFileSync(
+          join(
+            discovered,
+            'SKILL.md',
+          ),
+          '---\nname: cache-discovery\ndescription: Newly discovered skill\n---\n',
+        )
 
-    const addedCatalog = await browser({
-      args: ['run'],
-      script: `
+        const addedCatalog = await browser({
+          args: ['run'],
+          script: `
         let added = false;
         for (let attempt = 0; attempt < 60; attempt++) {
           await page.fill('.hydra-chat textarea', '/cache-discovery');
@@ -609,22 +626,22 @@ test(
         console.log(added);
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.equal(
-      addedCatalog.trim(),
-      'true',
-    )
-    rmSync(
-      discovered,
-      {
-        recursive: true,
-        force: true,
-      },
-    )
+        })
+        assert.equal(
+          addedCatalog.trim(),
+          'true',
+        )
+        rmSync(
+          discovered,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
 
-    const removedCatalog = await browser({
-      args: ['run'],
-      script: `
+        const removedCatalog = await browser({
+          args: ['run'],
+          script: `
         let removed = false;
         for (let attempt = 0; attempt < 60; attempt++) {
           await page.fill('.hydra-chat textarea', '/cache-discovery');
@@ -637,43 +654,43 @@ test(
         console.log(removed);
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.equal(
-      removedCatalog.trim(),
-      'true',
-    )
+        })
+        assert.equal(
+          removedCatalog.trim(),
+          'true',
+        )
 
-    const switchHarness = ({ harness }: { harness: 'claude' | 'codex' }) => {
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => {
-          const config = structuredClone(hydraConfig({ state: writer.state }))
-          config.hydra.agent = {
-            harness,
-            model: 'default',
-          }
-          const decision = hydraEvent({
-            state: writer.state,
-            cardId: HYDRA_CARD,
-            meta: {
-              actor: 'fixture',
-              at: '2026-10-23T10:00:02Z',
-            },
-            change: {
-              type: 'board.configured',
-              data: config,
+        const switchHarness = ({ harness }: { harness: 'claude' | 'codex' }) => {
+          withWriter({
+            hydraId: 'default',
+            fn: ({ writer }) => {
+              const config = structuredClone(hydraConfig({ state: writer.state }))
+              config.hydra.agent = {
+                harness,
+                model: 'default',
+              }
+              const decision = hydraEvent({
+                state: writer.state,
+                cardId: HYDRA_CARD,
+                meta: {
+                  actor: 'fixture',
+                  at: '2026-10-23T10:00:02Z',
+                },
+                change: {
+                  type: 'board.configured',
+                  data: config,
+                },
+              })
+              assert.ok('event' in decision)
+              writer.append({ event: decision.event })
             },
           })
-          assert.ok('event' in decision)
-          writer.append({ event: decision.event })
-        },
-      })
-    }
+        }
 
-    switchHarness({ harness: 'claude' })
-    const nativeClaude = await browser({
-      args: ['run'],
-      script: `
+        switchHarness({ harness: 'claude' })
+        const nativeClaude = await browser({
+          args: ['run'],
+          script: `
         let prefetched = false;
         for (let attempt = 0; attempt < 60; attempt++) {
           prefetched = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
@@ -699,18 +716,18 @@ test(
           && !document.querySelector('.slash-menu').textContent.includes('/native-codex')
           && !document.querySelector('.slash-menu [role="status"]')));
       `,
-    })
-    assert.deepEqual(
-      nativeClaude.trim().split('\n'),
-      [
-        'true',
-        'true',
-      ],
-    )
-    switchHarness({ harness: 'codex' })
-    const nativeCodex = await browser({
-      args: ['run'],
-      script: `
+        })
+        assert.deepEqual(
+          nativeClaude.trim().split('\n'),
+          [
+            'true',
+            'true',
+          ],
+        )
+        switchHarness({ harness: 'codex' })
+        const nativeCodex = await browser({
+          args: ['run'],
+          script: `
         let switched = false;
         for (let attempt = 0; attempt < 60; attempt++) {
           switched = await page.eval(() => document.querySelector('.slash-menu')?.textContent.includes('/native-codex'));
@@ -723,18 +740,18 @@ test(
         console.log(await page.eval(() => document.querySelector('.slash-menu').textContent.includes('/native-codex')));
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.deepEqual(
-      nativeCodex.trim().split('\n'),
-      [
-        'true',
-        'true',
-      ],
-    )
+        })
+        assert.deepEqual(
+          nativeCodex.trim().split('\n'),
+          [
+            'true',
+            'true',
+          ],
+        )
 
-    const hydraIsolation = await browser({
-      args: ['run'],
-      script: `
+        const hydraIsolation = await browser({
+          args: ['run'],
+          script: `
         await page.eval(() => {
           const meta = document.querySelector('meta[name=pnyx-hydra]');
           window.originalHydra = meta.content;
@@ -762,18 +779,18 @@ test(
         await page.eval(() => window.releaseCatalog());
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.deepEqual(
-      hydraIsolation.trim().split('\n'),
-      [
-        'true',
-        'true',
-      ],
-    )
+        })
+        assert.deepEqual(
+          hydraIsolation.trim().split('\n'),
+          [
+            'true',
+            'true',
+          ],
+        )
 
-    const unmatchedKeys = await browser({
-      args: ['run'],
-      script: `
+        const unmatchedKeys = await browser({
+          args: ['run'],
+          script: `
         for (const query of ['/missing-skill', '@missing-task']) {
           await page.fill('.hydra-chat textarea', query);
           await page.press('Tab');
@@ -782,18 +799,18 @@ test(
         }
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.deepEqual(
-      unmatchedKeys.trim().split('\n'),
-      [
-        'true',
-        'true',
-      ],
-    )
+        })
+        assert.deepEqual(
+          unmatchedKeys.trim().split('\n'),
+          [
+            'true',
+            'true',
+          ],
+        )
 
-    const projectSkills = await browser({
-      args: ['run'],
-      script: `
+        const projectSkills = await browser({
+          args: ['run'],
+          script: `
       await page.fill('.hydra-chat textarea', 'Please run /dep');
       await page.wait('.slash-menu [role="option"]');
       console.log(await page.eval(() => {
@@ -820,21 +837,21 @@ test(
       await page.press('Enter');
       await page.fill('.hydra-chat textarea', '');
     `,
-    })
-    assert.deepEqual(
-      projectSkills.trim().split('\n'),
-      [
-        'true',
-        'true',
-        'true',
-        'true',
-      ],
-    )
+        })
+        assert.deepEqual(
+          projectSkills.trim().split('\n'),
+          [
+            'true',
+            'true',
+            'true',
+            'true',
+          ],
+        )
 
-    for (const project of sharedProjects) {
-      const selection = await browser({
-        args: ['run'],
-        script: `
+        for (const project of sharedProjects) {
+          const selection = await browser({
+            args: ['run'],
+            script: `
           await page.fill('.hydra-chat textarea', '/dep');
           await page.wait('.slash-menu [role="option"]');
           console.log(await page.eval(() => {
@@ -871,42 +888,42 @@ test(
           await page.press('Escape');
           await page.fill('.hydra-chat textarea', '');
         `,
-      })
-      const [
-        menuColor,
-        serialized,
-        restoredColor,
-        reloadedMenuColor,
-      ] = selection.trim().split('\n')
-      assert.equal(
-        menuColor,
-        'true',
-      )
-      assert.deepEqual(
-        JSON.parse(serialized!),
-        {
-          name: 'deploy',
-          file: join(
-            project.path,
-            '.agents/skills/deploy/SKILL.md',
-          ),
-          project: 'shared',
-          projectPath: project.path,
-        },
-      )
-      assert.equal(
-        restoredColor,
-        'true',
-      )
-      assert.equal(
-        reloadedMenuColor,
-        'true',
-      )
-    }
+          })
+          const [
+            menuColor,
+            serialized,
+            restoredColor,
+            reloadedMenuColor,
+          ] = selection.trim().split('\n')
+          assert.equal(
+            menuColor,
+            'true',
+          )
+          assert.deepEqual(
+            JSON.parse(serialized!),
+            {
+              name: 'deploy',
+              file: join(
+                project.path,
+                '.agents/skills/deploy/SKILL.md',
+              ),
+              project: 'shared',
+              projectPath: project.path,
+            },
+          )
+          assert.equal(
+            restoredColor,
+            'true',
+          )
+          assert.equal(
+            reloadedMenuColor,
+            'true',
+          )
+        }
 
-    const caretDismissal = await browser({
-      args: ['run'],
-      script: `
+        const caretDismissal = await browser({
+          args: ['run'],
+          script: `
         await page.fill('.hydra-chat textarea', 'Keep this /dep');
         await page.wait('.slash-menu [role="option"]');
         await page.press('Home');
@@ -923,34 +940,34 @@ test(
         console.log(await page.eval(() => document.querySelector('.hydra-chat textarea').value === 'Keep this! /dep'));
         await page.fill('.hydra-chat textarea', '');
       `,
-    })
-    assert.deepEqual(
-      caretDismissal.trim().split('\n'),
-      [
-        'true',
-        'true',
-        'true',
-        'true',
-      ],
-    )
+        })
+        assert.deepEqual(
+          caretDismissal.trim().split('\n'),
+          [
+            'true',
+            'true',
+            'true',
+            'true',
+          ],
+        )
 
-    await browser({
-      args: ['run'],
-      script: `
+        await browser({
+          args: ['run'],
+          script: `
         await page.fill('.hydra-chat textarea', '/ins');
         await page.wait('.slash-menu [role="option"]');
       `,
-    })
-    await browser({
-      args: [
-        'resize',
-        '375',
-        '600',
-      ],
-    })
-    const narrow = await browser({
-      args: ['run'],
-      script: `
+        })
+        await browser({
+          args: [
+            'resize',
+            '375',
+            '600',
+          ],
+        })
+        const narrow = await browser({
+          args: ['run'],
+          script: `
         await page.wait(100);
         console.log(await page.eval(() => {
           const menu = document.querySelector('.slash-menu'), option = menu.querySelector('[role="option"]');
@@ -1003,19 +1020,19 @@ test(
         }));
         await page.press('Escape');
       `,
-    })
-    assert.deepEqual(
-      narrow.trim().split('\n'),
-      [
-        'true',
-        'true',
-        'true',
-        'true',
-      ],
-    )
-    const longBadge = await browser({
-      args: ['run'],
-      script: `
+        })
+        assert.deepEqual(
+          narrow.trim().split('\n'),
+          [
+            'true',
+            'true',
+            'true',
+            'true',
+          ],
+        )
+        const longBadge = await browser({
+          args: ['run'],
+          script: `
       await page.eval(() => document.querySelector('.hydra-chat textarea').removeAttribute('style'));
       await page.fill('.hydra-chat textarea', '/review-cross');
       await page.wait('.slash-menu [role="option"]');
@@ -1027,14 +1044,279 @@ test(
       }));
       await page.fill('.hydra-chat textarea', '');
     `,
-    })
-    assert.equal(
-      longBadge.trim(),
-      'true',
-    )
-    assert.equal(
-      readEvents({ hydraId: 'default' }).some(event => event.type === 'hydra.message' && event.data.action === 'send'),
-      false,
-    )
-  },
-)
+        })
+        assert.equal(
+          longBadge.trim(),
+          'true',
+        )
+      }
+
+      if (geometry) {
+        await browser({
+          args: [
+            'resize',
+            '1400',
+            '1000',
+          ],
+        })
+        const shortSkill = skillReference({
+          item: {
+            command: '$deploy',
+            description: 'Deploy',
+            source: 'Project',
+            project: 'shared',
+            projectPath: sharedProjects[0].path,
+            file: join(
+              sharedProjects[0].path,
+              '.agents/skills/deploy/SKILL.md',
+            ),
+          },
+        })
+        const longSkill = skillReference({
+          item: {
+            command: '$review-cross-platform-accessibility-and-release-readiness',
+            description: 'Review',
+            source: 'Project',
+            project: 'docs-site',
+            projectPath: join(
+              root,
+              'docs-site',
+            ),
+            file: join(
+              root,
+              'docs-site/.claude/skills/review-cross-platform-accessibility-and-release-readiness/SKILL.md',
+            ),
+          },
+        })
+        const taskToken = taskMention({
+          id: 'layout-fixture',
+          title: 'Review inline spacing',
+        })
+        const projectToken = reference({
+          kind: 'project',
+          value: '/demo/docs-site',
+          label: 'docs-site',
+        })
+        const columnToken = reference({
+          kind: 'column',
+          value: 'queued',
+          label: 'Queued',
+        })
+        const fileToken = reference({
+          kind: 'file',
+          value: 'notes.txt',
+          label: 'notes.txt',
+        })
+        const attachment = fileBlock({
+          name: 'notes.txt',
+          text: 'Synthetic preview file\n',
+        })
+        const inlineSamples = [
+          {
+            name: 'wide',
+            width: 760,
+            text: `${shortSkill} at line start\nText${taskToken}next to${projectToken}.\nWrapped ${longSkill} and ${shortSkill}\n${columnToken}${fileToken}\n[image: /preview/attachments/layout.png]\n${attachment}`,
+          },
+          {
+            name: 'wrapped',
+            width: 360,
+            text: `${shortSkill}start\nText${taskToken}end\nWrapped long: ${longSkill} and ${shortSkill}\n${projectToken}${columnToken}${fileToken}`,
+          },
+        ]
+
+        for (const sample of inlineSamples) {
+          const layout = await browser({
+            args: ['run'],
+            script: `
+          await page.eval(() => {
+            const panel = document.querySelector('.hydra-chat');
+            panel.style.width = '${sample.width}px';
+            panel.style.flex = '0 0 ${sample.width}px';
+          });
+          await page.fill('.hydra-chat textarea', ${JSON.stringify(sample.text)});
+          await page.wait(100);
+          console.log(JSON.stringify(await page.eval(() => {
+            const input = document.querySelector('.hydra-chat textarea');
+            const mirror = document.querySelector('.draft-mirror');
+            const box = document.querySelector('.composer-input').getBoundingClientRect();
+            const tokens = [...mirror.querySelectorAll('.draft-token')];
+            const probe = mirror.cloneNode(false);
+            probe.textContent = input.value;
+            probe.style.visibility = 'hidden';
+            mirror.parentElement.append(probe);
+            const point = offset => {
+              const range = document.createRange();
+              range.setStart(probe.firstChild, offset);
+              range.collapse(true);
+              return range.getBoundingClientRect();
+            };
+            const rects = tokens.flatMap(token => [...(token.querySelector('.draft-card > .attachment-card') ?? token.querySelector('.draft-chip'))
+              .getClientRects()].filter(rect => rect.width > 0));
+            const contained = rects.every(rect => rect.left >= box.left + 2 && rect.right <= box.right - 2
+              && rect.top >= box.top + 2 && rect.bottom <= box.bottom - 2);
+            const badges = [...mirror.querySelectorAll('.draft-skill .project-label')].every(label => {
+              const badge = label.getBoundingClientRect();
+              return [...label.closest('.draft-skill').getClientRects()].some(chip =>
+                badge.left >= chip.left + 1 && badge.right <= chip.right - 1
+                && badge.top >= chip.top && badge.bottom <= chip.bottom);
+            });
+            const separated = rects.every((rect, index) => rects.slice(index + 1).every(other =>
+              Math.min(rect.bottom, other.bottom) - Math.max(rect.top, other.top) < 1
+              || rect.right + 2 <= other.left || other.right + 2 <= rect.left));
+            const contentPadding = tokens.every(token => {
+              const chip = token.querySelector('.draft-chip');
+              if (chip.classList.contains('draft-card')) return true;
+              const fragments = [...chip.getClientRects()];
+              const content = [...chip.querySelectorAll('svg')].map(icon => icon.getBoundingClientRect());
+              const walker = document.createTreeWalker(chip, NodeFilter.SHOW_TEXT);
+              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if (!node.textContent.trim()) continue;
+                const range = document.createRange();
+                range.selectNodeContents(node);
+                content.push(...range.getClientRects());
+              }
+              return content.filter(rect => rect.width > 0).every(rect => fragments.some(fragment =>
+                rect.left >= fragment.left && rect.right <= fragment.right
+                && rect.top >= fragment.top + 1.5 && rect.bottom <= fragment.bottom - 1.5));
+            });
+            const joinedControls = [...mirror.querySelectorAll('.draft-skill')].every(skill => {
+              const remove = skill.querySelector('.skill-remove');
+              const name = remove.getAttribute('aria-label').slice('Remove /'.length);
+              const walker = document.createTreeWalker(skill, NodeFilter.SHOW_TEXT);
+              let command;
+              for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+                if (node.textContent.includes(name)) { command = node; break; }
+              }
+              const range = document.createRange();
+              range.selectNodeContents(command);
+              const fragments = [...range.getClientRects()];
+              const first = skill.querySelector('.project-label')?.getBoundingClientRect() ?? fragments[0];
+              const last = fragments.at(-1), star = skill.querySelector('.chip-icon').getBoundingClientRect();
+              const close = remove.getBoundingClientRect();
+              return star.top < first.bottom && star.bottom > first.top && close.top < last.bottom && close.bottom > last.top;
+            });
+            const caretGaps = tokens.every(token => {
+              const chip = token.querySelector('.draft-chip');
+              const fragments = [...chip.getClientRects()];
+              const before = point(Number(token.dataset.from)), after = point(Number(token.dataset.to));
+              const first = fragments[0], last = fragments.at(-1);
+              const sameLine = (caret, rect) => caret.top < rect.bottom && caret.bottom > rect.top;
+              return (!sameLine(before, first) || before.x + 2 <= first.left)
+                && (!sameLine(after, last) || after.x - 2 >= last.right);
+            });
+            probe.remove();
+            const first = tokens[0];
+            input.focus();
+            input.setSelectionRange(Number(first.dataset.from), Number(first.dataset.from));
+            return {contained, badges, separated, contentPadding, caretGaps, joinedControls, noMention: !document.querySelector('.mention-menu'), noOverflow: input.scrollWidth <= input.clientWidth + 1,
+              wrapped: rects.length > tokens.length, kinds: [...new Set(tokens.map(token => token.querySelector('.draft-chip').dataset.kind))]};
+          })));
+        `,
+          })
+          const measured = JSON.parse(layout)
+          assert.equal(
+            measured.contained,
+            true,
+            `${sample.name}: inline boxes stay inside the composer`,
+          )
+          assert.equal(
+            measured.badges,
+            true,
+            `${sample.name}: project labels stay inside their skill`,
+          )
+          assert.equal(
+            measured.separated,
+            true,
+            `${sample.name}: inline boxes never overlap`,
+          )
+          assert.equal(
+            measured.contentPadding,
+            true,
+            `${sample.name}: text and icons have vertical padding`,
+          )
+          assert.equal(
+            measured.caretGaps,
+            true,
+            `${sample.name}: caret clears both token edges`,
+          )
+          assert.equal(
+            measured.joinedControls,
+            true,
+            `${sample.name}: icons and remove stay with skill text`,
+          )
+          assert.equal(
+            measured.noMention,
+            true,
+            `${sample.name}: token text does not open a picker`,
+          )
+          assert.equal(
+            measured.noOverflow,
+            true,
+            `${sample.name}: draft wraps within the textarea`,
+          )
+
+          if (sample.name === 'wrapped') {
+            assert.equal(
+              measured.wrapped,
+              true,
+            )
+          }
+
+          if (sample.name === 'wide') {
+            assert.deepEqual(
+              measured.kinds.sort(),
+              [
+                'column',
+                'file',
+                'image',
+                'project',
+                'skill',
+                'task',
+              ],
+            )
+          }
+
+          if (artifacts) {
+            await browser({
+              args: [
+                'screenshot',
+                join(
+                  artifacts,
+                  `inline-${sample.name}-caret-before.png`,
+                ),
+              ],
+            })
+            await browser({
+              args: ['run'],
+              script: `
+          await page.eval(() => {
+            const input = document.querySelector('.hydra-chat textarea'), token = document.querySelector('.draft-token');
+            input.setSelectionRange(Number(token.dataset.to), Number(token.dataset.to));
+          });
+        `,
+            })
+            await browser({
+              args: [
+                'screenshot',
+                join(
+                  artifacts,
+                  `inline-${sample.name}-caret-after.png`,
+                ),
+              ],
+            })
+          }
+        }
+
+        await browser({
+          args: ['run'],
+          script: 'await page.fill(\'.hydra-chat textarea\', \'\');',
+        })
+      }
+
+      assert.equal(
+        readEvents({ hydraId: 'default' }).some(event => event.type === 'hydra.message' && event.data.action === 'send'),
+        false,
+      )
+    },
+  )
+}

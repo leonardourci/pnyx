@@ -385,21 +385,21 @@ h3 { font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { .jump, .chat-fade { animation: none; } }
 
-.composer { position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
+.composer { --composer-line: 2; position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line)); position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 0 4px 0 0; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--composer-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line)); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
+.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
 
 .composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
 .draft-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--color-ink); }
 
-.draft-chip { pointer-events: auto; cursor: pointer; margin: 0 -3px; padding: 0 3px; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
+.draft-chip { pointer-events: auto; cursor: pointer; margin: 0 -.25em; padding: .15em .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
@@ -407,9 +407,9 @@ h3 { font-weight: 600; }
 
 .draft-chip.reference:is([data-kind=column], [data-kind=task]), .chip.column-chip { color: var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent); }
 
-.chip-icon { display: inline-block; width: 1em; text-align: center; }
+.chip-icon { position: relative; display: inline; }
 
-.chip-icon > svg { vertical-align: -2px; }
+.chip-icon > svg { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); }
 
 .draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
@@ -776,7 +776,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.thread > .composer .textarea { padding: 0; border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
+.thread > .composer .textarea { border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
 .integrations dd { display: flex; flex-direction: column; gap: 3px; }
 
@@ -1479,9 +1479,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card .collapsible-text { min-width: 0; max-width: 100%; }
 .update-part > .collapsible-text { flex-basis: 100%; }
 
-.draft-skill { cursor: default; box-decoration-break: clone; -webkit-box-decoration-break: clone; }
-.draft-skill .task-label { display: inline; font: inherit; line-height: inherit; border: 0; padding: 0; border-radius: 3px; box-shadow: 0 0 0 1px color-mix(in srgb, var(--label-color, var(--color-muted)) 55%, transparent); }
-.draft-skill .skill-remove { display: inline-flex; vertical-align: baseline; align-items: center; justify-content: center; width: 1em; min-height: 0; height: 1em; padding: 0; border: 0; font: inherit; color: inherit; }
+.draft-skill { cursor: default; }
+.draft-skill .tooltip-anchor { display: inline; }
+.draft-skill .task-label { display: inline; font: inherit; line-height: 1; white-space: inherit; border: 0; padding: 0 .125em; margin: 0 -.125em; border-radius: 3px; box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--label-color, var(--color-muted)) 55%, transparent); }
+.draft-skill .skill-remove-slot { position: relative; }
+.draft-skill .skill-remove { position: absolute; left: 0; top: 50%; transform: translateY(-50%); display: inline-flex; vertical-align: baseline; align-items: center; justify-content: center; width: 1em; min-height: 0; height: 1em; padding: 0; border: 0; font: inherit; line-height: 1; color: inherit; }
 .picker-project { flex: 0 1 auto; max-width: 42%; min-width: 0; }
 .picker-project .task-label { font-size: var(--text-meta); }
 .slash-menu .mention-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

@@ -25,7 +25,7 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
-import { cardChip, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 function DraftCard({
   chip,
@@ -220,7 +220,9 @@ export function Composer({
       text: shown.display,
       cursor,
     })
-    setMention(found && !shown.chips.some(chip => chip.from === found.start) ? found : null)
+    const insideChip = found && shown.chips.some(chip =>
+      chip.from <= found.start && found.start < chip.to)
+    setMention(insideChip ? null : found)
     setMentionActive(0)
   }
 
@@ -956,31 +958,26 @@ export function Composer({
                   value: chip.value,
                 }) : undefined
 
-                if (skill) {
-                  return (
-                    <Fragment key={chip.start}>
-                      {before}
-                      <SkillBadge
-                        skill={skill}
-                        colors={labelColors}
-                        remove={() => removeCard({ chip })}
-                      />
-                    </Fragment>
-                  )
-                }
+                let token: ReactNode
 
-                return cardChip({ chip }) ? (
-                  <Fragment key={chip.start}>
-                    {before}
+                if (skill) {
+                  token = (
+                    <SkillBadge
+                      skill={skill}
+                      colors={labelColors}
+                      remove={() => removeCard({ chip })}
+                    />
+                  )
+                } else if (cardChip({ chip })) {
+                  token = (
                     <DraftCard
                       chip={chip}
                       open={() => openChip({ chip })}
                       remove={() => removeCard({ chip })}
                     />
-                  </Fragment>
-                ) : (
-                  <Fragment key={chip.start}>
-                    {before}
+                  )
+                } else {
+                  token = (
                     <span
                       className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${look?.tone ?? ''}`}
                       data-kind={chip.kind}
@@ -990,10 +987,27 @@ export function Composer({
                     >
                       {look ? (
                         <>
-                          {look.icons.map(icon => <span key={icon} className="chip-icon"><Icon name={icon} size={14} /></span>)}
-                          {chip.name}
+                          {look.icons.map((
+                            icon,
+                            index,
+                          ) => (
+                            <Fragment key={icon}>
+                              {index > 0 && WORD_JOINER}
+                              <span className="chip-icon">{ICON_SPACE}<Icon name={icon} size={14} /></span>
+                            </Fragment>
+                          ))}
+                          {CHIP_JOIN}{chip.name}
                         </>
                       ) : chip.label}
+                    </span>
+                  )
+                }
+
+                return (
+                  <Fragment key={chip.start}>
+                    {before}
+                    <span className="draft-token" data-from={chip.from} data-to={chip.to}>
+                      {CHIP_SPACE}{token}{CHIP_SPACE}
                     </span>
                   </Fragment>
                 )

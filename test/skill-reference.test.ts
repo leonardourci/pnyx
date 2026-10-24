@@ -16,7 +16,7 @@ import { test } from 'node:test'
 import { fileBlock } from '../src/attachments/files.ts'
 import { reference } from '../src/mentions/mentions.ts'
 import { readSkillReference, resolveSkillReferences, skillReference } from '../src/thread/skill-reference.ts'
-import { draftView, ICON_SPACE, removeChip, replaceDisplay } from '../web/src/hydra/draft.ts'
+import { draftView, CHIP_SPACE, WORD_JOINER, ICON_SPACE, removeChip, replaceDisplay } from '../web/src/hydra/draft.ts'
 
 const project = {
   command: '$deploy',
@@ -40,8 +40,11 @@ test(
     const text = `Please run ${token} then report.`
     const view = draftView({ text })
     assert.equal(
-      view.display,
-      `Please run ${ICON_SPACE}Sample /${name}${ICON_SPACE} then report.`,
+      view.display.replaceAll(
+        WORD_JOINER,
+        '',
+      ),
+      `Please run ${CHIP_SPACE}${ICON_SPACE}\u00A0Sample\u00A0/${name}\u00A0${ICON_SPACE}${CHIP_SPACE} then report.`,
     )
     assert.equal(
       view.chips.length,
@@ -65,8 +68,11 @@ test(
       insert: `${token} `,
     })
     assert.equal(
-      draftView({ text: inserted.text }).display,
-      `Please run ${ICON_SPACE}Sample /${name}${ICON_SPACE} TAIL`,
+      draftView({ text: inserted.text }).display.replaceAll(
+        WORD_JOINER,
+        '',
+      ),
+      `Please run ${CHIP_SPACE}${ICON_SPACE}\u00A0Sample\u00A0/${name}\u00A0${ICON_SPACE}${CHIP_SPACE} TAIL`,
     )
   },
 )
