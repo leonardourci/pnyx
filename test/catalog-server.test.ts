@@ -63,6 +63,8 @@ test(
     const sdk = hydraSdk()
     let mode: 'ready' | 'error' | 'hang' | 'slow' = 'ready'
     let requests = 0
+    let finishLateLookup = () => {}
+    const lateLookup = new Promise<void>(resolve => finishLateLookup = resolve)
     // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
     const query = ((args: Parameters<QueryFn>[0]) => Object.assign(
       sdk.query(args),
@@ -79,10 +81,7 @@ test(
           }
 
           if (mode === 'slow') {
-            await new Promise(resolve => setTimeout(
-              resolve,
-              150,
-            ))
+            await lateLookup
           }
 
           return [
@@ -250,7 +249,12 @@ test(
       3,
     )
     mode = 'slow'
-    assert.ok((await catalog()).suggestions.some(item => item.command === '/compact'))
+    const timedOut = await catalog()
+    assert.equal(
+      timedOut.suggestions.find(item => item.command === '/compact')?.description,
+      'Compact the session',
+    )
+    finishLateLookup()
     const metadataDeadline = Date.now() + 5000
 
     while (!Object.values(loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.compaction?.catalogs ?? {})

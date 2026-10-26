@@ -14,7 +14,7 @@ export function fakeCodex({
   refuse?: string
   models?: string[]
   holdOpen?: boolean
-  compact?: 'hold' | 'fail'
+  compact?: 'hold' | 'fail' | 'hold-start'
 }) {
   const log = join(
       root,

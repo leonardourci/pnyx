@@ -1,4 +1,5 @@
 import { incorporateInboxNotice } from './inbox-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { inboxCommand } from '../src/task-inbox/cli.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
@@ -393,6 +394,154 @@ test(
     assert.equal(
       task().compaction!.operations.at(-1)!.state,
       'cancelled',
+    )
+  },
+)
+
+test(
+  'a queued direct compact stays durable until the provider reads it',
+  async t => {
+    const { task } = await lab()
+    const sdk = hydraSdk()
+    let unblock = () => {}, blocked = () => {}
+    const gate = new Promise<void>(resolve => unblock = resolve)
+    const waiting = new Promise<void>(resolve => blocked = resolve)
+
+    const query = ((args: Parameters<QueryFn>[0]) => {
+      if (typeof args.prompt === 'string') {
+        return sdk.query(args)
+      }
+
+      const prompt = args.prompt
+
+      return sdk.query({
+        ...args,
+        prompt: (async function* () {
+          for await (const message of prompt) {
+            yield message
+
+            if (message.message.content === '/compact') {
+              blocked()
+              await gate
+            }
+          }
+        })(),
+      })
+    }) as QueryFn
+    server = await startServer({
+      hydraId: 'lab',
+      query,
+    })
+    await start({ id: 'direct-queue-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    sdk.control.hold = true
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: task().id,
+        text: '/compact',
+        homes: [],
+        actor: 'test',
+        id: 'queued-compact',
+      },
+    })
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+
+    try {
+      sdk.release()
+      await waiting
+      t.mock.timers.tick(0)
+      await new Promise<void>(resolve => setImmediate(resolve))
+      assert.equal(
+        task().compaction?.inputs[0]?.id,
+        'queued-compact',
+      )
+      await server.close()
+      t.mock.timers.reset()
+      unblock()
+      const resumed = hydraSdk()
+      server = await startServer({
+        hydraId: 'lab',
+        query: resumed.query,
+      })
+      await until({ check: () => task().compaction?.operations.length === 2 && task().compaction?.operations.at(-1)?.state === 'done' })
+      assert.equal(
+        resumed.calls[0]!.raw.filter(text => text === '/compact').length,
+        1,
+      )
+      assert.equal(
+        task().compaction!.inputs.length,
+        0,
+      )
+    } finally {
+      t.mock.timers.reset()
+      unblock()
+    }
+  },
+)
+
+test(
+  'restart during automatic compaction resumes the unfinished worker turn',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    commands.task([
+      'brief',
+      'ship',
+      '--brief',
+      'AUTO_COMPACT_HOLD',
+      '--hydra',
+      'lab',
+    ])
+    const first = fakeCodex({
+      root: folder,
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await start({ id: 'auto-worker' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.trigger === 'auto' })
+    await server.close()
+    const resumed = fakeCodex({
+      root: folder,
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: resumed.spawnCodex,
+    })
+    await until({ check: () => resumed.messages().some(message => message.method === 'turn/start') && task().sessionActivity === 'finished' })
+    assert.equal(
+      resumed.messages().filter(message => message.method === 'turn/start').length,
+      1,
+    )
+    assert.match(
+      JSON.stringify(resumed.messages()),
+      /Pnyx restarted during your turn/,
+    )
+    assert.equal(
+      resumed.messages().some(message => message.method === 'thread/compact/start'),
+      false,
+    )
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'failed',
     )
   },
 )

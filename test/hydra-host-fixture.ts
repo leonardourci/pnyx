@@ -14,6 +14,7 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
     onInput: undefined as (({ text }: { text: string }) => void) | undefined,
     hold: false,
     compactFailure: undefined as string | undefined,
+    compactUnreported: false,
     fail: false,
     ask: false,
     stream: false,
@@ -147,13 +148,16 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
             })
           }
 
-          yield {
-            type: 'system',
-            subtype: 'status',
-            status: null,
-            compact_result: interrupted || control.compactFailure ? 'failed' : 'success',
-            compact_error: interrupted ? 'Request was aborted.' : control.compactFailure,
+          if (!control.compactUnreported) {
+            yield {
+              type: 'system',
+              subtype: 'status',
+              status: null,
+              compact_result: interrupted || control.compactFailure ? 'failed' : 'success',
+              compact_error: interrupted ? 'Request was aborted.' : control.compactFailure,
+            }
           }
+
           interrupted = false
           yield {
             type: 'result',

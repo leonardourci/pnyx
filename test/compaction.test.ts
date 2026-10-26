@@ -12,6 +12,112 @@ import { codexProvider } from '../src/server/codex.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { needsCommentNote } from '../src/compaction/comments.ts'
 
+for (const refuse of [
+  false,
+  true,
+]) {
+  test(
+    `Codex cancellation before the compact turn is announced ${refuse ? 'reports a rejected interrupt' : 'waits for native confirmation'}`,
+    { timeout: 10_000 },
+    async () => {
+      const root = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-early-stop-',
+      ))
+      const fixture = fakeCodex({
+        root,
+        compact: 'hold-start',
+        refuse: refuse ? 'interrupt' : undefined,
+      })
+      let ready = () => {}
+      const announced = new Promise<void>(resolve => ready = resolve)
+      const session = await codexProvider({
+        spawnCodex: ({
+          cwd,
+          env,
+        }) => {
+          const child = fixture.spawnCodex({
+            cwd,
+            env,
+          })
+          let output = ''
+          child.stdout.on(
+            'data',
+            data => {
+              output += String(data)
+
+              if (output.includes('fixture/compact-ready')) {
+                ready()
+              }
+            },
+          )
+
+          return child
+        },
+      }).open({
+        cwd: root,
+        settings: {},
+        env: { PNYX_HOME: root },
+        signal: new AbortController().signal,
+      })
+      const events: HostedEvent[] = []
+      const running = (async () => {
+        for await (const event of session.run({
+          input: (async function* () {
+            yield '/compact'
+          })(),
+          permission: async () => ({ behavior: 'allow' }),
+        })) {
+          events.push(event)
+        }
+      })()
+      const drained = running.catch(() => {})
+
+      try {
+        await announced
+        const cancelled = session.interrupt().then(
+          () => 'stopped',
+          (error: Error) => error.message,
+        )
+        fixture.children[0]!.kill('SIGUSR1')
+        assert.equal(
+          await cancelled,
+          refuse ? 'fixture refused interrupt' : 'stopped',
+        )
+        const interrupt = fixture.messages().find(message => message.method === 'turn/interrupt')
+        assert.equal(
+          interrupt?.params?.turnId,
+          'turn-1',
+        )
+
+        if (refuse) {
+          assert.equal(
+            events.some(event => typeof event !== 'string' && event.type === 'compaction' && event.state !== 'running'),
+            false,
+          )
+          fixture.children[0]!.kill('SIGUSR1')
+        }
+
+        await running
+        assert.equal(
+          events.filter(event => typeof event !== 'string' && event.type === 'compaction').at(-1)?.state,
+          refuse ? 'done' : 'cancelled',
+        )
+      } finally {
+        session.close()
+        await drained
+        rmSync(
+          root,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
+      }
+    },
+  )
+}
+
 async function collect({ events }: { events: AsyncIterable<HostedEvent> }) {
   const result: HostedEvent[] = []
 

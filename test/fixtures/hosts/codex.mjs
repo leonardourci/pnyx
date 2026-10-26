@@ -4,6 +4,7 @@ import { createInterface } from 'node:readline'
 
 // active is the turn still running, the only one a steer may join.
 let turn = 0, threadId, waiting, held, active, heldCompact = false
+let compactStart
 const path = process.env.FAKE_CODEX_TRANSCRIPT
 const send = ({ ...message }) => process.stdout.write(`${JSON.stringify(message)}\n`)
 
@@ -17,6 +18,23 @@ const finish = ({
 
   if (text === 'HOLD') {
     held = id
+
+    return
+  }
+
+  if (text.includes('AUTO_COMPACT_HOLD')) {
+    held = id
+    send({
+      method: 'item/started',
+      params: {
+        threadId,
+        turnId: id,
+        item: {
+          type: 'contextCompaction',
+          id: 'auto-compact-item',
+        },
+      },
+    })
 
     return
   }
@@ -134,6 +152,14 @@ const finish = ({
 process.on(
   'SIGUSR1',
   () => {
+    if (compactStart) {
+      const start = compactStart
+      compactStart = undefined
+      start()
+
+      return
+    }
+
     if (heldCompact) {
       heldCompact = false
       send({
@@ -285,66 +311,79 @@ createInterface({ input: process.stdin }).on(
         id,
         result: {},
       })
-      send({
-        method: 'turn/started',
-        params: {
-          threadId,
-          turn: {
-            id: compactTurn,
-            status: 'inProgress',
-            items: [],
-            error: null,
-          },
-        },
-      })
 
-      if (process.env.FAKE_CODEX_COMPACT === 'hold') {
-        heldCompact = true
-        active = held = compactTurn
+      const start = () => {
         send({
-          method: 'item/started',
+          method: 'turn/started',
           params: {
             threadId,
-            turnId: compactTurn,
-            item: {
-              type: 'contextCompaction',
-              id: 'compact-item',
+            turn: {
+              id: compactTurn,
+              status: 'inProgress',
+              items: [],
+              error: null,
             },
           },
         })
 
-        return
-      }
+        if ([
+          'hold',
+          'hold-start',
+        ].includes(process.env.FAKE_CODEX_COMPACT)) {
+          heldCompact = true
+          active = held = compactTurn
+          send({
+            method: 'item/started',
+            params: {
+              threadId,
+              turnId: compactTurn,
+              item: {
+                type: 'contextCompaction',
+                id: 'compact-item',
+              },
+            },
+          })
 
-      for (const method of [
-        'item/started',
-        'item/completed',
-      ]) {
+          return
+        }
+
+        for (const method of [
+          'item/started',
+          'item/completed',
+        ]) {
+          send({
+            method,
+            params: {
+              threadId,
+              turnId: compactTurn,
+              item: {
+                type: 'contextCompaction',
+                id: 'compact-item',
+              },
+            },
+          })
+        }
+
+        const failed = process.env.FAKE_CODEX_COMPACT === 'fail'
         send({
-          method,
+          method: 'turn/completed',
           params: {
             threadId,
-            turnId: compactTurn,
-            item: {
-              type: 'contextCompaction',
-              id: 'compact-item',
+            turn: {
+              id: compactTurn,
+              status: failed ? 'failed' : 'completed',
+              error: failed ? { message: 'Compaction fixture failure' } : null,
             },
           },
         })
       }
 
-      const failed = process.env.FAKE_CODEX_COMPACT === 'fail'
-      send({
-        method: 'turn/completed',
-        params: {
-          threadId,
-          turn: {
-            id: compactTurn,
-            status: failed ? 'failed' : 'completed',
-            error: failed ? { message: 'Compaction fixture failure' } : null,
-          },
-        },
-      })
+      if (process.env.FAKE_CODEX_COMPACT === 'hold-start') {
+        compactStart = start
+        send({ method: 'fixture/compact-ready' })
+      } else {
+        start()
+      }
     } else if (method === 'turn/start') {
       const turnId = `turn-${++turn}`
       active = turnId
@@ -587,6 +626,18 @@ createInterface({ input: process.stdin }).on(
         result: { turnId: active },
       })
     } else if (method === 'turn/interrupt') {
+      if (process.env.FAKE_CODEX_REFUSE === 'interrupt') {
+        send({
+          id,
+          error: {
+            code: -32000,
+            message: 'fixture refused interrupt',
+          },
+        })
+
+        return
+      }
+
       send({
         id,
         result: {},

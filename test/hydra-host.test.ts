@@ -590,6 +590,139 @@ test(
   },
 )
 
+for (const outcome of [
+  'failed',
+  'missing',
+  'cancelled',
+] as const) {
+  test(
+    `Claude ${outcome} compact releases held input once without consuming a comment epoch`,
+    async () => {
+      const sdk = hydraSdk()
+      server = await startServer({
+        hydraId: 'lab',
+        query: sdk.query,
+      })
+      const annotated = '## Comments on your reply from today\nPlease clarify.'
+      await send({
+        text: annotated,
+        id: 'initial-comment',
+      })
+      await until({ check: finished })
+      const epoch = hydra()!.compaction!.taughtEpoch
+      sdk.control.hold = true
+      sdk.control.compactFailure = outcome === 'failed' ? 'Native compact failed' : undefined
+      sdk.control.compactUnreported = outcome === 'missing'
+      await send({
+        text: '/compact',
+        id: 'compact-outcome',
+      })
+      await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+      await send({
+        text: annotated,
+        id: 'held-comment',
+      })
+      await until({ check: () => hydra()?.compaction?.inputs.length === 1 })
+
+      if (outcome === 'cancelled') {
+        sdk.control.hold = false
+        await askHost({
+          hydraId: 'lab',
+          body: {
+            action: 'compact',
+            card: HYDRA_CARD,
+          },
+        })
+      } else {
+        sdk.release()
+      }
+
+      await until({
+        check: () => sdk.calls[0]!.raw.length === 3 && hydra()?.compaction?.inputs.length === 0
+          && finished(),
+      })
+      const operations = hydra()!.compaction!.operations
+      assert.equal(
+        operations.length,
+        1,
+      )
+      assert.equal(
+        operations[0]!.state,
+        outcome === 'cancelled' ? 'cancelled' : 'failed',
+      )
+      assert.equal(
+        hydra()!.compaction!.taughtEpoch,
+        epoch,
+      )
+      assert.doesNotMatch(
+        sdk.calls[0]!.raw[2]!,
+        /Internal note: no reply needed/,
+      )
+
+      if (outcome === 'failed') {
+        assert.equal(
+          operations[0]!.error,
+          'Native compact failed',
+        )
+      }
+
+      if (outcome === 'missing') {
+        assert.match(
+          operations[0]!.error!,
+          /without reporting a compaction outcome/,
+        )
+      }
+    },
+  )
+}
+
+test(
+  'Codex exit during compact records failure and resumes queued input once',
+  async () => {
+    codexRule()
+    const codex = fakeCodex({
+      root: home,
+      compact: 'hold',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await send({
+      text: '/compact',
+      id: 'crashing-compact',
+    })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+    await send({
+      text: 'Continue after provider exit',
+      id: 'after-exit',
+    })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 1 })
+    codex.children[0]!.kill('SIGTERM')
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'failed' && hydra()?.compaction?.inputs.length === 0 && finished() })
+    assert.equal(
+      hydra()!.compaction!.operations.length,
+      1,
+    )
+    assert.match(
+      hydra()!.compaction!.operations[0]!.error!,
+      /exited|closed/i,
+    )
+    assert.equal(
+      codex.messages().filter(message => message.method === 'turn/start').length,
+      1,
+    )
+    assert.equal(
+      codex.messages().filter(message => message.method === 'thread/compact/start').length,
+      1,
+    )
+    assert.match(
+      JSON.stringify(codex.messages().find(message => message.method === 'turn/start')?.params),
+      /Continue after provider exit/,
+    )
+  },
+)
+
 test(
   'messages held by compact keep the model selected when each was sent',
   async () => {
@@ -690,6 +823,47 @@ test(
 )
 
 test(
+  'restart during automatic compaction resumes the unanswered Hydra turn',
+  async () => {
+    codexRule()
+    const first = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await send({
+      text: 'AUTO_COMPACT_HOLD',
+      id: 'auto-owner',
+    })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.trigger === 'auto' })
+    await server.close()
+    const resumed = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: resumed.spawnCodex,
+    })
+    await until({ check: () => resumed.messages().some(message => message.method === 'turn/start') && finished() })
+    const turns = resumed.messages().filter(message => message.method === 'turn/start')
+    assert.equal(
+      turns.length,
+      1,
+    )
+    assert.match(
+      JSON.stringify(turns[0]!.params),
+      /restart cut your last turn before you answered messages seq/,
+    )
+    assert.equal(
+      resumed.messages().some(message => message.method === 'thread/compact/start'),
+      false,
+    )
+    assert.equal(
+      hydra()!.compaction!.operations.at(-1)!.state,
+      'failed',
+    )
+  },
+)
+
+test(
   'restart fails the compact once and releases held input without repeating the compact command',
   async () => {
     codexRule()
@@ -739,13 +913,18 @@ test(
       hydraId: 'lab',
       spawnCodex: third.spawnCodex,
     })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      100,
-    ))
+    await send({
+      text: 'After clean recovery',
+      id: 'clean-recovery',
+    })
+    await until({ check: () => third.messages().some(message => message.method === 'turn/start') && finished() })
     assert.equal(
       third.messages().filter(message => message.method === 'turn/start').length,
-      0,
+      1,
+    )
+    assert.match(
+      JSON.stringify(third.messages().find(message => message.method === 'turn/start')?.params),
+      /After clean recovery/,
     )
   },
 )
