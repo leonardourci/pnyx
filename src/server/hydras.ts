@@ -1,8 +1,9 @@
-import { mkdirSync, statSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { commands } from '../cli/commands.ts'
+import { hydraIdentity } from './state.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { hydraDir, hydraIds, loadHydra } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, readEvents, withRegistryLock } from '../store/hydra-store.ts'
 import { projectsFor } from '../projects/read.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 import { liveTask } from '../core/tasks.ts'
@@ -15,6 +16,8 @@ export interface HydraProjectSummary {
   asks: number
 }
 export interface HydraSummary {
+  creationAttempt?: string
+  identity?: string
   id: string
   name: string
   hydra: string
@@ -128,6 +131,11 @@ function summarize({ id }: { id: string }): {
       home,
       summary: {
         id,
+        identity: hydraIdentity({ hydraId: id }),
+        creationAttempt: Object.entries(state.eventIds).find(([
+          event,
+          seq,
+        ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
         name: config.name,
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         projects,
@@ -145,32 +153,52 @@ function summarize({ id }: { id: string }): {
   }
 }
 
-export function createHydra({ name }: { name: string }): string {
-  const taken = new Set(hydraIds())
-  let n = taken.size + 1
+export function createHydra({
+  name,
+  attempt,
+}: {
+  name: string
+  attempt?: string
+}): string {
+  return withRegistryLock({
+    fn: () => {
+      const ids = hydraIds()
+      const eventId = attempt ? `hydra-create:${attempt}` : undefined
 
-  while (taken.has(`hydra-${n}`)) {
-    n++
-  }
+      if (eventId) {
+        for (const id of ids) {
+          const event = readEvents({ hydraId: id }).find(event => event.id === eventId)
 
-  const id = `hydra-${n}`
-  commands.hydra([
-    'create',
-    id,
-    '--name',
-    name,
-    '--actor',
-    'web',
-  ])
-  mkdirSync(
-    join(
-      hydraDir({ hydraId: id }),
-      'agent',
-    ),
-    { recursive: true },
-  )
+          if (event?.type === 'board.configured') {
+            return id
+          }
+        }
+      }
 
-  return id
+      const taken = new Set(ids)
+      let n = taken.size + 1
+
+      while (taken.has(`hydra-${n}`)) {
+        n++
+      }
+
+      const id = `hydra-${n}`
+      commands.hydra([
+        'create',
+        id,
+        '--name',
+        name,
+        '--actor',
+        'web',
+        ...(eventId ? [
+          '--event-id',
+          eventId,
+        ] : []),
+      ])
+
+      return id
+    },
+  })
 }
 
 export function renameHydra({

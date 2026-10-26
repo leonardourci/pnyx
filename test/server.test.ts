@@ -4011,3 +4011,250 @@ test(
     )
   },
 )
+
+test(
+  'one scoped socket follows two Hydras and routes writes without changing their CLI scope',
+  async () => {
+    cli({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    cli({
+      args: [
+        'hydra',
+        'create',
+        'other',
+        '--name',
+        'Other',
+      ],
+    })
+    server = await startServer({
+      hydraId: 'default',
+      port: 0,
+    })
+    const t = await tab({ query: '?scoped=1' })
+    assert.equal(
+      t.hello.scope,
+      'default',
+    )
+    await t.next()
+    t.ws.send(JSON.stringify({
+      type: 'subscribe',
+      scope: 'other',
+      subscription: 'other-v1',
+    }))
+    let snapshot: ServerMessage
+
+    do {
+      snapshot = await t.next()
+    } while (snapshot.type !== 'snapshot' || snapshot.scope !== 'other')
+
+    assert.equal(
+      snapshot.state.config?.id,
+      'other',
+    )
+    assert.equal(
+      snapshot.subscription,
+      'other-v1',
+    )
+    t.ws.send(JSON.stringify({
+      type: 'command',
+      scope: 'other',
+      id: 'other-rename',
+      name: 'hydra',
+      args: [
+        'set',
+        '--name',
+        'Changed',
+        '--event-id',
+        'other-event',
+      ],
+    }))
+    let receipt: ServerMessage
+
+    do {
+      receipt = await t.next()
+    } while (!('id' in receipt) || receipt.id !== 'other-rename')
+
+    assert.equal(
+      receipt.type,
+      'receipt',
+    )
+    assert.equal(
+      receipt.scope,
+      'other',
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'other' }).state.config?.name,
+      'Changed',
+    )
+    assert.notEqual(
+      loadHydra({ hydraId: 'default' }).state.config?.name,
+      'Changed',
+    )
+    t.ws.send(JSON.stringify({
+      type: 'command',
+      scope: 'other',
+      id: 'bad-scope',
+      name: 'hydra',
+      args: [
+        'set',
+        '--name',
+        'Wrong',
+        '--hydra',
+        'default',
+      ],
+    }))
+
+    do {
+      receipt = await t.next()
+    } while (!('id' in receipt) || receipt.id !== 'bad-scope')
+
+    assert.equal(
+      receipt.type,
+      'error',
+    )
+    t.ws.send(JSON.stringify({
+      type: 'subscribe',
+      scope: 'missing',
+    }))
+
+    do {
+      receipt = await t.next()
+    } while (receipt.type !== 'scope-error')
+
+    assert.equal(
+      receipt.scope,
+      'missing',
+    )
+    assert.equal(
+      t.ws.readyState,
+      WebSocket.OPEN,
+    )
+  },
+)
+
+test(
+  'creation keeps its saved identity when mounting fails and retry uses the same allocation',
+  async () => {
+    cli({
+      args: [
+        'hydra',
+        'create',
+        'default',
+      ],
+    })
+    server = await startServer({
+      hydraId: 'default',
+      port: 0,
+    })
+    const t = await tab({ query: '?scoped=1' })
+    await t.next()
+    const watch = fs.watch
+    const broken = hydraDir({ hydraId: 'hydra-2' })
+    // eslint-disable-next-line pnyx/object-params -- fs.watch owns its overloaded arguments.
+    fs.watch = ((...args: Parameters<typeof fs.watch>) => {
+      if (String(args[0]) === broken) {
+        throw new Error('Synthetic mount failure')
+      }
+
+      return watch(...args)
+    }) as typeof fs.watch
+    syncBuiltinESMExports()
+
+    try {
+      t.command({
+        id: 'saved-create',
+        name: 'hydras',
+        args: [
+          'create',
+          'Saved',
+          'mount-failure',
+        ],
+      })
+      const receipt = await t.reply({ id: 'saved-create' }) as Extract<ServerMessage, { type: 'receipt' }>
+      assert.equal(
+        (receipt.creation as { hydraId: string }).hydraId,
+        'hydra-2',
+      )
+      assert.equal(
+        (receipt.creation as { status: string }).status,
+        'saved',
+      )
+      t.ws.send(JSON.stringify({
+        type: 'subscribe',
+        scope: 'hydra-2',
+      }))
+      let result: ServerMessage
+
+      do {
+        result = await t.next()
+      } while (result.type !== 'scope-error')
+
+      assert.equal(
+        result.scope,
+        'hydra-2',
+      )
+      assert.match(
+        result.error,
+        /Synthetic mount failure/,
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'hydra-2' }).state.config?.name,
+        'Saved',
+      )
+      const response = await fetch(`http://127.0.0.1:${server.port}/hydra/hydra-2/`)
+      assert.equal(
+        response.status,
+        200,
+      )
+      assert.match(
+        await response.text(),
+        /pnyx-token/,
+      )
+      assert.equal(
+        t.ws.readyState,
+        WebSocket.OPEN,
+      )
+    } finally {
+      fs.watch = watch
+      syncBuiltinESMExports()
+    }
+
+    t.ws.send(JSON.stringify({
+      type: 'subscribe',
+      scope: 'hydra-2',
+    }))
+    let snapshot: ServerMessage
+
+    do {
+      snapshot = await t.next()
+    } while (snapshot.type !== 'snapshot' || snapshot.scope !== 'hydra-2')
+
+    assert.equal(
+      snapshot.state.config?.name,
+      'Saved',
+    )
+    t.command({
+      id: 'saved-retry',
+      name: 'hydras',
+      args: [
+        'create',
+        'Ignored retry name',
+        'mount-failure',
+      ],
+    })
+    const retried = await t.reply({ id: 'saved-retry' }) as Extract<ServerMessage, { type: 'receipt' }>
+    assert.equal(
+      (retried.creation as { hydraId: string }).hydraId,
+      'hydra-2',
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'hydra-2' }).state.seq,
+      1,
+    )
+  },
+)
