@@ -8,4 +8,4 @@ Open a pull request against `main` with the problem, the fix and how you validat
 
 Every PR needs `pnpm verify` passing locally on its pushed head. Run it from a clean checkout with `origin/main` fetched and GitHub CLI authenticated for your PR. It selects checks for the changed files and writes the hidden verification marker into the PR description only when its requirements pass. If formatting changes files, commit and push them, then run it again. Docs-only PRs also run verify and need the marker, even when no build or tests are selected. See [Development](README.md#development) for check selection and browser prerequisites.
 
-GitHub checks must pass before merging. For outside contributions, the owner also approves a GitHub verification run through the protected environment; that run supplements local verification. The repository owner reviews and merges PRs into `main` with a merge commit.
+GitHub checks must pass before merging. The Verification workflow automatically runs the selected checks for every PR; that run supplements local verification. The repository owner reviews and merges PRs into `main` with a merge commit.
