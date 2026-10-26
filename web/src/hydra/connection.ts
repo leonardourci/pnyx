@@ -3,7 +3,8 @@ import { optimisticState, currentRevision, projectEdits } from './optimistic.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
-import { storageKey } from './outbox.ts'
+import { readSettingsSaves, saveSettingsSaves, storageKey } from './outbox.ts'
+import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { HydraState } from '../../../src/core/model.ts'
@@ -25,9 +26,11 @@ export type Receipt = Record<string, unknown>
 export type Command = ({
   name,
   args,
+  onChecking,
 }: {
   name: string
   args: string[]
+  onChecking?(): void
 }) => Promise<Receipt>
 
 const cacheKey = () => storageKey({ key: 'hydra-state' })
@@ -51,6 +54,7 @@ export const retryable = ({
     'task-message',
     'answer',
     'agent',
+    'hydra-agent',
   ].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
 
 export function commandTimeout({
@@ -124,6 +128,10 @@ export function useHydra() {
     setError,
   ] = useState('')
   const target = useRef(location.href)
+  const [
+    checking,
+    setChecking,
+  ] = useState(false)
   const cache = useRef(new Map<string, {
     identity: string
     state: HydraState
@@ -178,17 +186,61 @@ export function useHydra() {
     resolve({ receipt }: { receipt: Receipt }): void
     reject({ error }: { error: Error }): void
     timer?: ReturnType<typeof setTimeout>
-    message: {
-      type: 'command'
-      id: string
-      name: string
-      args: string[]
-    }
+    message: SaveCommand
     sent: boolean
     retry: boolean
     optimistic: boolean
     settled: Promise<void>
+    saveId?: string
+    checking?: boolean
+    unconfirmed(): void
   }>())
+  const persistSaves = useCallback(
+    () => {
+      saveSettingsSaves({
+        hydraId: identity.current,
+        commands: [...pending.current.values()].filter(p => p.message.name === 'hydra-agent').map(p => p.message),
+      })
+    },
+    [],
+  )
+  const publishChecking = useCallback(
+    () => {
+      setChecking([...pending.current.values()].some(p => p.checking))
+    },
+    [],
+  )
+  const confirmSaves = useCallback(
+    () => {
+      let confirmed = false
+
+      for (const [
+        id,
+        p,
+      ] of pending.current) {
+        const receipt = savedReceipt({
+          command: p.message,
+          state: stateRef.current,
+        })
+
+        if (receipt) {
+          clearTimeout(p.timer)
+          pending.current.delete(id)
+          p.resolve({ receipt })
+          confirmed = true
+        }
+      }
+
+      if (confirmed) {
+        persistSaves()
+        publishChecking()
+      }
+    },
+    [
+      persistSaves,
+      publishChecking,
+    ],
+  )
   const publish = useCallback(
     () => {
       if (new URL(target.current).pathname !== new URL(endpoint).pathname) {
@@ -244,6 +296,16 @@ export function useHydra() {
         p.sent = true
         p.timer = setTimeout(
           () => {
+            if (p.saveId) {
+              p.checking = true
+              p.unconfirmed()
+              publishChecking()
+              p.sent = false
+              flushRef.current()
+
+              return
+            }
+
             pending.current.delete(id)
             publish(); setError('Save could not be confirmed. Check the Hydra before retrying.')
             p.reject({ error: new Error('Send could not be confirmed. Draft kept; check the conversation before retrying.') })
@@ -257,7 +319,10 @@ export function useHydra() {
         socket.current.send(JSON.stringify(p.message))
       }
     },
-    [publish],
+    [
+      publish,
+      publishChecking,
+    ],
   )
   flushRef.current = flush
   const disconnected = useCallback(
@@ -273,6 +338,11 @@ export function useHydra() {
 
         if (p.retry) {
           p.sent = false
+
+          if (p.saveId) {
+            p.checking = true
+            p.unconfirmed()
+          }
         } else {
           pending.current.delete(id)
           p.reject({ error: new Error('Could not complete this action. Try again.') })
@@ -280,12 +350,17 @@ export function useHydra() {
       }
 
       publish()
+      publishChecking()
     },
-    [publish],
+    [
+      publish,
+      publishChecking,
+    ],
   )
   useEffect(
     () => {
       const pathname = new URL(endpoint).pathname
+      setChecking(false)
       const saved = cache.current.get(pathname)
       stateRef.current = saved?.state
       ?? (endpoint === initial.current.endpoint ? initial.current.state : emptyHydra())
@@ -390,6 +465,28 @@ export function useHydra() {
             if (m.type === 'hello') {
               identity.current = m.hydraId
 
+              for (const message of readSettingsSaves({ hydraId: m.hydraId })) {
+                if (!pending.current.has(message.id)) {
+                  pending.current.set(
+                    message.id,
+                    {
+                      message,
+                      saveId: saveEventId({ command: message }),
+                      resolve: () => {},
+                      reject: () => {},
+                      unconfirmed: () => {},
+                      settled: Promise.resolve(),
+                      sent: false,
+                      checking: true,
+                      retry: true,
+                      optimistic: false,
+                    },
+                  )
+                }
+              }
+
+              publishChecking()
+
               if (active) {
                 document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')
                   ?.setAttribute(
@@ -406,6 +503,7 @@ export function useHydra() {
               }
             } else if (m.type === 'snapshot') {
               hasSnapshot.current = true; stateRef.current = m.state
+              confirmSaves()
               staleUpdates()
 
               // The server follows a snapshot with Hydra's queue only when it holds updates.
@@ -453,6 +551,7 @@ export function useHydra() {
                 state: stateRef.current,
                 event: m.event,
               })
+              confirmSaves()
               noteUpdate({ event: m.event })
               const entry = cache.current.get(pathname)
 
@@ -546,7 +645,21 @@ export function useHydra() {
                 return
               }
 
+              if (m.type === 'error' && p.saveId && m.saved !== false) {
+                p.checking = true
+                p.unconfirmed()
+                publishChecking()
+
+                return
+              }
+
               clearTimeout(p.timer); pending.current.delete(m.id)
+
+              if (p.message.name === 'hydra-agent') {
+                persistSaves()
+              }
+
+              publishChecking()
 
               if (m.type === 'error') {
                 if (p.optimistic) {
@@ -624,7 +737,9 @@ export function useHydra() {
         disconnected()
 
         for (const p of pending.current.values()) {
-          p.reject({ error: new Error('Send interrupted. Draft kept.') })
+          if (!p.saveId) {
+            p.reject({ error: new Error('Send interrupted. Draft kept.') })
+          }
         }
 
         pending.current.clear()
@@ -635,12 +750,16 @@ export function useHydra() {
       flush,
       publish,
       endpoint,
+      confirmSaves,
+      persistSaves,
+      publishChecking,
     ],
   )
   const command: Command = useCallback(
     ({
       name,
       args,
+      onChecking,
     }) => new Promise((
       resolve,
       reject,
@@ -674,6 +793,22 @@ export function useHydra() {
       }
 
       const id = crypto.randomUUID()
+      const message: SaveCommand = {
+        type: 'command',
+        id,
+        name,
+        args,
+      }
+      const confirmed = savedReceipt({
+        command: message,
+        state: stateRef.current,
+      })
+
+      if (confirmed) {
+        resolve(confirmed)
+
+        return
+      }
 
       if (commandBytes({
         id,
@@ -719,23 +854,29 @@ export function useHydra() {
             reject(error); settle()
           },
           settled,
-          message: {
-            type: 'command',
-            id,
-            name,
-            args,
+          message,
+          saveId: saveEventId({ command: message }),
+          unconfirmed: () => {
+            onChecking?.()
+            settle()
           },
           retry,
           optimistic,
           sent: false,
         },
       )
+
+      if (name === 'hydra-agent') {
+        persistSaves()
+      }
+
       publish(); flush()
     }),
     [
       flush,
       publish,
       endpoint,
+      persistSaves,
     ],
   )
 
@@ -889,5 +1030,6 @@ export function useHydra() {
     loading,
     loaded,
     error,
+    checking,
   }
 }
