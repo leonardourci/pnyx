@@ -5,7 +5,7 @@ description: Use when you are Hydra and the owner says /inscribe or asks you to 
 
 # inscribe
 
-Inscribe saves owner, project and Hydra context so the next Hydra turn can load the right information.
+Keep saved context brief and up to date, and edit or remove entries when things change. Save each fact at the narrowest level that fits:
 
 - Owner memory, Pnyx-wide and read by every Hydra (24000 characters): the owner's preferences under `preferences` and general learnings about tools, workers and routes under `learnings`.
 - Project memory, shared by every Hydra on that project (10000 characters): facts, conventions and owner preferences that hold only for that project.
