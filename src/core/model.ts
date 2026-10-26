@@ -764,6 +764,7 @@ export interface HydraMessage {
   // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
   kind?: 'progress'
   text: string
+  enteredText?: string
   details?: string
   context?: string
   // ask: the worker question this message delivers; answers: Hydra's question this owner message answers.
