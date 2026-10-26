@@ -2294,49 +2294,83 @@ test(
   },
 )
 
-test(
-  'a reply never confirmed after its resends wakes Hydra once',
-  async () => {
-    const sdk = hydraSdk()
-    const host = createHost({
-      hydraId: 'lab',
-      query: sdk.query,
-      changed: () => {},
-      stallDelay: 200,
-    })
-    const notConfirmed = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('not confirmed: '))
-
-    try {
-      await host.hydra({
-        id: 'hello',
-        text: 'Hello',
-        actor: 'owner',
+for (const rejected of [
+  false,
+  true,
+]) {
+  test(
+    `a reply never confirmed after its resends wakes Hydra once${rejected ? ' after a rejected stall dispatch' : ''}`,
+    async t => {
+      const sdk = hydraSdk()
+      const host = createHost({
+        hydraId: 'lab',
+        query: sdk.query,
+        changed: () => {},
+        stallDelay: 200,
       })
-      await until({ check: finished })
-      const unconfirmed = {
-        card: 'task-1',
-        reply: 'r1',
-        text: 'Rebase   onto\nmain',
-      }
-      host.unconfirmed(unconfirmed)
-      await until({ check: () => notConfirmed().length === 1 && finished() })
-      assert.match(
-        notConfirmed()[0]!,
-        /not confirmed: the message "Rebase onto main" never showed up in the worker's session after 2 resends/,
-      )
+      const notConfirmed = () => sdk.calls.flatMap(c => c.messages).filter(m => m.includes('not confirmed: '))
 
-      // The server reports it again on each check; Hydra already heard.
-      host.unconfirmed(unconfirmed)
-      await sleep({ ms: 400 })
-      assert.equal(
-        notConfirmed().length,
-        1,
-      )
-    } finally {
-      host.close()
-    }
-  },
-)
+      try {
+        await host.hydra({
+          id: 'hello',
+          text: 'Hello',
+          actor: 'owner',
+        })
+        await until({ check: finished })
+        let failed = false
+        const errors = t.mock.method(
+          console,
+          'error',
+          () => {},
+        )
+
+        if (rejected) {
+          const dispatch = host.hydra
+          t.mock.method(
+            host,
+            'hydra',
+            async ({ ...request }: Parameters<typeof host.hydra>[0]) => {
+              if (!failed) {
+                failed = true
+                throw new Error('stall dispatch failed')
+              }
+
+              return dispatch(request)
+            },
+          )
+        }
+
+        const unconfirmed = {
+          card: 'task-1',
+          reply: 'r1',
+          text: 'Rebase   onto\nmain',
+        }
+        host.unconfirmed(unconfirmed)
+        await until({ check: () => notConfirmed().length === 1 && finished() })
+
+        if (rejected) {
+          assert.ok(failed)
+          assert.ok(errors.mock.calls.some(call => call.arguments.join(' ').includes('stall dispatch failed')))
+        }
+
+        assert.match(
+          notConfirmed()[0]!,
+          /not confirmed: the message "Rebase onto main" never showed up in the worker's session after 2 resends/,
+        )
+
+        // The server reports it again on each check; Hydra already heard.
+        host.unconfirmed(unconfirmed)
+        await sleep({ ms: 400 })
+        assert.equal(
+          notConfirmed().length,
+          1,
+        )
+      } finally {
+        host.close()
+      }
+    },
+  )
+}
 
 test(
   'a cut Hydra turn resumes once with fresh memory and the unanswered message range',
