@@ -204,7 +204,7 @@ function branchChanges(): string[] | undefined {
   ]
 }
 
-// Markdown outside the shipped skills and the tests is docs, as the Checks required workflow skips it.
+// Markdown outside the shipped skills and the tests is docs.
 function area({ path }: { path: string }): string {
   if (path.endsWith('.md') && !/^(skills|test)\//.test(path)) {
     return 'docs'
