@@ -141,8 +141,8 @@ export function useHydra() {
     actions: Record<string, CurrentAction>
   }>())
   const [
-    state,
-    setState,
+    navigationState,
+    setNavigationState,
   ] = useState<HydraState>(restoredHydra)
   const [
     connected,
@@ -177,7 +177,7 @@ export function useHydra() {
   const identity = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? '')
   const initial = useRef({
     endpoint: location.href,
-    state,
+    state: navigationState,
   })
   const resource = useMemo(
     () => pendingHydra({
@@ -287,12 +287,6 @@ export function useHydra() {
           }
         }
       }
-
-      if (!active) {
-        return
-      }
-
-      setState(resource.snapshot().view)
     },
     [
       endpoint,
@@ -1103,6 +1097,7 @@ export function useHydra() {
         return
       }
 
+      setNavigationState(resource.snapshot().view)
       target.current = next.href
       setLoading(next.pathname.split('/')[2]!); setError('')
       // The next Hydra's server sends its own queue once connected.
@@ -1115,7 +1110,7 @@ export function useHydra() {
             'content',
             saved.identity,
           )
-        setState(saved.state)
+        setNavigationState(saved.state)
         setHydraThread(saved.hydraThread); setLatest(saved.latest); setActions(saved.actions)
         setNavigation(old => ({
           ...old,
@@ -1159,6 +1154,7 @@ export function useHydra() {
     [
       endpoint,
       publish,
+      resource,
     ],
   )
   const navigateRef = useRef(navigate)
@@ -1185,9 +1181,11 @@ export function useHydra() {
     [],
   )
 
+  const selected = new URL(target.current).pathname === new URL(endpoint).pathname
+  const visibleState = selected ? pendingState.view : navigationState
+
   return {
-    state: new URL(target.current).pathname === new URL(endpoint).pathname
-      ? pendingState.view : state,
+    state: visibleState,
     connected: connected && !loading,
     command,
     hydraThread,
@@ -1196,10 +1194,10 @@ export function useHydra() {
     actions,
     navigation: {
       ...navigation,
-      hydras: navigation.hydras.map(h => h.id === state.config?.id
+      hydras: navigation.hydras.map(h => h.id === visibleState.config?.id
         ? {
           ...h,
-          name: state.config.name,
+          name: visibleState.config.name,
         } : h),
     },
     navigate,
@@ -1207,7 +1205,6 @@ export function useHydra() {
     loaded,
     error,
     checking,
-    intents: new URL(target.current).pathname === new URL(endpoint).pathname
-      ? pendingState.intents : [],
+    intents: selected ? pendingState.intents : [],
   }
 }
