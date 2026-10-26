@@ -2122,7 +2122,7 @@ export function createHost({
     outcomesReady: armWake,
   })
 
-  const fireWake = () => {
+  const fireWake = async () => {
     wakeTimer = undefined
     const state = loadHydra({ hydraId }).state
     const session = state.config?.hydra.session
@@ -2194,7 +2194,7 @@ export function createHost({
     const routine = tasks.length > 0 && tasks.every(task => task !== undefined)
 
     if (helperAgent({ state }) && routine && !helper.busy()
-      && helper.offer({
+      && await helper.offer({
         tasks: tasks.filter(task => task !== undefined),
         prompt: text,
         seqs: batch.map(update => update.seq),
@@ -2240,9 +2240,9 @@ export function createHost({
   }
 
   // A stall or an ended wait makes no event, so it is polled.
-  const checkStalls = () => {
+  const checkStalls = async () => {
     try {
-      return wakeOnStall()
+      return await wakeOnStall()
     } catch (error) {
       console.error(`pnyx-axi serve: ${(error as Error).message}`)
     }
@@ -2482,7 +2482,7 @@ export function createHost({
     }))
   }
 
-  const wakeOnStall = () => {
+  const wakeOnStall = async () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -2594,7 +2594,11 @@ export function createHost({
       kind: item.kind,
     }))
 
-    if (helperAgent({ state }) && routine && helper.offer({
+    if (helperAgent({ state }) && routine && helper.busy()) {
+      return
+    }
+
+    if (helperAgent({ state }) && routine && await helper.offer({
       tasks: fired.map(item => item.card),
       prompt: text,
       seqs: [],
@@ -4134,7 +4138,7 @@ export function createHost({
         }
       }
 
-      helper.recover()
+      await helper.recover()
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
