@@ -1,5 +1,5 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { Button } from './controls.tsx'
+import { InlineButton } from './controls.tsx'
 import { ReferenceBadge } from './reference-badge.tsx'
 import { CHIP_SPACE } from '../../hydra/draft.ts'
 import { Tooltip } from './tooltip.tsx'
@@ -74,8 +74,8 @@ export function TaskReference({
 
   return (
     <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
-      <Button
-        className={`task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
+      <InlineButton
+        className={`button task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
         contentEditable={false}
         data-task-ref={id}
         data-state={reference?.kind}
@@ -94,7 +94,7 @@ export function TaskReference({
         >{label}
         </ReferenceBadge>
         {CHIP_SPACE}
-      </Button>
+      </InlineButton>
     </Tooltip>
   )
 }

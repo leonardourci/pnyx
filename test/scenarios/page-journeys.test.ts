@@ -191,6 +191,7 @@ test(
       }),
     })
 
+    await page.type({ text: 'and keep this. ' })
     const note = join(
       s.folder({ name: 'files' }),
       'note.txt',
@@ -255,7 +256,63 @@ test(
       sentLooks,
       tokenLooks,
     )
-    await page.click({ selector: '.message.mine .task-reference' })
+    await page.shows({
+      what: 'a wrapped task mention flows into the following words',
+      check: () => {
+        const mine = [...document.querySelectorAll('.message.mine')].at(-1)
+        const task = mine?.querySelector('.draft-chip[data-kind=task]')
+        const paragraph = task?.closest('p')
+
+        if (!paragraph || !task) {
+          return false
+        }
+
+        paragraph.style.width = '120px'
+        const walker = document.createTreeWalker(
+          paragraph,
+          NodeFilter.SHOW_TEXT,
+        )
+        let after: Text | undefined
+
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (node.textContent?.includes('and keep this.')) {
+            after = node as Text
+          }
+        }
+
+        if (!after) {
+          return false
+        }
+
+        const range = document.createRange()
+        const start = after.data.indexOf('and')
+        range.setStart(
+          after,
+          start,
+        )
+        range.setEnd(
+          after,
+          start + 3,
+        )
+        const rects = task.getClientRects()
+        const last = rects[rects.length - 1]
+        const afterTop = range.getBoundingClientRect().top
+        const flows = rects.length > 1 && last && Math.abs(last.top - afterTop) < 4
+        paragraph.style.removeProperty('width')
+
+        return flows
+      },
+    })
+    await page.shows({
+      what: 'the sent task mention accepts keyboard focus',
+      check: () => {
+        const token = document.querySelector<HTMLElement>('.message.mine .task-reference')
+        token?.focus()
+
+        return token && document.activeElement === token
+      },
+    })
+    await page.press({ key: 'Enter' })
     await page.shows({
       what: 'the sent task mention opens its task',
       check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
@@ -708,7 +765,7 @@ End of the long update.`
         return expanded?.querySelector('li')?.textContent === 'First item'
           && expanded.querySelector('pre code')?.textContent?.includes('pnpm run lint')
           && expanded.querySelector('td')?.textContent === 'Layout'
-          && expanded.querySelector('button.task-reference')?.textContent?.includes('Reference task')
+          && expanded.querySelector('[role=button].task-reference')?.textContent?.includes('Reference task')
           && !expanded.querySelector('.text-preview')
       },
     })
