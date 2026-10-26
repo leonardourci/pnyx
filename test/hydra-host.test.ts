@@ -19,8 +19,8 @@ import { project } from '../src/projects/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
-import { createHost } from '../src/server/host.ts'
-import { startServer, type RunningServer } from '../src/server/server.ts'
+import { hostObserver } from './host-observer.ts'
+import type { RunningServer } from '../src/server/server.ts'
 import { askHost, localToken } from '../src/server/state.ts'
 import { readThread } from '../src/thread/read.ts'
 import { thinkingSdk } from './thinking-fixture.ts'
@@ -153,20 +153,12 @@ afterEach(async () => {
   )
 })
 
-async function until({ check }: { check(): boolean }) {
-  for (let i = 0; i < 200; i++) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail('Hydra did not finish its turn')
-}
+const {
+  startServer,
+  createHost,
+  until,
+  notify,
+} = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
 
 const sleep = ({ ms }: { ms: number }) => new Promise(resolve => setTimeout(
   resolve,
@@ -3073,6 +3065,7 @@ test(
 
         if (message.type === 'latest' && HYDRA_CARD in message.actions) {
           actions.push(message.actions[HYDRA_CARD])
+          notify()
         }
       },
     )
