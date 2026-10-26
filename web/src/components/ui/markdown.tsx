@@ -116,6 +116,7 @@ const inline = ({
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
       case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
+      case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
@@ -395,6 +396,7 @@ const renderBlocks = ({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
+        case 'html': node = <p><ChatTokenText text={token.text} /></p>; break
         case 'table': node = (
           <Table
             token={token as Tokens.Table}

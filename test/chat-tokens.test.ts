@@ -183,3 +183,28 @@ test(
     )
   },
 )
+
+test(
+  'repeated skill names preserve Markdown reference links',
+  () => {
+    const prepared = prepareChatTokens({
+      text: '[$inscribe]\n\n[$inscribe]: https://example.com/guide',
+      suggestions,
+    })
+    const parser = new Marked({ gfm: true })
+    const links: string[] = []
+    parser.walkTokens(
+      parser.lexer(prepared.text),
+      // eslint-disable-next-line pnyx/object-params -- Marked owns this callback signature.
+      token => {
+        if (token.type === 'link') {
+          links.push(token.href)
+        }
+      },
+    )
+    assert.deepEqual(
+      links,
+      ['https://example.com/guide'],
+    )
+  },
+)

@@ -62,12 +62,19 @@ export function prepareChatTokens({
     suggestions,
   })
   const markers = new Map<string, (typeof commands)[number] & { raw: string }>()
+  const commandMarkers = new Map<string, string>()
   let end = 0
-  const parts = commands.map((
-    command,
-    index,
-  ) => {
-    const marker = `${prefix}${index}\uE001`
+  const parts = commands.map(command => {
+    let marker = commandMarkers.get(command.item.command)
+
+    if (!marker) {
+      marker = `${prefix}${commandMarkers.size}\uE001`
+      commandMarkers.set(
+        command.item.command,
+        marker,
+      )
+    }
+
     const before = text.slice(
       end,
       command.start,

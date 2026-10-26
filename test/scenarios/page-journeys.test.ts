@@ -382,7 +382,7 @@ for (const harness of [
         ],
       })
       const text = harness === 'codex'
-        ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.'
+        ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.\n\n[Skill documentation](https://example.com/$inscribe)\n\n[$inscribe]\n\n[$inscribe]: https://example.com/guide'
         : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.\n\n**prefix**/inscribe and **/inscribe** safely. [link](/inscribe) [**/inscribe**](https://example.com). `/inscribe` and\n\n```text\n/inscribe\n```'
       await s.owner({
         args: [
@@ -405,18 +405,95 @@ for (const harness of [
           check: ({ harness }) => {
             const mine = document.querySelector('.message.mine')
 
-            return mine?.querySelectorAll('.draft-skill').length === (harness === 'codex' ? 3 : 2)
+            return mine?.querySelectorAll('.draft-skill').length === (harness === 'codex' ? 4 : 2)
             && mine.textContent?.includes('not-a-known-skill')
             && !mine.querySelector('.skill-remove')
             && (harness !== 'codex' || mine.querySelector('code .draft-skill'))
             && (harness !== 'claude' || !mine.querySelector('strong .draft-skill, a .draft-skill, code .draft-skill'))
           },
         })
+
+        if (harness === 'codex') {
+          const href = await page.shows({
+            what: 'the skill documentation link destination',
+            check: () => document.querySelector<HTMLAnchorElement>('.message.mine a')?.href,
+          })
+          assert.equal(
+            href,
+            'https://example.com/$inscribe',
+          )
+          await page.shows({
+            what: 'the reference-style skill link',
+            check: () => document.querySelector('.message.mine a[href="https://example.com/guide"] .draft-skill'),
+          })
+        }
+
         await page.close()
       }
     },
   )
 }
+
+test(
+  'sent Codex skill mentions remain readable in literal HTML',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+      ],
+    })
+    const text = 'Use $inscribe here <!-- $inscribe -->.\n\n<div>$inscribe</div>'
+    await s.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        text,
+      ],
+    })
+    await hydraFinished({
+      s,
+      turns: 1,
+    })
+    const page = await openHydra({ s })
+
+    try {
+      const rendered = await page.shows({
+        what: 'the sent Codex message with its skill catalog loaded',
+        check: () => {
+          const mine = document.querySelector('.message.mine')
+
+          return mine?.querySelector('.draft-skill') && {
+            text: mine.textContent,
+            badges: mine.querySelectorAll('.draft-skill').length,
+            quotes: [...mine.querySelectorAll('.message-block')].map(block => block.getAttribute('data-quote')),
+          }
+        },
+      })
+      assert.doesNotMatch(
+        rendered.text ?? '',
+        /[\uE000\uE001]/,
+      )
+      assert.equal(
+        rendered.badges,
+        3,
+      )
+      assert.ok(rendered.text?.includes('<!--'))
+      assert.ok(rendered.text?.includes('<div>'))
+      assert.deepEqual(
+        rendered.quotes,
+        text.split('\n\n'),
+      )
+    } finally {
+      await page.close()
+    }
+  },
+)
 
 for (const harness of [
   'claude',
