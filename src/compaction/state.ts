@@ -52,6 +52,11 @@ export function applyCompaction({
       compact.commentEpoch = change.operation.id
       compact.commentSession = change.operation.session
     }
+
+    if (change.operation.state === 'running' && change.operation.trigger === 'manual') {
+      compact.inputs = compact.inputs.filter(input => input.route !== 'direct'
+        || `manual:${input.id}` !== change.operation.id)
+    }
   } else if (change.kind === 'held') {
     if (!compact.inputs.some(input => input.id === change.input.id)) {
       compact.inputs.push(structuredClone(change.input))
