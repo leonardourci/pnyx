@@ -17,7 +17,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
-  CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
+  CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED, QUESTION_CONTROLS,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
@@ -591,7 +591,7 @@ export function Messages({
     const control = event.target instanceof HTMLElement ? event.target : null
 
     if (control !== host) {
-      if (!plain || !control?.matches('.chat-decision .ask :is(button, textarea, input, summary)')) {
+      if (!plain || !control?.matches(QUESTION_CONTROLS)) {
         return
       }
 

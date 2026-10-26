@@ -643,6 +643,56 @@ const startedTask = async ({ s }: { s: Scenario }) => {
 }
 
 test(
+  'task mentions in a question support arrow navigation and Escape to the composer',
+  async () => {
+    const s = await pnyx.scenario()
+    await startedTask({ s })
+    const task = s.task({ key: 'ship' })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review the layout' }) })
+    await hydra.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--to',
+        'owner',
+        '--question',
+        'Keep the layout?',
+        '--context',
+        `[Ship the layout](pnyx-task:${task.id}) [Unavailable](pnyx-task:task-missing)`,
+        '--choice',
+        'Keep it',
+      ],
+    })
+    const page = await openHydra({ s })
+
+    try {
+      await page.click({ selector: '.hydra-chat .chat-decision .ask-option-pick' })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up reaches the available task mention and skips the unavailable one',
+        arg: { id: task.id },
+        check: ({ id }) => document.activeElement?.matches(`.hydra-chat .ask .task-reference[data-task-ref="${id}"]`),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.shows({
+        what: 'Down returns from the task mention to the answer choice',
+        check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick'),
+      })
+      await page.press({ key: 'ArrowUp' })
+      await page.press({ key: 'Escape' })
+      await page.shows({
+        what: 'Escape from the task mention returns to the composer without sending the answer',
+        check: () => document.activeElement?.matches('.hydra-chat .composer textarea')
+          && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+    } finally {
+      await page.close()
+    }
+  },
+)
+
+test(
   'opening a card shows its Updates in place and they follow the worker live, newest first, until it closes',
   async () => {
     const s = await pnyx.scenario()
