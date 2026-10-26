@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
@@ -174,7 +174,24 @@ test(
       check: () => document.querySelector('.hydra-chat .draft-chip[data-kind=task]')?.textContent?.includes('Ship the layout')
         && !document.querySelector('.mention-menu'),
     })
+    const tokenLooks = await page.shows({
+      what: 'the composer token styles',
+      check: () => [...document.querySelectorAll('.composer .draft-chip')].map(token => {
+        const style = getComputedStyle(token)
 
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          shadow: style.boxShadow,
+          padding: style.padding,
+          font: style.fontFamily,
+          size: style.fontSize,
+          icons: [...token.querySelectorAll('.chip-icon svg')].map(icon => icon.innerHTML),
+        }
+      }),
+    })
+
+    await page.type({ text: 'and keep this. ' })
     const note = join(
       s.folder({ name: 'files' }),
       'note.txt',
@@ -209,15 +226,127 @@ test(
       check: () => {
         const mine = [...document.querySelectorAll('.hydra-chat .message.mine')].at(-1)
 
-        return mine?.textContent?.includes('/inscribe what we chose for') && mine.textContent.includes('Ship the layout')
+        return mine?.querySelector('.draft-skill')?.textContent?.includes('/inscribe') && mine.textContent?.includes('what we chose for') && mine.textContent.includes('Ship the layout')
           && mine.textContent.includes('Remember the grid.') && mine.querySelector('img')
-          && !document.querySelector('.hydra-chat .draft-chip')
+          && !document.querySelector('.composer .draft-chip')
       },
     })
+    const sentLooks = await page.shows({
+      what: 'the same skill and task tokens in the sent message',
+      check: () => {
+        const mine = [...document.querySelectorAll('.message.mine')].at(-1)
+        const tokens = [...(mine?.querySelectorAll('.draft-chip') ?? [])]
+
+        return tokens.length === 2 && !mine?.querySelector('.skill-remove') && tokens.map(token => {
+          const style = getComputedStyle(token)
+
+          return {
+            color: style.color,
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            padding: style.padding,
+            font: style.fontFamily,
+            size: style.fontSize,
+            icons: [...token.querySelectorAll('.chip-icon svg')].map(icon => icon.innerHTML),
+          }
+        })
+      },
+    })
+    assert.deepEqual(
+      sentLooks,
+      tokenLooks,
+    )
+    await page.shows({
+      what: 'a wrapped task mention flows into the following words',
+      check: () => {
+        const mine = [...document.querySelectorAll('.message.mine')].at(-1)
+        const task = mine?.querySelector('.draft-chip[data-kind=task]')
+        const paragraph = task?.closest('p')
+
+        if (!paragraph || !task) {
+          return false
+        }
+
+        paragraph.style.width = '120px'
+        const walker = document.createTreeWalker(
+          paragraph,
+          NodeFilter.SHOW_TEXT,
+        )
+        let after: Text | undefined
+
+        for (let node = walker.nextNode(); node; node = walker.nextNode()) {
+          if (node.textContent?.includes('and keep this.')) {
+            after = node as Text
+          }
+        }
+
+        if (!after) {
+          return false
+        }
+
+        const range = document.createRange()
+        const start = after.data.indexOf('and')
+        range.setStart(
+          after,
+          start,
+        )
+        range.setEnd(
+          after,
+          start + 3,
+        )
+        const rects = task.getClientRects()
+        const last = rects[rects.length - 1]
+        const afterTop = range.getBoundingClientRect().top
+        const flows = rects.length > 1 && last && Math.abs(last.top - afterTop) < 4
+        paragraph.style.removeProperty('width')
+
+        return flows
+      },
+    })
+
     const agent = await hydraFinished({
       s,
       turns: 2,
     })
+
+    for (const key of [
+      'Enter',
+      'Space',
+    ] as const) {
+      await page.click({ selector: '.hydra-head' })
+      let reached = false
+      const visited: string[] = []
+
+      for (let tab = 0; tab < 20; tab++) {
+        await page.press({ key: 'Tab' })
+        const active = await page.shows({
+          what: 'the keyboard navigation position',
+          check: () => ({
+            reached: document.activeElement?.matches('.message.mine .task-reference'),
+            target: document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.className,
+          }),
+        })
+
+        visited.push(active.target ?? 'none')
+
+        if (active.reached) {
+          reached = true
+          break
+        }
+      }
+
+      assert.ok(
+        reached,
+        `Tab reaches the sent task mention: ${visited.join(' -> ')}`,
+      )
+      await page.press({ key })
+      await page.shows({
+        what: `${key} opens the sent task mention after ${visited.at(-1)}`,
+        check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
+      })
+      await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    }
+
     const sent = s.received({ cwd: agent.cwd }).at(-1)
     assert.ok(sent)
     assert.match(
@@ -234,6 +363,251 @@ test(
     await page.close()
   },
 )
+
+for (const harness of [
+  'claude',
+  'codex',
+]) {
+  test(
+    `sent ${harness} skill mentions follow native boundaries and survive a reload`,
+    async () => {
+      const s = await pnyx.scenario()
+      await s.owner({
+        args: [
+          'rule',
+          'set',
+          'hydra',
+          '--harness',
+          harness,
+        ],
+      })
+      const text = harness === 'codex'
+        ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.\n\n[Skill documentation](https://example.com/$inscribe)\n\n[$inscribe]\n\n[$inscribe]: https://example.com/guide'
+        : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.\n\n**prefix**/inscribe and **/inscribe** safely. [link](/inscribe) [**/inscribe**](https://example.com). `/inscribe` and\n\n```text\n/inscribe\n```'
+      await s.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          text,
+        ],
+      })
+      await hydraFinished({
+        s,
+        turns: 1,
+      })
+
+      for (let load = 0; load < 2; load++) {
+        const page = await openHydra({ s })
+        await page.shows({
+          what: 'known skill badges and literal unknown names',
+          arg: { harness },
+          check: ({ harness }) => {
+            const mine = document.querySelector('.message.mine')
+
+            return mine?.querySelectorAll('.draft-skill').length === (harness === 'codex' ? 4 : 2)
+            && mine.textContent?.includes('not-a-known-skill')
+            && !mine.querySelector('.skill-remove')
+            && (harness !== 'codex' || mine.querySelector('code .draft-skill'))
+            && (harness !== 'claude' || !mine.querySelector('strong .draft-skill, a .draft-skill, code .draft-skill'))
+          },
+        })
+
+        if (harness === 'codex') {
+          const href = await page.shows({
+            what: 'the skill documentation link destination',
+            check: () => document.querySelector<HTMLAnchorElement>('.message.mine a')?.href,
+          })
+          assert.equal(
+            href,
+            'https://example.com/$inscribe',
+          )
+          await page.shows({
+            what: 'the reference-style skill link',
+            check: () => document.querySelector('.message.mine a[href="https://example.com/guide"] .draft-skill'),
+          })
+        }
+
+        await page.close()
+      }
+    },
+  )
+}
+
+test(
+  'sent Codex skill mentions remain readable in literal HTML',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+      ],
+    })
+    const text = 'Use $inscribe here <!-- $inscribe -->.\n\n<div>$inscribe</div>'
+    await s.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        text,
+      ],
+    })
+    await hydraFinished({
+      s,
+      turns: 1,
+    })
+    const page = await openHydra({ s })
+
+    try {
+      const rendered = await page.shows({
+        what: 'the sent Codex message with its skill catalog loaded',
+        check: () => {
+          const mine = document.querySelector('.message.mine')
+
+          return mine?.querySelector('.draft-skill') && {
+            text: mine.textContent,
+            badges: mine.querySelectorAll('.draft-skill').length,
+            quotes: [...mine.querySelectorAll('.message-block')].map(block => block.getAttribute('data-quote')),
+          }
+        },
+      })
+      assert.doesNotMatch(
+        rendered.text ?? '',
+        /[\uE000\uE001]/,
+      )
+      assert.equal(
+        rendered.badges,
+        3,
+      )
+      assert.ok(rendered.text?.includes('<!--'))
+      assert.ok(rendered.text?.includes('<div>'))
+      assert.deepEqual(
+        rendered.quotes,
+        text.split('\n\n'),
+      )
+    } finally {
+      await page.close()
+    }
+  },
+)
+
+for (const harness of [
+  'claude',
+  'codex',
+]) {
+  test(
+    `a ${harness} project skill keeps its saved label color after sending and reloading`,
+    async () => {
+      const s = await pnyx.scenario()
+      await s.owner({
+        args: [
+          'rule',
+          'set',
+          'hydra',
+          '--harness',
+          harness,
+        ],
+      })
+      const project = await s.project({ name: 'Release tools' })
+      const skill = join(
+        project,
+        '.agents/skills/deploy',
+      )
+      mkdirSync(
+        skill,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skill,
+          'SKILL.md',
+        ),
+        '---\nname: deploy\ndescription: Deploy the release\n---\nDeploy safely.\n',
+      )
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Release',
+          '--project',
+          project,
+        ],
+      })
+      const savedColor = s.state().labelColors?.find(entry => entry.label === project)?.color
+      assert.ok(
+        savedColor,
+        'the project has a persisted label color',
+      )
+      let page = await openHydra({ s })
+      await page.click({ selector: '.hydra-chat textarea' })
+      await page.type({ text: '/deploy' })
+      await page.shows({
+        what: 'the project skill suggestion',
+        check: () => [...document.querySelectorAll('.slash-menu [role=option]')].find(option => option.textContent?.includes('Deploy the release')),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.press({ key: 'Enter' })
+      const draft = await page.shows({
+        what: 'the project label in the draft',
+        check: () => {
+          const label = document.querySelector('.composer .draft-skill .project-label')
+
+          return label && {
+            text: label.textContent,
+            color: label.getAttribute('data-label-color'),
+            ink: getComputedStyle(label).color,
+          }
+        },
+      })
+      assert.equal(
+        draft.color,
+        savedColor,
+      )
+      assert.match(
+        draft.text?.replaceAll(
+          '\u2060',
+          '',
+        ) ?? '',
+        /Release tools/,
+      )
+      await page.type({ text: 'safely' })
+      await page.press({ key: 'Enter' })
+      await hydraFinished({
+        s,
+        turns: 1,
+      })
+
+      for (let load = 0; load < 2; load++) {
+        const sent = await page.shows({
+          what: 'the saved project label in the sent message',
+          check: () => {
+            const label = document.querySelector('.message.mine .draft-skill .project-label')
+
+            return label && {
+              text: label.textContent,
+              color: label.getAttribute('data-label-color'),
+              ink: getComputedStyle(label).color,
+            }
+          },
+        })
+        assert.deepEqual(
+          sent,
+          draft,
+        )
+        await page.close()
+
+        if (load === 0) {
+          page = await openHydra({ s })
+        }
+      }
+    },
+  )
+}
 
 const startedTask = async ({ s }: { s: Scenario }) => {
   const folder = s.folder({ name: 'web-app' })
@@ -267,6 +641,101 @@ const startedTask = async ({ s }: { s: Scenario }) => {
     worker,
   }
 }
+
+test(
+  'task mentions in a question support arrow navigation and Escape to the composer',
+  async () => {
+    const s = await pnyx.scenario()
+    await startedTask({ s })
+    const task = s.task({ key: 'ship' })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review the layout' }) })
+    await hydraFinished({
+      s,
+      turns: 1,
+    })
+    await hydra.run({
+      args: [
+        'task',
+        'ask',
+        'ship',
+        '--to',
+        'owner',
+        '--question',
+        'Keep the layout?',
+        '--context',
+        `[Ship the layout](pnyx-task:${task.id}) [Unavailable](pnyx-task:task-missing)`,
+        '--choice',
+        'Keep it',
+      ],
+    })
+    const page = await openHydra({ s })
+
+    try {
+      await page.shows({
+        what: 'the completed reply and question have settled in the chat',
+        check: () => {
+          const stream = document.querySelector('.hydra-chat .hydra-messages')
+          const reply = document.querySelector('.hydra-chat .message[aria-label="Hydra"]')
+
+          return reply?.textContent?.includes('Recorded reply.') && !reply.hasAttribute('data-streaming')
+            && stream && stream.scrollHeight - stream.clientHeight - stream.scrollTop < 1
+        },
+      })
+      await page.click({ selector: '.hydra-chat .chat-decision .ask-option-pick' })
+      await page.shows({
+        what: 'the chosen answer owns focus before question navigation',
+        check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up reaches the available task mention and skips the unavailable one',
+        arg: { id: task.id },
+        check: ({ id }) => document.activeElement?.matches(`.hydra-chat .ask .task-reference[data-task-ref="${id}"]`),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.shows({
+        what: 'Down returns from the task mention to the answer choice',
+        check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick'),
+      })
+      await page.press({ key: 'ArrowUp' })
+      await page.press({ key: 'Escape' })
+      await page.shows({
+        what: 'Escape from the task mention returns to the composer without sending the answer',
+        check: () => document.activeElement?.matches('.hydra-chat .composer textarea')
+          && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+      await page.type({ text: 'draft' })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up within a draft stays in the composer and reaches its start',
+        check: () => {
+          const input = document.activeElement
+
+          return input instanceof HTMLTextAreaElement && input.matches('.hydra-chat .composer textarea')
+            && input.value === 'draft' && input.selectionStart === 0
+        },
+      })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up at the draft start reaches the waiting row without changing the answer',
+        check: () => document.activeElement?.matches('.waiting-decisions > .popover > button')
+          && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.shows({
+        what: 'Down returns from the waiting row to the unchanged draft',
+        check: () => {
+          const input = document.activeElement
+
+          return input instanceof HTMLTextAreaElement && input.matches('.hydra-chat .composer textarea')
+            && input.value === 'draft'
+        },
+      })
+    } finally {
+      await page.close()
+    }
+  },
+)
 
 test(
   'opening a card shows its Updates in place and they follow the worker live, newest first, until it closes',
@@ -584,9 +1053,17 @@ End of the long update.`
         markdown,
       ],
     })
+    await s.owner({
+      args: [
+        'reply',
+        'ship',
+        '--text',
+        '**Earlier instructions**\n\n' + 'Keep the unrelated update folded. '.repeat(30),
+      ],
+    })
     const page = await openHydra({ s })
     await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
-    await page.shows({
+    const control = await page.shows({
       what: 'formatted update clamped to three compact lines',
       arg: { card },
       check: ({ card }) => {
@@ -594,31 +1071,41 @@ End of the long update.`
           .find(row => row.querySelector('strong')?.textContent === 'Ready for review')
         const preview = row?.querySelector<HTMLElement>('.text-preview')
 
+        const button = row?.querySelector('.show-more')
+
         return preview && preview.scrollHeight > preview.clientHeight
           && getComputedStyle(preview.querySelector('.markdown')!).fontSize === '12px'
-          && row?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+          && button?.getAttribute('aria-expanded') === 'false'
+          && button.getAttribute('aria-controls')
       },
     })
-    await page.click({ selector: `${card} .update-line .show-more` })
+    const toggle = `${card} .show-more[aria-controls=${JSON.stringify(control)}]`
+    await page.click({ selector: toggle })
     await page.shows({
       what: 'the full Markdown update after Show more',
-      arg: { card },
-      check: ({ card }) => {
-        const expanded = document.querySelector(`${card} .update-line .show-more[aria-expanded=true]`)?.parentElement
+      arg: { control },
+      check: ({ control }) => {
+        const expanded = document.getElementById(control)?.parentElement
 
-        return expanded?.querySelector('li')?.textContent === 'First item'
+        return expanded?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'true'
+          && expanded.querySelector('strong')?.textContent === 'Ready for review'
+          && expanded.querySelector('li')?.textContent === 'First item'
           && expanded.querySelector('pre code')?.textContent?.includes('pnpm run lint')
           && expanded.querySelector('td')?.textContent === 'Layout'
-          && expanded.querySelector('button.task-reference')?.textContent?.includes('Reference task')
+          && expanded.querySelector('[role=button].task-reference')?.textContent?.includes('Reference task')
           && !expanded.querySelector('.text-preview')
       },
     })
-    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.click({ selector: toggle })
     await page.shows({
       what: 'Show less restores the preview',
-      arg: { card },
-      check: ({ card }) => document.querySelector(`${card} .update-line .text-preview`)
-        && document.querySelector(`${card} .update-line .show-more`)?.getAttribute('aria-expanded') === 'false',
+      arg: { control },
+      check: ({ control }) => {
+        const content = document.getElementById(control)
+
+        return content?.classList.contains('text-preview')
+          && content.parentElement?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+      },
     })
     await page.click({
       selector: `${card} .disclosure > summary`,

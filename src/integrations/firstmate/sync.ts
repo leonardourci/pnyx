@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { watch, type FSWatcher } from 'node:fs'
+import { watchPath, type PathWatch } from '../../runtime/watch.ts'
+import { background } from '../../runtime/background.ts'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { hydraConfig, declareTask, hydraEvent, migrateColumns, roleColumn } from '../../core/hydra.ts'
@@ -688,7 +689,7 @@ export function watchHome(
     ) => void
   },
 ): HomeWatch {
-  let watchers: FSWatcher[] = []
+  let watchers: PathWatch[] = []
   let timer: NodeJS.Timeout | undefined
   let closed = false
 
@@ -716,7 +717,11 @@ export function watchHome(
   const schedule = ({ ms = SETTLE_MS }) => {
     if (!closed && !timer) {
       timer = setTimeout(
-        sync,
+        () => background({
+          name: 'Firstmate sync',
+          run: sync,
+          retry: () => schedule({ ms: RETRY_MS }),
+        }),
         ms,
       )
     }
@@ -734,31 +739,17 @@ export function watchHome(
       'data',
     ]) {
       try {
-        const w = watch(
-          join(
+        const w = watchPath({
+          path: join(
             home,
             dir,
           ),
-          (
-            _type,
-            file,
-          ) => {
-            if (!file || RELEVANT.test(String(file))) {
+          changed: ({ filename }) => {
+            if (!filename || RELEVANT.test(filename)) {
               schedule({})
             }
           },
-        )
-        w.on(
-          'error',
-          () => {
-            if (closed) {
-              return
-            }
-
-            start()
-            schedule({})
-          },
-        )
+        })
         watchers.push(w)
       } catch {
         // data/ is optional; a home without a backlog still has tasks.

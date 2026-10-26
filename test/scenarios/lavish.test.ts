@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
-import { existsSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { after, mock, test } from 'node:test'
+import { format } from 'node:util'
 import { emptyHydra, replay } from '../../src/core/reducer.ts'
 import { armLavish } from '../../src/external-sources/lavish.ts'
 import { withWriter } from '../../src/store/hydra-store.ts'
@@ -11,6 +13,19 @@ import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
 
 const pnyx = scenarioGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
+const serverLog: string[] = []
+const printError = console.error
+const errors = mock.method(
+  console,
+  'error',
+  // Preserve console.error's variadic logging contract.
+  // eslint-disable-next-line pnyx/object-params
+  (...args: unknown[]) => {
+    serverLog.push(`${new Date().toISOString()} ${format(...args)}`)
+    printError(...args)
+  },
+)
+after(() => errors.mock.restore())
 
 async function setup({ s }: { s: Scenario }) {
   const folder = s.folder({ name: 'review' })
@@ -64,9 +79,11 @@ function source({
 async function captured({
   s,
   id,
+  retainFailure = false,
 }: {
   s: Scenario
   id: string
+  retainFailure?: boolean
 }) {
   return until({
     what: `${id} round captured and enqueued`,
@@ -78,6 +95,60 @@ async function captured({
 
       return result && s.task({ key: 'page' }).steering?.some(message => message.id === result.message) && result
     },
+  }).catch(error => {
+    if (!retainFailure) {
+      throw error
+    }
+
+    // The scenario root is deleted on teardown; keep failure evidence outside it.
+    const path = join(
+      mkdtempSync(join(
+        tmpdir(),
+        'pnyx-lavish-failure-',
+      )),
+      'successor-capture.json',
+    )
+    const folder = s.folder({ name: 'review' })
+    writeFileSync(
+      path,
+      JSON.stringify(
+        {
+          failure: String(error),
+          hydra: s.hydraId,
+          source: source({
+            s,
+            id,
+          }),
+          task: s.task({ key: 'page' }),
+          eventTail: s.events().slice(-100),
+          serverLog,
+          fixture: [
+            'calls.jsonl',
+            'listening',
+            'deliver.toon',
+          ].map(name => {
+            const file = join(
+              folder,
+              name,
+            )
+
+            return {
+              name,
+              text: existsSync(file) ? readFileSync(
+                file,
+                'utf8',
+              ) : null,
+            }
+          }),
+        },
+        null,
+        2,
+      ),
+    )
+    throw new Error(
+      `${String(error)}; failure evidence: ${path}`,
+      { cause: error },
+    )
   })
 }
 
@@ -778,6 +849,7 @@ test(
     await captured({
       s,
       id: 'successor',
+      retainFailure: true,
     })
     assert.equal(
       fixture.calls().filter(call => call.action === 'reply').length,

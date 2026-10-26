@@ -60,11 +60,18 @@ export type HostedThinking = {
   id: string
   running: boolean
 }
+export type HostedCompaction = {
+  type: 'compaction'
+  id: string
+  state: 'running' | 'done' | 'failed' | 'cancelled'
+  trigger: 'manual' | 'auto'
+  error?: string
+}
 // carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
 export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | {
   type: 'structured'
   value: unknown
-} | HostedUsage | HostedTool | HostedThinking
+} | HostedUsage | HostedTool | HostedThinking | HostedCompaction
 export type AskPermission = ({
   tool,
   input,
@@ -124,6 +131,7 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   ])
 
 export interface Provider {
+  compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
     cwd,
