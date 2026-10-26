@@ -67,8 +67,8 @@ const EVERYTHING: Step[] = [
     name: 'unit tests',
     command: 'node',
     args: [
-      '--test',
-      'test/*.test.ts',
+      'scripts/test.ts',
+      'unit',
     ],
     needs: 'build',
   },
@@ -77,9 +77,8 @@ const EVERYTHING: Step[] = [
     name: 'scenarios',
     command: 'node',
     args: [
-      '--test',
-      '--test-concurrency=1',
-      'test/scenarios/*.test.ts',
+      'scripts/test.ts',
+      'scenarios',
     ],
     needs: 'build',
   },
@@ -109,7 +108,7 @@ function uiSteps(): Step[] {
         name: 'web unit tests',
         command: 'node',
         args: [
-          '--test',
+          'scripts/test.ts',
           ...units,
         ],
         needs: 'build',
@@ -120,8 +119,7 @@ function uiSteps(): Step[] {
         name: 'web scenarios',
         command: 'node',
         args: [
-          '--test',
-          '--test-concurrency=1',
+          'scripts/test.ts',
           ...scenarios,
         ],
         needs: 'build',
