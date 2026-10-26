@@ -8,6 +8,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProp
 import { liveTask } from '../../../src/core/tasks.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import { Button } from '../components/ui/controls.tsx'
+import { PendingStatus } from '../components/ui/pending-status.tsx'
 import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import { taskMention } from '../../../src/mentions/mentions.ts'
@@ -1033,6 +1034,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           {(loading || !loaded) && <p className="loading-status" role="status">Loading {opening ? hydraTitle(opening) : 'Hydra'}…</p>}
           {error && <p className="error-banner" role="alert">{error}</p>}
           {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
+          <PendingStatus intents={hydra.intents} />
           {page === 'hydra' && (
             <>
               <div className="hydra-page">

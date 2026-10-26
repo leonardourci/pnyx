@@ -1,11 +1,13 @@
 import { reminderTime } from '../../../src/reminders/time.ts'
-import { optimisticState, currentRevision, projectEdits } from './optimistic.ts'
+import { argument, optimisticState, currentRevision } from './optimistic.ts'
+import { CommandFailure } from './pending-intents.ts'
+import { editTargets, pendingHydra } from './pending-state.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { readSettingsSaves, saveSettingsSaves, storageKey } from './outbox.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react'
 import { HYDRA_CARD } from '../../../src/core/hydra.ts'
 import type { HydraState } from '../../../src/core/model.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
@@ -178,7 +180,17 @@ export function useHydra() {
     endpoint: location.href,
     state,
   })
-  const stateRef = useRef(state)
+  const resource = useMemo(
+    () => pendingHydra({
+      scope: new URL(endpoint).origin + new URL(endpoint).pathname,
+      confirmed: endpoint === initial.current.endpoint ? initial.current.state : emptyHydra(),
+    }),
+    [endpoint],
+  )
+  const pendingState = useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  )
   const socket = useRef<WebSocket | null>(null)
   const hasSnapshot = useRef(false)
   const ready = useRef(false)
@@ -220,7 +232,7 @@ export function useHydra() {
       ] of pending.current) {
         const receipt = savedReceipt({
           command: p.message,
-          state: stateRef.current,
+          state: resource.snapshot().confirmed,
         })
 
         if (receipt) {
@@ -239,6 +251,7 @@ export function useHydra() {
     [
       persistSaves,
       publishChecking,
+      resource,
     ],
   )
   const publish = useCallback(
@@ -247,26 +260,21 @@ export function useHydra() {
         return
       }
 
-      setState(projectEdits({
-        state: stateRef.current,
-        edits: [...pending.current.values()].filter(p => p.optimistic).map(p => p.message),
-        invalid: ({
-          edit,
-          error,
-        }) => {
-          for (const [
-            id,
-            p,
-          ] of pending.current) {
-            if (p.message === edit) {
-              pending.current.delete(id); clearTimeout(p.timer)
-              p.reject({ error }); setError(error.message)
-            }
-          }
-        },
-      }))
+      for (const intent of resource.snapshot().intents) {
+        const p = pending.current.get(intent.id)
+
+        if (p && intent.stage === 'refused' && intent.error) {
+          pending.current.delete(intent.id); clearTimeout(p.timer)
+          p.reject({ error: intent.error }); setError(intent.error.message)
+        }
+      }
+
+      setState(resource.snapshot().view)
     },
-    [endpoint],
+    [
+      endpoint,
+      resource,
+    ],
   )
   const flushRef = useRef<() => void>(() => {})
   const flush = useCallback(
@@ -276,6 +284,7 @@ export function useHydra() {
       }
 
       let editing = [...pending.current.values()].some(p => p.sent && p.optimistic)
+        || resource.snapshot().intents.some(intent => intent.stage === 'accepted')
 
       for (const [
         id,
@@ -288,14 +297,25 @@ export function useHydra() {
         if (p.optimistic) {
           editing = true
           p.message.args = currentRevision({
-            state: stateRef.current,
+            state: resource.snapshot().confirmed,
             edit: p.message,
           })
         }
 
         p.sent = true
+
+        if (p.optimistic) {
+          resource.sending({ id })
+        }
+
         p.timer = setTimeout(
           () => {
+            const error = new CommandFailure({
+              message: 'Send could not be confirmed. Draft kept; check the conversation before retrying.',
+              code: 'TIMEOUT',
+              outcome: 'unknown',
+            })
+
             if (p.saveId) {
               p.checking = true
               p.unconfirmed()
@@ -306,9 +326,20 @@ export function useHydra() {
               return
             }
 
+            if (p.optimistic) {
+              resource.unknown({
+                id,
+                error,
+              })
+              socket.current?.close()
+              publish()
+
+              return
+            }
+
             pending.current.delete(id)
             publish(); setError('Save could not be confirmed. Check the Hydra before retrying.')
-            p.reject({ error: new Error('Send could not be confirmed. Draft kept; check the conversation before retrying.') })
+            p.reject({ error })
             flushRef.current()
           },
           commandTimeout({
@@ -322,6 +353,7 @@ export function useHydra() {
     [
       publish,
       publishChecking,
+      resource,
     ],
   )
   flushRef.current = flush
@@ -336,6 +368,17 @@ export function useHydra() {
       ] of pending.current) {
         clearTimeout(p.timer)
 
+        if (p.optimistic && p.sent) {
+          resource.unknown({
+            id,
+            error: new CommandFailure({
+              message: 'Connection lost before confirmation.',
+              code: 'DISCONNECTED',
+              outcome: 'unknown',
+            }),
+          })
+        }
+
         if (p.retry) {
           p.sent = false
 
@@ -345,7 +388,13 @@ export function useHydra() {
           }
         } else {
           pending.current.delete(id)
-          p.reject({ error: new Error('Could not complete this action. Try again.') })
+          p.reject({
+            error: new CommandFailure({
+              message: 'Could not confirm this action. Check its outcome before retrying.',
+              code: 'DISCONNECTED',
+              outcome: 'unknown',
+            }),
+          })
         }
       }
 
@@ -355,6 +404,7 @@ export function useHydra() {
     [
       publish,
       publishChecking,
+      resource,
     ],
   )
   useEffect(
@@ -362,8 +412,14 @@ export function useHydra() {
       const pathname = new URL(endpoint).pathname
       setChecking(false)
       const saved = cache.current.get(pathname)
-      stateRef.current = saved?.state
-      ?? (endpoint === initial.current.endpoint ? initial.current.state : emptyHydra())
+
+      if (!resource.snapshot().confirmed.config) {
+        resource.confirm({
+          state: saved?.state
+          ?? (endpoint === initial.current.endpoint ? initial.current.state : emptyHydra()),
+        })
+      }
+
       hasSnapshot.current = !!saved
       identity.current = saved?.identity ?? identity.current
       let closed = false, retry: ReturnType<typeof setTimeout> | undefined
@@ -375,7 +431,7 @@ export function useHydra() {
         try {
           sessionStorage.setItem(
             `pnyx:${identity.current}:hydra-state`,
-            JSON.stringify(stateRef.current),
+            JSON.stringify(resource.snapshot().confirmed),
           )
         } catch { /* A full or blocked store still permits reconnect in this tab. */ }
       }
@@ -411,7 +467,7 @@ export function useHydra() {
         if (hasSnapshot.current) {
           url.searchParams.set(
             'after',
-            String(stateRef.current.seq),
+            String(resource.snapshot().confirmed.seq),
           )
         }
 
@@ -502,7 +558,7 @@ export function useHydra() {
                 closed = true; ws.close(); location.reload()
               }
             } else if (m.type === 'snapshot') {
-              hasSnapshot.current = true; stateRef.current = m.state
+              hasSnapshot.current = true; resource.confirm({ state: m.state })
               confirmSaves()
               staleUpdates()
 
@@ -536,30 +592,32 @@ export function useHydra() {
                 250,
               )
             } else if (m.type === 'event') {
-              if (m.event.seq <= stateRef.current.seq) {
+              if (m.event.seq <= resource.snapshot().confirmed.seq) {
                 return
               }
 
-              if (m.event.seq !== stateRef.current.seq + 1) {
+              if (m.event.seq !== resource.snapshot().confirmed.seq + 1) {
                 ready.current = false; setConnected(false)
                 ws.send(JSON.stringify({ type: 'resync' }))
 
                 return
               }
 
-              stateRef.current = reduce({
-                state: stateRef.current,
-                event: m.event,
+              resource.confirm({
+                state: reduce({
+                  state: resource.snapshot().confirmed,
+                  event: m.event,
+                }),
               })
               confirmSaves()
               noteUpdate({ event: m.event })
               const entry = cache.current.get(pathname)
 
               if (entry) {
-                entry.state = stateRef.current
+                entry.state = resource.snapshot().confirmed
               }
 
-              publish()
+              publish(); flush()
               clearTimeout(persistTimer); persistTimer = setTimeout(
                 persist,
                 250,
@@ -576,7 +634,7 @@ export function useHydra() {
               }
             } else if (m.type === 'latest') {
               if (m.spend) {
-                const cards = { ...stateRef.current.cards }
+                const cards = { ...resource.snapshot().confirmed.cards }
 
                 for (const [
                   id,
@@ -590,10 +648,12 @@ export function useHydra() {
                   }
                 }
 
-                stateRef.current = {
-                  ...stateRef.current,
-                  cards,
-                }
+                resource.confirm({
+                  state: {
+                    ...resource.snapshot().confirmed,
+                    cards,
+                  },
+                })
                 publish()
               }
 
@@ -619,7 +679,7 @@ export function useHydra() {
               })
 
               if (entry) {
-                entry.state = stateRef.current
+                entry.state = resource.snapshot().confirmed
                 entry.latest = next
                 entry.actions = nextActions
               }
@@ -662,12 +722,29 @@ export function useHydra() {
               publishChecking()
 
               if (m.type === 'error') {
+                const error = new CommandFailure({
+                  message: m.error,
+                  code: m.code,
+                  help: m.help,
+                })
+
                 if (p.optimistic) {
+                  resource.refuse({
+                    id: m.id,
+                    error,
+                  })
                   setError(m.error)
                 }
 
-                p.reject({ error: new Error(m.error) })
+                p.reject({ error })
               } else {
+                if (p.optimistic) {
+                  resource.accept({
+                    id: m.id,
+                    complete: m.event === 'none: unchanged',
+                  })
+                }
+
                 if (p.message.name === 'hydras' && typeof m.hydraId === 'string' && Array.isArray(m.hydras)) {
                   setNavigation(old => ({
                     ...old,
@@ -736,9 +813,32 @@ export function useHydra() {
         )
         disconnected()
 
-        for (const p of pending.current.values()) {
+        for (const [
+          id,
+          p,
+        ] of pending.current) {
+          clearTimeout(p.timer)
+
+          if (p.optimistic) {
+            resource.unknown({
+              id,
+              error: new CommandFailure({
+                message: 'Send interrupted. Check its outcome before retrying.',
+                code: 'INTERRUPTED',
+                outcome: 'unknown',
+              }),
+              })
+          }
+          }
+
           if (!p.saveId) {
-            p.reject({ error: new Error('Send interrupted. Draft kept.') })
+            p.reject({
+            error: new CommandFailure({
+              message: 'Send interrupted. Draft kept.',
+              code: 'INTERRUPTED',
+              outcome: 'unknown',
+            }),
+            })
           }
         }
 
@@ -753,6 +853,7 @@ export function useHydra() {
       confirmSaves,
       persistSaves,
       publishChecking,
+      resource,
     ],
   )
   const command: Command = useCallback(
@@ -801,7 +902,7 @@ export function useHydra() {
       }
       const confirmed = savedReceipt({
         command: message,
-        state: stateRef.current,
+        state: resource.snapshot().confirmed,
       })
 
       if (confirmed) {
@@ -823,10 +924,7 @@ export function useHydra() {
       let optimistic: boolean
 
       try {
-        const visible = projectEdits({
-          state: stateRef.current,
-          edits: [...pending.current.values()].filter(p => p.optimistic).map(p => p.message),
-        })
+        const visible = resource.snapshot().view
         optimistic = optimisticState({
           state: visible,
           edit: {
@@ -839,6 +937,44 @@ export function useHydra() {
 
         return
       }
+
+      if (optimistic) {
+        if (!argument({
+          args,
+          flag: '--event-id',
+        })) {
+          args = [
+            ...args,
+            '--event-id',
+            id,
+          ]
+        }
+
+        const edit = {
+          name,
+          args,
+        }
+        const targets = editTargets({ edit })
+        const dependencies = resource.snapshot().intents.filter(intent =>
+          ![
+            'refused',
+            'confirmed',
+          ].includes(intent.stage)
+          && intent.patch.name === 'column' && intent.patch.args[0] === 'create'
+          && (targets.some(target => intent.targets.includes(target))
+            || args.some(arg => intent.targets.includes(arg))))
+          .map(intent => intent.id)
+
+        resource.enqueue({
+          id,
+          targets,
+          patch: edit,
+          dependencies,
+          delivery: 'idempotent',
+        })
+      }
+
+      message.args = args
 
       let settle = () => {}
       const settled = new Promise<void>(resolve => {
@@ -860,7 +996,7 @@ export function useHydra() {
             onChecking?.()
             settle()
           },
-          retry,
+          retry: retry || optimistic,
           optimistic,
           sent: false,
         },
@@ -877,6 +1013,7 @@ export function useHydra() {
       publish,
       endpoint,
       persistSaves,
+      resource,
     ],
   )
 
@@ -1011,7 +1148,8 @@ export function useHydra() {
   )
 
   return {
-    state,
+    state: new URL(target.current).pathname === new URL(endpoint).pathname
+      ? pendingState.view : state,
     connected: connected && !loading,
     command,
     hydraThread,
@@ -1031,5 +1169,7 @@ export function useHydra() {
     loaded,
     error,
     checking,
+    intents: new URL(target.current).pathname === new URL(endpoint).pathname
+      ? pendingState.intents : [],
   }
 }

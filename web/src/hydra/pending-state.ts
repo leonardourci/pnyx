@@ -1,0 +1,90 @@
+import type { HydraState } from '../../../src/core/model.ts'
+import { argument, optimisticState, type Edit } from './optimistic.ts'
+import { CommandFailure, createPendingResource } from './pending-intents.ts'
+
+function createHydraResource({
+  scope,
+  confirmed,
+}: {
+  scope: string
+  confirmed: HydraState
+}) {
+  return createPendingResource<HydraState, Edit>({
+    scope,
+    confirmed,
+    adapter: {
+      project: ({
+        state,
+        patch,
+      }) => {
+        const projected = optimisticState({
+          state,
+          edit: patch,
+        })
+
+        if (projected === state) {
+          throw new CommandFailure({
+            message: 'This edit no longer has an available target.',
+            code: 'TARGET_UNAVAILABLE',
+          })
+        }
+
+        return projected
+      },
+      represented: ({
+        state,
+        intent,
+      }) => {
+        const event = argument({
+          args: intent.patch.args,
+          flag: '--event-id',
+        })
+
+        return !!event && state.eventIds[event] !== undefined
+      },
+    },
+  })
+}
+
+export type HydraResource = ReturnType<typeof createHydraResource>
+const resources = new Map<string, HydraResource>()
+
+export function pendingHydra({
+  scope,
+  confirmed,
+}: {
+  scope: string
+  confirmed: HydraState
+}): HydraResource {
+  let resource = resources.get(scope)
+
+  if (!resource) {
+    resource = createHydraResource({
+      scope,
+      confirmed,
+    })
+    resources.set(
+      scope,
+      resource,
+    )
+  }
+
+  return resource
+}
+
+export function editTargets({ edit }: { edit: Edit }): string[] {
+  if (edit.name === 'column' && edit.args[0] === 'create') {
+    return [
+      argument({
+        args: edit.args,
+        flag: '--id',
+      }) ?? 'columns',
+    ]
+  }
+
+  if (edit.name === 'view' || edit.name === 'hydra') {
+    return [edit.name]
+  }
+
+  return [edit.args[edit.name === 'move' ? 0 : 1] ?? edit.name]
+}
