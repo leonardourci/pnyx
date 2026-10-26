@@ -1,5 +1,5 @@
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
-import { readSettingsSaves, saveSettingsSaves } from './outbox.ts'
+import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from './outbox.ts'
 import { reminderTime } from '../../../src/reminders/time.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
@@ -11,7 +11,7 @@ import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import type { Command, Receipt } from './connection.ts'
 import { commandTimeout, reconnectDelay, retryable, withChanges } from './connection-protocol.ts'
-import { optimisticState } from './optimistic.ts'
+import { argument, optimisticState } from './optimistic.ts'
 import { commandArguments, editTargets, pendingHydra, type HydraResource } from './pending-state.ts'
 import { CommandFailure, createPendingResource } from './pending-intents.ts'
 import { currentRevision } from './optimistic.ts'
@@ -101,12 +101,15 @@ function save({
 
 export function createHydraConnection() {
   const origin = location.origin
+  const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
+    ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
+  const namespace = `${origin}:${installation}`
   const initialId = location.pathname.split('/')[2] ?? 'default'
   const scopes = new Map<string, Scope>()
   const requests = new Map<string, Request>()
   const listeners = new Set<() => void>()
-  const creationKey = `pnyx:${origin}:hydra-creations`
-  const selectedKey = `pnyx:${origin}:selected-creation`
+  const creationKey = `pnyx:${namespace}:hydra-creations`
+  const selectedKey = `pnyx:${namespace}:selected-creation`
   const creations = new Map<string, Creation>()
   let selected = initialId
   let socket: WebSocket | null = null
@@ -120,7 +123,7 @@ export function createHydraConnection() {
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
-    scope: `${origin}/hydras`,
+    scope: `${namespace}/hydras`,
     confirmed: [],
     adapter: {
       project: ({
@@ -136,7 +139,7 @@ export function createHydraConnection() {
       }) => state.some(hydra => hydra.creationAttempt === intent.patch.creationAttempt),
     },
   })
-  const keyFor = ({ id }: { id: string }) => `pnyx:${origin}/hydra/${id}/:hydra-state`
+  const keyFor = ({ id }: { id: string }) => `pnyx:${namespace}/hydra/${id}/:hydra-state`
 
   const scopeFor = ({ id }: { id: string }): Scope => {
     const existing = scopes.get(id)
@@ -162,7 +165,7 @@ export function createHydraConnection() {
       identity,
       viewKey: id,
       resource: pendingHydra({
-        scope: `${origin}/hydra/${id}/`,
+        scope: `${namespace}/hydra/${id}/`,
         confirmed,
       }),
       hasSnapshot: !!confirmed.config,
@@ -191,6 +194,35 @@ export function createHydraConnection() {
       id,
       scope,
     )
+
+    for (const intent of scope.resource.snapshot().intents) {
+      if ([
+        'confirmed',
+        'refused',
+      ].includes(intent.stage) || intent.delivery !== 'idempotent'
+        || requests.has(intent.id)) {
+        continue
+      }
+
+      requests.set(
+        intent.id,
+        {
+          id: intent.id,
+          scope,
+          name: intent.patch.name,
+          args: intent.patch.args,
+          optimistic: true,
+          dependencies: intent.dependencies,
+          retry: true,
+          sent: false,
+          unconfirmed: () => {},
+          resolve: () => {},
+          reject: ({ error }) => {
+            scope.error = error.message
+          },
+        },
+      )
+    }
 
     return scope
   }
@@ -326,14 +358,32 @@ export function createHydraConnection() {
 
   const confirmSaves = ({ scope }: { scope: Scope }) => {
     for (const request of requests.values()) {
-      if (request.scope !== scope || !request.saveId) {
+      if (request.scope !== scope || (!request.saveId && !request.optimistic)) {
         continue
       }
 
-      const receipt = savedReceipt({
+      const state = scope.resource.snapshot().confirmed
+      let receipt = savedReceipt({
         command: saveCommand({ request }),
-        state: scope.resource.snapshot().confirmed,
+        state,
       })
+      const eventId = request.optimistic ? argument({
+        args: request.args,
+        flag: '--event-id',
+      }) : undefined
+      const seq = eventId && state.eventIds[eventId]
+
+      if (!receipt && typeof seq === 'number') {
+        receipt = {
+          type: 'receipt',
+          id: request.id,
+          saved: true,
+          event: {
+            id: eventId,
+            seq,
+          },
+        }
+      }
 
       if (receipt) {
         clearTimeout(request.timer)
@@ -421,11 +471,23 @@ export function createHydraConnection() {
     }
 
     const chosen = selected === scope.id
+    const previousId = scope.id
+    const previousIdentity = scope.identity
     scopes.delete(scope.id)
     scope.id = canonical.id
     scope.identity = canonical.identity ?? canonical.id
+    moveHydraStorage({
+      storage: sessionStorage,
+      from: previousIdentity,
+      to: scope.identity,
+    })
+    moveHydraStorage({
+      storage: localStorage,
+      from: previousId,
+      to: canonical.id,
+    })
     scope.resource = pendingHydra({
-      scope: `${origin}/hydra/${canonical.id}/`,
+      scope: `${namespace}/hydra/${canonical.id}/`,
       confirmed: emptyHydra(),
     })
     scopes.set(
@@ -713,6 +775,14 @@ export function createHydraConnection() {
         })
       }
 
+      const saveId = saveEventId({
+        command: {
+          type: 'command',
+          id,
+          name,
+          args,
+        },
+      })
       requests.set(
         id,
         {
@@ -725,20 +795,17 @@ export function createHydraConnection() {
           retry,
           sent: false,
           creation,
-          saveId: saveEventId({
-            command: {
-              type: 'command',
-              id,
-              name,
-              args,
-            },
-          }),
+          saveId,
           unconfirmed: () => onChecking?.(),
           resolve: ({ receipt }) => resolve(receipt),
           reject: ({ error }) => reject(error),
         },
       )
-      scope.error = ''
+
+      if (optimistic || creation || saveId) {
+        scope.error = ''
+      }
+
       persistSaves({ scope })
       publish(); subscribe({ scope }); flush()
     })
@@ -769,6 +836,18 @@ export function createHydraConnection() {
     }
 
     if (message.type === 'hello') {
+      if (message.installation !== installation) {
+        active = false
+        scope.ready = false
+        scope.failed = true
+        scope.error = 'This address now serves another Pnyx installation. Reload to continue.'
+        clearInterval(watchdog)
+        socket?.close()
+        publish()
+
+        return
+      }
+
       if (!physicalHydra) {
         physicalHydra = message.scope
         scope.subscribed = true
@@ -894,7 +973,6 @@ export function createHydraConnection() {
       const wasReady = scope.ready
       scope.ready = true
       scope.failed = false
-      scope.error = ''
       attempt = 0
 
       if (!wasReady) {
@@ -1157,7 +1235,11 @@ export function createHydraConnection() {
 
     selected = next.pathname.split('/')[2]!
     const scope = selection()
-    scope.error = ''
+
+    if (scope.failed) {
+      scope.error = ''
+    }
+
     scope.failed = false
     save({
       key: selectedKey,

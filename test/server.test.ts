@@ -228,6 +228,53 @@ function inbox<T>() {
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 type LatestActions = Extract<ServerMessage, { type: 'latest' }>['actions']
 
+async function matchingMessage({
+  next,
+  what,
+  matches,
+  timeoutMs = TIMEOUT_MS,
+}: {
+  next: ({ ms }: { ms?: number }) => Promise<ServerMessage>
+  what: string
+  matches: ({ message }: { message: ServerMessage }) => boolean
+  timeoutMs?: number
+}): Promise<ServerMessage> {
+  const deadline = Date.now() + timeoutMs
+  let remaining = timeoutMs
+
+  while (remaining > 0) {
+    const message = await next({ ms: remaining })
+
+    if (matches({ message })) {
+      return message
+    }
+
+    remaining = deadline - Date.now()
+  }
+
+  throw new Error(`timed out waiting for ${what}`)
+}
+
+test(
+  'a named message wait expires despite continuous unrelated frames',
+  { timeout: 1000 },
+  async () => {
+    await assert.rejects(
+      matchingMessage({
+        what: 'the withheld snapshot',
+        timeoutMs: 20,
+        next: async () => {
+          await new Promise(resolve => setImmediate(resolve))
+
+          return { type: 'pong' }
+        },
+        matches: ({ message }) => message.type === 'snapshot',
+      }),
+      /timed out waiting for the withheld snapshot/,
+    )
+  },
+)
+
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
 async function tab({
   query = '',
@@ -1322,12 +1369,15 @@ test(
     assert.ok(html.includes(`<meta name="pnyx-build" content="${build}" />`))
     const identity = /name="pnyx-hydra" content="([a-f0-9]{24})"/.exec(html)?.[1]
     assert.ok(identity)
+    const installation = /name="pnyx-installation" content="([a-f0-9]{24})"/.exec(html)?.[1]
+    assert.ok(installation)
     assert.deepEqual(
       (await tab()).hello,
       {
         type: 'hello',
         build,
         hydraId: identity,
+        installation,
       },
     )
   },
@@ -4046,11 +4096,12 @@ test(
       scope: 'other',
       subscription: 'other-v1',
     }))
-    let snapshot: ServerMessage
-
-    do {
-      snapshot = await t.next()
-    } while (snapshot.type !== 'snapshot' || snapshot.scope !== 'other')
+    const snapshot = await matchingMessage({
+      next: t.next,
+      what: 'the other Hydra snapshot',
+      matches: ({ message }) => message.type === 'snapshot' && message.scope === 'other',
+    })
+    assert.ok(snapshot.type === 'snapshot')
 
     assert.equal(
       snapshot.state.config?.id,
@@ -4073,11 +4124,11 @@ test(
         'other-event',
       ],
     }))
-    let receipt: ServerMessage
-
-    do {
-      receipt = await t.next()
-    } while (!('id' in receipt) || receipt.id !== 'other-rename')
+    let receipt = await matchingMessage({
+      next: t.next,
+      what: 'the scoped rename receipt',
+      matches: ({ message }) => 'id' in message && message.id === 'other-rename',
+    })
 
     assert.equal(
       receipt.type,
@@ -4109,9 +4160,11 @@ test(
       ],
     }))
 
-    do {
-      receipt = await t.next()
-    } while (!('id' in receipt) || receipt.id !== 'bad-scope')
+    receipt = await matchingMessage({
+      next: t.next,
+      what: 'the conflicting scope refusal',
+      matches: ({ message }) => 'id' in message && message.id === 'bad-scope',
+    })
 
     assert.equal(
       receipt.type,
@@ -4122,9 +4175,11 @@ test(
       scope: 'missing',
     }))
 
-    do {
-      receipt = await t.next()
-    } while (receipt.type !== 'scope-error')
+    receipt = await matchingMessage({
+      next: t.next,
+      what: 'the missing Hydra refusal',
+      matches: ({ message }) => message.type === 'scope-error',
+    })
 
     assert.equal(
       receipt.scope,
@@ -4188,11 +4243,12 @@ test(
         type: 'subscribe',
         scope: 'hydra-2',
       }))
-      let result: ServerMessage
-
-      do {
-        result = await t.next()
-      } while (result.type !== 'scope-error')
+      const result = await matchingMessage({
+        next: t.next,
+        what: 'the saved Hydra mount failure',
+        matches: ({ message }) => message.type === 'scope-error',
+      })
+      assert.ok(result.type === 'scope-error')
 
       assert.equal(
         result.scope,
@@ -4228,11 +4284,12 @@ test(
       type: 'subscribe',
       scope: 'hydra-2',
     }))
-    let snapshot: ServerMessage
-
-    do {
-      snapshot = await t.next()
-    } while (snapshot.type !== 'snapshot' || snapshot.scope !== 'hydra-2')
+    const snapshot = await matchingMessage({
+      next: t.next,
+      what: 'the recovered saved Hydra snapshot',
+      matches: ({ message }) => message.type === 'snapshot' && message.scope === 'hydra-2',
+    })
+    assert.ok(snapshot.type === 'snapshot')
 
     assert.equal(
       snapshot.state.config?.name,

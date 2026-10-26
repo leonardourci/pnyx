@@ -135,6 +135,7 @@ type ServerPayload =
     type: 'hello'
     build: string
     hydraId: string
+    installation: string
   }
   | { type: 'pong' }
   | {
@@ -3157,6 +3158,7 @@ async function mountOwnedHydra({
         type: 'hello',
         build: buildId(),
         hydraId: identity,
+        installation: hydraIdentity({ hydraId: '' }),
       },
     })
     resume({
@@ -3660,7 +3662,7 @@ function serveStatic({
         )
         const html = raw.replace(
           '</head>',
-          `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n</head>`,
+          `<base href="${page.base}" />\n<meta name="pnyx-token" content="${page.token}" />\n<meta name="pnyx-build" content="${buildOf({ html: raw })}" />\n<meta name="pnyx-hydra" content="${page.identity}" />\n<meta name="pnyx-installation" content="${hydraIdentity({ hydraId: '' })}" />\n</head>`,
         )
         res.writeHead(
           200,
