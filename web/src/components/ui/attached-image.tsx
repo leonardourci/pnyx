@@ -5,16 +5,15 @@ import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from './dialog.tsx'
 import { Icon } from './icon.tsx'
 
-// Only images this Hydra stored are served here.
 function attachmentSource({ path }: { path: string }) {
-  const name = path.split('/').at(-1) ?? ''
+  const stored = /\/hydras\/([^/]+)\/attachments\/([^/]+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
-  return token && path.includes('/attachments/') && ATTACHMENT_NAME.test(name)
-    ? `attachments/${name}?token=${encodeURIComponent(token)}` : undefined
+  // Cached chat can render while navigation still has the previous Hydra's base URL.
+  return token && stored && ATTACHMENT_NAME.test(stored[2]!)
+    ? `/hydra/${encodeURIComponent(stored[1]!)}/attachments/${stored[2]}?token=${encodeURIComponent(token)}` : undefined
 }
 
-// Images another Hydra stored are not served here, so they stay their text line.
 export function AttachedImage({ path }: { path: string }) {
   const [
     failed,
