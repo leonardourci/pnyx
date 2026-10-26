@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { watch } from 'node:fs'
+import { watchPath } from '../runtime/watch.ts'
 import { readlink, realpath, stat, symlink, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
@@ -76,24 +76,14 @@ async function acquireRefreshLock({
     const changed = new Promise<void>(resolve => {
       notify = resolve
     })
-    const watcher = watch(
-      dirname(path),
-      (
-        _event,
-        filename,
-      ) => {
-        if (filename === basename(path)) {
+    const watcher = watchPath({
+      path: dirname(path),
+      changed: ({ filename }) => {
+        if (!filename || filename === basename(path)) {
           notify()
         }
       },
-    )
-    watcher.on(
-      'error',
-      error => {
-        failure = error
-        notify()
-      },
-    )
+    })
     const timer = setTimeout(
       () => {
         failure = new Error('timed out waiting for the active project refresh; inspect its lock owner')
