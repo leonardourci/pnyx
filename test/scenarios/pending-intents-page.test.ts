@@ -155,14 +155,26 @@ test(
         const control = window as unknown as {
           releaseCreate: () => void
           widthsSent: number
+          parentRefused: boolean
         }
         control.widthsSent = 0
+        control.parentRefused = false
 
         // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
         WebSocket.prototype.send = function(data) {
           const message = typeof data === 'string' ? JSON.parse(data) : null
 
           if (message?.name === 'column' && message.args[0] === 'create') {
+            this.addEventListener(
+              'message',
+              event => {
+                const receipt = JSON.parse(event.data)
+
+                if (receipt.id === message.id && receipt.type === 'error') {
+                  control.parentRefused = true
+                }
+              },
+            )
             control.releaseCreate = () => send.call(
               this,
               data,
@@ -221,7 +233,8 @@ test(
     })
     await page.shows({
       what: 'destination connected after refused old work settles',
-      check: () => document.querySelector('[data-connected=true]') && !document.querySelector('.loading-status'),
+      check: () => document.querySelector('[data-connected=true]') && !document.querySelector('.loading-status')
+        && (window as unknown as { parentRefused: boolean }).parentRefused,
     })
     const sent = await page.shows({
       what: 'the transmitted width command count',

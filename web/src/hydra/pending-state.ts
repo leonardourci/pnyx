@@ -94,10 +94,12 @@ export function commandArguments({
   id,
   edit,
   persisted,
+  scope,
 }: {
   id: string
   edit: Edit
   persisted: boolean
+  scope?: string
 }): string[] {
   const hasEvent = argument({
     args: edit.args,
@@ -113,6 +115,7 @@ export function commandArguments({
     id,
     name: edit.name,
     args,
+    scope,
   }) > MAX_MESSAGE_BYTES) {
     throw new CommandFailure({
       message: 'Message exceeds the 64 KiB limit. Shorten the draft or file contents. Draft kept.',

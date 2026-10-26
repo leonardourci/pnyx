@@ -81,7 +81,7 @@ const hydraViews = new Map<string, Restore>()
 export function App() {
   const hydra = useHydra()
 
-  return <HydraView key={hydra.navigation.hydraId} hydra={hydra} />
+  return <HydraView key={hydra.viewKey} hydra={hydra} />
 }
 
 function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
@@ -100,7 +100,17 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     error,
     checking,
   } = hydra
-  const restoreKey = useRef(storageKey({ key: 'restore' })).current
+  useEffect(
+    () => {
+      if (hydra.creating) {
+        const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
+
+        return () => cancelAnimationFrame(frame)
+      }
+    },
+    [hydra.viewKey],
+  )
+  const restoreKey = storageKey({ key: 'restore' })
   const commentsKey = storageKey({
     key: 'comments',
     hydraId: navigation.hydraId,
@@ -402,21 +412,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [
       addingProject,
       state.config?.hydra.kind,
-      notify,
-    ],
-  )
-  useEffect(
-    () => {
-      if (connected) {
-        void command({
-          name: 'hydras',
-          args: [],
-        }).catch((error: Error) => notify({ text: error.message }))
-      }
-    },
-    [
-      connected,
-      command,
       notify,
     ],
   )
@@ -1010,6 +1005,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           )}
         >
           <Hydras
+            createHydra={hydra.createHydra}
             command={command}
             connected={connected}
             notify={notify}
@@ -1030,9 +1026,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             }}
           />
         </Panel>
-        <main className="shell" aria-busy={!!loading || !loaded}>
-          {(loading || !loaded) && <p className="loading-status" role="status">Loading {opening ? hydraTitle(opening) : 'Hydra'}…</p>}
-          {error && <p className="error-banner" role="alert">{error}</p>}
+        <main
+          className="shell"
+          aria-busy={!!loading || !loaded}
+          data-hydra={navigation.hydraId}
+          data-provisional={hydra.creating || undefined}
+        >
+          {(loading || !loaded) && <p className="loading-status" role="status">{hydra.creating ? 'Creating Hydra' : `Loading ${opening ? hydraTitle(opening) : 'Hydra'}`}…</p>}
+          {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
           {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
           <PendingStatus intents={hydra.intents} />
           {page === 'hydra' && (
