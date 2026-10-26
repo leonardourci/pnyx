@@ -1568,6 +1568,7 @@ async function mountOwnedHydra({
           seq: event.seq,
           card: event.cardId,
           reasons,
+          event,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
         const task = helperProgress({
@@ -1580,6 +1581,7 @@ async function mountOwnedHydra({
             seq: event.seq,
             card: task,
             reasons: [],
+            event,
           })
         } else {
           agents.unread({ seq: event.seq })

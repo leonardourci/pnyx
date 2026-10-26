@@ -8,7 +8,7 @@ import { hydraSdk } from './hydra-host-fixture.ts'
 import { helperTask } from '../src/helper/route.ts'
 import { wakeHandled } from '../src/helper/state.ts'
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -19,8 +19,9 @@ import type { HydraEvent } from '../src/core/model.ts'
 import { commandLease } from '../src/helper/commands.ts'
 import { releaseTask, taskLease } from '../src/helper/leases.ts'
 import { helperAgent, helperEvent, helperReason } from '../src/helper/route.ts'
-import { createRoutineHelper, parseOutcomes } from '../src/helper/runner.ts'
-import { outcomeLines, type HelperChange } from '../src/helper/state.ts'
+import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from '../src/helper/runner.ts'
+import { helperLeases, outcomeLines, type HelperChange } from '../src/helper/state.ts'
+import { hydraDigest } from '../src/core/digest.ts'
 import type { Provider } from '../src/server/provider.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
@@ -629,7 +630,7 @@ test(
     )
     assert.deepEqual(
       outcomeLines({ state: state() }),
-      [`- ${task}: Findings ready: https://example.test/report`],
+      [`- [@Work](pnyx-task:${task}): Findings ready: https://example.test/report`],
     )
     append({
       change: {
@@ -1437,5 +1438,112 @@ test(
     } finally {
       release(); host.close()
     }
+  },
+)
+
+test(
+  'recorded long summaries and prose still fail validation with explicit output limits',
+  () => {
+    const fixtures = JSON.parse(readFileSync(
+      new URL(
+        './fixtures/helper/malformed.json',
+        import.meta.url,
+      ),
+      'utf8',
+    )) as {
+      name: string
+      tasks: string[]
+      text: string
+    }[]
+
+    for (const fixture of fixtures) {
+      assert.throws(
+        () => parseOutcomes({
+          text: fixture.text,
+          tasks: fixture.tasks,
+        }),
+        fixture.name,
+      )
+    }
+
+    assert.equal(
+      JSON.parse(fixtures[0]!.text).outcomes[0].summary.length,
+      693,
+    )
+    assert.equal(
+      JSON.parse(fixtures[1]!.text).outcomes[1].summary.length,
+      667,
+    )
+    assert.match(
+      HELPER_INSTRUCTIONS,
+      /at most 600 characters/,
+    )
+    assert.match(
+      HELPER_INSTRUCTIONS,
+      /never pass --actor/,
+    )
+    assert.match(
+      HELPER_INSTRUCTIONS,
+      /Copy supplied links exactly; omit links that were not supplied/,
+    )
+    const schema = outcomeSchema({ tasks: ['work'] })
+    assert.ok(JSON.stringify(schema).includes('at most 600 characters'))
+    assert.ok(!JSON.stringify(schema).includes('maxLength'))
+    assert.ok(!JSON.stringify(schema).includes('maxItems'))
+    assert.deepEqual(
+      parseOutcomes({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task: 'work',
+              audience: 'owner',
+              summary: 'a'.repeat(600),
+            },
+          ],
+        }),
+        tasks: ['work'],
+      })[0]!.summary.length,
+      600,
+    )
+  },
+)
+
+test(
+  'active helper leases carry event start times in the digest and disappear on handback',
+  () => {
+    const task = state().keys.work!
+    append({
+      change: {
+        type: 'hydra.helper-started',
+        data: {
+          id: 'held',
+          tasks: [task],
+          seqs: [],
+          prompt: 'Progress',
+        },
+      },
+    })
+    const grant = readEvents({ hydraId: 'lab' }).at(-1)!
+    const digest = hydraDigest({
+      hydraId: 'lab',
+      state: state(),
+      owner: {},
+    })
+    assert.ok(digest.includes(`held by helper:held, started ${grant.at}`))
+    assert.ok(digest.includes(`[@Work](pnyx-task:${task})`))
+    append({
+      change: {
+        type: 'hydra.helper-finished',
+        data: {
+          batch: 'held',
+          outcomes: [],
+          error: 'handed back',
+        },
+      },
+    })
+    assert.deepEqual(
+      helperLeases({ state: state() }),
+      ['Active helper leases: none'],
+    )
   },
 )
