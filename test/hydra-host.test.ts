@@ -28,6 +28,7 @@ import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
 import { REVIEW_MS } from '../src/review/timer.ts'
+import { until as untilObserved } from './scenarios/harness.ts'
 
 test(
   'a timed review reaches Hydra through the server with facts, decisions and reply rules in order',
@@ -2213,24 +2214,16 @@ test(
 
     await send({ text: 'Watch the suite' })
     await until({ check: finished })
-    sdk.control.hold = true
-    sdk.control.tool = true
-    sdk.control.toolDone = true
-    await startTask({
-      hydraId: 'lab',
-      task: 'suite',
-      meta: {
-        at: new Date().toISOString(),
-        actor: 'hydra',
-        reason: 'start it',
-        id: 'start-suite',
-      },
-    })
-    sdk.control.hold = false
-    sdk.control.tool = false
-    sdk.control.toolDone = false
 
-    // A busy machine stalls the event loop while the first alarm is on its way to Hydra.
+    // The worker can deliver its first alarm before startTask resolves.
+    const received: number[] = []
+
+    sdk.control.onInput = () => {
+      if (stalls().length > received.length) {
+        received.push(Date.now())
+      }
+    }
+
     let slowDelivery = true
     const writeSync = fs.writeSync
     t.mock.method(
@@ -2263,15 +2256,27 @@ test(
     syncBuiltinESMExports()
 
     try {
-      const received: number[] = []
+      sdk.control.hold = true
+      sdk.control.tool = true
+      sdk.control.toolDone = true
+      await startTask({
+        hydraId: 'lab',
+        task: 'suite',
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          reason: 'start it',
+          id: 'start-suite',
+        },
+      })
+      sdk.control.hold = false
+      sdk.control.tool = false
+      sdk.control.toolDone = false
 
-      for (let i = 0; i < 400 && received.length < 2; i++) {
-        while (stalls().length > received.length) {
-          received.push(Date.now())
-        }
-
-        await sleep({ ms: 5 })
-      }
+      await untilObserved({
+        what: 'two stall alarms delivered to Hydra',
+        check: () => received.length >= 2,
+      })
 
       assert.ok(
         !slowDelivery,
@@ -2287,6 +2292,7 @@ test(
         `Hydra got the second alarm ${gap} ms after the first; the backoff is 400 ms`,
       )
     } finally {
+      sdk.control.onInput = undefined
       sdk.release()
       t.mock.restoreAll()
       syncBuiltinESMExports()
