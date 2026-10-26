@@ -1,13 +1,22 @@
 import { useRef, useState } from 'react'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
+import { CommandFailure } from './pending-intents.ts'
 import type { Command } from './connection.ts'
+
+export interface TaskDraft {
+  title: string
+  prompt: string
+  attempt: string
+}
 
 export function TaskCreate({
   column,
   parent,
   command,
   connected,
-  saved,
+  submitted,
+  recover,
+  draft,
   cancel,
   notify,
 }: {
@@ -15,21 +24,23 @@ export function TaskCreate({
   parent?: string
   command: Command
   connected: boolean
-  saved({ id }: { id: string }): void
+  submitted({ id }: { id: string }): void
+  recover({ draft }: { draft: TaskDraft }): void
+  draft?: TaskDraft
   cancel(): void
   notify({ text }: { text: string }): void
 }) {
   const [
       title,
       setTitle,
-    ] = useState(''), [
+    ] = useState(draft?.title ?? ''), [
       prompt,
       setPrompt,
-    ] = useState(''), [
+    ] = useState(draft?.prompt ?? ''), [
       busy,
       setBusy,
     ] = useState(false)
-  const attempt = useRef(crypto.randomUUID())
+  const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
 
   return (
     <form
@@ -43,7 +54,7 @@ export function TaskCreate({
         }
 
         setBusy(true)
-        void command({
+        const saving = command({
           name: 'task',
           args: [
             'create',
@@ -61,9 +72,20 @@ export function TaskCreate({
             attempt.current,
           ],
         })
-          .then(receipt => saved({ id: (receipt.card as { id: string }).id }))
-          .catch(error => notify({ text: error.message }))
-          .finally(() => setBusy(false))
+        submitted({ id: `task:${attempt.current}` })
+        void saving.catch((error: Error) => {
+          if (!(error instanceof CommandFailure) || error.outcome === 'refused') {
+            recover({
+              draft: {
+                title,
+                prompt,
+                attempt: attempt.current,
+              },
+            })
+          }
+
+          notify({ text: error.message })
+        })
       }}
       onKeyDown={e => {
         if (e.key === 'Escape' && !busy) {

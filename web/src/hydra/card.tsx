@@ -46,6 +46,7 @@ export function HydraCard({
   save,
   open,
   onEdit,
+  recoverSelection,
   tabIndex,
   command,
   connected,
@@ -74,6 +75,7 @@ export function HydraCard({
     fromTitle?: boolean
   }): Promise<boolean>
   onEdit(): void
+  recoverSelection({ id }: { id: string }): void
   tabIndex: number
   command: Command
   connected: boolean
@@ -315,8 +317,10 @@ export function HydraCard({
                 aria-label="Hide"
                 disabled={!connected}
                 onClick={async () => {
+                  const wasSelected = selected
+
                   try {
-                    await command({
+                    const saving = command({
                       name: 'task',
                       args: [
                         'hide',
@@ -326,10 +330,16 @@ export function HydraCard({
                       ],
                     })
 
-                    if (selected) {
-                      open({ id: card.id })
+                    if (wasSelected) {
+                      await open({ id: card.id })
                     }
+
+                    await saving
                   } catch (error) {
+                    if (wasSelected) {
+                      recoverSelection({ id: card.id })
+                    }
+
                     notify({ text: (error as Error).message })
                   }
                 }}

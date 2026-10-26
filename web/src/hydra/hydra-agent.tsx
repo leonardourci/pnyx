@@ -1,5 +1,5 @@
 import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
@@ -50,10 +50,6 @@ export function HydraAgent({
     effective,
     saveHydra,
   } = useHeadsDispatch({ command })
-  const [
-    busy,
-    setBusy,
-  ] = useState(false)
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
   const inherited = rule?.harness === agent.harness ? rule : undefined
@@ -92,13 +88,11 @@ export function HydraAgent({
   const resolved = useRef('')
 
   const save = ({ next }: { next: AgentConfig }) => {
-    setBusy(true)
     void command({
       name: 'hydra-agent',
       args: [JSON.stringify(next)],
     })
       .catch((error: Error) => notify({ text: error.message }))
-      .finally(() => setBusy(false))
   }
 
   // Saving the named values makes Hydra run with exactly what the pickers show.
@@ -170,7 +164,7 @@ export function HydraAgent({
             icon,
             group: label,
           })))}
-        disabled={busy || !connected}
+        disabled={!connected}
         connected={connected}
         onChange={({ value }) => {
           const [
@@ -226,7 +220,7 @@ export function HydraAgent({
             label={field === 'mode' ? 'Permissions' : 'Effort'}
             value={value ?? ''}
             options={options}
-            disabled={busy || !connected || !catalog.models}
+            disabled={!connected || !catalog.models}
             onChange={({ value }) => save({
               next: {
                 ...agent,
@@ -242,7 +236,7 @@ export function HydraAgent({
           className="fast-toggle"
           aria-label="Fast mode"
           aria-pressed={agent.fast === true}
-          disabled={busy || !connected}
+          disabled={!connected}
           onClick={() => save({
             next: {
               ...agent,

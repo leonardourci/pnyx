@@ -58,6 +58,7 @@ interface Request {
   name: string
   args: string[]
   optimistic: boolean
+  dependencies: string[]
   retry: boolean
   sent: boolean
   creation?: string
@@ -240,6 +241,7 @@ export function createHydraConnection() {
           } : hydra
         }),
       },
+      edits: resource.intents,
       intents: [
         ...resource.intents,
         ...hydras.snapshot().intents.filter(intent => intent.patch.id === scope.viewKey),
@@ -265,11 +267,18 @@ export function createHydraConnection() {
       const intent = request.scope.resource.snapshot().intents
         .find(intent => intent.id === request.id)
 
-      if (intent?.stage === 'refused' && intent.error) {
+      const failed = request.scope.resource.snapshot().intents.find(intent =>
+        request.dependencies.includes(intent.id) && intent.stage === 'refused')
+
+      if (failed || (intent?.stage === 'refused' && intent.error)) {
+        const error = intent?.error ?? new CommandFailure({
+          message: 'The prerequisite was refused. Your dependent action was not sent.',
+          code: 'DEPENDENCY_REFUSED',
+        })
         clearTimeout(request.timer)
         requests.delete(request.id)
-        request.reject({ error: intent.error })
-        request.scope.error = intent.error.message
+        request.reject({ error })
+        request.scope.error = error.message
       }
     }
 
@@ -506,7 +515,9 @@ export function createHydraConnection() {
     }
 
     for (const request of requests.values()) {
-      const blocked = request.optimistic && editing.has(request.scope)
+      const waitingForTarget = request.scope.resource.snapshot().intents.some(intent =>
+        request.dependencies.includes(intent.id) && intent.stage !== 'confirmed')
+      const blocked = waitingForTarget || (request.optimistic && editing.has(request.scope))
 
       if (request.sent || !request.scope.ready || blocked) {
         continue
@@ -676,18 +687,23 @@ export function createHydraConnection() {
         return
       }
 
+      const dependencies = scope.resource.snapshot().intents.filter(intent => ![
+        'refused',
+        'confirmed',
+      ].includes(intent.stage)
+          && [
+            'column',
+            'task',
+          ].includes(intent.patch.name) && intent.patch.args[0] === 'create'
+          && args.some(arg => intent.targets.includes(arg))).map(intent => intent.id)
+
       if (optimistic) {
         const edit = {
           name,
           args,
         }
         const targets = editTargets({ edit })
-        const dependencies = scope.resource.snapshot().intents.filter(intent => ![
-          'refused',
-          'confirmed',
-        ].includes(intent.stage)
-          && intent.patch.name === 'column' && intent.patch.args[0] === 'create'
-          && args.some(arg => intent.targets.includes(arg))).map(intent => intent.id)
+
         scope.resource.enqueue({
           id,
           targets,
@@ -705,6 +721,7 @@ export function createHydraConnection() {
           name,
           args,
           optimistic,
+          dependencies,
           retry,
           sent: false,
           creation,
