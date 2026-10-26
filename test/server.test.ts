@@ -2452,7 +2452,7 @@ test(
 )
 
 test(
-  'health checks and the event loop stay responsive while a large transcript is counted',
+  'large-transcript token counting stays off the server event loop while health checks succeed',
   async context => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
@@ -2505,16 +2505,11 @@ test(
       from: 1,
       count: records,
     })
-    const grownBytes = Buffer.byteLength(grown)
-    const reads = context.mock.method(
-      fs,
-      'readSync',
+    const parses = context.mock.method(
+      JSON,
+      'parse',
     )
-    syncBuiltinESMExports()
-    context.after(() => {
-      reads.mock.restore()
-      syncBuiltinESMExports()
-    })
+    context.after(() => parses.mock.restore())
     appendFileSync(
       fixture.transcript,
       grown,
@@ -2536,10 +2531,10 @@ test(
       (records + 1) * 3,
     )
     assert.ok(checks.length > 0 && checks.every(Boolean))
-    // A worker has its own fs module; a bulk read here would count on the server's event loop.
+    // A worker has its own JSON object; the server may parse the tail, but never the first growth row.
     assert.ok(
-      reads.mock.calls.every(call => call.arguments[1].byteLength < grownBytes),
-      'the server read the entire transcript growth on its own event loop',
+      parses.mock.calls.every(call => !String(call.arguments[0]).includes('"id":"usage-1"')),
+      'the server parsed transcript growth on its own event loop',
     )
     t.ws.close()
   },
