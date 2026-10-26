@@ -649,6 +649,10 @@ test(
     await startedTask({ s })
     const task = s.task({ key: 'ship' })
     const hydra = s.as({ agent: await s.chat({ text: 'Review the layout' }) })
+    await hydraFinished({
+      s,
+      turns: 1,
+    })
     await hydra.run({
       args: [
         'task',
@@ -667,7 +671,21 @@ test(
     const page = await openHydra({ s })
 
     try {
+      await page.shows({
+        what: 'the completed reply and question have settled in the chat',
+        check: () => {
+          const stream = document.querySelector('.hydra-chat .hydra-messages')
+          const reply = document.querySelector('.hydra-chat .message[aria-label="Hydra"]')
+
+          return reply?.textContent?.includes('Recorded reply.') && !reply.hasAttribute('data-streaming')
+            && stream && stream.scrollHeight - stream.clientHeight - stream.scrollTop < 1
+        },
+      })
       await page.click({ selector: '.hydra-chat .chat-decision .ask-option-pick' })
+      await page.shows({
+        what: 'the chosen answer owns focus before question navigation',
+        check: () => document.activeElement?.matches('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
       await page.press({ key: 'ArrowUp' })
       await page.shows({
         what: 'Up reaches the available task mention and skips the unavailable one',
@@ -685,6 +703,33 @@ test(
         what: 'Escape from the task mention returns to the composer without sending the answer',
         check: () => document.activeElement?.matches('.hydra-chat .composer textarea')
           && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+      await page.type({ text: 'draft' })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up within a draft stays in the composer and reaches its start',
+        check: () => {
+          const input = document.activeElement
+
+          return input instanceof HTMLTextAreaElement && input.matches('.hydra-chat .composer textarea')
+            && input.value === 'draft' && input.selectionStart === 0
+        },
+      })
+      await page.press({ key: 'ArrowUp' })
+      await page.shows({
+        what: 'Up at the draft start reaches the waiting row without changing the answer',
+        check: () => document.activeElement?.matches('.waiting-decisions > .popover > button')
+          && document.querySelector('.hydra-chat .ask-option-pick[aria-pressed=true]'),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.shows({
+        what: 'Down returns from the waiting row to the unchanged draft',
+        check: () => {
+          const input = document.activeElement
+
+          return input instanceof HTMLTextAreaElement && input.matches('.hydra-chat .composer textarea')
+            && input.value === 'draft'
+        },
       })
     } finally {
       await page.close()
