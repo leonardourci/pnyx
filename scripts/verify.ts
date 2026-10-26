@@ -1,6 +1,3 @@
-// pnpm verify: picks the checks the branch's changed files need, runs each even after one fails,
-// prints one summary, and writes the checks marker for the PR head into the PR description only
-// when all of them passed.
 import {
   execFileSync,
   spawnSync,
@@ -16,8 +13,18 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   markerBlockers,
+  REVIEW_CHECKLISTS,
   withMarker,
 } from './marker.ts'
+
+const args = process.argv.slice(2)
+
+if (args.some(arg => arg !== '--checks-only')) {
+  console.error('Usage: pnpm verify [--checks-only]')
+  process.exit(1)
+}
+
+const checksOnly = args.includes('--checks-only')
 
 interface Step {
   name: string
@@ -170,7 +177,7 @@ function head(): string {
 }
 
 // The branch's files that differ from the default branch, committed or not.
-function branchChanges(): string[] | undefined {
+function branchChanges({ defaultRef }: { defaultRef: string }): string[] | undefined {
   let base: string
 
   try {
@@ -179,7 +186,7 @@ function branchChanges(): string[] | undefined {
         'git',
         'merge-base',
         'HEAD',
-        'origin/main',
+        defaultRef,
       ],
     })
   } catch {
@@ -212,16 +219,16 @@ function area({ path }: { path: string }): string {
 }
 
 // Back-end changes (or both) run everything, UI-only changes the UI checks, docs-only changes nothing.
-function selection(): {
+function selection({ defaultRef }: { defaultRef: string }): {
   steps: Step[]
   why: string
 } {
-  const paths = branchChanges()
+  const paths = branchChanges({ defaultRef })
 
   if (!paths?.length) {
     return {
       steps: EVERYTHING,
-      why: paths ? 'no changes from origin/main found' : 'origin/main is not available to compare with',
+      why: paths ? `no changes from ${defaultRef} found` : `${defaultRef} is not available to compare with`,
     }
   }
 
@@ -335,6 +342,13 @@ function runStep({
   closeSync(fd)
 
   if (status !== 0) {
+    if (step.name === 'lint:fix' || step.name === 'eslint') {
+      console.log(`verify: ${step.name} could not resolve these issues:\n${readFileSync(
+        log,
+        'utf8',
+      )}`)
+    }
+
     return `failed, log ${log}`
   }
 
@@ -347,6 +361,68 @@ function runStep({
   return 'passed'
 }
 
+function printReviews(): void {
+  console.log('\nReview checklists, in order:')
+
+  for (const name of REVIEW_CHECKLISTS) {
+    console.log(`  ${name}: .agents/skills/${name}/SKILL.md`)
+  }
+
+  console.log('Whoever runs verify completes these checklists, ticks the three PR boxes, and notes fixes or no findings in the PR description. Agents perform these steps themselves. Commit and push any fixes, then rerun verify on the clean PR head.')
+}
+
+function updateDefaultBranch(): string {
+  const remote = read({
+    args: [
+      'git',
+      'ls-remote',
+      '--symref',
+      'origin',
+      'HEAD',
+    ],
+  })
+  const branch = /^ref: refs\/heads\/(.+)\s+HEAD$/m.exec(remote)?.[1]
+
+  if (!branch) {
+    throw new Error('Could not determine origin\'s default branch; no checks ran.')
+  }
+
+  const defaultRef = `refs/remotes/origin/${branch}`
+  read({
+    args: [
+      'git',
+      'fetch',
+      'origin',
+      `+refs/heads/${branch}:${defaultRef}`,
+    ],
+  })
+  const { status } = spawnSync(
+    'git',
+    [
+      'merge-base',
+      '--is-ancestor',
+      defaultRef,
+      'HEAD',
+    ],
+  )
+
+  if (status !== 0) {
+    throw new Error(`Branch is behind ${defaultRef}. Rebase it yourself, then rerun verify:\n  git rebase ${defaultRef}`)
+  }
+
+  return defaultRef
+}
+
+let defaultRef: string
+
+try {
+  defaultRef = updateDefaultBranch()
+} catch (error) {
+  console.error(`verify: ${error instanceof Error ? error.message : String(error)}`)
+  printReviews()
+  process.exit(1)
+}
+
 const headSha = head()
 const dirtyAtStart = changedPaths().length
 const failed = new Set<string>()
@@ -355,7 +431,7 @@ const summary: string[] = []
 const {
   steps,
   why,
-} = selection()
+} = selection({ defaultRef })
 console.log(`verify: ${steps.length ? `running ${steps.map(step => step.name).join(', ')}` : 'running no checks'}; ${why}`)
 
 for (const step of steps) {
@@ -372,61 +448,80 @@ for (const step of steps) {
   summary.push(`  ${step.name.padEnd(15)}${outcome}`)
 }
 
-// Read after the run, so an edit made to the description meanwhile is kept.
-const found = openPullRequest()
-const blockers = markerBlockers({
-  failedSteps: failed.size,
-  changedPaths: dirtyAtStart + changedPaths().length,
-  headSha,
-  headAfter: head(),
-  pullRequestHead: found.pullRequest?.headRefOid,
-})
-let marker = `not written: ${[
-  ...blockers,
-  ...found.error ? [`gh pr view: ${found.error}`] : [],
-].join('; ')}`
+if (checksOnly) {
+  const dirty = changedPaths()
+  const headMoved = head() !== headSha
 
-if (blockers.length === 0 && found.pullRequest) {
-  const { pullRequest } = found
-
-  try {
-    execFileSync(
-      'gh',
-      [
-        'pr',
-        'edit',
-        String(pullRequest.number),
-        '--body-file',
-        '-',
-      ],
-      {
-        input: `${withMarker({
-          body: pullRequest.body,
-          marker: {
-            head_sha: headSha,
-            head_tree: read({
-              args: [
-                'git',
-                'rev-parse',
-                `${headSha}^{tree}`,
-              ],
-            }),
-            finished_at: new Date().toISOString(),
-          },
-        })}\n`,
-        stdio: [
-          'pipe',
-          'ignore',
-          'pipe',
-        ],
-      },
-    )
-    marker = `written to PR #${pullRequest.number} for ${headSha}`
-  } catch (error) {
-    blockers.push('gh pr edit failed')
-    marker = `not written: gh pr edit failed: ${failure({ error })}`
+  if (dirty.length > 0) {
+    summary.push(`  worktree       failed, uncommitted changes: ${dirty.map(path => path.slice(3)).join(', ')}`)
   }
-}
 
-console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(15)}${marker}`)
-process.exitCode = blockers.length === 0 ? 0 : 1
+  if (headMoved) {
+    summary.push('  HEAD           failed, HEAD moved during the run')
+  }
+
+  console.log(`\nverify summary:\n${summary.join('\n')}\n  marker         not written: --checks-only`)
+  printReviews()
+  process.exitCode = failed.size === 0 && dirty.length === 0 && !headMoved ? 0 : 1
+} else {
+  // Read after the run, so an edit made to the description meanwhile is kept.
+  const found = openPullRequest()
+  const blockers = markerBlockers({
+    failedSteps: failed.size,
+    changedPaths: dirtyAtStart + changedPaths().length,
+    headSha,
+    headAfter: head(),
+    pullRequestHead: found.pullRequest?.headRefOid,
+    pullRequestBody: found.pullRequest?.body ?? '',
+  })
+  let marker = `not written: ${[
+    ...blockers,
+    ...found.error ? [`gh pr view: ${found.error}`] : [],
+  ].join('; ')}`
+
+  if (blockers.length === 0 && found.pullRequest) {
+    const { pullRequest } = found
+
+    try {
+      execFileSync(
+        'gh',
+        [
+          'pr',
+          'edit',
+          String(pullRequest.number),
+          '--body-file',
+          '-',
+        ],
+        {
+          input: `${withMarker({
+            body: pullRequest.body,
+            marker: {
+              head_sha: headSha,
+              head_tree: read({
+                args: [
+                  'git',
+                  'rev-parse',
+                  `${headSha}^{tree}`,
+                ],
+              }),
+              finished_at: new Date().toISOString(),
+            },
+          })}\n`,
+          stdio: [
+            'pipe',
+            'ignore',
+            'pipe',
+          ],
+        },
+      )
+      marker = `written to PR #${pullRequest.number} for ${headSha}`
+    } catch (error) {
+      blockers.push('gh pr edit failed')
+      marker = `not written: gh pr edit failed: ${failure({ error })}`
+    }
+  }
+
+  console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(15)}${marker}`)
+  printReviews()
+  process.exitCode = blockers.length === 0 ? 0 : 1
+}

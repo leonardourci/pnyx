@@ -320,7 +320,8 @@ test(
 
 test(
   'Hydra dispatch accepts a catalog model beyond its legacy shortlist from saved configuration',
-  async () => {
+  { timeout: 30_000 },
+  async context => {
     const root = mkdtempSync(join(
       scratch,
       'pnyx-catalog-dispatch-',
@@ -361,37 +362,37 @@ test(
         writer.append({ event: decision.event })
       },
     })
+    let finish = () => {}
+    const finished = new Promise<void>(resolve => {
+      finish = resolve
+    })
     const host = createHost({
       hydraId: 'lab',
       spawnCodex: fixture.spawnCodex,
-      changed: () => {},
+      changed: () => {
+        if (loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished') {
+          finish()
+        }
+      },
+    })
+    context.after(() => host.close())
+
+    await host.hydra({
+      text: 'Use this catalog model',
+      actor: 'test',
+      id: 'catalog-model',
     })
 
-    try {
-      await host.hydra({
-        text: 'Use this catalog model',
-        actor: 'test',
-        id: 'catalog-model',
-      })
+    await finished
 
-      for (let attempt = 0; attempt < 200 && loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity !== 'finished'; attempt++) {
-        await new Promise(resolve => setTimeout(
-          resolve,
-          10,
-        ))
-      }
-
-      assert.equal(
-        fixture.messages().find(m => m.method === 'thread/start')?.params?.model,
-        'gpt-catalog-two',
-      )
-      assert.equal(
-        fixture.messages().filter(m => m.method === 'model/list').length,
-        2,
-      )
-    } finally {
-      host.close()
-    }
+    assert.equal(
+      fixture.messages().find(m => m.method === 'thread/start')?.params?.model,
+      'gpt-catalog-two',
+    )
+    assert.equal(
+      fixture.messages().filter(m => m.method === 'model/list').length,
+      2,
+    )
   },
 )
 

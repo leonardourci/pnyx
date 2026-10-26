@@ -2183,8 +2183,8 @@ test(
   'a repeated stall counts its gap from when Hydra got the last alarm, so a slow delivery never shortens it',
   async t => {
     const {
+      until,
       advance,
-      until: clockUntil,
     } = controlledTime({ t })
     fakeDispatch({ root: home })
     const folder = join(
@@ -2204,14 +2204,6 @@ test(
       'lab',
     ])
     const sdk = hydraSdk({ now: () => Date.now() })
-    const received: number[] = []
-
-    sdk.control.onInput = ({ text }) => {
-      if (stallWake({ text })) {
-        received.push(Date.now())
-      }
-    }
-
     server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
@@ -2224,23 +2216,16 @@ test(
       .filter(m => stallWake({ text: m }))
 
     await send({ text: 'Watch the suite' })
-    await clockUntil({ check: finished })
-    sdk.control.hold = true
-    sdk.control.tool = true
-    sdk.control.toolDone = true
-    await startTask({
-      hydraId: 'lab',
-      task: 'suite',
-      meta: {
-        at: new Date().toISOString(),
-        actor: 'hydra',
-        reason: 'start it',
-        id: 'start-suite',
-      },
-    })
-    sdk.control.hold = false
-    sdk.control.tool = false
-    sdk.control.toolDone = false
+    await until({ check: finished })
+
+    // The worker can deliver its first alarm before startTask resolves.
+    const received: number[] = []
+
+    sdk.control.onInput = ({ text }) => {
+      if (stallWake({ text })) {
+        received.push(Date.now())
+      }
+    }
 
     let slowDelivery = true
     const writeSync = fs.writeSync
@@ -2270,32 +2255,50 @@ test(
     syncBuiltinESMExports()
 
     try {
-      await advance({ ms: 200 })
-      await clockUntil({ check: () => received.length === 1 && finished() })
-      await new Promise<void>(resolve => setImmediate(resolve))
-      await advance({ ms: 399 })
-      assert.equal(
-        received.length,
-        1,
-        'the second alarm is not due before 400 ms from delivery',
-      )
-      await advance({ ms: 51 })
-      await clockUntil({ check: () => received.length === 2 && finished() })
+      sdk.control.hold = true
+      sdk.control.tool = true
+      sdk.control.toolDone = true
+      await startTask({
+        hydraId: 'lab',
+        task: 'suite',
+        meta: {
+          at: new Date().toISOString(),
+          actor: 'hydra',
+          reason: 'start it',
+          id: 'start-suite',
+        },
+      })
+      sdk.control.hold = false
+      sdk.control.tool = false
+      sdk.control.toolDone = false
+
+      t.mock.timers.tick(200)
+      await until({ check: () => received.length === 1 && finished() })
 
       assert.ok(
         !slowDelivery,
         'the first alarm\'s delivery was slowed',
       )
+      await advance({ ms: 399 })
+      assert.equal(
+        received.length,
+        1,
+        'the repeat waits the full backoff after delivery',
+      )
+      t.mock.timers.tick(1)
+      await until({ check: () => received.length === 2 && finished() })
       assert.match(
         stalls()[1] ?? '',
         /\(alarm 2\)/,
       )
       const gap = received[1]! - received[0]!
-      assert.ok(
-        gap >= 400,
-        `Hydra got the second alarm ${gap} ms after the first; the backoff is 400 ms`,
+      assert.equal(
+        gap,
+        400,
+        'Hydra receives the second alarm exactly one backoff after the first',
       )
     } finally {
+      sdk.control.onInput = undefined
       sdk.release()
       t.mock.restoreAll()
       syncBuiltinESMExports()
