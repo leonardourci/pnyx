@@ -82,10 +82,13 @@ function ResultGridRow({
       tabIndex={active ? 0 : -1}
       onFocus={e => {
         select({ editing: e.target !== e.currentTarget })
-        e.currentTarget.scrollIntoView({
-          block: 'nearest',
-          inline: 'nearest',
-        })
+
+        if (e.target === e.currentTarget) {
+          e.currentTarget.scrollIntoView({
+            block: 'nearest',
+            inline: 'nearest',
+          })
+        }
       }}
       onBlur={e => {
         if (!e.currentTarget.contains(e.relatedTarget)) {
