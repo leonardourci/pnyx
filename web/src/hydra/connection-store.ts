@@ -1,3 +1,5 @@
+import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
+import { readSettingsSaves, saveSettingsSaves } from './outbox.ts'
 import { reminderTime } from '../../../src/reminders/time.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
@@ -40,6 +42,7 @@ interface Scope {
   subscribed: boolean
   subscription: string | null
   failed: boolean
+  restoredSaves: boolean
   error: string
   thread: ThreadPage | null
   queue: HydraQueue
@@ -58,6 +61,9 @@ interface Request {
   retry: boolean
   sent: boolean
   creation?: string
+  saveId?: string
+  checking?: boolean
+  unconfirmed(): void
   timer?: ReturnType<typeof setTimeout>
   resolve({ receipt }: { receipt: Receipt }): void
   reject({ error }: { error: Error }): void
@@ -163,6 +169,7 @@ export function createHydraConnection() {
       subscribed: false,
       subscription: null,
       failed: false,
+      restoredSaves: false,
       error: '',
       thread: null,
       queue: emptyQueue(),
@@ -171,10 +178,12 @@ export function createHydraConnection() {
       command: ({
         name,
         args,
+        onChecking,
       }) => command({
         scope,
         name,
         args,
+        onChecking,
       }),
     }
     scopes.set(
@@ -213,6 +222,7 @@ export function createHydraConnection() {
       connected: scope.ready && socket?.readyState === WebSocket.OPEN,
       loaded: scope.hasSnapshot || scope.failed,
       loading: scope.ready || scope.failed ? '' : scope.id,
+      checking: [...requests.values()].some(request => request.scope === scope && request.checking),
       creating: !!scope.creation && scope.id.startsWith('pending-'),
       error: scope.error,
       hydraThread: scope.thread,
@@ -290,6 +300,40 @@ export function createHydraConnection() {
       () => persist({ scope }),
       250,
     )
+  }
+
+  const saveCommand = ({ request }: { request: Request }): SaveCommand => ({
+    type: 'command',
+    id: request.id,
+    name: request.name,
+    args: request.args,
+  })
+
+  const persistSaves = ({ scope }: { scope: Scope }) => saveSettingsSaves({
+    hydraId: scope.identity,
+    commands: [...requests.values()].filter(request => request.scope === scope && request.name === 'hydra-agent')
+      .map(request => saveCommand({ request })),
+  })
+
+  const confirmSaves = ({ scope }: { scope: Scope }) => {
+    for (const request of requests.values()) {
+      if (request.scope !== scope || !request.saveId) {
+        continue
+      }
+
+      const receipt = savedReceipt({
+        command: saveCommand({ request }),
+        state: scope.resource.snapshot().confirmed,
+      })
+
+      if (receipt) {
+        clearTimeout(request.timer)
+        requests.delete(request.id)
+        request.resolve({ receipt })
+      }
+    }
+
+    persistSaves({ scope })
   }
 
   const send = ({ message }: { message: unknown }) => {
@@ -493,6 +537,16 @@ export function createHydraConnection() {
             outcome: 'unknown',
           })
 
+          if (request.saveId) {
+            request.checking = true
+            request.unconfirmed()
+            request.sent = false
+            publish()
+            flush()
+
+            return
+          }
+
           if (request.optimistic || request.creation) {
             request.scope.resource.unknown({
               id: request.id,
@@ -534,11 +588,15 @@ export function createHydraConnection() {
     name,
     args,
     creation,
+    onChecking,
+    savedId,
   }: {
     scope: Scope
     name: string
     args: string[]
     creation?: string
+    onChecking?(): void
+    savedId?: string
   }): Promise<Receipt> {
     return new Promise((
       resolve,
@@ -561,7 +619,23 @@ export function createHydraConnection() {
         })
       }
 
-      const id = crypto.randomUUID()
+      const id = savedId ?? crypto.randomUUID()
+      const confirmed = savedReceipt({
+        command: {
+          type: 'command',
+          id,
+          name,
+          args,
+        },
+        state: scope.resource.snapshot().confirmed,
+      })
+
+      if (confirmed) {
+        resolve(confirmed)
+
+        return
+      }
+
       let optimistic: boolean
 
       try {
@@ -634,11 +708,21 @@ export function createHydraConnection() {
           retry,
           sent: false,
           creation,
+          saveId: saveEventId({
+            command: {
+              type: 'command',
+              id,
+              name,
+              args,
+            },
+          }),
+          unconfirmed: () => onChecking?.(),
           resolve: ({ receipt }) => resolve(receipt),
           reject: ({ error }) => reject(error),
         },
       )
       scope.error = ''
+      persistSaves({ scope })
       publish(); subscribe({ scope }); flush()
     })
   }
@@ -681,6 +765,24 @@ export function createHydraConnection() {
 
       scope.identity = message.hydraId
 
+      if (!scope.restoredSaves) {
+        scope.restoredSaves = true
+
+        for (const saved of readSettingsSaves({ hydraId: scope.identity })) {
+          if (!requests.has(saved.id)) {
+            void command({
+              scope,
+              name: saved.name,
+              args: saved.args,
+              savedId: saved.id,
+            }).catch((error: Error) => {
+              scope.error = error.message
+              publish()
+            })
+          }
+        }
+      }
+
       if (shouldReload({
         loaded: document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content,
         server: message.build,
@@ -697,6 +799,7 @@ export function createHydraConnection() {
     } else if (message.type === 'snapshot') {
       scope.resource.confirm({ state: message.state })
       scope.hasSnapshot = true
+      confirmSaves({ scope })
       scope.queue = emptyQueue()
 
       if (selected === scope.id) {
@@ -730,6 +833,8 @@ export function createHydraConnection() {
           event: message.event,
         }),
       })
+
+      confirmSaves({ scope })
 
       if (selected === scope.id) {
         noteUpdate({ event: message.event })
@@ -809,8 +914,17 @@ export function createHydraConnection() {
         return
       }
 
+      if (message.type === 'error' && request.saveId && message.saved !== false) {
+        request.checking = true
+        request.unconfirmed()
+        publish()
+
+        return
+      }
+
       clearTimeout(request.timer)
       requests.delete(message.id)
+      persistSaves({ scope })
 
       if (message.type === 'error') {
         const error = new CommandFailure({
@@ -873,6 +987,11 @@ export function createHydraConnection() {
       clearTimeout(request.timer)
 
       if (request.retry) {
+        if (request.saveId) {
+          request.checking = true
+          request.unconfirmed()
+        }
+
         if (request.sent) {
           const error = new CommandFailure({
             message: 'Connection lost before confirmation.',

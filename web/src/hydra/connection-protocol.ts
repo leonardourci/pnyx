@@ -20,6 +20,7 @@ export const retryable = ({
     'task-message',
     'answer',
     'agent',
+    'hydra-agent',
   ].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
 
 export function commandTimeout({
