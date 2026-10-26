@@ -115,7 +115,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     key: 'comments',
     hydraId: navigation.hydraId,
   })
-  const [restored] = useState(() => hydraViews.get(navigation.hydraId)
+  const [restored] = useState(() => hydraViews.get(hydra.viewKey)
     ?? restoreView({ key: restoreKey }))
   const [
       page,
@@ -476,7 +476,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           ])),
       }
       hydraViews.set(
-        navigation.hydraId,
+        hydra.viewKey,
         value,
       )
 
@@ -488,7 +488,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       } catch { /* The in-memory view still preserves drafts when storage is full. */ }
     },
     [
-      navigation.hydraId,
+      hydra.viewKey,
       selected,
       expanded,
       revealed,

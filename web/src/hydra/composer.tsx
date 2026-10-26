@@ -367,7 +367,7 @@ export function Composer({
     }
   }
 
-  const hydraId = useRef(document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content).current
+  const hydraId = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
   const attempt = useRef(readAttempt({
     key: card,
     hydraId,

@@ -1,5 +1,5 @@
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
-import { readSettingsSaves, saveSettingsSaves } from './outbox.ts'
+import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from './outbox.ts'
 import { reminderTime } from '../../../src/reminders/time.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
@@ -100,12 +100,15 @@ function save({
 
 export function createHydraConnection() {
   const origin = location.origin
+  const installation = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content
+    ?? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? ''
+  const namespace = `${origin}:${installation}`
   const initialId = location.pathname.split('/')[2] ?? 'default'
   const scopes = new Map<string, Scope>()
   const requests = new Map<string, Request>()
   const listeners = new Set<() => void>()
-  const creationKey = `pnyx:${origin}:hydra-creations`
-  const selectedKey = `pnyx:${origin}:selected-creation`
+  const creationKey = `pnyx:${namespace}:hydra-creations`
+  const selectedKey = `pnyx:${namespace}:selected-creation`
   const creations = new Map<string, Creation>()
   let selected = initialId
   let socket: WebSocket | null = null
@@ -119,7 +122,7 @@ export function createHydraConnection() {
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
-    scope: `${origin}/hydras`,
+    scope: `${namespace}/hydras`,
     confirmed: [],
     adapter: {
       project: ({
@@ -135,7 +138,7 @@ export function createHydraConnection() {
       }) => state.some(hydra => hydra.creationAttempt === intent.patch.creationAttempt),
     },
   })
-  const keyFor = ({ id }: { id: string }) => `pnyx:${origin}/hydra/${id}/:hydra-state`
+  const keyFor = ({ id }: { id: string }) => `pnyx:${namespace}/hydra/${id}/:hydra-state`
 
   const scopeFor = ({ id }: { id: string }): Scope => {
     const existing = scopes.get(id)
@@ -161,7 +164,7 @@ export function createHydraConnection() {
       identity,
       viewKey: id,
       resource: pendingHydra({
-        scope: `${origin}/hydra/${id}/`,
+        scope: `${namespace}/hydra/${id}/`,
         confirmed,
       }),
       hasSnapshot: !!confirmed.config,
@@ -458,11 +461,23 @@ export function createHydraConnection() {
     }
 
     const chosen = selected === scope.id
+    const previousId = scope.id
+    const previousIdentity = scope.identity
     scopes.delete(scope.id)
     scope.id = canonical.id
     scope.identity = canonical.identity ?? canonical.id
+    moveHydraStorage({
+      storage: sessionStorage,
+      from: previousIdentity,
+      to: scope.identity,
+    })
+    moveHydraStorage({
+      storage: localStorage,
+      from: previousId,
+      to: canonical.id,
+    })
     scope.resource = pendingHydra({
-      scope: `${origin}/hydra/${canonical.id}/`,
+      scope: `${namespace}/hydra/${canonical.id}/`,
       confirmed: emptyHydra(),
     })
     scopes.set(
@@ -798,6 +813,18 @@ export function createHydraConnection() {
     }
 
     if (message.type === 'hello') {
+      if (message.installation !== installation) {
+        active = false
+        scope.ready = false
+        scope.failed = true
+        scope.error = 'This address now serves another Pnyx installation. Reload to continue.'
+        clearInterval(watchdog)
+        socket?.close()
+        publish()
+
+        return
+      }
+
       if (!physicalHydra) {
         physicalHydra = message.scope
         scope.subscribed = true

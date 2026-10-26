@@ -46,12 +46,14 @@ for (const recovery of [
           code: script.code,
           token: localToken(),
           identity: hydraIdentity({ hydraId: s.hydraId }),
+          installation: hydraIdentity({ hydraId: '' }),
           hydraId: s.hydraId,
         },
         check: ({
           code,
           token,
           identity,
+          installation,
           hydraId,
         }) => {
           if (document.readyState !== 'complete') {
@@ -76,6 +78,10 @@ for (const recovery of [
               [
                 'pnyx-hydra',
                 identity,
+              ],
+              [
+                'pnyx-installation',
+                installation,
               ],
             ]) {
             const meta = document.createElement('meta')
