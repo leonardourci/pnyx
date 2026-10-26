@@ -46,7 +46,7 @@ test(
           'digest',
         ],
       }),
-      /Owner memory uses 24000 of 24000 characters\. Load the inscribe skill/,
+      /Owner memory uses 24000 of 24000 characters\. Load the pnyx-inscribe skill/,
     )
     assert.equal(
       await s.ownerRefused({
@@ -109,7 +109,7 @@ test(
           'digest',
         ],
       }),
-      /nearly full: load inscribe with this project/,
+      /nearly full: load pnyx-inscribe with this project/,
     )
     assert.equal(
       await s.ownerRefused({

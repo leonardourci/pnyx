@@ -409,7 +409,7 @@ export function checkProjectMemoryBudget({
     throw new HydraError({
       message: `Project memory would use ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
       code: 'MEMORY_FULL',
-      help: ['Load inscribe: merge, shorten or forget project entries, then save again'],
+      help: ['Load pnyx-inscribe: merge, shorten or forget project entries, then save again'],
     })
   }
 

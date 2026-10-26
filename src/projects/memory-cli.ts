@@ -71,7 +71,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
       changed: view.changed.length ? view.changed : 'none',
       fingerprint: view.currentSources.fingerprint || 'unavailable',
       help: [
-        ...(view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL ? ['Project memory is nearly full: load inscribe with this project and curate it.'] : []),
+        ...(view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL ? ['Project memory is nearly full: load pnyx-inscribe with this project and curate it.'] : []),
         'Read changed files at the listed ref (git show <ref>:<file>); profile saves need --sources <fingerprint>. Do not refresh from a worker branch.',
       ],
     }

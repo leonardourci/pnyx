@@ -27,7 +27,7 @@ export function projectDigest({ state }: { state: HydraState }): string[] {
       })
       const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ' · nearly full: load inscribe with this project' : ''}${stale.length ? ` · ${stale.length} stale learnings: load inscribe` : ''}`
+      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ' · nearly full: load pnyx-inscribe with this project' : ''}${stale.length ? ` · ${stale.length} stale learnings: load pnyx-inscribe` : ''}`
     }),
   ]
 }

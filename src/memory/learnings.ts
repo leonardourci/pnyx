@@ -344,7 +344,7 @@ export function learningDigest({
   })
 
   if (stale.size) {
-    text.push('Load inscribe: recheck stale learnings, confirm with session evidence or archive; old versions stay recoverable in the memory log.')
+    text.push('Load pnyx-inscribe: recheck stale learnings, confirm with session evidence or archive; old versions stay recoverable in the memory log.')
   }
 
   return text.join('\n')

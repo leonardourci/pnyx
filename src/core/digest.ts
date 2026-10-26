@@ -13,7 +13,7 @@ export const OWNER_MEMORY_BUDGET = 24000
 // Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
 export const HYDRA_MEMORY_BUDGET = 1500
 // The skill Hydra loads to curate and save its memory before a reset.
-export const MEMORY_SKILL = 'inscribe'
+export const MEMORY_SKILL = 'pnyx-inscribe'
 export const OWNER_DOCUMENTS = {
   preferences: 'Owner preferences',
   learnings: 'Learnings',

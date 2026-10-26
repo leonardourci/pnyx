@@ -644,7 +644,7 @@ test(
     )
     assert.match(
       String(await f.digest()),
-      /nearly full: load inscribe with this project/,
+      /nearly full: load pnyx-inscribe with this project/,
     )
     const duplicate = await f.memory({
       args: [
