@@ -50,6 +50,7 @@ for (const path of [
       t.mock.method(
         ServerResponse.prototype,
         'writeHead',
+        // eslint-disable-next-line pnyx/object-params -- Node owns ServerResponse.writeHead's signature.
         function (
           this: ServerResponse,
           ...args: Parameters<typeof original>
@@ -141,6 +142,7 @@ test(
       t.mock.method(
         ServerResponse.prototype,
         'writeHead',
+        // eslint-disable-next-line pnyx/object-params -- Node owns ServerResponse.writeHead's signature.
         function (
           this: ServerResponse,
           ...args: Parameters<typeof original>
