@@ -1480,3 +1480,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .picker-project .task-label { font-size: var(--text-meta); }
 .slash-menu .mention-excerpt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .slash-menu .mention-heading { align-items: flex-start; }
+
+.compaction-row { display: flex; align-items: center; gap: 8px; color: var(--color-muted); font-size: var(--text-ui); font-variant-numeric: tabular-nums; }
+.compaction-row[data-state="failed"] { color: var(--color-red); }
+.compaction-reason { display: block; margin-top: 4px; }
+.compaction-queue { margin: 0 16px 8px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 10px; }
+.compaction-queued { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 6px 0; }
+.compaction-queued > span { white-space: pre-wrap; overflow-wrap: anywhere; min-width: 0; font-size: var(--text-ui); }
+.compaction-queued .tooltip-anchor { flex-shrink: 0; }

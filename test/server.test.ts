@@ -228,6 +228,126 @@ function inbox<T>() {
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 type LatestActions = Extract<ServerMessage, { type: 'latest' }>['actions']
 
+async function waitForMessage({
+  next,
+  hydraId,
+  what,
+  matches,
+  ms = TIMEOUT_MS,
+}: {
+  next({ ms }: { ms: number }): Promise<ServerMessage>
+  hydraId: string
+  what: string
+  matches({ message }: { message: ServerMessage }): boolean
+  ms?: number
+}): Promise<ServerMessage> {
+  const deadline = Date.now() + ms
+  const lastMessages: ServerMessage[] = []
+  let cause: unknown
+
+  while (Date.now() < deadline) {
+    let message: ServerMessage
+
+    try {
+      message = await next({
+        ms: Math.max(
+          1,
+          deadline - Date.now(),
+        ),
+      })
+    } catch (error) {
+      cause = error
+      break
+    }
+
+    lastMessages.push(message)
+
+    if (lastMessages.length > 10) {
+      lastMessages.shift()
+    }
+
+    if (matches({ message })) {
+      return message
+    }
+  }
+
+  throw new Error(
+    `timed out waiting for ${what}: ${JSON.stringify({
+      hydraId,
+      state: loadHydra({ hydraId }).state,
+      lastMessages,
+    })}`,
+    { cause },
+  )
+}
+
+test(
+  'message waits keep one deadline under unrelated traffic and report their Hydra state',
+  async t => {
+    const hydraId = 'message-watchdog'
+    cli({
+      args: [
+        'hydra',
+        'create',
+        hydraId,
+        '--helper',
+        'off',
+      ],
+    })
+    const messages = inbox<ServerMessage>()
+    messages.put({ message: { type: 'pong' } })
+    let now = 0
+    const clock = t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
+
+    try {
+      await assert.rejects(
+        waitForMessage({
+          hydraId,
+          what: 'the expected server event',
+          ms: 20,
+          next: async ({ ms }) => {
+            const message = await messages.next({ ms })
+            now += 10
+            messages.put({ message: { type: 'pong' } })
+
+            return message
+          },
+          matches: ({ message }) => message.type === 'event',
+        }),
+        error => {
+          assert.ok(error instanceof Error)
+          const prefix = 'timed out waiting for the expected server event: '
+          assert.ok(error.message.startsWith(prefix))
+          const diagnostic = JSON.parse(error.message.slice(prefix.length))
+          assert.equal(
+            diagnostic.hydraId,
+            hydraId,
+          )
+          assert.equal(
+            diagnostic.state.seq,
+            loadHydra({ hydraId }).state.seq,
+          )
+          assert.deepEqual(
+            diagnostic.lastMessages,
+            [
+              { type: 'pong' },
+              { type: 'pong' },
+            ],
+          )
+
+          return true
+        },
+      )
+    } finally {
+      clock.mock.restore()
+    }
+  },
+)
+
 // Last-message pushes arrive on their own queue, so the other messages keep their order.
 async function tab({
   query = '',
@@ -279,6 +399,18 @@ async function tab({
     ws,
     hello,
     next: main.next,
+    waitForMessage: ({
+      what,
+      matches,
+    }: {
+      what: string
+      matches({ message }: { message: ServerMessage }): boolean
+    }) => waitForMessage({
+      next: main.next,
+      hydraId,
+      what,
+      matches,
+    }),
     summaries: summaries.next,
     spend: spend.next,
     async latest({ card }: { card: string }) {
@@ -1860,7 +1992,10 @@ test(
       ).catalog.suggestions.map(s => s.command)
       assert.deepEqual(
         commands,
-        [card === one ? '/skill-one' : '/skill-two'],
+        [
+          card === one ? '/skill-one' : '/skill-two',
+          '/compact',
+        ],
       )
     }
 
@@ -2120,6 +2255,16 @@ test(
 test(
   'a working card and its open conversation follow a transcript its agent keeps open, as Codex does, even under a Firstmate status',
   async () => {
+    const hydraId = 'open-transcript'
+    cli({
+      args: [
+        'hydra',
+        'create',
+        hydraId,
+        '--helper',
+        'off',
+      ],
+    })
     const transcript = join(
       process.env.PNYX_HOME!,
       'rollout.jsonl',
@@ -2174,11 +2319,11 @@ test(
           'work',
           '--file',
           input,
+          '--hydra',
+          hydraId,
         ],
       })
     }
-
-    const fileWatchers = () => process.getActiveResourcesInfo().filter(name => name === 'FSEventWrap').length
 
     try {
       cli({
@@ -2189,6 +2334,8 @@ test(
           'work',
           '--title',
           'Work',
+          '--hydra',
+          hydraId,
         ],
       })
       push({
@@ -2216,9 +2363,9 @@ test(
           },
         },
       })
-      const card = loadHydra({ hydraId: 'default' }).state.keys.work!
-      server = await startServer({ hydraId: 'default' })
-      const t = await tab(); await t.next()
+      const card = loadHydra({ hydraId }).state.keys.work!
+      server = await startServer({ hydraId })
+      const t = await tab({ hydraId }); await t.next()
       assert.equal(
         (await t.latest({ card }))?.text,
         'Starting.',
@@ -2265,13 +2412,11 @@ test(
         },
       )
 
-      for (;;) {
-        const message = await t.next()
-
-        if (message.type === 'thread' && message.thread.entries.some(e => e.text === 'Running the tests.')) {
-          break
-        }
-      }
+      await t.waitForMessage({
+        what: 'the open conversation to show the running rollout',
+        matches: ({ message }) => message.type === 'thread'
+          && message.thread.entries.some(entry => entry.text === 'Running the tests.'),
+      })
 
       writeSync(
         rollout,
@@ -2292,8 +2437,6 @@ test(
         true,
       )
 
-      // The file watcher goes once the session stops working.
-      const working = fileWatchers()
       push({
         fields: {
           activity: 'finished',
@@ -2304,19 +2447,30 @@ test(
         },
       })
 
-      const deadline = Date.now() + 5000
+      await t.waitForMessage({
+        what: 'the rollout hooks source to finish its activity',
+        matches: ({ message }) => message.type === 'event'
+          && message.event.type === 'card.pushed'
+          && message.event.cardId === card
+          && message.event.data.activity === 'finished'
+          && message.event.data.source?.adapter === 'hooks'
+          && message.event.data.source.objectId === 'rollout',
+      })
 
-      while (fileWatchers() >= working && Date.now() < deadline) {
-        await new Promise(r => setTimeout(
-          r,
-          50,
-        ))
-      }
-
-      assert.equal(
-        fileWatchers(),
-        working - 1,
+      writeSync(
+        rollout,
+        reply({
+          text: 'Finished; the open conversation still follows.',
+          at: '2026-10-13T11:00:10Z',
+        }),
       )
+
+      await t.waitForMessage({
+        what: 'the open conversation to follow the finished rollout',
+        matches: ({ message }) => message.type === 'thread'
+          && message.thread.entries.some(entry => entry.text === 'Finished; the open conversation still follows.'),
+      })
+
       t.ws.close()
     } finally {
       closeSync(rollout)
@@ -2452,8 +2606,8 @@ test(
 )
 
 test(
-  'health checks and the event loop stay responsive while a large transcript is counted',
-  async () => {
+  'large-transcript token counting stays off the server event loop while health checks succeed',
+  async context => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
     const at = new Date().toISOString()
@@ -2505,24 +2659,15 @@ test(
       from: 1,
       count: records,
     })
+    const parses = context.mock.method(
+      JSON,
+      'parse',
+    )
+    context.after(() => parses.mock.restore())
     appendFileSync(
       fixture.transcript,
       grown,
     )
-    let gap = 0
-    let tick = performance.now()
-    const ticker = setInterval(
-      () => {
-        const now = performance.now()
-        gap = Math.max(
-          gap,
-          now - tick,
-        )
-        tick = now
-      },
-      5,
-    )
-    const started = performance.now()
     let counted = false
     const spend = t.spend().then(spend => {
       counted = true
@@ -2535,16 +2680,15 @@ test(
       checks.push(!!await readServer({ hydraId: 'default' }))
     }
 
-    const countMs = performance.now() - started
-    clearInterval(ticker)
     assert.equal(
       (await spend)[card]?.total,
       (records + 1) * 3,
     )
     assert.ok(checks.length > 0 && checks.every(Boolean))
+    // A worker has its own JSON object; the server may parse the tail, but never the first growth row.
     assert.ok(
-      gap < 150,
-      `the event loop stalled ${Math.round(gap)} ms while counting took ${Math.round(countMs)} ms`,
+      parses.mock.calls.every(call => !String(call.arguments[0]).includes('"id":"usage-1"')),
+      'the server parsed transcript growth on its own event loop',
     )
     t.ws.close()
   },

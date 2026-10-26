@@ -1,4 +1,6 @@
 import { incorporateInboxNotice } from './inbox-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
+import { inboxCommand } from '../src/task-inbox/cli.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
@@ -17,8 +19,9 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { decideOutcome, decidePush, decideSession } from '../src/core/decide.ts'
 import type { Card } from '../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import { createHost, type QueryFn } from '../src/server/host.ts'
-import { startServer, type RunningServer } from '../src/server/server.ts'
+import type { QueryFn } from '../src/server/host.ts'
+import { hostObserver } from './host-observer.ts'
+import type { RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
@@ -163,20 +166,11 @@ function fakeSdk() {
   }
 }
 
-async function until({ check }: { check: () => boolean }) {
-  for (let i = 0; i < 200; i++) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail(`timed out waiting for ${check}`)
-}
+const {
+  startServer,
+  createHost,
+  until,
+} = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
 
 async function lab() {
   const root = realpathSync(mkdtempSync(join(
@@ -296,6 +290,337 @@ const start = ({ id }: { id: string }) => startTask({
     id,
   },
 })
+
+test(
+  'worker compact gates inbox reads and preserves selected-message acknowledgement order',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    const codex = fakeCodex({
+      root: folder,
+      compact: 'hold',
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await start({ id: 'start-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    assert.equal(
+      task().steering?.some(message => message.text === '/compact') ?? false,
+      false,
+    )
+
+    for (const [
+      id,
+      text,
+    ] of [
+        [
+          'held-first',
+          'First',
+        ],
+        [
+          'held-second',
+          'Second',
+        ],
+      ]) {
+      await sendReply({
+        hydraId: 'lab',
+        request: {
+          card: task().id,
+          text: text!,
+          homes: [],
+          actor: 'test',
+          id,
+        },
+      })
+    }
+
+    await until({ check: () => task().compaction?.inputs.length === 2 })
+    const read = inboxCommand({
+      args: [
+        'read',
+        'ship',
+        '--hydra',
+        'lab',
+      ],
+    }) as { messages: unknown }
+    assert.equal(
+      read.messages,
+      'none: no pending steering',
+    )
+    await agent([
+      'ship',
+      '--send-now',
+      'held-second',
+      '--hydra',
+      'lab',
+    ])
+    await until({
+      check: () => task().steering?.filter(message => message.ack).length === 2
+      && task().compaction?.inputs.length === 0,
+    })
+    const acknowledgements = readEvents({ hydraId: 'lab' }).filter(event => event.type === 'task.steering.handled')
+    assert.deepEqual(
+      acknowledgements.map(event => event.data.message),
+      [
+        'held-second',
+        'held-first',
+      ],
+    )
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'cancelled',
+    )
+  },
+)
+
+test(
+  'a queued direct compact stays durable until the provider reads it',
+  async t => {
+    const { task } = await lab()
+    const sdk = hydraSdk()
+    let unblock = () => {}, blocked = () => {}
+    const gate = new Promise<void>(resolve => unblock = resolve)
+    const waiting = new Promise<void>(resolve => blocked = resolve)
+
+    const query = ((args: Parameters<QueryFn>[0]) => {
+      if (typeof args.prompt === 'string') {
+        return sdk.query(args)
+      }
+
+      const prompt = args.prompt
+
+      return sdk.query({
+        ...args,
+        prompt: (async function* () {
+          for await (const message of prompt) {
+            yield message
+
+            if (message.message.content === '/compact') {
+              blocked()
+              await gate
+            }
+          }
+        })(),
+      })
+    }) as QueryFn
+    server = await startServer({
+      hydraId: 'lab',
+      query,
+    })
+    await start({ id: 'direct-queue-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    sdk.control.hold = true
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    await sendReply({
+      hydraId: 'lab',
+      request: {
+        card: task().id,
+        text: '/compact',
+        homes: [],
+        actor: 'test',
+        id: 'queued-compact',
+      },
+    })
+    t.mock.timers.enable({ apis: ['setTimeout'] })
+
+    try {
+      sdk.release()
+      await waiting
+      t.mock.timers.tick(0)
+      await new Promise<void>(resolve => setImmediate(resolve))
+      assert.equal(
+        task().compaction?.inputs[0]?.id,
+        'queued-compact',
+      )
+      await server.close()
+      t.mock.timers.reset()
+      unblock()
+      const resumed = hydraSdk()
+      server = await startServer({
+        hydraId: 'lab',
+        query: resumed.query,
+      })
+      await until({ check: () => task().compaction?.operations.length === 2 && task().compaction?.operations.at(-1)?.state === 'done' })
+      assert.equal(
+        resumed.calls[0]!.raw.filter(text => text === '/compact').length,
+        1,
+      )
+      assert.equal(
+        task().compaction!.inputs.length,
+        0,
+      )
+    } finally {
+      t.mock.timers.reset()
+      unblock()
+    }
+  },
+)
+
+test(
+  'restart during automatic compaction resumes the unfinished worker turn',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    commands.task([
+      'brief',
+      'ship',
+      '--brief',
+      'AUTO_COMPACT_HOLD',
+      '--hydra',
+      'lab',
+    ])
+    const first = fakeCodex({
+      root: folder,
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await start({ id: 'auto-worker' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.trigger === 'auto' })
+    await server.close()
+    const resumed = fakeCodex({
+      root: folder,
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: resumed.spawnCodex,
+    })
+    await until({ check: () => resumed.messages().some(message => message.method === 'turn/start') && task().sessionActivity === 'finished' })
+    assert.equal(
+      resumed.messages().filter(message => message.method === 'turn/start').length,
+      1,
+    )
+    assert.match(
+      JSON.stringify(resumed.messages()),
+      /Pnyx restarted during your turn/,
+    )
+    assert.equal(
+      resumed.messages().some(message => message.method === 'thread/compact/start'),
+      false,
+    )
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'failed',
+    )
+  },
+)
+
+test(
+  'a compacting session moves its running status to the current task and retains old instructions',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    const codex = fakeCodex({
+      root: folder,
+      compact: 'hold',
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await start({ id: 'start-moving-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    await reply({ text: 'Instruction for the original task' })
+    await until({ check: () => task().compaction?.inputs.length === 1 })
+    const session = task().sessionIds![0]!
+    commands.task([
+      'create',
+      '--title',
+      'Destination',
+      '--key',
+      'destination',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'attach',
+      'destination',
+      '--session',
+      session,
+      '--hydra',
+      'lab',
+    ])
+
+    const destination = () => {
+      const state = loadHydra({ hydraId: 'lab' }).state
+
+      return state.cards[state.keys.destination!]!
+    }
+
+    await until({ check: () => destination().compaction?.operations.at(-1)?.state === 'running' })
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'failed',
+    )
+    assert.equal(
+      task().compaction!.inputs.length,
+      1,
+    )
+    assert.equal(
+      task().steering!.some(message => message.ack),
+      false,
+    )
+    await agent([
+      'destination',
+      '--cancel-compact',
+      '--hydra',
+      'lab',
+    ])
+    await until({ check: () => destination().compaction?.operations.at(-1)?.state === 'cancelled' })
+    assert.equal(
+      task().compaction!.inputs.length,
+      1,
+    )
+  },
+)
 
 test(
   'task start runs Claude Code through the server, records it on the task and takes replies',

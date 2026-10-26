@@ -415,6 +415,7 @@ export interface TaskHold {
 }
 
 export interface Card {
+  compaction?: import('../compaction/model.ts').CompactionState
   projectRefresh?: Record<string, ProjectRefresh>
   prerequisites?: string[]
   hold?: TaskHold
@@ -1214,6 +1215,7 @@ export type ChatEvent = EventBase & {
 }
 
 export type HydraEvent =
+  | import('../compaction/model.ts').CompactionEvent
   | ExternalSourceEvent
   | SteeringEvent
   | PushedEvent
@@ -1229,6 +1231,7 @@ export type HydraEvent =
   | PermissionEvent
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
+  'session.compaction',
   'task.source.registered',
   'task.source.lavish.published',
   'task.source.started',

@@ -77,6 +77,8 @@ export function Composer({
   settings,
   meter,
   stop,
+  compacting = false,
+  serverComments = true,
   focusAbove,
 }: {
   card: string
@@ -99,6 +101,8 @@ export function Composer({
   settings?: ReactNode
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
+  compacting?: boolean
+  serverComments?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
 }) {
@@ -373,32 +377,32 @@ export function Composer({
     key: card,
     hydraId,
   }))
-  // Comments travel with the draft as one reply, and stay until it is delivered.
   const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
   const [
     taught,
     setTaught,
-  ] = useState(() => {
-    try {
-      return localStorage.getItem(commentKey) === 'sent'
-    } catch {
-      return false
-    }
-  })
+  ] = useState(false)
   useEffect(
     () => {
+      if (serverComments) {
+        return
+      }
+
       try {
         setTaught(localStorage.getItem(commentKey) === 'sent')
       } catch {
         setTaught(false)
       }
     },
-    [commentKey],
+    [
+      commentKey,
+      serverComments,
+    ],
   )
   const outgoing = commentReply({
     draft,
     comments,
-    firstComment: !taught,
+    firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const commented = sendable.length
@@ -445,6 +449,13 @@ export function Composer({
   }))
 
   const choose = ({ command }: { command: string }) => {
+    const unavailable = catalog?.suggestions.some(item =>
+      skillReference({ item }) === command && item.unavailable)
+
+    if (unavailable) {
+      return
+    }
+
     const cursor = input.current?.selectionStart ?? display.length
     const query = slashPrefix({
       text: display,
@@ -559,7 +570,7 @@ export function Composer({
       } | undefined
 
       if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        if (commented || taken?.comments.length) {
+        if (!serverComments && (commented || taken?.comments.length)) {
           setTaught(true)
 
           try {
@@ -744,6 +755,7 @@ export function Composer({
                   '',
                 )}`,
                 detail: '',
+                disabled: Boolean(item.unavailable),
                 badge: item.project ? (
                   <Label
                     project
@@ -1091,7 +1103,7 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
-                    firstComment: !taught,
+                    firstComment: !serverComments && !taught,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'
@@ -1123,8 +1135,8 @@ export function Composer({
           {stop && (
             <Button
               className="composer-stop"
-              aria-label="Stop Hydra"
-              title="Stop Hydra’s turn; workers keep going"
+              aria-label={compacting ? 'Cancel compaction' : 'Stop Hydra'}
+              title={compacting ? 'Cancel compaction' : 'Stop Hydra’s turn; workers keep going'}
               onClick={() => void stop()}
             >
               <Icon name="stop" size={12} />

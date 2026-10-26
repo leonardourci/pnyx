@@ -1,6 +1,6 @@
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 import { acknowledgeSteering, inboxTask, requireSteeringWorker } from '../src/task-inbox/inbox.ts'
-import { steeringClaim } from '../src/task-inbox/state.ts'
+import { pendingSteering, steeringClaim } from '../src/task-inbox/state.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
 
 export function incorporateInboxNotice({
@@ -66,8 +66,7 @@ export function incorporateInboxNotice({
         throw new Error('Notice names an unknown steering ID')
       }
 
-      const messages = (card.steering ?? []).filter(message =>
-        !message.ack && ids.includes(message.id))
+      const messages = pendingSteering({ card }).filter(message => ids.includes(message.id))
 
       for (const message of messages) {
         acknowledgeSteering({

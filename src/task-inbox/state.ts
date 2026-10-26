@@ -1,6 +1,18 @@
+import { activeCompaction } from '../compaction/state.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
 import type { Card, HydraEvent, HydraState, SteeringClaim } from '../core/model.ts'
 import { cardSessionId } from '../core/tasks.ts'
+
+export function pendingSteering({ card }: { card: Card }) {
+  if (activeCompaction({ card })) {
+    return []
+  }
+
+  return (card.steering ?? []).filter(message => !message.ack).sort((
+    a,
+    b,
+  ) => Number(b.id === card.compaction?.priority) - Number(a.id === card.compaction?.priority))
+}
 
 export function steeringHeld({ card }: { card: Card }): boolean {
   return Boolean(card.hold || pausedDeclaration({ card })?.hold)
@@ -99,7 +111,7 @@ export function applySteering({
 
     message.recovery = recovery
   } else {
-    const message = card.steering?.find(message => !message.ack)
+    const message = pendingSteering({ card })[0]
 
     if (!message || message.id !== event.data.message || !sameClaim({
       current: steeringClaim({ card }),
@@ -109,6 +121,10 @@ export function applySteering({
     }
 
     message.ack = structuredClone(event.data.ack)
+
+    if (card.compaction) {
+      card.compaction.inputs = card.compaction.inputs.filter(input => input.id !== message.id)
+    }
   }
 
   card.revision++
