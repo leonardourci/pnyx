@@ -3989,6 +3989,7 @@ function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
     case 'task.source.registered': return `External source ${event.data.source.id} registered`
     case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
     case 'task.source.started': return `External source ${event.data.source} run started`
