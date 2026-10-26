@@ -18,9 +18,8 @@ import { refuseEarlyDone } from '../landing/done.ts'
 import { taskSpend } from '../spend/tasks.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { learningChange, staleLearnings } from '../memory/learnings.ts'
-import { ownerAsk, taskInstructions } from '../core/intent.ts'
+import { ownerAsk } from '../core/intent.ts'
 import { setupCheckOutput } from '../setup/check.ts'
-import { projectWorkerContext } from '../projects/context.ts'
 import { decideQueue } from '../queue/decide.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { mentionContext, REFERENCE, referenceLabel } from '../mentions/mentions.ts'
@@ -41,7 +40,7 @@ import { sendReply } from './reply.ts'
 import { askCommand, askRows } from './asks.ts'
 import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
-import { setupHydra, startHydra, startTask } from './start.ts'
+import { setupHydra, startHydra, startTask, taskPrompt } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
 import { copyCommand } from '../copies/cli.ts'
 import { POOL_IDLE } from '../copies/copies.ts'
@@ -2007,21 +2006,16 @@ async function afterAttach({
 
   const state = loadHydra({ hydraId }).state
   const home = state.config?.hydra.home
-  const context = projectWorkerContext({
-    hydraId,
-    state,
-    project: state.cards[attachment.cardId]?.project,
-  })
 
   try {
     const brief = await sendReply({
       hydraId,
       request: {
         card: attachment.cardId,
-        text: [
-          context,
-          taskInstructions({ card: state.cards[attachment.cardId]! }),
-        ].filter(Boolean).join('\n\n'),
+        text: taskPrompt({
+          hydraId,
+          card: state.cards[attachment.cardId]!,
+        }),
         expectedSession: attachment.data.session,
         homes: home ? [home] : [],
         actor: meta.actor,
