@@ -1,8 +1,11 @@
+import { useProjectsResource } from './project-resource.ts'
+import { PendingStatus } from '../components/ui/pending-status.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useRef, useState } from 'react'
 import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { FolderSearch } from '../components/ui/folder-search.tsx'
+import { CommandFailure } from './pending-intents.ts'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
 import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
@@ -108,6 +111,15 @@ export function AddProject({
   cancel?(): void
   autoFocus?: boolean
 }) {
+  const {
+    mutate,
+    projects,
+    intents,
+  } = useProjectsResource({
+    command,
+    connected,
+  })
+  const recovered = intents.findLast(intent => intent.stage === 'refused')
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(
     () => {
@@ -127,10 +139,10 @@ export function AddProject({
   const [
       path,
       setPath,
-    ] = useState(''), [
+    ] = useState(recovered?.patch.path ?? ''), [
       repository,
       setRepository,
-    ] = useState('')
+    ] = useState(recovered ? recovered.patch.args[recovered.patch.args.indexOf('--clone') + 1] ?? '' : '')
   const [
     busy,
     setBusy,
@@ -152,11 +164,11 @@ export function AddProject({
   const disabled = !connected || busy
 
   const run = async ({ args }: { args: string[] }) => {
-    setBusy(true)
+    const previousMode = mode
+    setBusy(true); setMode(null)
 
     try {
-      const receipt = await command({
-        name: 'project',
+      const receipt = await mutate({
         args: [
           ...args,
           ...landingArgs({ choice: landing }),
@@ -181,6 +193,10 @@ export function AddProject({
         notify({ text: 'Project attached.' }); attached?.()
       }
     } catch (error) {
+      if (!(error instanceof CommandFailure) || error.outcome === 'refused') {
+        setMode(previousMode)
+      }
+
       notify({ text: (error as Error).message })
     } finally {
       setBusy(false)
@@ -212,6 +228,13 @@ export function AddProject({
         </Button>
         {cancel && <Button disabled={busy} onClick={cancel} aria-label="Close add project"><Icon name="close" /></Button>}
       </div>
+      {projects.some(project => project.pending) && (
+        <ul className="project-list">{projects.filter(project => project.pending).map(project => (
+          <li key={project.path}><strong>{project.name}</strong> <span>{project.path}</span> <span role="status">{project.pending}</span></li>
+        ))}
+        </ul>
+      )}
+      <PendingStatus intents={intents} />
       {mode && !confirmation && (
         <form
           className="project-form"

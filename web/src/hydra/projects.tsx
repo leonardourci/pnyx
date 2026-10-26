@@ -1,18 +1,12 @@
-import { useCallback, useEffect, useState } from 'react'
-import type { HydraProject, HydraState } from '../../../src/core/model.ts'
+import { useEffect, useState } from 'react'
+import type { HydraState } from '../../../src/core/model.ts'
 import { AddProject, ProjectSharing } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
+import { useProjectsResource, type ProjectRow } from './project-resource.ts'
+import { PendingStatus } from '../components/ui/pending-status.tsx'
 import { LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
 
-type ProjectRow = {
-  name: string
-  path: string
-  state: string
-  landing: LandingChoice['landing']
-  merge: LandingChoice['merge']
-  startCommand?: HydraProject['startCommand']
-}
 type Confirmation = {
   token: string
   path: string
@@ -27,14 +21,12 @@ type Confirmation = {
 function ProjectCommand({
   project,
   disabled,
-  command,
-  refresh,
+  mutate,
   notify,
 }: {
   project: ProjectRow
   disabled: boolean
-  command: Command
-  refresh(): Promise<void>
+  mutate({ args }: { args: string[] }): Promise<unknown>
   notify({ text }: { text: string }): void
 }) {
   const [
@@ -60,8 +52,7 @@ function ProjectCommand({
       aria-label={`Start settings for ${project.name}`}
       onSubmit={e => {
         e.preventDefault(); setBusy(true)
-        void command({
-          name: 'project',
+        void mutate({
           args: [
             'set',
             project.path,
@@ -75,14 +66,14 @@ function ProjectCommand({
             crypto.randomUUID(),
           ],
         })
-          .then(async () => {
-            await refresh(); notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
+          .then(() => {
+            notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
           })
           .catch((error: Error) => notify({ text: error.message }))
           .finally(() => setBusy(false))
       }}
     >
-      <fieldset disabled={disabled || busy}>
+      <fieldset disabled={disabled}>
         <label>Start command name<Input
           aria-label={`Start command name for ${project.name}`}
           value={name}
@@ -108,31 +99,20 @@ function ProjectCommand({
   )
 }
 
-// Saved as soon as it changes, like other inline settings.
 function ProjectLanding({
   project,
   disabled,
-  command,
-  refresh,
+  mutate,
   notify,
 }: {
   project: ProjectRow
   disabled: boolean
-  command: Command
-  refresh(): Promise<void>
+  mutate({ args }: { args: string[] }): Promise<unknown>
   notify({ text }: { text: string }): void
 }) {
-  const [
-    busy,
-    setBusy,
-  ] = useState(false)
-
   const save = async ({ choice }: { choice: LandingChoice }) => {
-    setBusy(true)
-
     try {
-      await command({
-        name: 'project',
+      await mutate({
         args: [
           'set',
           project.path,
@@ -141,12 +121,9 @@ function ProjectLanding({
           crypto.randomUUID(),
         ],
       })
-      await refresh()
       notify({ text: 'Landing rule saved.' })
     } catch (error) {
       notify({ text: (error as Error).message })
-    } finally {
-      setBusy(false)
     }
   }
 
@@ -157,7 +134,7 @@ function ProjectLanding({
         landing: project.landing,
         merge: project.merge,
       }}
-      disabled={disabled || busy}
+      disabled={disabled}
       onChange={save}
     />
   )
@@ -174,63 +151,37 @@ export function Projects({
   command: Command
   notify({ text }: { text: string }): void
 }) {
-  const [
+  const {
     projects,
-    setProjects,
-  ] = useState<ProjectRow[]>([])
-  const [
     readonly,
-    setReadonly,
-  ] = useState(false)
-  const [
-      busy,
-      setBusy,
-    ] = useState(false), [
-      loading,
-      setLoading,
-    ] = useState(true)
+    loaded,
+    error,
+    mutate,
+    intents,
+    refresh,
+  } = useProjectsResource({
+    command,
+    connected,
+    revision: `${state.projectsRevision ?? 0}:${state.config?.hydra.kind}:${state.config?.hydra.home ?? ''}`,
+  })
   const [
     confirmation,
     setConfirmation,
   ] = useState<Confirmation | null>(null)
-  const refresh = useCallback(
-    () => command({
-      name: 'project',
-      args: ['list'],
-    }).then(r => {
-      setProjects(Array.isArray(r.projects) ? r.projects as ProjectRow[] : [])
-      setReadonly(r.readonly === true); setLoading(false)
-    }),
-    [command],
-  )
   useEffect(
     () => {
-      if (!connected) {
-        setLoading(true)
-
-        return
+      if (error) {
+        notify({ text: error })
       }
-
-      void refresh().catch((e: Error) => {
-        setLoading(false); notify({ text: e.message })
-      })
     },
     [
-      connected,
-      state.projectsRevision,
-      state.config?.hydra.home,
-      state.config?.hydra.kind,
-      refresh,
+      error,
       notify,
     ],
   )
 
   const run = ({ args }: { args: string[] }) => {
-    setBusy(true)
-    void command({
-      name: 'project',
-      args,
-    }).then(async r => {
+    void mutate({ args }).then(r => {
       if (r.confirmation === 'needed') {
         const preview = r.preview as {
           project: {
@@ -246,43 +197,41 @@ export function Projects({
           hydras: preview.hydras,
         })
       } else {
-        setConfirmation(null); await refresh()
+        setConfirmation(null)
         const text = args[0] === 'remove'
           ? 'Project detached. Tasks and history stay.' : 'Project attached.'
         notify({ text })
       }
     })
       .catch((e: Error) => notify({ text: e.message }))
-      .finally(() => setBusy(false))
   }
 
   const row = ({ project: p }: { project: ProjectRow }) => (
     <li key={p.path} className={`project-row ${p.state === 'detached' ? 'detached' : ''}`}>
       <div className="project-details">
         <strong>{p.name}</strong><span className="project-path">{p.path}</span>
+        {p.pending && <span role="status">{p.pending}</span>}
         {!readonly && p.state === 'attached' && (
           <ProjectLanding
             project={p}
-            disabled={!connected || busy}
-            command={command}
-            refresh={refresh}
+            disabled={!connected || !!p.pending}
+            mutate={mutate}
             notify={notify}
           />
         )}
         {!readonly && p.state === 'attached' && (
           <ProjectCommand
-            key={JSON.stringify(p.startCommand)}
+            key={p.path}
             project={p}
-            disabled={!connected || busy}
-            command={command}
-            refresh={refresh}
+            disabled={!connected || !!p.pending}
+            mutate={mutate}
             notify={notify}
           />
         )}
       </div>
       {!readonly && (
         <Button
-          disabled={busy || !connected}
+          disabled={!connected || !!p.pending}
           aria-label={`${p.state === 'detached' ? 'Re-attach' : 'Detach'} ${p.name}`}
           onClick={() => run({
             args: [
@@ -299,15 +248,15 @@ export function Projects({
   return (
     <section className="settings-box" aria-label="Projects">
       <h2>Projects</h2>
-      {loading ? <p className="muted">Loading projects…</p> : (
+      {!loaded && !projects.length ? <p className="muted">Loading projects…</p> : (
         <>
           {readonly && (
             <>
               <p className="muted">Managed by Firstmate. Projects are read-only here.</p>
               <Button
-                disabled={busy || !connected}
+                disabled={!connected}
                 onClick={() => {
-                  void refresh().catch((e: Error) => notify({ text: e.message }))
+                  void refresh()
                 }}
               >Refresh projects
               </Button>
@@ -321,17 +270,15 @@ export function Projects({
               command={command}
               connected={connected}
               notify={notify}
-              attached={() => {
-                void refresh().catch((error: Error) => notify({ text: error.message }))
-              }}
             />
           )}
         </>
       )}
+      <PendingStatus intents={intents} />
       {confirmation && (
         <ProjectSharing
           confirmation={confirmation}
-          disabled={busy || !connected}
+          disabled={!connected}
           cancel={() => setConfirmation(null)}
           confirm={() => run({
             args: [
