@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { listHydras } from '../../src/server/hydras.ts'
 import { browserGroup } from './browser.ts'
 import { scenarioGroup, until } from './harness.ts'
 
@@ -126,6 +127,18 @@ test(
           return true
         },
       })
+      await page.shows({
+        what: 'a previously saved B draft',
+        arg: { identity: listHydras().find(row => row.id === b.hydraId)!.identity },
+        check: ({ identity }) => {
+          sessionStorage.setItem(
+            `pnyx:${identity}:restore`,
+            JSON.stringify({ drafts: { '$hydra': 'Saved B draft' } }),
+          )
+
+          return true
+        },
+      })
       await page.click({ selector: '.column-queued .inline-title' })
       await page.press({ key: 'Enter' })
       await page.type({ text: 'A waiting' })
@@ -141,6 +154,7 @@ test(
           return location.pathname === `/hydra/${b}/`
         && document.querySelector('.hydra-name[aria-current=page]')?.textContent?.includes(b)
         && !document.querySelector('.kanban')?.textContent?.includes('Only in A')
+        && (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === 'Saved B draft'
         },
       })
       await page.click({
@@ -352,6 +366,89 @@ test(
         check: ({ id }) => document.querySelector('main')?.getAttribute('data-hydra') === id
       && (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === 'Keep this draft through creation',
       })
+    } finally {
+      await page.close()
+    }
+  },
+)
+
+test(
+  'a saved creation with a lost receipt recovers after reload without allocating another Hydra',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+
+    try {
+      await page.shows({
+        what: 'connected before creation recovery',
+        check: () => document.querySelector('[data-connected=true]'),
+      })
+      await page.shows({
+        what: 'suppress allocation acknowledgements',
+        check: () => {
+          const send = WebSocket.prototype.send
+          const control = window as unknown as { creationAttempt: string }
+
+          // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
+          WebSocket.prototype.send = function(data) {
+            const message = typeof data === 'string' ? JSON.parse(data) : null
+
+            if (message?.name === 'hydras' && message.args[0] === 'create') {
+              control.creationAttempt = message.args[2]
+              const receive = this.onmessage!
+
+              this.onmessage = event => {
+                const payload = JSON.parse(event.data)
+                const allocation = payload.creation?.attempt === control.creationAttempt
+                const listed = payload.hydras?.some((row: { creationAttempt?: string }) =>
+                  row.creationAttempt === control.creationAttempt)
+
+                if (!allocation && !listed) {
+                  receive.call(
+                    this,
+                    event,
+                  )
+                }
+              }
+            }
+
+            send.call(
+              this,
+              data,
+            )
+          }
+
+          return true
+        },
+      })
+      await page.click({ selector: "[aria-label='Create Hydra']" })
+      const attempt = await page.shows({
+        what: 'a pending saved attempt',
+        check: () => document.querySelector('main[data-provisional=true]')
+        && (window as unknown as { creationAttempt: string }).creationAttempt,
+      })
+      await page.type({ text: 'Recover my creation draft' })
+      const canonical = await until({
+        what: 'the allocation to be durable without delivering its receipt',
+        check: () => listHydras().find(row => row.creationAttempt === attempt),
+      })
+      const count = listHydras().length
+      await page.reload()
+      await page.shows({
+        what: 'the same canonical Hydra and recovered draft after reload',
+        arg: { id: canonical.id },
+        check: ({ id }) => document.querySelector('main')?.getAttribute('data-hydra') === id
+        && document.querySelector('[data-connected=true]')
+        && (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === 'Recover my creation draft',
+      })
+      assert.equal(
+        listHydras().length,
+        count,
+      )
+      assert.equal(
+        listHydras().filter(row => row.creationAttempt === attempt).length,
+        1,
+      )
     } finally {
       await page.close()
     }

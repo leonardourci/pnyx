@@ -138,8 +138,9 @@ export function createHydraConnection() {
       return existing
     }
 
-    const identity = id === initialId
-      ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id
+    const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
+    const identity = summary?.identity ?? (id === initialId
+      ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id)
     const legacy = stored({
       key: `pnyx:${identity}:hydra-state`,
       fallback: emptyHydra(),
