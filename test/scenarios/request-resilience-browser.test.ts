@@ -36,7 +36,11 @@ test(
       path: string
       line: string
     }
-    await source.chat({ text: `Look at this image.\n${image.line}` })
+    const legacy = image.line.replace(
+      '/hydras/',
+      '/boards/',
+    )
+    await source.chat({ text: `Look at this image.\n${image.line}\n${legacy}` })
     const workers: {
       key: string
       folder: string
@@ -92,14 +96,22 @@ test(
         what: 'the source image to load',
         check: () => [...document.querySelectorAll<HTMLImageElement>('.hydra-chat img')].some(img => img.complete && img.naturalWidth === 1),
       })
+      const rendered = await page.shows({
+        what: 'current and migrated attachment paths to render',
+        check: () => ({ images: document.querySelectorAll('.hydra-chat img').length }),
+      })
+      assert.equal(
+        rendered.images,
+        2,
+      )
       await page.click({
         selector: '.hydra-name',
         text: target.hydraId,
       })
       await page.shows({
         what: 'the target Hydra to connect',
-        arg: target.hydraId,
-        check: id => document.querySelector('.hydra-name[aria-current=page]')?.textContent?.includes(id),
+        arg: { id: target.hydraId },
+        check: ({ id }) => document.querySelector('.hydra-name[aria-current=page]')?.textContent?.includes(id),
       })
       // Hold only the save receipt to reproduce switching before an in-flight command settles.
       await page.shows({
@@ -107,6 +119,7 @@ test(
         check: () => {
           const send = WebSocket.prototype.send
 
+          // eslint-disable-next-line pnyx/object-params -- WebSocket owns its send signature.
           WebSocket.prototype.send = function (data) {
             const message = JSON.parse(String(data))
 
@@ -162,8 +175,8 @@ test(
       })
       await page.shows({
         what: 'the cached source chat to render before its save settles',
-        arg: source.hydraId,
-        check: id => document.querySelector('.hydra-name[aria-current=page]')?.textContent?.includes(id)
+        arg: { id: source.hydraId },
+        check: ({ id }) => document.querySelector('.hydra-name[aria-current=page]')?.textContent?.includes(id)
         && document.querySelector('.hydra-chat .messages')?.textContent?.includes('Look at this image.'),
       })
       await page.shows({
@@ -190,9 +203,9 @@ test(
       )
       await page.shows({
         what: 'navigation to finish with the image still visible',
-        arg: source.hydraId,
-        check: id => document.querySelector('base')?.getAttribute('href') === `/hydra/${id}/`
-          && [...document.querySelectorAll<HTMLImageElement>('.hydra-chat img')].some(img => img.complete && img.naturalWidth === 1),
+        arg: { id: source.hydraId },
+        check: ({ id }) => document.querySelector('base')?.getAttribute('href') === `/hydra/${id}/`
+          && [...document.querySelectorAll<HTMLImageElement>('.hydra-chat img')].filter(img => img.complete && img.naturalWidth === 1).length === 2,
       })
       assert.equal(
         (await fetch(`${base}/health`)).status,

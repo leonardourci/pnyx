@@ -6,7 +6,7 @@ import { Dialog } from './dialog.tsx'
 import { Icon } from './icon.tsx'
 
 function attachmentSource({ path }: { path: string }) {
-  const stored = /\/hydras\/([^/]+)\/attachments\/([^/]+)$/.exec(path)
+  const stored = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/attachments\/([^/]+)$/i.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
 
   // Cached chat can render while navigation still has the previous Hydra's base URL.
