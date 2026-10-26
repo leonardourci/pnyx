@@ -1151,12 +1151,33 @@ test(
           '--input-type=module',
           '-e',
           `
+      const { default: assert } = await import('node:assert/strict');
       const { refreshProject } = await import(process.argv[1]);
-      await refreshProject({
+      let now = 0, timer, result, cancelled = false;
+      const scheduled = Promise.withResolvers();
+      const refresh = refreshProject({
         path: process.argv[2], url: 'https://github.com/fixture/project/pull/1', merge: process.argv[3],
         isPending: () => true,
-        complete: ({ result }) => process.stdout.write(JSON.stringify(result)),
+        lockWait: {
+          now: () => now,
+          schedule: ({ ms, fire }) => {
+            timer = { at: now + ms, fire };
+            scheduled.resolve();
+            return () => { cancelled = true; };
+          },
+        },
+        complete: ({ result: completed }) => { result = completed; },
       });
+      await scheduled.promise;
+      assert.equal(timer.at, 30_000, 'the production lock bound stays 30 seconds');
+      now = timer.at - 1;
+      if (timer.at <= now) timer.fire();
+      assert.equal(result, undefined, 'the live owner still holds the lock before expiry');
+      now = timer.at;
+      timer.fire();
+      await refresh;
+      assert.equal(cancelled, true, 'expiry cleans up its scheduled wait');
+      process.stdout.write(JSON.stringify(result));
     `,
           new URL(
             '../../src/projects/refresh.ts',
