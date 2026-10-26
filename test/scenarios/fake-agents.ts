@@ -214,6 +214,8 @@ export function replayClaude(
       })}\n`,
     )
 
+    let cancelCompact: (() => void) | undefined
+
     async function* run() {
       for await (const message of prompt) {
         const input = textOf({ message })
@@ -229,6 +231,35 @@ export function replayClaude(
         })
 
         const plan = turns.take({ text })
+
+        if (text.trim() === '/compact') {
+          const cancelled = new Promise<boolean>(resolve => {
+            cancelCompact = () => resolve(true)
+          })
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: 'compacting',
+            uuid: randomUUID(),
+          }
+          const interrupted = await Promise.race([
+            cancelled,
+            Promise.resolve(plan?.wait).then(() => false),
+          ])
+          cancelCompact = undefined
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: null,
+            compact_result: interrupted || plan?.fail ? 'failed' : 'success',
+            compact_error: interrupted ? 'Request was aborted.' : plan?.fail,
+          }
+          yield {
+            type: 'result',
+            is_error: false,
+          }
+          continue
+        }
 
         if (plan?.fail) {
           throw new Error(plan.fail)
@@ -284,7 +315,9 @@ export function replayClaude(
       run(),
       {
         close: () => {},
-        interrupt: async () => {},
+        interrupt: async () => {
+          cancelCompact?.()
+        },
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -360,6 +393,10 @@ export function replayCodex(
     const stdout = new PassThrough()
     const stderr = new PassThrough()
     let exited = false
+    let compacting: {
+      id: string
+      cancel(): void
+    } | undefined
     const child = Object.assign(
       new EventEmitter(),
       {
@@ -423,6 +460,96 @@ export function replayCodex(
           const { threadId } = message.params as { threadId?: string }
           session.id = session.resumed ? threadId! : randomUUID()
           sessions.push(session)
+        }
+
+        if (message.method === 'turn/interrupt' && compacting) {
+          send({
+            message: {
+              id: message.id,
+              result: {},
+            },
+          })
+          compacting.cancel()
+
+          return
+        }
+
+        if (message.method === 'thread/compact/start') {
+          session.received.push('/compact')
+          const plan = turns.take({ text: '/compact' })
+          const id = randomUUID()
+          const cancelled = new Promise<boolean>(resolve => {
+            compacting = {
+              id,
+              cancel: () => resolve(true),
+            }
+          })
+          send({
+            message: {
+              id: message.id,
+              result: {},
+            },
+          })
+          send({
+            message: {
+              method: 'turn/started',
+              params: {
+                threadId: session.id,
+                turn: {
+                  id,
+                  status: 'inProgress',
+                },
+              },
+            },
+          })
+          const item = {
+            type: 'contextCompaction',
+            id: randomUUID(),
+          }
+          send({
+            message: {
+              method: 'item/started',
+              params: {
+                threadId: session.id,
+                turnId: id,
+                item,
+              },
+            },
+          })
+          const interrupted = await Promise.race([
+            cancelled,
+            Promise.resolve(plan?.wait).then(() => false),
+          ])
+          compacting = undefined
+
+          if (!interrupted && !plan?.fail) {
+            send({
+              message: {
+                method: 'item/completed',
+                params: {
+                  threadId: session.id,
+                  turnId: id,
+                  item,
+                },
+              },
+            })
+          }
+
+          send({
+            message: {
+              method: 'turn/completed',
+              params: {
+                threadId: session.id,
+                turn: {
+                  id,
+                  status: interrupted ? 'interrupted' : plan?.fail ? 'failed' : 'completed',
+                  error: plan?.fail ? { message: plan.fail } : null,
+                },
+              },
+            },
+          })
+
+          return
         }
 
         let plan: ReturnType<typeof turns.take>

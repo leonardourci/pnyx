@@ -458,6 +458,299 @@ test(
 )
 
 test(
+  'Codex compaction holds owner messages and send now cancels before delivering the selected message',
+  async () => {
+    codexRule()
+    const codex = fakeCodex({
+      root: home,
+      compact: 'hold',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await send({ text: 'Establish context' })
+    await until({ check: finished })
+    await send({ text: '/compact' })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+    await send({
+      text: 'First queued',
+      id: 'queue-first',
+    })
+    await send({
+      text: 'Second queued',
+      id: 'queue-second',
+    })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 2 })
+    assert.equal(
+      codex.messages().filter(message => message.method === 'turn/start').length,
+      1,
+    )
+    const selected = hydra()!.compaction!.inputs.find(input => input.text === 'Second queued')!.id
+    await askHost({
+      hydraId: 'lab',
+      body: {
+        action: 'compact',
+        card: HYDRA_CARD,
+        sendNow: selected,
+      },
+    })
+    await until({ check: () => codex.messages().filter(message => message.method === 'turn/start').length === 3 && finished() && hydra()?.compaction?.inputs.length === 0 })
+    const input = codex.messages().filter(message => message.method === 'turn/start')
+      .slice(1)
+      .map(message => (message.params!.input as { text: string }[])[0]!.text)
+    assert.deepEqual(
+      input,
+      [
+        'Second queued',
+        'First queued',
+      ],
+    )
+    assert.equal(
+      hydra()!.compaction!.operations.at(-1)!.state,
+      'cancelled',
+    )
+    assert.deepEqual(
+      hydra()!.compaction!.inputs,
+      [],
+    )
+  },
+)
+
+test(
+  'Claude compact holds messages until success and teaches comments once in each persisted epoch',
+  async () => {
+    const sdk = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+    })
+    const annotated = '## Comments on your reply from today\n1. Please clarify this passage.'
+    await send({ text: annotated })
+    await until({ check: finished })
+    await send({ text: annotated })
+    await until({ check: () => sdk.calls[0]!.raw.length === 2 && finished() })
+    assert.match(
+      sdk.calls[0]!.raw[0]!,
+      /Internal note: no reply needed/,
+    )
+    assert.doesNotMatch(
+      sdk.calls[0]!.raw[1]!,
+      /Internal note: no reply needed/,
+    )
+    sdk.control.hold = true
+    await send({ text: '/compact' })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+    await send({
+      text: annotated,
+      id: 'first-after-compact',
+    })
+    await send({
+      text: annotated,
+      id: 'second-after-compact',
+    })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 2 })
+    assert.equal(
+      sdk.calls[0]!.raw.length,
+      3,
+    )
+    assert.equal(
+      sdk.calls[0]!.raw[2],
+      '/compact',
+    )
+    sdk.release()
+    await until({
+      check: () => sdk.calls[0]!.raw.length === 5 && finished()
+      && hydra()?.compaction?.inputs.length === 0,
+    })
+    assert.match(
+      sdk.calls[0]!.raw[3]!,
+      /Internal note: no reply needed/,
+    )
+    assert.doesNotMatch(
+      sdk.calls[0]!.raw[4]!,
+      /Internal note: no reply needed/,
+    )
+    assert.equal(
+      hydra()!.compaction!.operations.at(-1)!.state,
+      'done',
+    )
+    await server.close()
+    const resumed = hydraSdk()
+    server = await startServer({
+      hydraId: 'lab',
+      query: resumed.query,
+    })
+    await send({ text: annotated })
+    await until({ check: () => resumed.calls[0]?.raw.length === 1 && finished() })
+    assert.doesNotMatch(
+      resumed.calls[0]!.raw[0]!,
+      /Internal note: no reply needed/,
+    )
+  },
+)
+
+test(
+  'messages held by compact keep the model selected when each was sent',
+  async () => {
+    codexRule()
+    const codex = fakeCodex({
+      root: home,
+      compact: 'hold',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await send({ text: 'Establish context' })
+    await until({ check: finished })
+    await send({ text: '/compact' })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+    await send({ text: 'Use the first model' })
+    choose({
+      agent: {
+        harness: 'codex',
+        model: 'gpt-6-sol',
+      },
+    })
+    await send({ text: 'Use the second model' })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 2 })
+    codex.children[0]!.kill('SIGUSR1')
+    await until({ check: () => codex.messages().filter(message => message.method === 'turn/start').length === 3 && finished() && hydra()?.compaction?.inputs.length === 0 })
+    assert.deepEqual(
+      codex.messages().filter(message => message.method === 'turn/start')
+        .slice(1)
+        .map(message => message.params!.model),
+      [
+        'gpt-6-luna',
+        'gpt-6-sol',
+      ],
+    )
+  },
+)
+
+test(
+  'compact requested mid-turn retains already accepted input and reports do not block its queue',
+  async () => {
+    codexRule()
+    const codex = fakeCodex({
+      root: home,
+      compact: 'hold',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await send({ text: 'HOLD' })
+    await until({ check: () => codex.messages().some(message => message.method === 'turn/start') })
+    await send({
+      text: '/compact',
+      id: 'waiting-compact',
+    })
+    await send({
+      text: 'Buffered before compact started',
+      id: 'buffered-owner',
+    })
+    await until({ check: () => 'buffered-owner:hosted' in state().eventIds })
+    codex.children[0]!.kill('SIGUSR1')
+    await until({ check: () => hydra()?.compaction?.inputs.some(input => input.id === 'buffered-owner' && input.accepted) ?? false })
+    await askHost({
+      hydraId: 'lab',
+      body: {
+        action: 'hydra',
+        actor: 'worker:reporter',
+        id: 'internal-report',
+        text: 'Worker progress',
+      },
+    })
+    await send({
+      text: 'After the report',
+      id: 'after-report',
+    })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 2 })
+    assert.equal(
+      hydra()!.compaction!.inputs.some(input => input.id === 'internal-report'),
+      false,
+    )
+    codex.children[0]!.kill('SIGUSR1')
+    await until({ check: () => codex.messages().filter(message => message.method === 'turn/start').length === 3 && finished() && hydra()?.compaction?.inputs.length === 0 })
+    const texts = codex.messages().filter(message => message.method === 'turn/start')
+      .slice(1)
+      .map(message => (message.params!.input as { text: string }[])[0]!.text)
+    assert.match(
+      texts[0]!,
+      /Buffered before compact started$/,
+    )
+    assert.equal(
+      texts[1],
+      'After the report',
+    )
+    assert.ok('buffered-owner:compact:hosted' in state().eventIds)
+  },
+)
+
+test(
+  'restart fails the compact once and releases held input without repeating the compact command',
+  async () => {
+    codexRule()
+    const first = fakeCodex({
+      root: home,
+      compact: 'hold',
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: first.spawnCodex,
+    })
+    await send({ text: 'Establish context' })
+    await until({ check: finished })
+    await send({ text: '/compact' })
+    await until({ check: () => hydra()?.compaction?.operations.at(-1)?.state === 'running' })
+    await send({
+      text: 'Retained input',
+      id: 'retained-input',
+    })
+    await until({ check: () => hydra()?.compaction?.inputs.length === 1 })
+    await server.close()
+    const second = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: second.spawnCodex,
+    })
+    await until({ check: () => second.messages().some(message => message.method === 'turn/start') && finished() && hydra()?.compaction?.inputs.length === 0 })
+    assert.equal(
+      hydra()!.compaction!.operations.at(-1)!.state,
+      'failed',
+    )
+    assert.match(
+      hydra()!.compaction!.operations.at(-1)!.error!,
+      /restarted/,
+    )
+    assert.equal(
+      second.messages().filter(message => message.method === 'turn/start').length,
+      1,
+    )
+    assert.equal(
+      second.messages().some(message => message.method === 'thread/compact/start'),
+      false,
+    )
+    await server.close()
+    const third = fakeCodex({ root: home })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: third.spawnCodex,
+    })
+    await new Promise(resolve => setTimeout(
+      resolve,
+      100,
+    ))
+    assert.equal(
+      third.messages().filter(message => message.method === 'turn/start').length,
+      0,
+    )
+  },
+)
+
+test(
   'each owner message after a failed Codex resume tries the resume again and reports its own failure',
   async () => {
     codexRule()

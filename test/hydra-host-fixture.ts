@@ -13,6 +13,7 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
   const control = {
     onInput: undefined as (({ text }: { text: string }) => void) | undefined,
     hold: false,
+    compactFailure: undefined as string | undefined,
     fail: false,
     ask: false,
     stream: false,
@@ -130,6 +131,35 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
             role: 'user',
             text,
           })
+        }
+
+        if (text.trim() === '/compact') {
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: 'compacting',
+            uuid: `compact-${call.messages.length}`,
+          }
+
+          if (control.hold) {
+            await new Promise<void>(resolve => {
+              release = resolve; releases.add(resolve)
+            })
+          }
+
+          yield {
+            type: 'system',
+            subtype: 'status',
+            status: null,
+            compact_result: interrupted || control.compactFailure ? 'failed' : 'success',
+            compact_error: interrupted ? 'Request was aborted.' : control.compactFailure,
+          }
+          interrupted = false
+          yield {
+            type: 'result',
+            is_error: false,
+          }
+          continue
         }
 
         yield {

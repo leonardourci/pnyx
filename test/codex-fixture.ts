@@ -8,11 +8,13 @@ export function fakeCodex({
   refuse,
   models = [],
   holdOpen,
+  compact,
 }: {
   root: string
   refuse?: string
   models?: string[]
   holdOpen?: boolean
+  compact?: 'hold' | 'fail'
 }) {
   const log = join(
       root,
@@ -58,6 +60,7 @@ export function fakeCodex({
           FAKE_CODEX_REFUSE: refuse,
           FAKE_CODEX_MODELS: models.join(','),
           ...(holdOpen ? { FAKE_CODEX_HOLD_OPEN: '1' } : {}),
+          ...(compact ? { FAKE_CODEX_COMPACT: compact } : {}),
         },
         stdio: 'pipe',
       },

@@ -3,7 +3,7 @@ import { appendFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 
 // active is the turn still running, the only one a steer may join.
-let turn = 0, threadId, waiting, held, active
+let turn = 0, threadId, waiting, held, active, heldCompact = false
 const path = process.env.FAKE_CODEX_TRANSCRIPT
 const send = ({ ...message }) => process.stdout.write(`${JSON.stringify(message)}\n`)
 
@@ -133,10 +133,27 @@ const finish = ({
 
 process.on(
   'SIGUSR1',
-  () => finish({
-    id: held,
-    text: 'released',
-  }),
+  () => {
+    if (heldCompact) {
+      heldCompact = false
+      send({
+        method: 'item/completed',
+        params: {
+          threadId,
+          turnId: held,
+          item: {
+            type: 'contextCompaction',
+            id: 'compact-item',
+          },
+        },
+      })
+    }
+
+    finish({
+      id: held,
+      text: 'released',
+    })
+  },
 )
 process.on(
   'SIGUSR2',
@@ -262,6 +279,72 @@ createInterface({ input: process.stdin }).on(
       } else {
         opened()
       }
+    } else if (method === 'thread/compact/start') {
+      const compactTurn = `turn-${++turn}`
+      send({
+        id,
+        result: {},
+      })
+      send({
+        method: 'turn/started',
+        params: {
+          threadId,
+          turn: {
+            id: compactTurn,
+            status: 'inProgress',
+            items: [],
+            error: null,
+          },
+        },
+      })
+
+      if (process.env.FAKE_CODEX_COMPACT === 'hold') {
+        heldCompact = true
+        active = held = compactTurn
+        send({
+          method: 'item/started',
+          params: {
+            threadId,
+            turnId: compactTurn,
+            item: {
+              type: 'contextCompaction',
+              id: 'compact-item',
+            },
+          },
+        })
+
+        return
+      }
+
+      for (const method of [
+        'item/started',
+        'item/completed',
+      ]) {
+        send({
+          method,
+          params: {
+            threadId,
+            turnId: compactTurn,
+            item: {
+              type: 'contextCompaction',
+              id: 'compact-item',
+            },
+          },
+        })
+      }
+
+      const failed = process.env.FAKE_CODEX_COMPACT === 'fail'
+      send({
+        method: 'turn/completed',
+        params: {
+          threadId,
+          turn: {
+            id: compactTurn,
+            status: failed ? 'failed' : 'completed',
+            error: failed ? { message: 'Compaction fixture failure' } : null,
+          },
+        },
+      })
     } else if (method === 'turn/start') {
       const turnId = `turn-${++turn}`
       active = turnId

@@ -1860,7 +1860,10 @@ test(
       ).catalog.suggestions.map(s => s.command)
       assert.deepEqual(
         commands,
-        [card === one ? '/skill-one' : '/skill-two'],
+        [
+          card === one ? '/skill-one' : '/skill-two',
+          '/compact',
+        ],
       )
     }
 

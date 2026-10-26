@@ -1,4 +1,5 @@
 import { incorporateInboxNotice } from './inbox-fixture.ts'
+import { inboxCommand } from '../src/task-inbox/cli.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { configPath, writeConfig, effectiveDispatch } from '../src/dispatch/config.ts'
 import assert from 'node:assert/strict'
@@ -296,6 +297,189 @@ const start = ({ id }: { id: string }) => startTask({
     id,
   },
 })
+
+test(
+  'worker compact gates inbox reads and preserves selected-message acknowledgement order',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    const codex = fakeCodex({
+      root: folder,
+      compact: 'hold',
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await start({ id: 'start-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    assert.equal(
+      task().steering?.some(message => message.text === '/compact') ?? false,
+      false,
+    )
+
+    for (const [
+      id,
+      text,
+    ] of [
+        [
+          'held-first',
+          'First',
+        ],
+        [
+          'held-second',
+          'Second',
+        ],
+      ]) {
+      await sendReply({
+        hydraId: 'lab',
+        request: {
+          card: task().id,
+          text: text!,
+          homes: [],
+          actor: 'test',
+          id,
+        },
+      })
+    }
+
+    await until({ check: () => task().compaction?.inputs.length === 2 })
+    const read = inboxCommand({
+      args: [
+        'read',
+        'ship',
+        '--hydra',
+        'lab',
+      ],
+    }) as { messages: unknown }
+    assert.equal(
+      read.messages,
+      'none: no pending steering',
+    )
+    await agent([
+      'ship',
+      '--send-now',
+      'held-second',
+      '--hydra',
+      'lab',
+    ])
+    await until({
+      check: () => task().steering?.filter(message => message.ack).length === 2
+      && task().compaction?.inputs.length === 0,
+    })
+    const acknowledgements = readEvents({ hydraId: 'lab' }).filter(event => event.type === 'task.steering.handled')
+    assert.deepEqual(
+      acknowledgements.map(event => event.data.message),
+      [
+        'held-second',
+        'held-first',
+      ],
+    )
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'cancelled',
+    )
+  },
+)
+
+test(
+  'a compacting session moves its running status to the current task and retains old instructions',
+  async () => {
+    const {
+      folder,
+      task,
+    } = await lab()
+    await dispatchCommands.rule([
+      'set',
+      'default',
+      '--harness',
+      'codex',
+      '--model',
+      'gpt-6-luna',
+      '--hydra',
+      'lab',
+    ])
+    const codex = fakeCodex({
+      root: folder,
+      compact: 'hold',
+      models: ['gpt-6-luna'],
+    })
+    server = await startServer({
+      hydraId: 'lab',
+      spawnCodex: codex.spawnCodex,
+    })
+    await start({ id: 'start-moving-worker' })
+    await until({ check: () => task().sessionActivity === 'finished' })
+    await reply({ text: '/compact' })
+    await until({ check: () => task().compaction?.operations.at(-1)?.state === 'running' })
+    await reply({ text: 'Instruction for the original task' })
+    await until({ check: () => task().compaction?.inputs.length === 1 })
+    const session = task().sessionIds![0]!
+    commands.task([
+      'create',
+      '--title',
+      'Destination',
+      '--key',
+      'destination',
+      '--hydra',
+      'lab',
+    ])
+    await commands.task([
+      'attach',
+      'destination',
+      '--session',
+      session,
+      '--hydra',
+      'lab',
+    ])
+
+    const destination = () => {
+      const state = loadHydra({ hydraId: 'lab' }).state
+
+      return state.cards[state.keys.destination!]!
+    }
+
+    await until({ check: () => destination().compaction?.operations.at(-1)?.state === 'running' })
+    assert.equal(
+      task().compaction!.operations.at(-1)!.state,
+      'failed',
+    )
+    assert.equal(
+      task().compaction!.inputs.length,
+      1,
+    )
+    assert.equal(
+      task().steering!.some(message => message.ack),
+      false,
+    )
+    await agent([
+      'destination',
+      '--cancel-compact',
+      '--hydra',
+      'lab',
+    ])
+    await until({ check: () => destination().compaction?.operations.at(-1)?.state === 'cancelled' })
+    assert.equal(
+      task().compaction!.inputs.length,
+      1,
+    )
+  },
+)
 
 test(
   'task start runs Claude Code through the server, records it on the task and takes replies',
