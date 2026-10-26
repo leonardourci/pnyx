@@ -9,8 +9,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
 import { commands } from '../src/cli/commands.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { fileBlock } from '../src/attachments/files.ts'
@@ -259,6 +260,10 @@ test(
       loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.text,
       '$review',
     )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.enteredText,
+      token,
+    )
     select({ harness: 'claude' })
     await commands.hydra([
       'send',
@@ -269,6 +274,10 @@ test(
       loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.text,
       '/review',
     )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.enteredText,
+      token,
+    )
     await commands.hydra([
       'send',
       '--text',
@@ -277,6 +286,34 @@ test(
     assert.match(
       loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.text ?? '',
       /Read and follow.*Sample.*SKILL.md/,
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.hydraMessages?.at(-1)?.enteredText,
+      skillReference({ item: project }),
+    )
+    await commands.hydra([
+      'send',
+      '--text',
+      'Keep the release safe.',
+    ])
+    const messages = loadHydra({ hydraId: 'default' }).state.hydraMessages
+    assert.equal(
+      messages?.at(-1)?.text,
+      'Keep the release safe.',
+    )
+    assert.equal(
+      Object.hasOwn(
+        messages!.at(-1)!,
+        'enteredText',
+      ),
+      false,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId: 'default' }),
+      }).hydraMessages,
+      messages,
     )
   },
 )

@@ -1,14 +1,57 @@
-// The hidden PR-body line `pnpm verify` writes after build, lint and unit tests pass,
-// and the check the "Checks ran for this commit" workflow runs against it.
 // Node built-ins only: the workflow runs this without installing anything.
 const PREFIX = '<!-- pnyx-checks:v1 '
 const SUFFIX = ' -->'
-const HINT = 'Run `pnpm verify` on the PR head: it writes the marker only after build, lint and unit tests pass.'
+const HINT = 'Complete the three review checklists, tick the PR boxes, and run `pnpm verify` on the clean, pushed PR head.'
+export const REVIEW_CHECKLISTS = [
+  'review-code',
+  'audit-tests',
+  'deslop',
+] as const
 const MAX_DOCS_COMMITS = 20
 // GitHub's commit endpoint lists at most 300 files, so a list that long may be cut short.
 const COMMIT_FILES_PAGE = 300
 
 export class MarkerError extends Error {}
+
+export function reviewBlockers({ body }: { body: string }): string[] {
+  const lines: string[] = []
+  let fence: string | undefined
+
+  for (const line of body.replaceAll(
+    /<!--[\s\S]*?(?:-->|$)/g,
+    '',
+  ).split('\n')) {
+    const delimiter = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
+
+    if (delimiter) {
+      if (!fence) {
+        fence = delimiter
+      } else if (
+        delimiter[0] === fence[0]
+        && delimiter.length >= fence.length
+        && line.trim() === delimiter
+      ) {
+        fence = undefined
+      }
+
+      continue
+    }
+
+    if (!fence) {
+      lines.push(line)
+    }
+  }
+
+  return REVIEW_CHECKLISTS.filter(name => {
+    const boxes = lines.flatMap(line => {
+      const match = new RegExp('^[-*] \\[([ xX])\\] Ran `' + name + '`\\s*$').exec(line)
+
+      return match ? [match[1]] : []
+    })
+
+    return boxes.length !== 1 || boxes[0]?.toLowerCase() !== 'x'
+  }).map(name => `complete ${name} and tick its PR checkbox`)
+}
 
 export interface Marker {
   head_sha: string
@@ -135,14 +178,16 @@ export function markerBlockers({
   headSha,
   headAfter,
   pullRequestHead,
+  pullRequestBody,
 }: {
   failedSteps: number
   changedPaths: number
   headSha: string
   headAfter: string
   pullRequestHead: string | undefined
+  pullRequestBody: string
 }): string[] {
-  const blockers: string[] = []
+  const blockers = reviewBlockers({ body: pullRequestBody })
 
   if (failedSteps > 0) {
     blockers.push(`${failedSteps} step(s) failed`)
@@ -180,6 +225,12 @@ export async function checkPullRequest({
   commit({ sha }: { sha: string }): Promise<Commit>
   pullRequestsFor({ sha }: { sha: string }): Promise<PullRequest[]>
 }): Promise<string> {
+  const reviews = reviewBlockers({ body })
+
+  if (reviews.length) {
+    throw new MarkerError(`Review checklists incomplete: ${reviews.join('; ')}. ${HINT}`)
+  }
+
   let own: Marker | undefined
   let ownError: MarkerError | undefined
 

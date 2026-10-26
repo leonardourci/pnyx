@@ -500,7 +500,7 @@ for (const recovery of [
     `creating preserves the provisional draft through ${recovery} promotion`,
     async () => {
       const s = await pnyx.scenario()
-      const watch = fs.watch
+      const write = fs.writeFileSync
 
       if (recovery === 'mount-failure') {
         const taken = new Set(listHydras().map(hydra => hydra.id))
@@ -511,14 +511,17 @@ for (const recovery of [
         }
 
         const broken = hydraDir({ hydraId: `hydra-${next}` })
-        // eslint-disable-next-line pnyx/object-params -- fs.watch owns its overloaded arguments.
-        fs.watch = ((...args: Parameters<typeof fs.watch>) => {
-          if (String(args[0]) === broken) {
+        // eslint-disable-next-line pnyx/object-params -- writeFileSync owns its overloaded arguments.
+        fs.writeFileSync = ((...args: Parameters<typeof fs.writeFileSync>) => {
+          if (String(args[0]).startsWith(join(
+            broken,
+            'server.json.tmp-',
+          ))) {
             throw new Error('Synthetic mount failure')
           }
 
-          return watch(...args)
-        }) as typeof fs.watch
+          return write(...args)
+        }) as typeof fs.writeFileSync
         syncBuiltinESMExports()
       }
 
@@ -666,7 +669,7 @@ for (const recovery of [
           })
           const count = listHydras().length
           assert.ok(loadHydra({ hydraId: failed.id }).state.config)
-          fs.watch = watch
+          fs.writeFileSync = write
           syncBuiltinESMExports()
           await page.click({
             selector: '.error-banner button',
@@ -759,7 +762,7 @@ for (const recovery of [
           && (document.querySelector('.hydra-chat textarea') as HTMLTextAreaElement | null)?.value === 'Keep this draft through creation',
         })
       } finally {
-        fs.watch = watch
+        fs.writeFileSync = write
         syncBuiltinESMExports()
         await page.close()
       }
