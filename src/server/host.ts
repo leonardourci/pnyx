@@ -7,7 +7,7 @@ import { steeringNotice } from '../task-inbox/notice.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
 import { helperAgent, helperEvent, helperReason, helperGrant, helperProgress } from '../helper/route.ts'
-import { outcomeLines, wakeHandled } from '../helper/state.ts'
+import { activeHelperBatches, helperLeases, outcomeLines, wakeHandled } from '../helper/state.ts'
 import { isHelper, taskLease } from '../helper/leases.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
@@ -33,13 +33,13 @@ import { explained } from '../cli/commands.ts'
 import { permissionAnswer, permissionEvent } from '../core/permissions.ts'
 import { declareTask, HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
 import { decisionsBlock } from '../core/decisions.ts'
-import { reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
+import { eventReasons, reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
 import { freeTask } from '../cli/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraEvent, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
@@ -146,10 +146,12 @@ export interface Host {
     seq,
     card,
     reasons,
+    event,
   }: {
     seq: number
     card: string
     reasons: string[]
+    event?: HydraEvent
   }): void
   // Notes a change at seq that joins Hydra's next wake without queuing one, so that wake's cursor still covers it.
   unread({ seq }: { seq: number }): void
@@ -188,6 +190,7 @@ export interface Host {
 export interface QueuedUpdate {
   seq: number
   card: string
+  kind?: string
 }
 
 export interface HydraQueue {
@@ -2141,12 +2144,14 @@ export function createHost({
     }
 
     const through = wakeThrough
+    const held = new Set(activeHelperBatches({ state }).flatMap(batch => batch.seqs))
     const reports = (state.hydraMessages ?? []).filter(message => {
       const seq = state.eventIds[message.id]
 
       const unread = seq !== undefined && seq > after && seq <= through
 
-      return unread && reportActor({ actor: message.actor }) && !state.helper?.handled.includes(seq)
+      return unread && reportActor({ actor: message.actor })
+        && !state.helper?.handled.includes(seq) && !held.has(seq)
     })
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
     const otherChanges = updates.some(update => update.seq > after && update.seq <= through
@@ -3041,12 +3046,16 @@ export function createHost({
           const helperLines = outcomeLines({ state: helperState })
           let helperText = ''
 
+          if (activeHelperBatches({ state: helperState }).length) {
+            helperText = `\n<pnyx-wake>${sealed({ text: helperLeases({ state: helperState }).join('\n') })}</pnyx-wake>`
+          }
+
           if (helperLines.length) {
             outcomesPresented = Math.max(
               outcomesPresented,
               ...helperState.helper!.outcomes.map(outcome => outcome.seq),
             )
-            helperText = `\n<pnyx-wake>Helper outcomes to relay, one line each:\n${sealed({ text: helperLines.join('\n') })}\n${REPLY_RULES}</pnyx-wake>`
+            helperText += `\n<pnyx-wake>Helper outcomes to relay, one line each:\n${sealed({ text: helperLines.join('\n') })}\n${REPLY_RULES}</pnyx-wake>`
           }
 
           const pendingBatches = Object.values(helperState.helper?.runs ?? {})
@@ -3235,11 +3244,18 @@ export function createHost({
         over: limits.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > Date.now()),
       })
       const planName = reported ?? plan?.plan
+      const helperUsage = state.helper?.usage
+      const completeHelperCost = helperUsage && helperUsage.measuredBatches === helperUsage.batches
+        ? helperUsage.cost : undefined
 
       return {
         harness,
         ...(name ? { account: name } : {}),
         ...session,
+        ...(helperUsage ? { helper: helperUsage } : {}),
+        ...(session.cost !== undefined && completeHelperCost !== undefined ? {
+          combinedCost: session.cost + completeHelperCost,
+        } : {}),
         ...(planName ? { plan: planName } : {}),
         ...(windows.length ? { windows } : {}),
       }
@@ -3893,6 +3909,7 @@ export function createHost({
       seq,
       card,
       reasons,
+      event,
     }) => {
       wakeStart ??= seq - 1
       wakeReasonsAt.set(
@@ -3905,9 +3922,16 @@ export function createHost({
       )
 
       if (!updates.some(update => update.seq === seq)) {
+        const state = loadHydra({ hydraId }).state
+        const kinds = event ? eventReasons({
+          state,
+          event,
+        }).map(reason => reason.kind) : []
+        const report = event?.type === 'hydra.message'
         updates.push({
           seq,
-          card,
+          card: report ? event.data.task ?? card : card,
+          kind: report ? event.data.kind ?? 'report' : [...new Set(kinds)].join(', ') || 'update',
         })
         queued()
       }
@@ -4186,6 +4210,7 @@ export function createHost({
               seq: event.seq,
               card: event.cardId,
               reasons,
+              event,
             })
           }
         }
