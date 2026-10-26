@@ -36,6 +36,8 @@ export function hydraMessages({
     const report = reportActor({ actor: message.actor })
     const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
+    const entered = message.enteredText ?? message.text
+    const shown = message.details ? `${entered}\n\n${message.details}` : entered
     const sent = message.context ? `${text}\n\n${message.context}` : text
     // An older server delivered a report as its bare words.
     const reportCopies = [
@@ -74,11 +76,11 @@ export function hydraMessages({
             hidden: true,
           })
         }
-      } else if (normalized(entry!) !== normalized({ text })) {
+      } else if (normalized(entry!) !== normalized({ text: shown })) {
         replaced.add(entry!)
         recorded.push({
           ...entry!,
-          text,
+          text: shown,
         })
       }
     } else if (!report) {
@@ -86,7 +88,7 @@ export function hydraMessages({
         id: message.id,
         kind: 'message',
         role,
-        text,
+        text: shown,
         at: message.at,
         hidden: boundaries && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),

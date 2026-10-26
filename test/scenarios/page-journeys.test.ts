@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
@@ -413,6 +413,120 @@ for (const harness of [
           },
         })
         await page.close()
+      }
+    },
+  )
+}
+
+for (const harness of [
+  'claude',
+  'codex',
+]) {
+  test(
+    `a ${harness} project skill keeps its saved label color after sending and reloading`,
+    async () => {
+      const s = await pnyx.scenario()
+      await s.owner({
+        args: [
+          'rule',
+          'set',
+          'hydra',
+          '--harness',
+          harness,
+        ],
+      })
+      const project = await s.project({ name: 'Release tools' })
+      const skill = join(
+        project,
+        '.agents/skills/deploy',
+      )
+      mkdirSync(
+        skill,
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skill,
+          'SKILL.md',
+        ),
+        '---\nname: deploy\ndescription: Deploy the release\n---\nDeploy safely.\n',
+      )
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Release',
+          '--project',
+          project,
+        ],
+      })
+      const savedColor = s.state().labelColors?.find(entry => entry.label === project)?.color
+      assert.ok(
+        savedColor,
+        'the project has a persisted label color',
+      )
+      let page = await openHydra({ s })
+      await page.click({ selector: '.hydra-chat textarea' })
+      await page.type({ text: '/deploy' })
+      await page.shows({
+        what: 'the project skill suggestion',
+        check: () => [...document.querySelectorAll('.slash-menu [role=option]')].find(option => option.textContent?.includes('Deploy the release')),
+      })
+      await page.press({ key: 'ArrowDown' })
+      await page.press({ key: 'Enter' })
+      const draft = await page.shows({
+        what: 'the project label in the draft',
+        check: () => {
+          const label = document.querySelector('.composer .draft-skill .project-label')
+
+          return label && {
+            text: label.textContent,
+            color: label.getAttribute('data-label-color'),
+            ink: getComputedStyle(label).color,
+          }
+        },
+      })
+      assert.equal(
+        draft.color,
+        savedColor,
+      )
+      assert.match(
+        draft.text?.replaceAll(
+          '\u2060',
+          '',
+        ) ?? '',
+        /Release tools/,
+      )
+      await page.type({ text: 'safely' })
+      await page.press({ key: 'Enter' })
+      await hydraFinished({
+        s,
+        turns: 1,
+      })
+
+      for (let load = 0; load < 2; load++) {
+        const sent = await page.shows({
+          what: 'the saved project label in the sent message',
+          check: () => {
+            const label = document.querySelector('.message.mine .draft-skill .project-label')
+
+            return label && {
+              text: label.textContent,
+              color: label.getAttribute('data-label-color'),
+              ink: getComputedStyle(label).color,
+            }
+          },
+        })
+        assert.deepEqual(
+          sent,
+          draft,
+        )
+        await page.close()
+
+        if (load === 0) {
+          page = await openHydra({ s })
+        }
       }
     },
   )
