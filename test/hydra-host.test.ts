@@ -28,7 +28,6 @@ import { hydraSdk } from './hydra-host-fixture.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { configPath, writeConfig } from '../src/dispatch/config.ts'
 import { REVIEW_MS } from '../src/review/timer.ts'
-import { until as untilObserved } from './scenarios/harness.ts'
 
 test(
   'a timed review reaches Hydra through the server with facts, decisions and reply rules in order',
@@ -2183,6 +2182,10 @@ test(
 test(
   'a repeated stall counts its gap from when Hydra got the last alarm, so a slow delivery never shortens it',
   async t => {
+    const {
+      until,
+      advance,
+    } = controlledTime({ t })
     fakeDispatch({ root: home })
     const folder = join(
       home,
@@ -2200,7 +2203,7 @@ test(
       '--hydra',
       'lab',
     ])
-    const sdk = hydraSdk()
+    const sdk = hydraSdk({ now: () => Date.now() })
     server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
@@ -2239,11 +2242,7 @@ test(
 
         if (slowDelivery && /"id":"stall:[^"]*:hosted"/.test(text)) {
           slowDelivery = false
-          const end = Date.now() + 250
-
-          while (Date.now() < end) {
-            // Blocks like a loaded machine.
-          }
+          t.mock.timers.setTime(Date.now() + 250)
         }
 
         return writeSync(
@@ -2273,23 +2272,30 @@ test(
       sdk.control.tool = false
       sdk.control.toolDone = false
 
-      await untilObserved({
-        what: 'two stall alarms delivered to Hydra',
-        check: () => received.length >= 2,
-      })
+      t.mock.timers.tick(200)
+      await until({ check: () => received.length === 1 && finished() })
 
       assert.ok(
         !slowDelivery,
         'the first alarm\'s delivery was slowed',
       )
+      await advance({ ms: 399 })
+      assert.equal(
+        received.length,
+        1,
+        'the repeat waits the full backoff after delivery',
+      )
+      t.mock.timers.tick(1)
+      await until({ check: () => received.length === 2 && finished() })
       assert.match(
         stalls()[1] ?? '',
         /\(alarm 2\)/,
       )
       const gap = received[1]! - received[0]!
-      assert.ok(
-        gap >= 380,
-        `Hydra got the second alarm ${gap} ms after the first; the backoff is 400 ms`,
+      assert.equal(
+        gap,
+        400,
+        'Hydra receives the second alarm exactly one backoff after the first',
       )
     } finally {
       sdk.control.onInput = undefined
