@@ -836,17 +836,16 @@ export function useHydra() {
                 code: 'INTERRUPTED',
                 outcome: 'unknown',
               }),
-              })
-          }
+            })
           }
 
           if (!p.saveId) {
             p.reject({
-            error: new CommandFailure({
-              message: 'Send interrupted. Draft kept.',
-              code: 'INTERRUPTED',
-              outcome: 'unknown',
-            }),
+              error: new CommandFailure({
+                message: 'Send interrupted. Draft kept.',
+                code: 'INTERRUPTED',
+                outcome: 'unknown',
+              }),
             })
           }
         }
