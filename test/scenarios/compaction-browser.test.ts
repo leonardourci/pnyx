@@ -208,7 +208,7 @@ test(
       await page.shows({
         what: 'disabled command cannot be picked with the keyboard',
         check: () => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.value === '/comp'
-          && !document.querySelector('.draft-skill'),
+          && !document.querySelector('.hydra-chat .composer .draft-skill'),
       })
       assert.equal(
         s.received({ cwd: agent.cwd }).filter(text => text.trim() === '/compact').length,
