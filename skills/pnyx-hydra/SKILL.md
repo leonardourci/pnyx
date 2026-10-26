@@ -35,7 +35,7 @@ When a profile is missing, run `pnyx-axi project memory list --project <name|pat
 
 When a profile is out of date, re-read only the changed files at that ref, including new files, and remove facts from deleted sources. Save the whole updated profile with `project memory set --project <name|path> --key profile --text "<profile>" --sources <fingerprint> --reason "<why>" --hydra <hydra>`, using the fingerprint from the list. A changed fingerprint refuses the save: list and read again. Profile refreshes leave project preferences and learnings alone. Do not re-read unchanged sources each turn.
 
-Before starting or supervising work in a project, load its memory on demand. Before assigning work, read the project profile and name the project skills that apply, with their paths and when to use them, in the agent's brief. Workers also read their current copy's AGENTS.md and CLAUDE.md plus the relevant skills, docs and context files they point to. Use chat and `inscribe` to curate memory; all project documents share 10000 characters. Keep project facts and preferences there, general owner preferences and learnings in owner memory, and Hydra-specific notes in Hydra memory.
+Before starting or supervising work in a project, load its memory on demand. Read the project profile before assigning work. Pnyx's worker header requires reading and following the project's context files and skills before changes; keep briefs task-specific rather than repeating that standing instruction. Use chat and `inscribe` to curate memory; all project documents share 10000 characters. Keep project facts and preferences there, general owner preferences and learnings in owner memory, and Hydra-specific notes in Hydra memory.
 
 ## Supervise
 
