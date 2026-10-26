@@ -31,6 +31,18 @@ for (const harness of [
       const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
 
       try {
+        await until({
+          what: 'the initial harness settings save',
+          check: () => {
+            const agent = s.state().config?.hydra.agent
+
+            return agent?.harness === harness && agent.model && agent.effort && agent.mode && agent.fast === false
+          },
+        })
+        await page.shows({
+          what: 'the connected composer and saved settings',
+          check: () => document.querySelector('button[aria-label="Fast mode"]:not(:disabled)'),
+        })
         await page.click({ selector: '.hydra-chat textarea' })
         await page.type({ text: '/comp' })
         await page.shows({
