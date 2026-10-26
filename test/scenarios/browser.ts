@@ -326,6 +326,9 @@ export function browserGroup() {
 
       return {
         shows,
+        reload: async () => {
+          await call({ method: 'Page.reload' })
+        },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
         // handlers run too; it waits until nothing covers the element's centre.
         click: async ({

@@ -1,3 +1,4 @@
+import { Tooltip, TooltipPanel, TooltipSection } from '../components/ui/tooltip.tsx'
 import { useTaskReferences } from './task-references.ts'
 import { WaitingDecisions } from './waiting-decisions.tsx'
 import { loadEarlierMessages, mergeThreadPages } from './conversation-history.ts'
@@ -14,7 +15,7 @@ import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { Resize } from '../components/ui/resize.tsx'
 import { TaskReferencesProvider } from '../components/ui/task-reference.tsx'
-import type { HydraQueue } from '../../../src/server/host.ts'
+import type { HydraQueue, QueuedUpdate } from '../../../src/server/host.ts'
 import type { Command } from './connection.ts'
 import { InlineQuestions } from './questions.tsx'
 import { InlinePermissions } from './permissions.tsx'
@@ -423,6 +424,7 @@ export function HydraChat({
     async ({
       name,
       args,
+      onChecking,
     }) => {
       if (name !== 'reply') {
         return command({
@@ -452,6 +454,7 @@ export function HydraChat({
           '--event-id',
           id,
         ],
+        onChecking,
       }).catch((error: Error) => {
         setSending(items => items.filter(s => s.id !== id))
         throw error
@@ -629,8 +632,9 @@ export function HydraChat({
               since={running ? since : null}
               running={running}
               label={card?.agent ? 'Hydra is working' : 'Starting Hydra'}
-              reading={queueReading.length}
-              waiting={queue.waiting.length}
+              reading={queueReading}
+              waiting={queue.waiting}
+              state={state}
             >
               {running && <ActionBubble action={action} since={since} lookup={lookup} />}
             </Running>
@@ -737,13 +741,15 @@ function Running({
   label,
   reading,
   waiting,
+  state,
   children,
 }: {
   since: string | null
   running: boolean
   label: string
-  reading: number
-  waiting: number
+  reading: QueuedUpdate[]
+  waiting: QueuedUpdate[]
+  state: HydraState
   children?: ReactNode
 }) {
   const [
@@ -763,8 +769,9 @@ function Running({
   )
 
   const words = queueWords({
-    reading,
-    waiting,
+    reading: reading.length,
+    waiting: waiting.length,
+    tasks: new Set(reading.map(update => update.card).filter(card => card !== HYDRA_CARD)).size,
   })
 
   return (
@@ -787,11 +794,41 @@ function Running({
         {running && <WorkingDots />}
         {since && <span aria-hidden="true">{duration({ ms: now - Date.parse(since) })}</span>}
         {children}
-        <LiveLabel
-          value={words}
-          keyOf={({ value }) => value}
-          render={({ value }) => value}
-        />
+        {words && (
+          <Tooltip
+            content={(
+              <TooltipPanel>
+                {[
+                  {
+                    label: 'Reading',
+                    updates: reading,
+                  },
+                  {
+                    label: 'Waiting',
+                    updates: waiting,
+                  },
+                ].filter(group => group.updates.length).map(group => (
+                  <TooltipSection key={group.label}>
+                    <strong>{group.label} {group.updates.length} {group.updates.length === 1 ? 'update' : 'updates'}</strong>
+                    {group.updates.map(update => (
+                      <span key={update.seq}>
+                        {state.cards[update.card]?.title ?? 'Hydra'} · {update.kind ?? 'update'}
+                      </span>
+                    ))}
+                  </TooltipSection>
+                ))}
+              </TooltipPanel>
+            )}
+          >
+            <span tabIndex={0}>
+              <LiveLabel
+                value={words}
+                keyOf={({ value }) => value}
+                render={({ value }) => value}
+              />
+            </span>
+          </Tooltip>
+        )}
       </span>
 
     </div>
@@ -823,18 +860,21 @@ function statusName({
 function queueWords({
   reading,
   waiting,
+  tasks,
 }: {
   reading: number
   waiting: number
+  tasks: number
 }): string | null {
   const count = waiting > 0 ? `+${waiting} waiting` : null
+  const read = `Reading ${reading} ${reading === 1 ? 'update' : 'updates'}${tasks > 1 ? ` across ${tasks} tasks` : ''}`
 
   if (reading > 0 && waiting > 0) {
-    return `Reading ${reading} · ${count}`
+    return `${read} · ${count}`
   }
 
   if (reading > 0) {
-    return `Reading ${reading}`
+    return read
   }
 
   if (waiting > 0) {

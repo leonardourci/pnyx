@@ -64,7 +64,13 @@ export function copySkills({
 }
 
 // The hosted Hydra's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
-export function prepareHydraFolder({ folder }: { folder: string }) {
+export function prepareHydraFolder({
+  folder,
+  instructions,
+}: {
+  folder: string
+  instructions?: string
+}) {
   const contract = readFileSync(
     skillSource({ name: 'pnyx-hydra' }),
     'utf8',
@@ -81,7 +87,7 @@ export function prepareHydraFolder({ folder }: { folder: string }) {
       folder,
       'AGENTS.md',
     ),
-    contract,
+    instructions ? `${instructions}\n\n${contract}` : contract,
   )
   writeFileSync(
     join(

@@ -97,6 +97,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     loading,
     loaded,
     error,
+    checking,
   } = hydra
   const restoreKey = useRef(storageKey({ key: 'restore' })).current
   const commentsKey = storageKey({
@@ -1031,6 +1032,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         <main className="shell" aria-busy={!!loading || !loaded}>
           {(loading || !loaded) && <p className="loading-status" role="status">Loading {opening ? hydraTitle(opening) : 'Hydra'}…</p>}
           {error && <p className="error-banner" role="alert">{error}</p>}
+          {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
           {page === 'hydra' && (
             <>
               <div className="hydra-page">

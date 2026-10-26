@@ -228,6 +228,7 @@ export function claudeProvider({
       settings,
       env,
       instructions,
+      outputSchema,
       allow,
       context,
     }) {
@@ -282,6 +283,12 @@ export function claudeProvider({
             options: {
               cwd,
               includePartialMessages: true,
+              ...(outputSchema ? {
+                outputFormat: {
+                  type: 'json_schema',
+                  schema: outputSchema,
+                },
+              } : {}),
               pathToClaudeCodeExecutable: 'claude',
               ...(agent?.resume || existsSync(path) ? { resume: id } : { sessionId: id }),
               settingSources: [
@@ -482,16 +489,28 @@ export function claudeProvider({
             }
 
             if (message.type === 'result') {
+              if ('structured_output' in message && message.structured_output !== undefined) {
+                yield {
+                  type: 'structured' as const,
+                  value: message.structured_output,
+                }
+              }
+
               const windows = Object.values(message.modelUsage ?? {})
                 .map(model => model.contextWindow)
                 .filter(size => size > 0)
               const cost = message.total_cost_usd
+              const usage = 'usage' in message ? message.usage : undefined
 
               if (windows.length || typeof cost === 'number') {
                 yield {
                   type: 'usage' as const,
                   ...(windows.length ? { window: Math.max(...windows) } : {}),
                   ...(typeof cost === 'number' ? { cost } : {}),
+                  ...(usage ? {
+                    inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
+                      + usage.cache_read_input_tokens,
+                  } : {}),
                 }
               }
             }

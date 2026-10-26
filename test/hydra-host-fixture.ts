@@ -30,6 +30,7 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
       }
     } | undefined,
     reply: undefined as string | undefined,
+    structured: undefined as unknown,
     // Ends each turn with this error result, as the SDK does for a turn that fails.
     turnError: undefined as string | undefined,
     // Runs a tool call across the held part of the turn.
@@ -313,13 +314,21 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
           text: reply,
         })
 
-        if (control.usage) {
+        if (control.usage || control.structured !== undefined) {
           yield {
             type: 'result',
             subtype: 'success',
             is_error: false,
-            total_cost_usd: control.usage.cost,
-            modelUsage: { 'claude-sonnet': { contextWindow: control.usage.window } },
+            ...(control.structured !== undefined ? { structured_output: control.structured } : {}),
+            ...(control.usage ? {
+              total_cost_usd: control.usage.cost,
+              usage: {
+                input_tokens: 10,
+                cache_creation_input_tokens: 0,
+                cache_read_input_tokens: control.usage.context - 10,
+              },
+              modelUsage: { 'claude-sonnet': { contextWindow: control.usage.window } },
+            } : {}),
           }
         }
 
