@@ -11,7 +11,7 @@ import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import type { Command, Receipt } from './connection.ts'
 import { commandTimeout, reconnectDelay, retryable, withChanges } from './connection-protocol.ts'
-import { optimisticState } from './optimistic.ts'
+import { argument, optimisticState } from './optimistic.ts'
 import { commandArguments, editTargets, pendingHydra, type HydraResource } from './pending-state.ts'
 import { CommandFailure, createPendingResource } from './pending-intents.ts'
 import { currentRevision } from './optimistic.ts'
@@ -191,6 +191,34 @@ export function createHydraConnection() {
       scope,
     )
 
+    for (const intent of scope.resource.snapshot().intents) {
+      if ([
+        'confirmed',
+        'refused',
+      ].includes(intent.stage) || intent.delivery !== 'idempotent'
+        || requests.has(intent.id)) {
+        continue
+      }
+
+      requests.set(
+        intent.id,
+        {
+          id: intent.id,
+          scope,
+          name: intent.patch.name,
+          args: intent.patch.args,
+          optimistic: true,
+          retry: true,
+          sent: false,
+          unconfirmed: () => {},
+          resolve: () => {},
+          reject: ({ error }) => {
+            scope.error = error.message
+          },
+        },
+      )
+    }
+
     return scope
   }
 
@@ -317,14 +345,32 @@ export function createHydraConnection() {
 
   const confirmSaves = ({ scope }: { scope: Scope }) => {
     for (const request of requests.values()) {
-      if (request.scope !== scope || !request.saveId) {
+      if (request.scope !== scope || (!request.saveId && !request.optimistic)) {
         continue
       }
 
-      const receipt = savedReceipt({
+      const state = scope.resource.snapshot().confirmed
+      let receipt = savedReceipt({
         command: saveCommand({ request }),
-        state: scope.resource.snapshot().confirmed,
+        state,
       })
+      const eventId = request.optimistic ? argument({
+        args: request.args,
+        flag: '--event-id',
+      }) : undefined
+      const seq = eventId && state.eventIds[eventId]
+
+      if (!receipt && typeof seq === 'number') {
+        receipt = {
+          type: 'receipt',
+          id: request.id,
+          saved: true,
+          event: {
+            id: eventId,
+            seq,
+          },
+        }
+      }
 
       if (receipt) {
         clearTimeout(request.timer)

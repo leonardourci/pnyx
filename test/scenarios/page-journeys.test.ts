@@ -584,9 +584,17 @@ End of the long update.`
         markdown,
       ],
     })
+    await s.owner({
+      args: [
+        'reply',
+        'ship',
+        '--text',
+        '**Earlier instructions**\n\n' + 'Keep the unrelated update folded. '.repeat(30),
+      ],
+    })
     const page = await openHydra({ s })
     await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
-    await page.shows({
+    const control = await page.shows({
       what: 'formatted update clamped to three compact lines',
       arg: { card },
       check: ({ card }) => {
@@ -594,31 +602,41 @@ End of the long update.`
           .find(row => row.querySelector('strong')?.textContent === 'Ready for review')
         const preview = row?.querySelector<HTMLElement>('.text-preview')
 
+        const button = row?.querySelector('.show-more')
+
         return preview && preview.scrollHeight > preview.clientHeight
           && getComputedStyle(preview.querySelector('.markdown')!).fontSize === '12px'
-          && row?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+          && button?.getAttribute('aria-expanded') === 'false'
+          && button.getAttribute('aria-controls')
       },
     })
-    await page.click({ selector: `${card} .update-line .show-more` })
+    const toggle = `${card} .show-more[aria-controls=${JSON.stringify(control)}]`
+    await page.click({ selector: toggle })
     await page.shows({
       what: 'the full Markdown update after Show more',
-      arg: { card },
-      check: ({ card }) => {
-        const expanded = document.querySelector(`${card} .update-line .show-more[aria-expanded=true]`)?.parentElement
+      arg: { control },
+      check: ({ control }) => {
+        const expanded = document.getElementById(control)?.parentElement
 
-        return expanded?.querySelector('li')?.textContent === 'First item'
+        return expanded?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'true'
+          && expanded.querySelector('strong')?.textContent === 'Ready for review'
+          && expanded.querySelector('li')?.textContent === 'First item'
           && expanded.querySelector('pre code')?.textContent?.includes('pnpm run lint')
           && expanded.querySelector('td')?.textContent === 'Layout'
           && expanded.querySelector('button.task-reference')?.textContent?.includes('Reference task')
           && !expanded.querySelector('.text-preview')
       },
     })
-    await page.click({ selector: `${card} .update-line .show-more` })
+    await page.click({ selector: toggle })
     await page.shows({
       what: 'Show less restores the preview',
-      arg: { card },
-      check: ({ card }) => document.querySelector(`${card} .update-line .text-preview`)
-        && document.querySelector(`${card} .update-line .show-more`)?.getAttribute('aria-expanded') === 'false',
+      arg: { control },
+      check: ({ control }) => {
+        const content = document.getElementById(control)
+
+        return content?.classList.contains('text-preview')
+          && content.parentElement?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
+      },
     })
     await page.click({
       selector: `${card} .disclosure > summary`,

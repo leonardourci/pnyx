@@ -1,10 +1,530 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { join } from 'node:path'
+import { build } from 'vite'
+import { hydraIdentity, localToken } from '../../src/server/state.ts'
+import type { Command } from '../../web/src/hydra/connection.ts'
 import { browserGroup } from './browser.ts'
 import { scenarioGroup } from './harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()
+
+for (const recovery of [
+  'remount',
+  'reconnect',
+]) {
+  test(
+    `${recovery} recovers sent and queued edits with their original identities`,
+    async () => {
+      const s = await pnyx.scenario()
+      const result = await build({
+        configFile: false,
+        logLevel: 'silent',
+        define: { 'process.env.NODE_ENV': JSON.stringify('production') },
+        build: {
+          write: false,
+          minify: false,
+          lib: {
+            entry: join(
+              import.meta.dirname,
+              '../fixtures/pending-hook.ts',
+            ),
+            formats: ['iife'],
+            name: 'PendingHook',
+          },
+        },
+      })
+      const bundle = Array.isArray(result) ? result[0] : result
+      assert.ok(bundle && 'output' in bundle)
+      const script = bundle.output.find(file => file.type === 'chunk')
+      assert.ok(script?.type === 'chunk')
+      const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/missing-fixture.html` })
+      await page.shows({
+        what: 'the connection fixture mounted on its isolated Hydra origin',
+        arg: {
+          code: script.code,
+          token: localToken(),
+          identity: hydraIdentity({ hydraId: s.hydraId }),
+          hydraId: s.hydraId,
+        },
+        check: ({
+          code,
+          token,
+          identity,
+          hydraId,
+        }) => {
+          if (document.readyState !== 'complete') {
+            return false
+          }
+
+          history.replaceState(
+            null,
+            '',
+            `/hydra/${hydraId}/`,
+          )
+          document.body.innerHTML = '<div id="root"></div>'
+
+          for (const [
+            name,
+            content,
+          ] of [
+              [
+                'pnyx-token',
+                token,
+              ],
+              [
+                'pnyx-hydra',
+                identity,
+              ],
+            ]) {
+            const meta = document.createElement('meta')
+            meta.name = name
+            meta.content = content
+            document.head.append(meta)
+          }
+
+          const script = document.createElement('script')
+          script.textContent = code
+          document.body.append(script)
+
+          return true
+        },
+      })
+      await page.shows({
+        what: 'the fixture connected',
+        check: () => JSON.parse(document.querySelector('#probe')?.textContent ?? '{}').connected,
+      })
+      await page.shows({
+        what: 'one edit held in transport and a second queued before remount',
+        check: () => {
+          const control = window as unknown as {
+            pendingFixture: {
+              command: Command
+              unmount(): void
+            }
+            renameIds: string[]
+            disconnect(): void
+          }
+          const send = WebSocket.prototype.send
+          control.renameIds = []
+
+          // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
+          WebSocket.prototype.send = function(data) {
+            const message = JSON.parse(String(data))
+
+            if (message.name === 'column' && message.args[0] === 'rename') {
+              control.renameIds.push(message.id)
+
+              if (control.renameIds.length === 1) {
+                control.disconnect = () => this.close()
+
+                return
+              }
+            }
+
+            send.call(
+              this,
+              data,
+            )
+          }
+
+          for (const [
+            column,
+            title,
+          ] of [
+              [
+                'queued',
+                'Retained first',
+              ],
+              [
+                'in_progress',
+                'Retained second',
+              ],
+            ]) {
+            control.pendingFixture.command({
+              name: 'column',
+              args: [
+                'rename',
+                column,
+                '--title',
+                title,
+              ],
+            }).catch(() => {
+            // Unmount rejects the old observer; the scoped resource retains delivery ownership.
+            })
+          }
+
+          return true
+        },
+      })
+      const before = await page.shows({
+        what: 'both pending identities before teardown',
+        check: () => {
+          const state = JSON.parse(document.querySelector('#probe')?.textContent ?? '{}')
+
+          return state.intents?.length === 2
+            && state.intents.map((intent: { id: string }) => intent.id)
+        },
+      })
+      await page.shows({
+        what: 'recover the actual connection hook',
+        arg: { recovery },
+        check: ({ recovery }) => {
+          const control = window as unknown as {
+            pendingFixture: {
+              mount(): void
+              unmount(): void
+            }
+            disconnect(): void
+          }
+
+          if (recovery === 'remount') {
+            control.pendingFixture.unmount()
+            control.pendingFixture.mount()
+          } else {
+            control.disconnect()
+          }
+
+          return true
+        },
+      })
+      await page.shows({
+        what: 'both retained edits confirmed after remount',
+        check: () => {
+          const state = JSON.parse(document.querySelector('#probe')?.textContent ?? '{}')
+
+          return state.connected && state.intents?.length === 2
+          && state.intents.every((intent: { stage: string }) => intent.stage === 'confirmed')
+        },
+      })
+      const sent = await page.shows({
+        what: 'the original identity used on retry',
+        check: () => (window as unknown as { renameIds: string[] }).renameIds,
+      })
+      assert.deepEqual(
+        sent,
+        [
+          before[0],
+          before[0],
+          before[1],
+        ],
+      )
+      const unknownSeen = await page.shows({
+        what: 'the interrupted edit presented as unknown before recovery',
+        check: () => {
+          const { pendingFixture } = window as unknown as {
+            pendingFixture: { unknownSeen: boolean }
+          }
+
+          return pendingFixture.unknownSeen
+        },
+      })
+      assert.equal(
+        unknownSeen,
+        true,
+      )
+      assert.equal(
+        s.state().config?.columns.find(column => column.role === 'queued')?.title,
+        'Retained first',
+      )
+      assert.equal(
+        s.state().config?.columns.find(column => column.role === 'in_progress')?.title,
+        'Retained second',
+      )
+
+      for (const id of before) {
+        assert.equal(
+          s.events().filter(event => event.id === id).length,
+          1,
+        )
+      }
+
+      await page.shows({
+        what: 'an unchanged edit acknowledged without an event',
+        check: () => {
+          const control = window as unknown as {
+            pendingFixture: {
+              command: Command
+            }
+            unchanged?: string
+          }
+
+          const save = async () => {
+            try {
+              const receipt = await control.pendingFixture.command({
+                name: 'column',
+                args: [
+                  'rename',
+                  'queued',
+                  '--title',
+                  'Retained first',
+                ],
+              })
+              control.unchanged = String(receipt.event)
+            } catch (error) {
+              control.unchanged = String(error)
+            }
+          }
+
+          save()
+
+          return true
+        },
+      })
+      await page.shows({
+        what: 'unchanged acknowledgement settles its preview',
+        check: () => {
+          const control = window as unknown as { unchanged?: string }
+          const state = JSON.parse(document.querySelector('#probe')?.textContent ?? '{}')
+
+          return control.unchanged === 'none: unchanged'
+          && state.intents.every((intent: { stage: string }) => intent.stage === 'confirmed')
+        },
+      })
+
+      await page.close()
+    },
+  )
+}
+
+test(
+  'a receipt keeps its preview and serializes the next revision until its event arrives',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    await page.shows({
+      what: 'the connected Hydra',
+      check: () => document.querySelector('[data-connected=true]'),
+    })
+    await page.shows({
+      what: 'hold the first rename event while delivering its receipt',
+      check: () => {
+        const send = WebSocket.prototype.send
+        const control = window as unknown as {
+          renameFrames: { args: string[] }[]
+          receiptSeen: boolean
+          releaseEvent(): void
+        }
+        control.renameFrames = []
+        control.receiptSeen = false
+
+        // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
+        WebSocket.prototype.send = function(data) {
+          const message = JSON.parse(String(data))
+
+          if (message.name === 'column' && message.args[0] === 'rename') {
+            control.renameFrames.push(message)
+
+            if (control.renameFrames.length === 1) {
+              const receive = this.onmessage!
+              const held: MessageEvent[] = []
+              const eventId = message.args[message.args.indexOf('--event-id') + 1]
+
+              this.onmessage = event => {
+                const response = JSON.parse(String(event.data))
+
+                if (response.type === 'event' && response.event.id === eventId) {
+                  held.push(event)
+
+                  return
+                }
+
+                if (response.type === 'receipt' && response.id === message.id) {
+                  control.receiptSeen = true
+                }
+
+                receive.call(
+                  this,
+                  event,
+                )
+              }
+
+              control.releaseEvent = () => {
+                this.onmessage = receive
+                held.forEach(event => receive.call(
+                  this,
+                  event,
+                ))
+              }
+            }
+          }
+
+          send.call(
+            this,
+            data,
+          )
+        }
+
+        return true
+      },
+    })
+
+    for (const [
+      column,
+      title,
+    ] of [
+        [
+          'queued',
+          'Accepted first',
+        ],
+        [
+          'in_progress',
+          'Queued second',
+        ],
+      ]) {
+      await page.click({ selector: `.column-${column} .inline-title` })
+      await page.press({ key: 'Enter' })
+      await page.type({ text: title })
+      await page.press({ key: 'Enter' })
+    }
+
+    const before = await page.shows({
+      what: 'receipt accepted with both previews and the second write still queued',
+      check: () => {
+        const control = window as unknown as {
+          receiptSeen: boolean
+          renameFrames: { args: string[] }[]
+        }
+
+        return control.receiptSeen && document.querySelector('.column-queued h2')?.textContent?.includes('Accepted first')
+        && document.querySelector('.column-in_progress h2')?.textContent?.includes('Queued second')
+        && document.querySelector('[data-pending=saving]') && { sent: control.renameFrames.length }
+      },
+    })
+    assert.equal(
+      before.sent,
+      1,
+    )
+    const revision = s.state().configRevision
+    assert.equal(
+      s.state().config?.columns.find(column => column.role === 'in_progress')?.title,
+      'In progress',
+    )
+    await page.shows({
+      what: 'the durable event released',
+      check: () => {
+        (window as unknown as { releaseEvent(): void }).releaseEvent()
+
+        return true
+      },
+    })
+    await page.shows({
+      what: 'both edits confirmed',
+      check: () => !document.querySelector('[data-pending]'),
+    })
+    const frames = await page.shows({
+      what: 'the second outgoing frame uses the confirmed revision',
+      check: () => (window as unknown as { renameFrames: { args: string[] }[] }).renameFrames,
+    })
+    assert.equal(
+      frames.length,
+      2,
+    )
+    const args = frames[1]!.args
+    assert.equal(
+      args[args.indexOf('--if-revision') + 1],
+      String(revision),
+    )
+    assert.equal(
+      s.state().config?.columns.find(column => column.role === 'in_progress')?.title,
+      'Queued second',
+    )
+    await page.close()
+  },
+)
+
+test(
+  'a saved edit releases later writes when its receipt is lost',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    await page.shows({
+      what: 'the connected Hydra',
+      check: () => document.querySelector('[data-connected=true]'),
+    })
+    await page.shows({
+      what: 'drop rename receipts while allowing their durable events',
+      check: () => {
+        const send = WebSocket.prototype.send
+        const control = window as unknown as { renamesSent: string[] }
+        control.renamesSent = []
+
+        // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
+        WebSocket.prototype.send = function(data) {
+          const message = JSON.parse(String(data))
+
+          if (message.name === 'column' && message.args[0] === 'rename') {
+            control.renamesSent.push(message.id)
+            const receive = this.onmessage!
+
+            this.onmessage = event => {
+              const response = JSON.parse(String(event.data))
+
+              if (response.type === 'receipt' && response.id === message.id) {
+                return
+              }
+
+              receive.call(
+                this,
+                event,
+              )
+            }
+          }
+
+          send.call(
+            this,
+            data,
+          )
+        }
+
+        return true
+      },
+    })
+
+    for (const [
+      column,
+      title,
+    ] of [
+        [
+          'queued',
+          'Saved first',
+        ],
+        [
+          'in_progress',
+          'Saved second',
+        ],
+      ]) {
+      await page.click({ selector: `.column-${column} .inline-title` })
+      await page.press({ key: 'Enter' })
+      await page.type({ text: title })
+      await page.press({ key: 'Enter' })
+    }
+
+    await page.shows({
+      what: 'both edit events confirmed without receipts or a reconnect',
+      check: () => document.querySelector('.column-in_progress h2')?.textContent?.includes('Saved second')
+        && !document.querySelector('[data-pending]'),
+    })
+    assert.equal(
+      s.state().config?.columns.find(column => column.role === 'in_progress')?.title,
+      'Saved second',
+    )
+    const sent = await page.shows({
+      what: 'one send per rename',
+      check: () => (window as unknown as { renamesSent: string[] }).renamesSent,
+    })
+    assert.equal(
+      sent.length,
+      2,
+    )
+    assert.equal(
+      new Set(sent).size,
+      2,
+    )
+    await page.close()
+  },
+)
 
 test(
   'held edits show pending immediately; refusing the first preserves a pushed change and confirms the second',
