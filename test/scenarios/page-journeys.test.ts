@@ -120,6 +120,22 @@ test(
 test(
   'the composer completes a session command, turns a mention and attachments into cards, and Hydra gets them in one message',
   async () => {
+    const skill = join(
+      process.env.CLAUDE_CONFIG_DIR!,
+      'skills',
+      'fixture-cli',
+    )
+    mkdirSync(
+      skill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        skill,
+        'SKILL.md',
+      ),
+      '---\nname: fixture-cli\ndescription: Fixture command\n---\n',
+    )
     const s = await pnyx.scenario()
     await s.owner({
       args: [
@@ -141,27 +157,10 @@ test(
         'hello',
       ],
     })
-    const hydra = await hydraFinished({
+    await hydraFinished({
       s,
       turns: 1,
     })
-    const skill = join(
-      hydra.cwd,
-      '.agents',
-      'skills',
-      'fixture-cli',
-    )
-    mkdirSync(
-      skill,
-      { recursive: true },
-    )
-    writeFileSync(
-      join(
-        skill,
-        'SKILL.md',
-      ),
-      '---\nname: fixture-cli\ndescription: Fixture command\n---\n',
-    )
     const page = await openHydra({ s })
     await page.click({ selector: '.hydra-chat textarea' })
     await page.type({ text: '/fixture-c' })
@@ -169,7 +168,7 @@ test(
       what: 'the fixture skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
         .find(o => o.querySelector('strong')?.textContent === '/fixture-cli'
-          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Session skills'),
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Global · .claude'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
