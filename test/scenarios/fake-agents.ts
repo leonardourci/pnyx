@@ -230,7 +230,7 @@ export function replayClaude(
           text,
         })
 
-        const plan = turns.take({ text })
+        const plan = turns.take({ text: text.trim() === '/compact' ? '/compact' : text })
 
         if (text.trim() === '/compact') {
           const cancelled = new Promise<boolean>(resolve => {
