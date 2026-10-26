@@ -321,7 +321,49 @@ export function browserGroup() {
       return {
         shows,
         reload: async () => {
+          const before = await call({
+            method: 'Runtime.evaluate',
+            params: {
+              expression: 'performance.timeOrigin',
+              returnByValue: true,
+            },
+          }) as { result: { value: number } }
           await call({ method: 'Page.reload' })
+          const end = Date.now() + TIMEOUT_MS
+
+          while (Date.now() < end) {
+            try {
+              const current = await call({
+                method: 'Runtime.evaluate',
+                params: {
+                  expression: '({origin: performance.timeOrigin, ready: document.readyState})',
+                  returnByValue: true,
+                },
+              }) as {
+                result: {
+                  value?: {
+                    origin: number
+                    ready: string
+                  }
+                }
+              }
+
+              if (current.result.value?.origin !== before.result.value && current.result.value?.ready === 'complete') {
+                return
+              }
+            } catch (error) {
+              if (!/navigated|context.*destroyed|Cannot find context/i.test(String(error))) {
+                throw error
+              }
+            }
+
+            await new Promise(resolve => setTimeout(
+              resolve,
+              POLL_MS,
+            ))
+          }
+
+          throw new Error('timed out waiting for the reloaded document')
         },
         capture: async ({ path }: { path: string }) => {
           const { data } = await call({
