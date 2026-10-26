@@ -432,13 +432,20 @@ export function createRoutineHelper({
         seqs,
         once,
       }
-      append({
-        change: {
-          type: 'hydra.helper-started',
-          data: batch,
-        },
-      })
       busy = true
+
+      try {
+        append({
+          change: {
+            type: 'hydra.helper-started',
+            data: batch,
+          },
+        })
+      } catch (error) {
+        busy = false
+        throw error
+      }
+
       background({
         name: 'helper turn',
         run: () => run({ batch }),
