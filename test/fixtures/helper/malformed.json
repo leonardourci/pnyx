@@ -1,0 +1,26 @@
+[
+  {
+    "name": "693-character summary",
+    "tasks": [
+      "task-24977981-d83c-4b5c-8bb7-8f0b2e05d256"
+    ],
+    "text": "{\"outcomes\":[{\"task\":\"task-24977981-d83c-4b5c-8bb7-8f0b2e05d256\",\"audience\":\"owner\",\"summary\":\"[@Investigate /compact and built-in commands](pnyx-task:task-24977981-d83c-4b5c-8bb7-8f0b2e05d256): the worker found Codex has its own compact start and compaction events, but Pnyx drops the start event and only flags completion. The worker also found that your earlier question about teaching agents to handle comments after compaction rests on a wrong premise. The inline comment note is sent only once per session, tracked in browser localStorage, not on every comment message. Main said earlier that every such message carries the note, so that needs correcting. After compaction an agent may not get the note again. The report will cover this and propose a fix. No decision is needed yet.\"}]}"
+  },
+  {
+    "name": "667-character summary",
+    "tasks": [
+      "task-4f2316ec-976f-4f31-9114-6849dafb8e58",
+      "task-24977981-d83c-4b5c-8bb7-8f0b2e05d256"
+    ],
+    "text": "{\"outcomes\":[{\"task\":\"task-4f2316ec-976f-4f31-9114-6849dafb8e58\",\"audience\":\"routine\",\"summary\":\"Worker reports that recognition of commands and skills in sent messages now follows each harness's own boundaries (Codex scans dollar skills anywhere in the text; Claude only at the start, with built-in slash commands needing the start). Unknown or ambiguous names stay literal. No inscribe or memory action was run. Nothing needed from the owner.\"},{\"task\":\"task-24977981-d83c-4b5c-8bb7-8f0b2e05d256\",\"audience\":\"owner\",\"summary\":\"Early findings from the investigation at https://github.com/ (no PR yet; the mockup is at http://127.0.0.1:4387/session/d3bcb70f5dc7da6f). Native probes show both Claude and Codex can compact and cancel, and both keep their contract afterwards. Codex rejects new input while compacting, so \\\"Send now\\\" must cancel the compaction and then send. In the probe, ordinary Claude input did not cancel its compaction. A fresh Claude session also has a gap: Pnyx puts its digest in front of /compact, so it reaches the agent as plain text. Main should decide whether to tell the owner now, since this shapes the \\\"Send now\\\" and queueing states on the mockup they are reviewing.\"}]}"
+  },
+  {
+    "name": "prose and Markdown fence",
+    "tasks": [
+      "task-0b1e42fe-23b5-41a3-af0e-a7361d09ab75",
+      "task-24977981-d83c-4b5c-8bb7-8f0b2e05d256",
+      "task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9"
+    ],
+    "text": "Neither restart nor nudge is open to me, so I hand all three tasks to main.\n\n```json\n{\"outcomes\":[{\"task\":\"task-0b1e42fe-23b5-41a3-af0e-a7361d09ab75\",\"audience\":\"owner\",\"summary\":\"Worker is stuck at 'Selected model is at capacity' after the daemon restart. Both `task continue` and `reply` returned MAIN_ONLY for me, so main needs to resume it. The worker's last report: draft PR https://github.com/leonardourci/pnyx/pull/186 is held, with the 3 known failing tests untouched.\"},{\"task\":\"task-24977981-d83c-4b5c-8bb7-8f0b2e05d256\",\"audience\":\"owner\",\"summary\":\"Worker was cut by the daemon restart (interrupted, still declared working). `task continue` returned MAIN_ONLY for me, so main needs to resume it. No new report from it.\"},{\"task\":\"task-84a5e5c4-7827-4586-b1ff-5b3987c51cc9\",\"audience\":\"owner\",\"summary\":\"Worker was cut by the daemon restart (interrupted). The task is leased to another Hydra session (TASK_LEASED), so I took no action. Main should check it and resume once the lease ends.\"}]}\n```"
+  }
+]

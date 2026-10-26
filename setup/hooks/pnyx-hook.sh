@@ -63,9 +63,7 @@ hydra_dir=$home/hydras/$hydra_name
 [ -f "$hydra_dir/events.jsonl" ] || [ -f "$home/boards/$hydra_name/events.jsonl" ] || [ "$hydra_name" = default ] || exit 0
 spool=$hydra_dir/spool
 [ -d "$spool" ] || mkdir -p "$spool" || exit 0
-# ponytail: names order by whole seconds, then by the zero-padded process id, which
-# keeps one session's same-second hooks in order (each runs after the last) until the
-# process ids wrap; a sub-second clock needs more than POSIX date.
+# The writer orders the completed files by write time, even when process ids wrap.
 name=$(printf '%012d000-%010d' "$1" $$)-$id.json
 tmp=$spool/.tmp-$name
 

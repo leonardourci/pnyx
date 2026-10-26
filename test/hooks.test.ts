@@ -12,6 +12,7 @@ import {
   readdirSync,
   statSync,
   symlinkSync,
+  utimesSync,
   writeFileSync,
 } from 'node:fs'
 import { createServer } from 'node:net'
@@ -22,7 +23,7 @@ import { promisify } from 'node:util'
 import type { Attention } from '../src/core/model.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
-import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -354,8 +355,7 @@ test(
   async () => {
     const {
       script,
-      spool,
-      spooled,
+      home,
     } = sandbox()
 
     for (const event of [
@@ -373,12 +373,15 @@ test(
       })
     }
 
-    const events = spooled().sort()
-      .map(f => JSON.parse(readFileSync(
-        join(
-          spool,
-          f,
-        ),
+    const events = spoolFiles({
+      dir: join(
+        home,
+        'hydras',
+        'default',
+      ),
+    })
+      .map(file => JSON.parse(readFileSync(
+        file,
         'utf8',
       )).event)
     assert.deepEqual(
@@ -388,6 +391,70 @@ test(
         'PermissionRequest',
         'PostToolUse',
       ],
+    )
+  },
+)
+
+test(
+  'spool ingestion keeps write order across a wrapped hook PID',
+  () => {
+    const {
+      home,
+      spool,
+    } = sandbox()
+    mkdirSync(
+      spool,
+      { recursive: true },
+    )
+    const hooks = [
+      {
+        pid: '0000099999',
+        event: 'PreToolUse',
+      },
+      {
+        pid: '0000000001',
+        event: 'PermissionRequest',
+      },
+      {
+        pid: '0000000002',
+        event: 'PostToolUse',
+      },
+    ]
+
+    for (const [
+      index,
+      hook,
+    ] of hooks.entries()) {
+      const file = join(
+        spool,
+        `001793038000000-${hook.pid}-hook.json`,
+      )
+      writeFileSync(
+        file,
+        JSON.stringify({ event: hook.event }),
+      )
+      const at = new Date(1_793_038_000_000 + index * 20)
+      utimesSync(
+        file,
+        at,
+        at,
+      )
+    }
+
+    const ordered = spoolFiles({
+      dir: join(
+        home,
+        'hydras',
+        'default',
+      ),
+    })
+      .map(file => JSON.parse(readFileSync(
+        file,
+        'utf8',
+      )).event)
+    assert.deepEqual(
+      ordered,
+      hooks.map(hook => hook.event),
     )
   },
 )

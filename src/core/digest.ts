@@ -1,3 +1,4 @@
+import { helperLeases } from '../helper/state.ts'
 import { taskReadiness } from './dependencies.ts'
 import { describeColumnRule } from './columns.ts'
 import { learningConditions, learningDigest, type LearningConditions, type Learning } from '../memory/learnings.ts'
@@ -227,6 +228,8 @@ export function hydraDigest({
     '',
     'Columns (id · title · tasks · when):',
     ...config.columns.map(c => `- ${c.id} · ${c.title} · ${tasks.filter(t => t.column === c.id).length} · ${describeColumnRule({ column: c })} · ${clip({ text: c.description ?? 'no description' })}`),
+    '',
+    ...helperLeases({ state }),
     '',
     'Open tasks (id · title · column · declared status · worker):',
     ...(open.length ? open.slice(
