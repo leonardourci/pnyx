@@ -2178,8 +2178,6 @@ test(
       })
     }
 
-    const fileWatchers = () => process.getActiveResourcesInfo().filter(name => name === 'FSEventWrap').length
-
     try {
       cli({
         args: [
@@ -2292,8 +2290,6 @@ test(
         true,
       )
 
-      // The file watcher goes once the session stops working.
-      const working = fileWatchers()
       push({
         fields: {
           activity: 'finished',
@@ -2304,19 +2300,32 @@ test(
         },
       })
 
-      const deadline = Date.now() + 5000
+      const finishedSeq = loadHydra({ hydraId: 'default' }).state.seq
 
-      while (fileWatchers() >= working && Date.now() < deadline) {
-        await new Promise(r => setTimeout(
-          r,
-          50,
-        ))
+      for (;;) {
+        const message = await t.next()
+
+        if (message.type === 'event' && message.event.seq === finishedSeq) {
+          break
+        }
       }
 
-      assert.equal(
-        fileWatchers(),
-        working - 1,
+      writeSync(
+        rollout,
+        reply({
+          text: 'Finished; the open conversation still follows.',
+          at: '2026-10-13T11:00:10Z',
+        }),
       )
+
+      for (;;) {
+        const message = await t.next()
+
+        if (message.type === 'thread' && message.thread.entries.some(entry => entry.text === 'Finished; the open conversation still follows.')) {
+          break
+        }
+      }
+
       t.ws.close()
     } finally {
       closeSync(rollout)
