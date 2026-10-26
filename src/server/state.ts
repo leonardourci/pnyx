@@ -71,7 +71,10 @@ export async function readServer({ hydraId }: { hydraId: string }): Promise<Serv
         info,
         path: 'health',
       }),
-      { signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS) },
+      {
+        headers: { connection: 'close' },
+        signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
+      },
     )
     const health = (await res.json()) as {
       hydraId?: unknown
@@ -160,6 +163,7 @@ export async function askHost({
     {
       method: 'POST',
       headers: {
+        'connection': 'close',
         'content-type': 'application/json',
         'authorization': `Bearer ${localToken()}`,
       },
