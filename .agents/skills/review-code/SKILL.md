@@ -16,6 +16,7 @@ Use this checklist yourself or ask another reviewer to inspect the diff. Read fi
 - [ ] For UI changes, check loading, empty and error states, keyboard access and the existing UI primitives. Use Hydra, Oracle and inscribe consistently.
 - [ ] Match changed behavior to tests using `audit-tests`. Read the assertions; a test name alone proves nothing. Check docs and CLI hints describe the resulting behavior.
 - [ ] Review comments and prose using `deslop`. Keep comments that explain a constraint or non-obvious reason; remove narration and stale claims.
+- [ ] Keep each prose paragraph on one source line. Use line breaks for lists, code and separate paragraphs.
 - [ ] Run `pnpm verify` for the branch's checks. Respect any explicit test hold and report skipped checks as pending. Fix reported lint issues, review automatic edits, commit and push through the approved workflow, then rerun on the clean PR head.
 
 Record each finding with severity, file and line, the failing behavior or violated rule, and a suggested fix. Bugs and explicit rule violations must be resolved; explain any declined recommendation. Record checks run and remaining gaps. Once complete, tick **Ran `review-code`** in the PR and describe what you fixed (or say no findings).

@@ -11,6 +11,7 @@ Apply this checklist to the changed text, whatever its format. Preserve facts, c
 - [ ] Replace vague claims and AI filler (“delve”, “leverage”, “seamless”, “robust”, “it is worth noting”, “this PR aims to”) with plain words and specific facts. Do not add claims the evidence does not support.
 - [ ] Remove em dashes from authored text. Use a period, comma, colon or parentheses that fits the sentence. Keep punctuation natural rather than mechanically replacing every dash with a hyphen.
 - [ ] Cut contrastive slogans, invented labels, unnecessary headings and repeated explanations. Keep lists when they help someone follow steps or compare parallel facts.
+- [ ] Keep each prose paragraph on one source line. Use line breaks for lists, code and separate paragraphs.
 - [ ] In code comments, retain non-obvious reasons, invariants, compatibility constraints and useful public contracts. Remove narration, step numbers, signature paraphrases, stale claims and comments that repeat test names. Prefer clearer names when they carry the meaning.
 - [ ] When code is in scope, remove dead branches, unused scaffolding and one-use wrappers that obscure the operation. Avoid introducing abstractions or dependencies just for cleanup. Keep useful collection methods, concurrent work and declarative rendering.
 - [ ] Preserve error visibility, ordering, cancellation, retries, cleanup and permissions. A wording pass must not quietly change behavior or hide a failure.
