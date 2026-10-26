@@ -438,7 +438,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
       threadId: string
       turnId?: string
       manualCompact?: boolean
-      started?({ id }: { id: string }): void
+      started?({ id }: { id: string }): Promise<void>
     }): AsyncGenerator<
       HostedText | HostedTool | HostedThinking | HostedUsage
       | HostedCompaction | { turn: ObjectValue }
@@ -481,7 +481,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           if (event.method === 'turn/started') {
             if (!turnId && typeof turn.id === 'string') {
               turnId = turn.id
-              started?.({ id: turnId })
+              await started?.({ id: turnId })
             }
 
             continue
@@ -789,6 +789,11 @@ export function codexProvider({
       instructions,
       context,
     }) {
+      let deferredInterrupt: {
+        done: Promise<void>
+        resolve(): void
+        reject({ error }: { error: unknown }): void
+      } | undefined
       const rpc = connection({
         child: spawnCodex({
           cwd,
@@ -797,6 +802,8 @@ export function codexProvider({
       })
 
       const close = () => {
+        deferredInterrupt?.reject({ error: new Error('The Codex session closed before it could be interrupted') })
+        deferredInterrupt = undefined
         signal.removeEventListener(
           'abort',
           close,
@@ -856,6 +863,24 @@ export function codexProvider({
             turnId,
           },
         })
+
+        const interruptStartedTurn = async () => {
+          const waiting = deferredInterrupt
+
+          if (!waiting) {
+            return
+          }
+
+          deferredInterrupt = undefined
+
+          try {
+            await stopTurn()
+            waiting.resolve()
+          } catch (error) {
+            interrupted = false
+            waiting.reject({ error })
+          }
+        }
 
         return {
           id,
@@ -984,21 +1009,18 @@ export function codexProvider({
               let runningTurn = turnId
 
               // A stop that came before Codex named the turn applies now.
-              if (interrupted && turnId) {
-                await stopTurn()
+              if (turnId) {
+                await interruptStartedTurn()
               }
 
               const events = rpc.completed({
                 threadId: id,
                 turnId: runningTurn,
                 manualCompact,
-                started: ({ id }) => {
+                started: async ({ id }) => {
                   turnId = id
                   runningTurn = id
-
-                  if (interrupted) {
-                    void stopTurn().catch(() => {})
-                  }
+                  await interruptStartedTurn()
                 },
               })[Symbol.asyncIterator]()
               let pendingEvent = events.next()
@@ -1105,8 +1127,38 @@ export function codexProvider({
             interrupted = true
 
             if (turnId) {
-              await stopTurn()
+              try {
+                await stopTurn()
+              } catch (error) {
+                interrupted = false
+                throw error
+              }
+
+              return
             }
+
+            if (!deferredInterrupt) {
+              let resolve = () => {}, reject: ({ error }: { error: unknown }) => void = () => {}
+              const done = new Promise<void>((
+                yes,
+                no,
+              ) => {
+                resolve = yes
+                reject = ({ error }) => no(error)
+              })
+              deferredInterrupt = {
+                done,
+                resolve,
+                reject,
+              }
+            }
+
+            await Promise.race([
+              deferredInterrupt.done,
+              rpc.ended.then(error => {
+                throw error
+              }),
+            ])
           },
           close,
         }
