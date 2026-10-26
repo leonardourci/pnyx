@@ -303,24 +303,50 @@ test(
         return flows
       },
     })
-    await page.shows({
-      what: 'the sent task mention accepts keyboard focus',
-      check: () => {
-        const token = document.querySelector<HTMLElement>('.message.mine .task-reference')
-        token?.focus()
 
-        return token && document.activeElement === token
-      },
-    })
-    await page.press({ key: 'Enter' })
-    await page.shows({
-      what: 'the sent task mention opens its task',
-      check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
-    })
     const agent = await hydraFinished({
       s,
       turns: 2,
     })
+
+    for (const key of [
+      'Enter',
+      'Space',
+    ] as const) {
+      await page.click({ selector: '.hydra-head' })
+      let reached = false
+      const visited: string[] = []
+
+      for (let tab = 0; tab < 20; tab++) {
+        await page.press({ key: 'Tab' })
+        const active = await page.shows({
+          what: 'the keyboard navigation position',
+          check: () => ({
+            reached: document.activeElement?.matches('.message.mine .task-reference'),
+            target: document.activeElement?.getAttribute('aria-label') ?? document.activeElement?.className,
+          }),
+        })
+
+        visited.push(active.target ?? 'none')
+
+        if (active.reached) {
+          reached = true
+          break
+        }
+      }
+
+      assert.ok(
+        reached,
+        `Tab reaches the sent task mention: ${visited.join(' -> ')}`,
+      )
+      await page.press({ key })
+      await page.shows({
+        what: `${key} opens the sent task mention after ${visited.at(-1)}`,
+        check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
+      })
+      await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    }
+
     const sent = s.received({ cwd: agent.cwd }).at(-1)
     assert.ok(sent)
     assert.match(
@@ -357,7 +383,7 @@ for (const harness of [
       })
       const text = harness === 'codex'
         ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.'
-        : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.'
+        : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.\n\n**prefix**/inscribe and **/inscribe** safely. [link](/inscribe) [**/inscribe**](https://example.com). `/inscribe` and\n\n```text\n/inscribe\n```'
       await s.owner({
         args: [
           'hydra',
@@ -383,6 +409,7 @@ for (const harness of [
             && mine.textContent?.includes('not-a-known-skill')
             && !mine.querySelector('.skill-remove')
             && (harness !== 'codex' || mine.querySelector('code .draft-skill'))
+            && (harness !== 'claude' || !mine.querySelector('strong .draft-skill, a .draft-skill, code .draft-skill'))
           },
         })
         await page.close()

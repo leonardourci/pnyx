@@ -36,13 +36,19 @@ const describe = ({ details }: { details: ExceptionDetails }) =>
   details.exception?.description ?? details.text
 
 // The keys the journeys press; a key with text also types it, as Enter does in a field.
-const KEYS: Record<'Enter' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
+const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
   keyCode: number
+  key?: string
   text?: string
 }> = {
   Enter: {
     keyCode: 13,
     text: '\r',
+  },
+  Space: {
+    keyCode: 32,
+    key: ' ',
+    text: ' ',
   },
   ArrowDown: { keyCode: 40 },
   ArrowUp: { keyCode: 38 },
@@ -390,13 +396,14 @@ export function browserGroup() {
         press: async ({ key }: { key: keyof typeof KEYS }) => {
           const {
             keyCode,
+            key: value = key,
             text,
           } = KEYS[key]
           await call({
             method: 'Input.dispatchKeyEvent',
             params: {
               type: text ? 'keyDown' : 'rawKeyDown',
-              key,
+              key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
               text,
@@ -406,7 +413,7 @@ export function browserGroup() {
             method: 'Input.dispatchKeyEvent',
             params: {
               type: 'keyUp',
-              key,
+              key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
             },
