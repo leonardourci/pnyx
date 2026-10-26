@@ -1,5 +1,5 @@
 import { reminderTime } from '../../../src/reminders/time.ts'
-import { optimisticState, currentRevision } from './optimistic.ts'
+import { argument, optimisticState, currentRevision } from './optimistic.ts'
 import { CommandFailure } from './pending-intents.ts'
 import { commandArguments, editTargets, pendingHydra } from './pending-state.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
@@ -229,10 +229,28 @@ export function useHydra() {
         id,
         p,
       ] of pending.current) {
-        const receipt = savedReceipt({
+        const state = resource.snapshot().confirmed
+        let receipt = savedReceipt({
           command: p.message,
-          state: resource.snapshot().confirmed,
+          state,
         })
+        const eventId = p.optimistic ? argument({
+          args: p.message.args,
+          flag: '--event-id',
+        }) : undefined
+        const seq = eventId && state.eventIds[eventId]
+
+        if (!receipt && typeof seq === 'number') {
+          receipt = {
+            type: 'receipt',
+            id,
+            saved: true,
+            event: {
+              id: eventId,
+              seq,
+            },
+          }
+        }
 
         if (receipt) {
           clearTimeout(p.timer)
@@ -427,6 +445,38 @@ export function useHydra() {
           state: saved?.state
           ?? (endpoint === initial.current.endpoint ? initial.current.state : emptyHydra()),
         })
+      }
+
+      for (const intent of resource.snapshot().intents) {
+        if ([
+          'confirmed',
+          'refused',
+        ].includes(intent.stage) || intent.delivery !== 'idempotent'
+          || pending.current.has(intent.id)) {
+          continue
+        }
+
+        let settle = () => {}
+        const settled = new Promise<void>(resolve => {
+          settle = resolve
+        })
+        pending.current.set(
+          intent.id,
+          {
+            message: {
+              type: 'command',
+              id: intent.id,
+              ...intent.patch,
+            },
+            optimistic: true,
+            retry: true,
+            sent: false,
+            settled,
+            resolve: settle,
+            reject: settle,
+            unconfirmed: () => {},
+          },
+        )
       }
 
       hasSnapshot.current = !!saved
@@ -822,22 +872,8 @@ export function useHydra() {
         )
         disconnected()
 
-        for (const [
-          id,
-          p,
-        ] of pending.current) {
+        for (const p of pending.current.values()) {
           clearTimeout(p.timer)
-
-          if (p.optimistic) {
-            resource.unknown({
-              id,
-              error: new CommandFailure({
-                message: 'Send interrupted. Check its outcome before retrying.',
-                code: 'INTERRUPTED',
-                outcome: 'unknown',
-              }),
-            })
-          }
 
           if (!p.saveId) {
             p.reject({
