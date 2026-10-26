@@ -1,3 +1,4 @@
+import { compactCommand } from '../compaction/state.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { notificationReceipt } from '../task-inbox/notice.ts'
@@ -184,6 +185,7 @@ function deliver({
       hydraId,
       card,
       text,
+      inputId: reply,
       steering: request.steering,
       direct: !request.steering,
       setting: request.setting,
@@ -248,6 +250,7 @@ async function hostReply({
   steering,
   direct,
   actor,
+  inputId,
 }: {
   hydraId: string
   card: string
@@ -256,6 +259,7 @@ async function hostReply({
   steering?: string
   direct?: boolean
   actor?: string
+  inputId?: string
 }): Promise<Delivery> {
   try {
     const accepted = await askHost({
@@ -274,9 +278,14 @@ async function hostReply({
           text,
           steering,
           direct,
+          inputId,
           ...(actor ? { actor } : {}),
         },
     })
+
+    if (accepted.queued) {
+      return { state: 'queued' }
+    }
 
     if (accepted.deferred) {
       return {
@@ -568,7 +577,8 @@ export async function sendReply({
         request.ask ? text : entered,
         context,
       ].filter(Boolean).join('\n\n')
-      const steering = route.kind !== 'firstmate' && card.id !== HYDRA_CARD && !card.automaticTask
+      const nativeCompact = route.kind === 'pnyx' && compactCommand({ text: payload })
+      const steering = !nativeCompact && route.kind !== 'firstmate' && card.id !== HYDRA_CARD && !card.automaticTask
         && !control && !answers && !resolveKey
         ? reply : undefined
 
@@ -917,6 +927,8 @@ export const agent = guard({
       },
       actor: { type: 'string' },
       'idempotency-key': { type: 'string' },
+      'cancel-compact': { type: 'boolean' },
+      'send-now': { type: 'string' },
     }
     const {
       values,
@@ -932,6 +944,25 @@ export const agent = guard({
       what: 'card id',
     })
     const homes = (values.home as string[] | undefined) ?? []
+
+    if (values['cancel-compact'] || values['send-now']) {
+      if (positionals.length !== 1) {
+        throw new AxiError(
+          'Compaction controls take only the card ID',
+          'VALIDATION_ERROR',
+        )
+      }
+
+      return askHost({
+        hydraId,
+        body: {
+          action: 'compact',
+          card: ref,
+          sendNow: values['send-now'],
+          actor: meta({ values }).actor,
+        },
+      })
+    }
 
     if (positionals.length < 3) {
       if (positionals.length === 2) {
@@ -1097,7 +1128,7 @@ export const agent = guard({
   },
 })
 
-export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--home <path>]... [--idempotency-key <key>]
+export const AGENT_HELP = `usage: pnyx-axi agent <id> [<setting> <value>] [--cancel-compact | --send-now <message-id>] [--home <path>]... [--idempotency-key <key>]
 Without a setting, lists the card's harness, settings and the ones Pnyx can change, with values.
 With one, types what the harness's own interface takes into the session, on the card's reply
 route (receipts as for reply), then reads the setting back from the transcript:
