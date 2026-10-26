@@ -265,6 +265,64 @@ const parsed = new Map<string, {
   end: number
 }>()
 
+export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
+  let fd: number
+
+  try {
+    fd = openSync(
+      logPath({ dir: hydraDir({ hydraId }) }),
+      'r',
+    )
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+
+    throw error
+  }
+
+  try {
+    const chunks: Buffer[] = []
+    const buffer = Buffer.alloc(4096)
+
+    for (;;) {
+      const bytes = readSync(
+        fd,
+        buffer,
+        0,
+        buffer.length,
+        null,
+      )
+
+      if (!bytes) {
+        return null
+      }
+
+      const chunk = buffer.subarray(
+        0,
+        bytes,
+      )
+      const newline = chunk.indexOf(10)
+
+      if (newline !== -1) {
+        chunks.push(chunk.subarray(
+          0,
+          newline,
+        ))
+
+        return toEvent({
+          event: parseLine({ line: Buffer.concat(chunks).toString('utf8') }),
+          offset: 0,
+        })
+      }
+
+      chunks.push(Buffer.from(chunk))
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   const dir = hydraDir({ hydraId })
   let file: string
