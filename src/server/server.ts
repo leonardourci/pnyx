@@ -200,7 +200,7 @@ interface MountedHydra {
     res,
     path,
     search,
-  }: HydraRequest): void
+  }: HydraRequest): void | Promise<void>
   upgrade({
     req,
     socket,
@@ -333,10 +333,13 @@ export async function startServer({
     origins,
   })
 
-  const http = createServer((
+  const request = async ({
     req,
     res,
-  ) => {
+  }: {
+    req: IncomingMessage
+    res: ServerResponse
+  }): Promise<void> => {
     if (!allowed({ req })) {
       return reply({
         res,
@@ -427,6 +430,44 @@ export async function startServer({
       res,
       path,
       home,
+    })
+  }
+
+  const http = createServer((
+    req,
+    res,
+  ) => {
+    void request({
+      req,
+      res,
+    }).catch(error => {
+      console.error(
+        `pnyx-axi request: ${req.method} ${req.url?.split('?')[0] ?? '/'}`,
+        error,
+      )
+
+      if (res.destroyed || res.writableEnded) {
+        return
+      }
+
+      if (res.headersSent) {
+        res.destroy()
+
+        return
+      }
+
+      try {
+        reply({
+          res,
+          status: 500,
+          body: {
+            error: 'request failed',
+            code: 'INTERNAL_ERROR',
+          },
+        })
+      } catch {
+        res.destroy()
+      }
     })
   })
 
@@ -1894,7 +1935,7 @@ async function mountOwnedHydra({
         })
       }
 
-      return void readBody({ req }).then(body => hostRequest({
+      return readBody({ req }).then(body => hostRequest({
         host: agents,
         body,
       }))
@@ -1947,7 +1988,7 @@ async function mountOwnedHydra({
         })
       }
 
-      return void readBytes({
+      return readBytes({
         req,
         limit: MAX_IMAGE_BYTES,
       }).then(
@@ -2034,6 +2075,12 @@ async function mountOwnedHydra({
           throw new Error('not an attachment')
         }
 
+        const body = readFileSync(join(
+          dir,
+          'attachments',
+          attachment,
+        ))
+
         return void res.writeHead(
           200,
           {
@@ -2042,11 +2089,7 @@ async function mountOwnedHydra({
             'cache-control': 'private, max-age=31536000, immutable',
           },
         )
-          .end(readFileSync(join(
-            dir,
-            'attachments',
-            attachment,
-          )))
+          .end(body)
       } catch {
         return reply({
           res,
@@ -2065,7 +2108,7 @@ async function mountOwnedHydra({
         'http://localhost',
       ).searchParams
 
-      return void listFolders({
+      return listFolders({
         path: query.get('path') ?? '',
         repository: query.get('repository') ?? '',
       }).then(
