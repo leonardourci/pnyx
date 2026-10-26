@@ -1,4 +1,4 @@
-name: External contribution verification
+name: Verification
 
 on:
   pull_request:
@@ -9,14 +9,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: external-verify-${{ github.event.pull_request.number }}
+  group: verify-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   verify:
-    name: Verify outside contribution
-    if: vars.PNYX_EXTERNAL_VERIFY_ENABLED == 'true' && github.event.pull_request.user.login != github.repository_owner
-    environment: external-contributions
+    name: Verify contribution
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -24,7 +22,7 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           fetch-depth: 0
-          persist-credentials: false
+          persist-credentials: true
 
       - uses: actions/setup-node@v4
         with:
@@ -34,12 +32,17 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: Check browser prerequisite
+        run: google-chrome --version
+
       - run: pnpm verify --checks-only
+        env:
+          PNYX_CHROME: /usr/bin/google-chrome
 
       - name: Keep verification failure logs
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: external-verify-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          name: verify-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
           path: /tmp/pnyx-verify-*/*.log
           if-no-files-found: ignore
