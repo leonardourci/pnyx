@@ -1,12 +1,17 @@
-import { EventEmitter } from 'node:events'
-import { setTimeout as watchdog, clearTimeout as clearWatchdog } from 'node:timers'
+import { EventEmitter, once } from 'node:events'
+import { setTimeout, clearTimeout } from 'node:timers'
 import { WebSocket } from 'ws'
 import { createHost as host, type QueryFn } from '../src/server/host.ts'
 import { startServer as serve } from '../src/server/server.ts'
 import { localToken } from '../src/server/state.ts'
 
+const watchdog = setTimeout
+const clearWatchdog = clearTimeout
+
 export function hostObserver({ describe }: { describe(): unknown }) {
   const events = new EventEmitter()
+  const sockets = new Set<WebSocket>()
+  let request = 0
   const notify = () => events.emit('change')
 
   const query = ({ run }: { run: QueryFn }): QueryFn => (({ ...args }: Parameters<QueryFn>[0]) => {
@@ -24,7 +29,6 @@ export function hostObserver({ describe }: { describe(): unknown }) {
             return async function* () {
               try {
                 for await (const event of target) {
-                  notify()
                   yield event
                   notify()
                 }
@@ -107,10 +111,24 @@ export function hostObserver({ describe }: { describe(): unknown }) {
       throw error
     }
 
+    sockets.add(ws)
+    let closed = false
+
     return {
       ...server,
       async close() {
+        if (closed) {
+          return
+        }
+
+        closed = true
+        sockets.delete(ws)
+        const socketClosed = once(
+          ws,
+          'close',
+        )
         ws.terminate()
+        await socketClosed
         await server.close()
       },
     }
@@ -139,7 +157,10 @@ export function hostObserver({ describe }: { describe(): unknown }) {
     resolve,
     reject,
   ) => {
+    let scheduled: ReturnType<typeof setImmediate> | undefined
+
     const done = () => {
+      clearImmediate(scheduled)
       events.off(
         'change',
         changed,
@@ -147,7 +168,9 @@ export function hostObserver({ describe }: { describe(): unknown }) {
       clearWatchdog(timer)
     }
 
-    const changed = () => {
+    const inspect = () => {
+      scheduled = undefined
+
       try {
         progress()
 
@@ -158,6 +181,12 @@ export function hostObserver({ describe }: { describe(): unknown }) {
       } catch (error) {
         done()
         reject(error)
+      }
+    }
+
+    const changed = () => {
+      if (!scheduled) {
+        scheduled = setImmediate(inspect)
       }
     }
 
@@ -175,10 +204,67 @@ export function hostObserver({ describe }: { describe(): unknown }) {
     changed()
   })
 
+  const checkpoint = async ({ ws }: { ws?: WebSocket } = {}) => {
+    const targets = ws ? [ws] : [...sockets]
+    await Promise.all(targets.map(ws => new Promise<void>((
+      resolve,
+      reject,
+    ) => {
+      const id = `observer-${++request}`
+      const timer = watchdog(
+        () => {
+          ws.off(
+            'message',
+            receipt,
+          )
+          reject(new Error(`Server did not drain ${id}; state: ${JSON.stringify(describe())}`))
+        },
+        30_000,
+      )
+
+      // eslint-disable-next-line pnyx/object-params -- WebSocket owns this callback signature.
+      const receipt = (raw: WebSocket.RawData) => {
+        const message = JSON.parse(String(raw))
+
+        if (message.id !== id) {
+          return
+        }
+
+        ws.off(
+          'message',
+          receipt,
+        )
+        clearWatchdog(timer)
+
+        if (message.type === 'receipt') {
+          resolve()
+        } else {
+          reject(new Error(String(raw)))
+        }
+      }
+
+      ws.on(
+        'message',
+        receipt,
+      )
+      ws.send(JSON.stringify({
+        type: 'command',
+        id,
+        name: 'history',
+        args: [
+          '--limit',
+          '1',
+        ],
+      }))
+    })))
+    await new Promise<void>(resolve => setImmediate(resolve))
+  }
+
   return {
     startServer,
     createHost,
     until,
     notify,
+    checkpoint,
   }
 }
