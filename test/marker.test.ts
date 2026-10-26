@@ -377,6 +377,7 @@ test(
       reviews + '\n- [x] Ran `deslop`',
       '<!--\n' + reviews + '\n-->',
       '```md\n' + reviews + '\n```',
+      '```md\n```md\n' + reviews + '\n```',
       '~~~~md\n' + reviews + '\n~~~\n' + reviews + '\n~~~~',
       '    ' + reviews.replaceAll(
         '\n',
@@ -394,27 +395,46 @@ test(
 test(
   'unchecking a review invalidates an exact-head marker and a borrowed docs pass',
   async () => {
-    for (const headSha of [
-      'tested',
-      'docs',
+    for (const name of [
+      'review-code',
+      'audit-tests',
+      'deslop',
     ]) {
-      await assert.rejects(
-        checkPullRequest({
-          body: passing.replace(
-            '[x]',
-            '[ ]',
-          ),
-          headSha,
-          commit: async ({ sha }) => commits[sha]!,
-          pullRequestsFor: async () => [
-            {
-              number: 3,
-              body: passing,
-            },
-          ],
-        }),
-        /Review checklists incomplete/,
-      )
+      const declaration = '- [x] Ran `' + name + '`'
+
+      for (const replacement of [
+        '',
+        '- [ ] Ran `' + name + '`',
+      ]) {
+        const body = passing.replace(
+          declaration,
+          replacement,
+        )
+        assert.deepEqual(
+          reviewBlockers({ body }),
+          [`complete ${name} and tick its PR checkbox`],
+        )
+
+        for (const headSha of [
+          'tested',
+          'docs',
+        ]) {
+          await assert.rejects(
+            checkPullRequest({
+              body,
+              headSha,
+              commit: async ({ sha }) => commits[sha]!,
+              pullRequestsFor: async () => [
+                {
+                  number: 3,
+                  body: passing,
+                },
+              ],
+            }),
+            { message: new RegExp(`Review checklists incomplete: complete ${name}`) },
+          )
+        }
+      }
     }
   },
 )

@@ -26,7 +26,11 @@ export function reviewBlockers({ body }: { body: string }): string[] {
     if (delimiter) {
       if (!fence) {
         fence = delimiter
-      } else if (delimiter[0] === fence[0] && delimiter.length >= fence.length) {
+      } else if (
+        delimiter[0] === fence[0]
+        && delimiter.length >= fence.length
+        && line.trim() === delimiter
+      ) {
         fence = undefined
       }
 
