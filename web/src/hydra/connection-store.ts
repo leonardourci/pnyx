@@ -49,6 +49,7 @@ interface Scope {
   latest: Record<string, LatestMessage>
   actions: Record<string, CurrentAction>
   command: Command
+  leases: number
   creation?: Creation
   persistTimer?: ReturnType<typeof setTimeout>
 }
@@ -179,6 +180,7 @@ export function createHydraConnection() {
       queue: emptyQueue(),
       latest: {},
       actions: {},
+      leases: 0,
       command: ({
         name,
         args,
@@ -190,6 +192,16 @@ export function createHydraConnection() {
         onChecking,
       }),
     }
+
+    scope.command.retain = () => {
+      scope.leases++
+
+      return () => {
+        scope.leases--
+        releaseInactive()
+      }
+    }
+
     scopes.set(
       id,
       scope,
@@ -213,6 +225,13 @@ export function createHydraConnection() {
           args: intent.patch.args,
           optimistic: true,
           dependencies: intent.dependencies,
+          saveId: saveEventId({
+            command: {
+              type: 'command',
+              id: intent.id,
+              ...intent.patch,
+            },
+          }),
           retry: true,
           sent: false,
           unconfirmed: () => {},
@@ -421,7 +440,7 @@ export function createHydraConnection() {
         'refused',
       ].includes(intent.stage))
 
-      if (outstanding || unresolved) {
+      if (outstanding || unresolved || scope.leases > 0) {
         continue
       }
 
@@ -749,15 +768,20 @@ export function createHydraConnection() {
         return
       }
 
-      const dependencies = scope.resource.snapshot().intents.filter(intent => ![
-        'refused',
-        'confirmed',
-      ].includes(intent.stage)
-          && [
-            'column',
-            'task',
-          ].includes(intent.patch.name) && intent.patch.args[0] === 'create'
-          && args.some(arg => intent.targets.includes(arg))).map(intent => intent.id)
+      const dependencies = scope.resource.snapshot().intents.filter(intent => {
+        const isPending = ![
+          'refused',
+          'confirmed',
+        ].includes(intent.stage)
+        const isCreation = [
+          'column',
+          'task',
+        ].includes(intent.patch.name)
+          && intent.patch.args[0] === 'create'
+        const targetsArgument = args.some(arg => intent.targets.includes(arg))
+
+        return isPending && isCreation && targetsArgument
+      }).map(intent => intent.id)
 
       if (optimistic) {
         const edit = {

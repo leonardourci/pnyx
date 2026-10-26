@@ -40,27 +40,37 @@ export function createSettingsResource<State, Patch>({
       represented: ({
         state,
         intent,
-      }) => state !== null && represented({
+      }) => intent.stage === 'unknown' && state !== null && represented({
         state,
         patch: intent.patch,
       }),
     },
   })
   const listeners = new Set<() => void>()
-  let error = ''
+  let readError = ''
+  let failedWrite: string | undefined
   let generation = 0
   let refreshing: Promise<void> | undefined
   const queues = new Map<string, Promise<void>>()
-  let snapshot = {
-    ...resource.snapshot(),
-    error,
+
+  const readSnapshot = () => {
+    const state = resource.snapshot()
+    const failed = state.intents.find(intent => intent.id === failedWrite
+      && [
+        'refused',
+        'unknown',
+      ].includes(intent.stage))
+
+    return {
+      ...state,
+      error: failed?.error?.message ?? readError,
+    }
   }
 
+  let snapshot = readSnapshot()
+
   const publish = () => {
-    snapshot = {
-      ...resource.snapshot(),
-      error,
-    }
+    snapshot = readSnapshot()
     listeners.forEach(listener => listener())
   }
 
@@ -99,11 +109,11 @@ export function createSettingsResource<State, Patch>({
             resource.confirm({ state })
           }
 
-          error = ''
+          readError = ''
         }
       } catch (failure) {
         if (version === generation) {
-          error = failure instanceof Error ? failure.message : String(failure)
+          readError = failure instanceof Error ? failure.message : String(failure)
         }
       } finally {
         refreshing = undefined
@@ -142,9 +152,10 @@ export function createSettingsResource<State, Patch>({
       targets: string[]
       serial?: string
     }) {
+      const releaseScope = command.retain?.()
       const id = crypto.randomUUID()
       generation++
-      error = ''
+      failedWrite = undefined
       resource.enqueue({
         id,
         patch,
@@ -176,6 +187,7 @@ export function createSettingsResource<State, Patch>({
           next: state,
         }))) {
           resource.confirm({ state })
+          readError = ''
         }
 
         resource.accept({
@@ -203,7 +215,7 @@ export function createSettingsResource<State, Patch>({
           code: 'UNKNOWN',
           outcome: 'unknown',
         })
-        error = reason.message
+        failedWrite = id
 
         if (reason.outcome === 'unknown') {
           resource.unknown({
@@ -220,6 +232,7 @@ export function createSettingsResource<State, Patch>({
         throw reason
       } finally {
         release()
+        releaseScope?.()
         publish()
       }
     },

@@ -6,6 +6,12 @@ import { createSettingsResource } from './settings-resource.ts'
 const dispatches = new Map<string, ReturnType<typeof createDispatch>>()
 const preferences = new Map<string, ReturnType<typeof createPreferences>>()
 
+function installationScope({ resource }: { resource: string }): string {
+  const identity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content ?? ''
+
+  return `${location.origin}:${identity}/${resource}`
+}
+
 function createDispatch({ scope }: { scope: string }) {
   return createSettingsResource<EffectiveDispatch, Partial<AgentConfig>>({
     scope,
@@ -76,7 +82,7 @@ function createPreferences({ scope }: { scope: string }) {
 }
 
 export function dispatchSettings() {
-  const scope = `${location.origin}/dispatch`
+  const scope = installationScope({ resource: 'dispatch' })
   let resource = dispatches.get(scope)
 
   if (!resource) {
@@ -91,7 +97,7 @@ export function dispatchSettings() {
 }
 
 export function oracleSettings() {
-  const scope = `${location.origin}/oracle-settings`
+  const scope = installationScope({ resource: 'oracle-settings' })
   let resource = preferences.get(scope)
 
   if (!resource) {
