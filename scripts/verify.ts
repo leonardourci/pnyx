@@ -4,27 +4,36 @@ import {
 } from 'node:child_process'
 import {
   closeSync,
+  existsSync,
   mkdtempSync,
   openSync,
-  readdirSync,
   readFileSync,
 } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import {
   markerBlockers,
-  REVIEW_CHECKLISTS,
   withMarker,
 } from './marker.ts'
+import { changePolicy, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review } from './change-policy.ts'
 
 const args = process.argv.slice(2)
 
-if (args.some(arg => arg !== '--checks-only')) {
-  console.error('Usage: pnpm verify [--checks-only]')
+if (args.some(arg => ![
+  '--checks-only',
+  '--mechanical',
+].includes(arg))) {
+  console.error('Usage: pnpm verify [--checks-only | --mechanical]')
   process.exit(1)
 }
 
 const checksOnly = args.includes('--checks-only')
+const mechanical = args.includes('--mechanical')
+
+if (checksOnly && mechanical) {
+  console.error('verify: --mechanical requires a PR description; use it without --checks-only.')
+  process.exit(1)
+}
 
 interface Step {
   name: string
@@ -92,51 +101,6 @@ const EVERYTHING: Step[] = [
   },
 ]
 
-// Tests of web/ code: those importing it, and the browser journeys that load the built page.
-const WEB_TEST_IMPORT = /from '((\.\.\/)+web\/|\.\/browser\.ts')/
-
-function webTests({ folder }: { folder: string }): string[] {
-  return readdirSync(folder)
-    .map(name => `${folder}/${name}`)
-    .filter(path => path.endsWith('.test.ts') && WEB_TEST_IMPORT.test(readFileSync(
-      path,
-      'utf8',
-    )))
-}
-
-// UI checks: the static checks plus every test of web/ code, browser journeys included.
-function uiSteps(): Step[] {
-  const units = webTests({ folder: 'test' })
-  const scenarios = webTests({ folder: 'test/scenarios' })
-
-  return [
-    ...CHECKS,
-    ...units.length ? [
-      {
-        name: 'web unit tests',
-        command: 'node',
-        args: [
-          '--test',
-          ...units,
-        ],
-        needs: 'build',
-      },
-    ] : [],
-    ...scenarios.length ? [
-      {
-        name: 'web scenarios',
-        command: 'node',
-        args: [
-          '--test',
-          '--test-concurrency=1',
-          ...scenarios,
-        ],
-        needs: 'build',
-      },
-    ] : [],
-  ]
-}
-
 const LOGS = mkdtempSync(join(
   tmpdir(),
   'pnyx-verify-',
@@ -203,75 +167,74 @@ function branchChanges({ defaultRef }: { defaultRef: string }): string[] | undef
           'diff',
           '--name-only',
           '--no-renames',
+          '-z',
           base,
         ],
-      }).split('\n'),
-      ...changedPaths().flatMap(line => line.slice(3).split(' -> ')),
+      }).split('\0'),
+      ...read({
+        args: [
+          'git',
+          'ls-files',
+          '--others',
+          '--exclude-standard',
+          '-z',
+        ],
+      }).split('\0'),
     ].filter(Boolean)),
   ]
 }
 
-// Markdown outside the shipped skills and the tests is docs, as the Checks required workflow skips it.
-function area({ path }: { path: string }): string {
-  if (path.endsWith('.md') && !/^(skills|test)\//.test(path)) {
-    return 'docs'
-  }
-
-  return path.startsWith('web/') ? 'UI' : 'back-end'
-}
-
-// Back-end changes (or both) run everything, UI-only changes the UI checks, docs-only changes nothing.
-function selection({ defaultRef }: { defaultRef: string }): {
-  steps: Step[]
-  why: string
-} {
+function selection({ defaultRef }: { defaultRef: string }) {
   const paths = branchChanges({ defaultRef })
-
-  if (!paths?.length) {
-    return {
-      steps: EVERYTHING,
-      why: paths ? `no changes from ${defaultRef} found` : `${defaultRef} is not available to compare with`,
-    }
-  }
-
-  const byArea = new Map<string, string[]>()
-
-  for (const path of paths) {
-    byArea.set(
-      area({ path }),
-      [
-        ...byArea.get(area({ path })) ?? [],
-        path,
-      ],
-    )
-  }
-
-  const named = ({ kind }: { kind: string }) => {
-    const found = byArea.get(kind)!
-
-    return `${found.length} ${kind} (${found.slice(
+  const policy = changePolicy({
+    paths,
+    mechanical,
+  })
+  const tests = [
+    ...new Set([
+      ...policy.tests === 'skills' ? SKILL_TESTS : [],
+      ...policy.changedTests.filter(path => existsSync(path)),
+    ]),
+  ]
+  const steps = policy.tests === 'full' ? EVERYTHING : [
+    ...policy.changedTests.length ? CHECKS.slice(
       0,
       3,
-    ).join(', ')}${found.length > 3 ? ', …' : ''})`
-  }
+    ) : [],
+    ...tests.length ? [
+      CHECKS[3]!,
+      {
+        name: policy.tests === 'skills' ? 'skill tests' : 'changed tests',
+        command: 'node',
+        args: [
+          '--test',
+          '--test-concurrency=1',
+          ...tests,
+        ],
+        needs: 'build',
+      },
+    ] : [],
+  ]
 
-  if (byArea.has('back-end')) {
-    return {
-      steps: EVERYTHING,
-      why: `${named({ kind: 'back-end' })} changed`,
-    }
+  return {
+    ...policy,
+    steps,
   }
-
-  return byArea.has('UI')
-    ? {
-      steps: uiSteps(),
-      why: `only UI and docs changed: ${named({ kind: 'UI' })}`,
-    }
-    : {
-      steps: [],
-      why: `only docs changed: ${named({ kind: 'docs' })}`,
-    }
 }
+
+// These exercise installation, generated contracts, catalog text and worker conventions.
+const SKILL_TESTS = [
+  'test/skills.test.ts',
+  'test/skills-cli.test.ts',
+  'test/start.test.ts',
+  'test/task-context.test.ts',
+  'test/hydra-host.test.ts',
+  'test/catalog.test.ts',
+  'test/catalog-server.test.ts',
+  'test/setup-check.test.ts',
+  'test/scenarios/hydra.test.ts',
+  'test/scenarios/worker-conventions.test.ts',
+]
 
 // The first line gh printed for a failed call.
 function failure({ error }: { error: unknown }): string {
@@ -363,14 +326,14 @@ function runStep({
   return 'passed'
 }
 
-function printReviews(): void {
+function printReviews({ reviews = REVIEW_CHECKLISTS }: { reviews?: readonly Review[] } = {}): void {
   console.log('\nReview checklists, in order:')
 
-  for (const name of REVIEW_CHECKLISTS) {
+  for (const name of reviews) {
     console.log(`  ${name}: .agents/skills/${name}/SKILL.md`)
   }
 
-  console.log('Whoever runs verify completes these checklists, ticks the three PR boxes, and notes fixes or no findings in the PR description. Agents perform these steps themselves. Commit and push any fixes, then rerun verify on the clean PR head.')
+  console.log('Whoever runs verify completes these checklists, ticks the required PR boxes, and notes fixes or no findings in the PR description. Agents perform these steps themselves. Commit and push any fixes, then rerun verify on the clean PR head.')
 }
 
 function updateDefaultBranch(): string {
@@ -433,7 +396,28 @@ const summary: string[] = []
 const {
   steps,
   why,
+  reviews,
+  groups,
 } = selection({ defaultRef })
+
+for (const [
+  kind,
+  paths,
+] of Object.entries(groups)) {
+  console.log(`verify: ${kind}: ${paths.join(', ')}`)
+}
+
+console.log(`verify: required reviews: ${reviews.join(', ')}`)
+
+if (mechanical) {
+  const found = openPullRequest()
+
+  if (!found.pullRequest || !mechanicalDeclaration({ body: found.pullRequest.body })) {
+    console.error('verify: --mechanical requires a visible PR line: Change: mechanical (rename) or Change: mechanical (move).')
+    process.exit(1)
+  }
+}
+
 console.log(`verify: ${steps.length ? `running ${steps.map(step => step.name).join(', ')}` : 'running no checks'}; ${why}`)
 
 for (const step of steps) {
@@ -463,12 +447,14 @@ if (checksOnly) {
   }
 
   console.log(`\nverify summary:\n${summary.join('\n')}\n  marker         not written: --checks-only`)
-  printReviews()
+  printReviews({ reviews })
   process.exitCode = failed.size === 0 && dirty.length === 0 && !headMoved ? 0 : 1
 } else {
   // Read after the run, so an edit made to the description meanwhile is kept.
   const found = openPullRequest()
   const blockers = markerBlockers({
+    requiredReviews: reviews,
+    mechanical,
     failedSteps: failed.size,
     changedPaths: dirtyAtStart + changedPaths().length,
     headSha,
@@ -498,6 +484,7 @@ if (checksOnly) {
           input: `${withMarker({
             body: pullRequest.body,
             marker: {
+              ...mechanical ? { mechanical: true } : {},
               head_sha: headSha,
               head_tree: read({
                 args: [
@@ -524,6 +511,6 @@ if (checksOnly) {
   }
 
   console.log(`\nverify summary:\n${summary.join('\n')}\n  ${'marker'.padEnd(15)}${marker}`)
-  printReviews()
+  printReviews({ reviews })
   process.exitCode = blockers.length === 0 ? 0 : 1
 }
