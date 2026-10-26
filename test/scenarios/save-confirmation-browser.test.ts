@@ -1,6 +1,9 @@
 import assert from 'node:assert/strict'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
+import { HELPER_INSTRUCTIONS } from '../../src/helper/runner.ts'
+import { hydraDir } from '../../src/store/hydra-store.ts'
 import { browserGroup } from './browser.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
@@ -597,7 +600,7 @@ test(
     })
     const task = s.state().keys.work!
     const held = pnyx.claude.plan({
-      text: 'Quiet progress belongs to routine.',
+      text: HELPER_INSTRUCTIONS,
       hold: true,
       reply: JSON.stringify({
         outcomes: [
@@ -626,8 +629,13 @@ test(
         ],
       })
       await until({
-        what: 'helper started',
-        check: () => s.events().some(e => e.type === 'hydra.helper-started'),
+        what: 'helper received its held prompt',
+        check: () => s.received({
+          cwd: join(
+            hydraDir({ hydraId: s.hydraId }),
+            'helper',
+          ),
+        }).some(text => text.endsWith(HELPER_INSTRUCTIONS)),
       })
       const page = await openHydra({ s })
       await sendChat({

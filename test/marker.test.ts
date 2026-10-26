@@ -6,6 +6,7 @@ import {
   commitFacts,
   MarkerError,
   markerBlockers,
+  reviewBlockers,
   type PullRequest,
   withMarker,
 } from '../scripts/marker.ts'
@@ -15,8 +16,13 @@ const marker = {
   head_tree: 'tree-tested',
   finished_at: '2026-10-21T00:00:00.000Z',
 }
+const reviews = [
+  'review-code',
+  'audit-tests',
+  'deslop',
+].map(name => '- [x] Ran `' + name + '`').join('\n')
 const passing = withMarker({
-  body: '',
+  body: reviews,
   marker,
 })
 
@@ -126,7 +132,7 @@ test(
     const prose = 'pnpm verify adds a `<!-- pnyx-checks:v1 ... -->` line.'
     const body = withMarker({
       body: withMarker({
-        body: prose,
+        body: `${prose}\n\n${reviews}`,
         marker: {
           ...marker,
           head_sha: 'older',
@@ -155,11 +161,17 @@ test(
       '<!-- pnyx-checks:v1 {"head_sha":"tested"} -->',
       '<!-- pnyx-checks:v1 not json -->',
       `<!-- pnyx-checks:v1 ${JSON.stringify(marker)}`,
-      `${passing}\n${passing}`,
+      `${passing.replace(
+        reviews,
+        '',
+      )}\n${passing.replace(
+        reviews,
+        '',
+      )}`,
     ]) {
       await assert.rejects(
         check({
-          body,
+          body: `${reviews}\n${body}`,
           headSha: 'tested',
         }),
         MarkerError,
@@ -217,13 +229,13 @@ test(
     }
 
     await check({
-      body: 'No marker yet.',
+      body: reviews,
       headSha: 'docs',
       linked: { tested: [lending] },
     })
     await assert.rejects(
       check({
-        body: 'No marker yet.',
+        body: reviews,
         headSha: 'code',
         linked: { code: [lending] },
       }),
@@ -301,6 +313,7 @@ test(
       headSha: 'h',
       headAfter: 'h',
       pullRequestHead: 'h',
+      pullRequestBody: reviews,
     }
 
     assert.deepEqual(
@@ -310,6 +323,12 @@ test(
 
     for (const change of [
       { failedSteps: 1 },
+      {
+        pullRequestBody: reviews.replace(
+          '[x]',
+          '[ ]',
+        ),
+      },
       { changedPaths: 1 },
       { headAfter: 'moved' },
       { pullRequestHead: undefined },
@@ -323,6 +342,99 @@ test(
         1,
         JSON.stringify(change),
       )
+    }
+  },
+)
+
+test(
+  'review completion requires each box once, outside comments and code examples',
+  () => {
+    assert.deepEqual(
+      reviewBlockers({ body: reviews }),
+      [],
+    )
+    assert.deepEqual(
+      reviewBlockers({
+        body: reviews.replaceAll(
+          '[x]',
+          '[X]',
+        ),
+      }),
+      [],
+    )
+
+    for (const body of [
+      '',
+      reviews.replace(
+        '[x]',
+        '[ ]',
+      ),
+      reviews.replace(
+        'review-code',
+        'some-other-review',
+      ),
+      reviews + '\n- [ ] Ran `deslop`',
+      reviews + '\n- [x] Ran `deslop`',
+      '<!--\n' + reviews + '\n-->',
+      '```md\n' + reviews + '\n```',
+      '```md\n```md\n' + reviews + '\n```',
+      '~~~~md\n' + reviews + '\n~~~\n' + reviews + '\n~~~~',
+      '    ' + reviews.replaceAll(
+        '\n',
+        '\n    ',
+      ),
+    ]) {
+      assert.ok(
+        reviewBlockers({ body }).length > 0,
+        body,
+      )
+    }
+  },
+)
+
+test(
+  'unchecking a review invalidates an exact-head marker and a borrowed docs pass',
+  async () => {
+    for (const name of [
+      'review-code',
+      'audit-tests',
+      'deslop',
+    ]) {
+      const declaration = '- [x] Ran `' + name + '`'
+
+      for (const replacement of [
+        '',
+        '- [ ] Ran `' + name + '`',
+      ]) {
+        const body = passing.replace(
+          declaration,
+          replacement,
+        )
+        assert.deepEqual(
+          reviewBlockers({ body }),
+          [`complete ${name} and tick its PR checkbox`],
+        )
+
+        for (const headSha of [
+          'tested',
+          'docs',
+        ]) {
+          await assert.rejects(
+            checkPullRequest({
+              body,
+              headSha,
+              commit: async ({ sha }) => commits[sha]!,
+              pullRequestsFor: async () => [
+                {
+                  number: 3,
+                  body: passing,
+                },
+              ],
+            }),
+            { message: new RegExp(`Review checklists incomplete: complete ${name}`) },
+          )
+        }
+      }
     }
   },
 )
