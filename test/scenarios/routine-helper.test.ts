@@ -1,8 +1,13 @@
+import { until } from './harness.ts'
+import { decidePush } from '../../src/core/decide.ts'
+import { REVIEW_MS } from '../../src/review/timer.ts'
 import { createHost } from '../../src/server/host.ts'
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { promisify } from 'node:util'
 import { once } from 'node:events'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -13,9 +18,206 @@ import type { HydraEvent } from '../../src/core/model.ts'
 import type { QueryFn } from '../../src/server/claude.ts'
 import { startServer } from '../../src/server/server.ts'
 import { localToken } from '../../src/server/state.ts'
+import { taskLease } from '../../src/helper/leases.ts'
 import { loadHydra, readEvents, withWriter } from '../../src/store/hydra-store.ts'
 import { fakeDispatch } from '../dispatch-fixture.ts'
 import { hydraSdk } from '../hydra-host-fixture.ts'
+
+test(
+  'the helper command example resumes an interrupted hosted worker with its supplied actor',
+  { timeout: 30_000 },
+  async () => {
+    const restore = { ...process.env }
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-helper-actor-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+    process.env.CLAUDE_CONFIG_DIR = join(
+      root,
+      'claude',
+    )
+    process.env.CODEX_HOME = join(
+      root,
+      'codex',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    process.env.PNYX_GH_AXI = 'false'
+    fakeDispatch({ root })
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    commands.hydra([
+      'set',
+      '--helper',
+      'off',
+      '--hydra',
+      'lab',
+    ])
+    commands.task([
+      'create',
+      '--key',
+      'work',
+      '--title',
+      'Resume work',
+      '--hydra',
+      'lab',
+    ])
+    const state = () => loadHydra({ hydraId: 'lab' }).state
+    const task = state().keys.work!
+    const sdk = hydraSdk()
+    sdk.control.reply = 'NO_REPLY'
+    const server = await startServer({
+      hydraId: 'lab',
+      query: sdk.query,
+      homes: [],
+    })
+    const run = promisify(execFile)
+    const cli = async ({
+      args,
+      env = process.env,
+    }: {
+      args: string[]
+      env?: NodeJS.ProcessEnv
+    }) =>
+      run(
+        process.execPath,
+        [
+          join(
+            import.meta.dirname,
+            '../../dist/cli/pnyx-axi.js',
+          ),
+          ...args,
+          '--hydra',
+          'lab',
+        ],
+        { env },
+      )
+    let release = () => {}
+
+    try {
+      await cli({
+        args: [
+          'task',
+          'start',
+          task,
+          '--folder',
+          root,
+          '--harness',
+          'claude',
+        ],
+      })
+      await until({
+        what: 'the worker to finish its opening turn',
+        check: () => state().cards[task]?.sessionActivity === 'finished',
+      })
+      withWriter({
+        hydraId: 'lab',
+        fn: ({ writer }) => {
+          const card = writer.state.cards[task]!
+          const interrupted = decidePush({
+            state: writer.state,
+            key: card.key,
+            input: {
+              activity: 'interrupted',
+              agent: card.agent,
+            },
+            meta: {
+              at: new Date().toISOString(),
+              actor: 'pnyx',
+            },
+          })
+          assert.ok('event' in interrupted)
+          writer.append({ event: interrupted.event })
+          const grant = hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              at: new Date().toISOString(),
+              actor: 'pnyx',
+            },
+            change: {
+              type: 'hydra.helper-started',
+              data: {
+                id: 'resume',
+                tasks: [task],
+                prompt: 'Resume the interrupted worker',
+                seqs: [],
+              },
+            },
+          })
+          assert.ok('event' in grant)
+          writer.append({ event: grant.event })
+        },
+      })
+      release = taskLease({
+        hydraId: 'lab',
+        task,
+        actor: 'helper:resume',
+      })
+      const env = {
+        ...process.env,
+        PNYX_ACTOR: 'helper:resume',
+        PNYX_HYDRA: 'lab',
+      }
+      await assert.rejects(
+        cli({
+          args: [
+            'reply',
+            task,
+            '--text',
+            'Resume',
+            '--actor',
+            'hydra',
+          ],
+          env,
+        }),
+        (error: unknown) => {
+          assert.ok(error && typeof error === 'object' && 'stdout' in error)
+          assert.match(
+            String(error.stdout),
+            /MAIN_ONLY/,
+          )
+
+          return true
+        },
+      )
+      await cli({
+        args: [
+          'reply',
+          task,
+          '--text',
+          'Continue within the accepted scope.',
+        ],
+        env,
+      })
+      const steering = state().cards[task]!.steering!.at(-1)!
+      assert.equal(
+        steering.text,
+        'Continue within the accepted scope.',
+      )
+      assert.equal(
+        steering.actor,
+        'helper:resume',
+      )
+    } finally {
+      release()
+      await server.close()
+      process.env = restore
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
 
 test(
   'isolated real CLI routes routine work to a separate helper while owner messages reach main, then relays owner outcomes',
@@ -113,14 +315,36 @@ test(
         },
       ],
     })
+    helper.control.structured = JSON.parse(helper.control.reply)
+    helper.control.reply = 'Neither restart nor nudge is open to me.\n```json\n{}\n```'
+    helper.control.usage = {
+      context: 2400,
+      window: 200_000,
+      cost: 0.12,
+    }
+    main.control.usage = {
+      context: 4800,
+      window: 200_000,
+      cost: 0.30,
+    }
     // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
     const query: QueryFn = args => args.options?.env?.PNYX_ACTOR?.startsWith('helper:')
       ? helper.query(args) : main.query(args)
+    let reviewNow = Date.now()
+    const reviewTicks: (() => void)[] = []
     const server = await startServer({
       hydraId: 'lab',
       query,
       homes: [],
       wakeDelay: 0,
+      reviewClock: {
+        now: () => reviewNow,
+        interval: ({ run }) => {
+          reviewTicks.push(run)
+
+          return () => {}
+        },
+      },
     })
     t.after(async () => {
       await server.close()
@@ -285,6 +509,26 @@ test(
         })).code,
         1,
       )
+      const beforeReview = state().seq
+      reviewNow += REVIEW_MS
+
+      for (const tick of reviewTicks) {
+        tick()
+      }
+
+      await finishAfter({ after: beforeReview })
+      const reviewInput = main.calls.flatMap(call => call.raw).find(text => text.includes('- timed review'))!
+      assert.ok(reviewInput)
+      assert.ok(
+        !reviewInput.includes('Worker made progress'),
+        'main must not read the reports held by the helper',
+      )
+      assert.ok(
+        !reviewInput.includes('<pnyx-report'),
+        'no held report envelope is attached to the timed review',
+      )
+      assert.ok(reviewInput.includes(`held by helper:${grant.data.id}, started ${grant.at}`))
+      assert.ok(reviewInput.includes('do not retry a leased action'))
       const owner = state().seq
       assert.equal(
         (await cli({
@@ -316,6 +560,15 @@ test(
         'opus',
       )
       assert.ok(helper.calls[0]!.raw[0]!.includes('Keep work within the accepted scope.'))
+      const contract = readFileSync(
+        join(
+          helper.calls[0]!.options.cwd!,
+          'AGENTS.md',
+        ),
+        'utf8',
+      )
+      assert.ok(contract.startsWith("You are Hydra's routine helper, not the main Hydra."))
+      assert.ok(contract.indexOf('never pass --actor') < contract.indexOf('# Hydra'))
       const helperEnv = helper.calls[0]!.options.env!
       const reserved = await cli({
         args: [
@@ -338,9 +591,11 @@ test(
       const quiet = await event({ matches: ({ event: e }) => e.type === 'hydra.helper-finished' && !e.data.error })
       assert.equal(
         main.calls[0]!.messages.length,
-        2,
+        3,
       )
       helper.control.hold = true
+      helper.control.structured = undefined
+      helper.control.usage!.cost = 0.24
       helper.control.reply = JSON.stringify({
         outcomes: [
           {
@@ -413,7 +668,7 @@ test(
       )
       main.release()
       await event({ matches: ({ event: e }) => e.type === 'hydra.helper-acknowledged' && e.data.through > quiet.seq })
-      assert.ok(main.calls[0]!.messages.some(text => text.includes(`- ${task}: Findings ready: https://example.test/findings`)))
+      assert.ok(main.calls[0]!.messages.some(text => text.includes(`- [@Work](pnyx-task:${task}): Findings ready: https://example.test/findings`)))
       assert.equal(
         helper.calls[1]!.options.resume,
         helper.calls[0]!.options.sessionId,
@@ -422,7 +677,30 @@ test(
         state().helper!.outcomes.length,
         3,
       )
+      const measured = await commands.hydra([
+        'usage',
+        '--hydra',
+        'lab',
+      ])
+      assert.ok(typeof measured.helper === 'object' && measured.helper !== null)
+      const helperUsage = measured.helper as {
+        batches: number
+        cost: number
+      }
+      assert.equal(
+        helperUsage.batches,
+        2,
+      )
+      assert.equal(
+        helperUsage.cost,
+        0.24,
+      )
+      assert.equal(
+        measured.combinedCost,
+        0.54,
+      )
       const beforeFailure = state().seq
+      helper.control.usage!.cost = 0.36
       helper.control.reply = 'NO_REPLY'
       assert.equal(
         (await cli({
@@ -444,6 +722,14 @@ test(
       const failure = await event({ matches: ({ event: e }) => e.seq > beforeFailure && e.type === 'hydra.helper-finished' && !!e.data.error })
       await event({ matches: ({ event: e }) => e.seq > failure.seq && e.type === 'hydra.helper-acknowledged' && e.data.batches.length > 0 })
       assert.ok(main.calls[0]!.messages.some(text => text.includes('Helper hand-back:') && text.includes('Failed helper progress')))
+      assert.equal(
+        state().helper!.usage?.cost,
+        0.36,
+      )
+      assert.equal(
+        state().helper!.usage?.batches,
+        3,
+      )
       assert.deepEqual(
         state().helper!.runs,
         {},
@@ -456,6 +742,12 @@ test(
         changed: () => {},
       })
       await resumed.recover()
+      const restoredUsage = await resumed.usage()
+      assert.ok('helper' in restoredUsage)
+      assert.equal(
+        restoredUsage.helper?.cost,
+        0.36,
+      )
       assert.deepEqual(
         resumed.queue().waiting,
         [],

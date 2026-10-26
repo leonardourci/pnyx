@@ -787,6 +787,7 @@ export function codexProvider({
       env,
       signal,
       instructions,
+      outputSchema,
       context,
     }) {
       let deferredInterrupt: {
@@ -981,6 +982,7 @@ export function codexProvider({
                 method: manualCompact ? 'thread/compact/start' : 'turn/start',
                 params: manualCompact ? { threadId: id } : {
                   threadId: id,
+                  ...(outputSchema ? { outputSchema } : {}),
                   input: turnInput({
                     text,
                     said,

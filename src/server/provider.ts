@@ -1,3 +1,4 @@
+import type { HelperUsageTotal } from '../helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from '../core/model.ts'
 
 export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | {
@@ -19,6 +20,7 @@ export type PlanWindow = {
 export type HostedUsage = {
   type: 'usage'
   used?: number
+  inputTokens?: number
   window?: number
   cost?: number
   plan?: string
@@ -30,6 +32,8 @@ export type HydraUsage = Omit<HostedUsage, 'type' | 'limits'> & {
   harness: 'claude' | 'codex'
   account?: string
   windows?: PlanWindow[]
+  helper?: HelperUsageTotal
+  combinedCost?: number
 }
 
 const named = ({ label }: PlanWindow) => label.toLowerCase()
@@ -64,7 +68,10 @@ export type HostedCompaction = {
   error?: string
 }
 // carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
-export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | HostedUsage | HostedTool | HostedThinking | HostedCompaction
+export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | {
+  type: 'structured'
+  value: unknown
+} | HostedUsage | HostedTool | HostedThinking | HostedCompaction
 export type AskPermission = ({
   tool,
   input,
@@ -150,11 +157,13 @@ export interface Provider {
     env,
     signal,
     instructions,
+    outputSchema,
     allow,
     context,
   }: {
     cwd: string
     instructions?: string
+    outputSchema?: Record<string, unknown>
     // Live state the session gets when it starts or resumes and again after each compaction.
     context?(): string
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.

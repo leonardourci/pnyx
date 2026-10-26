@@ -85,7 +85,8 @@ export function UsageRing({
     ],
   )
 
-  if (!usage || (usage.used === undefined && !usage.windows?.length)) {
+  if (!usage || (usage.used === undefined && usage.cost === undefined
+    && !usage.helper && !usage.windows?.length)) {
     return null
   }
 
@@ -106,7 +107,27 @@ export function UsageRing({
         </TooltipSection>
       )}
       {usage.cost !== undefined && (
-        <TooltipSection>Session cost ${usage.cost.toFixed(2)}</TooltipSection>
+        <TooltipSection>Hydra session ${usage.cost.toFixed(2)}</TooltipSection>
+      )}
+      {usage.helper && (
+        <TooltipSection>
+          <strong>Routine helper · {usage.helper.batches} {usage.helper.batches === 1 ? 'batch' : 'batches'}</strong>
+          <span>
+            {usage.helper.cost === undefined ? 'Cost unavailable' : `Cost $${usage.helper.cost.toFixed(2)}`}
+            {usage.helper.measuredBatches < usage.helper.batches && (
+              ` · measured ${usage.helper.measuredBatches}/${usage.helper.batches} batches`
+            )}
+          </span>
+          {usage.helper.used !== undefined && (
+            <span>Last context {tokens({ count: usage.helper.used })} tokens</span>
+          )}
+          {usage.helper.inputTokens !== undefined && (
+            <span>Total input {tokens({ count: usage.helper.inputTokens })} tokens</span>
+          )}
+        </TooltipSection>
+      )}
+      {usage.combinedCost !== undefined && (
+        <TooltipSection>Combined ${usage.combinedCost.toFixed(2)}</TooltipSection>
       )}
       {!!usage.windows?.length && (
         <TooltipSection>

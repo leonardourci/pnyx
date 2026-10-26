@@ -176,7 +176,7 @@ export function workerHeader({
   return [
     `<pnyx-worker task="${id}" hydra="${hydraId}">`,
     `You are a worker that Hydra supervises on Pnyx Hydra ${hydraId}, for task ${id} only. Report only through pnyx-axi on this task; Hydra reads your declarations and answers your questions.`,
-    'Before starting, follow the repository conventions, skills and context files in your current copy: read AGENTS.md and CLAUDE.md when present, plus the relevant skills, docs and context files they point to. Follow the project skills named in your task brief.',
+    "Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under .agents/skills, .claude/skills and skills/. Follow them over generic habits, and use the project's skills for the jobs they cover.",
     'Scope: work inside your current folder, the task\'s own copy, and on nothing outside this task.',
     'Authority: run routine commands (reading, building, testing, linting, committing on your own branch) without asking.',
     `Ask Hydra with \`pnyx-axi task ask ${id} --question "<question>" --hydra ${hydraId}\` about product or architecture choices the owner's ask leaves unsettled, proposed departures from an approved design, merges, destructive actions, writes to shared or production systems, and work outside this task. Wait for the answer before dependent work; continue independent, already-authorized work.`,

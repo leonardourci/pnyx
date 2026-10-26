@@ -13,6 +13,7 @@ import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
 import { candidates, effectiveDispatch } from '../dispatch/config.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
+import { saveEventId, savedReceipt, type SaveCommand } from './saves.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
@@ -178,6 +179,7 @@ export type ServerMessage =
     error: string
     code: string
     help?: string[]
+    saved?: boolean
   }
 
 export interface RunningServer {
@@ -1566,6 +1568,7 @@ async function mountOwnedHydra({
           seq: event.seq,
           card: event.cardId,
           reasons,
+          event,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
         const task = helperProgress({
@@ -1578,6 +1581,7 @@ async function mountOwnedHydra({
             seq: event.seq,
             card: task,
             reasons: [],
+            event,
           })
         } else {
           agents.unread({ seq: event.seq })
@@ -2145,6 +2149,7 @@ async function mountOwnedHydra({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
+
     const fail = ({
       error,
       code,
@@ -2153,16 +2158,56 @@ async function mountOwnedHydra({
       error: string
       code: string
       help?: string[]
-    }) => send({
-      ws,
-      message: {
-        type: 'error',
-        id,
-        error,
-        code,
-        help,
-      },
-    })
+    }) => {
+      let saved: boolean | undefined
+
+      if (id && typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
+        const command: SaveCommand = {
+          type: 'command',
+          id,
+          name: message.name,
+          args: message.args,
+        }
+
+        if (saveEventId({ command })) {
+          try {
+            const receipt = savedReceipt({
+              command,
+              state: loadHydra({ hydraId }).state,
+            })
+
+            if (receipt) {
+              send({
+                ws,
+                message: {
+                  ...receipt,
+                  type: 'receipt',
+                  id,
+                },
+              })
+
+              return
+            }
+
+            // A concurrent request may still commit after a lock or I/O failure.
+            saved = code === 'VALIDATION_ERROR' || code === 'NO_ROUTE' ? false : undefined
+          } catch { /* An unreadable log cannot establish whether the save committed. */ }
+        }
+      }
+
+      send({
+        ws,
+        message: {
+          type: 'error',
+          id,
+          error,
+          code,
+          help,
+          saved,
+        },
+      })
+    }
+
     const {
       name,
       args,
@@ -2432,6 +2477,16 @@ async function mountOwnedHydra({
                 id: hydraId,
               })
 
+              if (Object.hasOwn(
+                writer.state.eventIds,
+                id,
+              )) {
+                return {
+                  previous: config.hydra.agent,
+                  running: undefined,
+                }
+              }
+
               if (config.hydra.kind === 'firstmate') {
                 throw new HydraError({
                   message: 'Firstmate manages this Hydra’s agent',
@@ -2443,6 +2498,7 @@ async function mountOwnedHydra({
                 state: writer.state,
                 cardId: HYDRA_CARD,
                 meta: {
+                  id,
                   at: new Date().toISOString(),
                   actor: 'web',
                 },

@@ -491,7 +491,7 @@ function changesReadiness({
   }
 }
 
-function eventReasons({
+export function eventReasons({
   state,
   event,
 }: {

@@ -384,7 +384,7 @@ test(
     })
     assert.match(
       prompt,
-      /AGENTS\.md and CLAUDE\.md[\s\S]*skills, docs and context files/,
+      /AGENTS\.md[\s\S]*CLAUDE\.md[\s\S]*CONTRIBUTING\.md[\s\S]*\.agents\/skills[\s\S]*\.claude\/skills[\s\S]*skills\//,
     )
     assert.match(
       prompt,

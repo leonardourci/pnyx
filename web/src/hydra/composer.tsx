@@ -117,6 +117,10 @@ export function Composer({
     setSending,
   ] = useState(false)
   const [
+    checking,
+    setChecking,
+  ] = useState(false)
+  const [
     prefix,
     setPrefix,
   ] = useState<string | null>(null)
@@ -545,7 +549,7 @@ export function Composer({
       draft,
       comments: sendable,
     }
-    setFailure(null); setSending(true)
+    setFailure(null); setSending(true); setChecking(false)
 
     if (taken) {
       write({
@@ -566,6 +570,7 @@ export function Composer({
           text,
           attempt.current.id,
         ],
+        onChecking: () => setChecking(true),
       }); const receipt = r.reply as {
         state: string
         detail?: string
@@ -602,6 +607,7 @@ export function Composer({
         attempt: attempt.current,
       })
       setSending(false)
+      setChecking(false)
     }
 
     if (problem) {
@@ -678,6 +684,7 @@ export function Composer({
 
   return (
     <>
+      {checking && <p className="save-checking muted small" role="status">Checking whether your message was saved. Retrying automatically.</p>}
       {failure && (
         <div className="send-error" role="alert">
           <Icon name="error" size={16} />
