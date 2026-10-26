@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../src/integrations/skills/names.ts'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import assert from 'node:assert/strict'
@@ -644,7 +645,7 @@ test(
     )
     assert.match(
       String(await f.digest()),
-      /nearly full: load pnyx-inscribe with this project/,
+      new RegExp(String.raw`nearly full: load ${INSCRIBE_SKILL} with this project`),
     )
     const duplicate = await f.memory({
       args: [

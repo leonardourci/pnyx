@@ -1,10 +1,21 @@
+import {
+  ORCHESTRATE_SKILL,
+  ARRANGE_COLUMNS_SKILL,
+  MANAGE_WORKERS_SKILL,
+  FIRSTMATE_AS_HYDRA_SKILL,
+  SET_UP_SKILL,
+  INSCRIBE_SKILL,
+  REPORT_PROGRESS_SKILL,
+  CLI_SKILL,
+  HYDRA_SKILLS,
+} from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { parse } from 'yaml'
-import { HYDRA_SKILLS, prepareHydraFolder, setupSkills, skillLinks, skillStatus } from '../src/integrations/skills/install.ts'
+import { prepareHydraFolder, setupSkills, skillLinks, skillStatus } from '../src/integrations/skills/install.ts'
 
 test(
   'global skill links cover both harnesses, stay current and remove only links',
@@ -48,8 +59,8 @@ test(
         'skills',
       )).sort(),
       [
-        'pnyx-cli',
-        'pnyx-report-progress',
+        CLI_SKILL,
+        REPORT_PROGRESS_SKILL,
       ],
     )
     assert.deepEqual(
@@ -58,12 +69,32 @@ test(
         'skills',
       )).sort(),
       [
-        'pnyx-cli',
-        'pnyx-report-progress',
+        CLI_SKILL,
+        REPORT_PROGRESS_SKILL,
       ],
     )
 
     for (const link of installed.skills) {
+      const text = readFileSync(
+        join(
+          link.path,
+          'SKILL.md',
+        ),
+        'utf8',
+      )
+      const meta = parse(text.split('---')[1]!)
+      assert.equal(
+        meta.name,
+        link.name,
+      )
+      assert.equal(
+        meta['user-invocable'],
+        false,
+      )
+      assert.equal(
+        meta.metadata.internal,
+        true,
+      )
       assert.ok(lstatSync(link.path).isSymbolicLink())
       assert.equal(
         readlinkSync(link.path),
@@ -248,7 +279,7 @@ test(
       userHome,
       '.agents',
       'skills',
-      'pnyx-report-progress',
+      REPORT_PROGRESS_SKILL,
     )))
   },
 )
@@ -328,7 +359,7 @@ test(
 
       for (const name of [
         'unrelated',
-        'pnyx-inscribe',
+        INSCRIBE_SKILL,
       ]) {
         const path = join(
           folder,
@@ -472,12 +503,12 @@ test(
         'skills',
       )).sort(),
       [
-        'pnyx-arrange-columns',
-        'pnyx-firstmate-as-hydra',
-        'pnyx-inscribe',
-        'pnyx-manage-workers',
-        'pnyx-orchestrate',
-        'pnyx-set-up',
+        ARRANGE_COLUMNS_SKILL,
+        FIRSTMATE_AS_HYDRA_SKILL,
+        INSCRIBE_SKILL,
+        MANAGE_WORKERS_SKILL,
+        ORCHESTRATE_SKILL,
+        SET_UP_SKILL,
       ],
     )
 
@@ -515,7 +546,7 @@ test(
       'utf8',
     )
     assert.ok(contract.startsWith('Task instructions\n\n# Hydra\n'))
-    assert.ok(contract.includes('load `pnyx-manage-workers`'))
+    assert.ok(contract.includes(`load \`${MANAGE_WORKERS_SKILL}\``))
     assert.equal(
       readFileSync(
         join(

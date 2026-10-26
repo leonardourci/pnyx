@@ -1,3 +1,4 @@
+import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
@@ -320,12 +321,12 @@ test(
       /^# Hydra\n[\s\S]*## Load before/,
     )
     assert.match(
-      read({ path: '.claude/skills/pnyx-inscribe/SKILL.md' }),
-      /^---\nname: pnyx-inscribe/,
+      read({ path: `.claude/skills/${INSCRIBE_SKILL}/SKILL.md` }),
+      new RegExp(String.raw`^---\nname: ${INSCRIBE_SKILL}`),
     )
     assert.ok(existsSync(join(
       agent.cwd!,
-      '.agents/skills/pnyx-orchestrate',
+      `.agents/skills/${ORCHESTRATE_SKILL}`,
     )))
     const {
       options,

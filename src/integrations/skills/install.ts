@@ -1,4 +1,11 @@
 import {
+  ORCHESTRATE_SKILL,
+  REPORT_PROGRESS_SKILL,
+  CLI_SKILL,
+  HYDRA_SKILLS,
+  GLOBAL_SKILLS,
+} from './names.ts'
+import {
   existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync,
   rmSync, symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs'
@@ -6,19 +13,6 @@ import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
 import { HydraError } from '../../core/model.ts'
 
-// pnyx-orchestrate is Hydra's contract; the others are the details it loads on demand.
-export const HYDRA_SKILLS = [
-  'pnyx-orchestrate',
-  'pnyx-manage-workers',
-  'pnyx-arrange-columns',
-  'pnyx-firstmate-as-hydra',
-  'pnyx-inscribe',
-  'pnyx-set-up',
-] as const
-export const GLOBAL_SKILLS = [
-  'pnyx-report-progress',
-  'pnyx-cli',
-] as const
 const LEGACY_SKILLS = [
   'pnyx-hydra',
   'pnyx-hydra-workers',
@@ -119,7 +113,7 @@ export function prepareHydraFolder({
   instructions?: string
 }) {
   const contract = readFileSync(
-    skillSource({ name: 'pnyx-orchestrate' }),
+    skillSource({ name: ORCHESTRATE_SKILL }),
     'utf8',
   ).replace(
     /^---\n[\s\S]*?\n---\n+/,
@@ -380,6 +374,6 @@ export function setupSkills(
       ...legacy,
     ],
     ...(preview ? { preview: 'nothing written; rerun without --preview to apply' } : {}),
-    help: [remove ? 'Run `pnyx-axi setup skills` to install them again' : 'New sessions can load pnyx-report-progress and pnyx-cli in any project or copy'],
+    help: [remove ? 'Run `pnyx-axi setup skills` to install them again' : `New sessions can load ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} in any project or copy`],
   }
 }

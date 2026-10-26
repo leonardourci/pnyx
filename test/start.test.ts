@@ -1,3 +1,8 @@
+import {
+  ORCHESTRATE_SKILL,
+  MANAGE_WORKERS_SKILL,
+  INSCRIBE_SKILL,
+} from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -362,7 +367,7 @@ test(
     )
     assert.match(
       env.PNYX_PROMPT!,
-      /pnyx-orchestrate/,
+      new RegExp(String.raw`${ORCHESTRATE_SKILL}`),
     )
 
     hook({
@@ -631,7 +636,10 @@ test(
         ),
         'utf8',
       ),
-      /^\/\.agents\/skills\/pnyx-orchestrate\/$/m,
+      new RegExp(
+        String.raw`^\/\.agents\/skills\/${ORCHESTRATE_SKILL}\/$`,
+        'm',
+      ),
     )
     assert.equal(
       spawnSync(
@@ -675,9 +683,9 @@ test(
     )
     assert.deepEqual(
       [
-        'pnyx-orchestrate',
-        'pnyx-manage-workers',
-        'pnyx-inscribe',
+        ORCHESTRATE_SKILL,
+        MANAGE_WORKERS_SKILL,
+        INSCRIBE_SKILL,
       ].map(name => excluded.split('\n').filter(line => line === `/.agents/skills/${name}/`).length),
       [
         1,
@@ -689,7 +697,7 @@ test(
       home,
       '.agents',
       'skills',
-      'pnyx-inscribe',
+      INSCRIBE_SKILL,
       'SKILL.md',
     )))
     assert.equal(

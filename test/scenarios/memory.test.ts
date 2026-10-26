@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -46,7 +47,7 @@ test(
           'digest',
         ],
       }),
-      /Owner memory uses 24000 of 24000 characters\. Load the pnyx-inscribe skill/,
+      new RegExp(String.raw`Owner memory uses 24000 of 24000 characters\. Load the ${INSCRIBE_SKILL} skill`),
     )
     assert.equal(
       await s.ownerRefused({
@@ -109,7 +110,7 @@ test(
           'digest',
         ],
       }),
-      /nearly full: load pnyx-inscribe with this project/,
+      new RegExp(String.raw`nearly full: load ${INSCRIBE_SKILL} with this project`),
     )
     assert.equal(
       await s.ownerRefused({

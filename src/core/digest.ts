@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { helperLeases } from '../helper/state.ts'
 import { taskReadiness } from './dependencies.ts'
 import { describeColumnRule } from './columns.ts'
@@ -12,8 +13,6 @@ import { HydraError, type Card, type HydraState } from './model.ts'
 export const OWNER_MEMORY_BUDGET = 24000
 // Hydra memory holds only what this Hydra needs: its scope, where it left off, its check cursor.
 export const HYDRA_MEMORY_BUDGET = 1500
-// The skill Hydra loads to curate and save its memory before a reset.
-export const MEMORY_SKILL = 'pnyx-inscribe'
 export const OWNER_DOCUMENTS = {
   preferences: 'Owner preferences',
   learnings: 'Learnings',
@@ -63,7 +62,7 @@ export function checkBudget({
     throw new HydraError({
       message: `${layer} memory would use ${size} of ${budget} characters`,
       code: 'MEMORY_FULL',
-      help: [`Load the ${MEMORY_SKILL} skill: merge, shorten or forget entries, then save again`],
+      help: [`Load the ${INSCRIBE_SKILL} skill: merge, shorten or forget entries, then save again`],
     })
   }
 }
@@ -79,7 +78,7 @@ const usage = ({
 }) => {
   const used = memorySize({ memory })
 
-  return `${layer} memory uses ${used} of ${budget} characters.${used > budget * NEARLY_FULL ? ` Load the ${MEMORY_SKILL} skill and curate it before it fills.` : ''}`
+  return `${layer} memory uses ${used} of ${budget} characters.${used > budget * NEARLY_FULL ? ` Load the ${INSCRIBE_SKILL} skill and curate it before it fills.` : ''}`
 }
 
 export const clip = ({

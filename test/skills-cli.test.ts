@@ -1,3 +1,4 @@
+import { REPORT_PROGRESS_SKILL } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdtempSync, readlinkSync, rmSync, symlinkSync, unlinkSync } from 'node:fs'
@@ -88,7 +89,7 @@ test(
       userHome,
       '.agents',
       'skills',
-      'pnyx-report-progress',
+      REPORT_PROGRESS_SKILL,
     )
     const target = readlinkSync(worker)
     assert.equal(
@@ -97,7 +98,7 @@ test(
         import.meta.dirname,
         '..',
         'skills',
-        'pnyx-report-progress',
+        REPORT_PROGRESS_SKILL,
       ),
     )
     unlinkSync(worker)

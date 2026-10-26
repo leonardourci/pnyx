@@ -1,6 +1,9 @@
 ---
 name: pnyx-report-progress
 description: Use when you are a worker attached to a Pnyx task (your prompt names the task, or PNYX_TASK is set) and need to report your state through pnyx-axi.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Pnyx worker

@@ -1,8 +1,9 @@
+import { REPORT_PROGRESS_SKILL, CLI_SKILL, HYDRA_SKILLS } from '../integrations/skills/names.ts'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { hydraConfig } from '../core/hydra.ts'
 import { hookStatus } from '../integrations/hooks/install.ts'
-import { HYDRA_SKILLS, skillSource, skillStatus } from '../integrations/skills/install.ts'
+import { skillSource, skillStatus } from '../integrations/skills/install.ts'
 import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadHydra } from '../store/hydra-store.ts'
@@ -54,7 +55,7 @@ export async function integrations({
         name: 'skills',
         status: skillStatus(),
         setup: 'pnyx-axi setup skills',
-        docs: 'pnyx-report-progress and pnyx-cli are available in every project or copy through global skill links',
+        docs: `${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} are available in every project or copy through global skill links`,
       },
       {
         name: 'hooks',

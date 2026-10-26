@@ -6,7 +6,7 @@ import { INTERRUPTED, liveTask } from './tasks.ts'
 import { mergeApproved, quote } from './wake-reasons.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
-// The fixed words a decision line names its item with; the pnyx-orchestrate skill lists them.
+// The fixed words a decision line names its item with; the orchestrator skill lists them.
 type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'blocking prompt' | 'approved merge'
 
 export interface OpenDecision {

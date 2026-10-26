@@ -1,6 +1,9 @@
 ---
 name: pnyx-cli
 description: Use when reading or updating the Pnyx app with the pnyx-axi CLI.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Pnyx
