@@ -3314,6 +3314,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
             action,
             ...(progress ? { kind: 'progress' as const } : {}),
             text,
+            ...(text !== entered ? { enteredText: entered } : {}),
             ...(m.details ? { details: m.details } : {}),
             ...(context ? { context } : {}),
             hydra: hydraConfig({
