@@ -1,7 +1,9 @@
 import assert from 'node:assert/strict'
-import { HELPER_INSTRUCTIONS } from '../../src/helper/runner.ts'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
+import { HELPER_INSTRUCTIONS } from '../../src/helper/runner.ts'
+import { hydraDir } from '../../src/store/hydra-store.ts'
 import { browserGroup } from './browser.ts'
 import { openPage, scenarioGroup, until } from './harness.ts'
 
@@ -627,10 +629,13 @@ test(
         ],
       })
       await until({
-        what: 'helper started',
-        check: () => pnyx.claude.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId
-          && session.env.PNYX_ACTOR?.startsWith('helper:')
-          && session.received.some(text => text.endsWith(HELPER_INSTRUCTIONS))),
+        what: 'helper received its held prompt',
+        check: () => s.received({
+          cwd: join(
+            hydraDir({ hydraId: s.hydraId }),
+            'helper',
+          ),
+        }).some(text => text.endsWith(HELPER_INSTRUCTIONS)),
       })
       const page = await openHydra({ s })
       await sendChat({

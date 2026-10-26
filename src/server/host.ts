@@ -1,4 +1,5 @@
 import { memoryConditions } from '../memory/conditions.ts'
+import { background } from '../runtime/background.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
@@ -2129,9 +2130,12 @@ export function createHost({
               })
             } else {
               entry.idle = setTimeout(
-                () => retire({
-                  key,
-                  entry,
+                () => background({
+                  name: 'idle agent cleanup',
+                  run: () => retire({
+                    key,
+                    entry,
+                  }),
                 }),
                 IDLE_MS,
               ).unref()
@@ -2439,7 +2443,11 @@ export function createHost({
   const armWake = () => {
     if (!closing && !wakeTimer && (wakeThrough || helperPending())) {
       wakeTimer = setTimeout(
-        fireWake,
+        () => background({
+          name: 'Hydra wake',
+          run: fireWake,
+          retry: armWake,
+        }),
         wakeDelay,
       )
     }
@@ -2449,14 +2457,18 @@ export function createHost({
   let outage: NonNullable<HydraState['hydraStatus']> | undefined
 
   // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
-  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => void host.hydra({
-    id: `back:${down.seq}`,
-    actor: 'pnyx',
-    text: recapText({
-      state: loadHydra({ hydraId }).state,
-      since: down.since,
-      after: down.after ?? down.seq,
-      now: Date.now(),
+  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => background({
+    name: 'Hydra recap',
+    retry: planRetry,
+    run: () => host.hydra({
+      id: `back:${down.seq}`,
+      actor: 'pnyx',
+      text: recapText({
+        state: loadHydra({ hydraId }).state,
+        since: down.since,
+        after: down.after ?? down.seq,
+        now: Date.now(),
+      }),
     }),
   })
 
@@ -2543,7 +2555,11 @@ export function createHost({
     }
 
     retryTimer = setTimeout(
-      retryStart,
+      () => background({
+        name: 'Hydra retry',
+        run: retryStart,
+        retry: planRetry,
+      }),
       retryDelays[Math.min(
         retries,
         retryDelays.length - 1,
@@ -2605,7 +2621,7 @@ export function createHost({
     outcomesReady: armWake,
   })
 
-  const fireWake = () => {
+  const fireWake = async () => {
     wakeTimer = undefined
     const state = loadHydra({ hydraId }).state
     const session = state.config?.hydra.session
@@ -2625,7 +2641,7 @@ export function createHost({
 
     if (wakeThrough <= after) {
       if (helperPending()) {
-        void host.hydra({
+        return host.hydra({
           id: `helper-outcomes:${state.seq}`,
           actor: 'pnyx',
           text: '<pnyx-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</pnyx-wake>',
@@ -2679,7 +2695,7 @@ export function createHost({
     const routine = tasks.length > 0 && tasks.every(task => task !== undefined)
 
     if (helperAgent({ state }) && routine && !helper.busy()
-      && helper.offer({
+      && await helper.offer({
         tasks: tasks.filter(task => task !== undefined),
         prompt: text,
         seqs: batch.map(update => update.seq),
@@ -2699,7 +2715,7 @@ export function createHost({
       return
     }
 
-    void host.hydra({
+    return host.hydra({
       id: wakeId({
         through,
         state,
@@ -2725,9 +2741,9 @@ export function createHost({
   }
 
   // A stall or an ended wait makes no event, so it is polled.
-  const checkStalls = () => {
+  const checkStalls = async () => {
     try {
-      wakeOnStall()
+      return await wakeOnStall()
     } catch (error) {
       console.error(`pnyx-axi serve: ${(error as Error).message}`)
     }
@@ -2967,7 +2983,7 @@ export function createHost({
     }))
   }
 
-  const wakeOnStall = () => {
+  const wakeOnStall = async () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -3050,15 +3066,19 @@ export function createHost({
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
-    for (const item of fired) {
-      const count = stalled.get(item.id)?.count ?? 0
-      stalled.set(
-        item.id,
-        {
-          count: count + 1,
-          at: now,
-        },
-      )
+    const delivered = () => {
+      const at = Date.now()
+
+      for (const item of fired) {
+        const count = stalled.get(item.id)?.count ?? 0
+        stalled.set(
+          item.id,
+          {
+            count: count + 1,
+            at,
+          },
+        )
+      }
     }
 
     const after = wakeCursor({
@@ -3075,30 +3095,26 @@ export function createHost({
       kind: item.kind,
     }))
 
-    if (helperAgent({ state }) && routine && helper.offer({
+    if (helperAgent({ state }) && routine && helper.busy()) {
+      return
+    }
+
+    if (helperAgent({ state }) && routine && await helper.offer({
       tasks: fired.map(item => item.card),
       prompt: text,
       seqs: [],
       once: fired.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
     })) {
+      delivered()
+
       return
     }
 
-    void host.hydra({
+    return host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
       text,
-    }).then(() => {
-      const delivered = Date.now()
-
-      for (const item of fired) {
-        const entry = stalled.get(item.id)
-
-        if (entry) {
-          entry.at = delivered
-        }
-      }
-    })
+    }).then(delivered)
   }
 
   // Each stall or wait fired so far: how many times, and when last.
@@ -3107,7 +3123,10 @@ export function createHost({
     at: number
   }>()
   const stallTimer = setInterval(
-    checkStalls,
+    () => background({
+      name: 'worker stall check',
+      run: checkStalls,
+    }),
     Math.min(
       stallDelay / 4,
       15_000,
@@ -4823,7 +4842,7 @@ export function createHost({
         }
       }
 
-      helper.recover()
+      await helper.recover()
 
       for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
         if (card.compaction?.inputs.length) {

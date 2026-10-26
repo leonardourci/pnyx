@@ -19,8 +19,9 @@ import { fakeDispatch } from './dispatch-fixture.ts'
 import { decideOutcome, decidePush, decideSession } from '../src/core/decide.ts'
 import type { Card } from '../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import { createHost, type QueryFn } from '../src/server/host.ts'
-import { startServer, type RunningServer } from '../src/server/server.ts'
+import type { QueryFn } from '../src/server/host.ts'
+import { hostObserver } from './host-observer.ts'
+import type { RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
@@ -165,20 +166,11 @@ function fakeSdk() {
   }
 }
 
-async function until({ check }: { check: () => boolean }) {
-  for (let i = 0; i < 200; i++) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail(`timed out waiting for ${check}`)
-}
+const {
+  startServer,
+  createHost,
+  until,
+} = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
 
 async function lab() {
   const root = realpathSync(mkdtempSync(join(

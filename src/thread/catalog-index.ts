@@ -1,4 +1,6 @@
-import { watch, watchFile, unwatchFile, type FSWatcher } from 'node:fs'
+import { watchFile, unwatchFile } from 'node:fs'
+import { watchPath, type PathWatch } from '../runtime/watch.ts'
+import { background } from '../runtime/background.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import type { Card, HydraProject } from '../core/model.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from './catalog.ts'
@@ -29,9 +31,10 @@ export function createCatalogIndex({
 }) {
   const entries = new Map<string, Entry>()
   const watches = new Map<string, {
-    file?: FSWatcher
+    file?: PathWatch
     users: Set<Entry>
     poll(): void
+    stat(): void
   }>()
   let timer: ReturnType<typeof setTimeout> | undefined
   let closed = false
@@ -91,20 +94,23 @@ export function createCatalogIndex({
     }
 
     timer = setTimeout(
-      () => {
-        timer = undefined
+      () => background({
+        name: 'catalog refresh',
+        run: () => {
+          timer = undefined
 
-        for (const entry of entries.values()) {
-          if (!entry.dirty || !entry.active) {
-            continue
+          for (const entry of entries.values()) {
+            if (!entry.dirty || !entry.active) {
+              continue
+            }
+
+            refresh({ entry }).catch(error => console.error(
+              'pnyx catalog refresh:',
+              error,
+            ))
           }
-
-          refresh({ entry }).catch(error => console.error(
-            'pnyx catalog refresh:',
-            error,
-          ))
-        }
-      },
+        },
+      }),
       REFRESH_DELAY_MS,
     )
     timer.unref()
@@ -125,7 +131,7 @@ export function createCatalogIndex({
       record.file?.close()
       unwatchFile(
         path,
-        record.poll,
+        record.stat,
       )
       watches.delete(path)
     }
@@ -155,11 +161,16 @@ export function createCatalogIndex({
     }
 
     const record: {
-      file?: FSWatcher
+      file?: PathWatch
       users: Set<Entry>
       poll(): void
+      stat(): void
     } = {
       users: new Set([entry]),
+      stat: () => background({
+        name: 'catalog poll',
+        run: () => record.poll(),
+      }),
       poll: () => {
         if (closed || record.users.size === 0) {
           return
@@ -169,18 +180,11 @@ export function createCatalogIndex({
         record.file = undefined
 
         try {
-          record.file = watch(
+          record.file = watchPath({
             path,
-            () => record.poll(),
-          )
-          record.file.on(
-            'error',
-            () => {
-              record.file?.close()
-              record.file = undefined
-            },
-          )
-          record.file.unref()
+            changed: () => record.poll(),
+            interval: STAT_INTERVAL_MS,
+          })
         } catch { /* A missing file is followed by the stat watcher until it appears. */ }
 
         changed({ affected: record.users })
@@ -196,19 +200,15 @@ export function createCatalogIndex({
         persistent: false,
         interval: STAT_INTERVAL_MS,
       },
-      record.poll,
+      record.stat,
     )
 
     try {
-      record.file = watch(
+      record.file = watchPath({
         path,
-        record.poll,
-      )
-      record.file.on(
-        'error',
-        () => record.file?.close(),
-      )
-      record.file.unref()
+        changed: () => record.poll(),
+        interval: STAT_INTERVAL_MS,
+      })
     } catch { /* Stat watching also detects newly created skill folders. */ }
   }
 
@@ -298,7 +298,7 @@ export function createCatalogIndex({
         record.file?.close()
         unwatchFile(
           path,
-          record.poll,
+          record.stat,
         )
       }
 
