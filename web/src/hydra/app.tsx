@@ -908,16 +908,27 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }) => {
     setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); clearSelection()
     taskFormVersion.current++
-    const refused = hydra.edits.findLast(intent => intent.stage === 'refused'
-      && intent.patch.name === 'task' && intent.patch.args[0] === 'create'
-      && argument({
-        args: intent.patch.args,
+    const refused = hydra.edits.findLast(intent => {
+      const {
+        name,
+        args,
+      } = intent.patch
+      const attempt = argument({
+        args,
+        flag: '--event-id',
+      }) ?? intent.id
+      const matchesForm = argument({
+        args,
         flag: '--column',
       }) === column
-      && argument({
-        args: intent.patch.args,
-        flag: '--parent',
-      }) === parent)
+        && argument({
+          args,
+          flag: '--parent',
+        }) === parent
+
+      return intent.stage === 'refused' && name === 'task' && args[0] === 'create'
+        && matchesForm && !state.keys[`task:${attempt}`]
+    })
     const draft = refused && {
       title: argument({
         args: refused.patch.args,
@@ -935,7 +946,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setCreatingTask({
       column,
       version: taskFormVersion.current,
-      ...(draft ? { draft } : {}),
+      draft,
       ...(parent ? { parent } : {}),
     })
     requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
