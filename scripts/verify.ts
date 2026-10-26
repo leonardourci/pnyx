@@ -451,9 +451,20 @@ for (const step of steps) {
 }
 
 if (checksOnly) {
+  const dirty = changedPaths()
+  const headMoved = head() !== headSha
+
+  if (dirty.length > 0) {
+    summary.push(`  worktree       failed, uncommitted changes: ${dirty.map(path => path.slice(3)).join(', ')}`)
+  }
+
+  if (headMoved) {
+    summary.push('  HEAD           failed, HEAD moved during the run')
+  }
+
   console.log(`\nverify summary:\n${summary.join('\n')}\n  marker         not written: --checks-only`)
   printReviews()
-  process.exitCode = failed.size === 0 ? 0 : 1
+  process.exitCode = failed.size === 0 && dirty.length === 0 && !headMoved ? 0 : 1
 } else {
   // Read after the run, so an edit made to the description meanwhile is kept.
   const found = openPullRequest()

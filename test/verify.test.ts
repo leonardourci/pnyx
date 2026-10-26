@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFileSync, spawnSync } from 'node:child_process'
 import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { delimiter, join, resolve } from 'node:path'
+import { delimiter, dirname, join, resolve } from 'node:path'
 import test from 'node:test'
 
 const reviews = [
@@ -10,13 +10,46 @@ const reviews = [
   'audit-tests',
   'deslop',
 ].map(name => '- [x] Ran `' + name + '`').join('\n')
+const staticChecks = [
+  {
+    command: 'pnpm',
+    args: [
+      'run',
+      'lint:fix',
+    ],
+  },
+  {
+    command: 'pnpm',
+    args: [
+      'run',
+      'typecheck',
+    ],
+  },
+  {
+    command: 'pnpm',
+    args: [
+      'exec',
+      'eslint',
+      '.',
+    ],
+  },
+  {
+    command: 'pnpm',
+    args: [
+      'run',
+      'build',
+    ],
+  },
+]
 
 function fixture({
   t,
   docs = false,
+  ui = false,
 }: {
   t: test.TestContext
   docs?: boolean
+  ui?: boolean
 }) {
   const root = mkdtempSync(join(
     tmpdir(),
@@ -29,6 +62,53 @@ function fixture({
       force: true,
     },
   ))
+  const home = join(
+    root,
+    'home',
+  )
+  const empty = join(
+    root,
+    'empty',
+  )
+  const gitConfig = join(
+    root,
+    'gitconfig',
+  )
+  mkdirSync(home)
+  mkdirSync(empty)
+  writeFileSync(
+    gitConfig,
+    `[core]\n hooksPath = ${JSON.stringify(empty)}\n[commit]\n gpgSign = false\n[init]\n templateDir = ${JSON.stringify(empty)}\n`,
+  )
+  const env = { ...process.env }
+
+  for (const name of Object.keys(env)) {
+    if (name.startsWith('GIT_') || [
+      'PNYX_ACTOR',
+      'PNYX_TASK',
+      'PNYX_HYDRA',
+    ].includes(name)) {
+      delete env[name]
+    }
+  }
+
+  Object.assign(
+    env,
+    {
+      HOME: home,
+      XDG_CONFIG_HOME: join(
+        home,
+        '.config',
+      ),
+      GIT_CONFIG_GLOBAL: gitConfig,
+      GIT_CONFIG_NOSYSTEM: '1',
+      TMPDIR: root,
+      PNYX_HOME: join(
+        root,
+        'pnyx',
+      ),
+    },
+  )
   const repo = join(
     root,
     'repo',
@@ -67,6 +147,7 @@ function fixture({
     args,
     {
       cwd,
+      env,
       encoding: 'utf8',
       stdio: [
         'ignore',
@@ -148,6 +229,46 @@ function fixture({
     ),
     'base\n',
   )
+
+  if (ui) {
+    for (const [
+      path,
+      source,
+    ] of [
+        [
+          'test/web.test.ts',
+          "import {} from '../web/behavior.ts'",
+        ],
+        [
+          'test/backend.test.ts',
+          "import {} from '../src/behavior.ts'",
+        ],
+        [
+          'test/scenarios/browser.test.ts',
+          "import {} from './browser.ts'",
+        ],
+        [
+          'test/scenarios/backend.test.ts',
+          "import {} from '../../src/behavior.ts'",
+        ],
+      ]) {
+      mkdirSync(
+        dirname(join(
+          repo,
+          path,
+        )),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          repo,
+          path,
+        ),
+        source,
+      )
+    }
+  }
+
   git({
     args: [
       'add',
@@ -176,7 +297,21 @@ function fixture({
       'feature',
     ],
   })
-  const changed = docs ? 'README.md' : 'behavior.ts'
+  let changed = 'behavior.ts'
+
+  if (docs) {
+    changed = 'README.md'
+  } else if (ui) {
+    changed = 'web/behavior.ts'
+  }
+
+  mkdirSync(
+    dirname(join(
+      repo,
+      changed,
+    )),
+    { recursive: true },
+  )
   writeFileSync(
     join(
       repo,
@@ -233,9 +368,15 @@ if (command === 'gh') {
   else if (args[1] === 'edit') fs.writeFileSync(process.env.EDITED, fs.readFileSync(0))
 } else {
   if (args.includes('lint:fix') && process.env.AUTOFIX) fs.writeFileSync('behavior.ts', 'fixed\\n')
-  if ((args.includes('lint:fix') || args.includes('eslint')) && process.env.LINT_FAIL) {
-    console.error('behavior.ts:1 unused variable cannot be fixed')
+  let lintStep = ''
+  if (args.includes('lint:fix')) lintStep = 'lint:fix'
+  if (args.includes('eslint')) lintStep = 'eslint'
+  if (lintStep && process.env.LINT_FAIL === lintStep) {
+    console.error(lintStep + ': behavior.ts:1 unused variable cannot be fixed')
     process.exitCode = 1
+  }
+  if (args.includes('build') && process.env.MOVE_HEAD) {
+    require('node:child_process').execFileSync('git', ['commit', '--allow-empty', '-m', 'move HEAD'])
   }
 }
 `,
@@ -258,16 +399,6 @@ if (command === 'gh') {
       extra?: Record<string, string>
       args?: string[]
     } = {}) {
-      const env = { ...process.env }
-
-      for (const name of [
-        'PNYX_ACTOR',
-        'PNYX_TASK',
-        'PNYX_HYDRA',
-      ]) {
-        delete env[name]
-      }
-
       const result = spawnSync(
         process.execPath,
         [
@@ -281,11 +412,6 @@ if (command === 'gh') {
           cwd: repo,
           env: {
             ...env,
-            PNYX_HOME: join(
-              root,
-              'pnyx',
-            ),
-            TMPDIR: root,
             PATH: `${bin}${delimiter}${process.env.PATH}`,
             CALLS: calls,
             PR: pr,
@@ -330,16 +456,24 @@ test(
       result.output,
     )
     assert.deepEqual(
-      result.calls.map(call => call.command),
+      result.calls.filter(call => call.command !== 'gh'),
       [
-        'pnpm',
-        'pnpm',
-        'pnpm',
-        'pnpm',
-        'node',
-        'node',
-        'gh',
-        'gh',
+        ...staticChecks,
+        {
+          command: 'node',
+          args: [
+            '--test',
+            'test/*.test.ts',
+          ],
+        },
+        {
+          command: 'node',
+          args: [
+            '--test',
+            '--test-concurrency=1',
+            'test/scenarios/*.test.ts',
+          ],
+        },
       ],
     )
     assert.match(
@@ -411,38 +545,44 @@ test(
         f.head,
       ],
     })
-    const result = f.run()
-    assert.equal(
-      result.status,
-      1,
-      result.output,
-    )
-    assert.match(
-      result.output,
-      /git rebase refs\/remotes\/origin\/trunk/,
-    )
-    assert.deepEqual(
-      result.calls,
+
+    for (const args of [
       [],
-    )
-    assert.equal(
-      f.git({
-        args: [
-          'rev-parse',
-          'HEAD',
-        ],
-      }),
-      f.head,
-    )
-    assert.equal(
-      result.body,
-      undefined,
-    )
+      ['--checks-only'],
+    ]) {
+      const result = f.run({ args })
+      assert.equal(
+        result.status,
+        1,
+        result.output,
+      )
+      assert.match(
+        result.output,
+        /git rebase refs\/remotes\/origin\/trunk/,
+      )
+      assert.deepEqual(
+        result.calls,
+        [],
+      )
+      assert.equal(
+        f.git({
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        f.head,
+      )
+      assert.equal(
+        result.body,
+        undefined,
+      )
+    }
   },
 )
 
 test(
-  'verify fails closed if the default branch cannot be fetched',
+  'verify fails closed if the default branch cannot be discovered',
   t => {
     const f = fixture({ t })
     f.git({
@@ -460,6 +600,52 @@ test(
     assert.equal(
       result.status,
       1,
+    )
+    assert.deepEqual(
+      result.calls,
+      [],
+    )
+    assert.equal(
+      result.body,
+      undefined,
+    )
+  },
+)
+
+test(
+  'verify fails closed when discovery succeeds but fetching the default branch fails',
+  t => {
+    const f = fixture({ t })
+    f.git({
+      args: [
+        'update-ref',
+        'refs/remotes/origin/trunk',
+        f.head,
+      ],
+    })
+    const lock = resolve(
+      f.repo,
+      f.git({
+        args: [
+          'rev-parse',
+          '--git-path',
+          'refs/remotes/origin/trunk.lock',
+        ],
+      }),
+    )
+    writeFileSync(
+      lock,
+      '',
+    )
+    const result = f.run()
+    assert.equal(
+      result.status,
+      1,
+      result.output,
+    )
+    assert.match(
+      result.output,
+      /cannot lock ref/,
     )
     assert.deepEqual(
       result.calls,
@@ -511,21 +697,64 @@ test(
 test(
   'verify prints unfixable lint issues and keeps running independent checks',
   t => {
-    const f = fixture({ t })
-    const result = f.run({ extra: { LINT_FAIL: '1' } })
+    for (const step of [
+      'lint:fix',
+      'eslint',
+    ]) {
+      const f = fixture({ t })
+      const result = f.run({ extra: { LINT_FAIL: step } })
+      assert.equal(
+        result.status,
+        1,
+        result.output,
+      )
+      assert.ok(result.output.includes(`${step}: behavior.ts:1 unused variable cannot be fixed`))
+      assert.ok(result.calls.some(call => call.args.includes('build')))
+      assert.equal(
+        result.body,
+        undefined,
+      )
+    }
+  },
+)
+
+test(
+  'UI-only verification selects web tests and browser journeys with serialized scenarios',
+  t => {
+    const f = fixture({
+      t,
+      ui: true,
+    })
+    const result = f.run()
     assert.equal(
       result.status,
-      1,
+      0,
       result.output,
+    )
+    assert.deepEqual(
+      result.calls.filter(call => call.command !== 'gh'),
+      [
+        ...staticChecks,
+        {
+          command: 'node',
+          args: [
+            '--test',
+            'test/web.test.ts',
+          ],
+        },
+        {
+          command: 'node',
+          args: [
+            '--test',
+            '--test-concurrency=1',
+            'test/scenarios/browser.test.ts',
+          ],
+        },
+      ],
     )
     assert.match(
-      result.output,
-      /unused variable cannot be fixed/,
-    )
-    assert.ok(result.calls.some(call => call.args.includes('build')))
-    assert.equal(
-      result.body,
-      undefined,
+      result.body!,
+      /pnyx-checks:v1/,
     )
   },
 )
@@ -660,7 +889,7 @@ test(
   'checks-only still fails when lint cannot be fixed or fixes need committing',
   t => {
     const failures: Record<string, string>[] = [
-      { LINT_FAIL: '1' },
+      { LINT_FAIL: 'lint:fix' },
       { AUTOFIX: '1' },
     ]
 
@@ -681,6 +910,82 @@ test(
         undefined,
       )
     }
+  },
+)
+
+test(
+  'checks-only refuses success if HEAD moves during the checks',
+  t => {
+    const f = fixture({ t })
+    const result = f.run({
+      args: ['--checks-only'],
+      extra: { MOVE_HEAD: '1' },
+    })
+    assert.equal(
+      result.status,
+      1,
+      result.output,
+    )
+    assert.notEqual(
+      f.git({
+        args: [
+          'rev-parse',
+          'HEAD',
+        ],
+      }),
+      f.head,
+    )
+    assert.match(
+      result.output,
+      /HEAD moved during the run/,
+    )
+    assert.ok(result.calls.every(call => call.command !== 'gh'))
+    assert.equal(
+      result.body,
+      undefined,
+    )
+  },
+)
+
+test(
+  'checks-only rejects lint fixes to a file that was already dirty',
+  t => {
+    const f = fixture({ t })
+    writeFileSync(
+      join(
+        f.repo,
+        'behavior.ts',
+      ),
+      'dirty before verification\n',
+    )
+    const result = f.run({
+      args: ['--checks-only'],
+      extra: { AUTOFIX: '1' },
+    })
+    assert.equal(
+      result.status,
+      1,
+      result.output,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.repo,
+          'behavior.ts',
+        ),
+        'utf8',
+      ),
+      'fixed\n',
+    )
+    assert.match(
+      result.output,
+      /uncommitted changes: behavior.ts/,
+    )
+    assert.ok(result.calls.every(call => call.command !== 'gh'))
+    assert.equal(
+      result.body,
+      undefined,
+    )
   },
 )
 
