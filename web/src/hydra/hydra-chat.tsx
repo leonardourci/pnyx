@@ -400,6 +400,7 @@ export function HydraChat({
     async ({
       name,
       args,
+      onChecking,
     }) => {
       if (name !== 'reply') {
         return command({
@@ -429,6 +430,7 @@ export function HydraChat({
           '--event-id',
           id,
         ],
+        onChecking,
       }).catch((error: Error) => {
         setSending(items => items.filter(s => s.id !== id))
         throw error
