@@ -11,7 +11,7 @@ pnpm build
 node --test --test-concurrency=1 "test/scenarios/*.test.ts"
 ```
 
-`pnpm verify` picks what to run from the files the branch changes (see the root README).
+`pnpm verify` picks what to run from the files the branch changes (see [Development](../docs/development.md)).
 
 ## Writing a scenario
 

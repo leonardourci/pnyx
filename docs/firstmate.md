@@ -1,0 +1,17 @@
+# Firstmate integration
+
+[Back to Pnyx](../README.md)
+
+Each Firstmate home gets its own Hydra.
+`pnyx-axi hydra homes` lists the homes beside each other, as `new-firstmate` makes them (in `FIRSTMATE_FACTORY_BASE`, by default `~/projects/agentic-engineering-workflow`; `--base` picks another folder), and the Hydra each one has; `pnyx-axi hydra create --firstmate <home>` creates a Hydra named after the home.
+`pnyx-axi setup hydra --home <home> --hydra <id>` makes the home that Hydra: it copies the Hydra skills into the home's `.agents/skills/` as local skills (listed in the clone's `.git/info/exclude`, so Firstmate's tracked files never change) and leaves Firstmate an inbox note pointing at it.
+A Hydra run by a Firstmate home watches that home when served, without `--home`.
+
+`serve --hydra <id> --home <home>` uses a home that Hydra has not recorded; a Hydra mirrors one Firstmate home, and `serve`, `firstmate sync` and `firstmate watch` name any other home they ignore.
+The server watches the home's `state/` and `data/` folders, turns each task into a card, and sends your replies through the home's own `bin/fm-send.sh`.
+Apart from `setup hydra` adding its local skill, it only reads the home.
+Without a server, `pnyx-axi firstmate sync --home <path>` folds a home in once and `pnyx-axi firstmate watch --home <path>` keeps doing so; `pnyx-axi reply <id> --text <text> --home <path>` replies from the terminal.
+The first interactive Claude Code or Codex session in an open task's worktree joins that task; a later session in the same folder stays unassigned.
+The managed task keeps replying through Firstmate.
+A setting change from a task card's Agent tab goes to the orchestrator as a request note through the home's `bin/fm-inbox.sh note --request-id <id>`, with the same request id retained on retries.
+When Firstmate records a Paseo terminal, only sessions in that terminal can join or replace its worker; a replacement on the same terminal continues the task while earlier sessions remain in recorded history.
