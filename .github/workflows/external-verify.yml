@@ -1,0 +1,45 @@
+name: External contribution verification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: external-verify-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Verify outside contribution
+    if: vars.PNYX_EXTERNAL_VERIFY_ENABLED == 'true' && github.event.pull_request.user.login != github.repository_owner
+    environment: external-contributions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - uses: pnpm/action-setup@v4
+
+      - run: pnpm install --frozen-lockfile
+
+      - run: pnpm verify --checks-only
+
+      - name: Keep verification failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: external-verify-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
+          path: /tmp/pnyx-verify-*/*.log
+          if-no-files-found: ignore
