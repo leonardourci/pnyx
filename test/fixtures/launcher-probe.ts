@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, realpathSync } from 'node:fs'
+import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
@@ -24,6 +25,15 @@ test(
         key,
       )
     }
+
+    assert.equal(
+      homedir(),
+      process.env.HOME,
+    )
+    assert.equal(
+      tmpdir(),
+      process.env.TMPDIR,
+    )
 
     const homes = [
       'HOME',

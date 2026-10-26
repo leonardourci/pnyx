@@ -12,7 +12,16 @@ for (const key of [
   }
 }
 
-process.env = isolated.env
+for (const key of Object.keys(process.env)) {
+  if (!(key in isolated.env)) {
+    delete process.env[key]
+  }
+}
+
+Object.assign(
+  process.env,
+  isolated.env,
+)
 process.once(
   'exit',
   isolated.close,
