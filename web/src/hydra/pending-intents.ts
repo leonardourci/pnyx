@@ -234,6 +234,26 @@ export function createPendingResource<State, Patch>({
       confirmed = state
       publish()
     },
+    retry({ id }: { id: string }) {
+      const intent = intents.find(intent => intent.id === id)
+
+      if (!intent || intent.delivery !== 'idempotent' || ![
+        'refused',
+        'unknown',
+      ].includes(intent.stage)) {
+        throw new CommandFailure({
+          message: 'Reconcile this outcome before retrying.',
+          code: 'UNSAFE_RETRY',
+        })
+      }
+
+      intents = intents.map(item => item.id === id ? {
+        ...item,
+        stage: 'pending',
+        error: undefined,
+      } : item)
+      publish()
+    },
     sending({ id }: { id: string }) {
       transition({
         id,

@@ -539,3 +539,54 @@ test(
     )
   },
 )
+
+test(
+  'retry preserves an idempotent intent identity and refuses unsafe replay',
+  () => {
+    const resource = fixture()
+    resource.enqueue({
+      id: 'safe',
+      targets: ['title'],
+      patch: { title: 'Retry' },
+      delivery: 'idempotent',
+    })
+    resource.refuse({
+      id: 'safe',
+      error: new CommandFailure({
+        message: 'Try later',
+        code: 'LOCKED',
+      }),
+    })
+    resource.retry({ id: 'safe' })
+    assert.equal(
+      resource.snapshot().intents[0]?.id,
+      'safe',
+    )
+    assert.equal(
+      resource.snapshot().intents[0]?.stage,
+      'pending',
+    )
+    assert.equal(
+      resource.snapshot().view.title,
+      'Retry',
+    )
+    resource.enqueue({
+      id: 'unsafe',
+      targets: ['theme'],
+      patch: { theme: 'dark' },
+      delivery: 'once',
+    })
+    resource.unknown({
+      id: 'unsafe',
+      error: new CommandFailure({
+        message: 'Uncertain',
+        code: 'TIMEOUT',
+        outcome: 'unknown',
+      }),
+    })
+    assert.throws(
+      () => resource.retry({ id: 'unsafe' }),
+      (error: unknown) => error instanceof CommandFailure && error.code === 'UNSAFE_RETRY',
+    )
+  },
+)
