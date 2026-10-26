@@ -2221,8 +2221,8 @@ test(
     // The worker can deliver its first alarm before startTask resolves.
     const received: number[] = []
 
-    sdk.control.onInput = () => {
-      if (stalls().length > received.length) {
+    sdk.control.onInput = ({ text }) => {
+      if (stallWake({ text })) {
         received.push(Date.now())
       }
     }

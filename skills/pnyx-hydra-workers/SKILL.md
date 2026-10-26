@@ -9,7 +9,7 @@ description: Use when you are Hydra and are about to start, queue, continue, rep
 
 Start in the UI requests a worker in your chat; you choose the project, copy or folder, launch route and agent. Read the task's history and current record before starting it. A request to start fresh may still have an old session attached; inspect it before choosing whether to continue or replace it.
 
-Before starting, refresh a missing or out-of-date project profile as the Hydra contract describes. Name the applicable project skills and their paths in the task brief. Pnyx adds a short shared project memory summary to the opening prompt, and the standard header tells the worker to read its copy's AGENTS.md and CLAUDE.md plus the relevant skills, docs and context files they point to.
+Before starting, refresh a missing or out-of-date project profile as the Hydra contract describes. Pnyx adds shared project memory and the standing repository-conventions instruction to every opening prompt and task handoff. Keep briefs task-specific; do not repeat that instruction.
 
 An explicit owner choice comes first: pass their `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly. Only `--harness` and `--model` choose what runs: they start even when no rule lists that harness or model, Pnyx checks the harness’s own catalog and login, records an owner override, and does not let quota veto the choice. `--effort`, `--mode` and `--fast` alone only change settings: quota still picks the candidate and account and skips spent ones, then those settings apply. Never invent an owner choice to resolve a tie.
 
