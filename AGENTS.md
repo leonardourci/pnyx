@@ -40,6 +40,10 @@ One folder per feature. Code for a feature lives in its folder. Usage and setup 
 | `docs/media/` | the README's demo GIF |
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it.
+Before PR readiness, follow `review-code`, `audit-tests` and `deslop`, in that order.
+These are checklists for humans and agents alike. Run `pnpm verify`, tick their three PR
+checkboxes after completing them, and describe what you fixed in the PR description.
+`write-front-end` also applies to changes under `web/`.
 
 ## Design rules
 
