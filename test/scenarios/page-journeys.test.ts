@@ -544,6 +544,18 @@ for (const harness of [
         'the project has a persisted label color',
       )
       let page = await openHydra({ s })
+      await until({
+        what: 'the initial Hydra settings save',
+        check: () => {
+          const agent = s.state().config?.hydra.agent
+
+          return agent?.model && agent.effort && agent.mode && typeof agent.fast === 'boolean'
+        },
+      })
+      await page.shows({
+        what: 'the saved Hydra settings are ready',
+        check: () => document.querySelector('button[aria-label="Fast mode"]:not(:disabled)'),
+      })
       await page.click({ selector: '.hydra-chat textarea' })
       await page.type({ text: '/deploy' })
       await page.shows({
