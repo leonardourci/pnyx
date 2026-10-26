@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
@@ -322,6 +322,19 @@ export function browserGroup() {
         shows,
         reload: async () => {
           await call({ method: 'Page.reload' })
+        },
+        capture: async ({ path }: { path: string }) => {
+          const { data } = await call({
+            method: 'Page.captureScreenshot',
+            params: { format: 'png' },
+          }) as { data: string }
+          writeFileSync(
+            path,
+            Buffer.from(
+              data,
+              'base64',
+            ),
+          )
         },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
         // handlers run too; it waits until nothing covers the element's centre.
