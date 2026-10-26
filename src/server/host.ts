@@ -1508,6 +1508,10 @@ export function createHost({
           continue
         }
 
+        if (typeof activity !== 'string' && activity.type === 'structured') {
+          continue
+        }
+
         if (typeof activity !== 'string') {
           entry.replies.update(activity)
           streamed({ session: key })
