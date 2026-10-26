@@ -6,7 +6,7 @@ Pnyx tracks explicit tasks in Hydras, each an orchestrator and its tasks. The �
 
 A deterministic view of every agent and its work, with an [AXI](https://axi.md/) CLI named `pnyx-axi`.
 
-Pnyx records tasks, attaches one agent session to each task, and queues your replies to that session. It is a view over the tools you already use, not an orchestrator: Claude Code and Codex hooks report sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the Hydra can be replayed and audited. Pre-v1.
+Pnyx records tasks, attaches one agent session to each task, and queues your replies to that session. Hydra decides what work to do; Pnyx runs the Claude Code and Codex agents it is asked to start. Hooks also report existing sessions, a Firstmate integration reads Firstmate's own records, and linked pull requests come from GitHub. Every change is an event in an append-only log, so the Hydra can be replayed and audited. Pre-v1.
 
 ![Pnyx demo](docs/media/demo.gif)
 
@@ -25,6 +25,8 @@ Pnyx is built on ideas we liked from [Paseo](https://github.com/getpaseo/paseo) 
 
 Needs Node 22.13 or newer and pnpm (the version pinned in `package.json`).
 
+To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The macOS login service and terminal integrations are optional; the foreground server does not need them.
+
 ```sh
 git clone https://github.com/leonardourci/pnyx.git
 cd pnyx
@@ -35,7 +37,7 @@ pnyx-axi --version
 pnyx-axi setup skills
 ```
 
-`pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
+If pnpm reports that its global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal and retry `pnpm add -g "$PWD"`. `pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
 
 Setup commands for hooks, skills and the login service change user-wide configuration. They refuse a `PNYX_HOME` other than `~/.pnyx`, including previews and removals. Unset `PNYX_HOME` to use the default home, or pass `--allow-custom-home` to explicitly target another home. Installing its service also requires a `--port` that no other Pnyx home’s installed service uses; the override does not bypass that check.
 
@@ -45,11 +47,14 @@ User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere els
 
 You do not have to set everything up before the first Hydra. Each time a Hydra session opens, Pnyx checks the local dispatch config, Claude and Codex logins, hooks, global skills, quota-axi, the login service and a profile for each attached project, and puts only what is missing in Hydra's digest as a short "Setup needed" list (a complete setup adds nothing). Hydra creates the local config and writes project profiles itself, and raises the owner-only steps (hooks, skills, the login service, removing an account whose login folder is missing) as questions in its chat that run only when you Confirm. `pnyx-axi setup check` prints the same list in a terminal and exits 1 while anything is missing.
 
+For a trial with separate data, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0`; `0` picks a free port and the output gives its URL. Use that same `PNYX_HOME` for later commands, including `stop`. A separate data home still uses your normal harness logins and global skill folders; setup previews show which user-wide files would change. See [Run](#run) to start your everyday Hydra and [CONTRIBUTING.md](CONTRIBUTING.md) to work on Pnyx itself.
+
 ## Projects
 
 A Hydra can work across several projects. Each project is a folder on your laptop, shown by its folder name. Attach an existing folder or clone code into a destination you choose:
 
 ```sh
+pnyx-axi hydra create work
 pnyx-axi project add /path/to/project --hydra work
 pnyx-axi project add --clone https://example.com/team/project.git --into /path/to/new-project --hydra work
 pnyx-axi project list --hydra work
@@ -334,6 +339,7 @@ To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && 
 Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`. Deleting `~/.pnyx` also deletes the task copies under each Hydra's folder, so settle them first:
 
 ```sh
+pnyx-axi setup service --remove  # macOS, if the login service was installed
 pnyx-axi stop
 pnyx-axi setup hooks --remove
 pnyx-axi setup skills --remove
@@ -342,6 +348,8 @@ pnpm remove -g pnyx-axi
 ```
 
 ## Development
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for the issue, review and merge process.
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals,
 arrays, parameter lists and call arguments with more than one item use one item per line.
@@ -357,7 +365,9 @@ pnpm dev
 
 Run `pnpm verify` on a PR's pushed head before it merges. It picks the checks from the files the branch changes against `origin/main` and prints what it picked and why: a back-end change (alone or with UI changes) runs `pnpm lint:fix`, the type check, ESLint, the build, the unit tests and the scenarios in `test/scenarios/`; a change only under `web/` runs the first four, the tests that import the web code and the browser journeys; a docs-only change runs nothing. It keeps going when a step fails, and ends with one summary that gives each failed step's log. A `lint:fix` that changed files counts as failed: commit them and run again. When every step passed, the tree is clean and HEAD is the PR's head, it adds a hidden `<!-- pnyx-checks:v1 ... -->` line naming the tested commit and its git tree to the PR description; a rerun replaces it.
 
-The "Checks ran for this commit" workflow (`.github/workflows/checks-required.yml`) installs and builds nothing. It reads the PR and fails unless that line names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means Markdown outside `skills/` and `test/`, since the shipped skills and test fixtures are read by Pnyx and its tests. PRs that change only docs never get the check. Only `pnpm verify` writes the line. Anyone who can edit the description, or the check in their own PR, could forge a pass, so it is an honesty check, not a signature.
+The "Checks ran for this commit" workflow (`.github/workflows/checks-required.yml`) runs for every PR and installs and builds nothing. It reads the PR and fails unless that line names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means Markdown outside `skills/` and `test/`, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description, or the check in their own PR, could forge a pass, so it is an honesty check, not a signature.
+
+The external-contribution workflow runs `pnpm verify --checks-only` on the PR's pushed head after the owner approves its `external-contributions` environment job. This runs the selected checks without a GitHub write token or changing the PR marker; local verification and the marker check still apply. The owner must configure the environment's required reviewer before enabling external verification.
 
 Done cards are hidden from their Hydra after 24 continuous hours in Done. They are never deleted: their tasks, events and conversations stay in recorded history and CLI Oracle. Set the delay for each Hydra with `pnyx-axi hydra set --hydra <id> --done-after-hours <hours>`; `0` keeps Done cards visible. Per-task overrides are available through `pnyx-axi task hide-after <task> <hours|default>` (`0` keeps it visible). Done cards show “done · 2h ago” until their last six hours, then “hidden in 3h”. Other columns never fade. Run `pnyx-axi task unhide <id> --hydra <id>`; a restored card stays visible until it moves out of Done and enters again, or you choose a new hide time. A reopened expired card returns automatically.
 
