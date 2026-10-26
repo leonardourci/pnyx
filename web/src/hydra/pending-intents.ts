@@ -1,3 +1,5 @@
+import { HydraError } from '../../../src/core/model.ts'
+
 export type IntentStage = 'pending' | 'sending' | 'accepted' | 'confirmed' | 'refused' | 'unknown'
 
 export class CommandFailure extends Error {
@@ -143,8 +145,9 @@ export function createPendingResource<State, Patch>({
         refuse({
           id: intent.id,
           error: error instanceof CommandFailure ? error : new CommandFailure({
-            message: String(error),
-            code: 'INVALID_PREVIEW',
+            message: error instanceof Error ? error.message : String(error),
+            code: error instanceof HydraError ? error.code : 'INVALID_PREVIEW',
+            help: error instanceof HydraError ? error.help : [],
           }),
         })
       }

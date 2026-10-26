@@ -4,6 +4,57 @@ import { createPendingResource, CommandFailure } from '../web/src/hydra/pending-
 import { pendingHydra, commandArguments } from '../web/src/hydra/pending-state.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
 import { emptyHydra } from '../src/core/reducer.ts'
+import { HydraError } from '../src/core/model.ts'
+
+test(
+  'rebasing a preview preserves the validator reason, code and help',
+  () => {
+    const resource = createPendingResource({
+      scope: 'validator',
+      confirmed: { available: true },
+      adapter: {
+        project: ({ state }: {
+          state: { available: boolean }
+          patch: string
+        }) => {
+          if (!state.available) {
+            throw new HydraError({
+              message: 'Target moved',
+              code: 'MOVED',
+              help: ['Choose its new location'],
+            })
+          }
+
+          return state
+        },
+        represented: () => false,
+      },
+    })
+    resource.enqueue({
+      id: 'edit',
+      targets: ['target'],
+      patch: 'edit',
+      delivery: 'idempotent',
+    })
+    resource.confirm({ state: { available: false } })
+    assert.equal(
+      resource.snapshot().intents[0]?.stage,
+      'refused',
+    )
+    assert.equal(
+      resource.snapshot().intents[0]?.error?.message,
+      'Target moved',
+    )
+    assert.equal(
+      resource.snapshot().intents[0]?.error?.code,
+      'MOVED',
+    )
+    assert.deepEqual(
+      resource.snapshot().intents[0]?.error?.help,
+      ['Choose its new location'],
+    )
+  },
+)
 
 interface State {
   title: string
