@@ -758,6 +758,14 @@ export function createHydraConnection() {
         })
       }
 
+      const saveId = saveEventId({
+        command: {
+          type: 'command',
+          id,
+          name,
+          args,
+        },
+      })
       requests.set(
         id,
         {
@@ -769,20 +777,17 @@ export function createHydraConnection() {
           retry,
           sent: false,
           creation,
-          saveId: saveEventId({
-            command: {
-              type: 'command',
-              id,
-              name,
-              args,
-            },
-          }),
+          saveId,
           unconfirmed: () => onChecking?.(),
           resolve: ({ receipt }) => resolve(receipt),
           reject: ({ error }) => reject(error),
         },
       )
-      scope.error = ''
+
+      if (optimistic || creation || saveId) {
+        scope.error = ''
+      }
+
       persistSaves({ scope })
       publish(); subscribe({ scope }); flush()
     })
@@ -950,7 +955,6 @@ export function createHydraConnection() {
       const wasReady = scope.ready
       scope.ready = true
       scope.failed = false
-      scope.error = ''
       attempt = 0
 
       if (!wasReady) {
@@ -1213,7 +1217,11 @@ export function createHydraConnection() {
 
     selected = next.pathname.split('/')[2]!
     const scope = selection()
-    scope.error = ''
+
+    if (scope.failed) {
+      scope.error = ''
+    }
+
     scope.failed = false
     save({
       key: selectedKey,
