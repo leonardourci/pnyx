@@ -164,7 +164,7 @@ test(
           'digest',
         ],
       }).out,
-      /^Setup needed \(load pnyx-setup\):\n- config: .* · you: pnyx-axi rule init/m,
+      /^Setup needed \(load pnyx-set-up\):\n- config: .* · you: pnyx-axi rule init/m,
     )
 
     // The check only reads, so Hydra runs it without a question.

@@ -887,7 +887,7 @@ test(
         digest,
         new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n`),
       )
-      assert.ok(digest.includes(`\nSetup needed (load pnyx-setup):\n- config: ${TEMPLATE_NUDGE} · you: pnyx-axi rule init --shared --hydra default\n`))
+      assert.ok(digest.includes(`\nSetup needed (load pnyx-set-up):\n- config: ${TEMPLATE_NUDGE} · you: pnyx-axi rule init --shared --hydra default\n`))
       assert.throws(
         () => f.run({
           name: 'hydra',
@@ -933,8 +933,8 @@ test(
       })
 
       for (const skill of [
-        'pnyx-hydra',
-        'inscribe',
+        'pnyx-orchestrate',
+        'pnyx-inscribe',
       ]) {
         assert.match(
           readFileSync(
@@ -1010,7 +1010,7 @@ test(
           '--hydra',
           'default',
         ]) as unknown as string,
-        /Owner memory uses 24000 of 24000 characters\. Load the inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the inscribe skill/,
+        /Owner memory uses 24000 of 24000 characters\. Load the pnyx-inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the pnyx-inscribe skill/,
       )
     } finally {
       rmSync(

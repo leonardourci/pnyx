@@ -219,18 +219,18 @@ test(
       readFileSync(
         join(
           first.cwd,
-          '.claude/skills/inscribe/SKILL.md',
+          '.claude/skills/pnyx-inscribe/SKILL.md',
         ),
         'utf8',
       ),
-      /^---\nname: inscribe/,
+      /^---\nname: pnyx-inscribe/,
     )
     assert.equal(
       existsSync(join(
         first.cwd,
-        '.agents/skills/pnyx-hydra',
+        '.agents/skills/pnyx-orchestrate',
       )),
-      false,
+      true,
     )
     assert.match(
       first.received[0]!,

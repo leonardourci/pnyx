@@ -85,7 +85,7 @@ test(
     )
     assert.match(
       agent.received[0]!,
-      new RegExp(`You are the Pnyx worker for task ${card.id} "Login crash" on Hydra ${s.hydraId}\\. Follow the pnyx-worker skill`),
+      new RegExp(`You are the Pnyx worker for task ${card.id} "Login crash" on Hydra ${s.hydraId}\\. Follow the pnyx-report-progress skill`),
     )
 
     const worker = s.as({ agent })

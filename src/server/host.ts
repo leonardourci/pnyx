@@ -225,7 +225,7 @@ const RETRY_MS = [
 // How much of a message Hydra's Not confirmed wake quotes.
 const UNCONFIRMED_QUOTE_CHARS = 80
 const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
-// A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
+// A worker runs the pnyx-report-progress skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
   'task history',

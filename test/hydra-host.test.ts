@@ -320,12 +320,12 @@ test(
       /^# Hydra\n[\s\S]*## Load before/,
     )
     assert.match(
-      read({ path: '.claude/skills/inscribe/SKILL.md' }),
-      /^---\nname: inscribe/,
+      read({ path: '.claude/skills/pnyx-inscribe/SKILL.md' }),
+      /^---\nname: pnyx-inscribe/,
     )
-    assert.ok(!existsSync(join(
+    assert.ok(existsSync(join(
       agent.cwd!,
-      '.agents/skills/pnyx-hydra',
+      '.agents/skills/pnyx-orchestrate',
     )))
     const {
       options,

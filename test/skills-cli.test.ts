@@ -88,7 +88,7 @@ test(
       userHome,
       '.agents',
       'skills',
-      'pnyx-worker',
+      'pnyx-report-progress',
     )
     const target = readlinkSync(worker)
     assert.equal(
@@ -97,7 +97,7 @@ test(
         import.meta.dirname,
         '..',
         'skills',
-        'pnyx-worker',
+        'pnyx-report-progress',
       ),
     )
     unlinkSync(worker)

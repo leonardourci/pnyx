@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -362,7 +362,7 @@ test(
     )
     assert.match(
       env.PNYX_PROMPT!,
-      /pnyx-hydra/,
+      /pnyx-orchestrate/,
     )
 
     hook({
@@ -631,7 +631,7 @@ test(
         ),
         'utf8',
       ),
-      /^\/\.agents\/skills\/pnyx-hydra\/$/m,
+      /^\/\.agents\/skills\/pnyx-orchestrate\/$/m,
     )
     assert.equal(
       spawnSync(
@@ -675,9 +675,9 @@ test(
     )
     assert.deepEqual(
       [
-        'pnyx-hydra',
-        'pnyx-hydra-workers',
-        'inscribe',
+        'pnyx-orchestrate',
+        'pnyx-manage-workers',
+        'pnyx-inscribe',
       ].map(name => excluded.split('\n').filter(line => line === `/.agents/skills/${name}/`).length),
       [
         1,
@@ -689,7 +689,7 @@ test(
       home,
       '.agents',
       'skills',
-      'inscribe',
+      'pnyx-inscribe',
       'SKILL.md',
     )))
     assert.equal(
@@ -1180,6 +1180,189 @@ test(
         projectNotes: '',
       }),
       workerHeader(base),
+    )
+  },
+)
+
+test(
+  'Firstmate setup retires only excluded untracked legacy skill copies',
+  t => {
+    const { root } = lab()
+    t.after(() => rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const home = join(
+      root,
+      'home',
+    )
+    cpSync(
+      join(
+        ROOT,
+        'test',
+        'fixtures',
+        'firstmate-home',
+      ),
+      home,
+      { recursive: true },
+    )
+    assert.equal(
+      spawnSync(
+        'git',
+        [
+          'init',
+          '-q',
+          home,
+        ],
+      ).status,
+      0,
+    )
+    const skills = join(
+      home,
+      '.agents',
+      'skills',
+    )
+    const legacy = [
+      'pnyx-hydra',
+      'pnyx-hydra-workers',
+      'pnyx-hydra-columns',
+      'pnyx-hydra-firstmate',
+      'pnyx-setup',
+      'inscribe',
+    ]
+
+    for (const name of legacy) {
+      mkdirSync(
+        join(
+          skills,
+          name,
+        ),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skills,
+          name,
+          'SKILL.md',
+        ),
+        'Legacy Pnyx skill',
+      )
+    }
+
+    writeFileSync(
+      join(
+        home,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      legacy.map(name => `/.agents/skills/${name}/`).join('\n') + '\n',
+    )
+    setupHydra({
+      hydraId: 'lab',
+      home,
+      meta,
+    })
+    assert.ok(legacy.every(name => !existsSync(join(
+      skills,
+      name,
+    ))))
+    const names = [
+      'inscribe',
+      'pnyx-hydra-workers',
+      'pnyx-hydra-columns',
+      'pnyx-setup',
+    ]
+
+    for (const name of names) {
+      mkdirSync(
+        join(
+          skills,
+          name,
+        ),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skills,
+          name,
+          'SKILL.md',
+        ),
+        `---\nname: ${name}\n---\nOriginal content`,
+      )
+    }
+
+    writeFileSync(
+      join(
+        skills,
+        'pnyx-setup',
+        'owner-notes.txt',
+      ),
+      'Keep this',
+    )
+    writeFileSync(
+      join(
+        home,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      [
+        '/.agents/skills/inscribe/',
+        '/.agents/skills/pnyx-hydra-columns/',
+        '/.agents/skills/pnyx-setup/',
+      ].join('\n') + '\n',
+    )
+    assert.equal(
+      spawnSync(
+        'git',
+        [
+          '-C',
+          home,
+          'add',
+          '-f',
+          '.agents/skills/pnyx-hydra-columns/SKILL.md',
+        ],
+      ).status,
+      0,
+    )
+    setupHydra({
+      hydraId: 'lab',
+      home,
+      meta,
+    })
+    assert.ok(!existsSync(join(
+      skills,
+      'inscribe',
+    )))
+
+    for (const name of names.slice(1)) {
+      assert.equal(
+        readFileSync(
+          join(
+            skills,
+            name,
+            'SKILL.md',
+          ),
+          'utf8',
+        ),
+        `---\nname: ${name}\n---\nOriginal content`,
+      )
+    }
+
+    assert.equal(
+      readFileSync(
+        join(
+          skills,
+          'pnyx-setup',
+          'owner-notes.txt',
+        ),
+        'utf8',
+      ),
+      'Keep this',
     )
   },
 )

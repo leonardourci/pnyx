@@ -73,7 +73,7 @@ const commits: Record<string, Commit> = {
   }),
   'shipped-skill': commitOn({
     tree: 'tree-skill',
-    files: ['skills/pnyx/SKILL.md'],
+    files: ['skills/pnyx-cli/SKILL.md'],
   }),
   'fixture': commitOn({
     tree: 'tree-fixture',

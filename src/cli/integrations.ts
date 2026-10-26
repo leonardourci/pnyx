@@ -54,7 +54,7 @@ export async function integrations({
         name: 'skills',
         status: skillStatus(),
         setup: 'pnyx-axi setup skills',
-        docs: 'The Hydra skills and pnyx-worker are available in every project or copy through global skill links',
+        docs: 'pnyx-report-progress and pnyx-cli are available in every project or copy through global skill links',
       },
       {
         name: 'hooks',

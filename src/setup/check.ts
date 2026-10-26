@@ -10,7 +10,7 @@ import { projectsFor } from '../projects/read.ts'
 import { serviceFile } from '../server/service.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 
-export const SETUP_SKILL = 'pnyx-setup'
+export const SETUP_SKILL = 'pnyx-set-up'
 
 export interface SetupItem {
   name: string

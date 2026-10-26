@@ -23,7 +23,7 @@ import { liveTask, sessionId } from '../core/tasks.ts'
 import { runCommand } from '../integrations/command/run.ts'
 import { taskFolder } from '../copies/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { copySkills, HYDRA_SKILLS } from '../integrations/skills/install.ts'
+import { copySkills, HYDRA_SKILLS, removeLegacyHydraSkills } from '../integrations/skills/install.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
@@ -45,13 +45,13 @@ export const HYDRA_SKILL = join(
   '..',
   '..',
   'skills',
-  'pnyx-hydra',
+  'pnyx-orchestrate',
   'SKILL.md',
 )
 export const HOME_SKILL = join(
   '.agents',
   'skills',
-  'pnyx-hydra',
+  'pnyx-orchestrate',
 )
 
 function chooseVia({
@@ -139,7 +139,7 @@ export function workerPrompt({
   title: string
 }): string {
   return [
-    `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the pnyx-worker skill when it is installed.`,
+    `You are the Pnyx worker for task ${id} "${title}" on Hydra ${hydraId}. Follow the pnyx-report-progress skill when it is installed.`,
     `Start with \`pnyx-axi task show ${id} --hydra ${hydraId}\` and \`pnyx-axi task history ${id} --hydra ${hydraId}\`.`,
     `Successful start already records working. Declare meaningful progress with \`pnyx-axi task status ${id} working|needs_you|paused|blocked|done --note <text> --hydra ${hydraId}\`; silence changes nothing.`,
   ].join(' ')
@@ -654,7 +654,7 @@ function askFirstmate({
       const text = [
         `Pnyx Hydra ${hydraId} asks for a worker on task ${card.id} "${card.title}"${card.folder ? ` in ${card.folder}` : ''}.`,
         `Task brief (give this to the worker as its first prompt):\n${brief}`,
-        `Use the pnyx-hydra skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
+        `Use the pnyx-orchestrate skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
       ].join('\n')
       const id = meta.id ?? randomUUID()
       apply({
@@ -1169,6 +1169,43 @@ export function setupHydra({
     real,
     HOME_SKILL,
   )
+  removeLegacyHydraSkills({
+    folder: real,
+    owns: ({ path }) => {
+      const ignored = spawnSync(
+        'git',
+        [
+          '-C',
+          real,
+          'check-ignore',
+          '-v',
+          '-z',
+          '--stdin',
+        ],
+        {
+          input: `${relative(
+            real,
+            join(
+              path,
+              'SKILL.md',
+            ),
+          )}\0`,
+          encoding: 'utf8',
+        },
+      )
+      const [
+        source, ,
+        pattern,
+      ] = ignored.stdout?.split('\0') ?? []
+
+      // Pnyx records each copied skill in info/exclude; tracked and owner skills stay untouched.
+      return ignored.status === 0 && !!source?.endsWith('/info/exclude')
+        && pattern === `/${relative(
+          real,
+          path,
+        )}/`
+    },
+  })
   const excluded = copySkills({
     folder: real,
     names: HYDRA_SKILLS,
@@ -1221,7 +1258,7 @@ export function setupHydra({
 
   const text = [
     `Pnyx Hydra ${hydraId} uses this home as its Hydra.`,
-    `Load the pnyx-hydra skill (${join(
+    `Load the pnyx-orchestrate skill (${join(
       HOME_SKILL,
       'SKILL.md',
     )}) and follow it for that Hydra.`,
