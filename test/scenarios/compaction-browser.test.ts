@@ -36,7 +36,8 @@ for (const harness of [
           check: () => {
             const agent = s.state().config?.hydra.agent
 
-            return agent?.harness === harness && agent.model && agent.effort && agent.mode && agent.fast === false
+            return agent?.harness === harness && agent.model && agent.effort && agent.mode
+              && agent.fast === false
           },
         })
         await page.shows({
