@@ -1,18 +1,27 @@
 import { readThread } from '../thread/read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
+import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, ownerActor, type AgentConfig, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { background } from '../runtime/background.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
-import { hydraDir, loadHydra, withWriter } from '../store/hydra-store.ts'
+import { hydraDir, loadHydra, lockIsStale, withWriter } from '../store/hydra-store.ts'
 import type { HostedSession, Provider } from '../server/provider.ts'
 import { helperAgent, helperTask } from './route.ts'
 import { releaseTask, taskLease } from './leases.ts'
 import { handbackId, type HelperBatch, type HelperChange, type HelperOutcome } from './state.ts'
 
+type Completion = {
+  change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
+  tasks: string[]
+}
+
 const TURN_MS = 120_000
+const WRITE_ATTEMPTS = 5
+const WRITE_RETRY_MS = 250
+const WRITE_POLL_MS = 1000
 const SUMMARY_CHARS = 600
 const DIALOG_MESSAGES = 20
 const DIALOG_CHARS = 12_000
@@ -109,6 +118,12 @@ export function createRoutineHelper({
   let agent: AgentRef | undefined
   let selection = ''
 
+  const stopping = new AbortController()
+  const pendingDir = join(
+    hydraDir({ hydraId }),
+    'helper-pending',
+  )
+
   const defer = async <T>({
     run,
     cleanup = false,
@@ -116,7 +131,7 @@ export function createRoutineHelper({
     run(): T
     cleanup?: boolean
   }): Promise<T> => {
-    for (;;) {
+    for (let attempt = 0; ; attempt++) {
       if (closed && !cleanup) {
         throw new Error('Helper turn was stopped')
       }
@@ -124,7 +139,7 @@ export function createRoutineHelper({
       try {
         return run()
       } catch (error) {
-        if (!(error instanceof HydraError && error.code === 'LOCKED') || closed && !cleanup) {
+        if (!(error instanceof HydraError && error.code === 'LOCKED') || closed) {
           throw error
         }
 
@@ -132,35 +147,155 @@ export function createRoutineHelper({
           'pnyx-axi helper deferred:',
           error,
         )
-        await delay(
-          250,
-          undefined,
-          { ref: false },
+
+        if (attempt < WRITE_ATTEMPTS - 1) {
+          await delay(
+            WRITE_RETRY_MS * 2 ** attempt,
+            undefined,
+            {
+              ref: false,
+              signal: stopping.signal,
+            },
+          )
+          continue
+        }
+
+        const lockPath = join(
+          hydraDir({ hydraId }),
+          'writer.lock',
         )
+
+        if (!existsSync(lockPath)) {
+          throw error
+        }
+
+        // A held lock gets availability probes, never repeated synchronous writer waits.
+        await new Promise<void>((
+          resolve,
+          reject,
+        ) => {
+          const finish = ({ error }: { error?: unknown } = {}) => {
+            clearInterval(timer)
+            stopping.signal.removeEventListener(
+              'abort',
+              cancelled,
+            )
+
+            if (error) {
+              reject(error)
+            } else {
+              resolve()
+            }
+          }
+
+          const cancelled = () => finish({ error: new Error('Helper turn was stopped') })
+
+          const check = () => {
+            try {
+              if (!existsSync(lockPath) || lockIsStale({ path: lockPath })) {
+                finish()
+              }
+            } catch (error) {
+              finish({ error })
+            }
+          }
+
+          const timer = setInterval(
+            check,
+            WRITE_POLL_MS,
+          )
+          timer.unref()
+          stopping.signal.addEventListener(
+            'abort',
+            cancelled,
+            { once: true },
+          )
+
+          if (closed) {
+            cancelled()
+          } else {
+            check()
+          }
+        })
       }
     }
   }
 
-  const append = ({ change }: { change: HelperChange }) => {
-    withWriter({
-      hydraId,
-      fn: ({ writer }) => {
-        const decision = hydraEvent({
-          state: writer.state,
-          cardId: HYDRA_CARD,
-          meta: {
-            at: new Date().toISOString(),
-            actor: 'pnyx',
-          },
-          change,
-        })
+  const append = ({ change }: { change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }> }) => {
+    const id = change.type === 'hydra.helper-finished'
+      ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
 
-        if ('event' in decision) {
-          writer.append({ event: decision.event })
-        }
-      },
+    try {
+      withWriter({
+        hydraId,
+        lockTimeout: 0,
+        fn: ({ writer }) => {
+          const decision = hydraEvent({
+            state: writer.state,
+            cardId: HYDRA_CARD,
+            meta: {
+              at: new Date().toISOString(),
+              actor: 'pnyx',
+              id,
+            },
+            change,
+          })
+
+          if ('event' in decision) {
+            writer.append({ event: decision.event })
+          }
+        },
+      })
+    } catch (error) {
+      // Snapshot replacement can fail after the append has already committed.
+      if (!(id in loadHydra({ hydraId }).state.eventIds)) {
+        throw error
+      }
+
+      console.error(
+        'pnyx-axi helper snapshot:',
+        error,
+      )
+    }
+
+    background({
+      name: 'helper changed',
+      run: changed,
     })
-    changed()
+  }
+
+  const persistCompletion = async ({
+    change,
+    tasks,
+  }: Completion) => {
+    mkdirSync(
+      pendingDir,
+      {
+        recursive: true,
+        mode: 0o700,
+      },
+    )
+    const path = join(
+      pendingDir,
+      `${change.data.batch}.json`,
+    )
+    const temporary = `${path}.tmp`
+    writeFileSync(
+      temporary,
+      JSON.stringify({
+        change,
+        tasks,
+      }),
+      { mode: 0o600 },
+    )
+    renameSync(
+      temporary,
+      path,
+    )
+    await defer({
+      run: () => append({ change }),
+      cleanup: true,
+    })
   }
 
   const giveBack = ({ batch }: { batch: HelperBatch }) => {
@@ -200,6 +335,7 @@ export function createRoutineHelper({
             hydraId,
             task,
             actor,
+            lockTimeout: 0,
           }),
         }))
       }
@@ -348,16 +484,15 @@ export function createRoutineHelper({
         timeout,
         stopped,
       ])
-      await defer({
-        run: () => append({
-          change: {
-            type: 'hydra.helper-finished',
-            data: {
-              batch: batch.id,
-              outcomes,
-            },
+      await persistCompletion({
+        tasks: batch.tasks,
+        change: {
+          type: 'hydra.helper-finished',
+          data: {
+            batch: batch.id,
+            outcomes,
           },
-        }),
+        },
       })
 
       if (outcomes.some(outcome => outcome.audience === 'owner')) {
@@ -365,10 +500,14 @@ export function createRoutineHelper({
       }
     } catch (error) {
       agent = undefined
-      const failure = (error as Error).message
-      await defer({
-        cleanup: true,
-        run: () => append({
+      const failure = closed ? 'Helper turn was stopped' : (error as Error).message
+
+      if (!existsSync(join(
+        pendingDir,
+        `${batch.id}.json`,
+      ))) {
+        await persistCompletion({
+          tasks: batch.tasks,
           change: {
             type: 'hydra.helper-finished',
             data: {
@@ -377,8 +516,8 @@ export function createRoutineHelper({
               error: failure,
             },
           },
-        }),
-      })
+        })
+      }
 
       if (!closed) {
         giveBack({
@@ -389,20 +528,44 @@ export function createRoutineHelper({
         })
       }
     } finally {
-      try {
-        cancelDeadline()
-        active?.close()
-        active = undefined
-        abort = undefined
+      const cleanups = [
+        cancelDeadline,
+        () => active?.close(),
+        ...releases,
+      ]
 
-        for (const release of releases) {
-          await defer({
-            run: release,
-            cleanup: true,
-          })
+      let cleaned = true
+
+      try {
+        for (const cleanup of cleanups) {
+          try {
+            await defer({
+              run: cleanup,
+              cleanup: true,
+            })
+          } catch (error) {
+            cleaned = false
+            console.error(
+              'pnyx-axi helper cleanup:',
+              error,
+            )
+          }
         }
       } finally {
+        active = undefined
+        abort = undefined
         busy = false
+
+        if (cleaned && `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds) {
+          rmSync(
+            join(
+              pendingDir,
+              `${batch.id}.json`,
+            ),
+            { force: true },
+          )
+        }
+
         changed()
       }
     }
@@ -410,7 +573,7 @@ export function createRoutineHelper({
 
   return {
     busy: () => busy,
-    offer({
+    async offer({
       tasks,
       prompt,
       seqs,
@@ -420,7 +583,7 @@ export function createRoutineHelper({
       prompt: string
       seqs: number[]
       once?: string[]
-    }): boolean {
+    }): Promise<boolean> {
       if (closed || busy || !tasks.length) {
         return false
       }
@@ -435,14 +598,17 @@ export function createRoutineHelper({
       busy = true
 
       try {
-        append({
-          change: {
-            type: 'hydra.helper-started',
-            data: batch,
-          },
+        await defer({
+          run: () => append({
+            change: {
+              type: 'hydra.helper-started',
+              data: batch,
+            },
+          }),
         })
       } catch (error) {
         busy = false
+        changed()
         throw error
       }
 
@@ -453,20 +619,56 @@ export function createRoutineHelper({
 
       return true
     },
-    recover() {
+    async recover() {
+      const pending = new Map<string, Completion>()
+
+      for (const name of existsSync(pendingDir) ? readdirSync(pendingDir) : []) {
+        if (name.endsWith('.json')) {
+          const completion = JSON.parse(readFileSync(
+            join(
+              pendingDir,
+              name,
+            ),
+            'utf8',
+          )) as Completion
+          pending.set(
+            completion.change.data.batch,
+            completion,
+          )
+        }
+      }
+
       const runs = Object.values(loadHydra({ hydraId }).state.helper?.runs ?? {})
 
       for (const batch of runs) {
+        let cleaned = true
+
         for (const task of batch.tasks) {
-          releaseTask({
-            hydraId,
-            task,
-            actor: `helper:${batch.id}`,
-          })
+          try {
+            await defer({
+              run: () => releaseTask({
+                hydraId,
+                task,
+                actor: `helper:${batch.id}`,
+                lockTimeout: 0,
+              }),
+            })
+          } catch (error) {
+            cleaned = false
+            console.error(
+              'pnyx-axi helper recovery cleanup:',
+              error,
+            )
+          }
         }
 
-        if (!batch.error) {
-          append({
+        const completion = pending.get(batch.id)
+
+        if (completion) {
+          await persistCompletion(completion)
+        } else if (!batch.error) {
+          await persistCompletion({
+            tasks: batch.tasks,
             change: {
               type: 'hydra.helper-finished',
               data: {
@@ -478,15 +680,72 @@ export function createRoutineHelper({
           })
         }
 
-        giveBack({ batch })
+        if (!closed && (!completion || completion.change.data.error)) {
+          giveBack({ batch })
+        }
+
+        if (cleaned) {
+          rmSync(
+            join(
+              pendingDir,
+              `${batch.id}.json`,
+            ),
+            { force: true },
+          )
+        }
+      }
+
+      // A committed outcome can outlive its lease cleanup or journal removal.
+      for (const [
+        id,
+        completion,
+      ] of pending) {
+        if (!runs.some(batch => batch.id === id)) {
+          let cleaned = true
+
+          for (const task of completion.tasks) {
+            try {
+              await defer({
+                run: () => releaseTask({
+                  hydraId,
+                  task,
+                  actor: `helper:${id}`,
+                  lockTimeout: 0,
+                }),
+              })
+            } catch (error) {
+              cleaned = false
+              console.error(
+                'pnyx-axi helper recovery cleanup:',
+                error,
+              )
+            }
+          }
+
+          await persistCompletion(completion)
+
+          if (cleaned) {
+            rmSync(
+              join(
+                pendingDir,
+                `${id}.json`,
+              ),
+              { force: true },
+            )
+          }
+        }
       }
 
       outcomesReady()
     },
     close() {
       closed = true
+      stopping.abort()
       abort?.abort()
-      active?.close()
+      background({
+        name: 'helper close',
+        run: () => active?.close(),
+      })
     },
   }
 }
