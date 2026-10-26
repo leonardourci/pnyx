@@ -8,6 +8,7 @@ import { questions } from '../integrations/hooks/observe.ts'
 import type { ModelOption, Provider } from './provider.ts'
 import { attachedImages, imageType } from '../attachments/images.ts'
 import { pnyxHome } from '../store/paths.ts'
+import { compactCommand } from '../compaction/state.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
@@ -169,6 +170,7 @@ export function claudeProvider({
   readSettings?: ReadSettings
 }): Provider {
   return {
+    compact: true,
     async models({
       cwd,
       env,
@@ -257,12 +259,18 @@ export function claudeProvider({
           }
 
           // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
-          let fresh = true
+          let fresh = true, manualCompact = false
 
           const prompt = async function* (): AsyncGenerator<UserMessage> {
             for await (const text of input) {
-              const message = fresh && context ? `${context()}\n\n${text}` : text
-              fresh = false
+              const compact = compactCommand({ text })
+              manualCompact ||= compact
+              const message = fresh && context && !compact ? `${context()}\n\n${text}` : text
+
+              if (!compact) {
+                fresh = false
+              }
+
               yield {
                 type: 'user',
                 message: {
@@ -368,9 +376,43 @@ export function claudeProvider({
 
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
           let messageId = '', textIndex = 0, active = false
+          let compaction: {
+            id: string
+            trigger: 'manual' | 'auto'
+          } | undefined
           const thinking = new Set<number>()
 
           for await (const message of running) {
+            if (message.type === 'system' && message.subtype === 'status') {
+              if (message.status === 'compacting') {
+                compaction = {
+                  id: message.uuid ?? randomUUID(),
+                  trigger: manualCompact ? 'manual' : 'auto',
+                }
+                manualCompact = false
+
+                if (!active) {
+                  active = true
+                  yield 'working'
+                }
+
+                yield {
+                  type: 'compaction' as const,
+                  ...compaction,
+                  state: 'running' as const,
+                }
+              } else if (message.compact_result && compaction) {
+                const state = message.compact_result === 'success' ? 'done' : interrupted ? 'cancelled' : 'failed'
+                yield {
+                  type: 'compaction' as const,
+                  ...compaction,
+                  state,
+                  ...(state === 'failed' && message.compact_error ? { error: message.compact_error } : {}),
+                }
+                compaction = undefined
+              }
+            }
+
             const activity = turnOf({ message })
             const starts = activity === 'working'
               || (message.type === 'stream_event' && !message.parent_tool_use_id && message.event.type === 'message_start')
@@ -504,6 +546,7 @@ export function claudeProvider({
             if (activity === 'finished') {
               active = false
               interrupted = false
+              manualCompact = false
               yield 'finished'
             }
           }

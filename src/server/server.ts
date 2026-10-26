@@ -2188,6 +2188,7 @@ async function mountOwnedHydra({
       'hydras',
       'hydra-agent',
       'models',
+      'compact',
     ].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({
@@ -2197,7 +2198,32 @@ async function mountOwnedHydra({
       }
 
       try {
-        if (name === 'models') {
+        if (name === 'compact') {
+          if (args.length < 1 || args.length > 2) {
+            throw new HydraError({
+              message: 'compact expects a card and an optional queued message ID',
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          void agents.compact({
+            card: args[0]!,
+            sendNow: args[1],
+          }).then(
+            result => send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+                ...result,
+              },
+            }),
+            (error: Error) => fail({
+              error: error.message,
+              code: error instanceof HydraError ? error.code : 'UNKNOWN',
+            }),
+          )
+        } else if (name === 'models') {
           const harness = args[0]
 
           if (args.length !== 1 || (harness !== 'claude' && harness !== 'codex')) {
@@ -2258,7 +2284,10 @@ async function mountOwnedHydra({
             const next = {
               scope,
               read: Promise.resolve(previous).then(async () => {
-                const native = await agents.catalogCommands({ card })
+                const native = await agents.catalogCommands({
+                  card,
+                  provider: receiving,
+                })
                 const catalog = await catalogIndex.read({
                   card: currentCard,
                   projects: state.projects,
@@ -2268,7 +2297,7 @@ async function mountOwnedHydra({
                   ...catalog,
                   suggestions: [
                     ...catalog.suggestions,
-                    ...((receiving === 'codex') === (card.agent?.provider === 'codex') ? native : []),
+                    ...native,
                   ],
                   provider: receiving,
                 }
