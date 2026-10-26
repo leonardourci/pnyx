@@ -12,7 +12,7 @@
 
 ## Global constraints
 
-- One PR per phase, each branch starts from fetched main; owner merges.
+- One PR per phase; owner merges. Phase 2 is stacked on phase 1 by explicit Hydra steering; later branches use fetched main after their foundations land.
 - Isolated homes and random ports; no live daemon on 4747.
 - Preserve confirmations for deletion, project sharing and permissions.
 - Keep daemon revisions and sequence authoritative; no pretend events.
@@ -46,7 +46,7 @@ Files: connection/navigation, Hydra picker, server scoped transport/mount, creat
 - [ ] Build single-WebSocket explicit scope routing and target selection independent of old requests.
 - [ ] Render cached/uncached/provisional targets immediately; promote canonical IDs without reload and retain drafts.
 - [ ] Persist creation-attempt identity; contain saved-but-not-mounted failures; warm catalogs in background.
-- [ ] Verify A→B→C/Back with held reads and writes, create identity promotion and mount failure; review and open its own PR from updated main.
+- [ ] Verify A→B→C/Back with held reads and writes, create identity promotion and mount failure; review and open its own draft PR stacked on phase 1; restack onto updated main after the foundation lands.
 
 ### Phase 3: Reversible action adapters
 
