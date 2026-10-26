@@ -6,6 +6,7 @@ import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import { FolderSearch } from '../components/ui/folder-search.tsx'
 import { CommandFailure } from './pending-intents.ts'
+import { argument } from './optimistic.ts'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
 import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
@@ -119,7 +120,12 @@ export function AddProject({
     command,
     connected,
   })
-  const recovered = intents.findLast(intent => intent.stage === 'refused')
+  const recovered = intents.findLast(intent => intent.stage === 'refused' && intent.patch.args[0] === 'add'
+    && !projects.some(project => project.path === intent.patch.path && project.state === 'attached'))
+  const recoveredRepository = recovered && argument({
+    args: recovered.patch.args,
+    flag: '--clone',
+  })
   const heading = useRef<HTMLHeadingElement>(null)
   useEffect(
     () => {
@@ -135,14 +141,14 @@ export function AddProject({
   const [
     mode,
     setMode,
-  ] = useState<'folder' | 'clone' | null>(null)
+  ] = useState<'folder' | 'clone' | null>(recovered ? recoveredRepository ? 'clone' : 'folder' : null)
   const [
       path,
       setPath,
     ] = useState(recovered?.patch.path ?? ''), [
       repository,
       setRepository,
-    ] = useState(recovered ? recovered.patch.args[recovered.patch.args.indexOf('--clone') + 1] ?? '' : '')
+    ] = useState(recoveredRepository ?? '')
   const [
     busy,
     setBusy,
@@ -154,7 +160,16 @@ export function AddProject({
   const [
     landing,
     setLanding,
-  ] = useState<LandingChoice>(DEFAULT_LANDING)
+  ] = useState<LandingChoice>(recovered ? {
+    landing: (argument({
+      args: recovered.patch.args,
+      flag: '--landing',
+    }) as LandingChoice['landing']) ?? DEFAULT_LANDING.landing,
+    merge: (argument({
+      args: recovered.patch.args,
+      flag: '--merge',
+    }) as LandingChoice['merge']) ?? DEFAULT_LANDING.merge,
+  } : DEFAULT_LANDING)
   const result = useFolders({
     path,
     repository: mode === 'clone' ? repository : '',
@@ -162,6 +177,7 @@ export function AddProject({
   })
   const listing = result?.listing
   const disabled = !connected || busy
+  const canSubmit = !!path.trim() && !!(mode === 'clone' ? listing?.cloneInto : listing?.selected)
 
   const run = async ({ args }: { args: string[] }) => {
     const previousMode = mode
@@ -194,7 +210,7 @@ export function AddProject({
       }
     } catch (error) {
       if (!(error instanceof CommandFailure) || error.outcome === 'refused') {
-        setMode(previousMode)
+        setMode(previousMode ?? (args.includes('--clone') ? 'clone' : 'folder'))
       }
 
       notify({ text: (error as Error).message })
@@ -279,7 +295,11 @@ export function AddProject({
             disabled={disabled}
             onChange={({ path }) => setPath(path)}
           />
-          {listing?.selected && path.trim() && <div className="picked-folder"><strong>{listing.selected.name}</strong><small>{listing.selected.path}</small></div>}
+          {listing?.selected && path.trim() && (
+            <div className="picked-folder">
+              <strong>{listing.selected.name}</strong><small>{listing.selected.path}</small>
+            </div>
+          )}
           {result?.error && <p className="small" role="status">{result.error}</p>}
           {mode === 'clone' && listing?.cloneInto && <p className="clone-preview">Code will land in <strong>{listing.cloneInto}</strong></p>}
           <LandingFields
@@ -288,7 +308,9 @@ export function AddProject({
             disabled={disabled}
             onChange={({ choice }) => setLanding(choice)}
           />
-          <Button type="submit" variant="surface" disabled={disabled || !path.trim() || (mode === 'clone' ? !listing?.cloneInto : !listing?.selected)}>{busy ? mode === 'clone' ? 'Cloning…' : 'Attaching…' : mode === 'clone' ? 'Clone and attach' : 'Add project'}</Button>
+          <Button type="submit" variant="surface" disabled={disabled || !canSubmit}>
+            {mode === 'clone' ? 'Clone and attach' : 'Add project'}
+          </Button>
           {mode === 'folder' && !!listing?.recent.length && (
             <div className="recent-folders"><span className="small muted">Folders your agents worked in</span>{listing.recent.map(folder => (
               <Button
@@ -323,7 +345,12 @@ export function AddProject({
           })}
         />
       )}
-      {!confirmation && <p className="small muted project-sharing-note">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>}
+      {!confirmation && (
+        <p className="small muted project-sharing-note">
+          Each worker normally gets its own copy. Only one Hydra at a time may have a worker
+          editing the folder itself.
+        </p>
+      )}
     </section>
   )
 }
@@ -347,7 +374,10 @@ export function ProjectSharing({
       ) => <span key={hydra.id}>{n > 0 ? ', ' : ''}<a href={hydra.url} target="_blank" rel="noreferrer">{hydraTitle(hydra)} <Icon name="external" size={12} /></a></span>)}
       </span>
       <p className="small muted">Each worker normally gets its own copy. Only one Hydra at a time may have a worker editing the folder itself.</p>
-      <div className="project-actions"><Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button><Button disabled={disabled} onClick={cancel}>Cancel</Button></div>
+      <div className="project-actions">
+        <Button disabled={disabled} variant="surface" onClick={confirm}>Add anyway</Button>
+        <Button disabled={disabled} onClick={cancel}>Cancel</Button>
+      </div>
     </div>
   )
 }

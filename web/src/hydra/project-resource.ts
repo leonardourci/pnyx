@@ -25,6 +25,24 @@ interface ProjectPatch {
   path: string
 }
 
+function pendingProject({
+  action,
+  clone,
+}: {
+  action?: string
+  clone: boolean
+}): string {
+  if (action === 'remove') {
+    return 'Detaching…'
+  }
+
+  if (action === 'set') {
+    return 'Saving project settings…'
+  }
+
+  return clone ? 'Cloning and checking attachment…' : 'Checking attachment…'
+}
+
 const resources = new WeakMap<Command, ReturnType<typeof createProjects>>()
 
 function createProjects() {
@@ -54,19 +72,31 @@ function createProjects() {
         ...DEFAULT_LANDING,
         ...previous,
         state: action === 'remove' ? 'detached' : 'attached',
-        ...(landing ? { landing } : {}),
-        ...(merge ? { merge } : {}),
-        pending: action === 'remove' ? 'Detaching…' : action === 'set' ? 'Saving project settings…'
-          : clone ? 'Cloning and checking attachment…' : 'Checking attachment…',
+
+        pending: pendingProject({
+          action,
+          clone,
+        }),
       }
+
+      if (landing) {
+        row.landing = landing
+      }
+
+      if (merge) {
+        row.merge = merge
+      }
+
       const shell = option({ flag: '--command' })
 
-      if (shell !== undefined) {
-        row.startCommand = shell.trim() ? {
+      if (shell !== undefined && !shell.trim()) {
+        row.startCommand = undefined
+      } else if (shell !== undefined) {
+        row.startCommand = {
           name: option({ flag: '--command-name' }) ?? previous?.startCommand?.name ?? '',
           command: shell,
           bringsOwnFolder: option({ flag: '--brings-own-folder' }) === 'true',
-        } : undefined
+        }
       }
 
       return {
@@ -103,10 +133,22 @@ function createProjects() {
       const landing = option({ flag: '--landing' }), merge = option({ flag: '--merge' })
       const shell = option({ flag: '--command' })
 
-      return (landing === undefined || row.landing === landing) && (merge === undefined || row.merge === merge)
-        && (shell === undefined || (shell.trim() ? row.startCommand?.command === shell
-          && row.startCommand?.name === option({ flag: '--command-name' })
-          && row.startCommand?.bringsOwnFolder === (option({ flag: '--brings-own-folder' }) === 'true') : !row.startCommand))
+      if ((landing !== undefined && row.landing !== landing)
+        || (merge !== undefined && row.merge !== merge)) {
+        return false
+      }
+
+      if (shell === undefined) {
+        return true
+      }
+
+      if (!shell.trim()) {
+        return !row.startCommand
+      }
+
+      return row.startCommand?.command === shell
+        && row.startCommand.name === option({ flag: '--command-name' })
+        && row.startCommand.bringsOwnFolder === (option({ flag: '--brings-own-folder' }) === 'true')
     },
     read: ({ receipt }) => receipt.confirmation === 'needed' ? undefined : {
       rows: Array.isArray(receipt.projects) ? receipt.projects as ProjectRow[] : [],
@@ -196,6 +238,8 @@ export function useProjectsResource({
         })
       }
     }
+
+    execute.retain = command.retain
 
     return resource.write({
       command: execute,

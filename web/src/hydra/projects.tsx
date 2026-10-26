@@ -50,27 +50,30 @@ function ProjectCommand({
     <form
       className="project-form"
       aria-label={`Start settings for ${project.name}`}
-      onSubmit={e => {
+      onSubmit={async e => {
         e.preventDefault(); setBusy(true)
-        void mutate({
-          args: [
-            'set',
-            project.path,
-            '--command-name',
-            name,
-            '--command',
-            shell,
-            '--brings-own-folder',
-            String(ownFolder),
-            '--event-id',
-            crypto.randomUUID(),
-          ],
-        })
-          .then(() => {
-            notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
+
+        try {
+          await mutate({
+            args: [
+              'set',
+              project.path,
+              '--command-name',
+              name,
+              '--command',
+              shell,
+              '--brings-own-folder',
+              String(ownFolder),
+              '--event-id',
+              crypto.randomUUID(),
+            ],
           })
-          .catch((error: Error) => notify({ text: error.message }))
-          .finally(() => setBusy(false))
+          notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
+        } catch (error) {
+          notify({ text: (error as Error).message })
+        } finally {
+          setBusy(false)
+        }
       }}
     >
       <fieldset disabled={disabled}>
@@ -180,8 +183,10 @@ export function Projects({
     ],
   )
 
-  const run = ({ args }: { args: string[] }) => {
-    void mutate({ args }).then(r => {
+  const run = async ({ args }: { args: string[] }) => {
+    try {
+      const r = await mutate({ args })
+
       if (r.confirmation === 'needed') {
         const preview = r.preview as {
           project: {
@@ -202,8 +207,9 @@ export function Projects({
           ? 'Project detached. Tasks and history stay.' : 'Project attached.'
         notify({ text })
       }
-    })
-      .catch((e: Error) => notify({ text: e.message }))
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
   }
 
   const row = ({ project: p }: { project: ProjectRow }) => (
@@ -264,7 +270,14 @@ export function Projects({
           )}
           {!projects.some(p => p.state === 'attached') && <p className="muted">No projects attached.</p>}
           <ul className="project-list">{projects.filter(p => p.state === 'attached').map(p => row({ project: p }))}</ul>
-          {projects.some(p => p.state === 'detached') && <><h3>Detached</h3><ul className="project-list">{projects.filter(p => p.state === 'detached').map(p => row({ project: p }))}</ul></>}
+          {projects.some(p => p.state === 'detached') && (
+            <>
+              <h3>Detached</h3>
+              <ul className="project-list">
+                {projects.filter(p => p.state === 'detached').map(p => row({ project: p }))}
+              </ul>
+            </>
+          )}
           {!readonly && (
             <AddProject
               command={command}

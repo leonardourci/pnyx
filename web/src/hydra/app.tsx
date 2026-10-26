@@ -1,3 +1,4 @@
+import { useProjectsResource } from './project-resource.ts'
 import { useInstallationPending } from './installation-resources.ts'
 import { TaskReferencesProvider } from '../components/ui/task-reference.tsx'
 import { useTaskReferences } from './task-references.ts'
@@ -113,6 +114,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [hydra.viewKey],
   )
   const installationPending = useInstallationPending()
+  const { intents: projectPending } = useProjectsResource({
+    command,
+    connected,
+    revision: state.projectsRevision,
+  })
   const restoreKey = storageKey({ key: 'restore' })
   const commentsKey = storageKey({
     key: 'comments',
@@ -1085,6 +1091,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             intents={[
               ...hydra.intents,
               ...installationPending,
+              ...projectPending,
             ]}
           />
           {page === 'hydra' && (

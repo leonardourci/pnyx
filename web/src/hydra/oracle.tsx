@@ -13,6 +13,7 @@ import { ResultGrid, type ResultRow } from '../components/ui/result-grid.tsx'
 import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../keyboard/registry.tsx'
 import type { Command } from './connection.ts'
 import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
+import { Projects } from './projects.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
@@ -79,6 +80,30 @@ export function Oracle({
   })
   const settings = preferences ?? {}
   const input = useRef<HTMLInputElement>(null), root = useRef<HTMLDivElement>(null)
+  useEffect(
+    () => {
+      if (!expanded) {
+        return
+      }
+
+      const outside = (event: PointerEvent) => {
+        if (event.target instanceof Node && !root.current?.contains(event.target)) {
+          setExpanded(false)
+        }
+      }
+
+      document.addEventListener(
+        'pointerdown',
+        outside,
+      )
+
+      return () => document.removeEventListener(
+        'pointerdown',
+        outside,
+      )
+    },
+    [expanded],
+  )
   const context = useRef<ActionContext>({
     scope: 'navigation',
     target: document.body,
@@ -553,6 +578,17 @@ export function Oracle({
     words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`,
     content: <AgentKinds state={state} command={command} notify={notify} />,
   })
+  add({
+    id: 'projects',
+    label: 'Projects',
+    words: 'folder attach clone detach landing command',
+    content: <Projects
+      state={state}
+      command={command}
+      connected={connected}
+      notify={notify}
+    />,
+  })
   const catalog = JSON.stringify(rows.map(row => ({
     id: row.id,
     text: row.text.slice(
@@ -665,7 +701,7 @@ export function Oracle({
         setExpanded(true)
       }}
       onBlur={e => {
-        if (!e.currentTarget.contains(e.relatedTarget)) {
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) {
           setExpanded(false)
         }
       }}
