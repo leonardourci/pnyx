@@ -5,6 +5,8 @@ import { Marked, type Token, type Tokens } from 'marked'
 import { IMAGE, imageNames } from '../../../../src/attachments/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from './column-chip.tsx'
+import { ChatTokenText, SkillToken } from './chat-tokens.tsx'
+import { readSkillReference } from '../../../../src/thread/skill-reference.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
@@ -71,14 +73,17 @@ type TaskLink = {
     tone: string
   }
   images?: Map<string, string>
+  leading?: boolean
 }
 
 const withImages = ({
   text,
   images,
+  leading,
 }: {
   text: string
   images?: Map<string, string>
+  leading?: boolean
 }): ReactNode => text.split(IMAGE).map((
   part,
   n,
@@ -88,13 +93,14 @@ const withImages = ({
     path={part}
     label={images?.get(part) ?? 'Image'}
   />
-) : part)
+) : <ChatTokenText key={n} text={part} leading={leading && n === 0} />)
 
 const inline = ({
   tokens,
   openTask,
   columnLook,
   images,
+  leading,
 }: { tokens: Token[] } & TaskLink): ReactNode =>
   tokens.map((
     token,
@@ -112,10 +118,18 @@ const inline = ({
       case 'strong': return <strong key={i}>{children}</strong>
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
-      case 'codespan': return <code key={i}>{token.text}</code>
+      case 'codespan': return <code key={i}><ChatTokenText text={token.text} codexOnly /></code>
       case 'br': return <br key={i} />
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
+        const skillPointer = token.type === 'link' ? /^pnyx-skill:([\w%~.-]+)$/.exec(token.href) : null
+        const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
+        const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
+
+        if (skill) {
+          return <SkillToken key={i} skill={skill} />
+        }
+
         const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
         const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
         const label = inlineText({ tokens: token.tokens ?? [] }).replace(
@@ -182,6 +196,7 @@ const inline = ({
         <Fragment key={i}>{typeof children === 'string' ? withImages({
           text: children,
           images,
+          leading: leading && i === 0,
         }) : children}
         </Fragment>
       )
@@ -202,7 +217,7 @@ function Code({
     <div className="code-block">
       {lang && <span className="code-language">{lang}</span>}
       <pre>
-        <code>{text}</code>
+        <code><ChatTokenText text={text} codexOnly /></code>
       </pre>
     </div>
   )
@@ -371,6 +386,7 @@ const renderBlocks = ({
             openTask,
             columnLook,
             images,
+            leading: start + offset === 0,
           }) : withImages({
             text: token.text,
             images,

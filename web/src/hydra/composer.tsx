@@ -10,7 +10,8 @@ import { readSkillReference, skillReference } from '../../../src/thread/skill-re
 import { SkillBadge } from '../components/ui/skill-badge.tsx'
 import { Label } from '../components/ui/label.tsx'
 import { SuggestionPicker } from '../components/ui/suggestion-picker.tsx'
-import { useSkillsCatalog } from './skills-catalog.ts'
+import type { Catalog } from '../../../src/thread/catalog.ts'
+import { ReferenceBadge } from '../components/ui/reference-badge.tsx'
 import { Button, Input, Textarea } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { taskStateIcon, type TaskReferenceData } from '../components/ui/task-reference.tsx'
@@ -25,7 +26,7 @@ import { placeMessageCaret, conversationMessages, latestAgentMessage } from './c
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '../../../src/attachments/files.ts'
-import { cardChip, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 function DraftCard({
   chip,
@@ -69,8 +70,8 @@ export function Composer({
   setComments,
   thread,
   command,
-  connected,
-  catalogHarness,
+  catalog,
+  onCatalogOpen,
   labelColors,
   notify,
   settings,
@@ -91,8 +92,8 @@ export function Composer({
   setComments({ items }: { items: ChatComment[] }): void
   thread: ThreadPage | null
   command: Command
-  connected: boolean
-  catalogHarness?: string
+  catalog: Catalog | null
+  onCatalogOpen({ open }: { open: boolean }): void
   labelColors?: SavedLabelColor[]
   notify({ text }: { text: string }): void
   settings?: ReactNode
@@ -427,21 +428,13 @@ export function Composer({
   }
   const { label } = useKeyboard()
   const catalogOpen = prefix !== null
-  const agent = cards.find(item => item.id === card)?.agent
-  const receiving = catalogHarness ?? agent?.provider ?? 'claude'
-  const catalog = useSkillsCatalog({
-    identity: JSON.stringify([
-      card,
-      agent?.provider,
-      agent?.cwd,
-      agent?.sessionId,
-      receiving === 'claude-code' ? 'claude' : receiving,
-    ]),
-    card,
-    command,
-    connected,
-    open: catalogOpen,
-  })
+  useEffect(
+    () => onCatalogOpen({ open: catalogOpen }),
+    [
+      catalogOpen,
+      onCatalogOpen,
+    ],
+  )
   const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
     command: s.command,
     prefix: prefix ?? '',
@@ -826,6 +819,7 @@ export function Composer({
                 next: e.target.value,
                 caret: e.target.selectionStart,
               })
+
               write(edit)
               const shown = draftView({ text: edit.text }).display
               setPrefix(slashPrefix({
@@ -978,28 +972,15 @@ export function Composer({
                   )
                 } else {
                   token = (
-                    <span
-                      className={`draft-chip ${chip.attached ? 'attached' : 'reference'} ${look?.tone ?? ''}`}
+                    <ReferenceBadge
+                      icons={look?.icons ?? []}
+                      className={look?.tone ?? ''}
                       data-kind={chip.kind}
                       title={title}
-                      onMouseDown={event => event.preventDefault()}
                       onClick={() => openChip({ chip })}
                     >
-                      {look ? (
-                        <>
-                          {look.icons.map((
-                            icon,
-                            index,
-                          ) => (
-                            <Fragment key={icon}>
-                              {index > 0 && WORD_JOINER}
-                              <span className="chip-icon">{ICON_SPACE}<Icon name={icon} size={14} /></span>
-                            </Fragment>
-                          ))}
-                          {CHIP_JOIN}{chip.name}
-                        </>
-                      ) : chip.label}
-                    </span>
+                      {look ? chip.name : chip.label}
+                    </ReferenceBadge>
                   )
                 }
 

@@ -174,6 +174,22 @@ test(
       check: () => document.querySelector('.hydra-chat .draft-chip[data-kind=task]')?.textContent?.includes('Ship the layout')
         && !document.querySelector('.mention-menu'),
     })
+    const tokenLooks = await page.shows({
+      what: 'the composer token styles',
+      check: () => [...document.querySelectorAll('.composer .draft-chip')].map(token => {
+        const style = getComputedStyle(token)
+
+        return {
+          color: style.color,
+          background: style.backgroundColor,
+          shadow: style.boxShadow,
+          padding: style.padding,
+          font: style.fontFamily,
+          size: style.fontSize,
+          icons: [...token.querySelectorAll('.chip-icon svg')].map(icon => icon.innerHTML),
+        }
+      }),
+    })
 
     const note = join(
       s.folder({ name: 'files' }),
@@ -209,10 +225,40 @@ test(
       check: () => {
         const mine = [...document.querySelectorAll('.hydra-chat .message.mine')].at(-1)
 
-        return mine?.textContent?.includes('/inscribe what we chose for') && mine.textContent.includes('Ship the layout')
+        return mine?.querySelector('.draft-skill')?.textContent?.includes('/inscribe') && mine.textContent?.includes('what we chose for') && mine.textContent.includes('Ship the layout')
           && mine.textContent.includes('Remember the grid.') && mine.querySelector('img')
-          && !document.querySelector('.hydra-chat .draft-chip')
+          && !document.querySelector('.composer .draft-chip')
       },
+    })
+    const sentLooks = await page.shows({
+      what: 'the same skill and task tokens in the sent message',
+      check: () => {
+        const mine = [...document.querySelectorAll('.message.mine')].at(-1)
+        const tokens = [...(mine?.querySelectorAll('.draft-chip') ?? [])]
+
+        return tokens.length === 2 && !mine?.querySelector('.skill-remove') && tokens.map(token => {
+          const style = getComputedStyle(token)
+
+          return {
+            color: style.color,
+            background: style.backgroundColor,
+            shadow: style.boxShadow,
+            padding: style.padding,
+            font: style.fontFamily,
+            size: style.fontSize,
+            icons: [...token.querySelectorAll('.chip-icon svg')].map(icon => icon.innerHTML),
+          }
+        })
+      },
+    })
+    assert.deepEqual(
+      sentLooks,
+      tokenLooks,
+    )
+    await page.click({ selector: '.message.mine .task-reference' })
+    await page.shows({
+      what: 'the sent task mention opens its task',
+      check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
     })
     const agent = await hydraFinished({
       s,
@@ -234,6 +280,59 @@ test(
     await page.close()
   },
 )
+
+for (const harness of [
+  'claude',
+  'codex',
+]) {
+  test(
+    `sent ${harness} skill mentions follow native boundaries and survive a reload`,
+    async () => {
+      const s = await pnyx.scenario()
+      await s.owner({
+        args: [
+          'rule',
+          'set',
+          'hydra',
+          '--harness',
+          harness,
+        ],
+      })
+      const text = harness === 'codex'
+        ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.'
+        : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.'
+      await s.owner({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          text,
+        ],
+      })
+      await hydraFinished({
+        s,
+        turns: 1,
+      })
+
+      for (let load = 0; load < 2; load++) {
+        const page = await openHydra({ s })
+        await page.shows({
+          what: 'known skill badges and literal unknown names',
+          arg: { harness },
+          check: ({ harness }) => {
+            const mine = document.querySelector('.message.mine')
+
+            return mine?.querySelectorAll('.draft-skill').length === (harness === 'codex' ? 3 : 2)
+            && mine.textContent?.includes('not-a-known-skill')
+            && !mine.querySelector('.skill-remove')
+            && (harness !== 'codex' || mine.querySelector('code .draft-skill'))
+          },
+        })
+        await page.close()
+      }
+    },
+  )
+}
 
 const startedTask = async ({ s }: { s: Scenario }) => {
   const folder = s.folder({ name: 'web-app' })

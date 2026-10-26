@@ -25,6 +25,7 @@ import { LiveLabel } from '../components/ui/live-label.tsx'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
+import { useSkillsCatalog } from './skills-catalog.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
@@ -111,6 +112,28 @@ export function HydraChat({
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
+  const [
+    catalogOpen,
+    setCatalogOpen,
+  ] = useState(false)
+  const onCatalogOpen = useCallback(
+    ({ open }: { open: boolean }) => setCatalogOpen(open),
+    [],
+  )
+  const receiving = config.hydra.agent?.harness ?? card?.agent?.provider ?? 'claude'
+  const catalog = useSkillsCatalog({
+    identity: JSON.stringify([
+      HYDRA_CARD,
+      card?.agent?.provider,
+      card?.agent?.cwd,
+      card?.agent?.sessionId,
+      receiving === 'claude-code' ? 'claude' : receiving,
+    ]),
+    card: HYDRA_CARD,
+    command,
+    connected,
+    open: catalogOpen,
+  })
   const {
     thinking,
   } = traces({
@@ -550,6 +573,8 @@ export function HydraChat({
               </Button>
             )}
             <Messages
+              catalog={catalog}
+              labelColors={state.labelColors}
               folds={chat.folds}
               timings={chat.timings}
               inline={inline}
@@ -657,7 +682,8 @@ export function HydraChat({
           return true
         }}
         card={HYDRA_CARD}
-        catalogHarness={config.hydra.agent?.harness}
+        catalog={catalog}
+        onCatalogOpen={onCatalogOpen}
         labelColors={state.labelColors}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}
@@ -671,7 +697,6 @@ export function HydraChat({
         setComments={setComments}
         thread={route}
         command={deliver}
-        connected={connected}
         notify={notify}
         stop={working && card?.agent?.host === 'pnyx' ? () => command({
           name: 'hydra',
