@@ -137,3 +137,101 @@ test(
     await page.close()
   },
 )
+
+test(
+  'navigation discards refused dependent writes before draining the old Hydra transport',
+  async () => {
+    const s = await pnyx.scenario()
+    const destination = await pnyx.scenario()
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    await page.shows({
+      what: 'the connected Hydra',
+      check: () => document.querySelector('[data-connected=true]'),
+    })
+    await page.shows({
+      what: 'hold creation and record actual dependent sends',
+      check: () => {
+        const send = WebSocket.prototype.send
+        const control = window as unknown as {
+          releaseCreate: () => void
+          widthsSent: number
+        }
+        control.widthsSent = 0
+
+        // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
+        WebSocket.prototype.send = function(data) {
+          const message = typeof data === 'string' ? JSON.parse(data) : null
+
+          if (message?.name === 'column' && message.args[0] === 'create') {
+            control.releaseCreate = () => send.call(
+              this,
+              data,
+            )
+          } else {
+            if (message?.name === 'view' && message.args.some((value: string) => value.includes('columnWidths'))) {
+              control.widthsSent++
+            }
+
+            send.call(
+              this,
+              data,
+            )
+          }
+        }
+
+        return true
+      },
+    })
+    await page.click({ selector: '.add-column button' })
+    await page.shows({
+      what: 'the provisional column',
+      check: () => [...document.querySelectorAll('.column .inline-title')].some(el => el.textContent === 'New column'),
+    })
+    await page.click({ selector: "[aria-label='Resize New column column']" })
+    await page.press({ key: 'ArrowRight' })
+    await s.owner({
+      args: [
+        'column',
+        'describe',
+        'queued',
+        '--description',
+        'Concurrent update',
+      ],
+    })
+    await page.shows({
+      what: 'the concurrent configuration event',
+      check: () => document.querySelector('.column-queued h2')?.getAttribute('title') === 'Concurrent update',
+    })
+    await page.click({
+      selector: '.hydra-name',
+      text: destination.hydraId,
+    })
+    await page.shows({
+      what: 'navigation selection before old writes settle',
+      arg: { hydra: destination.hydraId },
+      check: ({ hydra }) => location.pathname === `/hydra/${hydra}/`,
+    })
+    await page.shows({
+      what: 'release the stale creation',
+      check: () => {
+        ;(window as unknown as { releaseCreate: () => void }).releaseCreate()
+
+        return true
+      },
+    })
+    await page.shows({
+      what: 'destination connected after refused old work settles',
+      check: () => document.querySelector('[data-connected=true]') && !document.querySelector('.loading-status'),
+    })
+    const sent = await page.shows({
+      what: 'the transmitted width command count',
+      check: () => ({ count: (window as unknown as { widthsSent: number }).widthsSent }),
+    })
+    assert.equal(
+      sent.count,
+      0,
+      'a refused dependent must never reach the daemon',
+    )
+    await page.close()
+  },
+)

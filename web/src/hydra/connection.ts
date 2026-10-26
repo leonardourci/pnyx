@@ -1,9 +1,8 @@
 import { reminderTime } from '../../../src/reminders/time.ts'
-import { argument, optimisticState, currentRevision } from './optimistic.ts'
+import { optimisticState, currentRevision } from './optimistic.ts'
 import { CommandFailure } from './pending-intents.ts'
-import { editTargets, pendingHydra } from './pending-state.ts'
+import { commandArguments, editTargets, pendingHydra } from './pending-state.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
-import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
 import { readSettingsSaves, saveSettingsSaves, storageKey } from './outbox.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/server/saves.ts'
@@ -256,17 +255,23 @@ export function useHydra() {
   )
   const publish = useCallback(
     () => {
-      if (new URL(target.current).pathname !== new URL(endpoint).pathname) {
-        return
-      }
+      const active = new URL(target.current).pathname === new URL(endpoint).pathname
 
       for (const intent of resource.snapshot().intents) {
         const p = pending.current.get(intent.id)
 
         if (p && intent.stage === 'refused' && intent.error) {
           pending.current.delete(intent.id); clearTimeout(p.timer)
-          p.reject({ error: intent.error }); setError(intent.error.message)
+          p.reject({ error: intent.error })
+
+          if (active) {
+            setError(intent.error.message)
+          }
         }
+      }
+
+      if (!active) {
+        return
       }
 
       setState(resource.snapshot().view)
@@ -290,6 +295,10 @@ export function useHydra() {
         id,
         p,
       ] of pending.current) {
+        if (p.optimistic && resource.snapshot().intents.some(intent => intent.id === id && intent.stage === 'refused')) {
+          continue
+        }
+
         if (p.sent || (p.optimistic && editing)) {
           continue
         }
@@ -911,16 +920,6 @@ export function useHydra() {
         return
       }
 
-      if (commandBytes({
-        id,
-        name,
-        args,
-      }) > MAX_MESSAGE_BYTES) {
-        reject(new Error('Message exceeds the 64 KiB limit. Shorten the draft or file contents. Draft kept.'))
-
-        return
-      }
-
       let optimistic: boolean
 
       try {
@@ -938,18 +937,22 @@ export function useHydra() {
         return
       }
 
-      if (optimistic) {
-        if (!argument({
-          args,
-          flag: '--event-id',
-        })) {
-          args = [
-            ...args,
-            '--event-id',
-            id,
-          ]
-        }
+      try {
+        args = commandArguments({
+          id,
+          edit: {
+            name,
+            args,
+          },
+          persisted: optimistic,
+        })
+      } catch (error) {
+        reject(error)
 
+        return
+      }
+
+      if (optimistic) {
         const edit = {
           name,
           args,

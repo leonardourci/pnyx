@@ -1,3 +1,4 @@
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
 import type { HydraState } from '../../../src/core/model.ts'
 import { argument, optimisticState, type Edit } from './optimistic.ts'
 import { CommandFailure, createPendingResource } from './pending-intents.ts'
@@ -87,4 +88,37 @@ export function editTargets({ edit }: { edit: Edit }): string[] {
   }
 
   return [edit.args[edit.name === 'move' ? 0 : 1] ?? edit.name]
+}
+
+export function commandArguments({
+  id,
+  edit,
+  persisted,
+}: {
+  id: string
+  edit: Edit
+  persisted: boolean
+}): string[] {
+  const hasEvent = argument({
+    args: edit.args,
+    flag: '--event-id',
+  }) !== undefined
+  const args = persisted && !hasEvent ? [
+    ...edit.args,
+    '--event-id',
+    id,
+  ] : edit.args
+
+  if (commandBytes({
+    id,
+    name: edit.name,
+    args,
+  }) > MAX_MESSAGE_BYTES) {
+    throw new CommandFailure({
+      message: 'Message exceeds the 64 KiB limit. Shorten the draft or file contents. Draft kept.',
+      code: 'MESSAGE_TOO_LARGE',
+    })
+  }
+
+  return args
 }

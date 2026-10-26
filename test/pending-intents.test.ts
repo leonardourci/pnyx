@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createPendingResource, CommandFailure } from '../web/src/hydra/pending-intents.ts'
-import { pendingHydra } from '../web/src/hydra/pending-state.ts'
+import { pendingHydra, commandArguments } from '../web/src/hydra/pending-state.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
 import { emptyHydra } from '../src/core/reducer.ts'
 
 interface State {
@@ -451,6 +452,90 @@ test(
     assert.equal(
       first.snapshot().intents[0]?.stage,
       'confirmed',
+    )
+  },
+)
+
+test(
+  'a stale refusal cannot invalidate children of a confirmed prerequisite',
+  () => {
+    const resource = fixture()
+    resource.enqueue({
+      id: 'parent',
+      targets: ['title'],
+      patch: { title: 'Parent' },
+      delivery: 'idempotent',
+    })
+    resource.enqueue({
+      id: 'child',
+      targets: ['theme'],
+      patch: { theme: 'dark' },
+      dependencies: ['parent'],
+      delivery: 'idempotent',
+    })
+    resource.confirm({
+      state: {
+        title: 'Parent',
+        theme: 'light',
+        revision: 2,
+        events: ['parent'],
+      },
+    })
+    resource.refuse({
+      id: 'parent',
+      error: new CommandFailure({
+        message: 'Late failure',
+        code: 'LATE_ERROR',
+      }),
+    })
+    assert.equal(
+      resource.snapshot().intents[0]?.stage,
+      'confirmed',
+    )
+    assert.equal(
+      resource.snapshot().intents[1]?.stage,
+      'pending',
+    )
+    assert.equal(
+      resource.snapshot().view.theme,
+      'dark',
+    )
+  },
+)
+
+test(
+  'frame validation includes the automatically appended idempotency key',
+  () => {
+    const id = 'request'
+    const args = [
+      'brief',
+      'task',
+      '--brief',
+      '',
+    ]
+    args[3] = 'x'.repeat(MAX_MESSAGE_BYTES - commandBytes({
+      id,
+      name: 'task',
+      args,
+    }))
+    assert.equal(
+      commandBytes({
+        id,
+        name: 'task',
+        args,
+      }),
+      MAX_MESSAGE_BYTES,
+    )
+    assert.throws(
+      () => commandArguments({
+        id,
+        edit: {
+          name: 'task',
+          args,
+        },
+        persisted: true,
+      }),
+      (error: unknown) => error instanceof CommandFailure && error.code === 'MESSAGE_TOO_LARGE',
     )
   },
 )

@@ -80,6 +80,12 @@ export function createPendingResource<State, Patch>({
     id: string
     error: CommandFailure
   }) => {
+    const prerequisite = intents.find(intent => intent.id === id)
+
+    if (!prerequisite || !active({ intent: prerequisite })) {
+      return
+    }
+
     const refused = new Set([id])
 
     intents = intents.map(intent => {
@@ -144,7 +150,7 @@ export function createPendingResource<State, Patch>({
       }
     }
 
-    // Bound completed history while retaining every unresolved operation and its dependencies.
+    // Keep prerequisite outcomes until their dependent work settles.
     const required = new Set(intents.filter(intent => active({ intent }))
       .flatMap(intent => intent.dependencies))
     const recent = new Set(intents.filter(intent => !active({ intent })).slice(-30)
