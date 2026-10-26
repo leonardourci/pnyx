@@ -1,3 +1,5 @@
+import { commentInput } from '../compaction/comments.ts'
+import { pendingSteering } from './state.ts'
 import { readFileSync } from 'node:fs'
 import { integer, meta, parse, required, COMMON, type Output } from '../cli/commands.ts'
 import { HydraError, type SteeringAck, type SteeringAttempt, type SteeringClaim } from '../core/model.ts'
@@ -54,7 +56,14 @@ export function inboxCommand({ args }: { args: string[] }): Output {
     }
 
     const messages = card.steering ?? []
-    const selected = values.all ? messages : messages.filter(message => !message.ack)
+    const selected = (values.all ? messages : pendingSteering({ card })).map(message => ({
+      ...message,
+      text: commentInput({
+        card,
+        id: message.id,
+        text: message.text,
+      }),
+    }))
 
     return {
       task: card.id,

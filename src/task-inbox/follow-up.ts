@@ -5,7 +5,7 @@ import { liveTask } from '../core/tasks.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra, withWriter, type Writer } from '../store/hydra-store.ts'
 import type { NotificationResult } from './notice.ts'
-import { sameClaim, steeringClaim } from './state.ts'
+import { pendingSteering, sameClaim, steeringClaim } from './state.ts'
 import { notifySteering } from './delivery.ts'
 
 export const STEERING_GRACE_MS = 90_000
@@ -19,7 +19,7 @@ function oldestUnread({ card }: { card: Card }): SteeringMessage | undefined {
     return undefined
   }
 
-  return card.steering?.find(message => !message.ack)
+  return pendingSteering({ card })[0]
 }
 
 export function steeringToFollow({ state }: { state: HydraState }): boolean {
