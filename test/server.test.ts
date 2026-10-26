@@ -2603,8 +2603,8 @@ test(
 )
 
 test(
-  'health checks and the event loop stay responsive while a large transcript is counted',
-  async () => {
+  'large-transcript token counting stays off the server event loop while health checks succeed',
+  async context => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
     const at = new Date().toISOString()
@@ -2656,24 +2656,15 @@ test(
       from: 1,
       count: records,
     })
+    const parses = context.mock.method(
+      JSON,
+      'parse',
+    )
+    context.after(() => parses.mock.restore())
     appendFileSync(
       fixture.transcript,
       grown,
     )
-    let gap = 0
-    let tick = performance.now()
-    const ticker = setInterval(
-      () => {
-        const now = performance.now()
-        gap = Math.max(
-          gap,
-          now - tick,
-        )
-        tick = now
-      },
-      5,
-    )
-    const started = performance.now()
     let counted = false
     const spend = t.spend().then(spend => {
       counted = true
@@ -2686,16 +2677,15 @@ test(
       checks.push(!!await readServer({ hydraId: 'default' }))
     }
 
-    const countMs = performance.now() - started
-    clearInterval(ticker)
     assert.equal(
       (await spend)[card]?.total,
       (records + 1) * 3,
     )
     assert.ok(checks.length > 0 && checks.every(Boolean))
+    // A worker has its own JSON object; the server may parse the tail, but never the first growth row.
     assert.ok(
-      gap < 150,
-      `the event loop stalled ${Math.round(gap)} ms while counting took ${Math.round(countMs)} ms`,
+      parses.mock.calls.every(call => !String(call.arguments[0]).includes('"id":"usage-1"')),
+      'the server parsed transcript growth on its own event loop',
     )
     t.ws.close()
   },

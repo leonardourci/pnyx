@@ -12,6 +12,7 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
   }[] = []
   const control = {
     onInput: undefined as (({ text }: { text: string }) => void) | undefined,
+    onHold: undefined as (() => void) | undefined,
     hold: false,
     fail: false,
     ask: false,
@@ -256,6 +257,7 @@ export function hydraSdk({ now }: { now?: () => number } = {}) {
             }
 
             releases.add(release)
+            control.onHold?.()
           })
         }
 

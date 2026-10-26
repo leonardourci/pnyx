@@ -15,6 +15,7 @@ import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './saves.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
+import { systemReminderScheduler, type ReminderScheduler } from '../reminders/scheduler.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
@@ -296,6 +297,7 @@ export async function startServer({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
@@ -728,6 +730,7 @@ async function mountHydra({
   retryDelays,
   followDelay,
   reviewClock,
+  reminderScheduler,
   open,
   hydrasChanged,
 }: {
@@ -745,6 +748,7 @@ async function mountHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
@@ -767,6 +771,7 @@ async function mountHydra({
       retryDelays,
       followDelay,
       reviewClock,
+      reminderScheduler,
       open,
       release,
       hydrasChanged,
@@ -792,6 +797,7 @@ async function mountOwnedHydra({
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
   reviewClock,
+  reminderScheduler = systemReminderScheduler,
   open,
   release,
   hydrasChanged,
@@ -809,6 +815,7 @@ async function mountOwnedHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   release(): void
@@ -1641,6 +1648,7 @@ async function mountOwnedHydra({
   }
 
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
   let queueCheckedAt = 0
   let queueNeedsRetry = false
@@ -1797,7 +1805,10 @@ async function mountOwnedHydra({
 
         sources.reconcile()
         review.check()
-        fireReminders({ hydraId })
+        fireReminders({
+          hydraId,
+          at: new Date(reminderScheduler.now()).toISOString(),
+        })
         pump()
         const deadline = doneDeadline({ state })
 
@@ -1816,11 +1827,20 @@ async function mountOwnedHydra({
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
       } finally {
         clearTimeout(expiryTimer)
+        cancelReminder()
+        const reminder = reminderDeadline({ state })
+
+        if (reminder !== undefined) {
+          cancelReminder = reminderScheduler.schedule({
+            at: reminder,
+            fire: kick,
+          })
+        }
+
         const deadlines = [
           sourceDeadline({ state }),
           sources.deadline(),
           doneDeadline({ state }),
-          reminderDeadline({ state }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
             ? [queueCheckedAt + QUEUE_POLL_MS] : []),
         ]
@@ -3092,6 +3112,7 @@ async function mountOwnedHydra({
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)
+    cancelReminder()
 
     for (const timer of threadTimers.values()) {
       clearTimeout(timer)

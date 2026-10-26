@@ -11,6 +11,32 @@ const GIT_TIMEOUT_MS = 30_000
 const GIT_OUTPUT_BYTES = 1024 * 1024
 const repositoryTurns = new Map<string, Promise<void>>()
 
+interface RefreshLockWait {
+  now(): number
+  schedule({
+    ms,
+    fire,
+  }: {
+    ms: number
+    fire(): void
+  }): () => void
+}
+
+const systemLockWait: RefreshLockWait = {
+  now: () => Date.now(),
+  schedule: ({
+    ms,
+    fire,
+  }) => {
+    const timer = setTimeout(
+      fire,
+      ms,
+    )
+
+    return () => clearTimeout(timer)
+  },
+}
+
 async function git({
   path,
   args,
@@ -51,11 +77,13 @@ async function git({
 async function acquireRefreshLock({
   path,
   token,
+  wait,
 }: {
   path: string
   token: string
+  wait: RefreshLockWait
 }): Promise<boolean> {
-  const deadline = Date.now() + GIT_TIMEOUT_MS
+  const deadline = wait.now() + GIT_TIMEOUT_MS
 
   for (;;) {
     try {
@@ -84,16 +112,7 @@ async function acquireRefreshLock({
         }
       },
     })
-    const timer = setTimeout(
-      () => {
-        failure = new Error('timed out waiting for the active project refresh; inspect its lock owner')
-        notify()
-      },
-      Math.max(
-        1,
-        deadline - Date.now(),
-      ),
-    )
+    let cancel = () => {}
 
     try {
       let owner: string
@@ -123,13 +142,24 @@ async function acquireRefreshLock({
         return false
       }
 
+      cancel = wait.schedule({
+        fire: () => {
+          failure = new Error('timed out waiting for the active project refresh; inspect its lock owner')
+          notify()
+        },
+        ms: Math.max(
+          1,
+          deadline - wait.now(),
+        ),
+      })
+
       await changed
 
       if (failure) {
         throw failure
       }
     } finally {
-      clearTimeout(timer)
+      cancel()
       watcher.close()
     }
   }
@@ -402,11 +432,13 @@ export async function refreshProject({
   merge,
   isPending,
   complete,
+  lockWait = systemLockWait,
 }: {
   path: string
   url: string
   merge: string
   isPending(): boolean
+  lockWait?: RefreshLockWait
   complete({ result }: { result: ProjectRefresh }): void
 }): Promise<void> {
   const result: ProjectRefresh = {
@@ -467,6 +499,7 @@ export async function refreshProject({
     ownsLock = await acquireRefreshLock({
       path: lockPath,
       token,
+      wait: lockWait,
     })
 
     if (!ownsLock) {
