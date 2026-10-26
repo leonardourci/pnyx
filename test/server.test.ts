@@ -1322,12 +1322,15 @@ test(
     assert.ok(html.includes(`<meta name="pnyx-build" content="${build}" />`))
     const identity = /name="pnyx-hydra" content="([a-f0-9]{24})"/.exec(html)?.[1]
     assert.ok(identity)
+    const installation = /name="pnyx-installation" content="([a-f0-9]{24})"/.exec(html)?.[1]
+    assert.ok(installation)
     assert.deepEqual(
       (await tab()).hello,
       {
         type: 'hello',
         build,
         hydraId: identity,
+        installation,
       },
     )
   },
