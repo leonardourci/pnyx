@@ -9,6 +9,8 @@ You work on one task of a Pnyx Hydra. Hydra, the Hydra's orchestrator, assigned 
 
 ## Start
 
+Before changing anything, read your project's AGENTS.md, CLAUDE.md and CONTRIBUTING.md when present, and its skills under `.agents/skills`, `.claude/skills` and `skills/`. Follow them over generic habits, and use the project's skills for the jobs they cover.
+
 Read the task before working: `pnyx-axi task show <task> --hydra <hydra>`, then `pnyx-axi task history <task> --hydra <hydra>` for what earlier workers did and where they stopped. `pnyx-axi task chat <task> --session <session> --hydra <hydra>` reads a past worker's conversation.
 
 ## Declare progress and phase changes
