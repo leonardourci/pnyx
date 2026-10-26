@@ -990,15 +990,32 @@ export function createHost({
                   inputId: input.id,
                 }),
               })
+
+              if (input.route === 'direct') {
+                while (!closing && loadHydra({ hydraId }).state.cards[id]?.compaction?.inputs
+                  .some(queued => queued.id === input.id)) {
+                  await new Promise(resolve => setTimeout(
+                    resolve,
+                    20,
+                  ))
+                }
+
+                if (closing) {
+                  return
+                }
+              }
             }
 
-            compactChange({
-              card: id,
-              change: {
-                kind: 'taken',
-                id: input.id,
-              },
-            })
+            if (input.route !== 'direct') {
+              compactChange({
+                card: id,
+                change: {
+                  kind: 'taken',
+                  id: input.id,
+                },
+              })
+            }
+
             advanced = true
           }
         })().catch((error: Error) => console.error(`pnyx-axi serve: compact queue retained: ${error.message}`))
@@ -1767,6 +1784,18 @@ export function createHost({
               ...answering,
               item.id,
             ] : answering
+          }
+
+          const owner = compactOwner()
+
+          if (item.id && owner?.compaction?.inputs.some(input => input.id === item.id && input.route === 'direct')) {
+            compactChange({
+              card: owner.id,
+              change: {
+                kind: 'taken',
+                id: item.id,
+              },
+            })
           }
 
           yield item.id ? teachComments({
@@ -4630,7 +4659,10 @@ export function createHost({
             const operation = card.compaction?.operations.findLast(operation => operation.state === 'running')
 
             if (operation) {
-              cutCompactions.add(operation.session)
+              if (operation.trigger === 'manual') {
+                cutCompactions.add(operation.session)
+              }
+
               recordCompaction({
                 writer,
                 card: card.id,
