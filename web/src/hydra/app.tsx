@@ -1,3 +1,4 @@
+import { useInstallationPending } from './installation-resources.ts'
 import { TaskReferencesProvider } from '../components/ui/task-reference.tsx'
 import { useTaskReferences } from './task-references.ts'
 import type { Card } from '../../../src/core/model.ts'
@@ -12,9 +13,10 @@ import { PendingStatus } from '../components/ui/pending-status.tsx'
 import { AddProject } from './add-project.tsx'
 import { HydraChat } from './hydra-chat.tsx'
 import { taskMention } from '../../../src/mentions/mentions.ts'
+import { argument } from './optimistic.ts'
 import { useHydra } from './connection.ts'
 import { HydraCard } from './card.tsx'
-import { TaskCreate } from './task-create.tsx'
+import { TaskCreate, type TaskDraft } from './task-create.tsx'
 import { Column } from './column.tsx'
 import { Detail } from './detail.tsx'
 import { loadUpdates } from './updates-cache.ts'
@@ -110,6 +112,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [hydra.viewKey],
   )
+  const installationPending = useInstallationPending()
   const restoreKey = storageKey({ key: 'restore' })
   const commentsKey = storageKey({
     key: 'comments',
@@ -131,7 +134,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       setQuery,
     ] = useState('')
   const [
-      selected,
+      selectedRef,
       setActive,
     ] = useState<string | null>(new URLSearchParams(location.search).has('open-project') ? null : restored.selected ?? restored.expanded?.at(-1) ?? null), [
       drafts,
@@ -158,6 +161,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     scope: '',
     ids: [],
   })
+  const selected = selectedRef ? state.keys[selectedRef] ?? selectedRef : null
   const currentCards = useRef(state.cards)
   currentCards.current = state.cards
   const pendingColumns = useRef<Record<string, string>>({})
@@ -196,7 +200,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }
 
   const expandedIds = expandedByColumn({
-    ids: expanded,
+    ids: expanded.map(id => state.keys[id] ?? id),
     cards: state.cards,
     pending: pendingColumns.current,
   })
@@ -204,7 +208,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     () => {
       setExpanded(ids => {
         const next = expandedByColumn({
-          ids,
+          ids: ids.map(id => state.keys[id] ?? id),
           cards: state.cards,
           pending: pendingColumns.current,
         })
@@ -218,7 +222,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [state.cards],
   )
   useLayoutEffect(() => {
-    const id = pendingFocus.current
+    const pendingId = pendingFocus.current
+    const id = pendingId ? state.keys[pendingId] ?? pendingId : null
 
     if (page !== 'hydra' || !id) {
       return
@@ -312,7 +317,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   ] = useState<{
     column: string
     parent?: string
+    draft?: TaskDraft
+    version: number
   } | null>(null)
+  const taskFormVersion = useRef(0)
   const [
     addingProject,
     setAddingProject,
@@ -899,8 +907,35 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     parent?: string
   }) => {
     setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); clearSelection()
+    taskFormVersion.current++
+    const refused = hydra.edits.findLast(intent => intent.stage === 'refused'
+      && intent.patch.name === 'task' && intent.patch.args[0] === 'create'
+      && argument({
+        args: intent.patch.args,
+        flag: '--column',
+      }) === column
+      && argument({
+        args: intent.patch.args,
+        flag: '--parent',
+      }) === parent)
+    const draft = refused && {
+      title: argument({
+        args: refused.patch.args,
+        flag: '--title',
+      }) ?? '',
+      prompt: argument({
+        args: refused.patch.args,
+        flag: '--ask',
+      }) ?? '',
+      attempt: argument({
+        args: refused.patch.args,
+        flag: '--event-id',
+      }) ?? refused.id,
+    }
     setCreatingTask({
       column,
+      version: taskFormVersion.current,
+      ...(draft ? { draft } : {}),
       ...(parent ? { parent } : {}),
     })
     requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: '.task-create [aria-label="Task title"]' })))
@@ -908,6 +943,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const createColumn = () => {
     const id = `custom:${crypto.randomUUID()}`
+    setPage('hydra'); setNewColumn(id)
     void command({
       name: 'column',
       args: [
@@ -921,11 +957,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         '--event-id',
         crypto.randomUUID(),
       ],
-    }).then(() => {
-      setPage('hydra'); setNewColumn(id)
-      requestAnimationFrame(() => requestAnimationFrame(() => focusElement({ selector: `[data-column="${CSS.escape(id)}"] input` })))
+    }).catch((error: Error) => {
+      setNewColumn(current => current === id ? null : current)
+      notify({ text: error.message })
     })
-      .catch(e => notify({ text: e.message }))
   }
 
   const keyboard = useHydraKeyboard({
@@ -1035,7 +1070,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           {(loading || !loaded) && <p className="loading-status" role="status">{hydra.creating ? 'Creating Hydra' : `Loading ${opening ? hydraTitle(opening) : 'Hydra'}`}…</p>}
           {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
           {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
-          <PendingStatus intents={hydra.intents} />
+          <PendingStatus
+            intents={[
+              ...hydra.intents,
+              ...installationPending,
+            ]}
+          />
           {page === 'hydra' && (
             <>
               <div className="hydra-page">
@@ -1107,7 +1147,19 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     connected={connected}
                                     notify={notify}
                                     cancel={() => setCreatingTask(null)}
-                                    saved={({ id }) => {
+                                    recover={({ draft }) => {
+                                      if (taskFormVersion.current === creatingTask.version) {
+                                        setCreatingTask({
+                                          ...creatingTask,
+                                          draft,
+                                        })
+                                      }
+
+                                      const key = `task:${draft.attempt}`
+                                      setActive(current => current === key ? null : current)
+                                      setExpanded(ids => ids.filter(id => id !== key))
+                                    }}
+                                    submitted={({ id }) => {
                                       setCreatingTask(null); expand({
                                         id,
                                         column: c.id,
@@ -1132,7 +1184,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                 )}
                                 {items.map(item => (
                                   <HydraCard
-                                    key={item.id}
+                                    key={item.key}
                                     card={item}
                                     labelColors={state.labelColors}
                                     doneAfterHours={state.config?.doneAfterHours}
@@ -1143,6 +1195,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     answer={answerTask}
                                     selected={expandedIds.includes(item.id)}
                                     onEdit={cancelOpen}
+                                    recoverSelection={({ id }) => {
+                                      setActive(current => current ?? id)
+                                      setExpanded(ids => ids.length ? ids : [id])
+                                    }}
                                     view={view}
                                     save={save}
                                     open={({
