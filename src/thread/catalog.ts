@@ -3,7 +3,7 @@ import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
-import { HYDRA_SKILLS, skillSource } from '../integrations/skills/install.ts'
+import { GLOBAL_SKILLS, skillSource } from '../integrations/skills/install.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import type { Card, HydraProject } from '../core/model.ts'
 
@@ -477,7 +477,7 @@ export async function readCatalog({
 
   const prefix = provider === 'codex' ? '$' : '/'
 
-  for (const name of card.id === HYDRA_CARD ? HYDRA_SKILLS.filter(name => name !== 'pnyx-hydra') : []) {
+  for (const name of card.id === HYDRA_CARD ? GLOBAL_SKILLS : []) {
     const path = skillSource({ name })
     const meta = await reader.metadata({ path })
 
@@ -485,7 +485,7 @@ export async function readCatalog({
       add({
         command: prefix + name,
         meta,
-        source: 'Pnyx Hydra',
+        source: 'Pnyx',
       })
     }
   }
@@ -792,8 +792,11 @@ export async function readCatalog({
     }
   }
 
-  const sourceRank = ({ source }: { source: string }) => {
-    if (source === 'Pnyx Hydra') {
+  const sourceRank = ({
+    source,
+    command,
+  }: Suggestion) => {
+    if (GLOBAL_SKILLS.some(name => command === prefix + name)) {
       return 0
     }
 

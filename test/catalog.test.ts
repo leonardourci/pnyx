@@ -662,3 +662,69 @@ test(
     )
   },
 )
+
+for (const provider of [
+  'claude',
+  'codex',
+]) {
+  test(
+    `${provider} lists Pnyx public skills first and hides internal skills`,
+    async t => {
+      const {
+        home,
+        cwd,
+        card,
+        locations,
+      } = setup({
+        t,
+        provider,
+      })
+      const {
+        setupSkills,
+        prepareHydraFolder,
+      } = await import('../src/integrations/skills/install.ts')
+      setupSkills({
+        userHome: home,
+        claudeConfigDir: locations.claude,
+      })
+      prepareHydraFolder({ folder: cwd })
+      write({
+        path: join(
+          home,
+          '.agents/skills/aaa/SKILL.md',
+        ),
+        text: skill({ name: 'aaa' }),
+      })
+      write({
+        path: join(
+          cwd,
+          '.agents/skills/zzz/SKILL.md',
+        ),
+        text: skill({ name: 'zzz' }),
+      })
+      const prefix = provider === 'codex' ? '$' : '/'
+
+      for (const id of [
+        card.id,
+        '$hydra',
+      ]) {
+        const result = await readCatalog({
+          card: {
+            ...card,
+            id,
+          },
+          locations,
+        })
+        assert.deepEqual(
+          result.suggestions.map(item => item.command),
+          [
+            `${prefix}pnyx-cli`,
+            `${prefix}pnyx-report-progress`,
+            `${prefix}aaa`,
+            `${prefix}zzz`,
+          ],
+        )
+      }
+    },
+  )
+}

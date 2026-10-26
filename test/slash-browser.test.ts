@@ -60,7 +60,7 @@ for (const geometry of [
       )
       const skill = join(
         cwd,
-        '.agents/skills/inscribe',
+        '.agents/skills/pnyx-cli',
       )
       mkdirSync(
         skill,
@@ -71,7 +71,7 @@ for (const geometry of [
           skill,
           'SKILL.md',
         ),
-        '---\nname: inscribe\ndescription: Save Hydra memory\n---\n',
+        '---\nname: pnyx-cli\ndescription: Read and update Pnyx\n---\n',
       )
       await commands.hydra([
         'create',
@@ -426,6 +426,46 @@ for (const geometry of [
           'true',
         )
 
+        const ordering = await browser({
+          args: ['run'],
+          script: `
+        await page.fill('.hydra-chat textarea', '/');
+        await page.wait('.slash-menu [role="option"]');
+        console.log(JSON.stringify(await page.eval(() => [...document.querySelectorAll('.slash-menu [role="option"] strong')].map(item => item.textContent))));
+      `,
+        })
+        const orderedCommands: string[] = JSON.parse(ordering)
+        assert.deepEqual(
+          orderedCommands.slice(
+            0,
+            2,
+          ),
+          [
+            '/pnyx-cli',
+            '/pnyx-report-progress',
+          ],
+        )
+        assert.ok(!orderedCommands.some(command => [
+          '/pnyx-orchestrate',
+          '/pnyx-arrange-columns',
+          '/pnyx-manage-workers',
+          '/pnyx-firstmate-as-hydra',
+          '/pnyx-set-up',
+          '/pnyx-inscribe',
+        ].includes(command)))
+
+        if (artifacts) {
+          await browser({
+            args: [
+              'screenshot',
+              join(
+                artifacts,
+                'skills-menu.png',
+              ),
+            ],
+          })
+        }
+
         const initial = await browser({
           args: ['run'],
           script: `
@@ -434,7 +474,7 @@ for (const geometry of [
         await page.fill('.hydra-chat textarea', '');
         await page.click('.hydra-chat textarea');
         await page.press('/');
-        await page.type('ins');
+        await page.type('pnyx-c');
         for (let attempt = 0; attempt < 100; attempt++) {
           if (await page.eval(() => !!document.querySelector('.slash-menu [role="option"]'))) break;
           await page.wait(25);
@@ -470,7 +510,7 @@ for (const geometry of [
         assert.deepEqual(
           JSON.parse(initial),
           {
-            command: '/inscribe',
+            command: '/pnyx-cli',
             reachable: true,
             clipping: 'hidden',
           },
@@ -481,22 +521,22 @@ for (const geometry of [
         await page.click('.slash-menu [role="option"]');
         console.log(await page.eval(() => {
           const input = document.querySelector('.hydra-chat textarea');
-          return document.querySelector('.draft-skill')?.textContent.includes('/inscribe') && input.selectionStart === input.value.length && document.activeElement === input;
+          return document.querySelector('.draft-skill')?.textContent.includes('/pnyx-cli') && input.selectionStart === input.value.length && document.activeElement === input;
         }));
-        await page.fill('.hydra-chat textarea', '/inTAIL');
-        await page.eval(() => document.querySelector('.hydra-chat textarea').setSelectionRange(3, 3));
-        await page.type('s');
+        await page.fill('.hydra-chat textarea', '/pnyx-TAIL');
+        await page.eval(() => document.querySelector('.hydra-chat textarea').setSelectionRange(6, 6));
+        await page.type('c');
         await page.wait('.slash-menu [role="option"]');
         await page.press('ArrowDown');
         await page.press('Enter');
         console.log(await page.eval(() => {
           const input = document.querySelector('.hydra-chat textarea');
-          return document.querySelector('.draft-skill')?.textContent.includes('/inscribe') && input.value.endsWith(' TAIL') && input.selectionStart === input.value.length - 4 && !document.querySelector('.slash-menu');
+          return document.querySelector('.draft-skill')?.textContent.includes('/pnyx-cli') && input.value.endsWith(' TAIL') && input.selectionStart === input.value.length - 4 && !document.querySelector('.slash-menu');
         }));
-        await page.fill('.hydra-chat textarea', '/ins');
+        await page.fill('.hydra-chat textarea', '/pnyx-c');
         await page.wait('.slash-menu [role="option"]');
         await page.press('Escape');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/ins'));
+        console.log(await page.eval(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/pnyx-c'));
         await page.eval(() => {
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
@@ -537,7 +577,7 @@ for (const geometry of [
         console.log(await page.eval(() => document.querySelector('.slash-menu [aria-selected="true"]').textContent
           === window.selectedSkill && !document.querySelector('.slash-menu [role="status"]')));
         await page.press('Enter');
-        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes('/pnyx-hydra-columns')));
+        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes('/pnyx-report-progress')));
         await page.fill('.hydra-chat textarea', '/missing');
         await page.wait('.slash-menu [role="status"]');
         console.log(await page.eval(() => {
@@ -964,7 +1004,7 @@ for (const geometry of [
         await browser({
           args: ['run'],
           script: `
-        await page.fill('.hydra-chat textarea', '/ins');
+        await page.fill('.hydra-chat textarea', '/pnyx-c');
         await page.wait('.slash-menu [role="option"]');
       `,
         })

@@ -147,18 +147,18 @@ test(
     })
     const page = await openHydra({ s })
     await page.click({ selector: '.hydra-chat textarea' })
-    await page.type({ text: '/ins' })
+    await page.type({ text: '/pnyx-c' })
     await page.shows({
       what: 'Hydra’s own skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
-        .find(o => o.querySelector('strong')?.textContent === '/inscribe'
-          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx Hydra'),
+        .find(o => o.querySelector('strong')?.textContent === '/pnyx-cli'
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
     await page.shows({
       what: 'the skill badge in the draft',
-      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/inscribe')
+      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/pnyx-cli')
         && !document.querySelector('.slash-menu'),
     })
 
@@ -209,7 +209,7 @@ test(
       check: () => {
         const mine = [...document.querySelectorAll('.hydra-chat .message.mine')].at(-1)
 
-        return mine?.textContent?.includes('/inscribe what we chose for') && mine.textContent.includes('Ship the layout')
+        return mine?.textContent?.includes('/pnyx-cli what we chose for') && mine.textContent.includes('Ship the layout')
           && mine.textContent.includes('Remember the grid.') && mine.querySelector('img')
           && !document.querySelector('.hydra-chat .draft-chip')
       },
@@ -222,7 +222,7 @@ test(
     assert.ok(sent)
     assert.match(
       sent,
-      /\n\n\/inscribe what we chose for /,
+      /\n\n\/pnyx-cli what we chose for /,
     )
     assert.ok(sent.includes('Ship the layout'))
     assert.ok(sent.includes('Remember the grid.'))
