@@ -264,3 +264,131 @@ test(
     await page.close()
   },
 )
+
+for (const kind of [
+  'column',
+  'project',
+]) {
+  test(
+    `${kind} creation keeps its visible DOM node through confirmation`,
+    async () => {
+      const s = await pnyx.scenario()
+      const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+      await page.shows({
+        what: 'connected Hydra',
+        check: () => document.querySelector('[data-connected=true]'),
+      })
+      let folder = ''
+
+      if (kind === 'project') {
+        folder = s.folder({ name: 'Continuous project' })
+        await page.click({ selector: '[aria-label="Oracle"]' })
+        await page.type({ text: 'Projects' })
+        await page.shows({
+          what: 'loaded project settings',
+          check: () => document.querySelector('[aria-label="Projects"]')?.textContent?.includes('No projects attached.'),
+        })
+        await page.click({
+          selector: '[aria-label="Projects"] .add-project-box button',
+          text: 'Add a folder',
+        })
+        await page.click({ selector: '[aria-label="Projects"] [aria-label="Folder path"]' })
+        await page.type({ text: folder })
+        await page.shows({
+          what: 'validated project folder',
+          check: () => [...document.querySelectorAll<HTMLButtonElement>('[aria-label="Projects"] .project-form button')].some(button => button.textContent === 'Add project' && !button.disabled),
+        })
+      }
+
+      const selector = kind === 'column' ? '[data-column^="custom:"]' : '.project-row'
+      const title = kind === 'column' ? 'New column' : 'Continuous project'
+      await page.shows({
+        what: 'observe the creation before sending',
+        check: observeCreation,
+        arg: {
+          selector,
+          text: title,
+          name: kind,
+          action: kind === 'column' ? 'create' : 'add',
+          trigger: kind === 'column' ? '.add-column button' : '[aria-label="Projects"] .project-form',
+          event: kind === 'column' ? 'click' : 'submit',
+          details: false,
+        },
+      })
+      await page.click({
+        selector: kind === 'column' ? '.add-column button' : '[aria-label="Projects"] .project-form button',
+        text: kind === 'column' ? undefined : 'Add project',
+      })
+      const immediate = await page.shows({
+        what: 'first visible creation frame',
+        check: () => {
+          const state = (window as unknown as { continuity: { firstFrame?: boolean } }).continuity
+
+          return state.firstFrame === undefined ? false : { visible: state.firstFrame }
+        },
+      })
+      assert.equal(
+        immediate.visible,
+        true,
+      )
+      await page.shows({
+        what: 'release confirmation',
+        check: () => {
+          ;(window as unknown as { continuity: { release(): void } }).continuity.release()
+
+          return true
+        },
+      })
+      await page.shows({
+        what: 'creation confirmed',
+        check: () => !document.querySelector('[data-pending]') && !document.querySelector('.project-row [role=status]'),
+      })
+      const result = await page.shows({
+        what: 'the same visible element after confirmation',
+        arg: {
+          selector,
+          title,
+        },
+        check: ({
+          selector,
+          title,
+        }) => {
+          const state = (window as unknown as {
+            continuity: {
+              removed: number
+              gaps: number
+              node?: HTMLElement
+              stop(): void
+            }
+          }).continuity
+          const elements = [...document.querySelectorAll(selector)]
+          const node = elements.find(element => element.textContent?.includes(title)
+            || element.querySelector<HTMLInputElement>('input')?.value === title)
+          state.stop()
+
+          return {
+            same: node === state.node,
+            removed: state.removed,
+            gaps: state.gaps,
+          }
+        },
+      })
+      assert.deepEqual(
+        result,
+        {
+          same: true,
+          removed: 0,
+          gaps: 0,
+        },
+      )
+
+      if (kind === 'column') {
+        assert.ok(s.state().config?.columns.some(column => column.title === title))
+      } else {
+        assert.ok(s.state().projects?.some(project => project.path === folder && !project.detached))
+      }
+
+      await page.close()
+    },
+  )
+}

@@ -1058,6 +1058,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .oracle-row > [role=gridcell] { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .oracle-row[aria-selected=true] { background: var(--color-raised); }
 .oracle-row > [role=gridcell] > span { flex: 1; }
+.oracle-row > [role=gridcell] > .settings-box { flex: 1; }
 .oracle-row > [role=gridcell] > .button { text-align: left; justify-content: flex-start; }
 .oracle-row .number-field { width: 100%; }
 .oracle-row .switch-label { margin: 0; }
