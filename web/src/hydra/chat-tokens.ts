@@ -3,17 +3,13 @@ import type { Suggestion } from '../../../src/thread/catalog.ts'
 export function knownCommands({
   text,
   suggestions,
-  leading = true,
-  codexOnly = false,
 }: {
   text: string
   suggestions: Suggestion[]
-  leading?: boolean
-  codexOnly?: boolean
 }) {
   const matches = [
     ...text.matchAll(/\$[a-zA-Z0-9_:-]+/g),
-    ...codexOnly ? [] : [...text.matchAll(/(?<!\S)\/[a-zA-Z0-9_.:-]+(?=$|\s)/g)],
+    ...text.matchAll(/(?<!\S)\/[a-zA-Z0-9_.:-]+(?=$|\s)/g),
   ].sort((
     a,
     b,
@@ -25,10 +21,10 @@ export function knownCommands({
       const item = candidates.length === 1 ? candidates[0] : undefined
       const startOnly = item?.source === 'Agent commands' || item?.command.startsWith('/prompts:')
 
-      if (startOnly && (!leading || text.slice(
+      if (startOnly && text.slice(
         0,
         match.index,
-      ).trim())) {
+      ).trim()) {
         return []
       }
 

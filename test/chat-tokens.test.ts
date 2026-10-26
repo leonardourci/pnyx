@@ -71,14 +71,6 @@ test(
       }).map(match => match.item.command),
       ['/review'],
     )
-    assert.equal(
-      knownCommands({
-        text: '/compact',
-        suggestions,
-        leading: false,
-      }).length,
-      0,
-    )
   },
 )
 
