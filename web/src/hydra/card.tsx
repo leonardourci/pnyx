@@ -200,13 +200,14 @@ export function HydraCard({
       ref={element}
       className={`card ${selected ? 'selected' : ''}`}
       style={{
-        height: Math.max(
+        // Natural height avoids animating a newly mounted card from zero.
+        height: bounds.measured ? Math.max(
           bounds.minimum,
           Math.min(
             bounds.maximum,
             preview ?? height,
           ),
-        ),
+        ) : undefined,
       }}
       data-task={card.id}
       data-label-color={tint?.color}
