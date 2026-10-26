@@ -963,9 +963,8 @@ export function codexProvider({
                 fresh = false
               }
 
-              yield 'working'
-
               if (manualCompact && said.trim() !== '/compact') {
+                yield 'working'
                 const compactId = randomUUID()
                 yield {
                   type: 'compaction',
@@ -1025,7 +1024,10 @@ export function codexProvider({
                   await interruptStartedTurn()
                 },
               })[Symbol.asyncIterator]()
-              let pendingEvent = events.next()
+              // Compaction must receive its turn id even when the output consumer pauses.
+              const compactEvent = manualCompact ? events.next() : undefined
+              yield 'working'
+              let pendingEvent = compactEvent ?? events.next()
               type Arrival = {
                 kind: 'event'
                 result: Awaited<typeof pendingEvent>
