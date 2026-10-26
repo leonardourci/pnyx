@@ -9,6 +9,9 @@ import { helperTask } from '../src/helper/route.ts'
 import { wakeHandled } from '../src/helper/state.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { HydraError } from '../src/core/model.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -573,6 +576,73 @@ function helperLab() {
     },
   }
 }
+
+test(
+  'closing a helper during a writer retry never opens a provider and releases its batch',
+  async t => {
+    const lab = helperLab()
+    const original = fs.openSync
+    let blocked = false
+    t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.mock.method(
+      fs,
+      'openSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
+      (...args: Parameters<typeof fs.openSync>) => {
+        if (!blocked && String(args[0]).endsWith('/writer.lock') && new Error().stack?.includes('/helper/leases.ts')) {
+          blocked = true
+          throw new HydraError({
+            message: 'writer is busy',
+            code: 'LOCKED',
+          })
+        }
+
+        return original(...args)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      lab.helper.close(); t.mock.restoreAll(); syncBuiltinESMExports()
+    })
+    lab.helper.offer({
+      tasks: [state().keys.work!],
+      prompt: 'Progress',
+      seqs: [state().seq],
+    })
+    assert.ok(blocked)
+    lab.helper.close()
+    const deadline = Date.now() + 5000
+
+    while (lab.helper.busy()) {
+      assert.ok(
+        Date.now() < deadline,
+        'closed helper did not settle',
+      )
+      await new Promise(resolve => setTimeout(
+        resolve,
+        20,
+      ))
+    }
+
+    assert.equal(
+      lab.opens.length,
+      0,
+    )
+    assert.equal(
+      lab.handbacks.length,
+      0,
+    )
+    assert.ok(Object.values(state().helper?.runs ?? {}).every(batch => batch.error?.includes('stopped')))
+    assert.match(
+      readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'hydra.helper-finished')?.data.error ?? '',
+      /stopped/,
+    )
+  },
+)
 
 test(
   'bounded turns record quiet outcomes, reuse their own session and relay owner outcomes once through main',

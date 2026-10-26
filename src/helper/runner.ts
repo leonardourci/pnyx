@@ -2,7 +2,9 @@ import { readThread } from '../thread/read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
-import { ownerActor, type AgentConfig, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
+import { HydraError, ownerActor, type AgentConfig, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
+import { setTimeout as delay } from 'node:timers/promises'
+import { background } from '../runtime/background.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { hydraDir, loadHydra, withWriter } from '../store/hydra-store.ts'
 import type { HostedSession, Provider } from '../server/provider.ts'
@@ -107,6 +109,38 @@ export function createRoutineHelper({
   let agent: AgentRef | undefined
   let selection = ''
 
+  const defer = async <T>({
+    run,
+    cleanup = false,
+  }: {
+    run(): T
+    cleanup?: boolean
+  }): Promise<T> => {
+    for (;;) {
+      if (closed && !cleanup) {
+        throw new Error('Helper turn was stopped')
+      }
+
+      try {
+        return run()
+      } catch (error) {
+        if (!(error instanceof HydraError && error.code === 'LOCKED') || closed && !cleanup) {
+          throw error
+        }
+
+        console.error(
+          'pnyx-axi helper deferred:',
+          error,
+        )
+        await delay(
+          250,
+          undefined,
+          { ref: false },
+        )
+      }
+    }
+  }
+
   const append = ({ change }: { change: HelperChange }) => {
     withWriter({
       hydraId,
@@ -145,13 +179,14 @@ export function createRoutineHelper({
   }
 
   const run = async ({ batch }: { batch: HelperBatch }) => {
-    const state = loadHydra({ hydraId }).state
-    const candidate = agentFor ? agentFor() : helperAgent({ state })
     const actor = `helper:${batch.id}`
     const releases: (() => void)[] = []
     let cancelDeadline = () => {}
 
     try {
+      const state = loadHydra({ hydraId }).state
+      const candidate = agentFor ? agentFor() : helperAgent({ state })
+
       if (!candidate || !batch.tasks.every(task => helperTask({
         state,
         task,
@@ -160,11 +195,17 @@ export function createRoutineHelper({
       }
 
       for (const task of batch.tasks) {
-        releases.push(taskLease({
-          hydraId,
-          task,
-          actor,
+        releases.push(await defer({
+          run: () => taskLease({
+            hydraId,
+            task,
+            actor,
+          }),
         }))
+      }
+
+      if (closed) {
+        throw new Error('Helper turn was stopped')
       }
 
       const cwd = join(
@@ -192,6 +233,10 @@ export function createRoutineHelper({
       }
 
       const turn = async () => {
+        if (closed || signal.aborted) {
+          throw new Error('Helper turn was stopped')
+        }
+
         const session = await provider({ harness: candidate.harness }).open({
           cwd,
           agent,
@@ -268,8 +313,13 @@ export function createRoutineHelper({
         reject,
       ) => {
         const expire = () => {
-          abort?.abort()
-          active?.close()
+          background({
+            name: 'helper deadline',
+            run: () => {
+              abort?.abort()
+              active?.close()
+            },
+          })
           reject(new Error('Helper turn reached its time bound'))
         }
 
@@ -298,14 +348,16 @@ export function createRoutineHelper({
         timeout,
         stopped,
       ])
-      append({
-        change: {
-          type: 'hydra.helper-finished',
-          data: {
-            batch: batch.id,
-            outcomes,
+      await defer({
+        run: () => append({
+          change: {
+            type: 'hydra.helper-finished',
+            data: {
+              batch: batch.id,
+              outcomes,
+            },
           },
-        },
+        }),
       })
 
       if (outcomes.some(outcome => outcome.audience === 'owner')) {
@@ -314,15 +366,18 @@ export function createRoutineHelper({
     } catch (error) {
       agent = undefined
       const failure = (error as Error).message
-      append({
-        change: {
-          type: 'hydra.helper-finished',
-          data: {
-            batch: batch.id,
-            outcomes: [],
-            error: failure,
+      await defer({
+        cleanup: true,
+        run: () => append({
+          change: {
+            type: 'hydra.helper-finished',
+            data: {
+              batch: batch.id,
+              outcomes: [],
+              error: failure,
+            },
           },
-        },
+        }),
       })
 
       if (!closed) {
@@ -334,17 +389,22 @@ export function createRoutineHelper({
         })
       }
     } finally {
-      cancelDeadline()
-      active?.close()
-      active = undefined
-      abort = undefined
+      try {
+        cancelDeadline()
+        active?.close()
+        active = undefined
+        abort = undefined
 
-      for (const release of releases) {
-        release()
+        for (const release of releases) {
+          await defer({
+            run: release,
+            cleanup: true,
+          })
+        }
+      } finally {
+        busy = false
+        changed()
       }
-
-      busy = false
-      changed()
     }
   }
 
@@ -372,14 +432,17 @@ export function createRoutineHelper({
         seqs,
         once,
       }
-      busy = true
       append({
         change: {
           type: 'hydra.helper-started',
           data: batch,
         },
       })
-      void run({ batch })
+      busy = true
+      background({
+        name: 'helper turn',
+        run: () => run({ batch }),
+      })
 
       return true
     },
