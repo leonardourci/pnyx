@@ -116,6 +116,11 @@ function follow({
     pollChanged()
   }
 
+  background({
+    name: `watch baseline ${path}`,
+    run: pollChanged,
+  })
+
   if (native.size < NATIVE_LIMIT) {
     try {
       file = watch(

@@ -132,6 +132,117 @@ test(
 )
 
 test(
+  'a late native error closes its watcher, delivers changes through polling and stops polling on close',
+  async t => {
+    const root = fs.mkdtempSync(join(
+      tmpdir(),
+      'pnyx-watch-fallback-',
+    ))
+    const path = join(
+      root,
+      'transcript',
+    )
+    fs.writeFileSync(
+      path,
+      'first',
+    )
+    const original = fs.watch
+    let native: fs.FSWatcher | undefined
+    let closes = 0
+    t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.mock.method(
+      fs,
+      'watch',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+      (...args: Parameters<typeof fs.watch>) => {
+        native = Reflect.apply(
+          original,
+          fs,
+          args,
+        ) as fs.FSWatcher
+        const close = native.close.bind(native)
+
+        native.close = () => {
+          closes++; close()
+        }
+
+        return native
+      },
+    )
+    syncBuiltinESMExports()
+    let seen = ''
+    const watcher = watchPath({
+      path,
+      interval: 20,
+      changed: () => {
+        seen = fs.readFileSync(
+          path,
+          'utf8',
+        )
+      },
+    })
+    t.after(() => {
+      watcher.close()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+      fs.rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    fs.writeFileSync(
+      path,
+      'second',
+    )
+    native!.emit(
+      'error',
+      Object.assign(
+        new Error('descriptor limit'),
+        { code: 'EMFILE' },
+      ),
+    )
+    assert.equal(
+      closes,
+      1,
+    )
+    await until({ check: () => seen === 'second' })
+    watcher.close()
+    const stats = t.mock.method(
+      fs,
+      'statSync',
+    )
+    syncBuiltinESMExports()
+    fs.writeFileSync(
+      path,
+      'after close',
+    )
+    await new Promise(resolve => setTimeout(
+      resolve,
+      80,
+    ))
+    assert.equal(
+      seen,
+      'second',
+    )
+    assert.equal(
+      stats.mock.calls.filter(call => call.arguments[0] === path).length,
+      0,
+    )
+    assert.equal(
+      closes,
+      1,
+    )
+  },
+)
+
+test(
   'a rejected watch callback is logged and later filesystem changes are still delivered',
   async t => {
     const root = fs.mkdtempSync(join(
