@@ -2182,6 +2182,10 @@ test(
 test(
   'a repeated stall counts its gap from when Hydra got the last alarm, so a slow delivery never shortens it',
   async t => {
+    const {
+      advance,
+      until: clockUntil,
+    } = controlledTime({ t })
     fakeDispatch({ root: home })
     const folder = join(
       home,
@@ -2199,7 +2203,15 @@ test(
       '--hydra',
       'lab',
     ])
-    const sdk = hydraSdk()
+    const sdk = hydraSdk({ now: () => Date.now() })
+    const received: number[] = []
+
+    sdk.control.onInput = ({ text }) => {
+      if (stallWake({ text })) {
+        received.push(Date.now())
+      }
+    }
+
     server = await startServer({
       hydraId: 'lab',
       query: sdk.query,
@@ -2212,7 +2224,7 @@ test(
       .filter(m => stallWake({ text: m }))
 
     await send({ text: 'Watch the suite' })
-    await until({ check: finished })
+    await clockUntil({ check: finished })
     sdk.control.hold = true
     sdk.control.tool = true
     sdk.control.toolDone = true
@@ -2230,7 +2242,6 @@ test(
     sdk.control.tool = false
     sdk.control.toolDone = false
 
-    // A busy machine stalls the event loop while the first alarm is on its way to Hydra.
     let slowDelivery = true
     const writeSync = fs.writeSync
     t.mock.method(
@@ -2246,11 +2257,7 @@ test(
 
         if (slowDelivery && /"id":"stall:[^"]*:hosted"/.test(text)) {
           slowDelivery = false
-          const end = Date.now() + 250
-
-          while (Date.now() < end) {
-            // Blocks like a loaded machine.
-          }
+          t.mock.timers.setTime(Date.now() + 250)
         }
 
         return writeSync(
@@ -2263,15 +2270,17 @@ test(
     syncBuiltinESMExports()
 
     try {
-      const received: number[] = []
-
-      for (let i = 0; i < 400 && received.length < 2; i++) {
-        while (stalls().length > received.length) {
-          received.push(Date.now())
-        }
-
-        await sleep({ ms: 5 })
-      }
+      await advance({ ms: 200 })
+      await clockUntil({ check: () => received.length === 1 && finished() })
+      await new Promise<void>(resolve => setImmediate(resolve))
+      await advance({ ms: 399 })
+      assert.equal(
+        received.length,
+        1,
+        'the second alarm is not due before 400 ms from delivery',
+      )
+      await advance({ ms: 51 })
+      await clockUntil({ check: () => received.length === 2 && finished() })
 
       assert.ok(
         !slowDelivery,
@@ -2283,7 +2292,7 @@ test(
       )
       const gap = received[1]! - received[0]!
       assert.ok(
-        gap >= 380,
+        gap >= 400,
         `Hydra got the second alarm ${gap} ms after the first; the backoff is 400 ms`,
       )
     } finally {

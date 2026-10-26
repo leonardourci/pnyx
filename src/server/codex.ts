@@ -727,6 +727,7 @@ export function codexProvider({
       env,
       signal,
       instructions,
+      outputSchema,
       context,
     }) {
       const rpc = connection({
@@ -877,6 +878,7 @@ export function codexProvider({
                 method: 'turn/start',
                 params: {
                   threadId: id,
+                  ...(outputSchema ? { outputSchema } : {}),
                   input: turnInput({
                     text,
                     said,

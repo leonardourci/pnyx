@@ -938,11 +938,37 @@ export function spoolFiles({ dir }: { dir: string }): string[] {
 
   return readdirSync(spool)
     .filter(f => f.endsWith('.json') && !f.startsWith('.'))
-    .sort()
-    .map(f => join(
-      spool,
-      f,
-    ))
+    .flatMap(name => {
+      const file = join(
+        spool,
+        name,
+      )
+      const written = statSync(
+        file,
+        {
+          bigint: true,
+          throwIfNoEntry: false,
+        },
+      )
+
+      return written ? [
+        {
+          file,
+          at: written.mtimeNs,
+        },
+      ] : []
+    })
+    .sort((
+      a,
+      b,
+    ) => {
+      if (a.at === b.at) {
+        return a.file.localeCompare(b.file)
+      }
+
+      return a.at < b.at ? -1 : 1
+    })
+    .map(entry => entry.file)
 }
 
 // Per Pnyx home, the Hydras an older server still runs in boards/.
