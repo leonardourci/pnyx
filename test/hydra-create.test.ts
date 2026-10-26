@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createHydra } from '../src/server/hydras.ts'
-import { readEvents } from '../src/store/hydra-store.ts'
+import { hydraDir, readEvents } from '../src/store/hydra-store.ts'
 
 test(
   'a creation attempt recovers the same sequential identity from the configuration event',
@@ -25,6 +25,13 @@ test(
         name: 'Second',
         attempt: 'second-attempt',
       })
+      appendFileSync(
+        join(
+          hydraDir({ hydraId: second }),
+          'events.jsonl',
+        ),
+        'corrupt later event\n',
+      )
       const recovered = createHydra({
         name: 'Changed after timeout',
         attempt: 'first-attempt',
@@ -57,6 +64,27 @@ test(
       assert.equal(
         events[0]?.data.name,
         'Research',
+      )
+      appendFileSync(
+        join(
+          hydraDir({ hydraId: first }),
+          'events.jsonl',
+        ),
+        'corrupt later event\n',
+      )
+      assert.equal(
+        createHydra({
+          name: 'Retry corrupt matching Hydra',
+          attempt: 'first-attempt',
+        }),
+        first,
+      )
+      assert.equal(
+        createHydra({
+          name: 'Independent creation',
+          attempt: 'third-attempt',
+        }),
+        'hydra-3',
       )
     } finally {
       if (previous === undefined) {

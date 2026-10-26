@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { commands } from '../cli/commands.ts'
 import { hydraIdentity } from './state.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { hydraDir, hydraIds, loadHydra, readEvents, withRegistryLock } from '../store/hydra-store.ts'
+import { hydraDir, hydraIds, loadHydra, readInitialEvent, withRegistryLock } from '../store/hydra-store.ts'
 import { projectsFor } from '../projects/read.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 import { liveTask } from '../core/tasks.ts'
@@ -167,9 +167,9 @@ export function createHydra({
 
       if (eventId) {
         for (const id of ids) {
-          const event = readEvents({ hydraId: id }).find(event => event.id === eventId)
+          const event = readInitialEvent({ hydraId: id })
 
-          if (event?.type === 'board.configured') {
+          if (event?.type === 'board.configured' && event.id === eventId) {
             return id
           }
         }
