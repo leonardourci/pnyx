@@ -1,7 +1,7 @@
 // Protocol: one JSON request line per connection, answered with one JSON line.
 import { createConnection, createServer, type Socket } from 'node:net'
 import type { DatabaseSync } from 'node:sqlite'
-import { rmSync, statSync } from 'node:fs'
+import { existsSync, rmSync, statSync } from 'node:fs'
 import { SemanticError, detectMode, loadBackend, resolveChoice, type Backend } from './backend.ts'
 import { EMBEDDERS, RERANKER, activeFailure, download, isInstalled, modelPath, recordFailure, type ModelFile } from './models.ts'
 import { readSettings, stubbed } from './settings.ts'
@@ -142,20 +142,23 @@ async function fetchModel({
   ) => void
 }): Promise<void> {
   if (stubbed()) {
-    const ms = Number(process.env.PNYX_SEMANTIC_STUB_DOWNLOAD_MS) || 0
+    const gate = process.env.PNYX_SEMANTIC_STUB_DOWNLOAD_GATE
 
-    for (let t = 0; t < ms; t += 100) {
+    if (gate) {
       track({
         phase: {
           phase: 'downloading',
-          done: Math.round((model.bytes * t) / ms),
+          done: Math.round(model.bytes / 2),
           total: model.bytes,
         },
       })
-      await new Promise(resolve => setTimeout(
-        resolve,
-        100,
-      ))
+
+      while (!existsSync(gate)) {
+        await new Promise(resolve => setTimeout(
+          resolve,
+          100,
+        ))
+      }
     }
 
     return

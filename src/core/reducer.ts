@@ -1,4 +1,5 @@
 import { applyDependencies } from './dependencies.ts'
+import { applyCompaction } from '../compaction/state.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
 import { applyExternalSource } from '../external-sources/state.ts'
@@ -163,7 +164,10 @@ function apply({
     colors: event.labelColors,
   })
 
-  if (applyExternalSource({
+  if (applyCompaction({
+    state,
+    event,
+  }) || applyExternalSource({
     state,
     event,
   }) || applySteering({

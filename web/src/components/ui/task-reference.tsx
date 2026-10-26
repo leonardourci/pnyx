@@ -1,6 +1,7 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { InlineButton } from './controls.tsx'
+import { ReferenceBadge } from './reference-badge.tsx'
+import { CHIP_SPACE } from '../../hydra/draft.ts'
 import { Tooltip } from './tooltip.tsx'
 
 const stateIcons: Record<string, string> = {
@@ -73,8 +74,8 @@ export function TaskReference({
 
   return (
     <Tooltip content={context && !reference ? 'Task unavailable in this Hydra' : reference ? `${reference.title} · ${state}` : 'Open referenced task'}>
-      <Button
-        className={`task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
+      <InlineButton
+        className={`button task-mention task-reference column-${reference?.column ?? 'custom'} ${className}`}
         contentEditable={false}
         data-task-ref={id}
         data-state={reference?.kind}
@@ -82,15 +83,18 @@ export function TaskReference({
         aria-label={reference ? `Open task ${reference.title}; ${state}` : undefined}
         onClick={() => open?.({ id })}
       >
-        <Icon name="task-card" size={14} />
-        {context && (
-          <span className="task-reference-state" role="img" aria-label={state}>
-            <Icon name={taskStateIcon({ kind: reference?.kind })} size={14} />
-          </span>
-        )}
-        <span className="task-reference-title">{label}</span>
-        <Icon name="external" size={13} />
-      </Button>
+        {CHIP_SPACE}
+        <ReferenceBadge
+          icons={[
+            'task-card',
+            taskStateIcon({ kind: reference?.kind }),
+          ]}
+          className={`column-${reference?.column ?? 'custom'}`}
+          data-kind="task"
+        >{label}
+        </ReferenceBadge>
+        {CHIP_SPACE}
+      </InlineButton>
     </Tooltip>
   )
 }

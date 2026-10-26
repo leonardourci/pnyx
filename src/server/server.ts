@@ -15,6 +15,7 @@ import { dispatchCommands } from '../dispatch/cli.ts'
 import { MAX_MESSAGE_BYTES } from './protocol.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './saves.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
+import { systemReminderScheduler, type ReminderScheduler } from '../reminders/scheduler.ts'
 import { fireReminders } from '../reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../reminders/state.ts'
 import { project } from '../projects/cli.ts'
@@ -38,7 +39,9 @@ import { resolveHome } from '../integrations/firstmate/home.ts'
 import { queryOracle, matchActions } from '../oracle/semantic.ts'
 import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
-import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watch, watchFile, writeFileSync, type FSWatcher } from 'node:fs'
+import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import { watchPath, type PathWatch } from '../runtime/watch.ts'
+import { background } from '../runtime/background.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import type { Duplex } from 'node:stream'
@@ -202,7 +205,7 @@ interface MountedHydra {
     res,
     path,
     search,
-  }: HydraRequest): void
+  }: HydraRequest): void | Promise<void>
   upgrade({
     req,
     socket,
@@ -294,6 +297,7 @@ export async function startServer({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
 }): Promise<RunningServer> {
   const mounts = new Map<string, Promise<MountedHydra>>()
@@ -309,20 +313,23 @@ export async function startServer({
     }
 
     summariesQueued = true
-    setImmediate(() => {
-      summariesQueued = false
+    setImmediate(() => background({
+      name: 'Hydra summaries',
+      run: () => {
+        summariesQueued = false
 
-      if (closed) {
-        return
-      }
+        if (closed) {
+          return
+        }
 
-      const hydras = listHydras(), key = JSON.stringify(hydras)
+        const hydras = listHydras(), key = JSON.stringify(hydras)
 
-      if (key !== summariesKey) {
-        summariesKey = key
-        served.forEach(m => m.summaries({ hydras }))
-      }
-    })
+        if (key !== summariesKey) {
+          summariesKey = key
+          served.forEach(m => m.summaries({ hydras }))
+        }
+      },
+    }))
   }
 
   // Clients that send no Origin are local programs, not pages; writes still need the token.
@@ -335,10 +342,13 @@ export async function startServer({
     origins,
   })
 
-  const http = createServer((
+  const request = async ({
     req,
     res,
-  ) => {
+  }: {
+    req: IncomingMessage
+    res: ServerResponse
+  }): Promise<void> => {
     if (!allowed({ req })) {
       return reply({
         res,
@@ -430,6 +440,44 @@ export async function startServer({
       path,
       home,
     })
+  }
+
+  const http = createServer((
+    req,
+    res,
+  ) => {
+    void request({
+      req,
+      res,
+    }).catch(error => {
+      console.error(
+        `pnyx-axi request: ${req.method} ${req.url?.split('?')[0] ?? '/'}`,
+        error,
+      )
+
+      if (res.destroyed || res.writableEnded) {
+        return
+      }
+
+      if (res.headersSent) {
+        res.destroy()
+
+        return
+      }
+
+      try {
+        reply({
+          res,
+          status: 500,
+          body: {
+            error: 'request failed',
+            code: 'INTERNAL_ERROR',
+          },
+        })
+      } catch {
+        res.destroy()
+      }
+    })
   })
 
   http.on(
@@ -509,14 +557,17 @@ export async function startServer({
       pendingLogs.delete(id)
     }
 
-    const ready = () => {
-      if (closed || !existsSync(path)) {
-        return
-      }
+    const ready = () => background({
+      name: 'Hydra log discovery',
+      run: () => {
+        if (closed || !existsSync(path)) {
+          return
+        }
 
-      stop()
-      mountAll()
-    }
+        stop()
+        mountAll()
+      },
+    })
 
     pendingLogs.set(
       id,
@@ -616,12 +667,16 @@ export async function startServer({
     hydras,
     { recursive: true },
   )
-  const watcher = watch(
-    hydras,
-    mountAll,
-  )
+  const watcher = watchPath({
+    path: hydras,
+    changed: mountAll,
+    interval: CREATION_POLL_MS,
+  })
   const retry = setInterval(
-    mountAll,
+    () => background({
+      name: 'mount Hydras',
+      run: mountAll,
+    }),
     RETRY_MS,
   ).unref()
 
@@ -675,6 +730,7 @@ async function mountHydra({
   retryDelays,
   followDelay,
   reviewClock,
+  reminderScheduler,
   open,
   hydrasChanged,
 }: {
@@ -692,6 +748,7 @@ async function mountHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
@@ -714,6 +771,7 @@ async function mountHydra({
       retryDelays,
       followDelay,
       reviewClock,
+      reminderScheduler,
       open,
       release,
       hydrasChanged,
@@ -739,6 +797,7 @@ async function mountOwnedHydra({
   retryDelays,
   followDelay = FOLLOW_POLL_MS,
   reviewClock,
+  reminderScheduler = systemReminderScheduler,
   open,
   release,
   hydrasChanged,
@@ -756,6 +815,7 @@ async function mountOwnedHydra({
   pauseDelay?: number
   retryDelays?: number[]
   followDelay?: number
+  reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   release(): void
@@ -798,81 +858,87 @@ async function mountOwnedHydra({
     threadTimers.set(
       ws,
       setTimeout(
-        () => {
-          threadTimers.delete(ws)
+        () => background({
+          name: 'conversation refresh',
+          run: () => {
+            threadTimers.delete(ws)
 
-          if (ws.readyState !== ws.OPEN) {
-            return
-          }
-
-          for (const map of threadSubscriptions) {
-            const sub = map.get(ws), card = sub && state.cards[sub.card]
-
-            if (!card) {
-              continue
+            if (ws.readyState !== ws.OPEN) {
+              return
             }
 
-            const unavailable = () => send({
-              ws,
-              message: {
-                type: 'error',
-                id: null,
-                code: 'THREAD_UNAVAILABLE',
-                error: 'Conversation could not be refreshed',
-              },
-            })
+            for (const map of threadSubscriptions) {
+              const sub = map.get(ws), card = sub && state.cards[sub.card]
 
-            if (sub.native) {
-              const native = sub.native
-              void paseoHistory({
-                card: card.id,
-                conversation: { read: async ({ before }) => (await native).read({ before }) },
-                readSaved: ({ before }) => readThread({
-                  hydraId,
-                  state,
-                  card,
-                  homes,
-                  before,
-                }),
-              }).then(
-                thread => {
-                  if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
-                    send({
-                      ws,
-                      message: {
-                        type: 'thread',
-                        thread,
-                      },
-                    })
-                  }
-                },
-                unavailable,
-              )
+              if (!card) {
+                continue
+              }
 
-              continue
-            }
-
-            try {
-              send({
+              const unavailable = () => send({
                 ws,
                 message: {
-                  type: 'thread',
-                  thread: agents.thread({
-                    card,
-                    page: readThread({
+                  type: 'error',
+                  id: null,
+                  code: 'THREAD_UNAVAILABLE',
+                  error: 'Conversation could not be refreshed',
+                },
+              })
+
+              if (sub.native) {
+                const native = sub.native
+                background({
+                  name: 'native conversation refresh',
+                  run: () => paseoHistory({
+                    card: card.id,
+                    conversation: { read: async ({ before }) => (await native).read({ before }) },
+                    readSaved: ({ before }) => readThread({
                       hydraId,
                       state,
                       card,
                       homes,
+                      before,
                     }),
-                  }),
-                },
-              })
-            } catch {
-              unavailable()
+                  }).then(
+                    thread => {
+                      if (map.get(ws) === sub && ws.readyState === ws.OPEN) {
+                        send({
+                          ws,
+                          message: {
+                            type: 'thread',
+                            thread,
+                          },
+                        })
+                      }
+                    },
+                    unavailable,
+                  ),
+                })
+
+                continue
+              }
+
+              try {
+                send({
+                  ws,
+                  message: {
+                    type: 'thread',
+                    thread: agents.thread({
+                      card,
+                      page: readThread({
+                        hydraId,
+                        state,
+                        card,
+                        homes,
+                      }),
+                    }),
+                  },
+                })
+              } catch {
+                unavailable()
+              }
             }
-          }
-        },
+          },
+        }),
         LATEST_DELAY_MS,
       ),
     )
@@ -955,38 +1021,30 @@ async function mountOwnedHydra({
         },
       )
     } else if (path) {
-      let file: FSWatcher | undefined
+      let file: PathWatch | undefined
 
       const followFile = () => {
         file?.close()
         file = undefined
 
         try {
-          const watcher = watch(
+          file = watchPath({
             path,
-            () => refreshThread({ ws }),
-          )
-          watcher.on(
-            'error',
-            () => watcher.close(),
-          )
-          file = watcher
+            changed: () => refreshThread({ ws }),
+          })
         } catch { /* The folder watcher retries when the transcript appears. */ }
       }
 
       try {
-        const folder = watch(
-          dirname(path),
-          (
-            _event,
-            filename,
-          ) => {
+        const folder = watchPath({
+          path: dirname(path),
+          changed: ({ filename }) => {
             if (!filename || String(filename) === basename(path)) {
               followFile()
               refreshThread({ ws })
             }
           },
-        )
+        })
         sub.watcher = {
           close: () => {
             folder.close()
@@ -1267,8 +1325,8 @@ async function mountOwnedHydra({
   const latest: Record<string, LatestMessage> = {}
   const actions: Record<string, CurrentAction> = {}
   const reads = new Map<string, LatestRead>()
-  const folders = new Map<string, FSWatcher>()
-  const transcripts = new Map<string, FSWatcher>()
+  const folders = new Map<string, PathWatch>()
+  const transcripts = new Map<string, PathWatch>()
   const transcriptPolls = new Map<string, { close(): void }>()
   const unread = new Set<string>()
   let latestTimer: ReturnType<typeof setTimeout> | undefined
@@ -1304,14 +1362,10 @@ async function mountOwnedHydra({
     }
 
     try {
-      const watcher = watch(
+      const watcher = watchPath({
         path,
-        () => transcriptChanged({ path }),
-      )
-      watcher.on(
-        'error',
-        () => unwatchTranscript({ path }),
-      )
+        changed: () => transcriptChanged({ path }),
+      })
       transcripts.set(
         path,
         watcher,
@@ -1341,12 +1395,9 @@ async function mountOwnedHydra({
     }
 
     try {
-      const watcher = watch(
-        dir,
-        (
-          _event,
-          filename,
-        ) => {
+      const watcher = watchPath({
+        path: dir,
+        changed: ({ filename }) => {
           if (filename) {
             touchPath({
               path: join(
@@ -1367,13 +1418,7 @@ async function mountOwnedHydra({
               .map(c => c.id),
           })
         },
-      )
-      watcher.on(
-        'error',
-        () => {
-          watcher.close(); folders.delete(dir)
-        },
-      )
+      })
       folders.set(
         dir,
         watcher,
@@ -1521,7 +1566,10 @@ async function mountOwnedHydra({
 
     if (unread.size) {
       latestTimer ??= setTimeout(
-        readLatest,
+        () => background({
+          name: 'latest messages',
+          run: readLatest,
+        }),
         LATEST_DELAY_MS,
       )
     }
@@ -1600,6 +1648,7 @@ async function mountOwnedHydra({
   }
 
   let expiryTimer: ReturnType<typeof setTimeout> | undefined
+  let cancelReminder = () => {}
   let queueRun: Promise<void> | undefined
   let queueCheckedAt = 0
   let queueNeedsRetry = false
@@ -1756,7 +1805,10 @@ async function mountOwnedHydra({
 
         sources.reconcile()
         review.check()
-        fireReminders({ hydraId })
+        fireReminders({
+          hydraId,
+          at: new Date(reminderScheduler.now()).toISOString(),
+        })
         pump()
         const deadline = doneDeadline({ state })
 
@@ -1775,11 +1827,20 @@ async function mountOwnedHydra({
         console.error(`pnyx-axi serve: ${(error as Error).message}`)
       } finally {
         clearTimeout(expiryTimer)
+        cancelReminder()
+        const reminder = reminderDeadline({ state })
+
+        if (reminder !== undefined) {
+          cancelReminder = reminderScheduler.schedule({
+            at: reminder,
+            fire: kick,
+          })
+        }
+
         const deadlines = [
           sourceDeadline({ state }),
           sources.deadline(),
           doneDeadline({ state }),
-          reminderDeadline({ state }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
             ? [queueCheckedAt + QUEUE_POLL_MS] : []),
         ]
@@ -1898,7 +1959,7 @@ async function mountOwnedHydra({
         })
       }
 
-      return void readBody({ req }).then(body => hostRequest({
+      return readBody({ req }).then(body => hostRequest({
         host: agents,
         body,
       }))
@@ -1951,7 +2012,7 @@ async function mountOwnedHydra({
         })
       }
 
-      return void readBytes({
+      return readBytes({
         req,
         limit: MAX_IMAGE_BYTES,
       }).then(
@@ -2038,6 +2099,12 @@ async function mountOwnedHydra({
           throw new Error('not an attachment')
         }
 
+        const body = readFileSync(join(
+          dir,
+          'attachments',
+          attachment,
+        ))
+
         return void res.writeHead(
           200,
           {
@@ -2046,11 +2113,7 @@ async function mountOwnedHydra({
             'cache-control': 'private, max-age=31536000, immutable',
           },
         )
-          .end(readFileSync(join(
-            dir,
-            'attachments',
-            attachment,
-          )))
+          .end(body)
       } catch {
         return reply({
           res,
@@ -2069,7 +2132,7 @@ async function mountOwnedHydra({
         'http://localhost',
       ).searchParams
 
-      return void listFolders({
+      return listFolders({
         path: query.get('path') ?? '',
         repository: query.get('repository') ?? '',
       }).then(
@@ -2233,6 +2296,7 @@ async function mountOwnedHydra({
       'hydras',
       'hydra-agent',
       'models',
+      'compact',
     ].includes(String(name))) {
       if (!Array.isArray(args) || !args.every(a => typeof a === 'string')) {
         return fail({
@@ -2242,7 +2306,32 @@ async function mountOwnedHydra({
       }
 
       try {
-        if (name === 'models') {
+        if (name === 'compact') {
+          if (args.length < 1 || args.length > 2) {
+            throw new HydraError({
+              message: 'compact expects a card and an optional queued message ID',
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          void agents.compact({
+            card: args[0]!,
+            sendNow: args[1],
+          }).then(
+            result => send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+                ...result,
+              },
+            }),
+            (error: Error) => fail({
+              error: error.message,
+              code: error instanceof HydraError ? error.code : 'UNKNOWN',
+            }),
+          )
+        } else if (name === 'models') {
           const harness = args[0]
 
           if (args.length !== 1 || (harness !== 'claude' && harness !== 'codex')) {
@@ -2303,7 +2392,10 @@ async function mountOwnedHydra({
             const next = {
               scope,
               read: Promise.resolve(previous).then(async () => {
-                const native = await agents.catalogCommands({ card })
+                const native = await agents.catalogCommands({
+                  card,
+                  provider: receiving,
+                })
                 const catalog = await catalogIndex.read({
                   card: currentCard,
                   projects: state.projects,
@@ -2313,7 +2405,7 @@ async function mountOwnedHydra({
                   ...catalog,
                   suggestions: [
                     ...catalog.suggestions,
-                    ...((receiving === 'codex') === (card.agent?.provider === 'codex') ? native : []),
+                    ...native,
                   ],
                   provider: receiving,
                 }
@@ -3014,7 +3106,7 @@ async function mountOwnedHydra({
     },
   })
 
-  const watchers: FSWatcher[] = []
+  const watchers: PathWatch[] = []
 
   const stop = async () => {
     closed = true
@@ -3049,6 +3141,7 @@ async function mountOwnedHydra({
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(latestTimer)
     clearTimeout(expiryTimer)
+    cancelReminder()
 
     for (const timer of threadTimers.values()) {
       clearTimeout(timer)
@@ -3085,14 +3178,14 @@ async function mountOwnedHydra({
   // A mount that fails partway stops what it started; the caller releases the claim.
   try {
     watchers.push(
-      watch(
-        dir,
-        kick,
-      ),
-      watch(
-        spoolDir({ dir }),
-        kick,
-      ),
+      watchPath({
+        path: dir,
+        changed: kick,
+      }),
+      watchPath({
+        path: spoolDir({ dir }),
+        changed: kick,
+      }),
     )
     // Directory notifications can coalesce rapid appends; stat polling recovers the missed tail.
     watchFile(

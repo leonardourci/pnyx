@@ -4,7 +4,7 @@ import { HYDRA_CARD } from '../core/hydra.ts'
 import { EVENT_VERSION, HydraError, type Card, type SteeringAck, type SteeringAttempt, type SteeringClaim, type SteeringMessage, type HydraState } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import type { Writer } from '../store/hydra-store.ts'
-import { sameClaim, steeringClaim, steeringWorkerIdentity } from './state.ts'
+import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './state.ts'
 
 function invalid({ message }: { message: string }): never {
   throw new HydraError({
@@ -287,7 +287,7 @@ export function acknowledgeSteering({
     return message
   }
 
-  if (card.steering?.find(message => !message.ack)?.id !== id) {
+  if (pendingSteering({ card })[0]?.id !== id) {
     invalid({ message: 'Handle the oldest pending instruction first' })
   }
 
