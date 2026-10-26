@@ -1,3 +1,5 @@
+import { PNYX_SKILLS } from '../src/integrations/skills/names.ts'
+import { prepareHydraFolder, setupSkills } from '../src/integrations/skills/install.ts'
 import { skillReference } from '../src/thread/skill-reference.ts'
 import { taskMention, reference } from '../src/mentions/mentions.ts'
 import { fileBlock } from '../src/attachments/files.ts'
@@ -60,7 +62,7 @@ for (const geometry of [
       )
       const skill = join(
         cwd,
-        '.agents/skills/pnyx-cli',
+        '.agents/skills/fixture-cli',
       )
       mkdirSync(
         skill,
@@ -71,8 +73,13 @@ for (const geometry of [
           skill,
           'SKILL.md',
         ),
-        '---\nname: pnyx-cli\ndescription: Read and update Pnyx\n---\n',
+        '---\nname: fixture-cli\ndescription: Read and update Pnyx\n---\n',
       )
+      prepareHydraFolder({ folder: cwd })
+      setupSkills({
+        userHome: root,
+        claudeConfigDir: process.env.CLAUDE_CONFIG_DIR,
+      })
       await commands.hydra([
         'create',
         'default',
@@ -435,24 +442,9 @@ for (const geometry of [
       `,
         })
         const orderedCommands: string[] = JSON.parse(ordering)
-        assert.deepEqual(
-          orderedCommands.slice(
-            0,
-            2,
-          ),
-          [
-            '/pnyx-cli',
-            '/pnyx-report-progress',
-          ],
-        )
-        assert.ok(!orderedCommands.some(command => [
-          '/pnyx-orchestrate',
-          '/pnyx-arrange-columns',
-          '/pnyx-manage-workers',
-          '/pnyx-firstmate-as-hydra',
-          '/pnyx-set-up',
-          '/pnyx-inscribe',
-        ].includes(command)))
+        assert.ok(orderedCommands.length > 0)
+        const names = orderedCommands.map(command => command.slice(1))
+        assert.ok(PNYX_SKILLS.every(name => !names.includes(name)))
 
         if (artifacts) {
           await browser({
@@ -474,7 +466,7 @@ for (const geometry of [
         await page.fill('.hydra-chat textarea', '');
         await page.click('.hydra-chat textarea');
         await page.press('/');
-        await page.type('pnyx-c');
+        await page.type('fixture-c');
         for (let attempt = 0; attempt < 100; attempt++) {
           if (await page.eval(() => !!document.querySelector('.slash-menu [role="option"]'))) break;
           await page.wait(25);
@@ -510,7 +502,7 @@ for (const geometry of [
         assert.deepEqual(
           JSON.parse(initial),
           {
-            command: '/pnyx-cli',
+            command: '/fixture-cli',
             reachable: true,
             clipping: 'hidden',
           },
@@ -521,22 +513,22 @@ for (const geometry of [
         await page.click('.slash-menu [role="option"]');
         console.log(await page.eval(() => {
           const input = document.querySelector('.hydra-chat textarea');
-          return document.querySelector('.draft-skill')?.textContent.includes('/pnyx-cli') && input.selectionStart === input.value.length && document.activeElement === input;
+          return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli') && input.selectionStart === input.value.length && document.activeElement === input;
         }));
-        await page.fill('.hydra-chat textarea', '/pnyx-TAIL');
-        await page.eval(() => document.querySelector('.hydra-chat textarea').setSelectionRange(6, 6));
+        await page.fill('.hydra-chat textarea', '/fixture-TAIL');
+        await page.eval(() => document.querySelector('.hydra-chat textarea').setSelectionRange(9, 9));
         await page.type('c');
         await page.wait('.slash-menu [role="option"]');
         await page.press('ArrowDown');
         await page.press('Enter');
         console.log(await page.eval(() => {
           const input = document.querySelector('.hydra-chat textarea');
-          return document.querySelector('.draft-skill')?.textContent.includes('/pnyx-cli') && input.value.endsWith(' TAIL') && input.selectionStart === input.value.length - 4 && !document.querySelector('.slash-menu');
+          return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli') && input.value.endsWith(' TAIL') && input.selectionStart === input.value.length - 4 && !document.querySelector('.slash-menu');
         }));
-        await page.fill('.hydra-chat textarea', '/pnyx-c');
+        await page.fill('.hydra-chat textarea', '/fixture-c');
         await page.wait('.slash-menu [role="option"]');
         await page.press('Escape');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/pnyx-c'));
+        console.log(await page.eval(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/fixture-c'));
         await page.eval(() => {
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
@@ -571,13 +563,14 @@ for (const geometry of [
         await page.press('ArrowDown');
         await page.eval(() => {
           window.selectedSkill = document.querySelector('.slash-menu [aria-selected="true"]').textContent;
+          window.selectedCommand = document.querySelector('.slash-menu [aria-selected="true"] strong').textContent;
         });
         await page.eval(() => window.releaseCatalog());
         await page.wait(50);
         console.log(await page.eval(() => document.querySelector('.slash-menu [aria-selected="true"]').textContent
           === window.selectedSkill && !document.querySelector('.slash-menu [role="status"]')));
         await page.press('Enter');
-        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes('/pnyx-report-progress')));
+        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes(window.selectedCommand)));
         await page.fill('.hydra-chat textarea', '/missing');
         await page.wait('.slash-menu [role="status"]');
         console.log(await page.eval(() => {
@@ -1004,7 +997,7 @@ for (const geometry of [
         await browser({
           args: ['run'],
           script: `
-        await page.fill('.hydra-chat textarea', '/pnyx-c');
+        await page.fill('.hydra-chat textarea', '/fixture-c');
         await page.wait('.slash-menu [role="option"]');
       `,
         })

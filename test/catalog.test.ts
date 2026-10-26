@@ -668,7 +668,7 @@ for (const provider of [
   'codex',
 ]) {
   test(
-    `${provider} lists Pnyx public skills first and hides internal skills`,
+    `${provider} hides every Pnyx skill and preserves the remaining skill order`,
     async t => {
       const {
         home,
@@ -718,8 +718,6 @@ for (const provider of [
         assert.deepEqual(
           result.suggestions.map(item => item.command),
           [
-            `${prefix}pnyx-cli`,
-            `${prefix}pnyx-report-progress`,
             `${prefix}aaa`,
             `${prefix}zzz`,
           ],

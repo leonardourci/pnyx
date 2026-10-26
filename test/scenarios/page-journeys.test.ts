@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
+import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
@@ -141,24 +141,41 @@ test(
         'hello',
       ],
     })
-    await hydraFinished({
+    const hydra = await hydraFinished({
       s,
       turns: 1,
     })
+    const skill = join(
+      hydra.cwd,
+      '.agents',
+      'skills',
+      'fixture-cli',
+    )
+    mkdirSync(
+      skill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        skill,
+        'SKILL.md',
+      ),
+      '---\nname: fixture-cli\ndescription: Fixture command\n---\n',
+    )
     const page = await openHydra({ s })
     await page.click({ selector: '.hydra-chat textarea' })
-    await page.type({ text: '/pnyx-c' })
+    await page.type({ text: '/fixture-c' })
     await page.shows({
-      what: 'Hydra’s own skill among the grouped suggestions',
+      what: 'the fixture skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
-        .find(o => o.querySelector('strong')?.textContent === '/pnyx-cli'
-          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx'),
+        .find(o => o.querySelector('strong')?.textContent === '/fixture-cli'
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Session skills'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
     await page.shows({
       what: 'the skill badge in the draft',
-      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/pnyx-cli')
+      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/fixture-cli')
         && !document.querySelector('.slash-menu'),
     })
 
@@ -209,7 +226,7 @@ test(
       check: () => {
         const mine = [...document.querySelectorAll('.hydra-chat .message.mine')].at(-1)
 
-        return mine?.textContent?.includes('/pnyx-cli what we chose for') && mine.textContent.includes('Ship the layout')
+        return mine?.textContent?.includes('/fixture-cli what we chose for') && mine.textContent.includes('Ship the layout')
           && mine.textContent.includes('Remember the grid.') && mine.querySelector('img')
           && !document.querySelector('.hydra-chat .draft-chip')
       },
@@ -222,7 +239,7 @@ test(
     assert.ok(sent)
     assert.match(
       sent,
-      /\n\n\/pnyx-cli what we chose for /,
+      /\n\n\/fixture-cli what we chose for /,
     )
     assert.ok(sent.includes('Ship the layout'))
     assert.ok(sent.includes('Remember the grid.'))
