@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { knownCommands } from '../web/src/hydra/chat-tokens.ts'
+import { Marked } from 'marked'
+import { knownCommands, prepareChatTokens } from '../web/src/hydra/chat-tokens.ts'
 
 const suggestions = [
   {
@@ -108,6 +109,85 @@ test(
         ],
       }).length,
       0,
+    )
+  },
+)
+
+for (const text of [
+  '**prefix**/review',
+  '**/review** safely',
+  '[**/review**](https://example.com)',
+  '[/review](https://example.com)',
+  '`/review`',
+  '```text\n/review\n```',
+  'Please /review safely',
+  '**prefix** $inscribe',
+  '\\$inscribe',
+  '`\\$inscribe`',
+  '\uE0000\uE001 $inscribe',
+  '[$inscribe](https://example.com/$inscribe)',
+  '`$inscribe`',
+  '```text\n$inscribe\n```',
+]) {
+  test(
+    `Markdown preserves raw invocation boundaries: ${text}`,
+    () => {
+      const catalog = [
+        ...suggestions,
+        {
+          command: '/review',
+          description: 'Review',
+          source: 'Session skills',
+        },
+      ]
+      const prepared = prepareChatTokens({
+        text,
+        suggestions: catalog,
+      })
+      const parser = new Marked({ gfm: true })
+      const tokens = parser.lexer(prepared.text)
+      const visible: string[] = []
+      parser.walkTokens(
+        tokens,
+        // eslint-disable-next-line pnyx/object-params -- Marked owns this callback signature.
+        token => {
+          if ((token.type === 'text' && !token.tokens) || token.type === 'codespan' || token.type === 'code') {
+            visible.push(...prepared.split({
+              text: token.text,
+              code: token.type !== 'text',
+            }).flatMap(part => 'item' in part && part.item ? [part.item.command] : []))
+          }
+        },
+      )
+      const expected = knownCommands({
+        text,
+        suggestions: catalog,
+      }).filter(command => !text.slice(
+        0,
+        command.start,
+      ).endsWith('https://example.com/') && (command.item.command.startsWith('$') || !text.startsWith('```')))
+      assert.deepEqual(
+        visible,
+        expected.map(command => command.item.command),
+      )
+      assert.equal(
+        prepared.restore({ text: prepared.text }),
+        text,
+      )
+    },
+  )
+}
+
+test(
+  'literal marker characters and entities cannot become a skill badge',
+  () => {
+    const prepared = prepareChatTokens({
+      text: '&#57344;0&#57345; $inscribe',
+      suggestions,
+    })
+    assert.deepEqual(
+      prepared.split({ text: '\uE0000\uE001' }),
+      [{ text: '\uE0000\uE001' }],
     )
   },
 )

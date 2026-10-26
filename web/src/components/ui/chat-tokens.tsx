@@ -1,7 +1,7 @@
-import { createContext, Fragment, useContext, type ReactNode } from 'react'
+import { createContext, Fragment, useContext } from 'react'
 import type { SavedLabelColor } from '../../../../src/core/model.ts'
 import type { Suggestion } from '../../../../src/thread/catalog.ts'
-import { knownCommands } from '../../hydra/chat-tokens.ts'
+import type { PreparedChatTokens } from '../../hydra/chat-tokens.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import type { SkillReference } from '../../../../src/thread/skill-reference.ts'
 import { CHIP_SPACE } from '../../hydra/draft.ts'
@@ -9,6 +9,7 @@ import { CHIP_SPACE } from '../../hydra/draft.ts'
 export const ChatTokensContext = createContext<{
   suggestions?: Suggestion[]
   colors?: SavedLabelColor[]
+  tokens?: PreparedChatTokens
 }>({})
 
 export function SkillToken({ skill }: { skill: SkillReference }) {
@@ -19,45 +20,37 @@ export function SkillToken({ skill }: { skill: SkillReference }) {
 
 export function ChatTokenText({
   text,
-  leading = false,
-  codexOnly = false,
+  code = false,
 }: {
   text: string
-  leading?: boolean
-  codexOnly?: boolean
+  code?: boolean
 }) {
   const {
-    suggestions = [],
+    tokens,
     colors,
   } = useContext(ChatTokensContext)
-  const commands = knownCommands({
+  const parts = tokens?.split({
     text,
-    suggestions,
-    leading,
-    codexOnly,
-  })
-  let end = 0
-  const tokens: ReactNode[] = commands.map(command => {
-    const before = text.slice(
-      end,
-      command.start,
-    )
-    end = command.end
+    code,
+  }) ?? [{ text }]
 
-    return (
-      <Fragment key={command.start}>
-        {before}{CHIP_SPACE}<SkillBadge
+  return (
+    <>{parts.map((
+      part,
+      index,
+    ) => 'item' in part && part.item ? (
+      <Fragment key={index}>
+        {CHIP_SPACE}<SkillBadge
           skill={{
-            name: command.item.command.slice(1),
-            command: command.item.command,
-            project: command.item.project,
-            projectPath: command.item.projectPath,
+            name: part.item.command.slice(1),
+            command: part.item.command,
+            project: part.item.project,
+            projectPath: part.item.projectPath,
           }}
           colors={colors}
         />{CHIP_SPACE}
       </Fragment>
-    )
-  })
-
-  return <>{tokens}{text.slice(end)}</>
+    ) : <Fragment key={index}>{part.text}</Fragment>)}
+    </>
+  )
 }
