@@ -1,9 +1,13 @@
 // Hook payload normalization and spool ingestion. Every path lives in a temporary
 // folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
 import assert from 'node:assert/strict'
+import { execFileSync } from 'node:child_process'
 import {
+  copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   utimesSync,
   writeFileSync,
@@ -16,12 +20,21 @@ import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 import { readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
 
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
-
 const ROOT = join(
   import.meta.dirname,
   '..',
+)
+const BIN = join(
+  ROOT,
+  'dist',
+  'cli',
+  'pnyx-axi.js',
+)
+const SCRIPT = join(
+  ROOT,
+  'setup',
+  'hooks',
+  'pnyx-hook.sh',
 )
 const FIXTURES = join(
   ROOT,
@@ -588,6 +601,270 @@ test(
       readEvents({ hydraId: 'default' }).length,
       2,
       'parent and child, once each',
+    )
+  },
+)
+
+function scriptSandbox() {
+  // A short base keeps the socket path under the platform's length limit.
+  const root = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-h-',
+  ))
+  const home = join(
+    root,
+    '.pnyx',
+  )
+  const claude = join(
+    root,
+    'claude',
+  )
+  const codex = join(
+    root,
+    'codex',
+  )
+  const env = {
+    ...process.env,
+    HOME: root,
+    PNYX_HOME: home,
+    CLAUDE_CONFIG_DIR: claude,
+    CODEX_HOME: codex,
+  }
+  const run = ({ args }: { args: string[] }) => execFileSync(
+    process.execPath,
+    [
+      BIN,
+      ...args,
+    ],
+    {
+      env,
+      encoding: 'utf8',
+    },
+  )
+  const spool = join(
+    home,
+    'hydras',
+    'default',
+    'spool',
+  )
+  const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
+  const script = join(
+    home,
+    'hooks',
+    'pnyx-hook.sh',
+  )
+  mkdirSync(
+    join(
+      home,
+      'hooks',
+    ),
+    { recursive: true },
+  )
+  copyFileSync(
+    SCRIPT,
+    script,
+  )
+
+  return {
+    root,
+    env,
+    run,
+    spooled,
+    script,
+  }
+}
+
+test(
+  'SessionStart prints the open tasks of the attached project holding the folder, and nothing elsewhere',
+  () => {
+    const {
+      root,
+      env,
+      run,
+      script,
+      spooled,
+    } = scriptSandbox()
+    const project = join(
+      root,
+      'shop',
+    )
+    const nested = join(
+      project,
+      'src',
+    )
+    mkdirSync(
+      nested,
+      { recursive: true },
+    )
+    run({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix the cart total',
+        '--project',
+        'shop',
+      ],
+    })
+    const start = ({
+      cwd,
+      extra = {},
+    }: {
+      cwd: string
+      extra?: Record<string, string>
+    }) => execFileSync(
+      '/bin/sh',
+      [
+        script,
+        'claude',
+        'SessionStart',
+        BIN,
+      ],
+      {
+        cwd,
+        input: '{}',
+        encoding: 'utf8',
+        env: {
+          ...env,
+          ...extra,
+        },
+      },
+    )
+
+    const summary = start({ cwd: nested })
+    assert.match(
+      summary,
+      /project shop/,
+    )
+    assert.match(
+      summary,
+      /Fix the cart total,queued/,
+    )
+    assert.equal(
+      start({ cwd: root }),
+      '',
+      'a folder outside every attached project gets no summary',
+    )
+    assert.equal(
+      start({
+        cwd: nested,
+        extra: { PNYX_TASK: 'task-1' },
+      }),
+      '',
+      'a worker session gets its context from Pnyx instead',
+    )
+    assert.equal(
+      execFileSync(
+        '/bin/sh',
+        [
+          script,
+          'claude',
+          'Stop',
+          BIN,
+        ],
+        {
+          cwd: nested,
+          input: '{}',
+          encoding: 'utf8',
+          env,
+        },
+      ),
+      '',
+      'every other hook prints nothing',
+    )
+    assert.equal(
+      spooled().length,
+      4,
+      'every hook is still reported',
+    )
+
+    const other = join(
+      root,
+      'docs-site',
+    )
+    const sibling = join(
+      root,
+      'shop-old',
+    )
+    mkdirSync(other)
+    mkdirSync(sibling)
+    run({
+      args: [
+        'project',
+        'add',
+        other,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Other project work',
+        '--project',
+        'docs-site',
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shipped already',
+        '--project',
+        'shop',
+        '--column',
+        'done',
+      ],
+    })
+
+    for (const n of [
+      2,
+      3,
+      4,
+      5,
+      6,
+    ]) {
+      run({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Shop task ${n}`,
+          '--project',
+          'shop',
+        ],
+      })
+    }
+
+    const context = ({ cwd }: { cwd: string }) => run({
+      args: [
+        'context',
+        '--cwd',
+        cwd,
+      ],
+    })
+    const listed = context({ cwd: nested })
+    assert.match(
+      listed,
+      /count: 5 of 6 open tasks/,
+    )
+    assert.doesNotMatch(
+      listed,
+      /Other project work|Shipped already|Shop task 6/,
+      'another project\'s tasks, Done tasks and tasks past the first five stay out',
+    )
+    assert.equal(
+      context({ cwd: sibling }).trim(),
+      '',
+      'a folder whose name only starts with the project\'s is outside it',
     )
   },
 )
