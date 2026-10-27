@@ -7,8 +7,9 @@ import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 import type { RunningServer } from '../src/server/server.ts'
-import { localToken } from '../src/server/state.ts'
+import { askHost, localToken } from '../src/server/state.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
+import { upgrade as upgradeCli } from '../src/upgrade/cli.ts'
 import type { UpgradeStatus } from '../src/upgrade/model.ts'
 import { hostObserver } from './host-observer.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
@@ -89,7 +90,7 @@ const send = ({
 ])
 
 test(
-  '/upgrade waits behind Hydra\'s running turn and never reaches Hydra',
+  '/upgrade waits behind Hydra\'s running turn, holds later messages and never reaches Hydra',
   async () => {
     const sdk = hydraSdk()
     sdk.control.hold = true
@@ -112,17 +113,24 @@ test(
     )
     assert.ok('up:hosted' in loadHydra({ hydraId: 'lab' }).state.eventIds)
 
+    await send({
+      text: 'After the upgrade',
+      id: 'after',
+    })
     const released = new Date().toISOString()
+    sdk.control.hold = false
     sdk.release()
-    await until({ check: () => upgrade()?.state === 'current' })
+    await until({ check: () => sdk.calls.some(call => call.raw.some(text => text.includes('After the upgrade'))) })
 
+    assert.equal(
+      upgrade()!.state,
+      'current',
+    )
     assert.ok(upgrade()!.startedAt! >= released)
 
+    await until({ check: () => loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+
     assert.ok(sdk.calls.flatMap(call => call.raw).every(text => !text.includes('/upgrade')))
-    assert.equal(
-      loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity,
-      'finished',
-    )
     assert.equal(
       restarts,
       0,
@@ -209,25 +217,109 @@ test(
   },
 )
 
+test(
+  'Send now runs a queued /upgrade without waiting for Hydra\'s turn',
+  async () => {
+    const sdk = hydraSdk()
+    sdk.control.hold = true
+    server = await start({ sdk })
+    await send({
+      text: 'Look at the board',
+      id: 'look',
+    })
+    await until({ check: () => sdk.calls[0]?.raw.length === 1 })
+    await send({
+      text: '/upgrade',
+      id: 'up',
+    })
+    await until({ check: () => upgrade()?.state === 'queued' })
+
+    await askHost({
+      hydraId: 'lab',
+      body: {
+        action: 'compact',
+        card: HYDRA_CARD,
+        sendNow: 'up',
+      },
+    })
+    await until({ check: () => upgrade()?.state === 'current' })
+
+    assert.equal(
+      loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity,
+      'working',
+    )
+  },
+)
+
+test(
+  'a /upgrade still queued when the server stops runs on the next server',
+  async () => {
+    const sdk = hydraSdk()
+    sdk.control.hold = true
+    server = await start({ sdk })
+    await send({
+      text: 'Look at the board',
+      id: 'look',
+    })
+    await until({ check: () => sdk.calls[0]?.raw.length === 1 })
+    await send({
+      text: '/upgrade',
+      id: 'up',
+    })
+    await until({ check: () => upgrade()?.state === 'queued' })
+
+    await server.close()
+    server = await start()
+    await until({ check: () => upgrade()?.state === 'current' })
+  },
+)
+
+test(
+  'a worker cannot run pnyx-axi upgrade',
+  async () => {
+    process.env.PNYX_ACTOR = 'worker:ship'
+
+    try {
+      await assert.rejects(
+        upgradeCli([]),
+        { code: 'OWNER_ONLY' },
+      )
+    } finally {
+      delete process.env.PNYX_ACTOR
+    }
+  },
+)
+
 // The status the server sends a page that connects.
 const hint = async () => {
   const ws = new WebSocket(`ws://127.0.0.1:${server!.port}/hydra/lab/ws?token=${localToken()}`)
+  let timer: ReturnType<typeof setTimeout> | undefined
 
   try {
-    return await new Promise<UpgradeStatus>(resolve => ws.on(
-      'message',
-      data => {
-        const message = JSON.parse(String(data)) as {
-          type: string
-          upgrade?: UpgradeStatus
-        }
+    return await new Promise<UpgradeStatus>((
+      resolve,
+      reject,
+    ) => {
+      timer = setTimeout(
+        () => reject(new Error('no upgrade status reached the page within 10s')),
+        10_000,
+      )
+      ws.on(
+        'message',
+        data => {
+          const message = JSON.parse(String(data)) as {
+            type: string
+            upgrade?: UpgradeStatus
+          }
 
-        if (message.type === 'upgrade') {
-          resolve(message.upgrade!)
-        }
-      },
-    ))
+          if (message.type === 'upgrade') {
+            resolve(message.upgrade!)
+          }
+        },
+      )
+    })
   } finally {
+    clearTimeout(timer)
     ws.terminate()
   }
 }

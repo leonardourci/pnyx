@@ -4,6 +4,7 @@ import {
   CLI_SKILL,
 } from '../integrations/skills/names.ts'
 import { inboxCommand } from '../task-inbox/cli.ts'
+import { upgradeCommand } from '../upgrade/model.ts'
 import { taskReadiness } from '../core/dependencies.ts'
 import { decideDependencies } from '../core/dependency-decisions.ts'
 import { sourceCommand } from '../external-sources/cli.ts'
@@ -3600,7 +3601,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
   }
 
-  if (config.hydra.kind === 'firstmate' || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+  // Pnyx runs /upgrade itself, whichever agent the Hydra is.
+  const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
+
+  if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result
   }
 

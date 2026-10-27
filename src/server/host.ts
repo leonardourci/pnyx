@@ -828,11 +828,18 @@ export function createHost({
       })
       queued()
     },
-    // Hydra's turn, a message waiting to start one, or a compaction holds the upgrade back.
-    busy: () => {
+    schedule: ({
+      id,
+      run,
+    }) => {
+      queuedHydra.add(id)
+      hydraTurn = hydraTurn.then(run).catch(() => {})
+        .finally(() => queuedHydra.delete(id))
+    },
+    working: () => {
       const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
 
-      return queuedHydra.size > 0 || Boolean(activeCompaction({ card }))
+      return Boolean(activeCompaction({ card }))
         || (card?.agent ? live.get(sessionId({ agent: card.agent }))?.activity === 'working' : false)
     },
     closing: () => closing,
