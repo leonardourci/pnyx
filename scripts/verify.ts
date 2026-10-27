@@ -15,7 +15,7 @@ import {
   markerBlockers,
   withMarker,
 } from './marker.ts'
-import { changePolicy, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review } from './change-policy.ts'
+import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review } from './required-checks.ts'
 
 const args = process.argv.slice(2)
 
@@ -42,7 +42,7 @@ interface Step {
   needs?: string
 }
 
-const CHECKS: Step[] = [
+const STATIC_CHECKS: Step[] = [
   {
     name: 'lint:fix',
     command: 'pnpm',
@@ -68,17 +68,18 @@ const CHECKS: Step[] = [
       '.',
     ],
   },
-  {
-    name: 'build',
-    command: 'pnpm',
-    args: [
-      'run',
-      'build',
-    ],
-  },
 ]
+const BUILD_STEP: Step = {
+  name: 'build',
+  command: 'pnpm',
+  args: [
+    'run',
+    'build',
+  ],
+}
 const EVERYTHING: Step[] = [
-  ...CHECKS,
+  ...STATIC_CHECKS,
+  BUILD_STEP,
   {
     name: 'unit tests',
     command: 'node',
@@ -186,25 +187,46 @@ function branchChanges({ defaultRef }: { defaultRef: string }): string[] | undef
 
 function selection({ defaultRef }: { defaultRef: string }) {
   const paths = branchChanges({ defaultRef })
-  const policy = changePolicy({
+  const required = requiredChecks({
     paths,
     mechanical,
   })
-  const tests = [
-    ...new Set([
-      ...policy.tests === 'skills' ? SKILL_TESTS : [],
-      ...policy.changedTests.filter(path => existsSync(path)),
-    ]),
-  ]
-  const steps = policy.tests === 'full' ? EVERYTHING : [
-    ...policy.changedTests.length ? CHECKS.slice(
-      0,
-      3,
-    ) : [],
-    ...tests.length ? [
-      CHECKS[3]!,
+
+  if (required.tests === 'full') {
+    return {
+      ...required,
+      steps: EVERYTHING,
+    }
+  }
+
+  const tests = new Set<string>()
+  let testName = 'changed tests'
+
+  if (required.tests === 'skills') {
+    testName = 'skill tests'
+
+    for (const path of SKILL_TESTS) {
+      tests.add(path)
+    }
+  }
+
+  for (const path of required.changedTests) {
+    if (existsSync(path)) {
+      tests.add(path)
+    }
+  }
+
+  const steps: Step[] = []
+
+  if (required.changedTests.length > 0) {
+    steps.push(...STATIC_CHECKS)
+  }
+
+  if (tests.size > 0) {
+    steps.push(
+      BUILD_STEP,
       {
-        name: policy.tests === 'skills' ? 'skill tests' : 'changed tests',
+        name: testName,
         command: 'node',
         args: [
           '--test',
@@ -213,11 +235,11 @@ function selection({ defaultRef }: { defaultRef: string }) {
         ],
         needs: 'build',
       },
-    ] : [],
-  ]
+    )
+  }
 
   return {
-    ...policy,
+    ...required,
     steps,
   }
 }

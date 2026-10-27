@@ -205,7 +205,7 @@ function fixture({
   for (const name of [
     'verify.ts',
     'marker.ts',
-    'change-policy.ts',
+    'required-checks.ts',
   ]) {
     copyFileSync(
       resolve(

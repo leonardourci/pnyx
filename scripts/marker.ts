@@ -1,6 +1,6 @@
-import { changeKind, changePolicy, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review, visibleLines } from './change-policy.ts'
+import { changeKind, requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review, visibleLines } from './required-checks.ts'
 
-export { REVIEW_CHECKLISTS } from './change-policy.ts'
+export { REVIEW_CHECKLISTS } from './required-checks.ts'
 
 // Node built-ins only: the workflow runs this without installing anything.
 const PREFIX = '<!-- pnyx-checks:v1 '
@@ -240,7 +240,7 @@ export async function checkPullRequest({
 
   const reviews = reviewBlockers({
     body,
-    requiredReviews: changePolicy({
+    requiredReviews: requiredChecks({
       paths: files,
       mechanical,
     }).reviews,

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { changePolicy, mechanicalDeclaration, REVIEW_CHECKLISTS } from '../scripts/change-policy.ts'
+import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS } from '../scripts/required-checks.ts'
 import { checkPullRequest, markerBlockers, reviewBlockers, withMarker } from '../scripts/marker.ts'
 
 const rows = [
@@ -98,7 +98,7 @@ for (const row of rows) {
   test(
     `policy and marker enforce requirements for ${JSON.stringify(row.paths)}`,
     async () => {
-      const policy = changePolicy({ paths: row.paths })
+      const policy = requiredChecks({ paths: row.paths })
       assert.deepEqual(
         policy.reviews,
         row.reviews,
@@ -226,7 +226,7 @@ test(
     }
 
     for (const row of rows) {
-      const policy = changePolicy({
+      const policy = requiredChecks({
         paths: row.paths,
         mechanical: true,
       })
