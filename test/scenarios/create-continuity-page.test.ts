@@ -30,7 +30,7 @@ const observeCreation = ({
       gaps: number
       frames: number
       node?: HTMLElement
-      release(): void
+      release(): boolean
       stop(): void
     }
   }
@@ -38,7 +38,7 @@ const observeCreation = ({
     removed: 0,
     gaps: 0,
     frames: 0,
-    release: () => {},
+    release: () => false,
     stop: () => {},
   }
   const send = WebSocket.prototype.send
@@ -47,11 +47,21 @@ const observeCreation = ({
   WebSocket.prototype.send = function(data) {
     const message = JSON.parse(String(data))
 
+    // The page can send after the click or resend after a reconnect, so release() sends
+    // the latest held frame only on an open socket and says whether it did.
     if (message.name === name && message.args[0] === action) {
-      state.release = () => send.call(
-        this,
-        data,
-      )
+      state.release = () => {
+        if (this.readyState !== WebSocket.OPEN) {
+          return false
+        }
+
+        send.call(
+          this,
+          data,
+        )
+
+        return true
+      }
 
       return
     }
@@ -206,11 +216,8 @@ test(
     })
     await page.shows({
       what: 'release creation',
-      check: () => {
-        ;(window as unknown as { continuity: { release(): void } }).continuity.release()
-
-        return true
-      },
+      check: () => (window as unknown as { continuity: { release(): boolean } }).continuity
+        .release(),
     })
     await page.shows({
       what: 'canonical creation and placement confirmed',
@@ -333,11 +340,8 @@ for (const kind of [
       )
       await page.shows({
         what: 'release confirmation',
-        check: () => {
-          ;(window as unknown as { continuity: { release(): void } }).continuity.release()
-
-          return true
-        },
+        check: () => (window as unknown as { continuity: { release(): boolean } }).continuity
+          .release(),
       })
       await page.shows({
         what: 'creation confirmed',
