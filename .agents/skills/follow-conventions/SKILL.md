@@ -17,7 +17,7 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 ## Names and values
 
 - Give a value with meaning (a timeout, a limit, a retry count, a cutoff) a named constant, declared after the imports, and share it between every site that uses it. Structural literals such as a `0` index need no name.
-- Name each meaningful intermediate value. Avoid vague names (`tmp`, `data`, `res`, `obj`) and long `&&` or `||` chains inside one condition; name the checks instead.
+- Name each meaningful intermediate value. Avoid vague names (`tmp`, `data`, `res`, `obj`) and long `&&` or `||` chains inside one condition; name the checks instead. [review-code](../review-code/SKILL.md) lists the shorthand new code never uses, such as conditional spreads and `??=`.
 - Pass a function directly when a callback only forwards its argument: `.map(toRow)`, not `.map(card => toRow(card))`.
 
 ## Decisions and errors
