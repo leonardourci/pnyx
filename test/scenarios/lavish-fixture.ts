@@ -1,4 +1,4 @@
-import { chmodSync, copyFileSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, copyFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Card } from '../../src/core/model.ts'
 import { steeringClaim } from '../../src/task-inbox/state.ts'
@@ -81,12 +81,18 @@ export function lavishFixture({ folder }: { folder: string }) {
       return args
     },
     deliver({ body }: { body: string }) {
+      const delivery = join(
+        folder,
+        'deliver.toon',
+      )
+      const pending = `${delivery}.tmp`
       writeFileSync(
-        join(
-          folder,
-          'deliver.toon',
-        ),
+        pending,
         body,
+      )
+      renameSync(
+        pending,
+        delivery,
       )
     },
     calls() {

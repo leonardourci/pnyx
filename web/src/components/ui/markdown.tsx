@@ -1,10 +1,13 @@
 import { TaskReference } from './task-reference.tsx'
 import { decodeValue, mentionId } from '../../../../src/mentions/mentions.ts'
-import { Fragment, memo, useMemo, type ReactNode } from 'react'
+import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { IMAGE, imageNames } from '../../../../src/attachments/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from './column-chip.tsx'
+import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-tokens.tsx'
+import { prepareChatTokens } from '../../hydra/chat-tokens.ts'
+import { readSkillReference } from '../../../../src/thread/skill-reference.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
@@ -88,7 +91,7 @@ const withImages = ({
     path={part}
     label={images?.get(part) ?? 'Image'}
   />
-) : part)
+) : <ChatTokenText key={n} text={part} />)
 
 const inline = ({
   tokens,
@@ -112,10 +115,19 @@ const inline = ({
       case 'strong': return <strong key={i}>{children}</strong>
       case 'em': return <em key={i}>{children}</em>
       case 'del': return <del key={i}>{children}</del>
-      case 'codespan': return <code key={i}>{token.text}</code>
+      case 'codespan': return <code key={i}><ChatTokenText text={token.text} code /></code>
+      case 'html': return <ChatTokenText key={i} text={token.text} />
       case 'br': return <br key={i} />
       case 'link': case 'image': {
         const task = token.type === 'link' ? mentionId({ href: token.href }) : undefined
+        const skillPointer = token.type === 'link' ? /^pnyx-skill:([\w%~.-]+)$/.exec(token.href) : null
+        const skillValue = skillPointer ? decodeValue({ value: skillPointer[1]! }) : undefined
+        const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
+
+        if (skill) {
+          return <SkillToken key={i} skill={skill} />
+        }
+
         const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
         const value = pointer ? decodeValue({ value: pointer[2]! }) : undefined
         const label = inlineText({ tokens: token.tokens ?? [] }).replace(
@@ -202,7 +214,7 @@ function Code({
     <div className="code-block">
       {lang && <span className="code-language">{lang}</span>}
       <pre>
-        <code>{text}</code>
+        <code><ChatTokenText text={text} code /></code>
       </pre>
     </div>
   )
@@ -384,6 +396,7 @@ const renderBlocks = ({
           node = paragraph; break
         }
         case 'code': node = <Code text={token.text} language={token.lang} />; break
+        case 'html': node = <p><ChatTokenText text={token.text} /></p>; break
         case 'table': node = (
           <Table
             token={token as Tokens.Table}
@@ -476,9 +489,39 @@ export const Markdown = memo(function Markdown({
   text: string
   block?: BlockWrap
 } & TaskLink) {
+  const context = useContext(ChatTokensContext)
+  const prepared = useMemo(
+    () => prepareChatTokens({
+      text,
+      suggestions: context.suggestions ?? [],
+    }),
+    [
+      text,
+      context.suggestions,
+    ],
+  )
   const tokens = useMemo(
-    () => markdown.lexer(text),
-    [text],
+    () => {
+      const tokens = markdown.lexer(prepared.text)
+      markdown.walkTokens(
+        tokens,
+        // eslint-disable-next-line pnyx/object-params -- Marked owns this callback signature.
+        token => {
+          token.raw = prepared.restore({ text: token.raw })
+
+          if ('href' in token) {
+            token.href = prepared.restore({ text: token.href })
+          }
+
+          if (token.type === 'code' && token.lang) {
+            token.lang = prepared.restore({ text: token.lang })
+          }
+        },
+      )
+
+      return tokens
+    },
+    [prepared],
   )
   const images = useMemo(
     () => imageNames({ text }),
@@ -486,14 +529,27 @@ export const Markdown = memo(function Markdown({
   )
 
   return (
-    <div className="markdown">{renderBlocks({
-      text,
-      tokens,
-      block,
-      openTask,
-      columnLook,
-      images,
-    })}
-    </div>
+    <ChatTokensContext.Provider
+      value={{
+        ...context,
+        tokens: prepared,
+      }}
+    >
+      <div className="markdown">{renderBlocks({
+        text,
+        tokens,
+        block: block ? ({
+          quote,
+          ...props
+        }) => block({
+          ...props,
+          quote: prepared.restore({ text: quote }),
+        }) : undefined,
+        openTask,
+        columnLook,
+        images,
+      })}
+      </div>
+    </ChatTokensContext.Provider>
   )
 })

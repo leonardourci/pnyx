@@ -12,6 +12,8 @@ import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { fireReminders } from '../src/reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../src/reminders/state.ts'
 import { reminderTime } from '../src/reminders/time.ts'
+import { until } from './scenarios/harness.ts'
+import type { ReminderScheduler } from '../src/reminders/scheduler.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 
 const hydraId = 'reminders'
@@ -378,6 +380,7 @@ test(
 test(
   'server catches missed reminders at startup and exposes the waiting list and count',
   async () => {
+    const clock = controlledReminders()
     run({
       args: [
         'remind',
@@ -417,7 +420,10 @@ test(
         assert.ok('event' in decision); writer.append({ event: decision.event })
       },
     })
-    server = await startServer({ hydraId })
+    server = await startServer({
+      hydraId,
+      reminderScheduler: clock.scheduler,
+    })
     await waitForDue()
     assert.equal(
       task().column,
@@ -430,73 +436,151 @@ test(
         later,
       ],
     })
-    let result: {
+    await clock.scheduled({ at: later })
+    const response = await fetch(new URL(
+      'reminders',
+      server.url,
+    ))
+    const result = await response.json() as {
       count: number
       reminders: { task: string }[]
-    } | undefined
-
-    for (let i = 0; i < 100; i++) {
-      result = await fetch(new URL(
-        'reminders',
-        server.url,
-      )).then(response => response.json()) as typeof result
-
-      if (result?.count === 1) {
-        break
-      }
-
-      await new Promise(resolve => setTimeout(
-        resolve,
-        20,
-      ))
     }
-
     assert.equal(
-      result?.count,
+      result.count,
       1,
     )
     assert.equal(
-      result?.reminders[0]?.task,
+      result.reminders[0]?.task,
       task().id,
     )
-    await server.close(); server = await startServer({ hydraId })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      50,
-    ))
+    await server.close()
+    assert.equal(
+      clock.pending(),
+      0,
+      'closing the server cancels its reminder timer',
+    )
+    server = await startServer({
+      hydraId,
+      reminderScheduler: clock.scheduler,
+    })
+    await clock.scheduled({ at: later })
     assert.equal(
       state().hydraMessages?.length,
       2,
+    )
+    clock.advance({ at: Date.parse(later) - 1 })
+    assert.equal(
+      task().reminder?.dueAt,
+      undefined,
+    )
+    clock.advance({ at: Date.parse(later) })
+    await waitForDue()
+    assert.equal(
+      state().hydraMessages?.length,
+      3,
+    )
+    await server.close()
+    const checked = clock.checks()
+    server = await startServer({
+      hydraId,
+      reminderScheduler: clock.scheduler,
+    })
+    await clock.inspected({ after: checked })
+    const restarted = await fetch(new URL(
+      'reminders',
+      server.url,
+    ))
+    assert.equal(
+      (await restarted.json() as { count: number }).count,
+      0,
+    )
+    assert.equal(
+      state().hydraMessages?.length,
+      3,
     )
   },
 )
 
 async function waitForDue() {
-  for (let i = 0; i < 200; i++) {
-    if (task().reminder?.dueAt) {
-      return
-    }
+  await until({
+    what: 'the durable task.reminder-due event',
+    check: () => task().reminder?.dueAt,
+  })
+}
 
-    await new Promise(resolve => setTimeout(
-      resolve,
-      20,
-    ))
+function controlledReminders() {
+  let now = Date.parse('2099-10-15T12:00:00.000Z')
+  let checks = 0
+  const pending = new Set<{
+    at: number
+    fire(): void
+  }>()
+  const scheduler: ReminderScheduler = {
+    now: () => {
+      checks++
+
+      return now
+    },
+    schedule: ({
+      at,
+      fire,
+    }) => {
+      const timer = {
+        at,
+        fire,
+      }
+      pending.add(timer)
+
+      return () => pending.delete(timer)
+    },
   }
 
-  assert.fail('server did not fire the reminder')
+  return {
+    scheduler,
+    checks: () => checks,
+    inspected: async ({ after }: { after: number }) => {
+      await until({
+        what: 'the server to inspect due reminders',
+        check: () => checks > after,
+      })
+    },
+    pending: () => pending.size,
+    scheduled: async ({ at }: { at: string }) => {
+      await until({
+        what: `the server to schedule reminder ${at}`,
+        check: () => pending.size === 1 && [...pending][0]?.at === Date.parse(at),
+      })
+    },
+    advance: ({ at }: { at: number }) => {
+      now = at
+
+      for (const timer of [...pending]) {
+        if (timer.at <= now) {
+          pending.delete(timer)
+          timer.fire()
+        }
+      }
+    },
+  }
 }
 
 test(
   'a running server fires without a later command and cancels a replaced deadline',
   async () => {
+    const clock = controlledReminders()
+    const first = clock.scheduler.now() + 400
     run({
       args: [
         'remind',
         'work',
-        new Date(Date.now() + 400).toISOString(),
+        new Date(first).toISOString(),
       ],
     })
-    server = await startServer({ hydraId })
+    server = await startServer({
+      hydraId,
+      reminderScheduler: clock.scheduler,
+    })
+    await clock.scheduled({ at: new Date(first).toISOString() })
     run({
       args: [
         'remind',
@@ -504,22 +588,37 @@ test(
         later,
       ],
     })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      600,
-    ))
+    await clock.scheduled({ at: later })
+    clock.advance({ at: first })
     assert.equal(
       task().reminder?.dueAt,
       undefined,
     )
+    assert.equal(
+      state().hydraMessages?.length || 0,
+      0,
+    )
+    const due = clock.scheduler.now() + 200
+    const dueAt = new Date(due).toISOString()
     run({
       args: [
         'remind',
         'work',
-        new Date(Date.now() + 200).toISOString(),
+        dueAt,
       ],
     })
+    await clock.scheduled({ at: dueAt })
+    clock.advance({ at: due - 1 })
+    assert.equal(
+      task().reminder?.dueAt,
+      undefined,
+    )
+    clock.advance({ at: due })
     await waitForDue()
+    assert.equal(
+      task().reminder?.dueAt,
+      dueAt,
+    )
     assert.equal(
       state().hydraMessages?.length,
       1,

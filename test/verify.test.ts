@@ -462,16 +462,15 @@ test(
         {
           command: 'node',
           args: [
-            '--test',
-            'test/*.test.ts',
+            'scripts/test.ts',
+            'unit',
           ],
         },
         {
           command: 'node',
           args: [
-            '--test',
-            '--test-concurrency=1',
-            'test/scenarios/*.test.ts',
+            'scripts/test.ts',
+            'scenarios',
           ],
         },
       ],
@@ -738,15 +737,14 @@ test(
         {
           command: 'node',
           args: [
-            '--test',
+            'scripts/test.ts',
             'test/web.test.ts',
           ],
         },
         {
           command: 'node',
           args: [
-            '--test',
-            '--test-concurrency=1',
+            'scripts/test.ts',
             'test/scenarios/browser.test.ts',
           ],
         },

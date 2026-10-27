@@ -4,11 +4,6 @@ on:
   pull_request:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
-    paths:
-      - '**'
-      - '!**/*.md'
-      - 'skills/**'
-      - 'test/**'
 
 permissions:
   contents: read

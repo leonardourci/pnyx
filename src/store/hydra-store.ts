@@ -517,7 +517,7 @@ export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
   }
 }
 
-function lockIsStale({ path }: { path: string }): boolean {
+export function lockIsStale({ path }: { path: string }): boolean {
   try {
     const pid = Number(readFileSync(
       path,
@@ -579,13 +579,19 @@ function takeOver({
 }
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-export function acquireLock({ dir }: { dir: string }): () => void {
+export function acquireLock({
+  dir,
+  timeout = LOCK_TIMEOUT_MS,
+}: {
+  dir: string
+  timeout?: number
+}): () => void {
   const path = join(
     dir,
     'writer.lock',
   )
   const takeover = `${path}.takeover`
-  const deadline = Date.now() + LOCK_TIMEOUT_MS
+  const deadline = Date.now() + timeout
 
   for (;;) {
     try {
@@ -616,7 +622,7 @@ export function acquireLock({ dir }: { dir: string }): () => void {
       continue
     }
 
-    if (Date.now() > deadline) {
+    if (Date.now() >= deadline) {
       throw new HydraError({
         message: 'Hydra is locked by another pnyx-axi writer',
         code: 'LOCKED',
@@ -668,10 +674,12 @@ export function withWriter<T>({
   hydraId,
   fn,
   create = false,
+  lockTimeout,
 }: {
   hydraId: string
   // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
   create?: boolean
+  lockTimeout?: number
   fn: (
     { writer }: {
       writer: Writer
@@ -685,7 +693,10 @@ export function withWriter<T>({
   }
 
   privateDir({ dir })
-  const release = acquireLock({ dir })
+  const release = acquireLock({
+    dir,
+    timeout: lockTimeout,
+  })
 
   try {
     let {

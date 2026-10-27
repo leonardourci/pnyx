@@ -12,7 +12,7 @@ export function SkillBadge({
 }: {
   skill: SkillReference
   colors?: SavedLabelColor[]
-  remove(): void
+  remove?(): void
 }) {
   return (
     <span className="draft-chip reference draft-skill" data-kind="skill" onMouseDown={event => event.preventDefault()}>
@@ -26,18 +26,22 @@ export function SkillBadge({
         />{CHIP_JOIN}
         </>
       )}
-      /{skill.name}{CHIP_JOIN}
-      <span className="skill-remove-slot">
-        {ICON_SPACE}
-        <Button
-          className="skill-remove"
-          tabIndex={-1}
-          aria-label={`Remove /${skill.name}`}
-          onClick={remove}
-        >
-          <Icon name="close" size={12} />
-        </Button>
-      </span>
+      /{skill.name}{remove && (
+        <>
+          {CHIP_JOIN}
+          <span className="skill-remove-slot">
+            {ICON_SPACE}
+            <Button
+              className="skill-remove"
+              tabIndex={-1}
+              aria-label={`Remove /${skill.name}`}
+              onClick={remove}
+            >
+              <Icon name="close" size={12} />
+            </Button>
+          </span>
+        </>
+      )}
     </span>
   )
 }
