@@ -1,4 +1,4 @@
-import { readdirSync } from 'node:fs'
+import { existsSync, readdirSync } from 'node:fs'
 import { join, relative, resolve } from 'node:path'
 
 // Tests sit beside the code they cover, so the launcher looks through every source root.
@@ -10,7 +10,7 @@ const ROOTS = [
   'eslint',
   'e2e',
 ]
-const FLOW_FOLDERS = [
+export const FLOW_FOLDERS = [
   'test/scenarios/',
   'e2e/',
 ]
@@ -25,19 +25,16 @@ export function isFlow({ file }: { file: string }): boolean {
   return FLOW_FOLDERS.some(folder => path.startsWith(folder))
 }
 
+// Skips fixtures/: files there are inputs that other tests run, not tests of their own.
 function walk({ folder }: { folder: string }): string[] {
-  let entries
-
-  try {
-    entries = readdirSync(
-      folder,
-      { withFileTypes: true },
-    )
-  } catch {
+  if (!existsSync(folder)) {
     return []
   }
 
-  return entries.flatMap(entry => {
+  return readdirSync(
+    folder,
+    { withFileTypes: true },
+  ).flatMap(entry => {
     const path = join(
       folder,
       entry.name,

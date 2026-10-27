@@ -28,10 +28,12 @@ const rows = [
     tests: 'changed',
   },
   {
-    paths: [
-      'src/tasks/tasks.test.ts',
-      'e2e/tasks.test.ts',
-    ],
+    paths: ['src/tasks/tasks.test.ts'],
+    reviews: ['audit-tests'],
+    tests: 'changed',
+  },
+  {
+    paths: ['e2e/tasks.test.ts'],
     reviews: ['audit-tests'],
     tests: 'changed',
   },

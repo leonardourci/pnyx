@@ -1,37 +1,70 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
+import { existsSync } from 'node:fs'
 import { test } from 'node:test'
-import { discover } from './discover.ts'
+import { discover, FLOW_FOLDERS, isFlow } from './discover.ts'
+
+const ROOT = new URL(
+  '../..',
+  import.meta.url,
+).pathname
 
 test(
-  'the unit and flow lanes together find every tracked test file once',
+  'the unit and flow lanes together find every test file once',
   () => {
-    const tracked = execFileSync(
+    const files = execFileSync(
       'git',
       [
         'ls-files',
+        '--cached',
+        '--others',
+        '--exclude-standard',
         '*.test.ts',
       ],
-      { encoding: 'utf8' },
+      {
+        cwd: ROOT,
+        encoding: 'utf8',
+      },
     )
       .split('\n')
-      .filter(Boolean)
-      .filter(file => !file.includes('/fixtures/'))
+      .filter(file => file && existsSync(`${ROOT}${file}`))
       .sort()
-    const unit = discover({ lane: 'unit' })
     const scenarios = discover({ lane: 'scenarios' })
 
     assert.deepEqual(
+      files.filter(file => file.includes('/fixtures/')),
+      [],
+    )
+    assert.deepEqual(
       [
-        ...unit,
+        ...discover({ lane: 'unit' }),
         ...scenarios,
       ].sort(),
-      tracked,
+      files,
+    )
+    assert.ok(scenarios.length > 0)
+    assert.ok(scenarios.every(file => FLOW_FOLDERS.some(folder => file.startsWith(folder))))
+  },
+)
+
+test(
+  'a named file is a flow by its folder, however the path is written',
+  () => {
+    assert.equal(
+      isFlow({ file: 'test/scenarios/tasks.test.ts' }),
+      true,
     )
     assert.equal(
-      unit.filter(file => scenarios.includes(file)).length,
-      0,
+      isFlow({ file: `${process.cwd()}/test/scenarios/tasks.test.ts` }),
+      true,
     )
-    assert.ok(scenarios.length > 0 && scenarios.every(file => file.startsWith('test/scenarios/') || file.startsWith('e2e/')))
+    assert.equal(
+      isFlow({ file: './test/scenarios/tasks.test.ts' }),
+      true,
+    )
+    assert.equal(
+      isFlow({ file: 'test/reducer.test.ts' }),
+      false,
+    )
   },
 )
