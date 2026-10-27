@@ -37,6 +37,7 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
       id?: string
     }[],
     closed: 0,
+    pages: [] as string[],
   }
   const agents = new Map<string, string>()
   const client = {
@@ -83,6 +84,7 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
             },
           ),
           refetch: async ({ direction }: { direction: string }) => {
+            calls.pages.push(direction)
             const seq = direction === 'before' ? 1 : 2
 
             return {
@@ -211,6 +213,14 @@ test(
         ],
       ],
     )
+    assert.deepEqual(
+      paseo.calls.pages,
+      [
+        'tail',
+        'before',
+      ],
+    )
+    paseo.calls.pages.length = 0
     const seq = state().seq
     assert.deepEqual(
       await harvestPaseoChats({
@@ -222,6 +232,10 @@ test(
     assert.equal(
       state().seq,
       seq,
+    )
+    assert.deepEqual(
+      paseo.calls.pages,
+      ['tail'],
     )
     assert.equal(
       paseo.calls.closed,
@@ -236,6 +250,7 @@ for (const stalled of [
 ]) {
   test(
     `Paseo history has one deadline when ${stalled ? 'a page never answers' : 'older pages never end'}`,
+    { timeout: 5000 },
     async t => {
       const {
         folder,
@@ -270,6 +285,10 @@ for (const stalled of [
             ...agent.timeline,
             refetch: async () => {
               pages++
+              assert.ok(
+                pages <= 3,
+                'history pagination must stop at its deadline',
+              )
 
               if (stalled) {
                 return new Promise(() => {})
