@@ -50,7 +50,6 @@ import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.t
 import { copyCommand } from '../copies/cli.ts'
 import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
@@ -2588,11 +2587,16 @@ function homeHydraId({ home }: { home: string }): string {
 }
 
 function firstmateHomes({ base }: { base?: string }): Output {
-  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE ?? join(
-    homedir(),
-    'projects',
-    'agentic-engineering-workflow',
-  )
+  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE
+
+  if (!root) {
+    throw new AxiError(
+      'missing --base',
+      'VALIDATION_ERROR',
+      ['Run `pnyx-axi hydra homes --base <folder holding the homes>`, or set FIRSTMATE_FACTORY_BASE'],
+    )
+  }
+
   let names: string[] = []
 
   try {
@@ -4567,7 +4571,7 @@ pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
-in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
