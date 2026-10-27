@@ -92,8 +92,25 @@ for (const outcome of [
       })
       await page.click({ selector: '[aria-label="New task in Queued"]' })
       await page.type({ text: 'Instant task' })
-      await page.click({ selector: '[aria-label="Your ask"]' })
-      await page.type({ text: 'Keep this request' })
+      // The page can move focus back to the title, so focus the ask and write it in one step until it holds the text.
+      await page.shows({
+        what: 'the ask written',
+        arg: { text: 'Keep this request' },
+        check: ({ text }) => {
+          const ask = document.querySelector<HTMLTextAreaElement>('[aria-label="Your ask"]')
+
+          if (ask && ask.value !== text) {
+            ask.focus()
+            document.execCommand(
+              'insertText',
+              false,
+              text,
+            )
+          }
+
+          return ask?.value === text
+        },
+      })
 
       if (process.env.PNYX_CAPTURE_ADAPTERS && outcome === 'saved') {
         await page.capture({ path: `${process.env.PNYX_CAPTURE_ADAPTERS}/task-before.png` })
@@ -166,8 +183,25 @@ for (const outcome of [
       if (outcome === 'newer-draft') {
         await page.click({ selector: '[aria-label="New task in Queued"]' })
         await page.type({ text: 'Newer task draft' })
-        await page.click({ selector: '[aria-label="Your ask"]' })
-        await page.type({ text: 'Keep this newer request' })
+        // The page can move focus back to the title, so focus the ask and write it in one step until it holds the text.
+        await page.shows({
+          what: 'the ask written',
+          arg: { text: 'Keep this newer request' },
+          check: ({ text }) => {
+            const ask = document.querySelector<HTMLTextAreaElement>('[aria-label="Your ask"]')
+
+            if (ask && ask.value !== text) {
+              ask.focus()
+              document.execCommand(
+                'insertText',
+                false,
+                text,
+              )
+            }
+
+            return ask?.value === text
+          },
+        })
       }
 
       await page.shows({
