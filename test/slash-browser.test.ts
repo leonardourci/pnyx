@@ -17,8 +17,8 @@ import { decidePush } from '../src/core/decide.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { startServer } from '../src/server/server.ts'
 import { readEvents, withWriter } from '../src/store/hydra-store.ts'
-import { fakeCodex } from './codex-fixture.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
+import { fakeCodex } from '../src/test-harness/codex-fixture.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
 
 function visibleLabelText({ text }: { text: string | null | undefined }): string {
   return (text ?? '').replaceAll(

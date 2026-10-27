@@ -8,7 +8,7 @@ import { HYDRA_CARD, hydraEvent } from '../../src/core/hydra.ts'
 import { join } from 'node:path'
 import { localToken } from '../../src/server/state.ts'
 import { spoolWrite, withWriter } from '../../src/store/hydra-store.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

@@ -22,7 +22,7 @@ import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { startTask } from '../src/cli/start.ts'
 import { commands } from '../src/cli/commands.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const url = 'ws://127.0.0.1:16767/ws'

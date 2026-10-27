@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from 'node:fs'
 import { dirname } from 'node:path'
-import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
+import { transcriptPath, type QueryFn } from '../server/claude.ts'
 
 export function thinkingSdk() {
   const control = { onWait: undefined as (() => void) | undefined }

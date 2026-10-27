@@ -7,14 +7,14 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
-import type { HydraEvent, HydraState } from '../../src/core/model.ts'
-import { emptyHydra, reduce } from '../../src/core/reducer.ts'
-import { startServer, type RunningServer, type ServerMessage } from '../../src/server/server.ts'
-import { localToken } from '../../src/server/state.ts'
-import { loadHydra, readEvents } from '../../src/store/hydra-store.ts'
-import type { HydraQueue } from '../../src/server/host.ts'
+import type { HydraEvent, HydraState } from '../core/model.ts'
+import { emptyHydra, reduce } from '../core/reducer.ts'
+import { startServer, type RunningServer, type ServerMessage } from '../server/server.ts'
+import { localToken } from '../server/state.ts'
+import { loadHydra, readEvents } from '../store/hydra-store.ts'
+import type { HydraQueue } from '../server/host.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
-import { fakeDispatch } from '../dispatch-fixture.ts'
+import { fakeDispatch } from './dispatch-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 
 const BIN = join(
@@ -275,8 +275,7 @@ export function scenarioGroup({
       // Pull request state comes from the fake gh-axi, never GitHub, scripted by s.pullRequest.
       PNYX_GH_AXI: join(
         import.meta.dirname,
-        '..',
-        'fixtures/github/gh-axi.sh',
+        '../../test/fixtures/github/gh-axi.sh',
       ),
       PNYX_FAKE_GITHUB: join(
         root,

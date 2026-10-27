@@ -1,7 +1,7 @@
 import { mkdirSync, appendFileSync, utimesSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Options, PermissionResult } from '@anthropic-ai/claude-agent-sdk'
-import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
+import { transcriptPath, type QueryFn } from '../server/claude.ts'
 
 export function hydraSdk({ now }: { now?: () => number } = {}) {
   // messages leave out the digest Pnyx puts before a session's first message; raw keeps it.

@@ -4,7 +4,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { lavishFixture } from './scenarios/lavish-fixture.ts'
+import { lavishFixture } from './lavish-fixture.ts'
 
 test(
   'a Lavish listener cannot consume a delivery before its payload is complete',

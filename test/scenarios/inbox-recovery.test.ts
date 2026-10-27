@@ -8,7 +8,7 @@ import { steeringNotice } from '../../src/task-inbox/notice.ts'
 import { syncHome } from '../../src/integrations/firstmate/sync.ts'
 import { enqueueSteering } from '../../src/task-inbox/inbox.ts'
 import { loadHydra, withWriter } from '../../src/store/hydra-store.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

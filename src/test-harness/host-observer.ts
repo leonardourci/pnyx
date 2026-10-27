@@ -1,9 +1,9 @@
 import { EventEmitter, once } from 'node:events'
 import { setTimeout, clearTimeout } from 'node:timers'
 import { WebSocket } from 'ws'
-import { createHost as host, type QueryFn } from '../src/server/host.ts'
-import { startServer as serve } from '../src/server/server.ts'
-import { localToken } from '../src/server/state.ts'
+import { createHost as host, type QueryFn } from '../server/host.ts'
+import { startServer as serve } from '../server/server.ts'
+import { localToken } from '../server/state.ts'
 
 const watchdog = setTimeout
 const clearWatchdog = clearTimeout

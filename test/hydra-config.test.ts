@@ -1,4 +1,4 @@
-import { fixtureCli } from './cli-fixture.ts'
+import { fixtureCli } from '../src/test-harness/cli-fixture.ts'
 import assert from 'node:assert/strict'
 import { execFile, execFileSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'

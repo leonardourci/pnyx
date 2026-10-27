@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
+import { openPage, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 // Retries wait longer than any test here, so only the owner's messages try to start Hydra.
 const pnyx = scenarioGroup({ retryDelays: [600_000] })

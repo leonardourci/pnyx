@@ -4,8 +4,8 @@ import { join } from 'node:path'
 import { build } from 'vite'
 import { hydraIdentity, localToken } from '../../src/server/state.ts'
 import type { Command } from '../../web/src/hydra/connection.ts'
-import { browserGroup } from './browser.ts'
-import { scenarioGroup } from './harness.ts'
+import { browserGroup } from '../../src/test-harness/browser.ts'
+import { scenarioGroup } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()

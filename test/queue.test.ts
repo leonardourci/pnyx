@@ -1,4 +1,4 @@
-import { checkRegistryLockOrder } from './registry-lock-order.ts'
+import { checkRegistryLockOrder } from '../src/test-harness/registry-lock-order.ts'
 import { steeringNotice } from '../src/task-inbox/notice.ts'
 import { pullRequestLanding, pullRequestLandingSync } from '../src/integrations/github/pull-request.ts'
 import assert from 'node:assert/strict'
@@ -18,8 +18,8 @@ import { project } from '../src/projects/cli.ts'
 import { advanceQueues } from '../src/queue/advance.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from '../src/queue/state.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
-import { hostObserver } from './host-observer.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
+import { hostObserver } from '../src/test-harness/host-observer.ts'
 
 const {
   startServer,

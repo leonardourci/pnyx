@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { claudeRecording, codexRecording } from './scenarios/fake-agents.ts'
+import { claudeRecording, codexRecording } from '../src/test-harness/fake-agents.ts'
 
 const root = join(
   import.meta.dirname,

@@ -19,9 +19,9 @@ import type { RunningServer } from '../src/server/server.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { cardState } from '../web/src/hydra/view.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
-import { hostObserver } from './host-observer.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
+import { hostObserver } from '../src/test-harness/host-observer.ts'
 
 const {
   startServer,

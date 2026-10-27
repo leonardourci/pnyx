@@ -2,7 +2,7 @@ import { REPORT_PROGRESS_SKILL } from '../../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { taskTimeline } from '../../web/src/hydra/task-updates.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
+import { openPage, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

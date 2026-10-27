@@ -9,8 +9,8 @@ import { decidePush, decideSession } from '../src/core/decide.ts'
 import { bufferedCaptures, commitCapture } from '../src/external-sources/capture.ts'
 import { createSourceRunner } from '../src/external-sources/runner.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
-import { until } from './scenarios/harness.ts'
-import { lavishFixture } from './scenarios/lavish-fixture.ts'
+import { until } from '../src/test-harness/harness.ts'
+import { lavishFixture } from '../src/test-harness/lavish-fixture.ts'
 
 let root = ''
 const runners: ReturnType<typeof createSourceRunner>[] = []

@@ -1,4 +1,4 @@
-import { until } from './harness.ts'
+import { until } from '../../src/test-harness/harness.ts'
 import { decidePush } from '../../src/core/decide.ts'
 import { REVIEW_MS } from '../../src/review/timer.ts'
 import { createHost } from '../../src/server/host.ts'
@@ -20,8 +20,8 @@ import { startServer } from '../../src/server/server.ts'
 import { localToken } from '../../src/server/state.ts'
 import { taskLease } from '../../src/helper/leases.ts'
 import { loadHydra, readEvents, withWriter } from '../../src/store/hydra-store.ts'
-import { fakeDispatch } from '../dispatch-fixture.ts'
-import { hydraSdk } from '../hydra-host-fixture.ts'
+import { fakeDispatch } from '../../src/test-harness/dispatch-fixture.ts'
+import { hydraSdk } from '../../src/test-harness/hydra-host-fixture.ts'
 
 test(
   'the helper command example resumes an interrupted hosted worker with its supplied actor',

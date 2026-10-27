@@ -1,9 +1,9 @@
 import { cpSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decideNote, decidePush, decideView, type Decision } from '../src/core/decide.ts'
-import { hydraEvent } from '../src/core/hydra.ts'
-import type { Note } from '../src/core/model.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { decideLink, decideNote, decidePush, decideView, type Decision } from '../core/decide.ts'
+import { hydraEvent } from '../core/hydra.ts'
+import type { Note } from '../core/model.ts'
+import { loadHydra, withWriter } from '../store/hydra-store.ts'
 
 export function seedWebFixture({ home }: { home: string }) {
   const nativePath = join(
@@ -13,7 +13,7 @@ export function seedWebFixture({ home }: { home: string }) {
   cpSync(
     join(
       import.meta.dirname,
-      'fixtures/firstmate-home',
+      '../../test/fixtures/firstmate-home',
     ),
     nativePath,
     { recursive: true },
@@ -33,14 +33,14 @@ export function seedWebFixture({ home }: { home: string }) {
   cpSync(
     join(
       import.meta.dirname,
-      'fixtures/web/thread.jsonl',
+      '../../test/fixtures/web/thread.jsonl',
     ),
     transcript,
   )
   const rows = JSON.parse(readFileSync(
     join(
       import.meta.dirname,
-      'fixtures/web/hydra.json',
+      '../../test/fixtures/web/hydra.json',
     ),
     'utf8',
   )) as {
@@ -152,7 +152,7 @@ export function seedWebFixture({ home }: { home: string }) {
       const notes = JSON.parse(readFileSync(
         join(
           import.meta.dirname,
-          'fixtures/web/notes.json',
+          '../../test/fixtures/web/notes.json',
         ),
         'utf8',
       )) as Note[]

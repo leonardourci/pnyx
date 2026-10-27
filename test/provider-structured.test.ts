@@ -7,8 +7,8 @@ import { test } from 'node:test'
 import { outcomeSchema } from '../src/helper/runner.ts'
 import { claudeProvider } from '../src/server/claude.ts'
 import { codexProvider } from '../src/server/codex.ts'
-import { fakeCodex } from './codex-fixture.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
+import { fakeCodex } from '../src/test-harness/codex-fixture.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
 
 test(
   'Claude delivers its structured result even when the assistant also emits prose',

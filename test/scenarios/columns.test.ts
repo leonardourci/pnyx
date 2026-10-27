@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { scenarioGroup } from './harness.ts'
+import { scenarioGroup } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

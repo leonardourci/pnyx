@@ -7,7 +7,7 @@ import { emptyHydra, replay } from '../../src/core/reducer.ts'
 import { captureResult, registerSource, commandIdentity, appendSource } from '../../src/external-sources/sources.ts'
 import { steeringClaim } from '../../src/task-inbox/state.ts'
 import { hydraDir, withWriter } from '../../src/store/hydra-store.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const LISTENER_TIMEOUT_MS = 100

@@ -6,8 +6,8 @@ import { test } from 'node:test'
 import { claudeProvider } from '../src/server/claude.ts'
 import { codexProvider } from '../src/server/codex.ts'
 import type { HostedSession } from '../src/server/provider.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
-import { fakeCodex } from './codex-fixture.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
+import { fakeCodex } from '../src/test-harness/codex-fixture.ts'
 
 async function turn({ session }: { session: HostedSession }) {
   async function* input() {

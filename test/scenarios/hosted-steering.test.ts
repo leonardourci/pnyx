@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { askHost } from '../../src/server/state.ts'
 import { pausedDeclaration } from '../../src/core/lifecycle.ts'
 import { steeringNotice } from '../../src/task-inbox/notice.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

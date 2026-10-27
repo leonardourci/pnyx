@@ -13,7 +13,7 @@ import { homeKey, resolveHome } from '../src/integrations/firstmate/home.ts'
 import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../src/integrations/firstmate/status.ts'
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
 import { roleColumn } from '../src/core/hydra.ts'
-import { stopAll, track } from './processes.ts'
+import { stopAll, track } from '../src/test-harness/processes.ts'
 import { startServer } from '../src/server/server.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.

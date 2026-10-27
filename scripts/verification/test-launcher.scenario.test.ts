@@ -3,7 +3,7 @@ import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { until } from '../../test/scenarios/harness.ts'
+import { until } from '../../src/test-harness/harness.ts'
 import { discoverTests } from './discover.ts'
 import { test } from 'node:test'
 

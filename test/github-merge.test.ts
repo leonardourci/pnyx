@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../src/integrations/github/merge-evidence.ts'
 import { pullRequestLanding, pullRequestLandingSync, pullRequestState } from '../src/integrations/github/pull-request.ts'
-import { scriptPullRequest, type FakePullRequest } from './scenarios/github.ts'
+import { scriptPullRequest, type FakePullRequest } from '../src/test-harness/github.ts'
 
 async function evidence({
   input,

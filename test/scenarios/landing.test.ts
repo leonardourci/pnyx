@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { appendFileSync, existsSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { git, scenarioGroup, until } from './harness.ts'
+import { git, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup({ incorporateSteering: true })
 

@@ -7,7 +7,7 @@ import { projectMemoryView } from '../../src/projects/memory.ts'
 import { staleLearnings } from '../../src/memory/learnings.ts'
 import { startReviewTimer, REVIEW_MS } from '../../src/review/timer.ts'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

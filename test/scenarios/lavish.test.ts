@@ -8,8 +8,8 @@ import { emptyHydra, replay } from '../../src/core/reducer.ts'
 import { armLavish } from '../../src/external-sources/lavish.ts'
 import { withWriter } from '../../src/store/hydra-store.ts'
 import { steeringClaim } from '../../src/task-inbox/state.ts'
-import { scenarioGroup, until } from './harness.ts'
-import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
+import { claimFlags, lavishFixture, readAndAck } from '../../src/test-harness/lavish-fixture.ts'
 
 const pnyx = scenarioGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>

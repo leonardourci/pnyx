@@ -7,7 +7,7 @@ import { browserCommand } from '../../src/server/browser.ts'
 import { localToken } from '../../src/server/state.ts'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
-import { openPage, scenarioGroup } from './harness.ts'
+import { openPage, scenarioGroup } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

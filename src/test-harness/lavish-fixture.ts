@@ -1,7 +1,7 @@
 import { chmodSync, copyFileSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Card } from '../../src/core/model.ts'
-import { steeringClaim } from '../../src/task-inbox/state.ts'
+import type { Card } from '../core/model.ts'
+import { steeringClaim } from '../task-inbox/state.ts'
 import type { scenarioGroup } from './harness.ts'
 
 type Scenario = Awaited<ReturnType<ReturnType<typeof scenarioGroup>['scenario']>>
@@ -22,7 +22,7 @@ export function lavishFixture({ folder }: { folder: string }) {
   copyFileSync(
     join(
       import.meta.dirname,
-      '../fixtures/external-sources/lavish-axi.mjs',
+      '../../test/fixtures/external-sources/lavish-axi.mjs',
     ),
     executable,
   )

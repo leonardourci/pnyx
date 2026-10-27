@@ -2,7 +2,7 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setImmediate as yieldToChild } from 'node:timers/promises'
-import type { SpawnCodex } from '../src/server/codex.ts'
+import type { SpawnCodex } from '../server/codex.ts'
 
 export function fakeCodex({
   root,
@@ -49,7 +49,7 @@ export function fakeCodex({
       [
         join(
           import.meta.dirname,
-          '../src/test-harness/fakes/codex.mjs',
+          'fakes/codex.mjs',
         ),
       ],
       {

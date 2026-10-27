@@ -1,4 +1,4 @@
-import { incorporateInboxNotice } from '../../../test/inbox-fixture.ts'
+import { incorporateInboxNotice } from '../inbox-fixture.ts'
 import { appendFileSync } from 'node:fs'
 import { createInterface } from 'node:readline'
 

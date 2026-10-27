@@ -12,7 +12,7 @@ import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { fireReminders } from '../src/reminders/fire.ts'
 import { reminderDeadline, waitingReminders } from '../src/reminders/state.ts'
 import { reminderTime } from '../src/reminders/time.ts'
-import { until } from './scenarios/harness.ts'
+import { until } from '../src/test-harness/harness.ts'
 import type { ReminderScheduler } from '../src/reminders/scheduler.ts'
 import { startServer, type RunningServer } from '../src/server/server.ts'
 

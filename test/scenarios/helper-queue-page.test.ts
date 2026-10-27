@@ -3,9 +3,9 @@ import { test } from 'node:test'
 import { hydraEvent, HYDRA_CARD } from '../../src/core/hydra.ts'
 import { withWriter } from '../../src/store/hydra-store.ts'
 import type { HelperChange } from '../../src/helper/state.ts'
-import { browserGroup } from './browser.ts'
-import { claudeRecording } from './fake-agents.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { browserGroup } from '../../src/test-harness/browser.ts'
+import { claudeRecording } from '../../src/test-harness/fake-agents.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()

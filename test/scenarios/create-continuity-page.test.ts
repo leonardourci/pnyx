@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { browserGroup } from './browser.ts'
-import { scenarioGroup } from './harness.ts'
+import { browserGroup } from '../../src/test-harness/browser.ts'
+import { scenarioGroup } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()

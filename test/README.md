@@ -2,7 +2,8 @@
 
 - `test/*.test.ts`: unit and component tests.
 - `test/scenarios/*.test.ts`: scenarios. Each one drives a disposable Pnyx through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents.
-- `test/fixtures/`: synthetic inputs. The recorded agent sessions the fakes replay are in `src/test-harness/recordings/`, and fake terminal hosts and the fake Codex app-server in `src/test-harness/fakes/`.
+- `test/fixtures/`: synthetic inputs.
+- `src/test-harness/`: the shared harness: the scenario and browser runners, the fake agents, the recorded sessions they replay (`recordings/`) and the fake terminal hosts and Codex app-server (`fakes/`).
 
 Run the scenarios after a build, one file at a time:
 
@@ -53,7 +54,7 @@ Rules:
 
 ## Browser journeys
 
-`browser.ts` starts one headless Chrome for a file (`browserGroup()`, next to `scenarioGroup()`), with a temporary profile, talking to it over a pipe. `page-journeys.test.ts` is the owner's core journeys on the built page: chat, the composer, a card's Updates and answering a question.
+`src/test-harness/browser.ts` starts one headless Chrome for a file (`browserGroup()`, next to `scenarioGroup()`), with a temporary profile, talking to it over a pipe. `page-journeys.test.ts` is the owner's core journeys on the built page: chat, the composer, a card's Updates and answering a question.
 
 ```ts
 const chrome = browserGroup()
@@ -72,7 +73,7 @@ await page.close()                    // fails if the page threw
 
 ## The fake agents
 
-`fake-agents.ts` replays real sessions: each message a fake Claude Code gets starts the recorded Agent SDK turn again, and the fake Codex app-server answers each request with its recorded result and notifications. Pnyx's own provider code reads that output, so a change in what the agents send shows up here.
+`src/test-harness/fake-agents.ts` replays real sessions: each message a fake Claude Code gets starts the recorded Agent SDK turn again, and the fake Codex app-server answers each request with its recorded result and notifications. Pnyx's own provider code reads that output, so a change in what the agents send shows up here.
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads. `agent-pins.test.ts` fails while the recording is from another SDK version, or when Pnyx uses a Codex method the recorded Codex protocol does not have.
 

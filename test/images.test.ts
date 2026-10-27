@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { attachedImages, imageLine } from '../src/attachments/images.ts'
 import { claudeProvider, type QueryFn } from '../src/server/claude.ts'
 import { codexProvider } from '../src/server/codex.ts'
-import { fakeCodex } from './codex-fixture.ts'
+import { fakeCodex } from '../src/test-harness/codex-fixture.ts'
 
 const NAME = '0199f00d-1111-7000-8000-000000000001.png'
 

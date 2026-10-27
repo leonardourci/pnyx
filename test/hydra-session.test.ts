@@ -12,7 +12,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath } from '../src/dispatch/config.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { runCommand } from '../src/integrations/command/run.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 test(
   'the hosted Hydra proposes owner-only commands without applying them',

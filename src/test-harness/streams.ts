@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../core/model.ts'
 
 export const STREAMS = join(
   import.meta.dirname,
-  'fixtures',
+  '../../test/fixtures',
   'streams',
 )
 

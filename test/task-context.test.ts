@@ -3,7 +3,7 @@ import {
   SET_UP_SKILL,
   INSCRIBE_SKILL,
 } from '../src/integrations/skills/names.ts'
-import { checkRegistryLockOrder } from './registry-lock-order.ts'
+import { checkRegistryLockOrder } from '../src/test-harness/registry-lock-order.ts'
 import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
 import { commandCapture } from './command-capture.ts'

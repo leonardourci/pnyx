@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { projectMemoryView, writeProjectMemory } from '../../src/projects/memory.ts'
 import { ownerMemory, ownerRevision } from '../../src/store/owner-memory.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const OWNER_LIMIT = 24000

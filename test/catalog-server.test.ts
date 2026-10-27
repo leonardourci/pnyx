@@ -12,12 +12,12 @@ import { type ServerMessage } from '../src/server/server.ts'
 import { localToken } from '../src/server/state.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import type { Catalog } from '../src/thread/catalog.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
+import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
 import { createHost } from '../src/server/host.ts'
 import { recordCompaction } from '../src/compaction/record.ts'
 import { sessionId } from '../src/core/tasks.ts'
-import { hostObserver } from './host-observer.ts'
+import { hostObserver } from '../src/test-harness/host-observer.ts'
 
 test(
   'WebSocket catalogs merge live Claude builtins, survive unavailable SDK commands and follow the receiving harness',

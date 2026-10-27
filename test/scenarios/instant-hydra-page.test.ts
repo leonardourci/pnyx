@@ -6,8 +6,8 @@ import { join } from 'node:path'
 import { commands } from '../../src/cli/commands.ts'
 import { listHydras } from '../../src/server/hydras.ts'
 import { hydraDir, loadHydra } from '../../src/store/hydra-store.ts'
-import { browserGroup } from './browser.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { browserGroup } from '../../src/test-harness/browser.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()

@@ -1,4 +1,4 @@
-import { fixtureCli } from './cli-fixture.ts'
+import { fixtureCli } from '../src/test-harness/cli-fixture.ts'
 // Harvested notes: summaries, decisions and context that transcripts and linked
 // pull requests already hold, folded into cards and search. Fixtures and a temp
 // PNYX_HOME only; gh-axi is a fake.

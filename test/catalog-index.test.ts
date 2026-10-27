@@ -1,5 +1,5 @@
 import { catalogWatches } from './catalog-watch-fixture.ts'
-import { hostObserver } from './host-observer.ts'
+import { hostObserver } from '../src/test-harness/host-observer.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'

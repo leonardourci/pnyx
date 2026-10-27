@@ -13,7 +13,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath, effectiveDispatch, writeConfig } from '../src/dispatch/config.ts'
 import { chooseCandidate, chosenSettings, validateChoice } from '../src/dispatch/select.ts'
 import { loadHydra, hydraDir, withWriter } from '../src/store/hydra-store.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 function lab() {
   const root = mkdtempSync(join(

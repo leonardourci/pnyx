@@ -7,8 +7,8 @@ import { hydraConfig, HYDRA_CARD } from '../../src/core/hydra.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
 import { hydraConversation } from '../../web/src/hydra/conversation.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
-import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
+import { openPage, scenarioGroup, until } from '../../src/test-harness/harness.ts'
+import { claimFlags, lavishFixture, readAndAck } from '../../src/test-harness/lavish-fixture.ts'
 
 const pnyx = scenarioGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>

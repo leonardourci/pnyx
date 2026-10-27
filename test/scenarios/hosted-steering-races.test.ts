@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { steeringNotice } from '../../src/task-inbox/notice.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
+import { openPage, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

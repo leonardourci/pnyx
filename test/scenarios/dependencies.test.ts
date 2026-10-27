@@ -10,7 +10,7 @@ import { boardReview } from '../../src/review/board.ts'
 import { advanceQueues } from '../../src/queue/advance.ts'
 import { startAgent } from '../../src/integrations/paseo/launch.ts'
 import type { Connect } from '../../src/integrations/paseo/client.ts'
-import { git, scenarioGroup, until } from './harness.ts'
+import { git, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup({ incorporateSteering: true })
 

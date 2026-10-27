@@ -3,8 +3,8 @@ import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
-import { browserGroup } from './browser.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { browserGroup } from '../../src/test-harness/browser.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 // The owner's own journeys on the built page, in one headless Chrome against one Pnyx.
 const pnyx = scenarioGroup({ incorporateSteering: true })

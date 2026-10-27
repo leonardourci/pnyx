@@ -1,5 +1,5 @@
 import { MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
-import { seedWebFixture } from './web-fixture.ts'
+import { seedWebFixture } from '../src/test-harness/web-fixture.ts'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
@@ -18,7 +18,7 @@ import { acquireLock, hydraDir, hydrasDir, loadHydra, readEvents, spoolDir, spoo
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
-import { stopAll, track } from './processes.ts'
+import { stopAll, track } from '../src/test-harness/processes.ts'
 import type { HydraSummary } from '../src/server/hydras.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.

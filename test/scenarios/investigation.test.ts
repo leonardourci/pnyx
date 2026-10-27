@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { REPORT_MAX_CHARS } from '../../src/investigation/report.ts'
-import { scenarioGroup, until } from './harness.ts'
+import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup({ incorporateSteering: true })
 
