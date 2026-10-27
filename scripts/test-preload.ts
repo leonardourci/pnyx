@@ -1,6 +1,6 @@
 import { createTestEnvironment } from './test-environment.ts'
 
-const isolated = createTestEnvironment({ inherited: process.env })
+const isolated = createTestEnvironment()
 
 // These are Node's private test transport, set by the runner after launch isolation.
 for (const key of [

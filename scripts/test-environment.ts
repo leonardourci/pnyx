@@ -1,7 +1,7 @@
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
-export function createTestEnvironment({ inherited }: { inherited: NodeJS.ProcessEnv }) {
+export function createTestEnvironment() {
   // Short paths also leave room for Unix socket names inside a test's own folders.
   const root = realpathSync(mkdtempSync('/tmp/pt-'))
   const bin = join(
@@ -77,16 +77,6 @@ exit 79
       env[key]!,
       { recursive: true },
     )
-  }
-
-  for (const key of [
-    'PNYX_CHROME',
-    'PNYX_BROWSER_TESTS',
-    'PNYX_BROWSER_SLOWDOWN',
-  ]) {
-    if (inherited[key] !== undefined) {
-      env[key] = inherited[key]
-    }
   }
 
   return {
