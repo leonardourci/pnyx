@@ -58,10 +58,16 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
     'SIGINT',
     stop,
   )
-  const result = await runUpgrade({ signal: stopping.signal }).finally(() => process.off(
-    'SIGINT',
-    stop,
-  ))
+  let result: Awaited<ReturnType<typeof runUpgrade>>
+
+  try {
+    result = await runUpgrade({ signal: stopping.signal })
+  } finally {
+    process.off(
+      'SIGINT',
+      stop,
+    )
+  }
 
   if (result.state === 'refused') {
     throw new AxiError(
@@ -110,18 +116,23 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
     )
   }
 
+  if (!pids.length) {
+    return {
+      steps: result.steps,
+      result: 'Upgraded',
+      help: ['Run `pnyx-axi serve` to start the server'],
+    }
+  }
+
   return {
     steps: [
       ...result.steps,
-      ...pids.length ? [
-        {
-          step: 'restart',
-          state: 'done',
-          seconds: 0,
-        },
-      ] : [],
+      {
+        step: 'restart',
+        state: 'done',
+        seconds: 0,
+      },
     ],
     result: 'Upgraded',
-    ...pids.length ? {} : { help: ['Run `pnyx-axi serve` to start the server'] },
   }
 }

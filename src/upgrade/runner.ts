@@ -133,18 +133,31 @@ export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } =
     }
 
     // A remote commit this checkout already contains is not news; one it never fetched is.
-    return await git({
-      root,
-      args: [
-        'merge-base',
-        '--is-ancestor',
-        remote,
-        'HEAD',
-      ],
-    }).then(
-      () => false,
-      () => true,
-    )
+    try {
+      await git({
+        root,
+        args: [
+          'merge-base',
+          '--is-ancestor',
+          remote,
+          'HEAD',
+        ],
+      })
+
+      return false
+    } catch {
+      return true
+    }
+  } catch {
+    // Offline or no origin: no answer, so the page shows no hint.
+    return undefined
+  }
+}
+
+// A git read that fails on a folder that is not a checkout, or offline, leaves its value unknown.
+async function unknownOnFailure<T>({ read }: { read(): Promise<T> }) {
+  try {
+    return await read()
   } catch {
     return undefined
   }
@@ -152,14 +165,16 @@ export async function upgradeAvailable({ root = PNYX_ROOT }: { root?: string } =
 
 // Every reason the folder cannot be upgraded as it is; Pnyx never stashes or switches for the owner.
 export async function refusals({ root }: { root: string }): Promise<string[]> {
-  const branch = await git({
-    root,
-    args: [
-      'rev-parse',
-      '--abbrev-ref',
-      'HEAD',
-    ],
-  }).catch(() => undefined)
+  const branch = await unknownOnFailure({
+    read: () => git({
+      root,
+      args: [
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ],
+    }),
+  })
 
   if (branch === undefined) {
     return ['The Pnyx folder is not a git checkout.']
@@ -180,10 +195,20 @@ export async function refusals({ root }: { root: string }): Promise<string[]> {
     3,
   ).join(', ')
 
-  return [
-    ...branch === 'main' ? [] : [branch === 'HEAD' ? 'Detached HEAD, not on main.' : `On ${branch}, not main.`],
-    ...changed.length ? [`${changed.length} ${changed.length === 1 ? 'file' : 'files'} with local changes: ${shown}${changed.length > 3 ? ` and ${changed.length - 3} more` : ''}.`] : [],
-  ]
+  const reasons: string[] = []
+
+  if (branch === 'HEAD') {
+    reasons.push('Detached HEAD, not on main.')
+  } else if (branch !== 'main') {
+    reasons.push(`On ${branch}, not main.`)
+  }
+
+  if (changed.length) {
+    const more = changed.length > 3 ? ` and ${changed.length - 3} more` : ''
+    reasons.push(`${changed.length} ${changed.length === 1 ? 'file' : 'files'} with local changes: ${shown}${more}.`)
+  }
+
+  return reasons
 }
 
 export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
@@ -237,13 +262,15 @@ async function upgrade({
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
   const reasons = await refusals({ root })
-  const from = await git({
-    root,
-    args: [
-      'rev-parse',
-      'HEAD',
-    ],
-  }).catch(() => undefined)
+  const from = await unknownOnFailure({
+    read: () => git({
+      root,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    }),
+  })
 
   if (reasons.length) {
     return {
@@ -251,7 +278,7 @@ async function upgrade({
       steps,
       reasons,
       from,
-      to: await remoteMain({ root }).catch(() => undefined),
+      to: await unknownOnFailure({ read: () => remoteMain({ root }) }),
     }
   }
 

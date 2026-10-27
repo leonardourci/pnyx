@@ -1043,15 +1043,21 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           shown={panel}
           connected={connected}
           upgrade={upgrade}
-          startUpgrade={() => void command({
-            name: 'hydra',
-            args: [
-              'send',
-              `--text=${UPGRADE_COMMAND}`,
-              '--event-id',
-              crypto.randomUUID(),
-            ],
-          }).catch((error: Error) => notify({ text: error.message }))}
+          startUpgrade={async () => {
+            try {
+              await command({
+                name: 'hydra',
+                args: [
+                  'send',
+                  `--text=${UPGRADE_COMMAND}`,
+                  '--event-id',
+                  crypto.randomUUID(),
+                ],
+              })
+            } catch (error) {
+              notify({ text: (error as Error).message })
+            }
+          }}
           oracle={(
             <Oracle
               selected={selected}

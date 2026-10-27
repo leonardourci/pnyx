@@ -91,7 +91,7 @@ export function UpgradeRow({
           </ul>
         ) : operation.steps.length > 0 && operation.state !== 'current' && <Steps operation={operation} />}
         {operation.state === 'running' && (
-          <Button variant="surface" className="upgrade-fix" onClick={() => void stop()}>
+          <Button variant="surface" className="upgrade-fix" onClick={stop}>
             <Icon name="stop" size={12} />Stop
           </Button>
         )}

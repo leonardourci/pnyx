@@ -211,14 +211,19 @@ export function HydraChat({
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
   const holding = Boolean(compacting) || upgrading
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
+
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
-  const stop = () => command({
-    name: 'hydra',
-    args: ['stop'],
-  }).then(
-    () => {},
-    (error: Error) => notify({ text: error.message }),
-  )
+  const stop = async () => {
+    try {
+      await command({
+        name: 'hydra',
+        args: ['stop'],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const pending = sending.filter(s => !messages.some(m => m.id === s.id))
   // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
@@ -234,11 +239,11 @@ export function HydraChat({
       ...message,
       route: 'hydra' as const,
     })),
-    ...(holding ? pending.filter(item => !held.has(item.id)).map(item => ({
+    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
       ...item,
       actor: 'web',
       route: 'hydra' as const,
-    })) : []),
+    })),
   ]
   useEffect(
     () => {
