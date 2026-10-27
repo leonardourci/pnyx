@@ -24,6 +24,7 @@ import type { Attention } from '../src/core/model.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 import { loadHydra, readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
+import { until } from './scenarios/harness.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -562,8 +563,15 @@ test(
       { recursive: true },
     )
     const received: string[] = []
+    let ended = false
     const server = createServer(socket => {
       let data = ''
+      socket.once(
+        'end',
+        () => {
+          ended = true
+        },
+      )
       socket.on(
         'data',
         chunk => {
@@ -595,6 +603,11 @@ test(
           'Stop',
         ],
         input: fixture({ name: 'claude-stop' }),
+      })
+      // The hook exits once it wrote the line; the server reads it after that.
+      await until({
+        what: 'the hook connection to end',
+        check: () => ended,
       })
     } finally {
       server.close()
