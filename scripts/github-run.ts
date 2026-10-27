@@ -75,7 +75,7 @@ const files = execFileSync(
   { encoding: 'utf8' },
 ).split('\0')
   .filter(path => path && existsSync(path))
-// Every step runs even after one fails, as the workflow's separate steps report each outcome.
+// Every step runs even after one fails, so one run reports all failures.
 const commands = (steps.length ? steps : Object.keys(STEPS)).map(step =>
   `{ echo "github-run: ${step}"; ${STEPS[step]} || { echo "github-run: ${step} failed"; failed=1; }; }`)
 const run = spawn(

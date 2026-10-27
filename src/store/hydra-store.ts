@@ -49,8 +49,8 @@ export function privateDir({ dir }: { dir: string }): void {
     },
   )
 
-  // Linux reports even an unchanged mode to watchers of the parent folder, and the server's
-  // watcher of the Hydras folder answers by retrying any Hydra it could not load, here again.
+  // On Linux, chmod notifies watchers of the parent folder even when the mode is unchanged.
+  // The server's Hydras-folder watcher retries Hydras that failed to load, which calls this again.
   if ((statSync(dir).mode & 0o777) !== 0o700) {
     chmodSync(
       dir,
