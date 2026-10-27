@@ -182,7 +182,7 @@ End of the long update.`
         return true
       },
     })
-    await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    await page.click({ selector: `${card} .card-state` })
     await page.click({
       selector: `${card} .task-updates :is(summary, button)`,
       text: 'worker updates',

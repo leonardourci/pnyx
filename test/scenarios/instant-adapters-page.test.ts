@@ -143,7 +143,7 @@ for (const outcome of [
         await page.shows({
           what: 'edit the provisional task title',
           check: () => {
-            const edit = document.querySelector<HTMLButtonElement>('.card [aria-label="Edit task title"]')
+            const edit = document.querySelector<HTMLButtonElement>('.card [aria-label="Edit title and brief"]')
             edit?.click()
 
             return !!edit
@@ -154,7 +154,7 @@ for (const outcome of [
           check: () => document.activeElement?.getAttribute('aria-label') === 'Task title',
         })
         await page.type({ text: ' renamed' })
-        await page.press({ key: 'Enter' })
+        await page.click({ selector: '.task-editor [type="submit"]' })
         await page.shows({
           what: 'dependent rename remains queued',
           check: () => {

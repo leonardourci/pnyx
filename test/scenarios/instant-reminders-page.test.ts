@@ -31,7 +31,7 @@ for (const outcome of [
         what: 'connected task',
         check: () => document.querySelector('[data-connected=true]') && document.querySelector('.card'),
       })
-      await page.click({ selector: '.card-open' })
+      await page.click({ selector: '.card .card-state' })
       await page.shows({
         what: 'selected task',
         check: () => document.querySelector('.card.selected .task-updates'),
@@ -263,7 +263,7 @@ for (const outcome of [
           await page.capture({ path: `${process.env.PNYX_CAPTURE_REMINDERS}/confirmed.png` })
         }
 
-        await page.click({ selector: '.card-open' })
+        await page.click({ selector: '.card .card-state' })
         await page.click({ selector: '[aria-label="Remind"]' })
         await page.shows({
           what: 'the clear button fully laid out in the open editor',

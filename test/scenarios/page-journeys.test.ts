@@ -367,9 +367,10 @@ test(
       await page.press({ key })
       await page.shows({
         what: `${key} opens the sent task mention after ${visited.at(-1)}`,
-        check: () => document.querySelector('.card-open[aria-label="Open task Ship the layout"]')?.getAttribute('aria-expanded') === 'true',
+        arg: { card: `.card[data-task="${s.task({ key: 'ship' }).id}"]` },
+        check: ({ card }) => document.querySelector(card)?.classList.contains('selected'),
       })
-      await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+      await page.click({ selector: `.card[data-task="${s.task({ key: 'ship' }).id}"] .card-state` })
     }
 
     const sent = s.received({ cwd: agent.cwd }).at(-1)
@@ -782,24 +783,24 @@ test(
     const s = await pnyx.scenario()
     const { worker } = await startedTask({ s })
     const page = await openHydra({ s })
-    const card = '.card-open[aria-label="Open task Ship the layout"]'
+    const card = `.card[data-task="${s.task({ key: 'ship' }).id}"]`
     const closed = await page.shows({
       what: 'the closed card',
       arg: { card },
       check: ({ card }) => {
-        const title = document.querySelector(card)
-        const box = title?.closest('.card')?.getBoundingClientRect()
+        const element = document.querySelector(card)
+        const box = element?.getBoundingClientRect()
 
-        return title?.getAttribute('aria-expanded') === 'false' && !document.querySelector('.task-updates') && box && { top: box.top }
+        return element?.classList.contains('selected') === false && !document.querySelector('.task-updates') && box && { top: box.top }
       },
     })
-    await page.click({ selector: card })
+    await page.click({ selector: `${card} .card-state` })
     // Once no double-click rename follows, the keyboard lands in the Updates.
     await page.shows({
       what: 'the card open on its focused Updates',
       arg: { card },
       check: ({ card }) => {
-        const expanded = document.querySelector(card)?.getAttribute('aria-expanded') === 'true'
+        const expanded = document.querySelector(card)?.classList.contains('selected')
         const updates = document.querySelector<HTMLElement>('.task-updates')
         const rows = updates?.innerText ?? ''
 
@@ -823,8 +824,7 @@ test(
       arg: { card },
       check: ({ card }) => {
         const fold = document.querySelector<HTMLDetailsElement>('.task-updates > ol > li:first-child details.report-fold')
-        const box = document.querySelector(card)?.closest('.card')
-          ?.getBoundingClientRect()
+        const box = document.querySelector(card)?.getBoundingClientRect()
         const folded = fold && !fold.open && fold.innerText.includes('Reported to Hydra') && !fold.innerText.includes('the header is next')
 
         return folded && box && { top: box.top }
@@ -897,11 +897,11 @@ test(
       },
     })
 
-    await page.click({ selector: card })
+    await page.click({ selector: `${card} .card-state` })
     await page.shows({
       what: 'the card closed again',
       arg: { card },
-      check: ({ card }) => document.querySelector(card)?.getAttribute('aria-expanded') === 'false'
+      check: ({ card }) => document.querySelector(card)?.classList.contains('selected') === false
         && !document.querySelector('.task-updates'),
     })
     await page.close()
@@ -1126,7 +1126,7 @@ End of the long update.`
       ],
     })
     const page = await openHydra({ s })
-    await page.click({ selector: '.card-open[aria-label="Open task Ship the layout"]' })
+    await page.click({ selector: `${card} .card-state` })
     const control = await page.shows({
       what: 'formatted update clamped to three compact lines',
       arg: { card },
@@ -1171,14 +1171,11 @@ End of the long update.`
           && content.parentElement?.querySelector('.show-more')?.getAttribute('aria-expanded') === 'false'
       },
     })
-    await page.click({
-      selector: `${card} .disclosure > summary`,
-      text: "Hydra's build instructions",
-    })
+    await page.click({ selector: `${card} .card-open` })
     await page.shows({
-      what: 'the build instructions formatted as Markdown',
+      what: 'the brief, folded out of the title, formatted as Markdown',
       arg: { card },
-      check: ({ card }) => document.querySelector(`${card} .disclosure[open] .markdown strong`)?.textContent === 'Ready for review',
+      check: ({ card }) => document.querySelector(`${card} .card-brief:not([hidden]) .markdown strong`)?.textContent === 'Ready for review',
     })
     const asked = await worker.run({
       args: [
@@ -1244,7 +1241,7 @@ End of the long update.`
     await page.click({ selector: `${card} .ask-option .task-reference` })
     await page.shows({
       what: 'the option reference opens its task',
-      check: () => document.querySelector('.card-open[aria-label="Open task Reference task"]')?.getAttribute('aria-expanded') === 'true',
+      check: () => [...document.querySelectorAll('.card.selected .card-open')].some(title => title.textContent === 'Reference task'),
     })
     await page.shows({
       what: 'following the reference did not select the option',
