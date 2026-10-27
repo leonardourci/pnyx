@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile, execFileSync, fork } from 'node:child_process'
+import { once } from 'node:events'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -205,7 +206,8 @@ test(
 
 test(
   'hydra check lists only tracked changes by others and waits for the next one',
-  async () => {
+  { timeout: 30_000 },
+  async t => {
     const f = fixture()
     f.run({
       args: [
@@ -286,30 +288,110 @@ test(
       f.state().seq,
     )
 
-    const waiting = execFileAsync(
-      process.execPath,
-      [
-        bin,
-        'hydra',
-        'check',
-        '--after',
-        String(through),
-        '--wait',
-        '20',
-      ],
-      {
-        env: {
-          ...process.env,
-          PNYX_HOME: f.root,
-          PNYX_SEMANTIC: 'off',
-        },
-        encoding: 'utf8',
-      },
+    const preload = join(
+      f.root,
+      'wait-gate.mjs',
     )
-    await new Promise(resolve => setTimeout(
-      resolve,
-      500,
-    ))
+    writeFileSync(
+      preload,
+      `
+      import timers from 'node:timers/promises'
+      import { syncBuiltinESMExports } from 'node:module'
+      let now = Date.now()
+      Date.now = () => now
+      timers.setTimeout = delay => new Promise(resolve => {
+        process.once('message', ({ advance }) => { now += advance; resolve() })
+        process.send({ waiting: delay })
+      })
+      syncBuiltinESMExports()
+    `,
+    )
+
+    const check = ({
+      after,
+      seconds,
+    }: {
+      after: number
+      seconds: number
+    }) => {
+      const child = fork(
+        bin,
+        [
+          'hydra',
+          'check',
+          '--after',
+          String(after),
+          '--wait',
+          String(seconds),
+        ],
+        {
+          execArgv: [
+            '--import',
+            preload,
+          ],
+          env: {
+            ...process.env,
+            PNYX_HOME: f.root,
+            PNYX_SEMANTIC: 'off',
+          },
+          silent: true,
+        },
+      )
+      let stdout = ''
+      let stderr = ''
+      child.stdout!.on(
+        'data',
+        chunk => {
+          stdout += chunk
+        },
+      )
+      child.stderr!.on(
+        'data',
+        chunk => {
+          stderr += chunk
+        },
+      )
+      const done = once(
+        child,
+        'close',
+      ).then(([code]) => {
+        assert.equal(
+          code,
+          0,
+          stderr,
+        )
+
+        return stdout
+      })
+      const nextWait = () => Promise.race([
+        once(
+          child,
+          'message',
+        ).then(([message]) => message as { waiting: number }),
+        done.then(() => {
+          throw new Error('hydra check exited without registering its wait')
+        }),
+      ])
+
+      return {
+        child,
+        done,
+        registered: nextWait(),
+        nextWait,
+      }
+    }
+
+    const waiting = check({
+      after: through,
+      seconds: 20,
+    })
+    t.after(() => {
+      waiting.child.kill()
+    })
+    assert.deepEqual(
+      await waiting.registered,
+      { waiting: 2000 },
+    )
     f.run({
       args: [
         'hydra',
@@ -318,7 +400,8 @@ test(
         'plan the week',
       ],
     })
-    const { stdout } = await waiting
+    waiting.child.send({ advance: 0 })
+    const stdout = await waiting.done
     assert.match(
       stdout,
       /hydra\.message,none,send,owner \(cli\),"Send to Hydra: plan the week"/,
@@ -388,21 +471,25 @@ test(
       ],
       extra: { PNYX_ACTOR: 'hydra' },
     })
-    const started = Date.now()
-    const own = f.run({
-      args: [
-        'hydra',
-        'check',
-        '--after',
-        String(quiet),
-        '--wait',
-        '1',
-      ],
+    const ownWait = check({
+      after: quiet,
+      seconds: 1,
     })
-    assert.ok(
-      Date.now() - started >= 900,
-      'Hydra\'s own action must not end the wait',
+    t.after(() => {
+      ownWait.child.kill()
+    })
+    assert.deepEqual(
+      await ownWait.registered,
+      { waiting: 1000 },
     )
+    const beforeDeadline = ownWait.nextWait()
+    ownWait.child.send({ advance: 999 })
+    assert.deepEqual(
+      await beforeDeadline,
+      { waiting: 1 },
+    )
+    ownWait.child.send({ advance: 1 })
+    const own = await ownWait.done
     assert.match(
       own,
       /none: nothing Hydra tracks changed/,

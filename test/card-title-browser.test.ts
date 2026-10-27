@@ -1,32 +1,18 @@
-import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { createServer } from 'node:net'
+import { browserFixture } from './browser-fixture.ts'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
 
-async function freePort(): Promise<number> {
-  const listener = createServer()
-  await new Promise<void>(resolve => listener.listen(
-    0,
-    '127.0.0.1',
-    resolve,
-  ))
-  const address = listener.address()
-  assert.ok(address && typeof address === 'object')
-  await promisify(listener.close.bind(listener))()
-
-  return address.port
-}
+const browser = browserFixture()
 
 test(
   'task titles toggle immediately and edit explicitly with save and cancel',
   {
-    skip: process.env.PNYX_BROWSER_TESTS !== '1',
     timeout: 120_000,
   },
   async () => {
@@ -62,74 +48,8 @@ test(
       port: 0,
       homes: [],
     })
-    const port = await freePort()
-    const env = {
-      ...process.env,
-      CHROME_DEVTOOLS_AXI_SESSION: `pnyx-title-test-${port}`,
-      CHROME_DEVTOOLS_AXI_PORT: String(port),
-      CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
-      CHROME_DEVTOOLS_AXI_HEADED: '0',
-      CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
-        root,
-        'chrome',
-      ),
-    }
-
-    const browser = async ({
-      args,
-      script,
-    }: {
-      args: string[]
-      script?: string
-    }) => {
-      const child = execFile(
-        'chrome-devtools-axi',
-        args,
-        {
-          env,
-          timeout: 60_000,
-        },
-      )
-      const result = new Promise<string>((
-        resolve,
-        reject,
-      ) => {
-        let output = ''
-        let errors = ''
-        child.stdout?.on(
-          'data',
-          text => {
-            output += text
-          },
-        )
-        child.stderr?.on(
-          'data',
-          text => {
-            errors += text
-          },
-        )
-        child.on(
-          'error',
-          reject,
-        )
-        child.on(
-          'close',
-          code => {
-            if (code !== 0) {
-              reject(new Error(errors || output))
-
-              return
-            }
-
-            resolve(output)
-          },
-        )
-      })
-      child.stdin?.end(script)
-
-      return await result
-    }
-
+    const firstId = loadHydra({ hydraId: 'default' }).state.keys.first!
+    const firstSelector = `[data-card="${firstId}"]`
     let closed = false
 
     try {
@@ -138,74 +58,74 @@ test(
         script: `
         await page.open('http://127.0.0.1:${server.port}/hydra/default/');
         await page.wait('.card [aria-label="Edit task title"]:not(:disabled)');
-        console.log(await page.eval(async () => {
-          const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-          const title = name => Array.from(document.querySelectorAll('.card-open')).find(item => item.textContent === name);
-          const first = title('First title');
-          const second = title('Second title');
-          const check = (ok, message) => { if (!ok) throw new Error(message); };
-          const click = item => item.dispatchEvent(new MouseEvent('click', { bubbles: true, detail: 1 }));
-          const selected = item => item.getAttribute('aria-expanded') === 'true';
-          const until = async check => {
-            const started = performance.now();
-            while (!check() && performance.now() - started < 300) await frame();
-          };
-          click(first); await until(() => selected(first));
-          check(selected(first), 'first opens');
-          click(first); await until(() => !selected(first));
-          check(!selected(first), 'first closes without rename delay');
-          click(first); await frame(); await frame();
-          click(second); await until(() => selected(second));
-          check(!selected(first) && selected(second), 'one open per column immediately');
-          const card = first.closest('.card');
-          card.querySelector('[aria-label="Edit task title"]').click();
-          await frame(); await frame();
-          check(first.isContentEditable && !card.draggable && !selected(first), 'pencil edits closed card without opening');
-          check(document.activeElement === first, 'edit focuses title');
+        await page.click('[aria-label="Open task First title"]');
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).getAttribute('aria-expanded') === 'true');
+        await page.click('[aria-label="Open task First title"]');
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).getAttribute('aria-expanded') === 'false');
+        await page.click('[aria-label="Open task First title"]');
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).getAttribute('aria-expanded') === 'true');
+        await page.click('[aria-label="Open task Second title"]');
+        await page.until(() => document.querySelector('[aria-label="Open task Second title"]').getAttribute('aria-expanded') === 'true'
+          && document.querySelector(${JSON.stringify(firstSelector)}).getAttribute('aria-expanded') === 'false');
+        await page.eval(() => document.querySelector(${JSON.stringify(firstSelector)}).closest('.card').querySelector('[aria-label="Edit task title"]').click());
+        await page.until(() => {
+          const first = document.querySelector(${JSON.stringify(firstSelector)}), card = first.closest('.card');
+          return first.isContentEditable && !card.draggable && first.getAttribute('aria-expanded') !== 'true' && document.activeElement === first;
+        });
+        await page.eval(() => {
+          const first = document.querySelector(${JSON.stringify(firstSelector)});
           first.textContent = 'Cancelled';
           first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-          await frame();
-          check(first.textContent === 'First title' && !first.isContentEditable && card.draggable, 'Escape restores title and dragging');
+        });
+        await page.until(() => {
+          const first = document.querySelector(${JSON.stringify(firstSelector)});
+          return first.textContent === 'First title' && !first.isContentEditable && first.closest('.card').draggable;
+        });
+        console.log(await page.eval(async () => {
+          const first = document.querySelector(${JSON.stringify(firstSelector)}), card = first.closest('.card');
           const button = card.querySelector('[aria-label="Edit task title"]');
           const blockedDrag = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
           button.dispatchEvent(blockedDrag);
-          check(blockedDrag.defaultPrevented && !blockedDrag.dataTransfer.getData('application/pnyx-task'), 'button drag rejected');
+          if (!blockedDrag.defaultPrevented || blockedDrag.dataTransfer.getData('application/pnyx-task')) throw new Error('button drag accepted');
           const drag = new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: new DataTransfer() });
           card.dispatchEvent(drag);
-          check(!drag.defaultPrevented && drag.dataTransfer.getData('application/pnyx-task'), 'ordinary card drag allowed');
+          if (drag.defaultPrevented || !drag.dataTransfer.getData('application/pnyx-task')) throw new Error('ordinary drag rejected');
           card.dispatchEvent(new DragEvent('dragend', { bubbles: true }));
           first.dispatchEvent(new MouseEvent('dblclick', { bubbles: true, cancelable: true }));
-          await frame();
-          check(!first.isContentEditable, 'double click does not edit');
-          first.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
-          await frame(); await frame();
-          check(first.isContentEditable, 'F2 edits');
+          await new Promise(resolve => queueMicrotask(resolve));
+          if (first.isContentEditable) throw new Error('double click edits');
+          return true;
+        }));
+        await page.eval(() => document.querySelector(${JSON.stringify(firstSelector)}).dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true })));
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).isContentEditable);
+        await page.eval(() => {
+          const first = document.querySelector(${JSON.stringify(firstSelector)});
           first.textContent = 'Saved title';
           first.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-          return true;
-        }));
+        });
         await page.wait('[aria-label="Open task Saved title"]');
         console.log(await page.eval(() => {
-          const title = document.querySelector('[aria-label="Open task Saved title"]');
+          const title = document.querySelector(${JSON.stringify(firstSelector)});
           return !title.isContentEditable && title.textContent === 'Saved title';
         }));
-        console.log(await page.eval(async () => {
-          const frame = () => new Promise(resolve => requestAnimationFrame(resolve));
-          const title = document.querySelector('[aria-label="Open task Saved title"]');
-          const edit = async () => {
-            title.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
-            await frame(); await frame();
-          };
-          await edit();
+        await page.eval(() => document.querySelector(${JSON.stringify(firstSelector)}).dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true })));
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).isContentEditable);
+        await page.eval(() => {
+          const title = document.querySelector(${JSON.stringify(firstSelector)});
           title.textContent = '   ';
           title.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-          await frame();
-          if (title.textContent !== 'Saved title') throw new Error('empty title changed saved value');
-          await edit();
+        });
+        console.log(await page.until(() => {
+          const title = document.querySelector(${JSON.stringify(firstSelector)});
+          return title.textContent === 'Saved title' && !title.isContentEditable;
+        }));
+        await page.eval(() => document.querySelector(${JSON.stringify(firstSelector)}).dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true })));
+        await page.until(() => document.querySelector(${JSON.stringify(firstSelector)}).isContentEditable);
+        await page.eval(() => {
+          const title = document.querySelector(${JSON.stringify(firstSelector)});
           title.textContent = 'Blur title';
           title.blur();
-          return true;
-        }));
+        });
         await page.wait('[aria-label="Open task Blur title"]');
         `,
       })
@@ -223,9 +143,10 @@ test(
         args: ['run'],
         script: `
         await page.wait('.card [aria-label="Edit task title"]:disabled');
-        console.log(await page.eval(() => {
+        console.log(await page.eval(async () => {
           const title = document.querySelector('[aria-label="Open task Blur title"]');
           title.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+          await new Promise(resolve => queueMicrotask(resolve));
           return !title.isContentEditable;
         }));
         `,
@@ -235,10 +156,12 @@ test(
         'true',
       )
     } finally {
-      await browser({ args: ['stop'] })
-
-      if (!closed) {
-        await server.close()
+      try {
+        await browser({ args: ['stop'] })
+      } finally {
+        if (!closed) {
+          await server.close()
+        }
       }
     }
   },

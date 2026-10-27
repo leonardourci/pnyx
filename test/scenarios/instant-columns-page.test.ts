@@ -64,7 +64,11 @@ for (const outcome of [
             if (message.name === 'column' && message.args[0] === 'describe') {
               ;
 
-              (window as unknown as { releaseDescription(): void }).releaseDescription = () => {
+              (window as unknown as { releaseDescription(): boolean }).releaseDescription = () => {
+                if (this.readyState !== WebSocket.OPEN) {
+                  return false
+                }
+
                 WebSocket.prototype.send = send
                 const args = [...message.args]
 
@@ -79,6 +83,8 @@ for (const outcome of [
                     args,
                   }),
                 )
+
+                return true
               }
 
               return
@@ -128,13 +134,12 @@ for (const outcome of [
         }
       }
 
+      // The page can send the save after the click, or resend it after a reconnect,
+      // so release the latest held send once its socket is open.
       await page.shows({
-        what: 'release description',
-        check: () => {
-          ;(window as unknown as { releaseDescription(): void }).releaseDescription()
-
-          return true
-        },
+        what: 'the held description save to release',
+        check: () => (window as unknown as { releaseDescription?(): boolean })
+          .releaseDescription?.(),
       })
 
       if (outcome === 'saved') {

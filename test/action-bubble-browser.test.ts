@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { readFileSync, readdirSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
-import { promisify } from 'node:util'
+import { browserFixture } from './browser-fixture.ts'
+
+const browser = browserFixture()
 
 test(
   'Action pills fit short text, cap long text, and shrink in a narrow running line',
-  { skip: process.env.PNYX_BROWSER_TESTS !== '1' },
   async () => {
     const assets = new URL(
       '../dist/web/assets/',
@@ -37,37 +37,6 @@ test(
     ))
     const address = server.address()
     assert.ok(address && typeof address === 'object')
-    const env = {
-      ...process.env,
-      CHROME_DEVTOOLS_AXI_SESSION: `pnyx-action-${address.port}`,
-      CHROME_DEVTOOLS_AXI_PORT: String(address.port),
-      CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
-      CHROME_DEVTOOLS_AXI_HEADED: '0',
-    }
-    const bridge = createServer()
-    await new Promise<void>(resolve => bridge.listen(
-      0,
-      '127.0.0.1',
-      resolve,
-    ))
-    const bridgeAddress = bridge.address()
-    assert.ok(bridgeAddress && typeof bridgeAddress === 'object')
-    env.CHROME_DEVTOOLS_AXI_PORT = String(bridgeAddress.port)
-    await new Promise<void>(resolve => bridge.close(() => resolve()))
-
-    const browser = async ({ args }: { args: string[] }) => {
-      const result = await promisify(execFile)(
-        'chrome-devtools-axi',
-        args,
-        {
-          env,
-          encoding: 'utf8',
-          timeout: 30_000,
-        },
-      )
-
-      return result.stdout
-    }
 
     try {
       await browser({
@@ -102,8 +71,11 @@ test(
         /passed.*true/,
       )
     } finally {
-      await browser({ args: ['stop'] })
-      await new Promise<void>(resolve => server.close(() => resolve()))
+      try {
+        await browser({ args: ['stop'] })
+      } finally {
+        await new Promise<void>(resolve => server.close(() => resolve()))
+      }
     }
   },
 )

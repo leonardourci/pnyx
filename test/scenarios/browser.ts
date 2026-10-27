@@ -36,7 +36,7 @@ const describe = ({ details }: { details: ExceptionDetails }) =>
   details.exception?.description ?? details.text
 
 // The keys the journeys press; a key with text also types it, as Enter does in a field.
-const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
+const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'F2', {
   keyCode: number
   key?: string
   text?: string
@@ -55,6 +55,8 @@ const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape
   ArrowLeft: { keyCode: 37 },
   ArrowRight: { keyCode: 39 },
   Tab: { keyCode: 9 },
+  Home: { keyCode: 36 },
+  F2: { keyCode: 113 },
   Escape: { keyCode: 27 },
 }
 
@@ -79,6 +81,7 @@ export function browserGroup() {
   }) => void>()
   // Uncaught errors each open tab's page threw, by its session.
   const pageErrors = new Map<string, string[]>()
+  const consoleErrors = new Map<string, string[]>()
 
   const send = ({
     method,
@@ -207,6 +210,19 @@ export function browserGroup() {
             settle(message.error
               ? { error: new Error(JSON.stringify(message.error)) }
               : { result: message.result as Message })
+          } else if (message.method === 'Runtime.consoleAPICalled') {
+            const params = message.params as {
+              type: string
+              args: {
+                value?: unknown
+                description?: string
+              }[]
+            }
+
+            if (params.type === 'error') {
+              consoleErrors.get(message.sessionId as string)?.push(params.args.map(arg =>
+                String(arg.value ?? arg.description)).join(' '))
+            }
           } else if (message.method === 'Runtime.exceptionThrown') {
             const { exceptionDetails } = message.params as { exceptionDetails: ExceptionDetails }
             const errors = pageErrors.get(message.sessionId as string)
@@ -251,6 +267,10 @@ export function browserGroup() {
         },
       }) as { sessionId: string }
       pageErrors.set(
+        sessionId,
+        [],
+      )
+      consoleErrors.set(
         sessionId,
         [],
       )
@@ -326,6 +346,47 @@ export function browserGroup() {
 
       return {
         shows,
+        errors: () => ({
+          exceptions: pageErrors.get(sessionId) ?? [],
+          console: consoleErrors.get(sessionId) ?? [],
+        }),
+        evaluate: async ({ expression }: { expression: string }): Promise<unknown> => {
+          const {
+            result,
+            exceptionDetails,
+          } = await call({
+            method: 'Runtime.evaluate',
+            params: {
+              expression,
+              awaitPromise: true,
+              returnByValue: true,
+            },
+          }) as {
+            result: { value?: unknown }
+            exceptionDetails?: ExceptionDetails
+          }
+
+          if (exceptionDetails) {
+            throw new Error(describe({ details: exceptionDetails }))
+          }
+
+          return result.value
+        },
+        resize: ({
+          width,
+          height,
+        }: {
+          width: number
+          height: number
+        }) => call({
+          method: 'Emulation.setDeviceMetricsOverride',
+          params: {
+            width,
+            height,
+            deviceScaleFactor: 1,
+            mobile: false,
+          },
+        }),
         reload: async () => {
           const before = await call({
             method: 'Runtime.evaluate',
@@ -383,6 +444,42 @@ export function browserGroup() {
               'base64',
             ),
           )
+        },
+        hover: async ({ selector }: { selector: string }) => {
+          const {
+            x,
+            y,
+          } = await shows({
+            what: `${selector} to hover`,
+            arg: { selector },
+            check: ({ selector }) => {
+              const element = document.querySelector(selector)
+
+              if (!element?.getClientRects().length) {
+                return undefined
+              }
+
+              element.scrollIntoView({ block: 'nearest' })
+              const box = element.getBoundingClientRect()
+              const point = {
+                x: box.left + box.width / 2,
+                y: box.top + box.height / 2,
+              }
+
+              return element.contains(document.elementFromPoint(
+                point.x,
+                point.y,
+              )) && point
+            },
+          })
+          await call({
+            method: 'Input.dispatchMouseEvent',
+            params: {
+              type: 'mouseMoved',
+              x,
+              y,
+            },
+          })
         },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
         // handlers run too; it waits until nothing covers the element's centre.
@@ -507,6 +604,7 @@ export function browserGroup() {
           })
           const errors = pageErrors.get(sessionId)
           pageErrors.delete(sessionId)
+          consoleErrors.delete(sessionId)
           assert.deepEqual(
             errors,
             [],
