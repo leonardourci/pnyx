@@ -1,4 +1,4 @@
-// The "Checks ran for this commit" workflow step:
+// The "Tests" check:
 // GITHUB_TOKEN=… GITHUB_REPOSITORY=owner/repo PR_NUMBER=<n> node scripts/check-marker.ts
 import {
   checkPullRequest,
