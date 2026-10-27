@@ -46,9 +46,29 @@ try {
   const pr = await github<{
     body: string | null
     head: { sha: string }
+    changed_files: number
   }>({ endpoint: `pulls/${process.env.PR_NUMBER}` })
 
+  const files: string[] = []
+  let count = 0
+
+  // GitHub caps this endpoint at 3,000 files; incomplete scope requires every review.
+  if (pr.changed_files <= 3000) {
+    for (let page = 1; page <= Math.ceil(pr.changed_files / 100); page++) {
+      const found = await github<GitHubCommit['files']>({
+        endpoint: `pulls/${process.env.PR_NUMBER}/files?per_page=100&page=${page}`,
+      })
+      count += found.length
+      files.push(...found.flatMap(file => file.previous_filename
+        ? [
+          file.filename,
+          file.previous_filename,
+        ] : [file.filename]))
+    }
+  }
+
   console.log(await checkPullRequest({
+    files: count === pr.changed_files ? files : null,
     body: pr.body ?? '',
     headSha: pr.head.sha,
     commit: async ({ sha }) => commitFacts({ found: await github<GitHubCommit>({ endpoint: `commits/${sha}` }) }),

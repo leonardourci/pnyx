@@ -24,6 +24,7 @@ jobs:
           sparse-checkout: |
             scripts/check-marker.ts
             scripts/marker.ts
+            scripts/required-checks.ts
           sparse-checkout-cone-mode: false
           persist-credentials: false
 

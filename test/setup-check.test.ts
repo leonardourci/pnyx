@@ -1,3 +1,4 @@
+import { SET_UP_SKILL } from '../src/integrations/skills/names.ts'
 // `pnyx-axi setup check` and the digest's Setup needed list. Every path lives in a
 // temporary folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
 import assert from 'node:assert/strict'
@@ -164,7 +165,10 @@ test(
           'digest',
         ],
       }).out,
-      /^Setup needed \(load pnyx-setup\):\n- config: .* · you: pnyx-axi rule init/m,
+      new RegExp(
+        String.raw`^Setup needed \(load ${SET_UP_SKILL}\):\n- config: .* · you: pnyx-axi rule init`,
+        'm',
+      ),
     )
 
     // The check only reads, so Hydra runs it without a question.

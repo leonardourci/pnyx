@@ -1,3 +1,4 @@
+import { REPORT_PROGRESS_SKILL } from '../../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { taskTimeline } from '../../web/src/hydra/task-updates.ts'
@@ -85,7 +86,7 @@ test(
     )
     assert.match(
       agent.received[0]!,
-      new RegExp(`You are the Pnyx worker for task ${card.id} "Login crash" on Hydra ${s.hydraId}\\. Follow the pnyx-worker skill`),
+      new RegExp(`You are the Pnyx worker for task ${card.id} "Login crash" on Hydra ${s.hydraId}\\. Follow the ${REPORT_PROGRESS_SKILL} skill`),
     )
 
     const worker = s.as({ agent })

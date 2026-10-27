@@ -35,11 +35,11 @@ One folder per feature. Code for a feature lives in its folder. Usage and setup 
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
 | `web/` | the React + Vite + Tailwind Hydra; its own UI primitives in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
-| `skills/` | the agent skills shipped with the CLI: `pnyx`, `pnyx-worker`, and Hydra's `pnyx-hydra` contract with its detail skills (`pnyx-hydra-workers`, `pnyx-hydra-columns`, `pnyx-hydra-firstmate`, `inscribe`, `pnyx-setup`) |
+| `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `test/` | tests; synthetic inputs in `test/fixtures/` |
 | `docs/media/` | the README's demo GIF |
 
-Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. Before PR readiness, follow `review-code`, `audit-tests` and `deslop`, in that order. These are checklists for humans and agents alike. Run `pnpm verify`, tick their three PR checkboxes after completing them, and describe what you fixed in the PR description. `write-front-end` also applies to changes under `web/`.
+Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. Before PR readiness, run `pnpm verify` to select the required checks and reviews for the changed files. Follow the required checklists in order: `review-code`, `audit-tests`, then `deslop`. These are checklists for humans and agents alike. Tick only the required PR checkboxes after completing them, and describe what you fixed in the PR description. `write-front-end` also applies to changes under `web/`.
 
 ## Design rules
 

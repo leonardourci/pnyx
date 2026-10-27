@@ -85,7 +85,10 @@ async function acquireRefreshLock({
 }): Promise<boolean> {
   const deadline = wait.now() + GIT_TIMEOUT_MS
 
-  for (;;) {
+  let owner: string | undefined
+  const timedOut = () => new Error(`timed out waiting for the active project refresh after ${GIT_TIMEOUT_MS}ms: ${path} (owner: ${owner ?? 'unknown'}); inspect its lock owner`)
+
+  while (wait.now() < deadline) {
     try {
       await symlink(
         token,
@@ -115,8 +118,6 @@ async function acquireRefreshLock({
     let cancel = () => {}
 
     try {
-      let owner: string
-
       try {
         owner = await readlink(path)
       } catch (error) {
@@ -144,7 +145,7 @@ async function acquireRefreshLock({
 
       cancel = wait.schedule({
         fire: () => {
-          failure = new Error('timed out waiting for the active project refresh; inspect its lock owner')
+          failure = timedOut()
           notify()
         },
         ms: Math.max(
@@ -163,6 +164,8 @@ async function acquireRefreshLock({
       watcher.close()
     }
   }
+
+  throw timedOut()
 }
 
 async function advanceProject({

@@ -165,7 +165,7 @@ function once({
     const timer = setTimeout(
       () => {
         socket.destroy()
-        reject(new SemanticError({ message: 'the semantic worker did not answer in time' }))
+        reject(new SemanticError({ message: `timed out waiting for semantic ${req.op} reply after ${ms}ms (received: ${buf.slice(-1000) || 'none'})` }))
       },
       ms,
     )
@@ -204,7 +204,7 @@ function once({
   })
 }
 
-async function request({
+async function waitForSemanticReply({
   req,
   timeoutMs,
 }: {
@@ -214,12 +214,10 @@ async function request({
   const deadline = Date.now() + timeoutMs
   let spawned = 0
 
-  for (;;) {
-    const left = deadline - Date.now()
+  const recent: string[] = []
 
-    if (left <= 0) {
-      throw new SemanticError({ message: 'the semantic worker did not start; see semantic.log in the Pnyx home' })
-    }
+  while (Date.now() < deadline) {
+    const left = deadline - Date.now()
 
     try {
       const reply = await once({
@@ -230,12 +228,16 @@ async function request({
       if (reply.code !== 'RESTART') {
         return reply
       }
+
+      recent.push('RESTART')
     } catch (error) {
       const code = (error as NodeJS.ErrnoException).code
 
       if (code !== 'ENOENT' && code !== 'ECONNREFUSED' && code !== 'ECONNRESET') {
         throw error
       }
+
+      recent.push(`${code}: ${(error as Error).message}`)
 
       // A worker that is shutting down may still hold the socket; start another once it is gone.
       if (Date.now() - spawned > RESPAWN_MS) {
@@ -244,11 +246,31 @@ async function request({
       }
     }
 
+    recent.splice(
+      0,
+      Math.max(
+        0,
+        recent.length - 10,
+      ),
+    )
     await new Promise(resolve => setTimeout(
       resolve,
-      100,
+      Math.min(
+        100,
+        Math.max(
+          0,
+          deadline - Date.now(),
+        ),
+      ),
     ))
   }
+
+  throw new SemanticError({
+    message: `timed out waiting for the semantic worker after ${timeoutMs}ms: ${JSON.stringify({
+      request: req.op,
+      recent,
+    })}; see semantic.log in the Pnyx home`,
+  })
 }
 
 async function ask({
@@ -258,7 +280,7 @@ async function ask({
   req: Request
   timeoutMs: number
 }): Promise<Reply> {
-  const reply = await request({
+  const reply = await waitForSemanticReply({
     req,
     timeoutMs,
   })

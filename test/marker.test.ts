@@ -1,3 +1,4 @@
+import { CLI_SKILL } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -73,7 +74,7 @@ const commits: Record<string, Commit> = {
   }),
   'shipped-skill': commitOn({
     tree: 'tree-skill',
-    files: ['skills/pnyx/SKILL.md'],
+    files: [`skills/${CLI_SKILL}/SKILL.md`],
   }),
   'fixture': commitOn({
     tree: 'tree-fixture',
