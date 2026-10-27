@@ -36,7 +36,7 @@ const describe = ({ details }: { details: ExceptionDetails }) =>
   details.exception?.description ?? details.text
 
 // The keys the journeys press; a key with text also types it, as Enter does in a field.
-const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'F2', {
+const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight' | 'Home' | 'F2' | 'KeyE', {
   keyCode: number
   key?: string
   text?: string
@@ -58,7 +58,13 @@ const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape
   Home: { keyCode: 36 },
   F2: { keyCode: 113 },
   Escape: { keyCode: 27 },
+  KeyE: {
+    keyCode: 69,
+    key: 'e',
+  },
 }
+// CDP modifier bits; Mod is Meta on macOS and Control elsewhere, as the page's keymap reads it.
+const MOD = process.platform === 'darwin' ? 4 : 2
 
 // Starts Chrome before the file's tests and stops it after; call it at the top level of the file.
 export function browserGroup() {
@@ -548,20 +554,28 @@ export function browserGroup() {
           method: 'Input.insertText',
           params: { text },
         }),
-        press: async ({ key }: { key: keyof typeof KEYS }) => {
+        press: async ({
+          key,
+          mod = false,
+        }: {
+          key: keyof typeof KEYS
+          mod?: boolean
+        }) => {
           const {
             keyCode,
             key: value = key,
             text,
           } = KEYS[key]
+          const modifiers = mod ? MOD : 0
           await call({
             method: 'Input.dispatchKeyEvent',
             params: {
-              type: text ? 'keyDown' : 'rawKeyDown',
+              type: text && !mod ? 'keyDown' : 'rawKeyDown',
               key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
-              text,
+              text: mod ? undefined : text,
+              modifiers,
             },
           })
           await call({
@@ -571,6 +585,7 @@ export function browserGroup() {
               key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
+              modifiers,
             },
           })
         },

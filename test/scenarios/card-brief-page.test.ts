@@ -1,32 +1,110 @@
 import assert from 'node:assert/strict'
-import { setTimeout as sleep } from 'node:timers/promises'
 import { test } from 'node:test'
 import { browserGroup } from './browser.ts'
-import { scenarioGroup } from './harness.ts'
+import { scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()
 
-const until = async ({
-  what,
-  check,
+type Page = Awaited<ReturnType<typeof chrome.open>>
+
+// Records the task commands the page sends; with hold set, they wait until release().
+const watchSends = ({
+  page,
+  hold,
+  refuse,
 }: {
-  what: string
-  check(): boolean
-}) => {
-  for (let tries = 0; tries < 100; tries++) {
-    if (check()) {
-      return
+  page: Page
+  hold: boolean
+  refuse: boolean
+}) => page.shows({
+  what: 'connected, then watch task edits sent to the server',
+  arg: {
+    hold,
+    refuse,
+  },
+  check: ({
+    hold,
+    refuse,
+  }) => {
+    if (!document.querySelector('[data-connected=true]')) {
+      return false
     }
 
-    await sleep(100)
-  }
+    const send = WebSocket.prototype.send
+    const control = window as unknown as {
+      sent: string[]
+      held: (() => void)[]
+      released: boolean
+      release(): void
+    }
+    control.sent = []
+    control.held = []
+    control.released = !hold
 
-  assert.fail(`timed out waiting for ${what}`)
-}
+    // The page sends one edit at a time, so the brief follows once the title is answered.
+    control.release = () => {
+      control.released = true; control.held.splice(0).forEach(run => run())
+    }
+
+    // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
+    WebSocket.prototype.send = function(data) {
+      const message = JSON.parse(String(data))
+
+      if (message.name !== 'task' || ![
+        'rename',
+        'brief',
+      ].includes(message.args[0])) {
+        send.call(
+          this,
+          data,
+        )
+
+        return
+      }
+
+      control.sent.push(message.args[0])
+      const args = [...message.args]
+
+      if (refuse) {
+        args[1] = 'missing-task'
+      }
+
+      const run = () => send.call(
+        this,
+        JSON.stringify({
+          ...message,
+          args,
+        }),
+      )
+
+      if (control.released) {
+        run()
+      } else {
+        control.held.push(run)
+      }
+    }
+
+    return true
+  },
+})
+
+const editorOpen = ({
+  page,
+  card,
+}: {
+  page: Page
+  card: string
+}) => page.shows({
+  what: 'the task open with the editor focused on its title, after the open settles',
+  arg: { card },
+  check: ({ card }) => document.querySelector(card)?.classList.contains('selected')
+    && document.querySelector(`${card} .task-updates`)
+    && document.activeElement === document.querySelector(`${card} .task-editor [aria-label="Task title"]`),
+})
 
 test(
-  'the brief folds out of the title; Space folds it, Enter opens the task and Mod+E edits',
+  'a card title toggles its brief on click or Space, Enter opens the task, and F2 or Mod+E edit it',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -60,6 +138,11 @@ test(
       check: ({ card }) => document.querySelector('[data-connected=true]')
         && document.querySelector(`${card} .card-brief`)?.hasAttribute('hidden'),
     })
+    await watchSends({
+      page,
+      hold: false,
+      refuse: false,
+    })
 
     await page.click({ selector: `${card} .card-open` })
     await page.shows({
@@ -82,7 +165,6 @@ test(
       check: ({ card }) => document.querySelector(`${card} .card-open`)?.getAttribute('aria-expanded') === 'false'
         && document.querySelector(`${card} .card-brief`)?.hasAttribute('hidden'),
     })
-
     await page.press({ key: 'Space' })
     await page.shows({
       what: 'Space on the focused title shows the brief',
@@ -96,52 +178,97 @@ test(
       arg: { card },
       check: ({ card }) => document.querySelector(`${card} .card-brief`)?.hasAttribute('hidden'),
     })
-    await page.press({ key: 'Enter' })
+
     await page.shows({
-      what: 'Enter opens the task without unfolding the brief',
+      what: 'the card drags by its title but not from its pencil',
       arg: { card },
-      check: ({ card }) => document.querySelector(card)?.classList.contains('selected')
-        && document.querySelector(`${card} .card-brief`)?.hasAttribute('hidden'),
+      check: ({ card }) => {
+        const element = document.querySelector<HTMLElement>(card)!
+
+        const drag = ({ from }: { from: Element }) => {
+          const event = new DragEvent(
+            'dragstart',
+            {
+              bubbles: true,
+              cancelable: true,
+              dataTransfer: new DataTransfer(),
+            },
+          )
+          from.dispatchEvent(event)
+          element.dispatchEvent(new DragEvent(
+            'dragend',
+            { bubbles: true },
+          ))
+
+          return event
+        }
+
+        const title = drag({ from: element.querySelector('.card-open')! })
+        const pencil = drag({ from: element.querySelector('[aria-label="Edit title and brief"]')! })
+
+        return element.draggable && !title.defaultPrevented && title.dataTransfer?.getData('application/pnyx-task') !== ''
+          && pencil.defaultPrevented
+      },
     })
 
-    await page.click({ selector: `${bare} .card-open` })
+    await page.press({ key: 'F2' })
+    await editorOpen({
+      page,
+      card,
+    })
+    await page.shows({
+      what: 'the open card is not draggable while editing',
+      arg: { card },
+      check: ({ card }) => !document.querySelector<HTMLElement>(card)?.draggable,
+    })
+    await page.type({ text: ' later' })
+    await page.press({ key: 'Escape' })
+    await page.shows({
+      what: 'Escape drops the typed title, keeps the task open and returns focus to the title',
+      arg: { card },
+      check: ({ card }) => !document.querySelector('.task-editor')
+        && document.activeElement === document.querySelector(`${card} .card-open`)
+        && document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout'
+        && document.querySelector(card)?.classList.contains('selected'),
+    })
+    await page.press({
+      key: 'KeyE',
+      mod: true,
+    })
+    await page.shows({
+      what: 'Mod+E opens the editor',
+      arg: { card },
+      check: ({ card }) => document.activeElement === document.querySelector(`${card} .task-editor [aria-label="Task title"]`),
+    })
+    await page.type({ text: ' later' })
+    await page.click({
+      selector: `${card} .task-editor button`,
+      text: 'Cancel',
+    })
+    await page.shows({
+      what: 'Cancel drops the typed title and returns focus to the title',
+      arg: { card },
+      check: ({ card }) => !document.querySelector('.task-editor')
+        && document.activeElement === document.querySelector(`${card} .card-open`)
+        && document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout',
+    })
+    assert.deepEqual(
+      await page.evaluate({ expression: '(window).sent' }),
+      [],
+    )
+
+    await page.evaluate({ expression: `document.querySelector('${bare} .card-open').focus()` })
+    await page.press({ key: 'Space' })
     await page.shows({
       what: 'a task without a brief says so',
       arg: { bare },
       check: ({ bare }) => document.querySelector(`${bare} .card-brief:not([hidden])`)?.textContent === 'No brief yet. The pencil adds one.',
     })
-
+    await page.press({ key: 'Enter' })
     await page.shows({
-      what: 'Mod+E on the focused title opens the editor',
-      arg: { card },
-      check: ({ card }) => {
-        const title = document.querySelector<HTMLElement>(`${card} .card-open`)
-
-        if (title) {
-          const mac = /Mac|iPhone|iPad/.test(navigator.platform)
-          title.focus()
-          title.dispatchEvent(new KeyboardEvent(
-            'keydown',
-            {
-              key: 'e',
-              metaKey: mac,
-              ctrlKey: !mac,
-              bubbles: true,
-              cancelable: true,
-            },
-          ))
-        }
-
-        return document.activeElement?.matches(`${card} .task-editor [aria-label="Task title"]`)
-      },
-    })
-    await page.press({ key: 'Escape' })
-    await page.shows({
-      what: 'Escape closes the editor and keeps the task open',
-      arg: { card },
-      check: ({ card }) => !document.querySelector('.task-editor')
-        && document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout'
-        && document.querySelector(card)?.classList.contains('selected'),
+      what: 'Enter on the title opens the task',
+      arg: { bare },
+      check: ({ bare }) => document.querySelector(bare)?.classList.contains('selected'),
     })
   },
 )
@@ -168,84 +295,22 @@ for (const outcome of [
       })
       const card = `.card[data-task="${s.task({ key: 'ship' }).id}"]`
       const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
-      await page.shows({
-        what: 'connected, then hold the title and brief saves',
-        arg: { outcome },
-        check: ({ outcome }) => {
-          if (!document.querySelector('[data-connected=true]')) {
-            return false
-          }
-
-          const send = WebSocket.prototype.send
-          const held: (() => void)[] = []
-          const control = window as unknown as {
-            held: (() => void)[]
-            released: boolean
-            release(): void
-          }
-          control.held = held
-          control.released = false
-
-          // The page sends one edit at a time, so the brief follows once the title is answered.
-          control.release = () => {
-            control.released = true; held.splice(0).forEach(run => run())
-          }
-
-          // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
-          WebSocket.prototype.send = function(data) {
-            const message = JSON.parse(String(data))
-
-            if (message.name === 'task' && [
-              'rename',
-              'brief',
-            ].includes(message.args[0])) {
-              const args = [...message.args]
-
-              if (outcome === 'refused') {
-                args[1] = 'missing-task'
-              }
-
-              const run = () => send.call(
-                this,
-                JSON.stringify({
-                  ...message,
-                  args,
-                }),
-              )
-
-              if (control.released) {
-                run()
-              } else {
-                held.push(run)
-              }
-
-              return
-            }
-
-            send.call(
-              this,
-              data,
-            )
-          }
-
-          return true
-        },
+      await watchSends({
+        page,
+        hold: true,
+        refuse: outcome === 'refused',
       })
-
+      await page.hover({ selector: `${card} .card-open` })
+      await page.click({ selector: `${card} [aria-label="Edit title and brief"]` })
+      await editorOpen({
+        page,
+        card,
+      })
       await page.shows({
-        what: 'the pencil opens the task with the title focused',
+        what: 'both fields filled in',
         arg: { card },
-        check: ({ card }) => {
-          if (!document.querySelector('.task-editor')) {
-            document.querySelector<HTMLButtonElement>(`${card} [aria-label="Edit title and brief"]`)?.click()
-          }
-
-          const field = document.querySelector<HTMLInputElement>(`${card} .task-editor [aria-label="Task title"]`)
-
-          return document.querySelector(card)?.classList.contains('selected') && document.activeElement === field
-            && field.value === 'Ship the layout'
-            && document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)?.value === 'Old brief'
-        },
+        check: ({ card }) => document.querySelector<HTMLInputElement>(`${card} .task-editor [aria-label="Task title"]`)?.value === 'Ship the layout'
+          && document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)?.value === 'Old brief',
       })
       await page.type({ text: ' now' })
       await page.press({ key: 'Enter' })
@@ -255,7 +320,7 @@ for (const outcome of [
         check: ({ card }) => {
           const field = document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)
 
-          if (document.activeElement !== field) {
+          if (!field || document.activeElement !== field) {
             return false
           }
 
@@ -265,45 +330,24 @@ for (const outcome of [
         },
       })
       await page.type({ text: 'New brief' })
+      await page.press({
+        key: 'Enter',
+        mod: true,
+      })
       await page.shows({
         what: 'Mod+Enter shows both edits at once, before the server answers',
         arg: { card },
-        check: ({ card }) => {
-          const field = document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)
-
-          if (field) {
-            const mac = /Mac|iPhone|iPad/.test(navigator.platform)
-            field.dispatchEvent(new KeyboardEvent(
-              'keydown',
-              {
-                key: 'Enter',
-                metaKey: mac,
-                ctrlKey: !mac,
-                bubbles: true,
-                cancelable: true,
-              },
-            ))
-          }
-
-          const control = window as unknown as { held: unknown[] }
-
-          return !document.querySelector('.task-editor') && control.held.length > 0
-            && document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout now'
-            && document.querySelector(`${card} .card-brief:not([hidden])`)?.textContent === 'New brief'
-        },
+        check: ({ card }) => !document.querySelector('.task-editor')
+          && (window as unknown as { held: unknown[] }).held.length > 0
+          && document.activeElement === document.querySelector(`${card} .card-open`)
+          && document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout now'
+          && document.querySelector(`${card} .card-brief:not([hidden])`)?.textContent === 'New brief',
       })
       assert.equal(
         s.task({ key: 'ship' }).title,
         'Ship the layout',
       )
-      await page.shows({
-        what: 'release the held saves',
-        check: () => {
-          (window as unknown as { release(): void }).release()
-
-          return true
-        },
-      })
+      await page.evaluate({ expression: '(window).release()' })
 
       if (outcome === 'saved') {
         await until({
@@ -322,10 +366,11 @@ for (const outcome of [
       }
 
       await page.shows({
-        what: 'the refusal reopens the editor with the drafts',
+        what: 'the refusal reopens the editor with the drafts and shows the reason',
         arg: { card },
         check: ({ card }) => document.querySelector<HTMLInputElement>(`${card} .task-editor [aria-label="Task title"]`)?.value === 'Ship the layout now'
-          && document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)?.value === 'New brief',
+          && document.querySelector<HTMLTextAreaElement>(`${card} .task-editor [aria-label="Brief"]`)?.value === 'New brief'
+          && document.querySelector('.notice[role=status]')?.textContent?.includes('missing-task'),
       })
       await page.press({ key: 'Escape' })
       await page.shows({
@@ -335,9 +380,121 @@ for (const outcome of [
           && document.querySelector(`${card} .card-brief`)?.textContent === 'Old brief',
       })
       assert.equal(
+        s.task({ key: 'ship' }).title,
+        'Ship the layout',
+      )
+      assert.equal(
         s.task({ key: 'ship' }).brief,
         'Old brief',
       )
     },
   )
 }
+
+test(
+  'only changed fields are sent, and a blank title keeps the saved one',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the layout',
+        '--key',
+        'ship',
+      ],
+    })
+    const card = `.card[data-task="${s.task({ key: 'ship' }).id}"]`
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    await watchSends({
+      page,
+      hold: false,
+      refuse: false,
+    })
+    await page.hover({ selector: `${card} .card-open` })
+    await page.click({ selector: `${card} [aria-label="Edit title and brief"]` })
+    await editorOpen({
+      page,
+      card,
+    })
+    await page.shows({
+      what: 'the title selected',
+      arg: { card },
+      check: ({ card }) => {
+        document.querySelector<HTMLInputElement>(`${card} .task-editor [aria-label="Task title"]`)?.select()
+
+        return true
+      },
+    })
+    await page.type({ text: '   ' })
+    await page.press({ key: 'Enter' })
+    await page.type({ text: 'Only the brief' })
+    await page.press({
+      key: 'Enter',
+      mod: true,
+    })
+    await until({
+      what: 'the brief saved',
+      check: () => s.task({ key: 'ship' }).brief === 'Only the brief',
+    })
+    assert.equal(
+      s.task({ key: 'ship' }).title,
+      'Ship the layout',
+    )
+    assert.deepEqual(
+      await page.evaluate({ expression: '(window).sent' }),
+      ['brief'],
+    )
+    await page.shows({
+      what: 'the card keeps its title',
+      arg: { card },
+      check: ({ card }) => document.querySelector(`${card} .card-open`)?.textContent === 'Ship the layout',
+    })
+  },
+)
+
+test(
+  'editing is unavailable while the page is disconnected',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the layout',
+        '--key',
+        'ship',
+      ],
+    })
+    const card = `.card[data-task="${s.task({ key: 'ship' }).id}"]`
+    const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    await page.shows({
+      what: 'connected',
+      check: () => document.querySelector('[data-connected=true]'),
+    })
+    await page.click({ selector: `${card} .card-open` })
+    await pnyx.restart({
+      whileStopped: async () => {
+        await page.shows({
+          what: 'the page disconnected with the pencil disabled',
+          arg: { card },
+          check: ({ card }) => document.querySelector('[data-connected=false]')
+            && document.querySelector<HTMLButtonElement>(`${card} [aria-label="Edit title and brief"]`)?.disabled,
+        })
+        await page.press({ key: 'F2' })
+        await page.press({
+          key: 'KeyE',
+          mod: true,
+        })
+        await page.shows({
+          what: 'no editor opened while disconnected',
+          arg: { card },
+          check: ({ card }) => !document.querySelector('.task-editor')
+            && document.activeElement === document.querySelector(`${card} .card-open`),
+        })
+      },
+    })
+  },
+)
