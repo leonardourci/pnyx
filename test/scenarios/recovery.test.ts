@@ -40,13 +40,18 @@ test(
       hydraId: s.hydraId,
     })
     pnyx.codex.control.refuse = 'thread/resume'
-    await say({ text: 'lost to the outage' })
-    await until({
-      what: 'Hydra down',
-      check: () => s.state().hydraStatus?.state === 'down',
-    })
 
-    pnyx.codex.control.refuse = undefined
+    try {
+      await say({ text: 'lost to the outage' })
+      await until({
+        what: 'Hydra down',
+        check: () => s.state().hydraStatus?.state === 'down',
+      })
+    } finally {
+      // The server is shared, so a failure here must not leave later flows refused.
+      pnyx.codex.control.refuse = undefined
+    }
+
     await say({ text: 'back yet?' })
     // The resumed session only exists once a start works.
     await until({

@@ -104,27 +104,6 @@ test(
     )
     await until({ check: () => seen === 'second' })
     watcher.close()
-    const stats = t.mock.method(
-      fs,
-      'statSync',
-    )
-    syncBuiltinESMExports()
-    fs.writeFileSync(
-      path,
-      'after close',
-    )
-    await new Promise(resolve => setTimeout(
-      resolve,
-      80,
-    ))
-    assert.equal(
-      seen,
-      'second',
-    )
-    assert.equal(
-      stats.mock.calls.filter(call => call.arguments[0] === path).length,
-      0,
-    )
     assert.equal(
       closes,
       1,

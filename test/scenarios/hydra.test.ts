@@ -396,6 +396,11 @@ test(
       ],
     })
     const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+    // The worker's opening turn would otherwise touch the card between a report and its check.
+    await until({
+      what: 'the worker’s opening turn to finish',
+      check: () => s.task({ key: 'fix' }).sessionActivity === 'finished',
+    })
     const held = pnyx.claude.plan({
       text: 'Track the parser',
       hold: true,
