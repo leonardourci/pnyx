@@ -233,6 +233,7 @@ export function createHydraConnection() {
             },
           }),
           retry: true,
+          checking: intent.stage === 'unknown',
           sent: false,
           unconfirmed: () => {},
           resolve: () => {},
@@ -1106,7 +1107,7 @@ export function createHydraConnection() {
       clearTimeout(request.timer)
 
       if (request.retry) {
-        if (request.saveId) {
+        if (request.saveId || request.optimistic) {
           request.checking = true
           request.unconfirmed()
         }
