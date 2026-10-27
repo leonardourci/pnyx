@@ -114,7 +114,7 @@ You can create tasks and columns inline and move cards yourself. A finished agen
 
 ### Workers
 
-Each task has at most one attached worker at a time. Pnyx can host Claude Code and Codex, use Paseo, or run your own command.
+Each task has at most one attached worker at a time. Pnyx can host Claude Code and Codex, or run your own command.
 
 Workers report their state and send questions to Hydra. Hooks also let you attach existing interactive sessions.
 
