@@ -19,6 +19,7 @@ const PURE_TESTS = new Set([
   'decide',
   'decisions',
   'dependencies',
+  'help',
   'draft',
   'keyboard',
   'lavish-output',
@@ -71,12 +72,14 @@ const lanes = [
     name: 'pure',
     testTimeout: MINUTE_MS,
     concurrency: PURE_CONCURRENCY,
+    nodeArgs: [],
     files: files.filter(file => PURE_TESTS.has(resolve(file))),
   },
   {
     name: 'process/Git',
     testTimeout: 3 * MINUTE_MS,
     concurrency: HEAVY_CONCURRENCY,
+    nodeArgs: [],
     files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !flow({ file })),
   },
   {
@@ -84,7 +87,7 @@ const lanes = [
     testTimeout: 5 * MINUTE_MS,
     concurrency: 1,
     // One process, so every flow shares the one server its group starts.
-    isolation: 'none',
+    nodeArgs: ['--test-isolation=none'],
     files: files.filter(file => flow({ file })),
   },
 ]
@@ -107,7 +110,7 @@ try {
         ).href,
         '--test',
         `--test-concurrency=${lane.concurrency}`,
-        ...lane.isolation ? [`--test-isolation=${lane.isolation}`] : [],
+        ...lane.nodeArgs,
         // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
         // running.
         `--test-timeout=${lane.testTimeout}`,
