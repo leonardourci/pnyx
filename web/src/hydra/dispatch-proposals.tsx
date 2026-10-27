@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import type { HydraState } from '../../../src/core/model.ts'
 import { Button } from '../shared/ui/controls.tsx'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { DISPATCH_CHANGED } from './heads-dispatch.ts'
 
 export function DispatchProposals({

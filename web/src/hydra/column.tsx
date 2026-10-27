@@ -8,7 +8,7 @@ import { InlineTitle } from '../shared/ui/inline-title.tsx'
 import { CopyId } from '../shared/ui/copy-id.tsx'
 import { DeleteItem, Menu } from '../shared/ui/menu.tsx'
 import { Resize } from '../shared/ui/resize.tsx'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { columnLook, dropBefore } from './view.ts'
 
 export function Column({

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { join } from 'node:path'
 import { build } from 'vite'
 import { hydraIdentity, localToken } from '../../src/server/state.ts'
-import type { Command } from '../../web/src/hydra/connection.ts'
+import type { Command } from '../../web/src/app/connection.ts'
 import { browserGroup } from '../../src/test-harness/browser.ts'
 import { scenarioGroup } from '../../src/test-harness/harness.ts'
 
@@ -28,7 +28,7 @@ for (const recovery of [
           lib: {
             entry: join(
               import.meta.dirname,
-              '../fixtures/pending-hook.ts',
+              '../../web/src/app/fixtures/pending-hook.ts',
             ),
             formats: ['iife'],
             name: 'PendingHook',

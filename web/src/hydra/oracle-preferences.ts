@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { oracleSettings } from './installation-resources.ts'
 
 export function useOraclePreferences({

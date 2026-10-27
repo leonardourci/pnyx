@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { HybridHit } from '../../../src/oracle/semantic.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 // Every search box ranks cards through the Hydra server's search, the same
 // full-text plus meaning ranking as `pnyx-axi oracle` and recorded history. Weak results

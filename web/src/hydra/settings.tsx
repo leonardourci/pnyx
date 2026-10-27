@@ -8,7 +8,7 @@ import { Button, Input, NumberField, Select, Switch } from '../shared/ui/control
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '../../../src/core/retention.ts'
 import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { resetWidths } from './oracle-catalog.ts'
 import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'

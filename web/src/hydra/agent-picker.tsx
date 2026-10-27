@@ -1,6 +1,6 @@
 import { useEffect, useState, type ComponentProps } from 'react'
 import type { ModelOption } from '../../../src/server/provider.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { Button, Select, type Option } from '../shared/ui/controls.tsx'
 
 type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault'>

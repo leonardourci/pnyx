@@ -4,7 +4,7 @@ import { permissionDetails } from '../../../src/core/permissions.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { Disclosure } from '../shared/ui/disclosure.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { Form, Questions } from './questions.tsx'
 
 const title = ({ request }: { request: PermissionRequest }) => request.questions

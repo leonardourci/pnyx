@@ -1,6 +1,6 @@
 import { createElement } from 'react'
 import { createRoot, type Root } from 'react-dom/client'
-import { useHydra, type Command } from '../../web/src/hydra/connection.ts'
+import { useHydra, type Command } from '../connection.ts'
 
 interface Fixture {
   command?: Command

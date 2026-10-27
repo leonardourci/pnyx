@@ -3,7 +3,7 @@ import type { Card } from '../../../src/core/model.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { briefNotes, relativeTime, type BriefNote } from './brief.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 type Sections = Record<'summary' | 'decisions' | 'context', BriefNote[]>
 

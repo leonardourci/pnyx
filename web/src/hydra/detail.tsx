@@ -3,7 +3,7 @@ import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState, Card } from '../../../src/core/model.ts'
 import { columnsFor } from './view.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 export function Detail({
   card,

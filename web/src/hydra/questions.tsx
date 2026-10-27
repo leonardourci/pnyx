@@ -6,7 +6,7 @@ import type { Attention, Card, FormField, Question } from '../../../src/core/mod
 import { Button, Input } from '../shared/ui/controls.tsx'
 import { markdownText } from '../components/ui/markdown.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 type Send = ({
   request,

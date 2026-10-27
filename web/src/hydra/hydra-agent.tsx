@@ -7,7 +7,7 @@ import { Button } from '../shared/ui/controls.tsx'
 import { hasIcon, Icon } from '../shared/ui/icon.tsx'
 import { Tooltip } from '../shared/ui/tooltip.tsx'
 import { modelOptions } from './model-options.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 const HARNESSES = [
   {

@@ -6,7 +6,7 @@ import { InlinePermissions } from './permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import { AskPanel } from './ask.tsx'
 import { openAsks } from '../../../src/core/asks.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 export const hasTaskQuestion = ({
   card,

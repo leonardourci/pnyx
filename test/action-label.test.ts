@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { ToolCall } from '../src/thread/calls.ts'
 import { actionLabel, currentLabel, shellOf } from '../web/src/hydra/action-label.ts'
 import type { PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
-import { withChanges } from '../web/src/hydra/connection.ts'
+import { withChanges } from '../web/src/app/connection.ts'
 
 const lookup: PnyxLookup = {
   task: ({ ref }) => ref === 'login' ? {

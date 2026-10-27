@@ -1,5 +1,5 @@
 import { memoryConditions } from '../memory/conditions.ts'
-import { background } from '../runtime/background.ts'
+import { background } from '../app/background.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'

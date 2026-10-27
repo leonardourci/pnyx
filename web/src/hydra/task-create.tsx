@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react'
 import { Button, Input, Textarea } from '../shared/ui/controls.tsx'
 import { CommandFailure } from '../shared/pending-intents.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 export interface TaskDraft {
   title: string

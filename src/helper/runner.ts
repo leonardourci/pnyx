@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, w
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, ownerActor, type AgentConfig, type AgentRef, type AgentSettings, type HydraState } from '../core/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
-import { background } from '../runtime/background.ts'
+import { background } from '../app/background.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { lockIsStale } from '../store/hydra-store.ts'
 import { withWriter } from '../app/writer.ts'

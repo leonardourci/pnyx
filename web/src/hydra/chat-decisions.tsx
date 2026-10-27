@@ -5,7 +5,7 @@ import { Disclosure, CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { AskPanel } from './ask.tsx'
 import { clock } from './chat.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 export interface ChatDecision {
   id: string

@@ -10,7 +10,7 @@ import { EditableTitle } from '../shared/ui/editable-title.tsx'
 import { useCardHeight } from './card-height.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { taskUpdates } from '../../../src/thread/task.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 import { cardState, projectTitle, harnessName } from './view.ts'
 import { Resize } from '../shared/ui/resize.tsx'
 

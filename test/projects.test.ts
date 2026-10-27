@@ -1,4 +1,4 @@
-import { commandTimeout } from '../web/src/hydra/connection.ts'
+import { commandTimeout } from '../web/src/app/connection.ts'
 import { CLONE_TIMEOUT_MS } from '../src/projects/limits.ts'
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'

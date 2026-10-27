@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { watchPath } from '../runtime/watch.ts'
+import { watchPath } from '../app/watch.ts'
 import { readlink, realpath, stat, symlink, unlink } from 'node:fs/promises'
 import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'

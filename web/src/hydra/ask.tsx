@@ -4,7 +4,7 @@ import type { Ask, Card } from '../../../src/core/model.ts'
 import { askWording } from '../../../src/core/asks.ts'
 import { Button, Textarea } from '../shared/ui/controls.tsx'
 import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 const RECEIPT: Record<string, string> = {
   delivered: 'Answer sent to the worker.',
