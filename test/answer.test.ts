@@ -11,7 +11,7 @@ import { test } from 'node:test'
 import { answerPrompt, answerText, checkAnswer, requestId, type Answer, type Prompt } from '../src/core/answer.ts'
 import type { Attention, Card } from '../src/core/model.ts'
 import type { HydraEvent } from '../src/app/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { emptyHydra, replay } from '../src/app/reducer.ts'
 import { KEY, answerKeys } from '../src/integrations/hooks/answer.ts'
 import { attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 

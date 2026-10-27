@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from '../src/app/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { emptyHydra, replay } from '../src/app/reducer.ts'
 import { readStream } from '../src/test-harness/streams.ts'
 
 test(

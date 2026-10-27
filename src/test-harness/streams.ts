@@ -5,7 +5,7 @@ import type { HydraEvent } from '../app/model.ts'
 
 export const STREAMS = join(
   import.meta.dirname,
-  '../../test/fixtures',
+  '../app/fixtures',
   'streams',
 )
 

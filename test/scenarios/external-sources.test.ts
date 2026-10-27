@@ -3,7 +3,7 @@ import { copyFileSync, existsSync, readFileSync, rmSync, writeFileSync } from 'n
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Card } from '../../src/core/model.ts'
-import { emptyHydra, replay } from '../../src/core/reducer.ts'
+import { emptyHydra, replay } from '../../src/app/reducer.ts'
 import { captureResult, registerSource, commandIdentity, appendSource } from '../../src/external-sources/sources.ts'
 import { steeringClaim } from '../../src/task-inbox/state.ts'
 import { withWriter } from '../../src/app/writer.ts'

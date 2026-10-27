@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { readCatalog } from '../src/thread/catalog.ts'
-import { emptyHydra, reduce } from '../src/core/reducer.ts'
+import { emptyHydra, reduce } from '../src/app/reducer.ts'
 import { decidePush } from '../src/core/decide.ts'
 
 const write = ({

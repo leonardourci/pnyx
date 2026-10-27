@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra } from '../src/core/reducer.ts'
+import { emptyHydra } from '../src/app/reducer.ts'
 import { DEFAULT_VIEW, patchView, traces, viewFor } from '../src/core/view.ts'
 import type { ViewPreferences } from '../src/core/model.ts'
 

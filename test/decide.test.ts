@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decideLink, decideMove, decideOutcome, decidePush, decideUndo, parseLink, type Decision, type Meta } from '../src/core/decide.ts'
+import { decideLink, decideMove, decideOutcome, decidePush, parseLink, type Decision, type Meta } from '../src/core/decide.ts'
+import { decideUndo } from '../src/app/undo.ts'
 import { HydraError } from '../src/core/model.ts'
 import { type HydraEvent, type HydraState } from '../src/app/model.ts'
-import { emptyHydra, reduce } from '../src/core/reducer.ts'
+import { emptyHydra, reduce } from '../src/app/reducer.ts'
 import { columnCards } from '../src/core/tasks.ts'
 
 const meta: Meta = {

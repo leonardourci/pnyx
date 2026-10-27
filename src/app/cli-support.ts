@@ -11,7 +11,7 @@ import {
 import { HydraError } from '../core/model.ts'
 import { type HydraEvent, type HydraState, type EventType } from './model.ts'
 import { HYDRA_ACTOR } from './actors.ts'
-import { emptyHydra, replay } from '../core/reducer.ts'
+import { emptyHydra, replay } from './reducer.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { withWriter, type Writer } from './writer.ts'

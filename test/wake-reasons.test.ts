@@ -4,7 +4,7 @@ import { decidePush } from '../src/core/decide.ts'
 import { declareTask, HYDRA_CARD } from '../src/core/hydra.ts'
 import type { Card, Link, TaskStatus } from '../src/core/model.ts'
 import type { HydraEvent, HydraState } from '../src/app/model.ts'
-import { emptyHydra, reduce } from '../src/core/reducer.ts'
+import { emptyHydra, reduce } from '../src/app/reducer.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
 import { reasonLine, wakeReasons, wakesHydra } from '../src/core/wake-reasons.ts'
 

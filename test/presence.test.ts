@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { AgentSession } from '../src/core/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
+import { emptyHydra, replay } from '../src/app/reducer.ts'
 import { decidePush, decideSession } from '../src/core/decide.ts'
 import { checkAttachments, terminalPresence } from '../src/integrations/presence/check.ts'
 

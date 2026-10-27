@@ -4,7 +4,7 @@ import { recordedUsage } from '../src/integrations/hooks/usage.ts'
 import { appendFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { emptyHydra } from '../src/core/reducer.ts'
+import { emptyHydra } from '../src/app/reducer.ts'
 import { hydraConfig } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/app/model.ts'
 import { spendFor, spendInputs, taskSpend } from '../src/spend/tasks.ts'
@@ -256,7 +256,7 @@ test(
     } = await import('node:fs')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
-    const { emptyHydra } = await import('../src/core/reducer.ts')
+    const { emptyHydra } = await import('../src/app/reducer.ts')
     const { taskSpend } = await import('../src/spend/tasks.ts')
     const dir = mkdtempSync(join(
       tmpdir(),

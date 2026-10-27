@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
-import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
 import { cardFacts, placeCard } from '../src/core/columns.ts'
 import { lifecycleMoves } from '../src/core/lifecycle.ts'

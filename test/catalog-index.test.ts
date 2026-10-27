@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import { createCatalogIndex } from '../src/thread/catalog-index.ts'
 import { readCatalog } from '../src/thread/catalog.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { emptyHydra, reduce } from '../src/core/reducer.ts'
+import { emptyHydra, reduce } from '../src/app/reducer.ts'
 
 for (const statOnly of [
   false,

@@ -8,6 +8,7 @@ const HEAVY_CONCURRENCY = 2
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'scripts/verification/marker.test.ts',
+  'src/app/reducer.test.ts',
   'test/action-label.test.ts',
   'test/card-open.test.ts',
   'test/card-states.test.ts',
@@ -27,7 +28,6 @@ const PURE_TESTS = new Set([
   'test/permissions.test.ts',
   'test/pnyx-action.test.ts',
   'test/presence.test.ts',
-  'test/reducer.test.ts',
   'test/tasks.test.ts',
   'test/usage-limits.test.ts',
   'test/wake-reasons.test.ts',

@@ -3,7 +3,7 @@ import {
 } from 'node:fs'
 import { HydraError } from '../core/model.ts'
 import { type HydraState } from './model.ts'
-import { emptyHydra, replay } from '../core/reducer.ts'
+import { emptyHydra, replay } from './reducer.ts'
 import { readLog } from './event-log.ts'
 import type { LogRead } from './event-log.ts'
 import { DEFAULT_HYDRA, hydraDir } from './home-migration.ts'
