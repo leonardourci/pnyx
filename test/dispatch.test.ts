@@ -15,7 +15,6 @@ import { hydraDigest, TEMPLATE_NUDGE } from '../src/core/digest.ts'
 import { setupCheck, setupDigest } from '../src/setup/check.ts'
 
 const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
-const TEMPLATE_ACCOUNTS = parseAccounts({ value: readTemplate({ accounts: true }) })
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(
@@ -1172,17 +1171,6 @@ test(
       )),
       TEMPLATE_DISPATCH,
     )
-    assert.deepEqual(
-      JSON.parse(readFileSync(
-        configPath({
-          hydraId: 'lab',
-          shared: true,
-          accounts: true,
-        }),
-        'utf8',
-      )),
-      TEMPLATE_ACCOUNTS,
-    )
     dispatchCommands.rule([
       'set',
       'docs',
@@ -1535,6 +1523,49 @@ test(
         'utf8',
       ),
       '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
+    )
+  },
+)
+
+test(
+  'rule init registers the login folder each harness variable names and keeps the template folder when unset',
+  () => {
+    lab()
+    const saved = process.env.CODEX_HOME
+
+    try {
+      delete process.env.CODEX_HOME
+      dispatchCommands.rule([
+        'init',
+        '--shared',
+        '--hydra',
+        'lab',
+      ])
+    } finally {
+      process.env.CODEX_HOME = saved
+    }
+
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        configPath({
+          hydraId: 'lab',
+          shared: true,
+          accounts: true,
+        }),
+        'utf8',
+      )),
+      {
+        accounts: {
+          'claude:personal': {
+            provider: 'claude',
+            folder: process.env.CLAUDE_CONFIG_DIR,
+          },
+          'codex:personal': {
+            provider: 'codex',
+            folder: '~/.codex',
+          },
+        },
+      },
     )
   },
 )

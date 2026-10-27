@@ -5,7 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateAccounts, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -133,7 +133,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
         if (!existsSync(accountPath)) {
           writeConfig({
             path: accountPath,
-            value: readTemplate({ accounts: true }),
+            value: templateAccounts(),
             accounts: true,
           })
         }
