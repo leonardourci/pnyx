@@ -2456,13 +2456,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       card: '$board',
     },
     decide: ({ state }) => {
-      if (action === 'create' && state.configured) {
-        throw new HydraError({
-          message: `Hydra already exists: ${id}`,
-          code: 'CONFLICT',
-        })
-      }
-
       const current = hydraConfig({
         state,
         id,
@@ -2603,6 +2596,25 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         data.commandOwnsFolder = true
       } else if (owns === 'copy') {
         delete data.commandOwnsFolder
+      }
+
+      // Creating a Hydra that already exists as asked is a no-op; other settings need hydra set.
+      if (action === 'create' && state.configured) {
+        if (isDeepStrictEqual(
+          data,
+          hydraConfig({
+            state,
+            id,
+          }),
+        )) {
+          return { skipped: 'unchanged' }
+        }
+
+        throw new HydraError({
+          message: `Hydra already exists with other settings: ${id}`,
+          code: 'CONFLICT',
+          help: [`Run \`pnyx-axi hydra set --hydra ${id}\` with the settings to change`],
+        })
       }
 
       return hydraEvent({
@@ -4815,7 +4827,8 @@ pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, do
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+--project names a project attached to the Hydra (see project list).
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>

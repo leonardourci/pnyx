@@ -1,5 +1,4 @@
 import { canonicalProjectPath, sameProjectPath } from './identity.ts'
-import { projectLabel } from '../core/decide.ts'
 import { statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { HydraError, landingRule, type HydraProject, type HydraState } from '../core/model.ts'
@@ -70,14 +69,15 @@ export function findProject({
   return project
 }
 
+// A new task's project must be one attached to the Hydra; the task records its path.
 export function taskProject({
   state,
   ref,
 }: {
   state: HydraState
   ref: string
-}): string | null {
-  let selected: HydraProject | undefined
+}): string {
+  let selected: HydraProject
 
   try {
     selected = findProject({
@@ -85,12 +85,18 @@ export function taskProject({
       ref,
     })
   } catch (error) {
-    if (!(error instanceof HydraError) || error.code !== 'NOT_FOUND') {
-      throw error
+    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+      throw new HydraError({
+        message: `project not attached: ${ref}`,
+        code: 'NOT_FOUND',
+        help: ['Run `pnyx-axi project list` for attached projects, or `pnyx-axi project add <path>` to attach one'],
+      })
     }
+
+    throw error
   }
 
-  if (selected?.detached) {
+  if (selected.detached) {
     throw new HydraError({
       message: `project is detached: ${ref}`,
       code: 'NOT_FOUND',
@@ -98,7 +104,7 @@ export function taskProject({
     })
   }
 
-  return selected?.path ?? projectLabel({ value: ref })
+  return selected.path
 }
 
 export function projectFolder({ path }: { path: string }): string {

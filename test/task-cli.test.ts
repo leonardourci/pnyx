@@ -287,9 +287,36 @@ test(
 )
 
 test(
-  'project labels can be created, changed independently, cleared and searched',
+  'task create takes an attached project; labels then change independently, clear and search',
   () => {
     const f = fixture()
+    const folder = join(
+      f.home,
+      'quartz-api',
+    )
+    mkdirSync(folder)
+    assert.match(
+      failure({
+        run: () => f.run({
+          args: [
+            'task',
+            'create',
+            '--title',
+            'Fix pagination',
+            '--project',
+            'quartz-api',
+          ],
+        }),
+      }).stdout,
+      /project not attached: quartz-api/,
+    )
+    f.run({
+      args: [
+        'project',
+        'add',
+        folder,
+      ],
+    })
     f.run({
       args: [
         'task',
@@ -305,7 +332,8 @@ test(
     const id = f.state().keys.labelled
     assert.equal(
       f.state().cards[id].project,
-      'quartz-api',
+      folder,
+      'the task records the attached project by path',
     )
     assert.match(
       f.run({
@@ -314,7 +342,8 @@ test(
           'list',
         ],
       }),
-      /quartz-api/,
+      /Fix pagination,quartz-api,/,
+      'rows show the project by name',
     )
     assert.match(
       f.run({
@@ -377,9 +406,8 @@ test(
     assert.throws(() => f.run({
       args: [
         'task',
-        'create',
-        '--title',
-        'Invalid label',
+        'rename',
+        id,
         '--project',
         'x'.repeat(101),
       ],
@@ -787,6 +815,37 @@ test(
         ],
       }),
       /count: 1 of 1 total/,
+    )
+  },
+)
+
+test(
+  'creating a Hydra that exists as asked is a no-op; other settings conflict',
+  () => {
+    const f = fixture()
+    const create = ({ extra = [] }: { extra?: string[] } = {}) => f.run({
+      args: [
+        'hydra',
+        'create',
+        'work',
+        ...extra,
+      ],
+    })
+    create()
+    assert.match(
+      create(),
+      /event: "none: unchanged"/,
+    )
+    assert.match(
+      failure({
+        run: () => create({
+          extra: [
+            '--name',
+            'Other',
+          ],
+        }),
+      }).stdout,
+      /Hydra already exists with other settings: work/,
     )
   },
 )
