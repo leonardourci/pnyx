@@ -23,7 +23,7 @@ import { listFolders } from '../projects/folders.ts'
 import { doneDeadline } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { settleDone, settles } from '../copies/copies.ts'
-import { execFile } from 'node:child_process'
+import { execFile, type ChildProcess } from 'node:child_process'
 import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '../thread/read.ts'
 import type { CurrentAction } from '../thread/calls.ts'
 import type { Catalog, CatalogLocations } from '../thread/catalog.ts'
@@ -44,7 +44,7 @@ import { background } from '../runtime/background.ts'
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import { basename, dirname, extname, join, normalize } from 'node:path'
-import { parseArgs, promisify } from 'node:util'
+import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
@@ -266,7 +266,8 @@ const CREATION_POLL_MS = 1000
 const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
-const runFile = promisify(execFile)
+// A worker mid-write gets this long to finish on shutdown before it is killed.
+const WORKER_GRACE_MS = 5000
 // The CLI owns reply writes and delivery; a child keeps slow native sends off the server event loop.
 const REPLY_WORKER = join(
   import.meta.dirname,
@@ -1942,6 +1943,89 @@ async function mountOwnedHydra({
   let replyCheckedAt = 0
   let scheduled = false
 
+  // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
+  // The value says whether shutdown may kill the worker: only a follow, which the next run repeats.
+  const workers = new Map<ChildProcess, boolean>()
+
+  const startWorker = ({
+    args,
+    done,
+  }: {
+    args: string[]
+    done: ({
+      error,
+      stdout,
+    }: {
+      error: Error | null
+      stdout: string
+    }) => void
+  }) => {
+    const child = execFile(
+      process.execPath,
+      [
+        REPLY_WORKER,
+        ...args,
+      ],
+      {
+        timeout: REPLY_WORKER_TIMEOUT_MS,
+        maxBuffer: MAX_BODY,
+      },
+      (
+        error,
+        stdout,
+      ) => done({
+        error,
+        stdout,
+      }),
+    )
+    workers.set(
+      child,
+      args[0] === 'inbox-follow',
+    )
+    child.once(
+      'close',
+      () => workers.delete(child),
+    )
+  }
+
+  const runWorker = ({ args }: { args: string[] }) => new Promise<{ stdout: string }>((
+    resolve,
+    reject,
+  ) => {
+    if (closed) {
+      return reject(new Error('Pnyx is shutting down'))
+    }
+
+    startWorker({
+      args,
+      done: ({
+        error,
+        stdout,
+      }) => error ? reject(error) : resolve({ stdout }),
+    })
+  })
+
+  // No worker starts once closed is set, so the map only shrinks while this waits.
+  // A send is never killed here: its receipt is written after the send, and a queued reply without one stays stuck.
+  const joinWorkers = async () => {
+    const killer = setTimeout(
+      () => workers.forEach((
+        killable,
+        child,
+      ) => killable && child.kill('SIGKILL')),
+      WORKER_GRACE_MS,
+    )
+
+    while (workers.size > 0) {
+      await new Promise(resolve => [...workers.keys()][0]!.once(
+        'close',
+        resolve,
+      ))
+    }
+
+    clearTimeout(killer)
+  }
+
   // Resends tried so far, by retry id and time, so one that failed before its receipt still counts.
   const triedResends = new Map<string, number>()
 
@@ -1956,10 +2040,8 @@ async function mountOwnedHydra({
     retry: string
   }): Promise<ReplyState> => {
     try {
-      const { stdout } = await runFile(
-        process.execPath,
-        [
-          REPLY_WORKER,
+      const { stdout } = await runWorker({
+        args: [
           'reply',
           card,
           // A text starting with a dash would otherwise read as an option.
@@ -1971,11 +2053,7 @@ async function mountOwnedHydra({
           '--actor',
           'pnyx',
         ],
-        {
-          timeout: REPLY_WORKER_TIMEOUT_MS,
-          maxBuffer: MAX_BODY,
-        },
-      )
+      })
       const receipt = JSON.parse(stdout) as { reply?: { state?: ReplyState } }
       const state = receipt.reply?.state
 
@@ -2058,18 +2136,16 @@ async function mountOwnedHydra({
           replyRun = (async () => {
             try {
               if (steeringToFollow({ state })) {
-                await runFile(
-                  process.execPath,
-                  [
-                    REPLY_WORKER,
+                await runWorker({
+                  args: [
                     'inbox-follow',
                     hydraId,
                   ],
-                  {
-                    timeout: REPLY_WORKER_TIMEOUT_MS,
-                    maxBuffer: MAX_BODY,
-                  },
-                )
+                })
+              }
+
+              if (closed) {
+                return
               }
 
               await followUpReplies({
@@ -2079,7 +2155,9 @@ async function mountOwnedHydra({
                 unconfirmed: agents.unconfirmed,
               })
             } catch (error) {
-              console.error(`pnyx-axi replies: ${(error as Error).message}`)
+              if (!closed) {
+                console.error(`pnyx-axi replies: ${(error as Error).message}`)
+              }
             } finally {
               replyRun = undefined
               kick()
@@ -3075,10 +3153,15 @@ async function mountOwnedHydra({
                 [],
               ]
 
-          execFile(
-            process.execPath,
-            [
-              REPLY_WORKER,
+          if (closed) {
+            return fail({
+              error: 'Pnyx is shutting down',
+              code: 'UNAVAILABLE',
+            })
+          }
+
+          startWorker({
+            args: [
               ...command,
               '--hydra',
               hydraId,
@@ -3090,14 +3173,10 @@ async function mountOwnedHydra({
               ]),
               ...rest,
             ],
-            {
-              timeout: REPLY_WORKER_TIMEOUT_MS,
-              maxBuffer: MAX_BODY,
-            },
-            (
+            done: ({
               error,
               stdout,
-            ) => {
+            }) => {
               kick()
 
               if (ws.readyState !== ws.OPEN) {
@@ -3147,7 +3226,7 @@ async function mountOwnedHydra({
                 }
               }
             },
-          )
+          })
         }
       } catch (error) {
         fail({
@@ -3370,7 +3449,12 @@ async function mountOwnedHydra({
       eventsPath,
       kick,
     )
-    await queueRun
+    await Promise.all([
+      queueRun,
+      replyRun,
+      followRun,
+      joinWorkers(),
+    ])
     await sources.close()
     firstmate?.close()
     review.close()
