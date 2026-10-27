@@ -1893,14 +1893,42 @@ async function mountOwnedHydra({
   // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
   const workers = new Set<ChildProcess>()
 
-  const trackWorker = ({ child }: { child: ChildProcess }) => {
+  const startWorker = ({
+    args,
+    done,
+  }: {
+    args: string[]
+    done: ({
+      error,
+      stdout,
+    }: {
+      error: Error | null
+      stdout: string
+    }) => void
+  }) => {
+    const child = execFile(
+      process.execPath,
+      [
+        REPLY_WORKER,
+        ...args,
+      ],
+      {
+        timeout: REPLY_WORKER_TIMEOUT_MS,
+        maxBuffer: MAX_BODY,
+      },
+      (
+        error,
+        stdout,
+      ) => done({
+        error,
+        stdout,
+      }),
+    )
     workers.add(child)
     child.once(
       'close',
       () => workers.delete(child),
     )
-
-    return child
   }
 
   const runWorker = ({ args }: { args: string[] }) => new Promise<{ stdout: string }>((
@@ -1911,38 +1939,29 @@ async function mountOwnedHydra({
       return reject(new Error('server is closed'))
     }
 
-    trackWorker({
-      child: execFile(
-        process.execPath,
-        [
-          REPLY_WORKER,
-          ...args,
-        ],
-        {
-          timeout: REPLY_WORKER_TIMEOUT_MS,
-          maxBuffer: MAX_BODY,
-        },
-        (
-          error,
-          stdout,
-        ) => error ? reject(error) : resolve({ stdout }),
-      ),
+    startWorker({
+      args,
+      done: ({
+        error,
+        stdout,
+      }) => error ? reject(error) : resolve({ stdout }),
     })
   })
 
+  // No worker starts once closed is set, so the set only shrinks while this waits.
   const joinWorkers = async () => {
-    const exited = Promise.all([...workers].map(child => new Promise<void>(resolve => {
-      child.once(
-        'close',
-        () => resolve(),
-      )
-    })))
     const killer = setTimeout(
       () => workers.forEach(child => child.kill('SIGKILL')),
       WORKER_GRACE_MS,
     )
 
-    await exited
+    while (workers.size > 0) {
+      await new Promise(resolve => [...workers][0]!.once(
+        'close',
+        resolve,
+      ))
+    }
+
     clearTimeout(killer)
   }
 
@@ -2071,7 +2090,9 @@ async function mountOwnedHydra({
                 unconfirmed: agents.unconfirmed,
               })
             } catch (error) {
-              console.error(`pnyx-axi replies: ${(error as Error).message}`)
+              if (!closed) {
+                console.error(`pnyx-axi replies: ${(error as Error).message}`)
+              }
             } finally {
               replyRun = undefined
               kick()
@@ -3125,80 +3146,79 @@ async function mountOwnedHydra({
                 [],
               ]
 
-          trackWorker({
-            child: execFile(
-              process.execPath,
-              [
-                REPLY_WORKER,
-                ...command,
-                '--hydra',
-                hydraId,
-                '--actor',
-                'web',
-                ...homes.flatMap(h => [
-                  '--home',
-                  h,
-                ]),
-                ...rest,
-              ],
-              {
-                timeout: REPLY_WORKER_TIMEOUT_MS,
-                maxBuffer: MAX_BODY,
-              },
-              (
-                error,
-                stdout,
-              ) => {
-                kick()
+          if (closed) {
+            return fail({
+              error: 'Pnyx is shutting down',
+              code: 'UNAVAILABLE',
+            })
+          }
 
-                if (ws.readyState !== ws.OPEN) {
-                  return
+          startWorker({
+            args: [
+              ...command,
+              '--hydra',
+              hydraId,
+              '--actor',
+              'web',
+              ...homes.flatMap(h => [
+                '--home',
+                h,
+              ]),
+              ...rest,
+            ],
+            done: ({
+              error,
+              stdout,
+            }) => {
+              kick()
+
+              if (ws.readyState !== ws.OPEN) {
+                return
+              }
+
+              if (error) {
+                let known: {
+                  message?: unknown
+                  code?: unknown
+                  help?: string[]
+                } | undefined
+
+                try {
+                  known = JSON.parse(stdout).error
+                } catch {
+                  known = undefined
                 }
 
-                if (error) {
-                  let known: {
-                    message?: unknown
-                    code?: unknown
-                    help?: string[]
-                  } | undefined
-
-                  try {
-                    known = JSON.parse(stdout).error
-                  } catch {
-                    known = undefined
-                  }
-
-                  if (typeof known?.message === 'string' && typeof known.code === 'string') {
-                    fail({
-                      error: known.message,
-                      code: known.code,
-                      help: known.help,
-                    })
-                  } else {
-                    fail({
-                      error: 'Reply could not be confirmed; check receipts before sending again',
-                      code: 'DELIVERY_UNKNOWN',
-                    })
-                  }
+                if (typeof known?.message === 'string' && typeof known.code === 'string') {
+                  fail({
+                    error: known.message,
+                    code: known.code,
+                    help: known.help,
+                  })
                 } else {
-                  try {
-                    send({
-                      ws,
-                      message: {
-                        type: 'receipt',
-                        id,
-                        ...JSON.parse(stdout),
-                      },
-                    })
-                  } catch {
-                    fail({
-                      error: 'Reply receipt unavailable; check history',
-                      code: 'DELIVERY_UNKNOWN',
-                    })
-                  }
+                  fail({
+                    error: 'Reply could not be confirmed; check receipts before sending again',
+                    code: 'DELIVERY_UNKNOWN',
+                  })
                 }
-              },
-            ),
+              } else {
+                try {
+                  send({
+                    ws,
+                    message: {
+                      type: 'receipt',
+                      id,
+                      ...JSON.parse(stdout),
+                    },
+                  })
+                } catch {
+                  fail({
+                    error: 'Reply receipt unavailable; check history',
+                    code: 'DELIVERY_UNKNOWN',
+                  })
+                }
+              }
+            },
           })
         }
       } catch (error) {
@@ -3413,6 +3433,7 @@ async function mountOwnedHydra({
     await Promise.all([
       queueRun,
       replyRun,
+      followRun,
       joinWorkers(),
     ])
     await sources.close()
