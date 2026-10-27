@@ -9,6 +9,7 @@ import { STEP_WORDS } from './model.ts'
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check]
 Pulls main into the Pnyx folder, installs and builds, then restarts the running server. Any failed step goes back to the previous version without restarting.
 A folder off main or with local changes is refused. --check only says whether main has something newer.
+Ctrl-C stops it and goes back to the previous version; \`pnyx-axi hydra stop\` does the same for a /upgrade sent in Hydra's chat.
 `
 
 const OPTIONS = { check: { type: 'boolean' } } as const
@@ -51,7 +52,16 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
     )
   }
 
-  const result = await runUpgrade()
+  const stopping = new AbortController()
+  const stop = () => stopping.abort()
+  process.once(
+    'SIGINT',
+    stop,
+  )
+  const result = await runUpgrade({ signal: stopping.signal }).finally(() => process.off(
+    'SIGINT',
+    stop,
+  ))
 
   if (result.state === 'refused') {
     throw new AxiError(
@@ -67,6 +77,21 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
       'UPGRADE_FAILED',
       ['Fix the cause, then run `pnyx-axi upgrade` again'],
     )
+  }
+
+  if (result.state === 'stopped') {
+    if (result.rolledBack === false) {
+      throw new AxiError(
+        `Upgrade stopped; going back to the previous version failed, so the folder may be partly upgraded.\n${result.error}`,
+        'UPGRADE_STOPPED',
+        ['Fix the cause, then run `pnyx-axi upgrade` again'],
+      )
+    }
+
+    return {
+      steps: result.steps,
+      result: 'stopped: Upgrade stopped; nothing changed',
+    }
   }
 
   if (result.state === 'current') {
