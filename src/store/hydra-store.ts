@@ -592,8 +592,13 @@ export function acquireLock({
   )
   const takeover = `${path}.takeover`
   const deadline = Date.now() + timeout
+  let attempts = 0
+  let retryTakeover: boolean
 
   do {
+    attempts++
+    retryTakeover = false
+
     try {
       const fd = openSync(
         path,
@@ -619,6 +624,7 @@ export function acquireLock({
       path,
       takeover,
     })) {
+      retryTakeover = timeout === 0 && attempts === 1
       continue
     }
 
@@ -634,7 +640,7 @@ export function acquireLock({
         ),
       ),
     )
-  } while (Date.now() < deadline)
+  } while (retryTakeover || Date.now() < deadline)
 
   let owner: string
 

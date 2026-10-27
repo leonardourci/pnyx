@@ -435,6 +435,56 @@ test(
 )
 
 test(
+  'a zero-timeout writer reclaims one stale lock without waiting',
+  () => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stale-immediate-',
+    ))
+    const path = join(
+      dir,
+      'writer.lock',
+    )
+    const dead = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        '',
+      ],
+    ).pid
+    writeFileSync(
+      path,
+      String(dead),
+    )
+    const release = acquireLock({
+      dir,
+      timeout: 0,
+    })
+
+    try {
+      assert.equal(
+        readFileSync(
+          path,
+          'utf8',
+        ),
+        String(process.pid),
+      )
+      assert.equal(
+        existsSync(`${path}.takeover`),
+        false,
+      )
+    } finally {
+      release()
+    }
+
+    assert.equal(
+      existsSync(path),
+      false,
+    )
+  },
+)
+
+test(
   'writer lock expiry reports the live owner and leaves its lock intact',
   () => {
     const dir = mkdtempSync(join(
