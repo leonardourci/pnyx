@@ -927,6 +927,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card > .resize-y::after { opacity: .7; background: var(--color-muted); transition: background .12s, opacity .12s; }
 
+.card { padding-bottom: 24px; }
+
 .card > .resize-y { bottom: 0; }
 
 .card > .resize-y::after { top: 17px; }
