@@ -14,6 +14,7 @@ Each finding is tagged:
 
 ## Before reading the diff
 
+- [ ] Verify the goal: read the PR description and linked issue, state the goal in one line, and check the diff achieves it and only it. Missed or extra scope is a finding.
 - [ ] Diff against the branch the PR targets, including uncommitted changes. A stacked PR reviews against its parent branch, not `main`.
 - [ ] Read the intended behavior, `AGENTS.md` and [follow-conventions](../follow-conventions/SKILL.md). For `web/`, also read [write-front-end](../write-front-end/SKILL.md); for a cleanup or refactor, [deslop](../deslop/SKILL.md).
 - [ ] If the tree mixes work from another branch, drop changes the base already has, unless the drift is deliberate here.
@@ -33,7 +34,7 @@ Each finding is tagged:
 - [ ] Do not match exact event sequence numbers read in separate operations: another writer can append between reads. Bad: `assert.equal(reply.seq, previouslyRead.seq + 1)`. Good: find the reply by its returned ID in one event snapshot, then assert its payload and causal link.
 - [ ] In tests, use IDs returned by setup or the operation under test. Bad: `taskShow({ id: 'task-1' })` after creating a task. Good: `taskShow({ id: created.id })`. Fixed IDs belong only in synthetic input whose identity is the contract.
 - [ ] For UI changes, check loading, empty and error states, keyboard access and the existing UI primitives. Use Hydra, Oracle and inscribe consistently.
-- [ ] Match changed behavior to tests using [audit-tests](../audit-tests/SKILL.md). Read the assertions; a test name alone proves nothing. A bug fix ships a test that fails with only the fix reverted (must fix).
+- [ ] Match changed behavior to tests using [audit-tests](../audit-tests/SKILL.md). Read the assertions; a test name alone proves nothing. Tests assert user-visible behavior through public APIs, keep logic out of the expected values, and use real dependencies, faking only third-party services, AI providers and the network. A bug fix ships a test that fails with only the fix reverted (must fix).
 - [ ] Check docs, CLI help and hints describe the resulting behavior, in the same change (must fix).
 - [ ] Review comments and prose using `deslop`. Keep a comment only for a constraint or non-obvious reason; remove narration and stale claims (must fix). Keep each prose paragraph on one source line.
 - [ ] Run `pnpm verify` for the branch's checks. The lint fixer cannot settle unused variables or lines over 100 characters; report those. Respect any explicit test hold and report skipped checks as pending.
