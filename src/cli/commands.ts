@@ -728,6 +728,12 @@ function projectName({
   return project ? projectsFor({ state }).find(p => p.path === project)?.name ?? project : 'none'
 }
 
+function attentionLabel({ card }: { card: Card }) {
+  const kinds = card.attention.map(a => a.kind)
+
+  return kinds.length > 0 ? kinds.join(' ') : 'none'
+}
+
 function cardRow({
   state,
   card,
@@ -763,10 +769,13 @@ function cardDetail({
       state,
       project: card.project,
     }),
-    ...(card.brief !== undefined ? { brief: full ? card.brief : clip({ text: card.brief }) } : {}),
     workspace: card.workspace,
     column: card.column,
     tags: card.tags.length ? card.tags : 'none',
+  }
+
+  if (card.brief !== undefined) {
+    detail.brief = full ? card.brief : clip({ text: card.brief })
   }
 
   if (card.parentId) {
@@ -1549,12 +1558,30 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           const created: TaskCreated['data'] = {
             key,
             title,
-            ...(values.hold ? { hold: holdReason } : {}),
-            ...(project ? { project } : {}),
-            ...(brief !== undefined ? { brief } : {}),
-            ...(folder ? { folder } : {}),
-            ...(parent ? { parentId: parent.id } : {}),
-            ...(selected ? { column: selected.id } : {}),
+          }
+
+          if (values.hold) {
+            created.hold = holdReason
+          }
+
+          if (project) {
+            created.project = project
+          }
+
+          if (brief !== undefined) {
+            created.brief = brief
+          }
+
+          if (folder) {
+            created.folder = folder
+          }
+
+          if (parent) {
+            created.parentId = parent.id
+          }
+
+          if (selected) {
+            created.column = selected.id
           }
 
           // A build task, the default, records no kind.
@@ -1642,7 +1669,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
       .map(c => {
         const extra: Record<TaskField, string> = {
-          attention: c.attention.map(a => a.kind).join(' ') || 'none',
+          attention: attentionLabel({ card: c }),
           parent: c.parentId ?? 'none',
           status: c.status?.state ?? 'paused',
           worker: c.sessionIds?.[0] ?? 'none',
@@ -1725,13 +1752,16 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }
     }
 
-    return {
+    const shown: {
+      task: Output
+      help: string[]
+    } = {
       task: {
         ...cardRow({
           state,
           card: task,
         }),
-        attention: task.attention.map(a => a.kind).join(' ') || 'none',
+        attention: attentionLabel({ card: task }),
         key: task.key,
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
         ask: task.ask?.length ? task.ask.map(ask => ({
@@ -1757,7 +1787,6 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           state,
           card: task,
         }),
-        ...(task.queueNote ? { handoff: clip({ text: task.queueNote }) } : {}),
         next: task.sessionIds?.[0] ? workerQueue({
           state,
           session: task.sessionIds[0],
@@ -1776,6 +1805,12 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
       },
       help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
     }
+
+    if (task.queueNote) {
+      shown.task.handoff = clip({ text: task.queueNote })
+    }
+
+    return shown
   }
 
   if (action === 'chat') {
