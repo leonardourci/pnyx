@@ -5,6 +5,9 @@ import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
 import { activeCompaction, compactCommand } from '../compaction/state.ts'
 import { recordCompaction } from '../compaction/record.ts'
+import { upgradeCommand } from '../upgrade/model.ts'
+import { upgradeQueue } from '../upgrade/queue.ts'
+import { RESTART_SIGNAL } from '../upgrade/restart.ts'
 import type { CompactInput, CompactionChange } from '../compaction/model.ts'
 import { commentEpoch, commentInput, needsCommentNote } from '../compaction/comments.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '../task-inbox/state.ts'
@@ -621,6 +624,11 @@ export function createHost({
   pauseDelay = PAUSE_MS,
   retryDelays = RETRY_MS,
   helperBound,
+  upgradeRoot,
+  restart = () => process.kill(
+    process.pid,
+    RESTART_SIGNAL,
+  ),
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -641,6 +649,9 @@ export function createHost({
   pauseDelay?: number
   retryDelays?: number[]
   helperBound?: number
+  // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
+  upgradeRoot?: string
+  restart?(): void
 }): Host {
   const providers = {
     'claude-code': claudeProvider({ query }),
@@ -794,6 +805,40 @@ export function createHost({
   }
 
   const at = () => new Date().toISOString()
+  const upgrades = upgradeQueue({
+    root: upgradeRoot,
+    state: () => loadHydra({ hydraId }).state,
+    record: ({
+      operation,
+      eventId = randomUUID(),
+    }) => {
+      write({
+        fn: ({ writer }) => writer.append({
+          event: {
+            v: 1,
+            id: eventId,
+            seq: writer.state.seq + 1,
+            cardId: HYDRA_CARD,
+            actor: 'pnyx',
+            at: at(),
+            type: 'pnyx.upgrade',
+            data: operation,
+          },
+        }),
+      })
+      queued()
+    },
+    // Hydra's turn, a message waiting to start one, or a compaction holds the upgrade back.
+    busy: () => {
+      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+
+      return queuedHydra.size > 0 || Boolean(activeCompaction({ card }))
+        || (card?.agent ? live.get(sessionId({ agent: card.agent }))?.activity === 'working' : false)
+    },
+    closing: () => closing,
+    restart,
+    at,
+  })
 
   const compactChange = ({
     card,
@@ -3315,6 +3360,13 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
+      if (ownerActor({ actor }) && upgradeCommand({ text })) {
+        upgrades.request({ id })
+        queued()
+
+        return Promise.resolve({ state: 'queued' })
+      }
+
       const queuedState = loadHydra({ hydraId }).state
       const queuedDispatch = effectiveDispatch({
         hydraId,
@@ -3807,6 +3859,10 @@ export function createHost({
       card: ref,
       sendNow,
     }) => {
+      if (sendNow && upgrades.sendNow({ id: sendNow })) {
+        return { sent: 'upgrade' }
+      }
+
       const card = findCard({
         state: loadHydra({ hydraId }).state,
         ref,
@@ -4609,10 +4665,21 @@ export function createHost({
       wakeStart ??= seq - 1
     },
 
-    queue: () => ({
-      waiting: updates.filter(update => update.seq > readThrough),
-      reading: updates.filter(update => update.seq <= readThrough),
-    }),
+    queue: () => {
+      const state = loadHydra({ hydraId }).state
+
+      return {
+        waiting: [
+          ...updates.filter(update => update.seq > readThrough),
+          ...(state.upgrades ?? []).filter(operation => operation.state === 'queued').map(operation => ({
+            seq: state.eventIds[`${operation.id}:hosted`] ?? state.seq,
+            card: HYDRA_CARD,
+            kind: 'upgrade',
+          })),
+        ],
+        reading: updates.filter(update => update.seq <= readThrough),
+      }
+    },
 
     action: ({
       card,
@@ -4689,6 +4756,7 @@ export function createHost({
     },
 
     recover: async () => {
+      upgrades.recover()
       let cutHydraTurn: {
         resumeAttemptId: string
         resumeMessage: string

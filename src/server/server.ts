@@ -316,6 +316,10 @@ export async function startServer({
   followDelay?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
+  // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
+  // Only serve checks the real folder, so a test server never asks GitHub.
+  upgradeRoot?: string
+  restart?(): void
 }): Promise<RunningServer> {
   const wss = new WebSocketServer({
     noServer: true,
@@ -959,6 +963,8 @@ async function mountHydra({
   reminderScheduler,
   open,
   hydrasChanged,
+  upgradeRoot,
+  restart,
 }: {
   hydraId: string
   url: string
@@ -978,6 +984,8 @@ async function mountHydra({
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
+  upgradeRoot?: string
+  restart?(): void
 }): Promise<MountedHydra> {
   const release = claimServer({ hydraId })
 
@@ -1001,6 +1009,8 @@ async function mountHydra({
       open,
       release,
       hydrasChanged,
+      upgradeRoot,
+      restart,
     })
   } catch (error) {
     release()
@@ -1027,6 +1037,8 @@ async function mountOwnedHydra({
   open,
   release,
   hydrasChanged,
+  upgradeRoot,
+  restart,
 }: {
   hydraId: string
   url: string
@@ -1046,6 +1058,8 @@ async function mountOwnedHydra({
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
+  upgradeRoot?: string
+  restart?(): void
 }): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
     throw new HydraError({
@@ -2124,6 +2138,8 @@ async function mountOwnedHydra({
     stallRepeatMax,
     pauseDelay,
     retryDelays,
+    upgradeRoot,
+    restart,
     changed: () => kick(),
     queued: () => {
       for (const ws of clients) {
