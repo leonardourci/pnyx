@@ -5,7 +5,7 @@ import { dateLearnings, learningText, type LearningChange, type Learning } from 
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { Meta } from '../core/decide.ts'
+import type { Meta } from '../app/command-meta.ts'
 import { HydraError } from '../core/model.ts'
 import { withWriter } from '../app/writer.ts'
 import { privateDir, withRegistryLock } from '../store/hydra-store.ts'

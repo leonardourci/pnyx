@@ -1,4 +1,5 @@
-import { EVENT_VERSION, HydraError, EVENT_TYPES, type HydraEvent } from '../core/model.ts'
+import { EVENT_TYPES, type HydraEvent } from './model.ts'
+import { EVENT_VERSION, HydraError } from '../core/model.ts'
 import { logPath } from '../store/hydra-store.ts'
 import { existsSync, openSync, fstatSync, readSync, closeSync, statSync } from 'node:fs'
 import { hydraDir } from './home-migration.ts'

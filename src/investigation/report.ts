@@ -3,9 +3,11 @@ import { reportCalls, requireReportReview } from './inventory.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { readFileSync } from 'node:fs'
-import { findCard, type Meta } from '../core/decide.ts'
+import type { Meta } from '../app/command-meta.ts'
+import { findCard } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
-import { HydraError, TASK_KINDS, type Card, type HydraState, type TaskKind, type ReportCall } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, TASK_KINDS, type Card, type TaskKind, type ReportCall } from '../core/model.ts'
 import { readEvents } from '../app/event-log.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.

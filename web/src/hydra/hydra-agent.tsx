@@ -1,6 +1,7 @@
 import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef } from 'react'
-import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
+import type { AgentConfig } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
 import { Button } from '../components/ui/controls.tsx'

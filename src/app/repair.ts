@@ -4,7 +4,7 @@ import { privateDir, acquireLock, logPath, writeDurably } from '../store/hydra-s
 import { readLog, type LogRead, type RepairMarker } from './event-log.ts'
 import { readFileSync } from 'node:fs'
 import { EVENT_VERSION } from '../core/model.ts'
-import { replay, emptyHydra } from '../core/reducer.ts'
+import { replay, emptyHydra } from './reducer.ts'
 import { writeSnapshot } from './snapshot.ts'
 
 export interface Repair {

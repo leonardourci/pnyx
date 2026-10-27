@@ -2,7 +2,7 @@ import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'
-import type { HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 import { projectsFor } from './read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from './memory.ts'
 

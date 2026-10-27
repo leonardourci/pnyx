@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
-import type { HydraState } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
 import { hydraConfig, HYDRA_CARD } from '../../../src/core/hydra.ts'
 import { cardState } from './view.ts'
 

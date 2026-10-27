@@ -1,5 +1,6 @@
-import type { Ask, HydraColumn, HydraEvent, Link, PermissionRequest, RepliedEvent } from './model.ts'
-import { HYDRA_ACTOR, ownerActor } from './model.ts'
+import type { HydraEvent } from '../app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
+import type { Ask, HydraColumn, Link, PermissionRequest, RepliedEvent } from './model.ts'
 import { reportActor } from './hydra.ts'
 import { taskMentions } from '../mentions/mentions.ts'
 

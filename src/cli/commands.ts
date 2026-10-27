@@ -58,35 +58,14 @@ import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual, parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
-import {
-  decideLink,
-  decideMove,
-  decideOutcome,
-  decidePush,
-  decideView,
-  decideUndo,
-  decideSession,
-  findCard,
-  parseLink,
-  type Decision,
-  type Meta,
-} from '../core/decide.ts'
-import {
-  HydraError,
-  EVENT_TYPES,
-  HYDRA_ACTOR,
-  OUTCOME_STATES,
-  ownerActor,
-  type HydraEvent,
-  type LandingRule,
-  type HydraState,
-  type Card,
-  type EventType,
-  type Column,
-  type NotedEvent,
-  type OutcomeState,
-} from '../core/model.ts'
-import { emptyHydra, replay } from '../core/reducer.ts'
+import { decideUndo } from '../app/undo.ts'
+import type { Decision } from '../app/model.ts'
+import type { Meta } from '../app/command-meta.ts'
+import { decideLink, decideMove, decideOutcome, decidePush, decideView, decideSession, findCard, parseLink } from '../core/decide.ts'
+import { EVENT_TYPES, type HydraEvent, type HydraState, type EventType } from '../app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
+import { HydraError, OUTCOME_STATES, type LandingRule, type Card, type Column, type NotedEvent, type OutcomeState } from '../core/model.ts'
+import { emptyHydra, replay } from '../app/reducer.ts'
 import { askHost, readServer, socketPath } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'

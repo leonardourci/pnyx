@@ -1,4 +1,5 @@
-import { HYDRA_ACTOR, type HydraEvent, type HydraState } from '../core/model.ts'
+import { HYDRA_ACTOR } from '../app/actors.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 
 export function waitingReminders({ state }: { state: HydraState }) {
   return Object.values(state.cards)

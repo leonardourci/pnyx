@@ -1,4 +1,5 @@
-import type { HydraState, Card, HydraColumn, Link } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
+import type { Card, HydraColumn, Link } from '../../../src/core/model.ts'
 import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
 import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'

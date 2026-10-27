@@ -1,6 +1,7 @@
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
-import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
+import type { AgentConfig, ViewPreferences } from '../../../src/core/model.ts'
 import { KEY_ACTIONS, bindingsFor } from '../../../src/core/keyboard.ts'
 import type { Hit } from '../../../src/oracle/index.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'

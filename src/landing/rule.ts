@@ -1,5 +1,6 @@
 import { matchesProject } from '../projects/identity.ts'
-import { HydraError, LANDINGS, MERGERS, cardLanding, type Card, type HydraState, type Landing, type LandingRule, type Merger } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, LANDINGS, MERGERS, cardLanding, type Card, type Landing, type LandingRule, type Merger } from '../core/model.ts'
 import { investigationLine, reportLine } from '../investigation/report.ts'
 import { projectsFor } from '../projects/read.ts'
 

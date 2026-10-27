@@ -1,4 +1,5 @@
-import type { Card, HydraState } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
+import type { Card } from '../../../src/core/model.ts'
 import { taskReadiness } from '../../../src/core/dependencies.ts'
 import { TaskReference } from '../components/ui/task-reference.tsx'
 

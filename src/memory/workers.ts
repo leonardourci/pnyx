@@ -1,6 +1,6 @@
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
-import type { Meta } from '../core/decide.ts'
+import type { Meta } from '../app/command-meta.ts'
 import type { Writer } from '../app/writer.ts'
 
 export const WORKER_NOTES_BUDGET = 1500

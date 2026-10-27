@@ -1,7 +1,7 @@
 import { memoryReview } from './memory.ts'
 import { HYDRA_CARD, hydraEvent, pnyxRunsHydra } from '../core/hydra.ts'
 import { INTERRUPTED } from '../core/tasks.ts'
-import type { HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
 import { boardReview, MINUTE_MS } from './board.ts'

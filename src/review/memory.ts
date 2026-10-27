@@ -1,7 +1,7 @@
 import { learningDigest, staleLearnings } from '../memory/learnings.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
-import type { HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 import { projectsFor } from '../projects/read.ts'
 import { readProjectMemory } from '../projects/memory.ts'
 import { projectIdentity } from '../projects/sources.ts'

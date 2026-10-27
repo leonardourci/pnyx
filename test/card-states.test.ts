@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra } from '../src/core/reducer.ts'
+import { emptyHydra } from '../src/app/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
 import { cardFacts, placeCard } from '../src/core/columns.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'

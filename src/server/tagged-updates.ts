@@ -1,5 +1,5 @@
 import { appendNote } from '../integrations/hooks/harvest.ts'
-import { ownerActor } from '../core/model.ts'
+import { ownerActor } from '../app/actors.ts'
 import { liveTask } from '../core/tasks.ts'
 import { taggedParagraphs, taskMentions } from '../mentions/mentions.ts'
 import { redact } from '../oracle/text.ts'

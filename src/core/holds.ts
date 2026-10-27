@@ -1,6 +1,9 @@
-import { findCard, type Meta } from './decide.ts'
+import type { Meta } from '../app/command-meta.ts'
+import { findCard } from './decide.ts'
 import { hydraEvent, HYDRA_CARD } from './hydra.ts'
-import { HydraError, HYDRA_ACTOR, ownerActor, type Card, type HydraState } from './model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, type Card } from './model.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {

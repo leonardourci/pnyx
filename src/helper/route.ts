@@ -1,9 +1,9 @@
 import { ownerGates } from '../core/gates.ts'
 import { openAsks } from '../core/asks.ts'
 import { openDecisions } from '../core/decisions.ts'
-import { HYDRA_CARD, hydraConfig } from '../core/hydra.ts'
-import { reportActor } from '../core/hydra.ts'
-import type { AgentConfig, HydraEvent, HydraState } from '../core/model.ts'
+import { HYDRA_CARD, hydraConfig, reportActor } from '../core/hydra.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
+import type { AgentConfig } from '../core/model.ts'
 import type { WakeKind } from '../core/wake-reasons.ts'
 
 const ROUTINE_KINDS: WakeKind[] = [

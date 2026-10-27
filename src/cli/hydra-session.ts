@@ -4,7 +4,7 @@ import { DEFAULT_HYDRA } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { AxiError } from 'axi-sdk-js'
 import { HYDRA_CARD, hydraBypasses } from '../core/hydra.ts'
-import { HYDRA_ACTOR } from '../core/model.ts'
+import { HYDRA_ACTOR } from '../app/actors.ts'
 import { guard, WRITE } from './commands.ts'
 
 type Command = ReturnType<typeof guard>

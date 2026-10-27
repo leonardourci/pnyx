@@ -1,4 +1,5 @@
-import type { HydraState, ViewPreferences } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
+import type { ViewPreferences } from '../../../src/core/model.ts'
 import { resetLayoutWidths, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 
 export type OracleSetting = {

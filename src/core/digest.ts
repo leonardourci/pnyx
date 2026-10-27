@@ -7,7 +7,8 @@ import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'
 import { liveTask, rankOf } from './tasks.ts'
 import { askWording, openAsks } from './asks.ts'
-import { HydraError, type Card, type HydraState } from './model.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, type Card } from './model.ts'
 
 // Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
 export const OWNER_MEMORY_BUDGET = 24000

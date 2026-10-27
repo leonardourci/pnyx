@@ -1,7 +1,9 @@
 import { commit, required, type Output } from '../cli/commands.ts'
-import { findCard, type Meta } from '../core/decide.ts'
+import type { Meta } from '../app/command-meta.ts'
+import { findCard } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
-import { HydraError, type HydraState, type LandingRule } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, type LandingRule } from '../core/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { parseLanding, parseMerger, taskLanding } from './rule.ts'
 

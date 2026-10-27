@@ -1,8 +1,9 @@
-import { HydraError, type HydraState } from '../core/model.ts'
+import type { HydraState } from './model.ts'
+import { HydraError } from '../core/model.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { readSnapshot } from './snapshot.ts'
 import { readLog, type LogRead } from './event-log.ts'
-import { emptyHydra, replay } from '../core/reducer.ts'
+import { emptyHydra, replay } from './reducer.ts'
 import { existsSync } from 'node:fs'
 import { logPath } from '../store/hydra-store.ts'
 

@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { hydraEvent } from '../src/core/hydra.ts'
-import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
 import { doneDeadline } from '../src/core/retention.ts'
 import { openDecisions } from '../src/core/decisions.ts'
-import type { HydraChange, HydraEvent } from '../src/core/model.ts'
+import type { HydraChange, HydraEvent } from '../src/app/model.ts'
 import { reportReviewGaps } from '../src/investigation/inventory.ts'
 
 const at = '2026-10-23T12:00:00Z'

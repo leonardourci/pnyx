@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush, decideSession, joinedKey, type Decision } from '../src/core/decide.ts'
-import { emptyHydra, reduce } from '../src/core/reducer.ts'
+import type { Decision, HydraEvent, HydraState } from '../src/app/model.ts'
+import { decidePush, decideSession, joinedKey } from '../src/core/decide.ts'
+import { emptyHydra, reduce } from '../src/app/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
-import type { HydraEvent, HydraState } from '../src/core/model.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const meta = {

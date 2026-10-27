@@ -1,6 +1,7 @@
 import { parseArgs } from 'node:util'
 import { TASK_OPTIONS } from '../cli/commands.ts'
-import { HydraError, type Card, type HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
+import { HydraError, type Card } from '../core/model.ts'
 import { reportActor } from '../core/hydra.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
