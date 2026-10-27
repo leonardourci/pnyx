@@ -3,9 +3,11 @@ import { dirname } from 'node:path'
 import { transcriptPath, type QueryFn } from '../src/server/claude.ts'
 
 export function thinkingSdk() {
+  const control = { onWait: undefined as (() => void) | undefined }
   let release = () => {}
   const wait = () => new Promise<void>(resolve => {
     release = resolve
+    control.onWait?.()
   })
   const query = (({
     prompt,
@@ -66,6 +68,8 @@ export function thinkingSdk() {
             },
           },
         })
+
+        await wait()
 
         for (let index = 0; index < 100; index++) {
           yield stream({
@@ -145,6 +149,7 @@ export function thinkingSdk() {
 
   return {
     query,
+    control,
     advance() {
       release()
     },

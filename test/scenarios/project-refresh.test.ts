@@ -1,5 +1,9 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { refreshProject } from '../../src/projects/refresh.ts'
+import type { ProjectRefresh } from '../../src/projects/refresh-types.ts'
 import { advanceQueues } from '../../src/queue/advance.ts'
 import assert from 'node:assert/strict'
 import { readFileSync, writeFileSync, symlinkSync, readlinkSync, unlinkSync } from 'node:fs'
@@ -1151,12 +1155,33 @@ test(
           '--input-type=module',
           '-e',
           `
+      const { default: assert } = await import('node:assert/strict');
       const { refreshProject } = await import(process.argv[1]);
-      await refreshProject({
+      let now = 0, timer, result, cancelled = false;
+      const scheduled = Promise.withResolvers();
+      const refresh = refreshProject({
         path: process.argv[2], url: 'https://github.com/fixture/project/pull/1', merge: process.argv[3],
         isPending: () => true,
-        complete: ({ result }) => process.stdout.write(JSON.stringify(result)),
+        lockWait: {
+          now: () => now,
+          schedule: ({ ms, fire }) => {
+            timer = { at: now + ms, fire };
+            scheduled.resolve();
+            return () => { cancelled = true; };
+          },
+        },
+        complete: ({ result: completed }) => { result = completed; },
       });
+      await scheduled.promise;
+      assert.equal(timer.at, 30_000, 'the production lock bound stays 30 seconds');
+      now = timer.at - 1;
+      if (timer.at <= now) timer.fire();
+      assert.equal(result, undefined, 'the live owner still holds the lock before expiry');
+      now = timer.at;
+      timer.fire();
+      await refresh;
+      assert.equal(cancelled, true, 'expiry cleans up its scheduled wait');
+      process.stdout.write(JSON.stringify(result));
     `,
           new URL(
             '../../src/projects/refresh.ts',
@@ -1198,3 +1223,146 @@ test(
     }
   },
 )
+
+for (const failure of [
+  'synchronous',
+  'asynchronous',
+]) {
+  test(
+    `project refresh waits for its owner under ${failure} EMFILE and advances after release`,
+    async t => {
+      const s = await pnyx.scenario()
+      const {
+        path,
+        target,
+        before,
+      } = await prepare({ s })
+      // Fault injection needs a free native slot, independent of earlier Hydras.
+      await pnyx.restart({
+        whileStopped: async () => {
+          const lock = join(
+            path,
+            '.git',
+            'pnyx-project-refresh.lock',
+          )
+          symlinkSync(
+            `pnyx-refresh:${process.pid}:external-owner`,
+            lock,
+          )
+          const original = fs.watch
+          let injected = false
+          const errors = t.mock.method(
+            console,
+            'error',
+            () => {},
+          )
+          t.mock.method(
+            fs,
+            'watch',
+            // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+            (...args: Parameters<typeof fs.watch>) => {
+              if (String(args[0]) !== join(
+                path,
+                '.git',
+              )) {
+                return Reflect.apply(
+                  original,
+                  fs,
+                  args,
+                ) as fs.FSWatcher
+              }
+
+              injected = true
+              const error = Object.assign(
+                new Error('refresh watcher limit'),
+                { code: 'EMFILE' },
+              )
+
+              if (failure === 'synchronous') {
+                throw error
+              }
+
+              const watcher = Reflect.apply(
+                original,
+                fs,
+                args,
+              ) as fs.FSWatcher
+              setImmediate(() => watcher.emit(
+                'error',
+                error,
+              ))
+
+              return watcher
+            },
+          )
+          syncBuiltinESMExports()
+          t.after(() => {
+            fs.rmSync(
+              lock,
+              { force: true },
+            )
+            t.mock.restoreAll()
+            syncBuiltinESMExports()
+          })
+          let result: ProjectRefresh | undefined
+          const results: ProjectRefresh[] = []
+          const refreshing = refreshProject({
+            path,
+            url: 'https://github.com/fixture/project/pull/1',
+            merge: target,
+            isPending: () => true,
+            complete: ({ result: value }) => {
+              result = value
+              results.push(value)
+            },
+          })
+
+          try {
+            await until({
+              what: 'refresh to wait through its watcher failure',
+              check: () => injected && errors.mock.calls.length > 0,
+            })
+            assert.equal(
+              result,
+              undefined,
+            )
+            assert.equal(
+              git({
+                cwd: path,
+                args: [
+                  'rev-parse',
+                  'HEAD',
+                ],
+              }),
+              before,
+            )
+            unlinkSync(lock)
+            await refreshing
+            assert.equal(
+              results[0]?.state,
+              'advanced',
+            )
+            assert.equal(
+              git({
+                cwd: path,
+                args: [
+                  'rev-parse',
+                  'HEAD',
+                ],
+              }),
+              target,
+            )
+          } finally {
+            fs.rmSync(
+              lock,
+              { force: true },
+            )
+            await refreshing
+            t.mock.restoreAll()
+            syncBuiltinESMExports()
+          }
+        },
+      })
+    },
+  )
+}

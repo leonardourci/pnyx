@@ -8,6 +8,7 @@ import { hydraTitle } from './view.ts'
 
 export function Hydras({
   command,
+  createHydra,
   connected,
   notify,
   hydras,
@@ -21,6 +22,7 @@ export function Hydras({
   loading,
 }: {
   loading: boolean
+  createHydra(): Promise<void>
   navigate({ url }: { url: string }): Promise<void>
   command: Command
   connected: boolean
@@ -37,10 +39,6 @@ export function Hydras({
     expanded,
     setExpanded,
   ] = useState<Record<string, boolean>>({})
-  const [
-    busy,
-    setBusy,
-  ] = useState(false)
   const [
     renaming,
     setRenaming,
@@ -114,48 +112,19 @@ export function Hydras({
 
       return
     }
-
-    setBusy(true)
-    void command({
-      name: 'hydras',
-      args,
-    }).then(
-      r => {
-        const url = new URL(r.url as string)
-
-        if (path) {
-          url.searchParams.set(
-            'open-project',
-            path,
-          )
-        }
-
-        if (projects) {
-          url.searchParams.set(
-            'projects',
-            '1',
-          )
-        }
-
-        if (args[0] === 'create') {
-          url.searchParams.set(
-            'new-chat',
-            '1',
-          )
-        }
-
-        location.assign(url)
-      },
-      (e: Error) => {
-        setBusy(false); notify({ text: e.message })
-      },
-    )
   }
 
   return (
     <section className="hydras-panel" aria-label="Hydras">
       <div className="hydras-heading"><h2>Hydras</h2>
-        <Button aria-label="Create Hydra" disabled={!connected || busy} onClick={() => go({ args: ['create'] })}><Icon name="plus" /></Button>
+        <Button
+          aria-label="Create Hydra"
+          disabled={!connected}
+          onClick={() => {
+            void createHydra().catch((error: Error) => notify({ text: error.message }))
+          }}
+        ><Icon name="plus" />
+        </Button>
       </div>
       <div className="hydras-tree">
         {hydras.map(h => {
@@ -196,7 +165,6 @@ export function Hydras({
                     className="hydra-name"
                     data-hydra-current={active ? '' : undefined}
                     aria-current={active ? 'page' : undefined}
-                    disabled={busy}
                     onDoubleClick={() => active && setRenaming(true)}
                     onClick={() => active && !loading ? showHydra() : go({
                       args: [
@@ -216,7 +184,7 @@ export function Hydras({
                       className="panel-project"
                       title={p.path}
                       aria-pressed={active && project === p.path}
-                      disabled={!connected || busy}
+                      disabled={!connected}
                       onClick={() => active ? selectProject({ path: p.path }) : go({
                         args: [
                           'open',
@@ -231,7 +199,7 @@ export function Hydras({
                   ))}
                   <Button
                     className="add-project"
-                    disabled={!connected || busy}
+                    disabled={!connected}
                     onClick={() => active ? addProject() : go({
                       args: [
                         'open',

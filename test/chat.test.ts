@@ -401,6 +401,58 @@ test(
   },
 )
 
+for (const recorded of [
+  false,
+  true,
+]) {
+  test(
+    `authored skill references display once ${recorded ? 'with' : 'without'} the delivered transcript copy`,
+    () => {
+      const enteredText = '[Release /deploy](pnyx-skill:saved-reference) safely.'
+      const stored = {
+        ...message({
+          id: 'selected-skill',
+          text: 'Read and follow deploy safely.',
+        }),
+        enteredText,
+        details: 'Keep the release safe.',
+        context: 'Referenced tasks (context only): task-1',
+      }
+      const delivered = `${stored.text}\n\n${stored.details}\n\n${stored.context}`
+      const native: ThreadEntry = {
+        id: 'native',
+        kind: 'message',
+        role: 'user',
+        text: delivered,
+      }
+      assert.equal(
+        hydraDelivery({ message: stored }),
+        delivered,
+      )
+      const shown = hydraMessages({
+        messages: [stored],
+        transcript: recorded ? [native] : [],
+      })
+      assert.equal(
+        shown.length,
+        1,
+      )
+      assert.equal(
+        shown[0]?.id,
+        recorded ? 'native' : 'selected-skill',
+      )
+      assert.equal(
+        shown[0]?.text,
+        `${enteredText}\n\n${stored.details}`,
+      )
+      assert.equal(
+        native.text,
+        delivered,
+      )
+    },
+  )
+}
+
 test(
   'a Codex owner message with images shows once, and a wake turn with a memory note never shows as the owner',
   () => {

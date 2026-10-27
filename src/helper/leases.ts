@@ -126,15 +126,20 @@ export function taskLease({
   task,
   actor,
   pid = process.pid,
+  lockTimeout,
 }: {
   hydraId: string
   task: string
   actor: string
   pid?: number
+  lockTimeout?: number
 }): () => void {
   const holder = randomUUID()
   const dir = hydraDir({ hydraId })
-  const unlock = acquireLock({ dir })
+  const unlock = acquireLock({
+    dir,
+    timeout: lockTimeout,
+  })
 
   try {
     const path = leasePath({
@@ -185,6 +190,7 @@ export function taskLease({
       task,
       actor,
       holder,
+      lockTimeout,
     })
   }
 }
@@ -194,14 +200,19 @@ export function releaseTask({
   task,
   actor,
   holder,
+  lockTimeout,
 }: {
   hydraId: string
   task: string
   actor: string
   holder?: string
+  lockTimeout?: number
 }): void {
   const dir = hydraDir({ hydraId })
-  const unlock = acquireLock({ dir })
+  const unlock = acquireLock({
+    dir,
+    timeout: lockTimeout,
+  })
 
   try {
     const path = leasePath({

@@ -11,7 +11,9 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { harvestTranscripts } from '../src/integrations/hooks/harvest.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
-import { startServer, type RunningServer } from '../src/server/server.ts'
+import type { RunningServer } from '../src/server/server.ts'
+import { hostObserver } from './host-observer.ts'
+import { once } from 'node:events'
 import { askHost } from '../src/server/state.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
@@ -31,20 +33,10 @@ afterEach(async () => {
   await server?.close(); server = undefined
 })
 
-async function until({ check }: { check: () => boolean }) {
-  for (let i = 0; i < 300; i++) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail('timed out waiting for Codex fixture')
-}
+const {
+  startServer,
+  until,
+} = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
 
 async function lab({ refuse }: { refuse?: string } = {}) {
   const root = realpathSync(mkdtempSync(join(
@@ -508,12 +500,13 @@ test(
       meta,
     })
     await until({ check: () => task().sessionActivity === 'finished' })
+    const closed = once(
+      fixture.children[0]!,
+      'close',
+      { signal: AbortSignal.timeout(30_000) },
+    )
     fixture.children[0]!.kill()
-    await until({ check: () => fixture.children[0]!.signalCode !== null })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      30,
-    ))
+    await closed
     assert.equal(
       (await send({ text: 'Resume after idle exit' })).state,
       'delivered',
@@ -686,7 +679,10 @@ test(
     })
     await until({ check: () => task().sessionActivity === 'finished' })
     await send({ text: 'HOLD' })
-    await until({ check: () => turns().length === 2 })
+    await until({
+      check: () => turns().length === 2
+        && task().steering?.every(message => message.ack !== undefined) === true,
+    })
     const id = task().agent!.sessionId
     await set({
       setting: 'model',

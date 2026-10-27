@@ -13,6 +13,41 @@ export function Input({ ...props }: ComponentProps<'input'>) {
   return <input {...props} className={`input ${props.className ?? ''}`} />
 }
 
+// A native button is an atomic inline box; a text token must wrap with the words around it.
+export function InlineButton({
+  disabled,
+  onClick,
+  ...props
+}: Omit<ComponentProps<'span'>, 'onClick'> & {
+  disabled?: boolean
+  onClick?(): void
+}) {
+  return (
+    <span
+      {...props}
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled || undefined}
+      onClick={event => {
+        event.stopPropagation()
+
+        if (!disabled) {
+          onClick?.()
+        }
+      }}
+      onKeyDown={event => {
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault(); event.stopPropagation()
+
+          if (!disabled) {
+            onClick?.()
+          }
+        }
+      }}
+    />
+  )
+}
+
 export function Textarea({ ...props }: ComponentProps<'textarea'>) {
   return <textarea {...props} className={`input textarea ${props.className ?? ''}`} />
 }

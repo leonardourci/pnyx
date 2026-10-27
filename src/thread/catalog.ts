@@ -13,6 +13,7 @@ export interface Suggestion {
   file?: string
   project?: string
   projectPath?: string
+  unavailable?: string
 }
 export interface Catalog {
   suggestions: Suggestion[]
