@@ -394,7 +394,7 @@ export function HydraCard({
               </Button>
             </Tooltip>
           </HoverActions>
-          {selected && hasMetadata && (
+          {selected && hasMetadata && !editing && (
             <Tooltip content={metadataLabel}>
               <Button
                 className="card-metadata-toggle"

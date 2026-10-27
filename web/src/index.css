@@ -1441,7 +1441,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-open[aria-expanded="true"] .card-brief-chevron { transform: rotate(90deg); }
 .card-brief { padding: 2px 0 2px 10px; border-left: 2px solid var(--color-gold-line); font-size: var(--text-meta); }
 .card-brief[hidden] { display: none; }
-.card-brief .text-preview { max-height: 8.4em; -webkit-line-clamp: 6; line-clamp: 6; }
+.card .card-brief .text-preview { max-height: 8.4em; -webkit-line-clamp: 6; line-clamp: 6; }
 .task-editor { display: flex; flex-direction: column; gap: 6px; }
 .task-editor .textarea { min-height: 96px; resize: vertical; font-size: var(--text-ui); }
 .task-editor > .row { flex-wrap: wrap; }
