@@ -37,11 +37,9 @@ Everyone completes the same three checklists, in order: [review-code](../.agents
 
 Only when every selected check passes, the tree stays clean, HEAD matches the pushed PR head and all three boxes are ticked does verification write the hidden `<!-- pnyx-checks:v1 ... -->` marker. The marker records the tested commit and git tree; a rerun replaces it.
 
-Use `pnpm verify --checks-only` when the environment has read-only GitHub access, such as an approved outside-contributor workflow. It runs the same freshness check and automated checks, including local lint fixes, and prints the review checklist paths. It never reads or edits the PR description and never writes a marker. A pass requires successful checks, a clean working tree and unchanged HEAD. Review declarations and the normal marker still belong to the PR readiness process.
+Use `pnpm verify --checks-only` when the environment has read-only GitHub access. It runs the same freshness check and automated checks, including local lint fixes, and prints the review checklist paths. It never reads or edits the PR description and never writes a marker. A pass requires successful checks, a clean working tree and unchanged HEAD. Review declarations and the normal marker still belong to the PR readiness process.
 
 The "Checks ran for this commit" workflow (`.github/workflows/checks-required.yml`) runs for every PR and installs and builds nothing. It reads the PR, requires all three review boxes to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means Markdown outside `skills/` and `test/`, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description, or the check in their own PR, could forge a pass, so it is an honesty check, not a signature.
-
-The Verification workflow runs `pnpm verify --checks-only` automatically on every PR's pushed head, with the pinned pnpm version and Chrome for browser tests. It runs the selected checks with a read-only token and leaves the PR description unchanged. Local verification and the marker check still apply.
 
 ## Review
 
