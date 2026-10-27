@@ -445,6 +445,42 @@ export function browserGroup() {
             ),
           )
         },
+        hover: async ({ selector }: { selector: string }) => {
+          const {
+            x,
+            y,
+          } = await shows({
+            what: `${selector} to hover`,
+            arg: { selector },
+            check: ({ selector }) => {
+              const element = document.querySelector(selector)
+
+              if (!element?.getClientRects().length) {
+                return undefined
+              }
+
+              element.scrollIntoView({ block: 'nearest' })
+              const box = element.getBoundingClientRect()
+              const point = {
+                x: box.left + box.width / 2,
+                y: box.top + box.height / 2,
+              }
+
+              return element.contains(document.elementFromPoint(
+                point.x,
+                point.y,
+              )) && point
+            },
+          })
+          await call({
+            method: 'Input.dispatchMouseEvent',
+            params: {
+              type: 'mouseMoved',
+              x,
+              y,
+            },
+          })
+        },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
         // handlers run too; it waits until nothing covers the element's centre.
         click: async ({
