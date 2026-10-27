@@ -4802,6 +4802,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
+  upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up

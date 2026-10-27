@@ -55,6 +55,7 @@ import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyStat
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEvents, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { RESTART_SIGNAL, relaunch } from '../upgrade/restart.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
 import { createHost, hostRequest, type HydraQueue, type QueryFn } from './host.ts'
@@ -3820,23 +3821,36 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
     .join('')
   process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
-  await new Promise(resolve => {
-    process.once(
+  const signal = await new Promise<NodeJS.Signals>(resolve => {
+    for (const name of [
       'SIGINT',
-      resolve,
-    )
-    process.once(
       'SIGTERM',
-      resolve,
-    )
+      RESTART_SIGNAL,
+    ] as const) {
+      process.once(
+        name,
+        resolve,
+      )
+    }
   })
   const watched = firstmate?.close()
   await server.close()
 
+  if (signal === RESTART_SIGNAL) {
+    relaunch()
+  }
+
   return {
-    server: 'stopped',
+    server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped',
     ...(watched ? { firstmate: watched } : {}),
   }
+}
+
+// Usually one process; a server an older version started for a single Hydra counts too.
+export async function serverPids(): Promise<number[]> {
+  const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
+
+  return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
@@ -3848,14 +3862,7 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
     )
   }
 
-  // Usually one process; a server an older version started for a single Hydra is stopped too.
-  const running = async () => {
-    const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
-
-    return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
-  }
-
-  const pids = await running()
+  const pids = await serverPids()
 
   if (pids.length === 0) {
     return {

@@ -13,6 +13,7 @@ import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { workerCommands } from './workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
 import { ownerOnly } from './hydra-session.ts'
+import { UPGRADE_HELP, upgrade } from '../upgrade/cli.ts'
 
 const HELP: Record<string, string> = {
   approval: 'usage: pnyx-axi approval confirm|dismiss <token> [--confirm <token>]\nOwner-only questions appear in Hydra’s chat.',
@@ -22,6 +23,7 @@ const HELP: Record<string, string> = {
   agent: AGENT_HELP,
   ...DISPATCH_HELP,
   integrations: INTEGRATIONS_HELP,
+  upgrade: UPGRADE_HELP,
 }
 
 const help = ({ command }: { command: string }) => commandHelp({ command })
@@ -80,6 +82,7 @@ const all = ownerOnly({
         ...dispatchCommands,
         serve,
         stop,
+        upgrade,
         ...firstmateCommands,
         reply,
         agent,
@@ -90,7 +93,7 @@ const all = ownerOnly({
           throw new AxiError(
             'pnyx-axi is not published yet',
             'VALIDATION_ERROR',
-            ['Pull the repository and run `pnpm install && pnpm run build`'],
+            ['Run `pnyx-axi upgrade` to pull, install and build the latest main'],
           )
         },
       },
