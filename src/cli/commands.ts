@@ -889,6 +889,63 @@ export async function home(): Promise<Output> {
   return out
 }
 
+const CONTEXT_TASKS = 5
+
+// The session-start hook's summary: the Hydra's open work for the attached project holding the
+// session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
+const context = guard({
+  handler: async ({ args }) => {
+    const {
+      values,
+      hydraId,
+    } = parse({
+      args,
+      options: {
+        ...COMMON,
+        cwd: { type: 'string' },
+      },
+      positionals: 0,
+    })
+    const folder = canonical({ path: String(values.cwd ?? process.cwd()) })
+    const { state } = loadHydra({ hydraId })
+    const project = folder ? projectsFor({ state }).find(p => !p.detached
+      && (folder === p.path || folder.startsWith(`${p.path}/`))) : undefined
+
+    if (!project) {
+      return {}
+    }
+
+    const done = new Set(hydraConfig({ state }).columns.filter(c => c.role === 'done').map(c => c.id))
+    const open = Object.values(state.cards).filter(card => liveTask({ card })
+      && card.project === project.path && !done.has(card.column))
+      .sort((
+        a,
+        b,
+      ) => rankOf({ card: a }) - rankOf({ card: b }))
+    const server = await readServer({ hydraId })
+
+    return {
+      pnyx: `Hydra ${hydraId}, project ${project.name}, server ${server ? 'running' : 'not running'}`,
+      count: `${Math.min(
+        open.length,
+        CONTEXT_TASKS,
+      )} of ${open.length} open tasks`,
+      tasks: open.length ? open.slice(
+        0,
+        CONTEXT_TASKS,
+      ).map(card => ({
+        id: card.id,
+        title: card.title,
+        column: card.column,
+      })) : 'none: no open tasks for this project',
+      help: [
+        `Run \`pnyx-axi task list --hydra ${hydraId}\` for every task`,
+        `Run \`pnyx-axi card <id> --hydra ${hydraId}\` for one task`,
+      ],
+    }
+  },
+})
+
 const push = guard({
   handler: ({ args }) => {
     const {
@@ -4712,6 +4769,7 @@ export const commands = supervisedCommands({
     undo,
     repair,
     setup,
+    context,
   },
 })
 
@@ -4735,6 +4793,7 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
+  context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
