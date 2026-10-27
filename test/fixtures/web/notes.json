@@ -1,7 +1,0 @@
-[
-  { "kind": "summary", "at": "2026-10-13T10:40:00Z", "source": "claude", "text": "Columns, cards and the conversation panel are in place." },
-  { "kind": "summary", "at": "2026-10-13T10:45:00Z", "source": "claude", "text": "The first Hydra layout is ready for review." },
-  { "kind": "decision", "at": "2026-10-13T10:42:00Z", "source": "firstmate", "text": "resolved: Return cards to automatic placement when a custom column is deleted, and keep the deletion undoable." },
-  { "kind": "decision", "at": "2026-10-13T10:43:00Z", "source": "firstmate", "text": "resolved: Return cards to automatic placement when a custom column is deleted, and keep the deletion undoable." },
-  { "kind": "context", "at": "2026-10-13T10:30:00Z", "source": "firstmate", "text": "Keep the conversation readable while following the rest of the Hydra." }
-]

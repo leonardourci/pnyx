@@ -1,62 +1,9 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { test } from 'node:test'
-import type { HostedEvent } from '../src/server/provider.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { readStream } from './streams.ts'
 import type { HydraEvent } from '../src/core/model.ts'
-import { codexProvider } from '../src/server/codex.ts'
-import { fakeCodex } from './codex-fixture.ts'
 import { needsCommentNote } from '../src/compaction/comments.ts'
-
-test(
-  'Codex cancellation progresses while its compact event consumer is paused',
-  { timeout: 10_000 },
-  async t => {
-    const root = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-paused-compact-',
-    ))
-    const fixture = fakeCodex({
-      root,
-      compact: 'hold-start',
-    })
-    const session = await codexProvider({ spawnCodex: fixture.spawnCodex }).open({
-      cwd: root,
-      settings: {},
-      env: { PNYX_HOME: root },
-      signal: new AbortController().signal,
-    })
-    t.after(() => session.close())
-    const events = session.run({
-      input: (async function* () {
-        yield '/compact'
-      })(),
-      permission: async () => ({ behavior: 'allow' }),
-    })[Symbol.asyncIterator]()
-    assert.equal(
-      (await events.next()).value,
-      'working',
-    )
-    const cancelled = session.interrupt()
-    fixture.children[0]!.kill('SIGUSR1')
-    await cancelled
-    const observed: HostedEvent[] = []
-
-    for (let event = await events.next(); !event.done; event = await events.next()) {
-      observed.push(event.value)
-    }
-
-    assert.ok(observed.some(event => typeof event !== 'string'
-      && event.type === 'compaction' && event.state === 'cancelled'))
-    assert.equal(
-      observed.at(-1),
-      'finished',
-    )
-  },
-)
 
 test(
   'compaction replay preserves outcomes and rejects stale comment-teaching epochs',

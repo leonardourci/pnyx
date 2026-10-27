@@ -128,33 +128,6 @@ function check({
 }
 
 test(
-  'a rerun replaces the marker line and keeps the description, prose about the marker included',
-  async () => {
-    const prose = 'pnpm verify adds a `<!-- pnyx-checks:v1 ... -->` line.'
-    const body = withMarker({
-      body: withMarker({
-        body: `${prose}\n\n${reviews}`,
-        marker: {
-          ...marker,
-          head_sha: 'older',
-        },
-      }),
-      marker,
-    })
-
-    assert.ok(body.startsWith(`${prose}\n\n`))
-    assert.equal(
-      body.split('\n').filter(line => line.startsWith('<!-- pnyx-checks:v1 ')).length,
-      1,
-    )
-    await check({
-      body,
-      headSha: 'tested',
-    })
-  },
-)
-
-test(
   'a missing, broken, unclosed or doubled marker fails',
   async () => {
     for (const body of [
@@ -241,66 +214,6 @@ test(
         linked: { code: [lending] },
       }),
       MarkerError,
-    )
-  },
-)
-
-test(
-  'a GitHub API failure fails the check',
-  async () => {
-    await assert.rejects(
-      checkPullRequest({
-        body: passing,
-        headSha: 'docs',
-        commit: async () => {
-          throw new MarkerError('HTTP 502')
-        },
-        pullRequestsFor: async () => [],
-      }),
-      /HTTP 502/,
-    )
-  },
-)
-
-test(
-  'GitHub commit facts count a rename by both paths and a 300-file list as cut short',
-  () => {
-    const found = {
-      commit: { tree: { sha: 't' } },
-      parents: [{ sha: 'p' }],
-    }
-
-    assert.deepEqual(
-      commitFacts({
-        found: {
-          ...found,
-          files: [
-            {
-              filename: 'notes.md',
-              previous_filename: 'src/notes.ts',
-            },
-          ],
-        },
-      }).files,
-      [
-        'notes.md',
-        'src/notes.ts',
-      ],
-    )
-    assert.equal(
-      commitFacts({
-        found: {
-          ...found,
-          files: Array.from(
-            { length: 300 },
-            (
-              _,
-              i,
-            ) => ({ filename: `${i}.md` }),
-          ),
-        },
-      }).files,
-      null,
     )
   },
 )

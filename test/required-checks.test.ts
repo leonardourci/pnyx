@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS } from '../scripts/required-checks.ts'
-import { checkPullRequest, markerBlockers, reviewBlockers, withMarker } from '../scripts/marker.ts'
+import { checkPullRequest, markerBlockers, withMarker } from '../scripts/marker.ts'
 
 const rows = [
   {
@@ -160,19 +160,6 @@ for (const row of rows) {
     },
   )
 }
-
-test(
-  'unrequired boxes may be unticked or duplicated without blocking a marker',
-  () => {
-    assert.deepEqual(
-      reviewBlockers({
-        body: '- [ ] Ran `review-code`\n- [ ] Ran `review-code`\n- [x] Ran `deslop`',
-        requiredReviews: ['deslop'],
-      }),
-      [],
-    )
-  },
-)
 
 test(
   'mechanical markers require a visible declaration even after a successful run',

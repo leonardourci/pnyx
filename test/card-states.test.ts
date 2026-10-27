@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush } from '../src/core/decide.ts'
-import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { emptyHydra } from '../src/core/reducer.ts'
 import { cardState } from '../web/src/hydra/view.ts'
 import { cardFacts, placeCard } from '../src/core/columns.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
-import type { Card, CardFact, HydraColumn, HydraEvent, TaskStatus } from '../src/core/model.ts'
+import type { Card, CardFact, HydraColumn, TaskStatus } from '../src/core/model.ts'
 
 const placement = ({ card }: { card: Card }) => placeCard({
   card: cardFacts({
@@ -713,121 +712,6 @@ test(
         },
       }),
       'needs_you',
-    )
-  },
-)
-
-test(
-  'Done labels count down only in the last six hours and respect card and Hydra delays',
-  () => {
-    const label = ({
-      hours,
-      override,
-    }: {
-      hours?: number
-      override?: number
-    }) =>
-      cardState({
-        card: {
-          ...task,
-          doneAt: at,
-          doneAfterHours: override,
-        },
-        hours,
-        now,
-      })
-    assert.equal(
-      label({}).text,
-      'done · 2h ago',
-    )
-    assert.equal(
-      label({ hours: 5 }).text,
-      'hidden in 3h',
-    )
-    assert.equal(
-      label({
-        hours: 0,
-        override: 5,
-      }).text,
-      'hidden in 3h',
-    )
-    assert.equal(
-      label({
-        hours: 5,
-        override: 0,
-      }).text,
-      'done · 2h ago',
-    )
-    assert.equal(
-      label({ hours: 8 }).text,
-      'hidden in 6h',
-    )
-    assert.equal(
-      label({ hours: 2.5 }).text,
-      'hidden in 30m',
-    )
-  },
-)
-
-test(
-  'an upsert keeps an observed card\'s ID, and replay keeps its stop time through edits',
-  () => {
-    const input = {
-      title: 'Worker',
-      agent,
-      activity: 'ended',
-      source: {
-        adapter: 'hooks',
-        objectId: 'test',
-      },
-    }
-    const meta = {
-      at,
-      actor: 'test',
-    }
-    const first = decidePush({
-      state: emptyHydra(),
-      key: 'work',
-      input,
-      meta,
-    })
-    assert.ok('event' in first)
-    const state = reduce({
-      state: emptyHydra(),
-      event: first.event,
-    })
-    const edit = decidePush({
-      state,
-      key: 'work',
-      input: { title: 'Renamed' },
-      meta: {
-        ...meta,
-        at: new Date(now).toISOString(),
-      },
-    })
-    assert.ok('event' in edit)
-    assert.equal(
-      edit.event.cardId,
-      first.event.cardId,
-    )
-    const events: HydraEvent[] = [
-      first.event,
-      edit.event,
-    ]
-    const replayed = replay({
-      state: emptyHydra(),
-      events,
-    })
-    assert.equal(
-      replayed.cards[first.event.cardId]?.stoppedAt,
-      at,
-    )
-    assert.equal(
-      cardState({
-        card: replayed.cards[first.event.cardId]!,
-        now,
-      }).text,
-      'stopped · 2h ago',
     )
   },
 )

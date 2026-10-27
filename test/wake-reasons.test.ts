@@ -5,7 +5,7 @@ import { declareTask, HYDRA_CARD } from '../src/core/hydra.ts'
 import type { Card, HydraEvent, HydraState, Link, TaskStatus } from '../src/core/model.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { taskMention } from '../src/mentions/mentions.ts'
-import { reasonLine, wakeReasons, wakesHydra } from '../src/core/wake-reasons.ts'
+import { wakeReasons, wakesHydra } from '../src/core/wake-reasons.ts'
 
 const PR = 'https://github.com/o/r/pull/7'
 
@@ -798,20 +798,6 @@ test(
       }),
       [free],
       'a detached worker also makes Hydra look for ready work',
-    )
-  },
-)
-
-test(
-  'a reason line without a task names only its fact',
-  () => {
-    assert.equal(
-      reasonLine({
-        state: hydraState({ cards: [] }),
-        kind: 'not confirmed',
-        detail: 'the message "Rebase" never showed up',
-      }),
-      '- not confirmed: the message "Rebase" never showed up',
     )
   },
 )

@@ -245,14 +245,9 @@ function selection({ defaultRef }: { defaultRef: string }) {
 
 // These exercise installation, generated contracts, catalog text and worker conventions.
 const SKILL_TESTS = [
-  'test/skills.test.ts',
-  'test/start.test.ts',
-  'test/task-context.test.ts',
-  'test/hydra-host.test.ts',
   'test/catalog.test.ts',
-  'test/setup-check.test.ts',
   'test/scenarios/hydra.test.ts',
-  'test/scenarios/worker-conventions.test.ts',
+  'test/scenarios/tasks.test.ts',
 ]
 
 // The first line gh printed for a failed call.

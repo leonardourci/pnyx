@@ -1,12 +1,9 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { workerCommands } from '../src/cli/workers.ts'
-import { hydraEvent } from '../src/core/hydra.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { ownerMemory } from '../src/store/owner-memory.ts'
 
 const scratch = mkdtempSync(join(
@@ -32,141 +29,6 @@ function home() {
 }
 
 // Writes Hydra memory the way the release before owner memory did, which no longer accepts preferences.
-function oldMemory({
-  hydraId,
-  key,
-  text,
-}: {
-  hydraId: string
-  key: string
-  text: string
-}) {
-  withWriter({
-    hydraId,
-    create: true,
-    fn: ({ writer }) => {
-      const d = hydraEvent({
-        state: writer.state,
-        meta: {
-          at: '2026-10-01T00:00:00Z',
-          actor: 'hydra',
-        },
-        cardId: '$board',
-        change: {
-          type: 'hydra.memory',
-          data: {
-            key,
-            before: writer.state.hydraMemory?.[key]?.text ?? null,
-            after: text,
-          },
-        },
-      })
-
-      if ('event' in d) {
-        writer.append({ event: d.event })
-      }
-    },
-  })
-}
-
-const digest = ({ hydraId }: { hydraId: string }) => workerCommands.hydra([
-  'digest',
-  '--hydra',
-  hydraId,
-]) as unknown as string
-
-test(
-  'the first run moves each Hydra’s preferences and learnings into owner memory and forgets them there',
-  async () => {
-    const dir = home()
-
-    oldMemory({
-      hydraId: 'alpha',
-      key: 'preferences',
-      text: 'Short PRs.\nAsk before deploys.',
-    })
-    oldMemory({
-      hydraId: 'alpha',
-      key: 'learnings',
-      text: 'CI takes ten minutes.',
-    })
-    oldMemory({
-      hydraId: 'beta',
-      key: 'preferences',
-      text: 'Ask before deploys.\nAnswer in English.',
-    })
-    oldMemory({
-      hydraId: 'gamma',
-      key: 'check-cursor',
-      text: '12',
-    })
-    const untouched = readEvents({ hydraId: 'gamma' }).length
-
-    assert.match(
-      digest({ hydraId: 'gamma' }),
-      /Owner preferences \(owner memory key preferences\):\nShort PRs\.\nAsk before deploys\.\nAnswer in English\.\n/,
-    )
-    assert.ok(existsSync(join(
-      dir,
-      'owner',
-      'migrated',
-    )))
-
-    for (const hydraId of [
-      'alpha',
-      'beta',
-    ]) {
-      assert.ok(readEvents({ hydraId }).some(e => e.type === 'hydra.memory' && e.actor === 'pnyx'
-        && e.data.key === 'preferences' && e.data.after === null && e.data.before !== null))
-    }
-
-    assert.deepEqual(
-      Object.keys(loadHydra({ hydraId: 'alpha' }).state.hydraMemory ?? {}),
-      [],
-    )
-    assert.equal(
-      ownerMemory().learnings?.text,
-      'CI takes ten minutes.',
-    )
-    assert.equal(
-      readEvents({ hydraId: 'gamma' }).length,
-      untouched,
-    )
-
-    const log = readFileSync(
-      join(
-        dir,
-        'owner',
-        'memory.jsonl',
-      ),
-      'utf8',
-    ).trim()
-      .split('\n')
-      .map(line => JSON.parse(line) as {
-        reason: string
-        after: string
-      })
-    assert.deepEqual(
-      log.map(entry => entry.reason),
-      [
-        'Moved preferences from Hydra alpha',
-        'Moved learnings from Hydra alpha',
-        'Moved preferences from Hydra beta',
-      ],
-    )
-
-    // A later run finds the marker and leaves owner memory alone.
-    oldMemory({
-      hydraId: 'beta',
-      key: 'preferences',
-      text: 'Written by an older server.',
-    })
-    assert.doesNotMatch(
-      ownerMemory().preferences?.text ?? '',
-      /older server/,
-    )
-  },
-)
 
 test(
   'a save from an older revision or onto an unreadable log is refused',

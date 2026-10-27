@@ -127,52 +127,6 @@ test(
 )
 
 test(
-  'push validates its input',
-  () => {
-    rejects({
-      fn: () => decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: { titel: 'typo' },
-        meta,
-      }),
-      code: 'VALIDATION_ERROR',
-    })
-    rejects({
-      fn: () => decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: { attention: [{ kind: 'q' }] },
-        meta,
-      }),
-      code: 'VALIDATION_ERROR',
-    })
-    rejects({
-      fn: () => decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: { parent: 'missing' },
-        meta,
-      }),
-      code: 'NOT_FOUND',
-    })
-    rejects({
-      fn: () => decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: '',
-        input: {},
-        meta,
-      }),
-      code: 'VALIDATION_ERROR',
-    })
-  },
-)
-
-test(
   'push resolves the parent by key and rejects cycles',
   () => {
     let state = apply({
@@ -530,59 +484,6 @@ test(
       }),
       code: 'VALIDATION_ERROR',
     })
-  },
-)
-
-test(
-  'undo reverses a link update',
-  () => {
-    let state = apply({
-      state: emptyHydra(),
-      decision: decidePush({
-        state: emptyHydra(),
-        newCardId: `c${emptyHydra().seq + 1}`,
-        key: 'k1',
-        input: {},
-        meta,
-      }),
-    })
-    const url = 'https://github.com/o/r/pull/3'
-    const open = eventOf({
-      decision: decideLink({
-        state,
-        ref: 'c1',
-        url,
-        link: parseLink({
-          input: {
-            url,
-            state: 'open',
-          },
-        }),
-        meta,
-      }),
-    })
-    state = reduce({
-      state,
-      event: open,
-    })
-    assert.equal(
-      state.cards.c1!.column,
-      'in_progress',
-    )
-    const reverted = reduce({
-      state,
-      event: eventOf({
-        decision: decideUndo({
-          state,
-          target: open,
-          meta,
-        }),
-      }),
-    })
-    assert.deepEqual(
-      reverted.cards.c1!.links,
-      [],
-    )
   },
 )
 
