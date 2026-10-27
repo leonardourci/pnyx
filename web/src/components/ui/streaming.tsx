@@ -12,7 +12,7 @@ import {
   splitBlocks,
   type Arrival,
   type Block,
-} from './reveal.ts'
+} from '../../shared/ui/reveal.ts'
 
 type MarkdownProps = ComponentProps<typeof Markdown>
 

@@ -1,6 +1,6 @@
 import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import type { Card, HydraColumn } from '../../../src/core/model.ts'
-import { Button } from '../components/ui/controls.tsx'
+import { Button } from '../shared/ui/controls.tsx'
 import type { Command } from './connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'

@@ -1,9 +1,9 @@
-import { ChoiceOption } from '../components/ui/choice-option.tsx'
+import { ChoiceOption } from '../shared/ui/choice-option.tsx'
 import { useState } from 'react'
 import type { Ask, Card } from '../../../src/core/model.ts'
 import { askWording } from '../../../src/core/asks.ts'
-import { Button, Textarea } from '../components/ui/controls.tsx'
-import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
+import { Button, Textarea } from '../shared/ui/controls.tsx'
+import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import type { Command } from './connection.ts'
 
 const RECEIPT: Record<string, string> = {

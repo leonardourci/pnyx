@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState, type RefObject } from 'react'
-import { Button } from '../components/ui/controls.tsx'
+import { Button } from '../shared/ui/controls.tsx'
 import type { ChatComment } from './chat.ts'
 import { HIGHLIGHT_SUPPORTED, commentRanges, fadeHighlight } from './comment-highlight.ts'
 import { CommentNumber } from './comment-number.tsx'

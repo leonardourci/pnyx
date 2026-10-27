@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createSettingsResource } from '../web/src/hydra/settings-resource.ts'
-import { CommandFailure } from '../web/src/hydra/pending-intents.ts'
+import { createSettingsResource } from './settings-resource.ts'
+import { CommandFailure } from './pending-intents.ts'
 
 const deferred = <Value>() => {
   let resolve!: ({ value }: { value: Value }) => void

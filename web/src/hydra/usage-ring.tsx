@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Tooltip, TooltipPanel, TooltipSection } from '../components/ui/tooltip.tsx'
+import { Tooltip, TooltipPanel, TooltipSection } from '../shared/ui/tooltip.tsx'
 import type { HydraUsage } from '../../../src/server/provider.ts'
 import type { Command } from './connection.ts'
 

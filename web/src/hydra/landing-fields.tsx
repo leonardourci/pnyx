@@ -1,5 +1,5 @@
 import type { Landing, Merger } from '../../../src/core/model.ts'
-import { Select } from '../components/ui/controls.tsx'
+import { Select } from '../shared/ui/controls.tsx'
 
 export interface LandingChoice {
   landing: Landing

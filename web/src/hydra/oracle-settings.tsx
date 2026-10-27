@@ -1,6 +1,6 @@
 import { useOraclePreferences } from './oracle-preferences.ts'
 import type { Command } from './connection.ts'
-import { Select, Switch } from '../components/ui/controls.tsx'
+import { Select, Switch } from '../shared/ui/controls.tsx'
 
 const RERANK = [
   {

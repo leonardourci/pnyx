@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
-import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
+import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { briefNotes, relativeTime, type BriefNote } from './brief.ts'
 import type { Command } from './connection.ts'
 

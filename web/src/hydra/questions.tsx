@@ -1,11 +1,11 @@
-import { ChoiceOption } from '../components/ui/choice-option.tsx'
-import { CollapsibleText } from '../components/ui/disclosure.tsx'
+import { ChoiceOption } from '../shared/ui/choice-option.tsx'
+import { CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { useState } from 'react'
 import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
 import type { Attention, Card, FormField, Question } from '../../../src/core/model.ts'
-import { Button, Input } from '../components/ui/controls.tsx'
+import { Button, Input } from '../shared/ui/controls.tsx'
 import { markdownText } from '../components/ui/markdown.tsx'
-import { Icon } from '../components/ui/icon.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
 import type { Command } from './connection.ts'
 
 type Send = ({

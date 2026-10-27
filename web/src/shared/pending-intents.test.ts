@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createPendingResource, CommandFailure } from '../web/src/hydra/pending-intents.ts'
-import { pendingHydra, commandArguments } from '../web/src/hydra/pending-state.ts'
-import { commandBytes, MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
-import { emptyHydra } from '../src/core/reducer.ts'
-import { HydraError } from '../src/core/model.ts'
+import { createPendingResource, CommandFailure } from './pending-intents.ts'
+import { pendingHydra, commandArguments } from '../app/pending-state.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { emptyHydra } from '../../../src/core/reducer.ts'
+import { HydraError } from '../../../src/core/model.ts'
 
 test(
   'rebasing a preview preserves the validator reason, code and help',

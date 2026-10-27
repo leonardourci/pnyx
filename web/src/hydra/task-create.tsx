@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
-import { Button, Input, Textarea } from '../components/ui/controls.tsx'
-import { CommandFailure } from './pending-intents.ts'
+import { Button, Input, Textarea } from '../shared/ui/controls.tsx'
+import { CommandFailure } from '../shared/pending-intents.ts'
 import type { Command } from './connection.ts'
 
 export interface TaskDraft {

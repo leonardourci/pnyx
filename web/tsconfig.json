@@ -12,6 +12,7 @@
     "noEmit": true,
     "skipLibCheck": true,
     "verbatimModuleSyntax": true,
+    "erasableSyntaxOnly": true,
     "types": [
       "node",
       "vite/client"

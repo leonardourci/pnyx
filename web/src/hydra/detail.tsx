@@ -1,5 +1,5 @@
 import { Prerequisites } from './prerequisites.tsx'
-import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
+import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { TaskUpdates } from './task-updates.tsx'
 import type { HydraState, Card } from '../../../src/core/model.ts'
 import { columnsFor } from './view.ts'

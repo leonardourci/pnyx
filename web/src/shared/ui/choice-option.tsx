@@ -1,7 +1,7 @@
 import { useId, useMemo, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { CollapsibleText } from './disclosure.tsx'
-import { Markdown, markdownText } from './markdown.tsx'
+import { Markdown, markdownText } from '../../components/ui/markdown.tsx'
 
 export function ChoiceOption({
   label,

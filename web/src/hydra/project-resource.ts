@@ -3,8 +3,8 @@ import type { HydraProject } from '../../../src/core/model.ts'
 import type { Command } from './connection.ts'
 import { argument } from './optimistic.ts'
 import { DEFAULT_LANDING, type LandingChoice } from './landing-fields.tsx'
-import { createSettingsResource } from './settings-resource.ts'
-import { CommandFailure } from './pending-intents.ts'
+import { createSettingsResource } from '../shared/settings-resource.ts'
+import { CommandFailure } from '../shared/pending-intents.ts'
 
 export interface ProjectRow {
   name: string

@@ -1,4 +1,4 @@
-import type { Command, Receipt } from './connection.ts'
+import type { Command, Receipt } from '../hydra/connection.ts'
 import { CommandFailure, createPendingResource } from './pending-intents.ts'
 
 export function createSettingsResource<State, Patch>({

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Button } from '../components/ui/controls.tsx'
+import { Button } from '../shared/ui/controls.tsx'
 import type { Command } from './connection.ts'
 import { safeLink } from './view.ts'
 

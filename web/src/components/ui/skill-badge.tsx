@@ -1,9 +1,9 @@
 import { CHIP_JOIN, ICON_SPACE, skillProjectLabel } from '../../hydra/draft.ts'
 import type { SavedLabelColor } from '../../../../src/core/model.ts'
 import type { SkillReference } from '../../../../src/thread/skill-reference.ts'
-import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
-import { Label } from './label.tsx'
+import { Button } from '../../shared/ui/controls.tsx'
+import { Icon } from '../../shared/ui/icon.tsx'
+import { Label } from '../../shared/ui/label.tsx'
 
 export function SkillBadge({
   skill,

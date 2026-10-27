@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
 import type { CompactInput, Compaction } from '../../../src/compaction/model.ts'
-import { Button } from '../components/ui/controls.tsx'
-import { Disclosure } from '../components/ui/disclosure.tsx'
-import { Icon } from '../components/ui/icon.tsx'
-import { Tooltip } from '../components/ui/tooltip.tsx'
+import { Button } from '../shared/ui/controls.tsx'
+import { Disclosure } from '../shared/ui/disclosure.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
+import { Tooltip } from '../shared/ui/tooltip.tsx'
 
 export function CompactionRow({ operation }: { operation: Compaction }) {
   const [

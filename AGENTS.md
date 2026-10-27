@@ -33,7 +33,7 @@ One folder per feature. Code for a feature lives in its folder. Usage and setup 
 | `src/server/` | the local daemon, its WebSocket and the agents it runs |
 | `src/thread/` | the transcript and reply thread reader |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
-| `web/` | the React + Vite + Tailwind Hydra; its own UI primitives in `web/src/components/ui/` |
+| `web/` | the React + Vite + Tailwind Hydra; its shared UI primitives in `web/src/shared/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: scenario and browser runners, fake agents and hosts, and the recorded agent sessions |
