@@ -12,8 +12,9 @@ import { STEERING_GRACE_MS } from '../src/task-inbox/follow-up.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
 import { localToken } from '../src/server/state.ts'
-import { seedWebFixture } from './web-fixture.ts'
-import { hydraSdk } from './hydra-host-fixture.ts'
+import { cpSync, realpathSync as realpath } from 'node:fs'
+import { decidePush } from '../src/core/decide.ts'
+import { hydraEvent } from '../src/core/hydra.ts'
 
 // The hook writes the pid file in one call, so an empty read means the worker has not started yet.
 async function heldPid({ pidFile }: { pidFile: string }) {
@@ -126,7 +127,6 @@ if (process.argv.includes('inbox-follow')) {
     })
     const server = await startServer({
       hydraId: 'lab',
-      query: hydraSdk().query,
     })
 
     const pid = await heldPid({ pidFile })
@@ -209,10 +209,67 @@ if (process.argv.includes('reply')) {
         },
       )
     })
-    const fixture = seedWebFixture({ home: process.env.PNYX_HOME })
+    const nativePath = join(
+      root,
+      'firstmate-fixture',
+    )
+    cpSync(
+      join(
+        import.meta.dirname,
+        'fixtures/firstmate-home',
+      ),
+      nativePath,
+      { recursive: true },
+    )
+    const nativeHome = realpath(nativePath)
+    const meta = {
+      actor: 'fixture',
+      at: new Date().toISOString(),
+    }
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        writer.append({
+          event: (hydraEvent({
+            state: writer.state,
+            meta,
+            cardId: 'c1',
+            change: {
+              type: 'task.created',
+              data: {
+                key: 'layout',
+                title: 'Layout',
+                column: 'needs_you',
+              },
+            },
+          }) as { event: Parameters<typeof writer.append>[0]['event'] }).event,
+        })
+        const pushed = decidePush({
+          state: writer.state,
+          newCardId: 'c2',
+          key: 'layout',
+          input: {
+            source: {
+              adapter: 'firstmate',
+              instanceId: nativeHome,
+              objectId: 'api-v2',
+            },
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'fixture-layout',
+            },
+          },
+          meta,
+        })
+
+        if ('event' in pushed) {
+          writer.append({ event: pushed.event })
+        }
+      },
+    })
     const server = await startServer({
       hydraId: 'default',
-      homes: [fixture.nativeHome],
+      homes: [nativeHome],
     })
     const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/default/ws?token=${localToken()}`)
     await once(
@@ -224,7 +281,7 @@ if (process.argv.includes('reply')) {
       id: 'reply-1',
       name: 'reply',
       args: [
-        fixture.state.keys.layout!,
+        loadHydra({ hydraId: 'default' }).state.keys.layout!,
         'A held reply',
         'held-reply',
       ],
