@@ -6,7 +6,10 @@ import { scenarioGroup } from './harness.ts'
 const pnyx = scenarioGroup()
 const chrome = browserGroup()
 
-for (const outcome of ['saved']) {
+for (const outcome of [
+  'saved',
+  'refused',
+]) {
   test(
     `reminder edits appear before confirmation and handle ${outcome}`,
     async () => {
@@ -42,11 +45,10 @@ for (const outcome of ['saved']) {
             holdReminder: boolean
             reminderIds: string[]
             releaseReminder?(): boolean
-            disconnectReminder(): void
           }
           control.holdReminder = true
           control.reminderIds = []
-          let refuse = outcome === 'refused' || outcome === 'newer-draft'
+          let refuse = outcome === 'refused'
           const send = WebSocket.prototype.send
 
           // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
@@ -57,8 +59,6 @@ for (const outcome of ['saved']) {
               control.reminderIds.push(message.args[message.args.indexOf('--event-id') + 1])
 
               if (control.holdReminder) {
-                control.disconnectReminder = () => this.close()
-
                 // A reconnect resends the reminder and holds it again, so release only the
                 // latest held frame, once, on an open socket, and say whether it was sent.
                 control.releaseReminder = () => {
@@ -142,61 +142,19 @@ for (const outcome of ['saved']) {
         await page.capture({ path: `${process.env.PNYX_CAPTURE_REMINDERS}/pending.png` })
       }
 
-      if (outcome === 'newer-draft') {
-        await page.hover({ selector: '.hydra-head strong' })
-        await page.shows({
-          what: 'task actions close after leaving the task',
-          check: () => document.querySelector('.card-menu:not(:popover-open)'),
-        })
-        await page.hover({ selector: '.card-open' })
-        await page.click({ selector: '[aria-label="Remind"]' })
-        await page.shows({
-          what: 'select the new reminder draft',
-          check: () => {
-            const field = document.querySelector<HTMLInputElement>('[aria-label="Reminder time"]')
-            field?.select()
-
-            return !!field
-          },
-        })
-        await page.type({ text: 'in 3 hours' })
-      }
-
-      if (outcome === 'reconnect') {
-        await page.shows({
-          what: 'disconnect the unconfirmed save',
-          check: () => {
-            ;(window as unknown as { disconnectReminder(): void }).disconnectReminder()
-
-            return true
-          },
-        })
-        await page.shows({
-          what: 'checking retains the preview without failure',
-          arg: { when },
-          check: ({ when }) =>
-            document.querySelector('.save-checking')?.textContent?.includes('Checking') && !document.querySelector('.reminder-editor')
-          && document.querySelector('.reminder-label')?.getAttribute('title') === when && !document.body.textContent?.includes('Not sent'),
-        })
-        await page.shows({
-          what: 'the same attempt queued on reconnect',
-          check: () => (window as unknown as { reminderIds: string[] }).reminderIds.length > 1,
-        })
-      }
-
       await page.shows({
         what: 'release the reminder outcome',
         check: () => (window as unknown as { releaseReminder?(): boolean }).releaseReminder?.(),
       })
 
-      if (outcome === 'refused' || outcome === 'newer-draft') {
+      if (outcome === 'refused') {
         await page.shows({
           what: 'refused preview reverts with a visible reason',
           check: () =>
             !document.querySelector('.reminder-label') && document.querySelector('.notice')?.textContent?.includes('missing-task'),
         })
         const draft = await page.shows({
-          what: 'the recovered or newer draft',
+          what: 'the recovered draft',
           check: () => {
             const field = document.querySelector<HTMLInputElement>('[aria-label="Reminder time"]')
 
@@ -208,50 +166,45 @@ for (const outcome of ['saved']) {
         })
         assert.equal(
           draft.value,
-          outcome === 'newer-draft' ? 'in 3 hours' : when,
-        )
-
-        if (outcome === 'refused') {
-          assert.match(
-            draft.reason,
-            /missing-task/,
-          )
-          await page.click({
-            selector: '.reminder-editor button',
-            text: 'Set reminder',
-          })
-        }
-      }
-
-      if (outcome !== 'newer-draft') {
-        await page.shows({
-          what: 'reminder confirmed in place',
-          arg: { when },
-          check: ({ when }) =>
-            !document.querySelector('[data-pending]') && !document.querySelector('.reminder-editor') && document.querySelector('.reminder-label')?.getAttribute('title') === when,
-        })
-
-        if (process.env.PNYX_CAPTURE_REMINDERS) {
-          await page.capture({ path: `${process.env.PNYX_CAPTURE_REMINDERS}/clear-pending.png` })
-        }
-
-        assert.equal(
-          s.task({ key: 'remember' }).reminder?.at,
           when,
         )
-        assert.equal(
-          s.events().filter(event => event.id === attempt).length,
-          1,
+        assert.match(
+          draft.reason,
+          /missing-task/,
         )
-        const ids = await page.shows({
-          what: 'all deliveries retain the attempt',
-          check: () => (window as unknown as { reminderIds: string[] }).reminderIds,
+        await page.click({
+          selector: '.reminder-editor button',
+          text: 'Set reminder',
         })
-        assert.equal(
-          new Set(ids).size,
-          1,
-        )
       }
+
+      await page.shows({
+        what: 'reminder confirmed in place',
+        arg: { when },
+        check: ({ when }) =>
+          !document.querySelector('[data-pending]') && !document.querySelector('.reminder-editor') && document.querySelector('.reminder-label')?.getAttribute('title') === when,
+      })
+
+      if (process.env.PNYX_CAPTURE_REMINDERS) {
+        await page.capture({ path: `${process.env.PNYX_CAPTURE_REMINDERS}/clear-pending.png` })
+      }
+
+      assert.equal(
+        s.task({ key: 'remember' }).reminder?.at,
+        when,
+      )
+      assert.equal(
+        s.events().filter(event => event.id === attempt).length,
+        1,
+      )
+      const ids = await page.shows({
+        what: 'all deliveries retain the attempt',
+        check: () => (window as unknown as { reminderIds: string[] }).reminderIds,
+      })
+      assert.equal(
+        new Set(ids).size,
+        1,
+      )
 
       if (outcome === 'saved') {
         if (process.env.PNYX_CAPTURE_REMINDERS) {

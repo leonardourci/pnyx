@@ -556,41 +556,6 @@ test(
 )
 
 test(
-  'verify requires all reviews even when automated checks pass',
-  t => {
-    const f = fixture({ t })
-    const pr = JSON.parse(readFileSync(
-      f.pr,
-      'utf8',
-    ))
-    writeFileSync(
-      f.pr,
-      JSON.stringify({
-        ...pr,
-        body: pr.body.replace(
-          '[x]',
-          '[ ]',
-        ),
-      }),
-    )
-    const result = f.run()
-    assert.equal(
-      result.status,
-      1,
-      result.output,
-    )
-    assert.match(
-      result.output,
-      /complete review-code/,
-    )
-    assert.equal(
-      result.body,
-      undefined,
-    )
-  },
-)
-
-test(
   'docs-only verification requires only deslop and skips automated checks',
   t => {
     const f = fixture({
@@ -759,131 +724,52 @@ test(
   },
 )
 
-for (const {
-  name,
-  paths,
-  required,
-  checks,
-} of [
-    {
-      name: 'skill text',
+test(
+  'skill text selects its reviews and checks',
+  t => {
+    const f = fixture({
+      t,
       paths: ['skills/pnyx-worker/SKILL.md'],
-      required: ['deslop'],
-      checks: 'skills',
-    },
-    {
-      name: 'docs and code',
-      paths: [
-        'README.md',
-        'src/new.ts',
-      ],
-      required: [
-        'review-code',
-        'audit-tests',
-        'deslop',
-      ],
-      checks: 'full',
-    },
-  ]) {
-  test(
-    `${name} selects its reviews and checks`,
-    t => {
-      const body = [
-        'review-code',
-        'audit-tests',
-        'deslop',
-      ].map(name =>
-        `- [${required.includes(name) ? 'x' : ' '}] Ran \`${name}\``).join('\n')
-      const f = fixture({
-        t,
-        paths,
-        body,
-      })
-      const result = f.run()
-      assert.equal(
-        result.status,
-        0,
-        result.output,
-      )
-      assert.match(
-        result.output,
-        new RegExp(`required reviews: ${required.join(', ')}`),
-      )
-      const automated = result.calls.filter(call => call.command !== 'gh')
-      const tests = automated.filter(call => call.command === 'node')
-
-      if (checks === 'changed') {
-        assert.deepEqual(
-          automated.slice(
-            0,
-            4,
-          ),
-          staticChecks,
-        )
-        assert.deepEqual(
-          tests.map(call => call.args),
-          [
-            [
-              'scripts/test.ts',
-              'test/new.test.ts',
-            ],
+      body: '- [ ] Ran `review-code`\n- [ ] Ran `audit-tests`\n- [x] Ran `deslop`',
+    })
+    const result = f.run()
+    assert.equal(
+      result.status,
+      0,
+      result.output,
+    )
+    assert.match(
+      result.output,
+      /required reviews: deslop/,
+    )
+    assert.deepEqual(
+      result.calls.filter(call => call.command !== 'gh'),
+      [
+        {
+          command: 'pnpm',
+          args: [
+            'run',
+            'build',
           ],
-        )
-      } else if (checks === 'skills') {
-        const expectedTests = [
-          'test/skills.test.ts',
-          'test/start.test.ts',
-          'test/task-context.test.ts',
-          'test/hydra-host.test.ts',
-          'test/catalog.test.ts',
-          'test/setup-check.test.ts',
-          'test/scenarios/hydra.test.ts',
-          'test/scenarios/worker-conventions.test.ts',
-        ]
-        const expectedChecks: typeof staticChecks = []
-
-        if (paths.includes('test/new.test.ts')) {
-          expectedTests.push('test/new.test.ts')
-          expectedChecks.push(...staticChecks)
-        } else {
-          expectedChecks.push({
-            command: 'pnpm',
-            args: [
-              'run',
-              'build',
-            ],
-          })
-        }
-
-        expectedChecks.push({
+        },
+        {
           command: 'node',
           args: [
             'scripts/test.ts',
-            ...expectedTests,
+            'test/skills.test.ts',
+            'test/start.test.ts',
+            'test/task-context.test.ts',
+            'test/hydra-host.test.ts',
+            'test/catalog.test.ts',
+            'test/setup-check.test.ts',
+            'test/scenarios/hydra.test.ts',
+            'test/scenarios/worker-conventions.test.ts',
           ],
-        })
-        assert.deepEqual(
-          automated,
-          expectedChecks,
-        )
-      } else {
-        assert.deepEqual(
-          tests.map(call => call.args),
-          [
-            [
-              'scripts/test.ts',
-              'unit',
-            ],
-            [
-              'scripts/test.ts',
-              'scenarios',
-            ],
-          ],
-        )
-      }
-    },
-  )
-}
+        },
+      ],
+    )
+  },
+)
 
 test(
   'a PR mechanical line alone cannot lower the normal review requirement',

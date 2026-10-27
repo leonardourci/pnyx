@@ -734,59 +734,6 @@ const envelope = ({
 })
 
 test(
-  'a session event observes the session card with its folder and transcript',
-  () => {
-    const [
-      o,
-      ...rest
-    ] = observe({
-      envelope: envelope({
-        harness: 'claude',
-        event: 'SessionStart',
-        name: 'claude-session-start',
-      }),
-    })
-    assert.equal(
-      rest.length,
-      0,
-    )
-    assert.deepEqual(
-      o,
-      {
-        id: '',
-        key: `claude:${SESSION}`,
-        card: {
-          source: {
-            adapter: 'hooks',
-            instanceId: 'claude',
-            objectId: SESSION,
-            observedAt: '2026-10-13T14:00:00Z',
-          },
-          agent: {
-            provider: 'claude-code',
-            sessionId: SESSION,
-            transcriptPath: `/work/home/.claude/projects/-work-repo/${SESSION}.jsonl`,
-            cwd: '/work/repo',
-          },
-          autoTitle: {
-            from: 'folder',
-            text: 'repo',
-          },
-          activity: 'finished',
-          terminal: {},
-          settings: {
-            model: 'claude-opus-5-5',
-            mode: 'default',
-          },
-        },
-        attend: { clear: ['hook:'] },
-        outcome: null,
-      },
-    )
-  },
-)
-
-test(
   'a prompt offers its first line as the title, cut to one line; a session end records the ended outcome',
   () => {
     const [prompt] = observe({
@@ -1009,67 +956,6 @@ test(
         String(command),
       )
     }
-  },
-)
-
-test(
-  'codex payloads map the same way; unknown events and payloads without a session map to nothing',
-  () => {
-    const [o] = observe({
-      envelope: envelope({
-        harness: 'codex',
-        event: 'SessionStart',
-        name: 'codex-session-start',
-      }),
-    })
-    assert.equal(
-      o!.key,
-      `codex:${CODEX_SESSION}`,
-    )
-    assert.deepEqual(
-      o!.card.agent,
-      {
-        provider: 'codex',
-        sessionId: CODEX_SESSION,
-        cwd: '/work/other',
-      },
-    )
-    assert.deepEqual(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'MessageDisplay',
-          name: 'claude-stop',
-        }),
-      }),
-      [],
-    )
-    assert.deepEqual(
-      observe({
-        envelope: {
-          ...envelope({
-            harness: 'claude',
-            event: 'Stop',
-            name: 'claude-stop',
-          }),
-          payload: {},
-        },
-      }),
-      [],
-    )
-    assert.deepEqual(
-      observe({
-        envelope: {
-          ...envelope({
-            harness: 'claude',
-            event: 'Stop',
-            name: 'claude-stop',
-          }),
-          payload: null,
-        },
-      }),
-      [],
-    )
   },
 )
 

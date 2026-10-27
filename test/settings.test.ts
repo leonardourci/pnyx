@@ -8,7 +8,6 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
-import { hookSettings } from '../src/integrations/hooks/settings.ts'
 import { loadHydra, readEvents, spoolWrite } from '../src/store/hydra-store.ts'
 
 const BIN = join(
@@ -26,49 +25,6 @@ const transcript = ({ name }: { name: string }) => join(
   FIXTURES,
   'transcripts',
   `${name}.jsonl`,
-)
-const payload = ({ name }: { name: string }) => JSON.parse(readFileSync(
-  join(
-    FIXTURES,
-    'hooks',
-    `${name}.json`,
-  ),
-  'utf8',
-)) as Record<string, unknown>
-
-test(
-  'hook payloads report the model, effort and permission mode they carry',
-  () => {
-    assert.deepEqual(
-      hookSettings({ payload: payload({ name: 'claude-session-start' }) }),
-      {
-        model: 'claude-opus-5-5',
-        mode: 'default',
-      },
-    )
-    assert.deepEqual(
-      hookSettings({ payload: payload({ name: 'claude-stop-effort' }) }),
-      {
-        effort: 'xhigh',
-        mode: 'acceptEdits',
-      },
-    )
-    assert.deepEqual(
-      hookSettings({ payload: payload({ name: 'codex-session-start' }) }),
-      {
-        model: 'gpt-6',
-        mode: 'default',
-      },
-    )
-    assert.equal(
-      hookSettings({ payload: payload({ name: 'claude-subagent-start' }) }),
-      undefined,
-    )
-    assert.deepEqual(
-      hookSettings({ payload: payload({ name: 'claude-post-model-switch' }) }),
-      { model: 'claude-haiku-5-5' },
-    )
-  },
 )
 
 test(

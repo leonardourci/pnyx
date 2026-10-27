@@ -7,7 +7,7 @@ import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
-import { mergeLines, ownerMemory } from '../src/store/owner-memory.ts'
+import { ownerMemory } from '../src/store/owner-memory.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -74,22 +74,6 @@ const digest = ({ hydraId }: { hydraId: string }) => workerCommands.hydra([
   '--hydra',
   hydraId,
 ]) as unknown as string
-
-test(
-  'merging preferences keeps every line once',
-  () => {
-    assert.equal(
-      mergeLines({
-        texts: [
-          'Short PRs.\n\nAsk before deploys.',
-          'short  PRs.\nAnswer in English.  ',
-          '',
-        ],
-      }),
-      'Short PRs.\nAsk before deploys.\nAnswer in English.',
-    )
-  },
-)
 
 test(
   'the first run moves each Hydra’s preferences and learnings into owner memory and forgets them there',

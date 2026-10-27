@@ -515,6 +515,16 @@ test(
       fn: () => decideMove({
         state,
         ref: 'b',
+        column: 'in_progress',
+        before: 'b',
+        meta,
+      }),
+      code: 'VALIDATION_ERROR',
+    })
+    rejects({
+      fn: () => decideMove({
+        state,
+        ref: 'b',
         column: 'custom:nowhere',
         meta,
       }),

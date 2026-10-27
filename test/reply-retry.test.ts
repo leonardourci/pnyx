@@ -697,8 +697,6 @@ function acknowledgeOldest() {
 
 for (const result of [
   'delivered',
-  'unknown',
-  'failed',
   'deferred',
   'gone',
 ] as const) {

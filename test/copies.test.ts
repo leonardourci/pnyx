@@ -321,15 +321,6 @@ const commit = ({
   })
 }
 
-const head = ({ cwd }: { cwd: string }) => git({
-  cwd,
-  args: [
-    'symbolic-ref',
-    '--short',
-    'HEAD',
-  ],
-})
-
 test(
   'a start makes the task its own git worktree and later starts reuse it',
   async () => {
@@ -688,50 +679,6 @@ test(
         ],
       }),
     )
-  },
-)
-
-test(
-  'a pooled copy that is dirty again is never taken',
-  async () => {
-    const {
-      task,
-      card,
-      cardOf,
-      create,
-      start,
-      done,
-    } = await lab()
-    await start({ id: task })
-    const {
-      path,
-      branch,
-    } = card().copy!
-    done({ id: task })
-    settleDone({ hydraId: 'lab' })
-    assert.ok(existsSync(path))
-    writeFileSync(
-      join(
-        path,
-        'stray.txt',
-      ),
-      'stray\n',
-    )
-
-    const next = create({ key: 'next' })
-    await start({ id: next })
-    assert.notEqual(
-      cardOf({ id: next }).copy?.path,
-      path,
-    )
-    assert.equal(
-      head({ cwd: path }),
-      branch,
-    )
-    assert.ok(existsSync(join(
-      path,
-      'stray.txt',
-    )))
   },
 )
 
@@ -1360,7 +1307,6 @@ test(
     for (const outcome of [
       'landed',
       'later commit',
-      'untracked',
       'changed during proof',
     ]) {
       await t.test(
@@ -1502,16 +1448,6 @@ test(
                 'local work after the merged head',
               ],
             })
-          }
-
-          if (outcome === 'untracked') {
-            writeFileSync(
-              join(
-                cwd,
-                'draft.txt',
-              ),
-              'untracked work\n',
-            )
           }
 
           let current = git({

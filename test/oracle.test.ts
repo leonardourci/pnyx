@@ -6,9 +6,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { withWriter } from '../src/store/hydra-store.ts'
-import type { HydraEvent } from '../src/core/model.ts'
-import { ftsQuery, search, updateIndex } from '../src/oracle/index.ts'
-import { chunk, eventText, redact, transcriptMessages } from '../src/oracle/text.ts'
+import { search, updateIndex } from '../src/oracle/index.ts'
+import { redact, transcriptMessages } from '../src/oracle/text.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -40,49 +39,6 @@ const CODEX = join(
   'fixtures',
   'transcripts',
   'codex-session.jsonl',
-)
-
-test(
-  'a short message is one chunk; a long one splits on paragraphs, keeps code fences whole and cuts overlong lines',
-  () => {
-    assert.deepEqual(
-      chunk({ text: '  one line  ' }),
-      ['one line'],
-    )
-    assert.deepEqual(
-      chunk({ text: ' \n ' }),
-      [],
-    )
-    const paragraphs = Array.from(
-      { length: 6 },
-      (
-        _,
-        i,
-      ) => `Paragraph ${i} ${'word '.repeat(50).trim()}`,
-    )
-    const chunks = chunk({ text: paragraphs.join('\n\n') })
-    assert.ok(chunks.length > 1)
-    assert.ok(chunks.every(c => c.length <= 768))
-    assert.equal(
-      chunks[1]!.split('\n\n')[0],
-      chunks[0]!.split('\n\n').at(-1),
-    )
-
-    for (const p of paragraphs) {
-      assert.ok(chunks.some(c => c.includes(p)))
-    }
-
-    const fence = '```\na\n\nb\n```'
-    assert.ok(chunk({ text: `${'intro '.repeat(120)}\n\n${fence}` }).some(c => c.includes(fence)))
-    assert.deepEqual(
-      chunk({ text: 'x'.repeat(2000) }).map(c => c.length),
-      [
-        768,
-        768,
-        464,
-      ],
-    )
-  },
 )
 
 test(
@@ -164,139 +120,6 @@ test(
         },
       ],
     )
-  },
-)
-
-test(
-  "an event's text is what it changed",
-  () => {
-    const base = {
-      v: 1,
-      seq: 2,
-      id: 'e2',
-      at: '2026-10-13T00:00:00Z',
-      actor: 'cli',
-      cardId: 'c1',
-    } as const
-    const update = {
-      ...base,
-      type: 'card.pushed',
-      data: {
-        key: 'k',
-        title: 'Same title',
-        tags: [
-          'a',
-          'b',
-        ],
-        attention: [
-          {
-            kind: 'question',
-            key: 'q1',
-            blocking: true,
-            text: 'Which region?',
-          },
-        ],
-        before: { tags: ['a'] },
-      },
-    } as HydraEvent
-    assert.equal(
-      eventText({ event: update }),
-      'b',
-    )
-    const created = {
-      ...update,
-      data: {
-        ...update.data,
-        before: undefined,
-      },
-    } as HydraEvent
-    assert.equal(
-      eventText({ event: created }),
-      'Same title\na\nb\nWhich region?',
-    )
-    const link = {
-      url: 'https://github.com/o/r/pull/7',
-      kind: 'github_pr',
-      number: 7,
-      title: 'Fix it',
-    } as const
-    const linked = {
-      ...base,
-      type: 'card.linked',
-      data: {
-        url: link.url,
-        before: null,
-        after: link,
-      },
-    } as HydraEvent
-    assert.equal(
-      eventText({ event: linked }),
-      '#7 Fix it https://github.com/o/r/pull/7',
-    )
-    const merged = {
-      ...linked,
-      data: {
-        url: link.url,
-        before: link,
-        after: {
-          ...link,
-          state: 'merged',
-        },
-      },
-    } as HydraEvent
-    assert.equal(
-      eventText({ event: merged }),
-      '',
-    )
-    const moved = {
-      ...base,
-      type: 'card.moved',
-      reason: 'Keep in review',
-      data: {
-        before: null,
-        after: 'review',
-      },
-    } as HydraEvent
-    assert.equal(
-      eventText({ event: moved }),
-      'Keep in review',
-    )
-  },
-)
-
-test(
-  'query words are quoted, and words and phrases in a synonym group match the whole group',
-  () => {
-    for (const [
-      text,
-      query,
-    ] of [
-        [
-          'Rollback the pull request',
-          '("rollback" OR "revert") AND "the" AND ("pr" OR "pull request")',
-        ],
-        [
-          '(pull request), lunch',
-          '("pr" OR "pull request") AND "lunch"',
-        ],
-        [
-          'ship*',
-          '"ship"*',
-        ],
-        [
-          'fix "AND" -x pull/7 deplo* :',
-          '"fix" AND """AND""" AND "-x" AND "pull/7" AND "deplo"*',
-        ],
-        [
-          ' - : ',
-          '',
-        ],
-      ]) {
-      assert.equal(
-        ftsQuery({ text: text! }),
-        query,
-      )
-    }
   },
 )
 

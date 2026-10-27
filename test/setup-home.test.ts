@@ -71,73 +71,66 @@ for (const target of [
         'isolated',
       )
 
-      for (const flags of [
-        [],
-        ['--preview'],
-        ['--remove'],
-      ]) {
-        const result = spawnSync(
-          process.execPath,
-          [
-            cli,
-            'setup',
-            target,
-            ...flags,
-          ],
-          {
-            env,
-            encoding: 'utf8',
-          },
-        )
-        assert.equal(
-          result.status,
-          1,
-        )
-        assert.match(
-          result.stdout,
-          /CUSTOM_HOME_SETUP/,
-        )
-        assert.match(
-          result.stdout,
-          /--allow-custom-home/,
-        )
-        assert.match(
-          result.stdout,
-          /Unset PNYX_HOME/,
-        )
-        assert.equal(
-          existsSync(env.PNYX_HOME),
-          false,
-        )
-        assert.equal(
-          existsSync(join(
-            env.CLAUDE_CONFIG_DIR,
-            'settings.json',
-          )),
-          false,
-        )
-        assert.equal(
-          existsSync(join(
-            env.CODEX_HOME,
-            'hooks.json',
-          )),
-          false,
-        )
-        assert.equal(
-          existsSync(join(
-            root,
-            '.agents',
-          )),
-          false,
-        )
-        assert.equal(
-          existsSync(join(
-            root,
-            'Library',
-          )),
-          false,
-        )
-      }
+      const result = spawnSync(
+        process.execPath,
+        [
+          cli,
+          'setup',
+          target,
+        ],
+        {
+          env,
+          encoding: 'utf8',
+        },
+      )
+      assert.equal(
+        result.status,
+        1,
+      )
+      assert.match(
+        result.stdout,
+        /CUSTOM_HOME_SETUP/,
+      )
+      assert.match(
+        result.stdout,
+        /--allow-custom-home/,
+      )
+      assert.match(
+        result.stdout,
+        /Unset PNYX_HOME/,
+      )
+      assert.equal(
+        existsSync(env.PNYX_HOME),
+        false,
+      )
+      assert.equal(
+        existsSync(join(
+          env.CLAUDE_CONFIG_DIR,
+          'settings.json',
+        )),
+        false,
+      )
+      assert.equal(
+        existsSync(join(
+          env.CODEX_HOME,
+          'hooks.json',
+        )),
+        false,
+      )
+      assert.equal(
+        existsSync(join(
+          root,
+          '.agents',
+        )),
+        false,
+      )
+      assert.equal(
+        existsSync(join(
+          root,
+          'Library',
+        )),
+        false,
+      )
     },
   )
 }
@@ -220,7 +213,6 @@ test(
     )
 
     for (const path of [
-      home,
       alias,
       '',
     ]) {

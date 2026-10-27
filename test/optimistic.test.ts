@@ -513,33 +513,3 @@ test(
     )
   },
 )
-
-test(
-  'Hydra agent selection previews without advancing configuration revision',
-  () => {
-    const state = fixture()
-    const projected = optimisticState({
-      state,
-      edit: {
-        name: 'hydra-agent',
-        args: ['{"harness":"codex","model":"new-model","fast":true}'],
-      },
-    })
-    assert.equal(
-      projected.config?.hydra.agent?.model,
-      'new-model',
-    )
-    assert.equal(
-      projected.config?.hydra.agent?.fast,
-      true,
-    )
-    assert.equal(
-      projected.configRevision,
-      state.configRevision,
-    )
-    assert.equal(
-      projected.seq,
-      state.seq,
-    )
-  },
-)

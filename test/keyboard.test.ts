@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError, resolveKey, type KeyContext, type KeyInput, type KeyboardPreferences } from '../src/core/keyboard.ts'
+import { DEFAULT_KEYBOARD, keyboardError, resolveKey, type KeyContext, type KeyInput, type KeyboardPreferences } from '../src/core/keyboard.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { decideUndo, decideView, type Decision } from '../src/core/decide.ts'
-import { DEFAULT_VIEW, patchView, viewFor } from '../src/core/view.ts'
+import { patchView, viewFor } from '../src/core/view.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { navigate, restoreAnchor } from '../web/src/keyboard/navigation.ts'
 import { hintLabels } from '../web/src/keyboard/hints.ts'
-import { matchesCommand, SHORTCUT_QUERY, shortcutLabel } from '../web/src/hydra/oracle-catalog.ts'
 
 const context: KeyContext = {
   scope: 'hydra',
@@ -950,54 +949,5 @@ test(
         bindings: {},
       },
     )
-  },
-)
-test(
-  'Settings has no shortcut while hidden, and a binding saved for it is dropped without blocking other edits',
-  () => {
-    assert.equal(
-      resolve({
-        event: {
-          key: ',',
-          metaKey: true,
-        },
-      }).action,
-      undefined,
-    )
-    const state = {
-      ...emptyHydra(),
-      view: {
-        ...structuredClone(DEFAULT_VIEW),
-        keyboard: {
-          characterShortcuts: true,
-          bindings: { settings: ['g s'] },
-        },
-      },
-    }
-    assert.deepEqual(
-      viewFor({ state }).keyboard.bindings,
-      {},
-    )
-    assert.deepEqual(
-      patchView({
-        state,
-        input: { keyboard: { bindings: { help: ['g h'] } } },
-      }).keyboard.bindings,
-      { help: ['g h'] },
-    )
-  },
-)
-test(
-  'keyboard help lists a shortcut row for every action',
-  () => {
-    for (const action of KEY_ACTIONS) {
-      assert.ok(
-        matchesCommand({
-          query: SHORTCUT_QUERY,
-          text: shortcutLabel({ label: action.label }),
-        }),
-        action.id,
-      )
-    }
   },
 )

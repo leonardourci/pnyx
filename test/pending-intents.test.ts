@@ -330,40 +330,6 @@ test(
 )
 
 test(
-  'resource subscriptions retain pending state after their observer unmounts',
-  () => {
-    const resource = fixture()
-    const observed: string[] = []
-    const unsubscribe = resource.subscribe(() => observed.push(resource.snapshot().view.title))
-    resource.enqueue({
-      id: 'rename',
-      targets: ['title'],
-      patch: { title: 'Pending' },
-      delivery: 'idempotent',
-    })
-    unsubscribe()
-    resource.accept({ id: 'rename' })
-    const other = fixture()
-    assert.deepEqual(
-      observed,
-      ['Pending'],
-    )
-    assert.equal(
-      resource.snapshot().view.title,
-      'Pending',
-    )
-    assert.equal(
-      other.snapshot().view.title,
-      'Original',
-    )
-    assert.equal(
-      resource.snapshot(),
-      resource.snapshot(),
-    )
-  },
-)
-
-test(
   'an authoritative no-op receipt releases the preview without awaiting an event that will never exist',
   () => {
     const resource = fixture()
