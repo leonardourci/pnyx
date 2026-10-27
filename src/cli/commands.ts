@@ -1692,21 +1692,26 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }
       })
 
-    return tasks.length
-      ? {
-        hydraId,
-        count: tasks.length,
-        tasks,
-        help: [
-          `Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`,
-          ...fields.length ? [] : [`Run \`pnyx-axi task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`],
-        ],
-      }
-      : {
+    if (!tasks.length) {
+      return {
         hydraId,
         tasks: 'none: no tasks on this Hydra',
         help: [`Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add one`],
       }
+    }
+
+    const help = [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`]
+
+    if (!fields.length) {
+      help.push(`Run \`pnyx-axi task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`)
+    }
+
+    return {
+      hydraId,
+      count: tasks.length,
+      tasks,
+      help,
+    }
   }
 
   if (action === 'history') {
