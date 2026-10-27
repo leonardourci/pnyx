@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import fs from 'node:fs'
+import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { refreshProject } from '../../src/projects/refresh.ts'
 import type { ProjectRefresh } from '../../src/projects/refresh-types.ts'
@@ -1125,6 +1126,109 @@ test(
       s.events().filter(event => event.type === 'project.refreshed' && event.data.path === path).length,
       0,
     )
+  },
+)
+
+test(
+  'refresh lock churn cannot bypass its deadline',
+  async t => {
+    const s = await pnyx.scenario()
+    const {
+      path,
+      target,
+      before,
+    } = await prepare({ s })
+    const lock = join(
+      path,
+      '.git',
+      'pnyx-project-refresh.lock',
+    )
+    const symlink = fsPromises.symlink
+    const readlink = fsPromises.readlink
+    let now = 0
+    let attempts = 0
+    let result: ProjectRefresh | undefined
+    t.mock.method(
+      fsPromises,
+      'symlink',
+      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
+      async (...args: Parameters<typeof symlink>) => {
+        if (args[1] === lock) {
+          assert.ok(
+            ++attempts <= 3,
+            'lock churn must stop at the deadline',
+          )
+          now += 15_000
+          throw Object.assign(
+            new Error('lock was just created'),
+            { code: 'EEXIST' },
+          )
+        }
+
+        return symlink(...args)
+      },
+    )
+    t.mock.method(
+      fsPromises,
+      'readlink',
+      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
+      async (...args: Parameters<typeof readlink>) => {
+        if (args[0] === lock) {
+          throw Object.assign(
+            new Error('lock was just removed'),
+            { code: 'ENOENT' },
+          )
+        }
+
+        return readlink(...args)
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      await refreshProject({
+        path,
+        url: 'https://github.com/fixture/project/pull/1',
+        merge: target,
+        isPending: () => true,
+        lockWait: {
+          now: () => now,
+          schedule: () => {
+            throw new Error('a vanished lock needs no timer')
+          },
+        },
+        complete: ({ result: completed }) => {
+          result = completed
+        },
+      })
+      assert.equal(
+        attempts,
+        2,
+      )
+      assert.ok(result)
+      assert.equal(
+        result.state,
+        'unknown',
+      )
+      assert.match(
+        result.reason!,
+        /timed out waiting for the active project refresh after 30000ms/,
+      )
+      assert.ok(result.reason!.includes(lock))
+      assert.equal(
+        git({
+          cwd: path,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        before,
+      )
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
   },
 )
 
