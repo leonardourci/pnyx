@@ -17,7 +17,7 @@ paths:
 - Put derived values (labels, classes, formatted text) and compound conditions in named constants above the `return`, not inline in the JSX.
 - Read Hydra state from the connection store over the one WebSocket. Don't keep a second copy of it in component state.
 - Use the installed React, Vite and Tailwind versions' current APIs, checked against their types or docs, not deprecated props or callbacks.
-- Browser tests find elements by their accessible names, `aria-label` and `data-*` state attributes. Keep those stable when you move or rename a component.
+- Keep accessible names, `aria-label` and `data-*` state attributes stable when you move or rename a component; assistive technology relies on them.
 - Chat tokens (commands, skills and task mentions) share one rendering between the composer and sent messages, including their icons, colors and task navigation. Keep surrounding text normal and unknown command or skill names literal.
 - Prefer inline creation and editing over modals and dialogs: a new column is created inline at the end of the Hydra, card fields edit in place. Reserve overlays for things that truly need them (command palette, confirming a destructive action).
 
