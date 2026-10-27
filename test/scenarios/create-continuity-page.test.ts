@@ -30,7 +30,7 @@ const observeCreation = ({
       gaps: number
       frames: number
       node?: HTMLElement
-      release(): void
+      release(): boolean
       stop(): void
     }
   }
@@ -38,7 +38,7 @@ const observeCreation = ({
     removed: 0,
     gaps: 0,
     frames: 0,
-    release: () => {},
+    release: () => false,
     stop: () => {},
   }
   const send = WebSocket.prototype.send
@@ -47,11 +47,21 @@ const observeCreation = ({
   WebSocket.prototype.send = function(data) {
     const message = JSON.parse(String(data))
 
+    // The page can send after the click or resend after a reconnect, so release() sends
+    // the latest held frame only on an open socket and says whether it did.
     if (message.name === name && message.args[0] === action) {
-      state.release = () => send.call(
-        this,
-        data,
-      )
+      state.release = () => {
+        if (this.readyState !== WebSocket.OPEN) {
+          return false
+        }
+
+        send.call(
+          this,
+          data,
+        )
+
+        return true
+      }
 
       return
     }
@@ -164,8 +174,25 @@ test(
     })
     await page.click({ selector: '[aria-label="New task in Queued"]' })
     await page.type({ text: 'Stay here after saving' })
-    await page.click({ selector: '[aria-label="Your ask"]' })
-    await page.type({ text: 'Keep the task visible while this longer owner ask is saved and confirmed in the background.' })
+    // The page can move focus back to the title, so focus the ask and write it in one step until it holds the text.
+    await page.shows({
+      what: 'the ask written',
+      arg: { text: 'Keep the task visible while this longer owner ask is saved and confirmed in the background.' },
+      check: ({ text }) => {
+        const ask = document.querySelector<HTMLTextAreaElement>('[aria-label="Your ask"]')
+
+        if (ask && ask.value !== text) {
+          ask.focus()
+          document.execCommand(
+            'insertText',
+            false,
+            text,
+          )
+        }
+
+        return ask?.value === text
+      },
+    })
     await page.shows({
       what: 'watch the creation lifetime before submitting',
       check: observeCreation,
@@ -206,11 +233,8 @@ test(
     })
     await page.shows({
       what: 'release creation',
-      check: () => {
-        ;(window as unknown as { continuity: { release(): void } }).continuity.release()
-
-        return true
-      },
+      check: () => (window as unknown as { continuity: { release(): boolean } }).continuity
+        .release(),
     })
     await page.shows({
       what: 'canonical creation and placement confirmed',
@@ -333,11 +357,8 @@ for (const kind of [
       )
       await page.shows({
         what: 'release confirmation',
-        check: () => {
-          ;(window as unknown as { continuity: { release(): void } }).continuity.release()
-
-          return true
-        },
+        check: () => (window as unknown as { continuity: { release(): boolean } }).continuity
+          .release(),
       })
       await page.shows({
         what: 'creation confirmed',

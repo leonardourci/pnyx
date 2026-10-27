@@ -182,7 +182,12 @@ for (const recovery of [
               mount(): void
               unmount(): void
             }
-            disconnect(): void
+            disconnect?(): void
+          }
+
+          // The page can send the first rename after the commands are issued; recover once it is held.
+          if (!control.disconnect) {
+            return false
           }
 
           if (recovery === 'remount') {
@@ -562,19 +567,27 @@ test(
       arg: { queued },
       check: ({ queued }) => {
         const send = WebSocket.prototype.send
-        const control = window as unknown as { releaseRename: () => void }
+        const control = window as unknown as { releaseRename: () => boolean }
 
         // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes a single payload.
         WebSocket.prototype.send = function(data) {
           const message = typeof data === 'string' ? JSON.parse(data) : null
 
           if (message?.name === 'column' && message.args[0] === 'rename' && message.args[1] === queued) {
+            // Release sends only on an open socket and says whether it did, so the
+            // release step waits until the page's send has reached a live hold.
             control.releaseRename = () => {
+              if (this.readyState !== WebSocket.OPEN) {
+                return false
+              }
+
               WebSocket.prototype.send = send
               send.call(
                 this,
                 data,
               )
+
+              return true
             }
           } else {
             send.call(
@@ -637,11 +650,7 @@ test(
     })
     await page.shows({
       what: 'the delayed command released',
-      check: () => {
-        ;(window as unknown as { releaseRename: () => void }).releaseRename()
-
-        return true
-      },
+      check: () => (window as unknown as { releaseRename?: () => boolean }).releaseRename?.(),
     })
     await page.shows({
       what: 'the refused preview reverted, the independent edit saved and the daemon reason visible',
@@ -679,7 +688,7 @@ test(
       check: () => {
         const send = WebSocket.prototype.send
         const control = window as unknown as {
-          releaseCreate: () => void
+          releaseCreate: () => boolean
           widthsSent: number
           parentRefused: boolean
           socket: WebSocket
@@ -703,10 +712,19 @@ test(
                 }
               },
             )
-            control.releaseCreate = () => send.call(
-              this,
-              data,
-            )
+
+            control.releaseCreate = () => {
+              if (this.readyState !== WebSocket.OPEN) {
+                return false
+              }
+
+              send.call(
+                this,
+                data,
+              )
+
+              return true
+            }
           } else {
             if (message?.name === 'view' && message.args.some((value: string) => value.includes('columnWidths'))) {
               control.widthsSent++
@@ -761,11 +779,7 @@ test(
     await page.type({ text: 'Keep the destination draft' })
     await page.shows({
       what: 'release the stale creation',
-      check: () => {
-        ;(window as unknown as { releaseCreate: () => void }).releaseCreate()
-
-        return true
-      },
+      check: () => (window as unknown as { releaseCreate?: () => boolean }).releaseCreate?.(),
     })
     await page.shows({
       what: 'destination connected after refused old work settles',
