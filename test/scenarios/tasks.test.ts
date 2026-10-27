@@ -39,7 +39,7 @@ function followsProject({ prompt }: { prompt: string }): void {
 }
 
 test(
-  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner's answer once, Done, the session hands off to the next task, and the card survives a restart',
+  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, and the card survives a restart',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
