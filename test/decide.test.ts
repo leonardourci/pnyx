@@ -827,9 +827,9 @@ test(
       third.seq,
       3,
     )
-    assert.notEqual(
+    assert.equal(
       third.id,
-      'evt_3',
+      'evt_3_2',
     )
     assert.ok(reduce({
       state,
