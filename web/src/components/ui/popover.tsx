@@ -7,12 +7,15 @@ export function Popover({
   children,
   className = '',
   triggerRef,
+  below = false,
 }: {
   label: string
   trigger: ReactNode
   children({ close }: { close(): void }): ReactNode
   className?: string
   triggerRef?: RefObject<HTMLButtonElement | null>
+  // Opens under the trigger, for a trigger near the top of the page.
+  below?: boolean
 }) {
   const [
     open,
@@ -47,7 +50,7 @@ export function Popover({
               innerWidth - element.offsetWidth - 8,
             ),
           )}px`
-          element.style.top = `${Math.max(
+          element.style.top = `${below ? anchor.bottom + 6 : Math.max(
             8,
             anchor.top - element.offsetHeight - 6,
           )}px`
@@ -96,7 +99,10 @@ export function Popover({
         )
       }
     },
-    [open],
+    [
+      open,
+      below,
+    ],
   )
 
   return (

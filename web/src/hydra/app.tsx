@@ -24,6 +24,7 @@ import { loadUpdates } from './updates-cache.ts'
 import { sendableComment, type ChatComment } from './chat.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
+import { UPGRADE_COMMAND } from '../../../src/upgrade/model.ts'
 import { columnsFor, expandedByColumn, findBoxCards, hydraTitle, pageTitle } from './view.ts'
 import { Oracle } from './oracle.tsx'
 import { commandQuery } from './oracle-catalog.ts'
@@ -94,6 +95,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     connected,
     hydraThread,
     hydraQueue,
+    upgrade,
     latest,
     actions,
     navigation,
@@ -1035,6 +1037,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         <Panel
           shown={panel}
           connected={connected}
+          upgrade={upgrade}
+          startUpgrade={() => void command({
+            name: 'hydra',
+            args: [
+              'send',
+              `--text=${UPGRADE_COMMAND}`,
+              '--event-id',
+              crypto.randomUUID(),
+            ],
+          }).catch((error: Error) => notify({ text: error.message }))}
           oracle={(
             <Oracle
               selected={selected}
