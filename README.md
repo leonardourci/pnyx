@@ -114,7 +114,7 @@ You can create tasks and columns inline and move cards yourself. A finished agen
 
 ### Workers
 
-Each task has at most one attached worker at a time. Pnyx can host Claude Code and Codex, use Paseo, hand work to Firstmate, or run your own command.
+Each task has at most one attached worker at a time. Pnyx can host Claude Code and Codex, use Paseo, or run your own command.
 
 Workers report their state and send questions to Hydra. Hooks also let you attach existing interactive sessions.
 
@@ -133,7 +133,6 @@ The **Oracle** searches tasks and recorded conversations by words or meaning, us
 ## Documentation
 
 - [CLI and usage reference](docs/cli.md): commands, projects, tasks, workers, memory and the interface.
-- [Firstmate](docs/firstmate.md): connect a home and mirror its work.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests, verification and browser prerequisites.
