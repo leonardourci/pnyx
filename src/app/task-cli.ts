@@ -27,7 +27,7 @@ import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD } from 
 import { readThread } from '../thread/read.ts'
 import { AxiError } from 'axi-sdk-js'
 import { decidePush, decideSession, findCard } from '../core/decide.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { askHost } from './server-state.ts'
 import { canonical } from '../store/paths.ts'
 import { loadHydra } from './store.ts'

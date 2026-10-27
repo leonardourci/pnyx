@@ -11,7 +11,7 @@ import {
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { HydraError } from '../../core/model.ts'
+import { HydraError } from '../../store/errors.ts'
 
 const LEGACY_SKILLS = [
   'pnyx-hydra',

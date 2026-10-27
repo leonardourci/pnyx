@@ -1,7 +1,7 @@
 import {
   existsSync,
 } from 'node:fs'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { type HydraState } from './model.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { readLog } from './event-log.ts'

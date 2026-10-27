@@ -1,7 +1,7 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { HydraError } from '../../core/model.ts'
+import { HydraError } from '../../store/errors.ts'
 import { pnyxHome } from '../../store/storage.ts'
 import type { Harness } from './observe.ts'
 

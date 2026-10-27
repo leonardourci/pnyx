@@ -1,4 +1,4 @@
-import { EVENT_VERSION } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { type HydraEvent, type HydraState } from './model.ts'
 import { freeId } from '../core/decide.ts'
 

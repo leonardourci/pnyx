@@ -1,5 +1,6 @@
 import { noteId } from '../../core/decide.ts'
-import { EVENT_VERSION, type SessionEvent } from '../../core/model.ts'
+import { type SessionEvent } from '../../core/model.ts'
+import { EVENT_VERSION } from '../../store/events.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { taskForMessage } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry } from '../../thread/read.ts'

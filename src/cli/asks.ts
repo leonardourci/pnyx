@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs'
-import { HydraError, type Ask, type AskAudience, type Card } from '../core/model.ts'
+import { type Ask, type AskAudience, type Card } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { HYDRA_ACTOR } from '../app/actors.ts'
 import { findCard } from '../core/decide.ts'
 import { type Meta } from '../app/command-meta.ts'

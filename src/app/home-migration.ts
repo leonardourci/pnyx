@@ -9,7 +9,7 @@ import {
   symlinkSync,
 } from 'node:fs'
 import { basename, dirname, join } from 'node:path'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { acquireLock } from '../store/storage.ts'
 

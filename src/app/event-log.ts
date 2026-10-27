@@ -6,7 +6,8 @@ import {
   readSync,
   statSync,
 } from 'node:fs'
-import { HydraError, EVENT_VERSION } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { logPath } from '../store/storage.ts'
 import { hydraDir } from './home-migration.ts'

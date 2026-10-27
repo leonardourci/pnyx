@@ -1,8 +1,9 @@
 import type { ProjectRefresh } from '../projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '../helper/state.ts'
 import type { ExternalSourceEvent } from '../external-sources/model.ts'
-import { EVENT_VERSION } from '../core/model.ts'
-import type { EventBase, TaskQueue, Column, HydraConfig, HydraColumn, HydraProject, TaskCopy, OwnerAsk, TaskKind, AnswerMessage, ReportCall, LandingRule, HydraMessage, TaskDeclaration, Ask, FirstmateRecord, AgentLaunch, HydraStatus, DispatchProposal, AgentConfig, SteeringEvent, PushedEvent, MovedEvent, LinkedEvent, OutcomeEvent, RepliedEvent, NotedEvent, ViewEvent, SessionEvent, ChatEvent, PermissionEvent, SavedLabelColor, ViewPreferences, Card, AgentSession } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
+import type { TaskQueue, Column, HydraConfig, HydraColumn, HydraProject, TaskCopy, OwnerAsk, TaskKind, AnswerMessage, ReportCall, LandingRule, HydraMessage, TaskDeclaration, Ask, FirstmateRecord, AgentLaunch, HydraStatus, DispatchProposal, AgentConfig, SteeringEvent, PushedEvent, MovedEvent, LinkedEvent, OutcomeEvent, RepliedEvent, NotedEvent, ViewEvent, SessionEvent, ChatEvent, PermissionEvent, SavedLabelColor, ViewPreferences, Card, AgentSession } from '../core/model.ts'
+import type { EventBase } from '../store/events.ts'
 
 // Where an observation came from. generation and observedAt order observations of
 // the same source object so a late, older observation cannot overwrite a newer one.

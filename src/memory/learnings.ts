@@ -1,5 +1,5 @@
 import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { type HydraState } from '../app/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
 

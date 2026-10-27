@@ -2,7 +2,7 @@ import {
   readFileSync,
   renameSync,
 } from 'node:fs'
-import { EVENT_VERSION } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { type HydraState } from './model.ts'
 import { snapshotPath, writeDurably } from '../store/storage.ts'
 

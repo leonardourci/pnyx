@@ -1,7 +1,7 @@
 import {
   readFileSync,
 } from 'node:fs'
-import { EVENT_VERSION } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { readLog } from './event-log.ts'
 import type { LogRead, RepairMarker } from './event-log.ts'

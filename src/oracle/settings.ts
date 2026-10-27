@@ -3,7 +3,7 @@
 // every Hydra's log.
 import { readFileSync, renameSync, writeFileSync, mkdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { pnyxHome } from '../store/storage.ts'
 import { EMBEDDER_IDS, type EmbedderId } from './models.ts'
 

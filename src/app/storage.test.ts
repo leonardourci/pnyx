@@ -6,7 +6,7 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { type HydraEvent } from './model.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { acquireLock } from '../store/storage.ts'

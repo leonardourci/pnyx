@@ -1,7 +1,7 @@
 import { helperGrant } from '../helper/route.ts'
 import { isHelper, taskLease } from '../helper/leases.ts'
 import { findCard } from '../core/decide.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { loadHydra } from './store.ts'
 import type { Host } from './host-types.ts'
 import { hostRequestUnlocked } from '../server/host.ts'

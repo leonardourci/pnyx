@@ -1,4 +1,5 @@
-import type { AgentConfig, EventBase } from '../core/model.ts'
+import type { AgentConfig } from '../core/model.ts'
+import type { EventBase } from '../store/events.ts'
 
 export interface Compaction {
   id: string

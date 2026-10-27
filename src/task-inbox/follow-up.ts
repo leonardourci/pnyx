@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { HYDRA_CARD } from '../core/hydra.ts'
-import { EVENT_VERSION, type Card, type SteeringMessage, type SteeringRecovery } from '../core/model.ts'
+import { type Card, type SteeringMessage, type SteeringRecovery } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { type HydraState } from '../app/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'

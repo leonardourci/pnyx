@@ -1,5 +1,6 @@
 import { ownerGates } from './gates.ts'
-import { CARD_FACTS, failedChecks, HydraError, pendingChecks, ranChecks, type Card, type CardFact, type ColumnCondition, type ColumnRule, type HydraColumn } from './model.ts'
+import { CARD_FACTS, failedChecks, pendingChecks, ranChecks, type Card, type CardFact, type ColumnCondition, type ColumnRule, type HydraColumn } from './model.ts'
+import { HydraError } from '../store/errors.ts'
 import { type HydraState } from '../app/model.ts'
 import { cardSessionId } from './tasks.ts'
 

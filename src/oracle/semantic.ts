@@ -14,7 +14,7 @@ import { closeSync, existsSync, lstatSync, mkdirSync, openSync, rmSync } from 'n
 import { createConnection } from 'node:net'
 import { constants, setPriority, tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { pnyxHome } from '../store/storage.ts'
 import { loadHydra } from '../app/store.ts'
 import { localToken } from '../app/server-state.ts'

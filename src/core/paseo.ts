@@ -1,4 +1,4 @@
-import { HydraError } from './model.ts'
+import { HydraError } from '../store/errors.ts'
 
 // Paseo's documented default listen address.
 export const DEFAULT_PASEO_URL = 'ws://127.0.0.1:6767/ws'

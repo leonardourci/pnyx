@@ -1,4 +1,4 @@
-import { HydraError } from '../../core/model.ts'
+import { HydraError } from '../../store/errors.ts'
 import { THREAD_CURSOR, type ThreadPage } from '../../thread/read.ts'
 import { withTaskReceipts } from '../../thread/task.ts'
 import { PASEO_CURSOR, type PaseoConversation } from './thread.ts'

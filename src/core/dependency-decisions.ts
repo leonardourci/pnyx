@@ -2,7 +2,7 @@ import { findCard } from './decide.ts'
 import { type Decision } from '../app/model.ts'
 import { type Meta } from '../app/command-meta.ts'
 import { hydraEvent, HYDRA_CARD } from './hydra.ts'
-import { HydraError } from './model.ts'
+import { HydraError } from '../store/errors.ts'
 import { type HydraState } from '../app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 

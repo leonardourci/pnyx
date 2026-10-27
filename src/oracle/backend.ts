@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { EMBEDDERS, PROBES, RERANKER, RERANK_PROBE, modelPath, type EmbedderId, type ModelFile } from './models.ts'
 import { llamaCppUrl } from './runtime.ts'
 import { stubbed, type OracleSettings } from './settings.ts'

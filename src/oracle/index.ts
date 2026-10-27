@@ -3,7 +3,7 @@ import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync
 import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { cardSessionId, liveTask, sessionId } from '../core/tasks.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'

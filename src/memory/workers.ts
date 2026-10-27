@@ -1,5 +1,5 @@
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import type { Meta } from '../app/command-meta.ts'
 import type { Writer } from '../app/writer.ts'
 
