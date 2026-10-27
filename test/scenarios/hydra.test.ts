@@ -93,6 +93,15 @@ test(
       reply,
     })
 
+    pnyx.claude.plan({
+      text: '',
+      reply,
+    })
+    pnyx.claude.plan({
+      text: '',
+      reply,
+    })
+
     try {
       await choose({ model: 'sonnet' })
       await send({
@@ -121,6 +130,28 @@ test(
         text: 'Third',
         id: 'third',
       })
+      await s.owner({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          task,
+          '--text',
+          'A worker question',
+          '--actor',
+          `worker:${task}`,
+        ],
+      })
+      await s.owner({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          task,
+          '--text',
+          'Already on the task',
+        ],
+      })
       await choose({ model: 'haiku' })
       assert.equal(
         agent.received.length,
@@ -129,7 +160,7 @@ test(
       held.release()
       await finished({
         s,
-        turns: 3,
+        turns: 5,
       })
       const sessions = pnyx.claude.sessions.filter(session => session.env.PNYX_HYDRA === s.hydraId)
       assert.equal(
@@ -148,11 +179,7 @@ test(
         event.type === 'card.noted' && event.cardId === task && event.data.source === source ? [event.data.text] : [])
       assert.deepEqual(
         notes({ source: 'hydra' }),
-        [
-          'Noted.',
-          'Noted.',
-          'Noted.',
-        ],
+        Array(5).fill('Noted.'),
       )
       assert.deepEqual(
         notes({ source: 'owner' }),
@@ -162,6 +189,28 @@ test(
           'Third',
         ],
       )
+      const received = s.received({ cwd: agent.cwd }).map(text => text.replace(
+        /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
+        '',
+      ))
+      const reports = received.filter(text => text.includes('A worker question')).map(text => text.replace(
+        / message="[^"]+"/,
+        '',
+      ))
+      assert.equal(
+        reports.length,
+        1,
+      )
+      assert.ok(
+        reports[0]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${taskMention({
+          id: task,
+          title: s.task({ key: 'quick' }).title,
+        })} report: from worker:${task}, in its envelope below\nA worker report arrived while you were busy.`),
+        reports[0],
+      )
+      assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${task}" task="${task}">\nA worker question\n</pnyx-report>`))
+      assert.ok(!reports[0]!.includes('hydra check'))
+      assert.ok(received.includes('Second'))
     } finally {
       held.release()
       page.close()

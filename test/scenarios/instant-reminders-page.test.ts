@@ -139,6 +139,12 @@ for (const outcome of [
       }
 
       if (outcome === 'newer-draft') {
+        await page.hover({ selector: '.hydra-head strong' })
+        await page.shows({
+          what: 'task actions close after leaving the task',
+          check: () => document.querySelector('.card-menu:not(:popover-open)'),
+        })
+        await page.hover({ selector: '.card-open' })
         await page.click({ selector: '[aria-label="Remind"]' })
         await page.shows({
           what: 'select the new reminder draft',

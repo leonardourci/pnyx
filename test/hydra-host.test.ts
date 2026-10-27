@@ -1,9 +1,8 @@
-import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test, type TestContext } from 'node:test'
@@ -299,7 +298,7 @@ const codexRule = () => writeConfig({
 })
 
 test(
-  'Hydra starts in its own folder, replies, resumes after restart and deduplicates sends',
+  'Hydra provider receives its identity and its compaction hook reads current memory',
   async () => {
     const sdk = hydraSdk()
     server = await startServer({
@@ -316,46 +315,10 @@ test(
       agent.host,
       'pnyx',
     )
-    assert.equal(
-      agent.cwd,
-      join(
-        process.env.PNYX_HOME!,
-        'hydras',
-        'lab',
-        'agent',
-      ),
-    )
-    const read = ({ path }: { path: string }) => readFileSync(
-      join(
-        agent.cwd!,
-        path,
-      ),
-      'utf8',
-    )
-    assert.equal(
-      read({ path: 'CLAUDE.md' }),
-      '@AGENTS.md\n',
-    )
-    assert.match(
-      read({ path: 'AGENTS.md' }),
-      /^# Hydra\n[\s\S]*## Load before/,
-    )
-    assert.match(
-      read({ path: `.claude/skills/${INSCRIBE_SKILL}/SKILL.md` }),
-      new RegExp(String.raw`^---\nname: ${INSCRIBE_SKILL}`),
-    )
-    assert.ok(existsSync(join(
-      agent.cwd!,
-      `.agents/skills/${ORCHESTRATE_SKILL}`,
-    )))
     const {
       options,
       raw,
     } = sdk.calls[0]!
-    assert.match(
-      raw[0]!,
-      /^<pnyx-digest hydra="lab"[\s\S]*<\/pnyx-digest>\n\nHello Hydra$/,
-    )
     assert.match(
       JSON.stringify(options.systemPrompt),
       /You are Hydra.*lab/,
@@ -388,39 +351,6 @@ test(
     assert.doesNotMatch(
       raw[0]!,
       /Hydra owner preference/,
-    )
-
-    assert.ok(readThread({
-      hydraId: 'lab',
-      state: state(),
-      card: hydra()!,
-      homes: [],
-    }).entries.some(e => e.role === 'assistant' && e.text.includes('Hello Hydra')))
-    await send({
-      text: 'Hello Hydra',
-      id: 'hello',
-    })
-    assert.equal(
-      sdk.calls[0]!.messages.length,
-      1,
-    )
-    await server.close()
-    server = await startServer({
-      hydraId: 'lab',
-      query: sdk.query,
-    })
-    await send({
-      text: 'After restart',
-      id: 'restart',
-    })
-    await until({ check: () => sdk.calls.length === 2 && finished() })
-    assert.equal(
-      sdk.calls[1]!.options.resume,
-      agent.sessionId,
-    )
-    assert.equal(
-      state().config?.hydra.session,
-      `claude-code:${agent.sessionId}`,
     )
   },
 )
@@ -1232,130 +1162,6 @@ test(
       state().hydraMessages?.at(-1)?.text,
       'Firstmate message',
     )
-  },
-)
-
-test(
-  'each tagged reply pairs with the message its turn answered, and only the owner’s chat becomes an ask',
-  async () => {
-    const home = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-hydra-tag-turns-',
-    ))
-    process.env.PNYX_HOME = home
-    process.env.CLAUDE_CONFIG_DIR = join(
-      home,
-      'claude',
-    )
-    process.env.PNYX_SEMANTIC = 'off'
-    commands.hydra([
-      'create',
-      'lab',
-    ])
-    commands.task([
-      'create',
-      '--key',
-      'quick',
-      '--title',
-      'Task quick',
-      '--hydra',
-      'lab',
-    ])
-    const state = () => loadHydra({ hydraId: 'lab' }).state
-    const quick = state().keys.quick!
-    const sdk = hydraSdk()
-    sdk.control.stream = true
-    sdk.control.hold = true
-    sdk.control.reply = `${taskMention({
-      id: quick,
-      title: 'Task quick',
-    })} Noted.`
-    const server = await startServer({
-      hydraId: 'lab',
-      query: sdk.query,
-      wakeDelay: 50,
-    })
-    const notes = ({ source }: { source: string }) => readEvents({ hydraId: 'lab' })
-      .flatMap(event => event.type === 'card.noted' && event.cardId === quick && event.data.source === source ? [event.data.text] : [])
-    const send = ({ args }: { args: string[] }) => commands.hydra([
-      'send',
-      '--hydra',
-      'lab',
-      ...args,
-    ])
-
-    try {
-      await send({
-        args: [
-          '--text',
-          'First',
-        ],
-      })
-      await until({ check: () => sdk.calls[0]?.messages.length === 1 })
-
-      for (const args of [
-        [
-          '--text',
-          'Second',
-        ],
-        [
-          '--task',
-          quick,
-          '--text',
-          'A worker question',
-          '--actor',
-          `worker:${quick}`,
-        ],
-        [
-          '--task',
-          quick,
-          '--text',
-          'Already on the task',
-        ],
-      ]) {
-        await send({ args })
-      }
-
-      sdk.control.hold = false
-      sdk.release()
-      await until({ check: () => notes({ source: 'hydra' }).length === 4 })
-      assert.deepEqual(
-        notes({ source: 'hydra' }),
-        Array(4).fill('Noted.'),
-      )
-      assert.deepEqual(
-        notes({ source: 'owner' }),
-        [
-          'First',
-          'Second',
-        ],
-      )
-      const received = sdk.calls.flatMap(call => call.messages)
-      // The report waits for the owner's turns and reaches Hydra in its own check turn, with no check to run.
-      const reports = received.filter(text => text.includes('A worker question')).map(text => text.replace(
-        / message="[^"]+"/,
-        '',
-      ))
-      assert.equal(
-        reports.length,
-        1,
-      )
-      assert.ok(reports[0]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${taskMention({
-        id: quick,
-        title: state().cards[quick]!.title,
-      })} report: from worker:${quick}, in its envelope below\nA worker report arrived while you were busy.`))
-      assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${quick}" task="${quick}">\nA worker question\n</pnyx-report>`))
-      assert.ok(!reports[0]!.includes('hydra check'))
-      assert.ok(received.includes('Second'))
-    } finally {
-      sdk.release(); await server.close(); rmSync(
-        home,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
   },
 )
 

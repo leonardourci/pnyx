@@ -1,8 +1,7 @@
-import { promisify } from 'node:util'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { browserFixture } from './browser-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -12,28 +11,12 @@ import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import { startServer } from '../src/server/server.ts'
 import { withWriter } from '../src/store/hydra-store.ts'
 
-const COMMAND_TIMEOUT = 30_000
-const BROWSER_TIMEOUT = 120_000
-
-async function freePort(): Promise<number> {
-  const listener = createServer()
-  await new Promise<void>(resolve => listener.listen(
-    0,
-    '127.0.0.1',
-    resolve,
-  ))
-  const address = listener.address()
-  assert.ok(address && typeof address === 'object')
-  await promisify(listener.close.bind(listener))()
-
-  return address.port
-}
+const browser = browserFixture()
 
 test(
   'chat decisions load history, resolve inline, and retain native history through updates and reconnect',
   {
-    skip: process.env.PNYX_BROWSER_TESTS !== '1',
-    timeout: BROWSER_TIMEOUT,
+    timeout: 120_000,
   },
   async () => {
     const root = mkdtempSync(join(
@@ -181,62 +164,13 @@ test(
         writer.append({ event: report.event })
       },
     })
+    const query = hydraSdk().query
     let server = await startServer({
       hydraId: 'default',
       port: 0,
       homes: [],
+      query,
     })
-    const bridgePort = await freePort()
-    const browserEnv = {
-      ...process.env,
-      CHROME_DEVTOOLS_AXI_SESSION: `pnyx-chat-test-${bridgePort}`,
-      CHROME_DEVTOOLS_AXI_PORT: String(bridgePort),
-      CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
-      CHROME_DEVTOOLS_AXI_HEADED: '0',
-      CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
-        root,
-        'chrome',
-      ),
-    }
-    const browser = async ({
-      args,
-      script,
-    }: {
-      args: string[]
-      script?: string
-    }): Promise<string> =>
-      new Promise((
-        resolve,
-        reject,
-      ) => {
-        const child = execFile(
-          'chrome-devtools-axi',
-          args,
-          {
-            env: browserEnv,
-            timeout: COMMAND_TIMEOUT,
-            maxBuffer: 2 * 1024 * 1024,
-          },
-          (
-            error,
-            stdout,
-            stderr,
-          ) => {
-            if (error) {
-              reject(new Error(`${error.message}\n${stderr}`))
-
-              return
-            }
-
-            resolve(stdout)
-          },
-        )
-
-        if (script) {
-          assert.ok(child.stdin)
-          child.stdin.end(script)
-        }
-      })
 
     try {
       const url = `http://127.0.0.1:${server.port}/hydra/default/`
@@ -246,10 +180,11 @@ test(
       await page.open(${JSON.stringify(url)});
       await page.wait('.waiting-decisions button');
       console.log(await page.eval(() => !document.querySelector('[data-entry-id="ask:chat-ui-task:old-question"]')));
-      await page.click('.waiting-decisions button');
+      await page.click('.waiting-decisions [aria-haspopup="dialog"]');
+      await page.wait('.waiting-decisions [role="dialog"] li button:not(:disabled)');
+      await page.click('.waiting-decisions [role="dialog"] li button');
       await page.wait('[data-entry-id="ask:chat-ui-task:old-question"] .ask');
-      await page.wait(500);
-      console.log(await page.eval(() => {
+      console.log(await page.until(() => {
         const question=document.querySelector('[data-entry-id="ask:chat-ui-task:old-question"]');
         const scroller=document.querySelector('.hydra-messages');
         const card=question.getBoundingClientRect(), view=scroller.getBoundingClientRect();
@@ -275,7 +210,7 @@ test(
       }));
       await page.click('details.report-fold > summary');
       console.log(await page.eval(() => document.querySelector('details.report-fold').innerText.includes('Report body stays')));
-      await page.click('.hydra-chat .ask-option');
+      await page.click('[data-entry-id="ask:chat-ui-task:old-question"] [aria-label="Choose Small scope"]');
       await page.click('.hydra-chat .pending-decision-actions .button');
       await page.wait('.hydra-chat .chat-decision .decided');
       console.log(await page.eval(() => !document.querySelector('.waiting-decisions') && document.querySelector('.chat-decision .decided').textContent.includes('Decided')));
@@ -410,11 +345,7 @@ test(
       const advanced = await browser({
         args: ['run'],
         script: `
-      for (let attempt=0; attempt<100; attempt++) {
-        const reached=await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 140.'));
-        if (reached) break;
-        await page.wait(50);
-      }
+      await page.until(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 140.'));
       console.log(await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 80.')));
     `,
       })
@@ -428,6 +359,7 @@ test(
         hydraId: 'default',
         port,
         homes: [],
+        query,
       })
       appendFileSync(
         transcript,
@@ -436,11 +368,7 @@ test(
       const reconnected = await browser({
         args: ['run'],
         script: `
-      for (let attempt=0; attempt<200; attempt++) {
-        const reached=await page.eval(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 141.'));
-        if (reached) break;
-        await page.wait(50);
-      }
+      await page.until(() => document.querySelector('.hydra-chat .messages').textContent.includes('Checkpoint 141.'));
       console.log(await page.eval(() => {
         const text=document.querySelector('.hydra-chat .messages').textContent;
         return text.includes('Checkpoint 141.') && text.includes('Checkpoint 80.');
@@ -452,8 +380,11 @@ test(
         'true',
       )
     } finally {
-      await browser({ args: ['stop'] })
-      await server.close()
+      try {
+        await browser({ args: ['stop'] })
+      } finally {
+        await server.close()
+      }
     }
   },
 )
