@@ -8,7 +8,7 @@ import { FolderSearch } from '../components/ui/folder-search.tsx'
 import { CommandFailure } from '../shared/pending-intents.ts'
 import { argument } from './optimistic.ts'
 import type { Command } from '../app/connection.ts'
-import { hydraTitle } from './view.ts'
+import { hydraTitle } from '../app/view.ts'
 import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
 
 type Confirmation = {

@@ -1,22 +1,22 @@
-import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
+import { HYDRA_CARD, hydraEvent } from '../../../src/core/hydra.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { decideMove, decidePush, decideReply, decideView } from '../src/core/decide.ts'
-import { type Decision } from '../src/app/model.ts'
-import { decideUndo } from '../src/app/undo.ts'
-import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
-import { HydraError, COLUMNS } from '../src/core/model.ts'
-import { type HydraEvent, type HydraState } from '../src/app/model.ts'
-import { patchView, viewFor, VIEW_SIZE_LIMITS } from '../src/core/view.ts'
-import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, pageTitle, safeLink, shouldReload, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../web/src/hydra/view.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
-import { observe } from '../src/integrations/hooks/observe.ts'
-import { briefNotes, relativeTime } from '../web/src/hydra/brief.ts'
+import { decideMove, decidePush, decideReply, decideView } from '../../../src/core/decide.ts'
+import { type Decision, type HydraEvent, type HydraState } from '../../../src/app/model.ts'
+import { decideUndo } from '../../../src/app/undo.ts'
+import { emptyHydra, reduce, replay } from '../../../src/app/reducer.ts'
+import { HydraError, COLUMNS } from '../../../src/core/model.ts'
+import { patchView, viewFor, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
+import { agentActivity, columnsFor, dropBefore, filterCards, findBoxCards, safeLink, shownActivity, slashMatches, slashPrefix, taskLabel, visibleParent } from '../hydra/view.ts'
+import { pageTitle, shouldReload } from './view.ts'
+import { withWriter } from '../../../src/app/writer.ts'
+import { loadHydra } from '../../../src/app/store.ts'
+import { latestMessage, readThread, recordEntries } from '../../../src/thread/read.ts'
+import { observe } from '../../../src/integrations/hooks/observe.ts'
+import { briefNotes, relativeTime } from '../hydra/brief.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -1156,7 +1156,7 @@ test(
   () => {
     const fixture = ({ name }: { name: string }) => join(
       import.meta.dirname,
-      'fixtures/transcripts',
+      '../../../test/fixtures/transcripts',
       name,
     )
     const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!

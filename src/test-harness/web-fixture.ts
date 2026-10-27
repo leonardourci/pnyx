@@ -42,7 +42,7 @@ export function seedWebFixture({ home }: { home: string }) {
   const rows = JSON.parse(readFileSync(
     join(
       import.meta.dirname,
-      '../../test/fixtures/web/hydra.json',
+      '../../web/src/app/fixtures/hydra.json',
     ),
     'utf8',
   )) as {

@@ -3,7 +3,7 @@ import { useEffect, useState } from 'react'
 import type { HydraSummary } from '../../../src/app/server-hydras.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { InlineTitle } from '../shared/ui/inline-title.tsx'
-import type { Command } from '../app/connection.ts'
+import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
 
 export function Hydras({

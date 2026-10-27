@@ -2,10 +2,10 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
 import { build } from 'vite'
-import { hydraIdentity, localToken } from '../../src/app/server-state.ts'
-import type { Command } from '../../web/src/app/connection.ts'
-import { browserGroup } from '../../src/test-harness/browser.ts'
-import { scenarioGroup } from '../../src/test-harness/harness.ts'
+import { hydraIdentity, localToken } from '../../../src/app/server-state.ts'
+import type { Command } from './connection.ts'
+import { browserGroup } from '../../../src/test-harness/browser.ts'
+import { scenarioGroup } from '../../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 const chrome = browserGroup()
@@ -28,7 +28,7 @@ for (const recovery of [
           lib: {
             entry: join(
               import.meta.dirname,
-              '../../web/src/app/fixtures/pending-hook.ts',
+              'fixtures/pending-hook.ts',
             ),
             formats: ['iife'],
             name: 'PendingHook',

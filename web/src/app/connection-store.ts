@@ -16,7 +16,7 @@ import { commandArguments, editTargets, pendingHydra, type HydraResource } from 
 import { CommandFailure, createPendingResource } from '../shared/pending-intents.ts'
 import { currentRevision } from '../hydra/optimistic.ts'
 import { DISPATCH_CHANGED } from '../hydra/heads-dispatch.ts'
-import { shouldReload } from '../hydra/view.ts'
+import { shouldReload } from './view.ts'
 import { noteUpdate, staleUpdates } from '../hydra/updates-cache.ts'
 
 const emptyQueue = (): HydraQueue => ({

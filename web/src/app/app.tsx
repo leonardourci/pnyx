@@ -1,85 +1,40 @@
-import { useProjectsResource } from './project-resource.ts'
-import { useInstallationPending } from './installation-resources.ts'
+import { useProjectsResource } from '../hydra/project-resource.ts'
+import { useInstallationPending } from '../hydra/installation-resources.ts'
 import { TaskReferencesProvider } from '../components/ui/task-reference.tsx'
-import { useTaskReferences } from './task-references.ts'
+import { useTaskReferences } from '../hydra/task-references.ts'
 import type { Card } from '../../../src/core/model.ts'
 import { Icon } from '../shared/ui/icon.tsx'
-import { storageKey } from './outbox.ts'
+import { storageKey } from '../hydra/outbox.ts'
 import { HYDRA_CARD, lockedColumn } from '../../../src/core/hydra.ts'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react'
 import { liveTask } from '../../../src/core/tasks.ts'
 import { viewFor } from '../../../src/core/view.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { PendingStatus } from '../shared/ui/pending-status.tsx'
-import { AddProject } from './add-project.tsx'
-import { HydraChat } from './hydra-chat.tsx'
+import { AddProject } from '../hydra/add-project.tsx'
+import { HydraChat } from '../hydra/hydra-chat.tsx'
 import { taskMention } from '../../../src/mentions/mentions.ts'
-import { argument } from './optimistic.ts'
-import { useHydra } from '../app/connection.ts'
-import { HydraCard } from './card.tsx'
-import { TaskCreate, type TaskDraft } from './task-create.tsx'
-import { Column } from './column.tsx'
-import { Detail } from './detail.tsx'
-import { loadUpdates } from './updates-cache.ts'
-import { sendableComment, type ChatComment } from './chat.ts'
+import { argument } from '../hydra/optimistic.ts'
+import { useHydra } from './connection.ts'
+import { HydraCard } from '../hydra/card.tsx'
+import { TaskCreate, type TaskDraft } from '../hydra/task-create.tsx'
+import { Column } from '../hydra/column.tsx'
+import { Detail } from '../hydra/detail.tsx'
+import { loadUpdates } from '../hydra/updates-cache.ts'
+import { sendableComment, type ChatComment } from '../hydra/chat.ts'
 import { Hydras } from './hydras.tsx'
 import { Panel } from './panel.tsx'
-import { columnsFor, expandedByColumn, findBoxCards, hydraTitle, pageTitle } from './view.ts'
-import { Oracle } from './oracle.tsx'
-import { commandQuery } from './oracle-catalog.ts'
-import { useFoundCards } from './card-oracle.ts'
+import { columnsFor, expandedByColumn, findBoxCards } from '../hydra/view.ts'
+import { hydraTitle, pageTitle } from './view.ts'
+import { Oracle } from '../hydra/oracle.tsx'
+import { commandQuery } from '../hydra/oracle-catalog.ts'
+import { useFoundCards } from '../hydra/card-oracle.ts'
 import { KeyboardProvider, focusElement } from '../keyboard/registry.tsx'
 import { useHydraKeyboard } from '../keyboard/hydra.tsx'
-import { afterSteadyLayout, afterTaskLayout, openTaskCard, scrollTask } from './scroll-task.ts'
-import { pnyxLookup } from './pnyx-action.ts'
-
-// Keep each tab's view across reloads and newly served builds.
-type Restore = {
-  selected?: string | null
-  expanded?: string[]
-  revealed?: {
-    scope: string
-    ids: string[]
-  }
-  page?: string
-  panel?: boolean
-  drafts?: Record<string, string>
-  scroll?: Record<string, [number, number]>
-}
-
-function savedComments({ comments }: { comments: Record<string, ChatComment[]> }) {
-  return Object.fromEntries(Object.entries(comments).map(([
-    card,
-    items,
-  ]) => [
-    card,
-    items.filter(comment => sendableComment({ comment })),
-  ]))
-}
-
-function readComments({ value }: { value: string | null }): Record<string, ChatComment[]> {
-  try {
-    return savedComments({ comments: JSON.parse(value ?? '{}') as Record<string, ChatComment[]> })
-  } catch {
-    return {}
-  }
-}
-
-function restoreView({ key }: { key: string }): Restore {
-  try {
-    return JSON.parse(sessionStorage.getItem(key) ?? '{}') as Restore
-  } catch {
-    return {}
-  }
-}
-
-const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
-  .map(el => [
-    el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban',
-    el,
-  ] as const)
-
-const hydraViews = new Map<string, Restore>()
+import { afterSteadyLayout, afterTaskLayout, openTaskCard, scrollTask } from '../hydra/scroll-task.ts'
+import { pnyxLookup } from '../hydra/pnyx-action.ts'
+import { hydraViews, restoreView, readComments, savedComments, scrollers } from './restore.ts'
+import type { Restore } from './restore.ts'
 
 export function App() {
   const hydra = useHydra()

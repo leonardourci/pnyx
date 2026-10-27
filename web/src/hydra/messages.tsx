@@ -31,7 +31,8 @@ import {
   MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
-import { columnLook, receiptLabel } from './view.ts'
+import { columnLook } from './view.ts'
+import { receiptLabel } from '../app/view.ts'
 import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6

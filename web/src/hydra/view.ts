@@ -5,13 +5,12 @@ import { liveTask, rankOf } from '../../../src/core/tasks.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import { asksOwner } from '../../../src/core/lifecycle.ts'
 import { openAsks } from '../../../src/core/asks.ts'
+import { elapsedTime } from '../shared/time.ts'
 
 const HARNESSES: Record<string, string> = {
   'claude-code': 'Claude Code',
   codex: 'Codex',
 }
-
-export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 
 export const harnessName = ({ provider }: { provider: string }) => HARNESSES[provider] ?? provider
 
@@ -23,22 +22,6 @@ export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'
 
 export const columnsFor = ({ state }: { state: HydraState }) => {
   return hydraConfig({ state }).columns
-}
-
-export function pageTitle({
-  cards,
-  selected = null,
-  needsYou = 'needs_you',
-}: {
-  cards: HydraState['cards']
-  selected?: string | null
-  needsYou?: string
-}): string {
-  const count = Object.values(cards)
-    .filter(c => liveTask({ card: c }) && c.column === needsYou).length
-  const label = (selected && cards[selected]?.title) || 'Hydra'
-
-  return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }
 
 export function filterCards({
@@ -160,12 +143,6 @@ export function dropBefore({
   return index < 0 ? undefined : cards[below ? index + 1 : index]?.id
 }
 
-export const receiptLabel = ({ state }: { state: string }) => ({
-  queued: 'Queued',
-  delivered: 'Delivered',
-  delivery_unknown: 'Delivery unknown',
-  failed: 'Delivery failed',
-}[state] ?? state)
 export const slashPrefix = ({
   text,
   cursor,
@@ -190,14 +167,6 @@ export const slashMatches = ({
     /^\//,
     '',
   ).toLowerCase())
-export const shouldReload = ({
-  loaded,
-  server,
-}: {
-  loaded: string | undefined
-  server: string
-}) =>
-  Boolean(loaded && server && loaded !== server)
 
 export function taskLabel({ card }: { card: Card }): string {
   if (card.status) {
@@ -216,22 +185,6 @@ export const needsAgent = ({ card }: { card: Card }) => !card.agent && !card.sou
 export function projectTitle({ project }: { project: string }): string {
   return project.startsWith('/') ? project.split('/').filter(Boolean)
     .at(-1) ?? project : project
-}
-
-export function elapsedTime({
-  at,
-  now,
-}: {
-  at: string
-  now: number
-}): string {
-  const elapsed = Math.max(
-    0,
-    now - Date.parse(at),
-  )
-
-  return elapsed < 60_000 ? 'just now' : elapsed < HOUR_MS ? `${Math.floor(elapsed / 60_000)}m ago`
-    : elapsed < 24 * HOUR_MS ? `${Math.floor(elapsed / HOUR_MS)}h ago` : `${Math.floor(elapsed / (24 * HOUR_MS))}d ago`
 }
 
 export function cardState({
