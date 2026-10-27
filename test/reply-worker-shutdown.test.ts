@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict'
-import { existsSync, mkdtempSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { commands } from '../src/cli/commands.ts'
 import { enqueueSteering } from '../src/task-inbox/inbox.ts'
+import { STEERING_GRACE_MS } from '../src/task-inbox/follow-up.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
-
-const files = ({ dir }: { dir: string }) => readdirSync(
-  dir,
-  { recursive: true },
-).sort()
 
 test(
   'closing the server waits for the inbox-follow worker and nothing is written afterwards',
@@ -30,11 +26,20 @@ test(
       root,
       'worker.pid',
     )
+    const doneFile = join(
+      root,
+      'worker.done',
+    )
     const delay = join(
       root,
       'delay.mjs',
     )
-    const options = process.env.NODE_OPTIONS
+    const saved = {
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
+      PNYX_HOME: process.env.PNYX_HOME,
+      PNYX_SEMANTIC: process.env.PNYX_SEMANTIC,
+    }
+    const options = saved.NODE_OPTIONS
     process.env.PNYX_HOME = home
     process.env.PNYX_SEMANTIC = 'off'
     // Holds the real worker before its first write, so the server closes while it is still running.
@@ -45,15 +50,21 @@ import { setTimeout } from 'node:timers/promises'
 if (process.argv.includes('inbox-follow')) {
   writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
   await setTimeout(1500)
+  process.once('exit', () => writeFileSync(${JSON.stringify(doneFile)}, 'done'))
 }
 `,
     )
     process.env.NODE_OPTIONS = `${options ?? ''} --import ${delay}`.trim()
     t.after(() => {
-      if (options === undefined) {
-        delete process.env.NODE_OPTIONS
-      } else {
-        process.env.NODE_OPTIONS = options
+      for (const [
+        key,
+        value,
+      ] of Object.entries(saved)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
       }
 
       rmSync(
@@ -86,7 +97,7 @@ if (process.argv.includes('inbox-follow')) {
         text: 'Keep going',
         source: 'test',
         meta: {
-          at: new Date().toISOString(),
+          at: new Date(Date.now() - STEERING_GRACE_MS * 10).toISOString(),
           actor: 'test',
         },
       }),
@@ -113,11 +124,11 @@ if (process.argv.includes('inbox-follow')) {
       ),
       { code: 'ESRCH' },
     )
-    const after = files({ dir: home })
-    await sleep(2000)
-    assert.deepEqual(
-      files({ dir: home }),
-      after,
+    assert.ok(
+      existsSync(doneFile),
+      'close returned before the worker finished',
     )
+    const card = loadHydra({ hydraId: 'lab' }).state.cards[loadHydra({ hydraId: 'lab' }).state.keys.one!]!
+    assert.ok(card.steering![0]!.recovery!.length > 0)
   },
 )
