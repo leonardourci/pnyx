@@ -286,6 +286,15 @@ export function browserGroup() {
         sessionId,
       })
       await call({ method: 'Runtime.enable' })
+
+      // A slower page reproduces what a busy machine does to a journey: PNYX_BROWSER_SLOWDOWN=6.
+      if (process.env.PNYX_BROWSER_SLOWDOWN) {
+        await call({
+          method: 'Emulation.setCPUThrottlingRate',
+          params: { rate: Number(process.env.PNYX_BROWSER_SLOWDOWN) },
+        })
+      }
+
       await call({
         method: 'Page.navigate',
         params: { url },
@@ -482,7 +491,10 @@ export function browserGroup() {
           })
         },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
-        // handlers run too; it waits until nothing covers the element's centre.
+        // handlers run too. It aims only at an element that is on top at its centre and held still
+        // since the previous look, as a person would. A page that moves the element after aiming
+        // (a late banner, a smooth scroll) cannot redirect the press: a press that lands elsewhere
+        // is stopped before anything sees it, and the click aims again.
         click: async ({
           selector,
           text,
@@ -491,57 +503,192 @@ export function browserGroup() {
           text?: string
         }) => {
           const target = text ? `${selector} with "${text}"` : selector
-          const {
-            x,
-            y,
-          } = await shows({
-            what: `${target} to click`,
-            arg: {
-              selector,
-              text,
-            },
-            check: ({
-              selector,
-              text,
-            }) => {
-              const candidate = [...document.querySelectorAll(selector)]
-                .filter(element => element.getClientRects().length > 0)
-                .find(element => !text || element.textContent?.includes(text))
+          const end = Date.now() + TIMEOUT_MS
+          let stray = ''
 
-              if (!candidate) {
-                return undefined
-              }
+          while (Date.now() < end) {
+            const {
+              x,
+              y,
+            } = await shows({
+              what: `${target} to click${stray ? ` (a press landed on ${stray})` : ''}`,
+              arg: {
+                selector,
+                text,
+              },
+              check: ({
+                selector,
+                text,
+              }) => {
+                const page = window as unknown as {
+                  pnyxAim?: {
+                    element: Element
+                    x: number
+                    y: number
+                  }
+                  pnyxPress?: {
+                    down: boolean
+                    up: boolean
+                    stray: string
+                    landed(): boolean
+                    stop(): void
+                  }
+                }
+                const candidate = [...document.querySelectorAll(selector)]
+                  .filter(element => element.getClientRects().length > 0)
+                  .find(element => !text || element.textContent?.includes(text))
 
-              candidate.scrollIntoView({ block: 'nearest' })
-              const box = candidate.getBoundingClientRect()
-              const centre = {
-                x: box.left + box.width / 2,
-                y: box.top + box.height / 2,
-              }
+                if (!candidate) {
+                  return undefined
+                }
 
-              return candidate.contains(document.elementFromPoint(
-                centre.x,
-                centre.y,
-              )) && centre
-            },
-          })
+                candidate.scrollIntoView({ block: 'nearest' })
+                const box = candidate.getBoundingClientRect()
+                const centre = {
+                  x: box.left + box.width / 2,
+                  y: box.top + box.height / 2,
+                }
+                const previous = page.pnyxAim
+                page.pnyxAim = {
+                  element: candidate,
+                  ...centre,
+                }
 
-          for (const type of [
-            'mouseMoved',
-            'mousePressed',
-            'mouseReleased',
-          ]) {
-            await call({
-              method: 'Input.dispatchMouseEvent',
-              params: {
-                type,
-                x,
-                y,
-                button: 'left',
-                clickCount: 1,
+                const still = previous?.element === candidate && previous.x === centre.x
+                  && previous.y === centre.y
+
+                if (!still || !candidate.contains(document.elementFromPoint(
+                  centre.x,
+                  centre.y,
+                ))) {
+                  return undefined
+                }
+
+                delete page.pnyxAim
+                const types = [
+                  'pointerdown',
+                  'mousedown',
+                  'pointerup',
+                  'mouseup',
+                  'click',
+                ]
+                // A press whose element went away once pressed, as a menu item does, has landed.
+                const gone = () => !candidate.isConnected || !candidate.getClientRects().length
+                const press = {
+                  down: false,
+                  up: false,
+                  stray: '',
+                  landed: () => press.down && (press.up || gone()),
+                  stop: () => {
+                    for (const type of types) {
+                      window.removeEventListener(
+                        type,
+                        guard,
+                        true,
+                      )
+                    }
+                  },
+                }
+
+                const guard = (event: Event) => {
+                  const inside = event.target instanceof Node && candidate.contains(event.target)
+
+                  if (event.type.endsWith('down')) {
+                    press.down = inside
+                  } else if (event.type.endsWith('up')) {
+                    press.up = inside
+                  }
+
+                  if (!inside || !press.down || (event.type === 'click' && !press.up)) {
+                    press.stray ||= event.target instanceof Element
+                      ? event.target.outerHTML.slice(
+                        0,
+                        120,
+                      )
+                      : 'the page'
+                    event.preventDefault()
+                    event.stopImmediatePropagation()
+                  }
+                }
+
+                for (const type of types) {
+                  window.addEventListener(
+                    type,
+                    guard,
+                    true,
+                  )
+                }
+
+                page.pnyxPress = press
+
+                return centre
               },
             })
+            let failure: unknown
+
+            try {
+              for (const type of [
+                'mouseMoved',
+                'mousePressed',
+                'mouseReleased',
+              ]) {
+                await call({
+                  method: 'Input.dispatchMouseEvent',
+                  params: {
+                    type,
+                    x,
+                    y,
+                    button: 'left',
+                    clickCount: 1,
+                  },
+                })
+              }
+            } catch (error) {
+              failure = error
+            }
+
+            const press = await call({
+              method: 'Runtime.evaluate',
+              params: {
+                expression: `(() => {
+                  const press = window.pnyxPress
+                  delete window.pnyxPress
+                  press?.stop()
+                  return press ? { landed: press.landed(), stray: press.stray } : null
+                })()`,
+                returnByValue: true,
+              },
+            }).then(
+              reply => (reply as {
+                result: {
+                  value: {
+                    landed: boolean
+                    stray: string
+                  } | null
+                }
+              }).result.value,
+              (error: unknown) => {
+                if (!/navigated|context.*destroyed|Cannot find context/i.test(String(error))) {
+                  throw error
+                }
+
+                return null
+              },
+            )
+
+            if (failure) {
+              throw failure
+            }
+
+            // No press record means the click navigated away, which only a landed press can do.
+            if (!press || press.landed) {
+              return
+            }
+
+            stray = press.stray || 'nothing'
           }
+
+          throw new Error(`timed out clicking ${target}: a press landed on ${stray}`)
         },
         // Text typed at the focused element, as one input.
         type: ({ text }: { text: string }) => call({

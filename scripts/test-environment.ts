@@ -83,6 +83,7 @@ exit 79
   for (const key of [
     'PNYX_CHROME',
     'PNYX_BROWSER_TESTS',
+    'PNYX_BROWSER_SLOWDOWN',
   ]) {
     if (inherited[key] !== undefined) {
       env[key] = inherited[key]
