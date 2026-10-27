@@ -14,10 +14,16 @@ export const stoppedWhile = ({ operation }: { operation: UpgradeOperation }) => 
 export function fixPrompt({ operation }: { operation: UpgradeOperation }): string {
   const from = short({ commit: operation.from }) ?? 'the installed version'
   const to = short({ commit: operation.to }) ?? 'the latest main'
-  const error = operation.state === 'refused' ? operation.reasons?.join(' ') : operation.error
+  // The sentence adds its own period after the error.
+  const error = (operation.state === 'refused' ? operation.reasons?.join(' ') : operation.error)?.replace(
+    /\.$/,
+    '',
+  )
+  const after = operation.rolledBack === false ? `Going back to ${from} failed, so the Pnyx folder may be partly upgraded.`
+    : `Pnyx went back to ${from} and is still running.`
 
   return [
-    `The Pnyx upgrade from ${from} to ${to} failed while ${stoppedWhile({ operation })}: ${error ?? 'no error was recorded'}. Pnyx went back to ${from} and is still running.`,
+    `The Pnyx upgrade from ${from} to ${to} failed while ${stoppedWhile({ operation })}: ${error ?? 'no error was recorded'}. ${after}`,
     '1. Find the cause: my setup (Node or pnpm version, disk space, network, local changes) or Pnyx itself.',
     '2. Search the Pnyx GitHub issues for this error. If it\'s a known issue with a fix or workaround, use it and give me the link.',
     '3. Fix it locally so the upgrade works, then run /upgrade again. If the fix changes Pnyx\'s own files, tell me exactly what changed.',

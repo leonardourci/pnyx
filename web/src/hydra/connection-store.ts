@@ -864,6 +864,9 @@ export function createHydraConnection() {
     }
 
     if (message.type === 'hello') {
+      // A restarted server sends its own answer once its check has one.
+      upgrade = undefined
+
       if (message.installation !== installation) {
         active = false
         scope.ready = false

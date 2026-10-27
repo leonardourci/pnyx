@@ -58,7 +58,9 @@ export function UpgradeRow({
     : operation.state === 'done' ? `Upgraded · ${elapsed}`
       : operation.state === 'current' ? 'Pnyx is already up to date'
         : operation.state === 'refused' ? `Upgrade not started. The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`
-          : `Upgrade failed while ${stoppedWhile({ operation })}. Went back to the previous version; nothing changed.`
+          : `Upgrade failed while ${stoppedWhile({ operation })}. ${operation.rolledBack === false
+            ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+            : 'Went back to the previous version; nothing changed.'}`
 
   return (
     <div className="compaction-row upgrade-row" data-state={stopped ? 'failed' : operation.state} role={active ? 'status' : undefined}>
