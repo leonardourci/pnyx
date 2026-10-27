@@ -8,7 +8,7 @@ import { readLog } from './event-log.ts'
 import type { LogRead } from './event-log.ts'
 import { DEFAULT_HYDRA, hydraDir } from './home-migration.ts'
 import { readSnapshot } from './snapshot.ts'
-import { logPath } from '../store/hydra-store.ts'
+import { logPath } from '../store/storage.ts'
 
 export interface HydraSnapshot {
   dir: string

@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { HydraError, type AgentConfig } from '../core/model.ts'
 import { type HydraState } from '../app/model.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 import { hydraDir } from '../app/home-migration.ts'
 
 export type Harness = AgentConfig['harness']

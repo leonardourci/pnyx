@@ -7,7 +7,7 @@ import { effectiveDispatch } from '../dispatch/config.ts'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
 import { type HydraState } from './model.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 import { withWriter } from './writer.ts'
 
 const exec = promisify(execFile)

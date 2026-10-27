@@ -4,7 +4,7 @@ import {
 } from 'node:fs'
 import { join } from 'node:path'
 import { hydraDir } from './home-migration.ts'
-import { spoolDir, privateDir } from '../store/hydra-store.ts'
+import { spoolDir, privateDir } from '../store/storage.ts'
 
 // Writes one hook event to the spool without taking the writer lock. The next
 // writer ingests it; the spool is a buffer, never a second writer of the log.

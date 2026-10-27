@@ -4,7 +4,7 @@ import {
   renameSync, rmSync, writeFileSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { privateDir } from '../store/hydra-store.ts'
+import { privateDir } from '../store/storage.ts'
 import { withWriter } from '../app/writer.ts'
 import { hydraDir } from '../app/home-migration.ts'
 import type { ChildResult } from './child.ts'

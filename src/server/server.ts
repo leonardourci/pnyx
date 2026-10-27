@@ -49,7 +49,7 @@ import { HydraError, type Card, type ReplyState, type ViewPreferences } from '..
 import { type HydraEvent } from '../app/model.ts'
 import { reduce } from '../app/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
-import { privateDir, spoolDir, spoolFiles } from '../store/hydra-store.ts'
+import { privateDir, spoolDir, spoolFiles } from '../store/storage.ts'
 import { spoolWrite } from '../app/spool.ts'
 import { withWriter } from '../app/writer.ts'
 import { loadHydra } from '../app/store.ts'

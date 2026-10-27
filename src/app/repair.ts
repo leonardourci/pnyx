@@ -6,7 +6,7 @@ import { emptyHydra, replay } from './reducer.ts'
 import { readLog } from './event-log.ts'
 import type { LogRead, RepairMarker } from './event-log.ts'
 import { hydraDir } from './home-migration.ts'
-import { privateDir, logPath, writeDurably, acquireLock } from '../store/hydra-store.ts'
+import { privateDir, logPath, writeDurably, acquireLock } from '../store/storage.ts'
 import { requireHydra } from './store.ts'
 import { writeSnapshot } from './snapshot.ts'
 

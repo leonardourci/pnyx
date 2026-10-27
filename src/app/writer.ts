@@ -12,7 +12,7 @@ import { lifecycleMoveId, lifecycleMoves, operationDeclarations } from '../core/
 import { hydraDir } from './home-migration.ts'
 import { writeSnapshot } from './snapshot.ts'
 import { requireHydra, loadTail } from './store.ts'
-import { privateDir, acquireLock, writeDurably, logPath } from '../store/hydra-store.ts'
+import { privateDir, acquireLock, writeDurably, logPath } from '../store/storage.ts'
 
 export interface Writer {
   readonly state: HydraState
