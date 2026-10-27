@@ -161,7 +161,7 @@ export function UpdateEntry({
   count?: number
 }) {
   if (update.kind === 'decision') {
-    return <Decisions updates={[update]} offset={index} total={count} />
+    return <Decision update={update} index={index} count={count} />
   }
 
   if (update.kind === 'report') {
@@ -262,28 +262,25 @@ function AskParts({
   )
 }
 
-function Decisions({
-  updates,
-  offset = 0,
-  total = updates.length,
+function Decision({
+  update,
+  index,
+  count,
 }: {
-  updates: TaskUpdate[]
-  offset?: number
-  total?: number
+  update: TaskUpdate
+  index: number
+  count: number
 }) {
-  const many = total > 1
+  const many = count > 1
 
   return (
     <>
-      <UpdateLine kind="decision" at={updates[0]!.at} title={many ? `${total} decisions` : 'Decision'} />
+      <UpdateLine kind="decision" at={update.at} title={many ? `${count} decisions` : 'Decision'} />
       <ol className="decision-list">
-        {updates.map((
-          update,
-          index,
-        ) => update.decision && (
+        {update.decision && (
           <li key={update.id}>
             <div className="decision-question">
-              {many && <span className="decision-number">{offset + index + 1}</span>}
+              {many && <span className="decision-number">{index + 1}</span>}
               <CollapsibleText className="decision-headline" text={update.decision.question} />
             </div>
             {update.decision.ask && (
@@ -295,7 +292,7 @@ function Decisions({
             <Answer decision={update.decision} />
             {update.decision.reason && <CollapsibleText className="decision-why" text={update.decision.reason} />}
           </li>
-        ))}
+        )}
       </ol>
     </>
   )
