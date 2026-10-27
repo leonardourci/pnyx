@@ -1,4 +1,4 @@
-# CLI and usage reference
+# pnyx-axi reference
 
 [Back to Pnyx](../README.md)
 
@@ -20,7 +20,7 @@
 
 Needs Node 22.13 or newer and pnpm (the version pinned in `package.json`).
 
-To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](cli.md#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The macOS login service and terminal integrations are optional; the foreground server does not need them.
+To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The macOS login service and terminal integrations are optional; the foreground server does not need them.
 
 ```sh
 git clone https://github.com/leonardourci/pnyx.git
@@ -44,7 +44,7 @@ User data lives in `~/.pnyx` by default. Set `PNYX_HOME` to keep it anywhere els
 
 You do not have to set everything up before the first Hydra. Each time a Hydra session opens, Pnyx checks the local dispatch config, Claude and Codex logins, hooks, global skills, quota-axi, the login service and a profile for each attached project, and puts only what is missing in Hydra's digest as a short "Setup needed" list (a complete setup adds nothing). Hydra creates the local config and writes project profiles itself, and raises the owner-only steps (hooks, skills, the login service, removing an account whose login folder is missing) as questions in its chat that run only when you Confirm. `pnyx-axi setup check` prints the same list in a terminal and exits 1 while anything is missing.
 
-For a trial with separate data, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0`; `0` picks a free port and the output gives its URL. Use that same `PNYX_HOME` for later commands, including `stop`. A separate data home still uses your normal harness logins and global skill folders; setup previews show which user-wide files would change. See [Run](cli.md#run) to start your everyday Hydra and [CONTRIBUTING.md](../CONTRIBUTING.md) to work on Pnyx itself.
+For a trial with separate data, run `PNYX_HOME=/path/to/trial pnyx-axi serve --port 0`; `0` picks a free port and the output gives its URL. Use that same `PNYX_HOME` for later commands, including `stop`. A separate data home still uses your normal harness logins and global skill folders; setup previews show which user-wide files would change. See [Run](#run) to start your everyday Hydra and [CONTRIBUTING.md](../CONTRIBUTING.md) to work on Pnyx itself.
 
 ## Projects
 

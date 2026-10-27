@@ -12,7 +12,7 @@ To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && 
 
 Pnyx stores task history, messages, attachments, project paths and saved memory on your machine. Treat the Pnyx data folder and backups as private: transcript redaction does not make every message or attachment safe to publish. The local write token protects server writes; keep it private too.
 
-Oracle's semantic models run locally and download on first use. See [semantic search](cli.md#skip-semantic-search) for download sizes and how to disable it. Agents use the harness and provider you configure, so their prompts and tool results follow that provider's data policy. The GitHub integration contacts GitHub through `gh-axi`; Paseo and Firstmate use their configured local routes. Account configuration stores login folder paths rather than provider tokens.
+Oracle's semantic models run locally and download on first use. See [semantic search](pnyx-axi.md#skip-semantic-search) for download sizes and how to disable it. Agents use the harness and provider you configure, so their prompts and tool results follow that provider's data policy. The GitHub integration contacts GitHub through `gh-axi`; Paseo and Firstmate use their configured local routes. Account configuration stores login folder paths rather than provider tokens.
 
 ## Uninstall
 

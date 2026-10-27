@@ -17,4 +17,4 @@ This adds a silent reporting hook to `~/.claude/settings.json` and `~/.codex/hoo
 
 Hooks record existing sessions; they do not create tasks automatically. Attach one explicitly with `pnyx-axi task attach <task> --session <session> --hydra <id>`. Use `pnyx-axi history` to find recorded sessions and `pnyx-axi reply <task> --text "<message>" --hydra <id>` to send a reply.
 
-For agents started by Pnyx, Paseo or a configured command, see [Starting workers and Hydra](cli.md#starting-workers-and-hydra). The [Firstmate integration](firstmate.md) uses Firstmate's own reply and inbox commands. Conversation retention and steering inboxes are covered in [Task records](cli.md#task-records).
+For agents started by Pnyx, Paseo or a configured command, see [Starting workers and Hydra](pnyx-axi.md#starting-workers-and-hydra). The [Firstmate integration](firstmate.md) uses Firstmate's own reply and inbox commands. Conversation retention and steering inboxes are covered in [Task records](pnyx-axi.md#task-records).

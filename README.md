@@ -35,7 +35,7 @@ The global install links this clone; keep it in place. After pulling updates, ru
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
-[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the macOS login service are optional setup steps described in the [reference](docs/cli.md#install).
+[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the macOS login service are optional setup steps described in the [reference](docs/pnyx-axi.md#install).
 
 ## Quick start
 
@@ -82,7 +82,7 @@ Send a message in Hydra's composer, for example:
 
 The first message starts Hydra's agent session. Hydra reports missing setup in chat and asks you to confirm owner-only changes.
 
-Read the [dispatch guide](docs/cli.md#kinds-the-light-check-and-the-worker-contract) to configure your harnesses, models and accounts.
+Read the [dispatch guide](docs/pnyx-axi.md#kinds-the-light-check-and-the-worker-contract) to configure your harnesses, models and accounts.
 
 ### 4. Start a task
 
@@ -122,7 +122,7 @@ Workers report their state and send questions to Hydra. Hooks also let you attac
 
 A project is a folder attached to a Hydra. Workers normally get isolated project copies.
 
-Work lands through a ready pull request by default, with you deciding when to merge; a project can instead keep completed work on a branch. See [projects and landing](docs/cli.md#projects) for the rules and cleanup behavior.
+Work lands through a ready pull request by default, with you deciding when to merge; a project can instead keep completed work on a branch. See [projects and landing](docs/pnyx-axi.md#projects) for the rules and cleanup behavior.
 
 ### Memory and Oracle
 
@@ -132,7 +132,7 @@ The **Oracle** searches tasks and recorded conversations by words or meaning, us
 
 ## Documentation
 
-- [CLI and usage reference](docs/cli.md): commands, projects, tasks, workers, memory and the interface.
+- [pnyx-axi reference](docs/pnyx-axi.md): commands, projects, tasks, workers, memory and the interface.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
 - [Development](docs/development.md): build, tests, verification and browser prerequisites.
