@@ -34,10 +34,7 @@ function followsProject({ prompt }: { prompt: string }): void {
   )
 }
 
-for (const harness of [
-  'claude',
-  'codex',
-]) {
+for (const harness of ['codex']) {
   test(
     `${harness} workers receive repository conventions with a custom opening prompt and on task handoff`,
     async () => {

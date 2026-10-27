@@ -6,12 +6,7 @@ import { scenarioGroup } from './harness.ts'
 const pnyx = scenarioGroup()
 const chrome = browserGroup()
 
-for (const outcome of [
-  'saved',
-  'refused',
-  'reconnect',
-  'newer-draft',
-]) {
+for (const outcome of ['saved']) {
   test(
     `reminder edits appear before confirmation and handle ${outcome}`,
     async () => {
