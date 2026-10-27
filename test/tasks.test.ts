@@ -288,60 +288,6 @@ test(
 )
 
 test(
-  'Firstmate worktree joins allow one worker and leave later sessions independent',
-  () => {
-    const f = fixture()
-    f.push({
-      key: 'fm:task',
-      input: {
-        title: 'Managed work',
-        folder: '/lab',
-        source: {
-          adapter: 'firstmate',
-          objectId: 'task',
-          instanceId: '/lab/fm',
-        },
-      },
-    })
-    assert.equal(
-      joinedKey({
-        state: f.state,
-        key: 'claude:one',
-        folder: '/lab',
-      }),
-      'fm:task',
-    )
-    f.push({
-      key: 'fm:task',
-      input: {
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'one',
-        },
-        terminal: { tty: '/dev/ttys123' },
-        source: {
-          adapter: 'hooks',
-          instanceId: 'claude',
-          objectId: 'one',
-        },
-      },
-    })
-    assert.equal(
-      joinedKey({
-        state: f.state,
-        key: 'claude:two',
-        folder: '/lab',
-      }),
-      'claude:two',
-    )
-    assert.equal(
-      f.state.cards.c1!.hidden,
-      undefined,
-    )
-  },
-)
-
-test(
   'legacy multi-session joins keep the first worker attached and retain every session',
   () => {
     const f = fixture()

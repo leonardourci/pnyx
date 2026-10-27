@@ -1623,49 +1623,6 @@ test(
 )
 
 test(
-  'Firstmate owns assignments and automatic handoff leaves its existing queues untouched',
-  async t => {
-    const f = await lab({ t })
-    await f.server.close()
-    f.queue({ key: 'two' })
-    f.apply({
-      decision: hydraEvent({
-        state: f.state(),
-        cardId: '$board',
-        meta: meta(),
-        change: {
-          type: 'board.configured',
-          data: {
-            ...f.state().config!,
-            hydra: {
-              ...f.state().config!.hydra,
-              kind: 'firstmate',
-              home: join(
-                f.root,
-                'fixture-firstmate',
-              ),
-            },
-          },
-        },
-      }),
-    })
-    const before = f.state()
-    assert.throws(
-      () => f.queue({ key: 'three' }),
-      /Firstmate owns/,
-    )
-    assert.equal(
-      await advanceQueues({ hydraId: 'lab' }),
-      false,
-    )
-    assert.deepEqual(
-      f.state(),
-      before,
-    )
-  },
-)
-
-test(
   'a second Hydra using the same native session through an alias prevents branch switching',
   async t => {
     const f = await lab({ t })

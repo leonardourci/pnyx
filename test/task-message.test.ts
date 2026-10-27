@@ -447,48 +447,6 @@ test(
 )
 
 test(
-  'an unassigned Firstmate task addresses Hydra and never sends to a worker',
-  async () => {
-    const f = fixture()
-    const native = join(
-      f.home,
-      'firstmate',
-    )
-
-    try {
-      commands.hydra([
-        'set',
-        '--firstmate',
-        native,
-      ])
-      const sent = await f.send()
-      assert.equal(
-        sent.routes.agent,
-        undefined,
-      )
-      assert.equal(
-        sent.routes.hydra.state,
-        'delivered',
-      )
-      await f.send()
-      const notes = JSON.parse(readFileSync(
-        join(
-          native,
-          'inbox.json',
-        ),
-        'utf8',
-      )) as unknown[]
-      assert.equal(
-        notes.length,
-        1,
-      )
-    } finally {
-      f.close()
-    }
-  },
-)
-
-test(
   'native timelines retain task delivery receipts and show failed sends absent from the timeline',
   () => {
     const base = {

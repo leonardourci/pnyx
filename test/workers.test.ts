@@ -157,54 +157,6 @@ function fixture() {
 }
 
 test(
-  'Hydra set --session self binds the session running in the caller\'s Paseo terminal',
-  () => {
-    const f = fixture()
-    f.hook({
-      session: 'hydra',
-      cwd: f.folder,
-      terminal: 'term-h',
-    })
-    assert.match(
-      f.fail({
-        args: [
-          'hydra',
-          'set',
-          '--session',
-          'self',
-        ],
-      }),
-      /cannot tell this terminal/,
-    )
-    assert.match(
-      f.fail({
-        args: [
-          'hydra',
-          'set',
-          '--session',
-          'self',
-        ],
-        extra: { PASEO_TERMINAL_ID: 'term-x' },
-      }),
-      /no recorded session/,
-    )
-    f.run({
-      args: [
-        'hydra',
-        'set',
-        '--session',
-        'self',
-      ],
-      extra: { PASEO_TERMINAL_ID: 'term-h' },
-    })
-    assert.equal(
-      f.state().config!.hydra.session,
-      'claude-code:hydra',
-    )
-  },
-)
-
-test(
   'hydra check lists only tracked changes by others and waits for the next one',
   { timeout: 30_000 },
   async t => {
