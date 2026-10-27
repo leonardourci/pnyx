@@ -34,7 +34,7 @@ await command(edit)
 closeEditor()
 ```
 
-Good: the command publishes its shared preview synchronously, while its durable ID lets confirmation reconcile it in place.
+Good: the command publishes its shared preview synchronously, so the editor closes at once, while its durable ID lets confirmation reconcile it in place. The handler awaits the result and restores the draft on a refusal.
 
 ```ts
 const saving = command({
@@ -42,7 +42,12 @@ const saving = command({
   args: ['rename', task.key, '--title', title, '--event-id', crypto.randomUUID()],
 })
 closeEditor()
-void saving.catch(error => restoreDraft({ title, error }))
+
+try {
+  await saving
+} catch (error) {
+  restoreDraft({ title, error })
+}
 ```
 
 When testing an action, hold its server request and assert the visible result before releasing it. For creation, retain the element reference and check its first painted frame and visibility through confirmation, as well as refusal and reconnect behavior.
