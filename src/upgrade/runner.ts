@@ -219,7 +219,7 @@ let busy = false
 
 // Pulls main, installs and builds; a failed or stopped step puts the folder back on the commit it started from.
 // The caller restarts the server, and only after this reports upgraded.
-// ponytail: the busy flag guards one process; a CLI and a server upgrading at once can still race.
+// The busy flag guards one process: a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
   root = PNYX_ROOT,
   progress = () => {},
