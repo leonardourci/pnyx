@@ -4,7 +4,7 @@ import { createHydraConnection } from './connection-store.ts'
 export { reconnectDelay, retryable, commandTimeout, withChanges } from './connection-protocol.ts'
 
 export type Receipt = Record<string, unknown>
-export type Command = ({
+export type Command = (({
   name,
   args,
   onChecking,
@@ -12,7 +12,7 @@ export type Command = ({
   name: string
   args: string[]
   onChecking?(): void
-}) => Promise<Receipt>
+}) => Promise<Receipt>) & { retain?(): () => void }
 
 export function useHydra() {
   const [connection] = useState(createHydraConnection)

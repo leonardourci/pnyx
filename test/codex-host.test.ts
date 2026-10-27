@@ -17,6 +17,7 @@ import { once } from 'node:events'
 import { askHost } from '../src/server/state.ts'
 import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { fakeCodex } from './codex-fixture.ts'
+import { stopProcess } from './processes.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
 import { MAX_IMAGE_BYTES } from '../src/attachments/images.ts'
 import { codexProvider } from '../src/server/codex.ts'
@@ -1163,6 +1164,56 @@ test(
 )
 
 test(
+  'a missing Codex request times out with recent messages even while setTimeout is mocked',
+  { timeout: 1000 },
+  async () => {
+    const root = realpathSync(mkdtempSync(join(
+      tmpdir(),
+      'pnyx-codex-request-wait-',
+    )))
+    const codex = fakeCodex({ root })
+    mock.timers.enable({ apis: ['setTimeout'] })
+
+    try {
+      await assert.rejects(
+        codex.waitForRequest({
+          method: 'thread/start',
+          timeoutMs: 10,
+        }),
+        error => {
+          assert.ok(error instanceof Error)
+          assert.match(
+            error.message,
+            /timed out waiting for Codex thread\/start after 10ms/,
+          )
+          assert.ok(error.message.includes('"recent":[]'))
+          assert.ok(error.message.includes('"children":[]'))
+
+          return true
+        },
+      )
+      const failure = new Error('initialization refused')
+      await assert.rejects(
+        codex.waitForRequest({
+          method: 'thread/start',
+          failure: () => failure,
+        }),
+        failure,
+      )
+    } finally {
+      mock.timers.reset()
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    }
+  },
+)
+
+test(
   'a Codex thread that takes longer than a request\'s 30 seconds to open still opens',
   async () => {
     const root = realpathSync(mkdtempSync(join(
@@ -1191,9 +1242,10 @@ test(
         failure = error
       })
 
-      while (!codex.messages().some(m => m.method === 'thread/start')) {
-        await new Promise(resolve => setImmediate(resolve))
-      }
+      await codex.waitForRequest({
+        method: 'thread/start',
+        failure: () => failure,
+      })
 
       mock.timers.tick(60_000)
       await new Promise(resolve => setImmediate(resolve))
@@ -1210,6 +1262,8 @@ test(
       session.close()
     } finally {
       mock.timers.reset()
+      await Promise.all(codex.children.map(child => child.pid && child.exitCode === null
+        ? stopProcess({ pid: child.pid }) : Promise.resolve()))
       rmSync(
         root,
         {

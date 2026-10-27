@@ -41,7 +41,9 @@ function createHydraResource({
           flag: '--event-id',
         })
 
-        return !!event && state.eventIds[event] !== undefined
+        const saved = intent.patch.name === 'hydra-agent' ? intent.id : event
+
+        return !!saved && state.eventIds[saved] !== undefined
       },
     },
   })
@@ -74,6 +76,19 @@ export function pendingHydra({
 }
 
 export function editTargets({ edit }: { edit: Edit }): string[] {
+  if (edit.name === 'task' && edit.args[0] === 'create') {
+    return [
+      argument({
+        args: edit.args,
+        flag: '--key',
+      })
+      ?? `task:${argument({
+        args: edit.args,
+        flag: '--event-id',
+      })}`,
+    ]
+  }
+
   if (edit.name === 'column' && edit.args[0] === 'create') {
     return [
       argument({
@@ -105,7 +120,7 @@ export function commandArguments({
     args: edit.args,
     flag: '--event-id',
   }) !== undefined
-  const args = persisted && !hasEvent ? [
+  const args = persisted && edit.name !== 'hydra-agent' && !hasEvent ? [
     ...edit.args,
     '--event-id',
     id,

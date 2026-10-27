@@ -1,48 +1,27 @@
+import { changeKind, requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review, visibleLines } from './required-checks.ts'
+
+export { REVIEW_CHECKLISTS } from './required-checks.ts'
+
 // Node built-ins only: the workflow runs this without installing anything.
 const PREFIX = '<!-- pnyx-checks:v1 '
 const SUFFIX = ' -->'
-const HINT = 'Complete the three review checklists, tick the PR boxes, and run `pnpm verify` on the clean, pushed PR head.'
-export const REVIEW_CHECKLISTS = [
-  'review-code',
-  'audit-tests',
-  'deslop',
-] as const
+const HINT = 'Complete the required review checklists, tick their PR boxes, and run `pnpm verify` on the clean, pushed PR head.'
 const MAX_DOCS_COMMITS = 20
 // GitHub's commit endpoint lists at most 300 files, so a list that long may be cut short.
 const COMMIT_FILES_PAGE = 300
 
 export class MarkerError extends Error {}
 
-export function reviewBlockers({ body }: { body: string }): string[] {
-  const lines: string[] = []
-  let fence: string | undefined
+export function reviewBlockers({
+  body,
+  requiredReviews = REVIEW_CHECKLISTS,
+}: {
+  body: string
+  requiredReviews?: readonly Review[]
+}): string[] {
+  const lines = visibleLines({ body })
 
-  for (const line of body.replaceAll(
-    /<!--[\s\S]*?(?:-->|$)/g,
-    '',
-  ).split('\n')) {
-    const delimiter = /^ {0,3}(`{3,}|~{3,})/.exec(line)?.[1]
-
-    if (delimiter) {
-      if (!fence) {
-        fence = delimiter
-      } else if (
-        delimiter[0] === fence[0]
-        && delimiter.length >= fence.length
-        && line.trim() === delimiter
-      ) {
-        fence = undefined
-      }
-
-      continue
-    }
-
-    if (!fence) {
-      lines.push(line)
-    }
-  }
-
-  return REVIEW_CHECKLISTS.filter(name => {
+  return requiredReviews.filter(name => {
     const boxes = lines.flatMap(line => {
       const match = new RegExp('^[-*] \\[([ xX])\\] Ran `' + name + '`\\s*$').exec(line)
 
@@ -57,6 +36,7 @@ export interface Marker {
   head_sha: string
   head_tree: string
   finished_at: string
+  mechanical?: boolean
 }
 
 export interface Commit {
@@ -85,9 +65,9 @@ function isMarkerLine({ line }: { line: string }): boolean {
   return line.startsWith(PREFIX) && line.trimEnd().endsWith(SUFFIX)
 }
 
-// Markdown no build or test reads: shipped skills and test fixtures count as code.
+// Shipped skills and fixture Markdown require tests, so neither can extend a docs-only pass.
 export function isDocs({ file }: { file: string }): boolean {
-  return file.endsWith('.md') && !file.startsWith('skills/') && !file.startsWith('test/')
+  return changeKind({ path: file }) === 'docs'
 }
 
 export function commitFacts({ found }: { found: GitHubCommit }): Commit {
@@ -153,6 +133,7 @@ export function parseMarker({ body }: { body: string }): Marker {
   }
 
   return {
+    ...value?.mechanical === true ? { mechanical: true } : {},
     head_sha: headSha,
     head_tree: headTree,
     finished_at: finishedAt,
@@ -179,6 +160,8 @@ export function markerBlockers({
   headAfter,
   pullRequestHead,
   pullRequestBody,
+  requiredReviews,
+  mechanical = false,
 }: {
   failedSteps: number
   changedPaths: number
@@ -186,8 +169,17 @@ export function markerBlockers({
   headAfter: string
   pullRequestHead: string | undefined
   pullRequestBody: string
+  requiredReviews?: readonly Review[]
+  mechanical?: boolean
 }): string[] {
-  const blockers = reviewBlockers({ body: pullRequestBody })
+  const blockers = reviewBlockers({
+    body: pullRequestBody,
+    requiredReviews,
+  })
+
+  if (mechanical && !mechanicalDeclaration({ body: pullRequestBody })) {
+    blockers.push('--mechanical requires a visible PR line: Change: mechanical (rename) or Change: mechanical (move)')
+  }
 
   if (failedSteps > 0) {
     blockers.push(`${failedSteps} step(s) failed`)
@@ -219,18 +211,14 @@ export async function checkPullRequest({
   headSha,
   commit,
   pullRequestsFor,
+  files,
 }: {
   body: string
   headSha: string
+  files?: string[] | null
   commit({ sha }: { sha: string }): Promise<Commit>
   pullRequestsFor({ sha }: { sha: string }): Promise<PullRequest[]>
 }): Promise<string> {
-  const reviews = reviewBlockers({ body })
-
-  if (reviews.length) {
-    throw new MarkerError(`Review checklists incomplete: ${reviews.join('; ')}. ${HINT}`)
-  }
-
   let own: Marker | undefined
   let ownError: MarkerError | undefined
 
@@ -242,6 +230,24 @@ export async function checkPullRequest({
     }
 
     ownError = error
+  }
+
+  const mechanical = own?.mechanical === true
+
+  if (mechanical && !mechanicalDeclaration({ body })) {
+    throw new MarkerError('Mechanical verification requires its visible Change: mechanical (rename) or Change: mechanical (move) PR line.')
+  }
+
+  const reviews = reviewBlockers({
+    body,
+    requiredReviews: requiredChecks({
+      paths: files,
+      mechanical,
+    }).reviews,
+  })
+
+  if (reviews.length) {
+    throw new MarkerError(`Review checklists incomplete: ${reviews.join('; ')}. ${HINT}`)
   }
 
   if (own?.head_sha === headSha) {

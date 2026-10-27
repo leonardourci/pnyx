@@ -724,8 +724,10 @@ test(
     })
     await page.click({ selector: '.add-column button' })
     await page.shows({
-      what: 'the provisional column',
-      check: () => [...document.querySelectorAll('.column .inline-title')].some(el => el.textContent === 'New column'),
+      what: 'the provisional column title editor focused before its acknowledgement',
+      check: () => document.activeElement instanceof HTMLInputElement
+        && document.activeElement.value === 'New column'
+        && document.activeElement.closest('[data-column^="custom:"]'),
     })
     await page.click({ selector: "[aria-label='Resize New column column']" })
     await page.press({ key: 'ArrowRight' })

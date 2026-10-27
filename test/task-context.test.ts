@@ -6,7 +6,8 @@ import {
 import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { commandCapture } from './command-capture.ts'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -14,9 +15,10 @@ import { commands, type Output } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'
 import { decideLink, decidePush } from '../src/core/decide.ts'
-import { DEFAULT_WIDTHS, viewFor } from '../src/core/view.ts'
+import { DEFAULT_VIEW, DEFAULT_WIDTHS, patchView, traces, viewFor } from '../src/core/view.ts'
+import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src/core/digest.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 
 // The digest's setup check reads harness configs; keep it off the real ones.
 const harnesses = mkdtempSync(join(
@@ -118,6 +120,21 @@ test(
           'brief-v2',
         ],
       })
+      assert.equal(
+        f.state().cards[id]?.brief,
+        'Check the canary and rollback.',
+      )
+      assert.equal(
+        f.state().cards[id]?.column,
+        'in_progress',
+      )
+      assert.deepEqual(
+        replay({
+          state: emptyHydra(),
+          events: readEvents({ hydraId: 'default' }),
+        }),
+        f.state(),
+      )
       const seq = f.state().seq
       await f.run({
         name: 'task',
@@ -237,7 +254,7 @@ test(
         args: [
           'set',
           '--json',
-          '{"theme":"dark","fontSize":18}',
+          '{"theme":"dark","fontSize":18,"lastMessageOnCards":true,"focusMode":false}',
         ],
       })
       await f.run({
@@ -264,6 +281,67 @@ test(
       assert.equal(
         viewFor({ state: f.state() }).hydraWidth,
         480,
+      )
+      const state = f.state()
+      assert.equal(
+        viewFor({ state }).lastMessageOnCards,
+        true,
+      )
+      assert.deepEqual(
+        [
+          traces({
+            view: viewFor({ state }),
+            card: 'c1',
+          }).tools,
+          traces({
+            view: viewFor({ state }),
+            card: 'c1',
+          }).thinking,
+        ],
+        [
+          true,
+          true,
+        ],
+      )
+      const focused = patchView({
+        state,
+        input: {
+          focusMode: true,
+          toolDetails: true,
+          thinkingDetails: true,
+        },
+      })
+      assert.deepEqual(
+        [
+          traces({
+            view: focused,
+            card: 'c1',
+          }).tools,
+          traces({
+            view: focused,
+            card: 'c1',
+          }).thinking,
+        ],
+        [
+          false,
+          false,
+        ],
+      )
+      assert.equal(
+        viewFor({
+          state: {
+            ...state,
+            view: undefined,
+          },
+        }).lastMessageOnCards,
+        DEFAULT_VIEW.lastMessageOnCards,
+      )
+      assert.deepEqual(
+        replay({
+          state: emptyHydra(),
+          events: readEvents({ hydraId: 'default' }),
+        }),
+        state,
       )
       const deletion = await f.run({
         name: 'column',
@@ -309,6 +387,41 @@ test(
       assert.equal(
         view.fontSize,
         18,
+      )
+      await f.run({
+        name: 'view',
+        args: [
+          'set',
+          '--json',
+          JSON.stringify({
+            defaultHydraWidth: 400,
+            defaultColumnWidths: { needs_you: 310 },
+          }),
+        ],
+      })
+      await f.run({
+        name: 'layout',
+        args: ['reset'],
+      })
+      const reset = f.state()
+      assert.equal(
+        reset.view?.hydraWidth,
+        400,
+      )
+      assert.equal(
+        reset.view?.columnWidths.needs_you,
+        310,
+      )
+      assert.equal(
+        reset.config?.columns.find(c => c.id === 'needs_you')?.description,
+        'Questions only.',
+      )
+      assert.deepEqual(
+        replay({
+          state: emptyHydra(),
+          events: readEvents({ hydraId: 'default' }),
+        }),
+        reset,
       )
     } finally {
       rmSync(
@@ -1336,7 +1449,8 @@ test(
 
 test(
   'the Hydra command receives the task brief before explicit opening instructions',
-  async () => {
+  async t => {
+    const capture = commandCapture({ t })
     const f = fixture()
 
     try {
@@ -1345,7 +1459,7 @@ test(
         args: [
           'set',
           '--command',
-          'node -e \'require("fs").writeFileSync("prompt.json", JSON.stringify(process.env.PNYX_PROMPT))\'',
+          'node -e \'const fs=require("fs");fs.writeFileSync("prompt.json.tmp", JSON.stringify(process.env.PNYX_PROMPT));fs.renameSync("prompt.json.tmp","prompt.json")\'',
         ],
       })
       await f.run({
@@ -1377,12 +1491,7 @@ test(
         'prompt.json',
       )
 
-      for (let i = 0; !existsSync(path) && i < 100; i++) {
-        await new Promise(resolve => setTimeout(
-          resolve,
-          20,
-        ))
-      }
+      await capture.completed()
 
       assert.match(
         JSON.parse(readFileSync(

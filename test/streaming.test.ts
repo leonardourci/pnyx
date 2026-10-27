@@ -1,3 +1,4 @@
+import { hostObserver } from './host-observer.ts'
 import { hydraConversation } from '../web/src/hydra/conversation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -13,7 +14,7 @@ import { WebSocket } from 'ws'
 import { once } from 'node:events'
 import { commands } from '../src/cli/commands.ts'
 import { startTask } from '../src/cli/start.ts'
-import { startServer, type ServerMessage } from '../src/server/server.ts'
+import { type ServerMessage } from '../src/server/server.ts'
 import { localToken } from '../src/server/state.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
@@ -463,7 +464,8 @@ test(
     ])
     const sdk = hydraSdk()
     sdk.control.stream = true
-    const server = await startServer({
+    const observer = hostObserver({ describe: () => state() })
+    const server = await observer.startServer({
       hydraId: 'stream',
       query: sdk.query,
       // A worker report reaches Hydra through the wake queue.
@@ -472,20 +474,7 @@ test(
     const tabs: WebSocket[] = []
     const state = () => loadHydra({ hydraId: 'stream' }).state
 
-    const waitFor = async ({ check }: { check(): boolean }) => {
-      for (let i = 0; i < 300; i++) {
-        if (check()) {
-          return
-        }
-
-        await new Promise(resolve => setTimeout(
-          resolve,
-          10,
-        ))
-      }
-
-      assert.fail('stream subscription timed out')
-    }
+    const waitFor = observer.until
 
     const subscribe = async ({ card }: { card: string }) => {
       const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/stream/ws?token=${localToken()}`)
@@ -495,6 +484,7 @@ test(
         'message',
         data => {
           const message = JSON.parse(String(data)) as ServerMessage
+          observer.notify()
 
           if (message.type === 'thread' && message.thread.card === card) {
             pages.push(message.thread)

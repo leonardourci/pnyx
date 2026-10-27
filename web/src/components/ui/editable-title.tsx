@@ -81,7 +81,7 @@ export function EditableTitle({
     finished()
 
     if (element.current) {
-      element.current.textContent = value
+      element.current.textContent = cancel || !title ? value : title
     }
 
     if (cancel || !title || title === value) {

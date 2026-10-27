@@ -9,7 +9,7 @@ import type { Card, HydraEvent } from '../src/core/model.ts'
 import type { Command } from '../web/src/hydra/connection.ts'
 import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from '../web/src/hydra/updates-cache.ts'
 import { relevantUpdate, type TaskEvent, type TaskUpdate } from '../src/core/updates.ts'
-import { groupUpdates, taskTimeline } from '../web/src/hydra/task-updates.ts'
+import { groupUpdates, taskTimeline, updateLayout } from '../web/src/hydra/task-updates.ts'
 
 test(
   'task updates retain every declaration, deduplicate history and list relevant events newest first',
@@ -1505,6 +1505,113 @@ test(
         'single',
         'single',
       ],
+    )
+  },
+)
+
+test(
+  'regrouping keeps visible updates open and leaves unseen history folded',
+  () => {
+    const update = ({
+      id,
+      kind = 'status',
+    }: {
+      id: string
+      kind?: TaskUpdate['kind']
+    }): TaskUpdate => ({
+      id,
+      kind,
+      at: '2026-10-27T00:00:00Z',
+      state: 'working',
+      note: id,
+    })
+    const one = update({ id: 'one' }), two = update({ id: 'two' }), earlier = update({ id: 'earlier' }), oldest = update({ id: 'oldest' })
+    const single = updateLayout({ groups: groupUpdates({ updates: [one] }) })
+    const joined = updateLayout({
+      groups: groupUpdates({
+        updates: [
+          one,
+          two,
+        ],
+      }),
+      previous: single,
+    })
+    assert.equal(
+      joined.open.has('one'),
+      true,
+    )
+    const closed = {
+      ...joined,
+      open: new Set<string>(),
+    }
+    assert.equal(
+      updateLayout({
+        groups: groupUpdates({
+          updates: [
+            one,
+            two,
+          ],
+        }),
+        previous: closed,
+      }),
+      closed,
+    )
+    const split = updateLayout({
+      groups: groupUpdates({
+        updates: [
+          one,
+          update({
+            id: 'separator',
+            kind: 'worker',
+          }),
+          two,
+        ],
+      }),
+      previous: closed,
+    })
+    const regrouped = updateLayout({
+      groups: groupUpdates({
+        updates: [
+          one,
+          two,
+        ],
+      }),
+      previous: split,
+    })
+    assert.equal(
+      regrouped.open.has('one'),
+      true,
+    )
+    const paged = updateLayout({
+      groups: groupUpdates({
+        updates: [
+          earlier,
+          oldest,
+          update({
+            id: 'separator',
+            kind: 'worker',
+          }),
+          one,
+          two,
+        ],
+      }),
+      previous: joined,
+    })
+    assert.deepEqual(
+      [...paged.open],
+      ['one'],
+    )
+    const firstRead = updateLayout({
+      groups: groupUpdates({
+        updates: [
+          one,
+          two,
+        ],
+      }),
+    })
+    assert.equal(
+      firstRead.open.size,
+      0,
     )
   },
 )
