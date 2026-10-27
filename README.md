@@ -139,16 +139,8 @@ The **Oracle** searches tasks and recorded conversations by words or meaning, us
 - [Contributing](CONTRIBUTING.md): propose a change and open a pull request.
 - [Security](SECURITY.md): report a vulnerability privately.
 
-## Credits
-
-Pnyx is written fresh, with ideas from [Paseo](https://github.com/getpaseo/paseo) and [Firstmate](https://github.com/kunchenguid/firstmate).
-
-Starting agents and streaming replies follow Paseo. Firstmate inspired inscribe through `/stow`, heads dispatch through crew dispatch, and Hydra's always-on contract.
-
-Font, icon and artwork notices are preserved in the app's [About list](web/src/hydra/about.tsx) and the bundled license files.
-
 ## License
 
 [Apache-2.0](LICENSE). Copyright 2026 Leonardo G. Urci.
 
-Bundled third-party fonts, icons and artwork retain their own licenses.
+Bundled third-party fonts, icons and artwork keep their own licenses; see [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
