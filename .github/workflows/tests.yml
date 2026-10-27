@@ -76,5 +76,5 @@ jobs:
       - name: Unit tests
         run: node scripts/test.ts unit
 
-      - name: Scenarios and browser journeys
+      - name: Flows
         run: node scripts/test.ts scenarios
