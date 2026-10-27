@@ -1,5 +1,5 @@
 // Typing replies into a hook session's terminal. Every host (tmux, Paseo, Herdr,
-// osascript) and ps is the fake in test/fixtures/hosts on PATH: tests never type
+// osascript) and ps is the fake in src/test-harness/fakes on PATH: tests never type
 // into a real session.
 import assert from 'node:assert/strict'
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
@@ -27,9 +27,9 @@ const BIN = join(
 )
 const HOST = join(
   ROOT,
-  'test',
-  'fixtures',
-  'hosts',
+  'src',
+  'test-harness',
+  'fakes',
   'host.sh',
 )
 const TTY = '/dev/ttys042'

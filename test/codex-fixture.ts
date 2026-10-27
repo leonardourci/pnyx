@@ -49,7 +49,7 @@ export function fakeCodex({
       [
         join(
           import.meta.dirname,
-          'fixtures/hosts/codex.mjs',
+          '../src/test-harness/fakes/codex.mjs',
         ),
       ],
       {

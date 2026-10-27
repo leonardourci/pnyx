@@ -1,7 +1,7 @@
 // Inline answers to an agent's own question, permission or plan prompt: which
 // requests the Hydra can answer, the keys each harness's prompt expects, and the
 // delivery through the session's terminal. Every host is the fake in
-// test/fixtures/hosts on PATH: tests never type into a real session.
+// src/test-harness/fakes on PATH: tests never type into a real session.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
@@ -26,9 +26,9 @@ const BIN = join(
 )
 const HOST = join(
   ROOT,
-  'test',
-  'fixtures',
-  'hosts',
+  'src',
+  'test-harness',
+  'fakes',
   'host.sh',
 )
 const TTY = '/dev/ttys042'

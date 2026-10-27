@@ -2,7 +2,7 @@
 
 - `test/*.test.ts`: unit and component tests.
 - `test/scenarios/*.test.ts`: scenarios. Each one drives a disposable Pnyx through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents.
-- `test/fixtures/`: synthetic inputs. `fixtures/agents/` holds the recorded agent sessions the fakes replay.
+- `test/fixtures/`: synthetic inputs. The recorded agent sessions the fakes replay are in `src/test-harness/recordings/`, and fake terminal hosts and the fake Codex app-server in `src/test-harness/fakes/`.
 
 Run the scenarios after a build, one file at a time:
 

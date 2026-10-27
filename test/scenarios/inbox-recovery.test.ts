@@ -224,10 +224,7 @@ test(
     const stub = s.folder({ name: 'terminal-state' })
     const fixture = join(
       import.meta.dirname,
-      '..',
-      'fixtures',
-      'hosts',
-      'inbox-terminal.sh',
+      '../../src/test-harness/fakes/inbox-terminal.sh',
     )
     symlinkSync(
       fixture,
