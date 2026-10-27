@@ -699,3 +699,94 @@ test(
     )
   },
 )
+
+test(
+  'task list rows keep four fields, --fields adds more, and long text is cut with its length',
+  () => {
+    const f = fixture()
+    f.run({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'long',
+        '--title',
+        'Long brief',
+        '--brief',
+        'b'.repeat(1500),
+      ],
+    })
+    const listing = f.run({
+      args: [
+        'task',
+        'list',
+      ],
+    })
+    assert.match(
+      listing,
+      /tasks\[1\]\{id,title,project,column\}:/,
+    )
+    assert.match(
+      listing,
+      /Long brief,none,/,
+      'a task without a project still fills the field',
+    )
+    assert.match(
+      f.run({
+        args: [
+          'task',
+          'list',
+          '--fields',
+          'status,worker',
+        ],
+      }),
+      /tasks\[1\]\{id,title,project,column,status,worker\}:/,
+    )
+    assert.equal(
+      failure({
+        run: () => f.run({
+          args: [
+            'task',
+            'list',
+            '--fields',
+            'colour',
+          ],
+        }),
+      }).status,
+      2,
+    )
+
+    const id = f.state().keys.long
+    assert.match(
+      f.run({
+        args: [
+          'task',
+          'show',
+          id,
+        ],
+      }),
+      /… \(truncated, 1500 chars total\)/,
+    )
+    assert.match(
+      f.run({
+        args: [
+          'task',
+          'show',
+          id,
+          '--full',
+        ],
+      }),
+      /b{1500}/,
+    )
+    assert.match(
+      f.run({
+        args: [
+          'history',
+          '--limit',
+          '1',
+        ],
+      }),
+      /count: 1 of 1 total/,
+    )
+  },
+)

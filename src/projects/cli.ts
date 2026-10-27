@@ -102,6 +102,7 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
       readonly,
       revision: current.projectsRevision ?? 0,
       projects: projects.length ? projects : 'none: no projects attached',
+      ...(projects.length || readonly ? {} : { help: [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`] }),
     }
   }
 

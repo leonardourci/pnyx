@@ -32,7 +32,7 @@ import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
-import { findProject, projectRows, taskProject } from '../projects/read.ts'
+import { findProject, projectRows, projectsFor, taskProject } from '../projects/read.ts'
 import { helpFlags } from './help.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
@@ -100,6 +100,7 @@ import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
+const TEXT_CUT = 1000
 // Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
 const EXPLAINED: readonly EventType[] = [
   'card.moved',
@@ -687,23 +688,82 @@ function column({ value }: { value: string }): Column {
   )) as Column
 }
 
-function cardRow({ card }: { card: Card }) {
+// A long text cut for a default view, with its full length so the reader knows what --full adds.
+function clip({
+  text,
+  limit = TEXT_CUT,
+}: {
+  text: string
+  limit?: number
+}): string {
+  return text.length > limit ? `${text.slice(
+    0,
+    limit,
+  )}… (truncated, ${text.length} chars total)` : text
+}
+
+// Adds next steps to a write's receipt; a no-op receipt keeps none.
+function withHelp({
+  output,
+  help,
+}: {
+  output: Output
+  help: ({ output }: { output: Output }) => string[]
+}): Output {
+  return output.card ? {
+    ...output,
+    help: help({ output }),
+  } : output
+}
+
+// A task records an attached project by path; rows show its name, and every row has the field
+// so lists stay tabular.
+function projectName({
+  state,
+  project,
+}: {
+  state: HydraState
+  project?: string | null
+}): string {
+  return project ? projectsFor({ state }).find(p => p.path === project)?.name ?? project : 'none'
+}
+
+function cardRow({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}) {
   return {
     id: card.id,
     title: card.title,
-    ...(card.project ? { project: card.project } : {}),
+    project: projectName({
+      state,
+      project: card.project,
+    }),
     column: card.column,
-    attention: card.attention.map(a => a.kind).join(' ') || 'none',
   }
 }
 
-function cardDetail({ card }: { card: Card }): Output {
+function cardDetail({
+  state,
+  card,
+  full,
+}: {
+  state: HydraState
+  card: Card
+  full: boolean
+}): Output {
   const detail: Output = {
     id: card.id,
     key: card.key,
     title: card.title,
-    ...(card.project ? { project: card.project } : {}),
-    ...(card.brief !== undefined ? { brief: card.brief } : {}),
+    project: projectName({
+      state,
+      project: card.project,
+    }),
+    ...(card.brief !== undefined ? { brief: full ? card.brief : clip({ text: card.brief }) } : {}),
     workspace: card.workspace,
     column: card.column,
     tags: card.tags.length ? card.tags : 'none',
@@ -812,7 +872,10 @@ export async function home(): Promise<Output> {
   out.cards = sorted.slice(
     0,
     HOME_LIMIT,
-  ).map(card => cardRow({ card }))
+  ).map(card => cardRow({
+    state,
+    card,
+  }))
   out.help = [
     'Run `pnyx-axi card <id>` for details',
     'Run `pnyx-axi history` for recent events',
@@ -934,6 +997,33 @@ function untilTime({
   })
 }
 
+const TASK_FIELDS = [
+  'attention',
+  'parent',
+  'status',
+  'worker',
+  'hold',
+  'queue',
+] as const
+type TaskField = (typeof TASK_FIELDS)[number]
+
+// `task list --fields status,worker` adds those fields to the default id, title, project and column.
+function taskFields({ value }: { value?: string }): TaskField[] {
+  const fields = (value ?? '').split(',').map(field => field.trim())
+    .filter(Boolean)
+  const unknown = fields.filter(field => !TASK_FIELDS.includes(field as TaskField))
+
+  if (unknown.length) {
+    throw new AxiError(
+      `unknown field: ${unknown.join(', ')}`,
+      'VALIDATION_ERROR',
+      [`Use --fields with any of ${TASK_FIELDS.join(', ')}`],
+    )
+  }
+
+  return fields as TaskField[]
+}
+
 export const TASK_OPTIONS: Options = {
   ...WRITE,
   title: { type: 'string' },
@@ -956,6 +1046,7 @@ export const TASK_OPTIONS: Options = {
     multiple: true,
   },
   full: { type: 'boolean' },
+  fields: { type: 'string' },
   harness: { type: 'string' },
   prompt: { type: 'string' },
   'paseo-url': { type: 'string' },
@@ -1347,92 +1438,102 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const brief = taskBrief({ value: values.brief })
     const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
 
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.created',
-        card: key,
-      },
-      decide: ({ state }) => {
-        if (state.keys[key]) {
-          throw new HydraError({
-            message: `task key already exists: ${key}`,
-            code: 'CONFLICT',
-          })
-        }
+    return withHelp({
+      output: commit({
+        hydraId,
+        meta: m,
+        intent: {
+          type: 'task.created',
+          card: key,
+        },
+        decide: ({ state }) => {
+          if (state.keys[key]) {
+            throw new HydraError({
+              message: `task key already exists: ${key}`,
+              code: 'CONFLICT',
+            })
+          }
 
-        const project = values.project
-          ? taskProject({
+          const project = values.project
+            ? taskProject({
+              state,
+              ref: String(values.project),
+            }) : undefined
+          const parent = values.parent ? findCard({
             state,
-            ref: String(values.project),
+            ref: String(values.parent),
           }) : undefined
-        const parent = values.parent ? findCard({
-          state,
-          ref: String(values.parent),
-        }) : undefined
 
-        if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'subtasks have one level under a task',
-            code: 'VALIDATION_ERROR',
-          })
-        }
+          if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
+            throw new HydraError({
+              message: 'subtasks have one level under a task',
+              code: 'VALIDATION_ERROR',
+            })
+          }
 
-        const columns = hydraConfig({
-          state,
-          id: hydraId,
-        }).columns
-        const selected = values.column
-          ? columns.find(c => c.id === values.column || c.title === values.column
-            || c.role === values.column) : undefined
-
-        if (values.column && !selected) {
-          throw new HydraError({
-            message: 'unknown Hydra column',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const cardId = `task-${randomUUID()}`
-        const holdReason = m.reason?.trim() || title
-        const created: TaskCreated['data'] = {
-          key,
-          title,
-          ...(values.hold ? { hold: holdReason } : {}),
-          ...(project ? { project } : {}),
-          ...(brief !== undefined ? { brief } : {}),
-          ...(folder ? { folder } : {}),
-          ...(parent ? { parentId: parent.id } : {}),
-          ...(selected ? { column: selected.id } : {}),
-        }
-
-        // A build task, the default, records no kind.
-        if (kind === 'investigation') {
-          created.kind = kind
-        }
-
-        const ask = values.ask
-
-        if (ask !== undefined && String(ask).trim()) {
-          created.ask = ownerAsk({
+          const columns = hydraConfig({
             state,
-            text: String(ask),
-            message: values.message as string | undefined,
-            actor: m.actor,
-            at: m.at,
-          })
-        }
+            id: hydraId,
+          }).columns
+          const selected = values.column
+            ? columns.find(c => c.id === values.column || c.title === values.column
+              || c.role === values.column) : undefined
 
-        return hydraEvent({
-          state,
-          meta: m,
-          cardId,
-          change: {
-            type: 'task.created',
-            data: created,
-          },
-        })
+          if (values.column && !selected) {
+            throw new HydraError({
+              message: 'unknown Hydra column',
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          const cardId = `task-${randomUUID()}`
+          const holdReason = m.reason?.trim() || title
+          const created: TaskCreated['data'] = {
+            key,
+            title,
+            ...(values.hold ? { hold: holdReason } : {}),
+            ...(project ? { project } : {}),
+            ...(brief !== undefined ? { brief } : {}),
+            ...(folder ? { folder } : {}),
+            ...(parent ? { parentId: parent.id } : {}),
+            ...(selected ? { column: selected.id } : {}),
+          }
+
+          // A build task, the default, records no kind.
+          if (kind === 'investigation') {
+            created.kind = kind
+          }
+
+          const ask = values.ask
+
+          if (ask !== undefined && String(ask).trim()) {
+            created.ask = ownerAsk({
+              state,
+              text: String(ask),
+              message: values.message as string | undefined,
+              actor: m.actor,
+              at: m.at,
+            })
+          }
+
+          return hydraEvent({
+            state,
+            meta: m,
+            cardId,
+            change: {
+              type: 'task.created',
+              data: created,
+            },
+          })
+        },
+      }),
+      help: ({ output }) => {
+        const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
+
+        return [
+          `Run \`pnyx-axi task start ${id} --hydra ${hydraId}\` to start a worker`,
+          `Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`,
+        ]
       },
     })
   }
@@ -1479,26 +1580,42 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
 
+    const fields = taskFields({ value: values.fields as string | undefined })
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
-      .map(c => ({
-        ...cardRow({ card: c }),
-        parent: c.parentId ?? '',
-        status: c.status?.state ?? 'paused',
-        worker: c.sessionIds?.[0] ?? '',
-        ...(c.hold ? { hold: c.hold.reason } : {}),
-        ...(c.queue ? {
-          queue: queuePosition({
+      .map(c => {
+        const extra: Record<TaskField, string> = {
+          attention: c.attention.map(a => a.kind).join(' ') || 'none',
+          parent: c.parentId ?? 'none',
+          status: c.status?.state ?? 'paused',
+          worker: c.sessionIds?.[0] ?? 'none',
+          hold: c.hold?.reason ?? 'none',
+          queue: c.queue ? String(queuePosition({
+            state,
+            card: c,
+          })) : 'none',
+        }
+
+        return {
+          ...cardRow({
             state,
             card: c,
           }),
-        } : {}),
-      }))
+          ...Object.fromEntries(fields.map(field => [
+            field,
+            extra[field],
+          ])),
+        }
+      })
 
     return tasks.length
       ? {
         hydraId,
+        count: tasks.length,
         tasks,
-        help: [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`],
+        help: [
+          `Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`,
+          ...fields.length ? [] : [`Run \`pnyx-axi task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`],
+        ],
       }
       : {
         hydraId,
@@ -1552,12 +1669,19 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     return {
       task: {
-        ...cardRow({ card: task }),
+        ...cardRow({
+          state,
+          card: task,
+        }),
+        attention: task.attention.map(a => a.kind).join(' ') || 'none',
         key: task.key,
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
-        ask: task.ask?.length ? task.ask : 'none: no owner words recorded',
+        ask: task.ask?.length ? task.ask.map(ask => ({
+          ...ask,
+          text: clip({ text: ask.text }),
+        })) : 'none: no owner words recorded',
         spend,
-        brief: task.brief ?? 'none',
+        brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
@@ -1575,7 +1699,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           state,
           card: task,
         }),
-        ...(task.queueNote ? { handoff: task.queueNote } : {}),
+        ...(task.queueNote ? { handoff: clip({ text: task.queueNote }) } : {}),
         next: task.sessionIds?.[0] ? workerQueue({
           state,
           session: task.sessionIds[0],
@@ -3690,13 +3814,13 @@ function cardNotes({
     const shown = full ? all : all.slice(
       0,
       NOTES_SHOWN,
-    ).map(n => (n.text.length > NOTE_CUT ? {
+    ).map(n => ({
       ...n,
-      text: `${n.text.slice(
-        0,
-        NOTE_CUT,
-      )}…`,
-    } : n))
+      text: clip({
+        text: n.text,
+        limit: NOTE_CUT,
+      }),
+    }))
 
     if (shown.length < all.length || shown.some((
       n,
@@ -3732,8 +3856,9 @@ const card = guard({
       },
       positionals: 1,
     })
+    const { state } = loadHydra({ hydraId })
     const found = findCard({
-      state: loadHydra({ hydraId }).state,
+      state,
       ref: required({
         value: positionals[0],
         what: 'card id',
@@ -3749,8 +3874,8 @@ const card = guard({
     })
     const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
 
-    if (cut) {
-      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for every note in full`)
+    if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
+      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for the brief and every note in full`)
     }
 
     if (!found.notes?.length) {
@@ -3767,7 +3892,11 @@ const card = guard({
     }
 
     return {
-      card: cardDetail({ card: found }),
+      card: cardDetail({
+        state,
+        card: found,
+        full: Boolean(values.full),
+      }),
       notes,
       help,
     }
@@ -4195,6 +4324,7 @@ const history = guard({
     }
 
     const out: Output = {
+      count: `${page.length} of ${matches.length} ${before === undefined ? 'total' : `before ${before}`}`,
       events: page.map(e => ({
         seq: e.seq,
         id: e.id,
@@ -4693,7 +4823,10 @@ Held cards stay in Backlog, marked Talking. Start, build, queue and continue ref
 pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
-pnyx-axi task list | show <id> [--full]
+pnyx-axi task list [--fields <field,...>]
+Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
+pnyx-axi task show <id> [--full]
+Long fields are cut to 1,000 characters with their total length; --full shows the whole record.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
