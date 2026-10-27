@@ -94,6 +94,8 @@ const run = spawn(
       fallback: '16g',
     })}`,
     '--shm-size=2g',
+    // Chrome's sandbox needs the namespaces Docker's default seccomp profile denies; a runner VM has them.
+    '--security-opt=seccomp=unconfined',
     IMAGE,
     'bash',
     '-euo',
