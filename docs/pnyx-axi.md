@@ -18,13 +18,13 @@
 
 ## Output and errors
 
-`pnyx-axi` follows [AXI](https://axi.md/): it prints [TOON](https://toonformat.dev/) on stdout, never prompts, and writes nothing an agent needs to stderr.
+`pnyx-axi` follows [AXI](https://axi.md/): it prints [TOON](https://toonformat.dev/) on stdout, never prompts, and keeps everything an agent needs on stdout.
 
 - Bare `pnyx-axi` prints the Hydra summary: the executable, server state, attached projects, cards per column and the first cards.
 - `pnyx-axi <command> <subcommand> --help` prints that subcommand's usage and notes; `pnyx-axi <command> --help` prints the whole command.
 - Lists show a few fields per row and the total, such as `count: 20 of 85 total`. `task list` shows id, title, project and column; `--fields status,worker` adds more.
 - Detail views cut long text to 1,000 characters and say how long it was, such as `… (truncated, 4200 chars total)`; `--full` shows the whole record.
-- An empty answer is explicit, such as `tasks: "none: no tasks on this Hydra"`. A write that changes nothing, such as attaching an attached project again, returns `event: "none: unchanged"` and exits 0.
+- An empty answer is explicit, such as `tasks: "none: no tasks on this Hydra"`. A write that changes nothing, such as attaching a project that is already attached, returns `event: "none: unchanged"` and exits 0.
 - Errors print on stdout as `error`, `code` (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT` and others) and `help` lines with the command that fixes them. An unknown flag is named and the subcommand's valid flags are listed.
 - Exit codes: 0 for success and no-ops, 1 for errors, 2 for usage errors.
 - `help` lines suggest next commands, carrying `--hydra` forward and leaving runtime values as `<id>`.
@@ -353,7 +353,7 @@ Preferences, shortcuts and layout change from the Oracle; projects, agents, inte
 - **Oracle:** the left-panel Oracle field and `pnyx-axi oracle "<words>"` find cards by keyword across titles, links, events, notes and transcripts, matching word stems, synonyms and, when nothing matches exactly, near spellings.
 The panel field filters tasks in place and lists matching task conversations and Hydra’s chat in a floating list directly beneath it, without dimming or moving the page. Escape closes the list and clears the filter. Settings change directly in their result rows, and layout actions are available there too; start a query with `>` to show only settings and actions. Hidden sessions stay available through `pnyx-axi history` and `pnyx-axi oracle`. ⌘K (Ctrl+K elsewhere) focuses the same field, including from a reply composer and when the panel is hidden.
 
-Run `pnyx-axi --help` for the main commands and `pnyx-axi <command> --help` for every subcommand of one.
+Run `pnyx-axi --help` for the main commands and `pnyx-axi <command> --help` for all of a command's subcommands.
 
 ## Retention and appearance
 

@@ -304,7 +304,7 @@ export function scenarioGroup({
   mkdirSync(process.env.HOME!)
   // Accounts claude:test and codex:test, and a quota-axi on PATH that reports them usable.
   fakeDispatch({ root })
-  // Agents get no PNYX_ variables of the server's, so their own pnyx-axi finds the fake gh-axi on PATH.
+  // Agents inherit none of the server's PNYX_ variables, so their own pnyx-axi finds the fake gh-axi on PATH.
   writeFileSync(
     join(
       root,
