@@ -13,7 +13,6 @@
 - [Starting workers and Hydra](#starting-workers-and-hydra)
 - [Dispatch, checks and wakes](#kinds-the-light-check-and-the-worker-contract)
 - [Using Pnyx](#using-pnyx)
-- [Semantic search](#skip-semantic-search)
 - [Retention and appearance](#retention-and-appearance)
 
 ## Install
@@ -334,21 +333,10 @@ Arrows, word and line jumps, Home/End and Page Up/Down move it like a text edito
   - Mod+K: reveal the panel and focus Oracle; `?`: keyboard shortcuts in the Oracle
 - **Settings:** the Settings page is hidden for now.
 Preferences, shortcuts and layout change from the Oracle; projects, agents, integrations and Hydra settings change through the CLI. On a Firstmate Hydra, Add project says Firstmate manages its projects. Other sections that name Settings describe the page as it will return.
-- **Oracle:** the left-panel Oracle field and `pnyx-axi oracle "<words>"` find cards by meaning, in any language, as well as by their words, across titles, links, events, notes and transcripts.
-Semantic search runs local models on your machine; the first search downloads them in the background (about 1 GB with a GPU, 115 MB on CPU only), and searches are full-text until they are ready. `pnyx-axi oracle status` shows the progress. The panel field filters tasks in place and lists matching task conversations and Hydra’s chat in a floating list directly beneath it, without dimming or moving the page. Escape closes the list and clears the filter. Settings change directly in their result rows, and layout actions are available there too; start a query with `>` to show only settings and actions. Hidden sessions stay available through `pnyx-axi history` and `pnyx-axi oracle`. ⌘K (Ctrl+K elsewhere) focuses the same field, including from a reply composer and when the panel is hidden.
+- **Oracle:** the left-panel Oracle field and `pnyx-axi oracle "<words>"` find cards by keyword across titles, links, events, notes and transcripts, matching word stems, synonyms and, when nothing matches exactly, near spellings.
+The panel field filters tasks in place and lists matching task conversations and Hydra’s chat in a floating list directly beneath it, without dimming or moving the page. Escape closes the list and clears the filter. Settings change directly in their result rows, and layout actions are available there too; start a query with `>` to show only settings and actions. Hidden sessions stay available through `pnyx-axi history` and `pnyx-axi oracle`. ⌘K (Ctrl+K elsewhere) focuses the same field, including from a reply composer and when the panel is hidden.
 
 Run `pnyx-axi --help` for every command.
-
-## Skip semantic search
-
-On a slow laptop, or to keep search full-text only:
-
-- Leave out the optional packages it runs on (node-llama-cpp and sqlite-vec): after `pnpm run build`, run `pnpm install --no-optional` in the clone (before the build it would also drop the build tools' own native parts).
-Oracle then falls back to full-text silently.
-- Or switch it off: Settings → Oracle, or `pnyx-axi settings set oracle.semantic off`.
-`PNYX_SEMANTIC=off` does the same for one shell or script. To free the disk, delete `~/.pnyx/models/`.
-
-`pnyx-axi settings set oracle.rerank off` keeps meaning but skips the reranker, which costs about 0.4 s a search on a GPU (`auto`, the default, turns it off on CPU-only machines).
 
 ## Retention and appearance
 

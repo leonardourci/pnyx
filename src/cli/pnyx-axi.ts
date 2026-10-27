@@ -7,7 +7,7 @@ import { createRequire } from 'node:module'
 import { AxiError, runAxiCli } from 'axi-sdk-js'
 import { serve, stop } from '../server/server.ts'
 import { firstmateCommands, firstmateHelp } from '../integrations/firstmate/cli.ts'
-import { ORACLE_HELP, SETTINGS_HELP, oracleCommands } from '../oracle/cli.ts'
+import { ORACLE_HELP, oracleCommands } from '../oracle/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp, commands, home } from './commands.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { workerCommands } from './workers.ts'
@@ -18,7 +18,6 @@ const { version } = createRequire(import.meta.url)('../../package.json') as { ve
 const HELP: Record<string, string> = {
   approval: 'usage: pnyx-axi approval confirm|dismiss <token> [--confirm <token>]\nOwner-only questions appear in Hydra’s chat.',
   oracle: ORACLE_HELP,
-  settings: SETTINGS_HELP,
   project: PROJECT_HELP,
   reply: REPLY_HELP,
   agent: AGENT_HELP,

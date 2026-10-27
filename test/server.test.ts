@@ -4086,7 +4086,7 @@ test(
 )
 
 test(
-  'hydra-scoped search returns Hydra messages and validates command searches',
+  'hydra-scoped search returns Hydra messages',
   async () => {
     seedWebFixture({ home: process.env.PNYX_HOME! })
     withWriter({
@@ -4138,41 +4138,6 @@ test(
         ],
       ],
     )
-
-    for (const [
-      id,
-      text,
-      expected,
-    ] of [
-        [
-          'commands-off',
-          'Choose a dark theme',
-          { matches: [] },
-        ],
-        [
-          'commands-invalid',
-          42,
-          { code: 'VALIDATION_ERROR' },
-        ],
-      ] as const) {
-      t.command({
-        id,
-        name: 'oracle-commands',
-        args: [
-          'theme',
-          JSON.stringify([
-            {
-              id: 'theme',
-              text,
-            },
-          ]),
-        ],
-      })
-      assert.partialDeepStrictEqual(
-        await t.reply({ id }),
-        expected,
-      )
-    }
 
     t.ws.close()
   },

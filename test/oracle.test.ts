@@ -22,9 +22,6 @@ after(() => rmSync(
   },
 ))
 
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
-
 const BIN = join(
   import.meta.dirname,
   '..',
@@ -593,10 +590,6 @@ test(
     assert.match(
       status,
       /^index: current through seq 5$/m,
-    )
-    assert.match(
-      status,
-      /^semantic: "off: run `pnyx-axi settings set oracle.semantic on` to turn it on"$/m,
     )
     assert.match(
       status,

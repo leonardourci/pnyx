@@ -4540,7 +4540,6 @@ commands:
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
-  settings [set <key> <value>]               Oracle settings: semantic search, reranker and model
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot

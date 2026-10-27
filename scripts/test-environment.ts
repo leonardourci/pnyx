@@ -58,7 +58,6 @@ exit 79
     ),
     PNYX_GH_AXI: 'false',
     PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws',
-    PNYX_SEMANTIC_STUB: '1',
     GIT_CONFIG_NOSYSTEM: '1',
     GIT_CONFIG_GLOBAL: join(
       root,

@@ -270,8 +270,6 @@ export function scenarioGroup({
         root,
         'pnyx',
       ),
-      // Semantic search would start its model worker.
-      PNYX_SEMANTIC: 'off',
       // Pull request state comes from the fake gh-axi, never GitHub, scripted by s.pullRequest.
       PNYX_GH_AXI: join(
         import.meta.dirname,
@@ -306,8 +304,7 @@ export function scenarioGroup({
   mkdirSync(process.env.HOME!)
   // Accounts claude:test and codex:test, and a quota-axi on PATH that reports them usable.
   fakeDispatch({ root })
-  // Agents get no PNYX_ variables of the server's, so their own pnyx-axi finds the fake gh-axi on PATH
-  // and the semantic setting in the home.
+  // Agents get no PNYX_ variables of the server's, so their own pnyx-axi finds the fake gh-axi on PATH.
   writeFileSync(
     join(
       root,
@@ -320,13 +317,6 @@ export function scenarioGroup({
   mkdirSync(
     process.env.PNYX_HOME!,
     { recursive: true },
-  )
-  writeFileSync(
-    join(
-      process.env.PNYX_HOME!,
-      'settings.json',
-    ),
-    JSON.stringify({ 'search.semantic': 'off' }),
   )
   const claude = replayClaude({ incorporateSteering })
   const codex = replayCodex({ incorporateSteering })

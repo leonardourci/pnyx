@@ -32,12 +32,11 @@ import { HYDRA_CARD, hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { wakeReasons } from '../core/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../core/decide.ts'
+import { search as oracleSearch, updateIndex } from '../oracle/index.ts'
 import { replyRoute } from '../core/route.ts'
 import { paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { queryOracle, matchActions } from '../oracle/semantic.ts'
-import { readSettings, settingEntries, writeSetting } from '../oracle/settings.ts'
 import { createHash, randomUUID, timingSafeEqual } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from '../runtime/watch.ts'
@@ -2521,13 +2520,11 @@ async function mountOwnedHydra({
     if ([
       'thread',
       'oracle',
-      'oracle-commands',
       'reply',
       'task-message',
       'answer',
       'agent',
       'catalog',
-      'settings',
       'hydras',
       'hydra-agent',
       'models',
@@ -2684,75 +2681,16 @@ async function mountOwnedHydra({
             highlight: false,
           }
 
-          void queryOracle({
-            hydraId,
-            query,
-          })
-            .then(result => send({
-              ws,
-              message: {
-                type: 'receipt',
-                id,
-                ...result,
-              },
-            }))
-            .catch((error: Error) => fail({
-              error: error.message,
-              code: error instanceof HydraError ? error.code : 'UNKNOWN',
-            }))
-        } else if (name === 'oracle-commands') {
-          let entries: unknown
-
-          try {
-            entries = JSON.parse(args[1] ?? '[]')
-          } catch {
-            throw new HydraError({
-              message: 'oracle-commands expects a JSON list of named entries',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          if (args.length !== 2 || !args[0]?.trim() || args[0].length > 500
-            || !Array.isArray(entries) || entries.length > 256
-            || !entries.every((entry: unknown): entry is {
-              id: string
-              text: string
-            } => !!entry && typeof entry === 'object' && 'id' in entry && typeof entry.id === 'string' && entry.id.length <= 160 && 'text' in entry && typeof entry.text === 'string' && entry.text.length <= 500)) {
-            throw new HydraError({
-              message: 'oracle-commands expects a query and up to 256 named entries',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          void matchActions({
-            query: args[0],
-            entries,
-          }).then(matches => send({
-            ws,
-            message: {
-              type: 'receipt',
-              id,
-              matches,
-            },
-          }))
-        } else if (name === 'settings') {
-          if (args.length && (args.length !== 3 || args[0] !== 'set')) {
-            throw new HydraError({
-              message: 'settings expects nothing, or set, a key and a value',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const settings = args.length ? writeSetting({
-            key: args[1]!,
-            value: args[2]!,
-          }) : readSettings({ })
+          updateIndex({ hydraId })
           send({
             ws,
             message: {
               type: 'receipt',
               id,
-              settings: settingEntries({ settings }),
+              ...oracleSearch({
+                hydraId,
+                query,
+              }),
             },
           })
         } else if (name === 'hydra-agent') {
