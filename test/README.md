@@ -2,6 +2,7 @@
 
 - `test/*.test.ts`: unit and component tests.
 - `test/scenarios/*.test.ts`: scenarios. Each one drives a disposable Pnyx through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents.
+- `*.test.ts` beside the code under `src/`, `web/src/`, `scripts/`, `eslint/` and `e2e/`: the launcher finds them all; `*.scenario.test.ts` and `*.e2e.test.ts` run with the scenarios.
 - `test/fixtures/`: synthetic inputs.
 - `src/test-harness/`: the shared harness: the scenario and browser runners, the fake agents, the recorded sessions they replay (`recordings/`) and the fake terminal hosts and Codex app-server (`fakes/`).
 
