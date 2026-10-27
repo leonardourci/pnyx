@@ -1,6 +1,7 @@
 import { spawnSync } from 'node:child_process'
 import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
 
 const PURE_CONCURRENCY = 4
@@ -55,6 +56,11 @@ const files = inputs.filter(input => !options.includes(input)).flatMap(input => 
 
 if (!files.length) {
   throw new Error('Pass unit, scenarios, or explicit test paths')
+}
+
+// A whole lane is a full run; a few explicit files run alongside it.
+if (inputs.includes('unit') || inputs.includes('scenarios')) {
+  await holdRunLock({ name: 'tests' })
 }
 
 const serial = ({ file }: { file: string }) => file.includes('test/scenarios/') || file.endsWith('-browser.test.ts')

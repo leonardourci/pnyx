@@ -16,6 +16,7 @@ import {
   withMarker,
 } from './marker.ts'
 import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS, type Review } from './required-checks.ts'
+import { holdRunLock } from './run-lock.ts'
 
 const args = process.argv.slice(2)
 
@@ -407,6 +408,8 @@ try {
   printReviews()
   process.exit(1)
 }
+
+await holdRunLock({ name: 'verify' })
 
 const headSha = head()
 const dirtyAtStart = changedPaths().length
