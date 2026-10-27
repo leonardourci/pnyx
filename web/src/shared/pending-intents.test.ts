@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { createPendingResource, CommandFailure } from './pending-intents.ts'
 import { pendingHydra, commandArguments } from '../app/pending-state.ts'
-import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'
 import { emptyHydra } from '../../../src/app/reducer.ts'
 import { HydraError } from '../../../src/core/model.ts'
 

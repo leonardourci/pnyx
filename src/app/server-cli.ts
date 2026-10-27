@@ -5,7 +5,7 @@ import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { HydraError } from '../core/model.ts'
 import { hydraIds } from './home-migration.ts'
-import { DEFAULT_PORT, infoPath, readServer, type ServerInfo } from '../server/state.ts'
+import { DEFAULT_PORT, infoPath, readServer, type ServerInfo } from './server-state.ts'
 import { STOP_TIMEOUT_MS } from './server-transport.ts'
 import type { RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
@@ -36,7 +36,7 @@ function serveFlags({ args }: { args: string[] }) {
 }
 
 // A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
-export { DEFAULT_PORT } from '../server/state.ts'
+export { DEFAULT_PORT } from './server-state.ts'
 
 export async function serve(args: string[]): Promise<Record<string, unknown>> {
   const values = serveFlags({ args })

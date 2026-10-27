@@ -1,5 +1,5 @@
-import { MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
-import { seedWebFixture } from '../src/test-harness/web-fixture.ts'
+import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
+import { seedWebFixture } from '../test-harness/web-fixture.ts'
 import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
@@ -12,32 +12,32 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
-import { startServer } from '../src/app/server-daemon.ts'
-import { allowedRequest, type RunningServer, type ServerMessage } from '../src/app/server-transport.ts'
-import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
-import { acquireLock, spoolDir } from '../src/store/hydra-store.ts'
-import { spoolWrite } from '../src/app/spool.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { hydraDir, hydrasDir } from '../src/app/home-migration.ts'
-import { readEvents } from '../src/app/event-log.ts'
-import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
-import { decidePush } from '../src/core/decide.ts'
-import { indexStatus, searchPath } from '../src/oracle/index.ts'
-import { stopAll, track } from '../src/test-harness/processes.ts'
-import type { HydraSummary } from '../src/server/hydras.ts'
+import { startServer } from './server-daemon.ts'
+import { allowedRequest, type RunningServer, type ServerMessage } from './server-transport.ts'
+import { infoPath, localToken, readServer, socketPath } from './server-state.ts'
+import { acquireLock, spoolDir } from '../store/hydra-store.ts'
+import { spoolWrite } from './spool.ts'
+import { withWriter } from './writer.ts'
+import { loadHydra } from './store.ts'
+import { hydraDir, hydrasDir } from './home-migration.ts'
+import { readEvents } from './event-log.ts'
+import { hydraConfig, hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
+import { decidePush } from '../core/decide.ts'
+import { indexStatus, searchPath } from '../oracle/index.ts'
+import { stopAll, track } from '../test-harness/processes.ts'
+import type { HydraSummary } from './server-hydras.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
 // The server follows linked pull requests; these tests never reach GitHub.
 process.env.PNYX_GH_AXI = join(
   import.meta.dirname,
-  'fixtures/github/gh-axi.sh',
+  '../../test/fixtures/github/gh-axi.sh',
 )
 
 const BIN = join(
   import.meta.dirname,
-  '..',
+  '../..',
   'dist',
   'cli',
   'pnyx-axi.js',
@@ -186,7 +186,7 @@ const eventRecorded = ({
   what,
 }: {
   hydraId: string
-  matches({ event }: { event: import('../src/app/model.ts').HydraEvent }): boolean
+  matches({ event }: { event: import('./model.ts').HydraEvent }): boolean
   what: string
 }) => until({
   hydraId,
@@ -3288,7 +3288,7 @@ test(
       text?: string
     }) => {
       const threadFrom = ({ message }: { message: ServerMessage }) => message.type === 'thread' ? message.thread
-        : message.type === 'receipt' ? message.thread as import('../src/thread/read.ts').ThreadPage | undefined
+        : message.type === 'receipt' ? message.thread as import('../thread/read.ts').ThreadPage | undefined
           : undefined
       const message = await t.waitForMessage({
         what: `thread session ${session ?? 'none'}${text ? ` containing ${text}` : ''}`,

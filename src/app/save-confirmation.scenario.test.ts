@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
-import { HYDRA_CARD } from '../../src/core/hydra.ts'
-import { browserCommand } from '../../src/server/browser.ts'
-import { localToken } from '../../src/server/state.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
+import { browserCommand } from './server-browser.ts'
+import { localToken } from './server-state.ts'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
-import { openPage, scenarioGroup } from '../../src/test-harness/harness.ts'
+import { openPage, scenarioGroup } from '../test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

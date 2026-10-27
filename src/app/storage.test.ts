@@ -6,16 +6,16 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
-import { HydraError } from '../src/core/model.ts'
-import { type HydraEvent } from '../src/app/model.ts'
-import { emptyHydra, replay } from '../src/app/reducer.ts'
-import { acquireLock } from '../src/store/hydra-store.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { repairHydra } from '../src/app/repair.ts'
-import { hydraDir, hydraIds } from '../src/app/home-migration.ts'
-import { readEvents } from '../src/app/event-log.ts'
-import { STREAMS, assertGolden, readStream } from '../src/test-harness/streams.ts'
+import { HydraError } from '../core/model.ts'
+import { type HydraEvent } from './model.ts'
+import { emptyHydra, replay } from './reducer.ts'
+import { acquireLock } from '../store/hydra-store.ts'
+import { withWriter } from './writer.ts'
+import { loadHydra } from './store.ts'
+import { repairHydra } from './repair.ts'
+import { hydraDir, hydraIds } from './home-migration.ts'
+import { readEvents } from './event-log.ts'
+import { STREAMS, assertGolden, readStream } from '../test-harness/streams.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'
@@ -1397,7 +1397,7 @@ test(
     })
     const store = join(
       import.meta.dirname,
-      '../src/app/home-migration.ts',
+      'home-migration.ts',
     )
     const runs = Array.from(
       { length: 6 },

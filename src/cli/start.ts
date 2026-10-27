@@ -37,7 +37,7 @@ import { createPaseoAgent, startAgent, type Harness } from '../integrations/pase
 import type { Connect } from '../integrations/paseo/client.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { canonical } from '../store/paths.ts'
-import { askHost } from '../server/state.ts'
+import { askHost } from '../app/server-state.ts'
 import { pnyxHome } from '../store/hydra-store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
 import { loadHydra } from '../app/store.ts'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { localToken } from '../../src/server/state.ts'
+import { localToken } from '../../src/app/server-state.ts'
 import { browserGroup } from '../../src/test-harness/browser.ts'
 import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 

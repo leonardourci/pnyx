@@ -1,4 +1,4 @@
-import type { SaveCommand } from '../../../src/server/saves.ts'
+import type { SaveCommand } from '../../../src/app/save-receipts.ts'
 
 export function storageKey({
   key,

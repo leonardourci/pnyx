@@ -10,7 +10,7 @@ process.env.PNYX_SEMANTIC = 'off'
 
 const BIN = join(
   import.meta.dirname,
-  '..',
+  '../..',
   'dist',
   'cli',
   'pnyx-axi.js',

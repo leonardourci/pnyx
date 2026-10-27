@@ -8,7 +8,7 @@ import { type IncomingMessage, type ServerResponse } from 'node:http'
 import { join } from 'node:path'
 import { commands as cliCommands } from './cli.ts'
 import { type HydraEvent, type HydraState } from './model.ts'
-import { type HydraSummary } from '../server/hydras.ts'
+import { type HydraSummary } from './server-hydras.ts'
 import { type HydraQueue } from '../server/host.ts'
 import type { ClientMessage } from './server-http.ts'
 

@@ -4,12 +4,12 @@ import fs from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
 import { WebSocket } from 'ws'
-import { HYDRA_CARD, hydraEvent } from '../../src/core/hydra.ts'
+import { HYDRA_CARD, hydraEvent } from '../core/hydra.ts'
 import { join } from 'node:path'
-import { localToken } from '../../src/server/state.ts'
-import { spoolWrite } from '../../src/app/spool.ts'
-import { withWriter } from '../../src/app/writer.ts'
-import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
+import { localToken } from './server-state.ts'
+import { spoolWrite } from './spool.ts'
+import { withWriter } from './writer.ts'
+import { scenarioGroup, until } from '../test-harness/harness.ts'
 
 const pnyx = scenarioGroup()
 

@@ -1,4 +1,4 @@
-import type { HydraState } from '../app/model.ts'
+import type { HydraState } from './model.ts'
 
 export interface SaveCommand {
   type: 'command'

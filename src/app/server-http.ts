@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs'
 import { type IncomingMessage, type ServerResponse } from 'node:http'
 import { extname, join, normalize } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { hydraIdentity } from '../server/state.ts'
+import { hydraIdentity } from './server-state.ts'
 import { MAX_BODY, WEB_ROOT, MIME } from './server-transport.ts'
 
 export function readBytes({

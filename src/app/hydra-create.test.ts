@@ -3,9 +3,9 @@ import { appendFileSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { createHydra } from '../src/server/hydras.ts'
-import { hydraDir } from '../src/app/home-migration.ts'
-import { readEvents } from '../src/app/event-log.ts'
+import { createHydra } from './server-hydras.ts'
+import { hydraDir } from './home-migration.ts'
+import { readEvents } from './event-log.ts'
 
 test(
   'a creation attempt recovers the same sequential identity from the configuration event',

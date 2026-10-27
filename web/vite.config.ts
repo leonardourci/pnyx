@@ -1,7 +1,7 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
 import { defineConfig, type Plugin } from 'vite'
-import { hydraIdentity, localToken } from '../src/server/state.ts'
+import { hydraIdentity, localToken } from '../src/app/server-state.ts'
 
 // `pnpm dev` runs `pnyx-axi serve --hydra dev` on this port; the dev server forwards the Hydra's WebSocket to it.
 const SERVER = `http://127.0.0.1:${process.env.PNYX_DEV_PORT ?? 4319}`
