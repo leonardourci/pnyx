@@ -335,6 +335,8 @@ export function HydraChat({
   }
 
   const jumpDecision = async ({ decision }: { decision: ChatDecision }) => {
+    // The owner asked for this scroll: a glide still easing a reply to the bottom must not undo it.
+    ownerScroll()
     follow.current = false
     setAway(true)
     setLoadingEarlier(true)

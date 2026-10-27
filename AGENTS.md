@@ -6,7 +6,7 @@ Vocabulary: Pnyx is the app, a **Hydra** holds its tasks (always say Hydra, neve
 
 ## Build and test
 
-Node 22.13 or newer (for the built-in `node:sqlite`), pnpm (the version is pinned in `package.json`), and Chrome for the browser journeys (or `PNYX_CHROME` set to its binary).
+Node 22.13 or newer (for the built-in `node:sqlite`) and pnpm (the version is pinned in `package.json`).
 
 ```sh
 pnpm install
@@ -22,7 +22,7 @@ Tests use Node's built-in test runner and run TypeScript directly through Node's
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder. Usage and setup live in the root README; the only per-folder README is `test/README.md`, for the test harness. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. The root README introduces Pnyx; usage and setup references live in `docs/`; the only per-folder README is `test/README.md`, for the test harness. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|
@@ -46,8 +46,8 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 - Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server in the Hydra's server; a start can instead go through the local Paseo daemon, a Firstmate home or the Hydra's own command, and Pnyx never watches over those.
 - `pnyx-axi` is the only writer of Hydra state. Every change is an event appended to the Hydra's `events.jsonl`, which is append-only and never rewritten. `snapshot.json` is a cache rebuilt from the log and replaced atomically.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same Hydra.
-- No database for Hydra state, and no AI model calls or model tokens anywhere in the Hydra's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as Hydra state. Semantic search (on by default, through optional dependencies) adds vectors to it from local, open-weight models that run in `src/oracle`'s own worker process (`oracle setup` also loads them once, in its own process, for their golden check), never in the reducer, hooks or the server. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
-- Hooks are silent (no stdout or stderr), fast, and always exit 0. They never wait on a network call, browser or model.
+- No database for Hydra state, and no AI model calls or model tokens anywhere in the Hydra's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as Hydra state. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
+- Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Hydra's open work for the session's project.
 - The Firstmate integration only reads a Firstmate home's files and replies through Firstmate's own send and inbox commands. The one write is `setup hydra`, which adds the Hydra skills as local, git-excluded skills in the home; Firstmate's tracked files never change.
 - GitHub pull request state comes from `gh-axi`.
 - The CLI follows [AXI](https://axi.md/): compact TOON output, minimal default fields, explicit empty states, structured errors, no prompts and next-step hints.

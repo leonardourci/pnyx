@@ -52,7 +52,8 @@ const EVENTS: Record<Harness, string[]> = {
     'SessionEnd',
   ],
 }
-// Codex caps SessionEnd and Interrupt hooks at 3 seconds; the script takes milliseconds.
+// Codex caps SessionEnd and Interrupt hooks at 3 seconds; the script takes milliseconds, and
+// the session-start summary well under a second.
 const TIMEOUT_SECONDS = 3
 
 interface Handler {
@@ -86,6 +87,15 @@ export function configPath({ harness }: { harness: Harness }): string {
     'hooks.json',
   )
 }
+
+// The CLI the session-start hook runs for its summary; setup rewrites it on every run.
+const CLI_ENTRY = join(
+  import.meta.dirname,
+  '..',
+  '..',
+  'cli',
+  import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js',
+)
 
 export function scriptPath(): string {
   return join(
@@ -158,7 +168,7 @@ function merged({
         event,
         {
           type: 'command',
-          command: `${quote({ value: scriptPath() })} ${harness} ${event}`,
+          command: `${quote({ value: scriptPath() })} ${harness} ${event}${event === 'SessionStart' ? ` ${quote({ value: CLI_ENTRY })}` : ''}`,
           timeout: TIMEOUT_SECONDS,
         },
       ]),

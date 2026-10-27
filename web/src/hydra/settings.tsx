@@ -10,7 +10,6 @@ import { KeyboardSettings } from '../keyboard/settings.tsx'
 import { columnsFor } from './view.ts'
 import type { Command } from './connection.ts'
 import { resetWidths } from './oracle-catalog.ts'
-import { OracleSettings } from './oracle-settings.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 import { IntegrationSettings } from './integrations.tsx'
 import { About } from './about.tsx'
@@ -215,7 +214,6 @@ function ConnectedSettings({
           notify={notify}
         />
         <AgentKinds state={state} command={command} notify={notify} />
-        <OracleSettings command={command} notify={notify} />
         <IntegrationSettings command={command} notify={notify} />
         <About />
       </div>

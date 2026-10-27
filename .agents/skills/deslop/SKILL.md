@@ -18,6 +18,17 @@ Apply this checklist to the changed text, whatever its format. Preserve facts, c
 - [ ] Check Pnyx vocabulary and update stale usage guidance in the root README. Use Hydra, Oracle and inscribe; keep other terms plain.
 - [ ] Read the final diff, including the PR description and proposed commit messages. Run `git diff --check`; for executable changes run focused checks and `pnpm verify` as allowed. A prose-only cleanup needs no new behavior tests.
 
+## Code cleanups
+
+A cleanup removes complexity the job didn't ask for without changing what the code does. [follow-conventions](../follow-conventions/SKILL.md) holds the target style.
+
+- [ ] Unpack cryptic shorthand in new and changed code into plain named steps: conditional spreads (`...(x ? { a } : {})`), logical assignment picking a value (`??=`, `||=`, `&&=`), `||` or `??` defaults whose case the names don't make obvious, a bare `void` on a promise, `.then` chains and `for (;;)` or `while (true)` waits. Keep every arm's outcome: a `|| 'none'` that fires on an empty list becomes a named empty-list check. Existing uses elsewhere are not rewritten.
+- [ ] Leave code that says what it wants alone. `map` and `filter` over a list, `Promise.all` for independent work and a JSX condition that picks what shows are not clutter; don't rewrite them into step-by-step loops or one-at-a-time awaits. Bad: `const titles = []; for (const card of cards) { if (card.open) { titles.push(card.title) } }`. Good: `const titles = cards.filter(card => card.open).map(card => card.title)`.
+- [ ] Remove indirection; don't add it. No new abstraction, helper layer or dependency to make a pattern look cleaner. A named helper still belongs where it names a distinct read, decision or write, or one decision used in several places. A one-off fallback stays a local `try`/`catch` at that spot.
+- [ ] Keep every path's outcome. When a `.catch(() => fallback)` becomes `try`/`catch`, the fallback value and the errors that reach it stay the same. Serialized work stays serialized, independent work stays concurrent, and retries, cleanup in `finally` and the message the user sees stay as they were.
+- [ ] Keep the diff small and mechanical, one logical change per commit, so a reviewer can compare old and new arm by arm. Update or delete guidance the cleanup made stale in the same change.
+- [ ] Scan what you added for new shorthand: `git diff origin/main -U0 -- '*.ts' '*.tsx' | grep -E '^\+.*(\.then\(|\bvoid [a-zA-Z(]|\?\?=|\|\|=|&&=|\.\.\.\(|for \(;;\)|while \(true\))'`. Name any you keep on purpose in the PR, with its reason.
+
 Record meaningful fixes and any intentional exception. Once complete, tick **Ran `deslop`** in the PR and note what you changed (or say no findings).
 
 For an agent: edit the assigned text yourself, keep the author's meaning, and report any validation gap honestly. This checklist grants no extra authority to commit, publish or send text.

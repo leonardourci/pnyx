@@ -1,9 +1,8 @@
-import { useOraclePreferences } from './oracle-preferences.ts'
 import { useHeadsDispatch } from './heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { AgentConfig, HydraState, ViewPreferences } from '../../../src/core/model.ts'
 import { KEY_ACTIONS, bindingsFor } from '../../../src/core/keyboard.ts'
-import type { HybridHit } from '../../../src/oracle/semantic.ts'
+import type { Hit } from '../../../src/oracle/index.ts'
 import { Button, Input, NumberField, Select, Switch } from '../components/ui/controls.tsx'
 import { Markdown } from '../components/ui/markdown.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
@@ -16,7 +15,7 @@ import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydr
 import { Projects } from './projects.tsx'
 import { AgentKinds } from './agent-kinds.tsx'
 import { columnsFor } from './view.ts'
-import { commandQuery, matchesCommand, resetWidths, oracleSettings, queryWords, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
+import { commandQuery, matchesCommand, resetWidths, oracleSettings, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
 
 export function Oracle({
   state,
@@ -41,7 +40,7 @@ export function Oracle({
   command: Command
   query: string
   setQuery({ query }: { query: string }): void
-  hits: HybridHit[]
+  hits: Hit[]
   save({ patch }: { patch: unknown }): Promise<boolean>
   openTask({ id }: { id: string }): void
   openHydra(): void
@@ -59,26 +58,9 @@ export function Oracle({
   connected: boolean
 }) {
   const [
-    semantic,
-    setSemantic,
-  ] = useState<{
-    query: string
-    catalog: string
-    matches: string[]
-  } | null>(null)
-  const [
     expanded,
     setExpanded,
   ] = useState(false)
-  const {
-    settings: preferences,
-    set: persistSetting,
-  } = useOraclePreferences({
-    command,
-    notify,
-    enabled: expanded && connected,
-  })
-  const settings = preferences ?? {}
   const input = useRef<HTMLInputElement>(null), root = useRef<HTMLDivElement>(null)
   useEffect(
     () => {
@@ -138,18 +120,6 @@ export function Oracle({
       return focus()
     },
   })
-  const persist = ({
-    key,
-    value,
-  }: {
-    key: string
-    value: string
-  }) =>
-    persistSetting({
-      key,
-      value,
-    }).catch((e: Error) => notify({ text: e.message }))
-
   const editColumn = ({ args }: { args: string[] }) => command({
     name: 'column',
     args: [
@@ -224,62 +194,6 @@ export function Oracle({
       label: setting.label,
       words: setting.words,
       content: control,
-    })
-  }
-
-  for (const [
-    key,
-    label,
-    options,
-  ] of [
-      [
-        'oracle.semantic',
-        'Semantic search',
-        [
-          'on',
-          'off',
-        ],
-      ],
-      [
-        'oracle.rerank',
-        'Rerank top results',
-        [
-          'auto',
-          'on',
-          'off',
-        ],
-      ],
-      [
-        'oracle.model',
-        'Oracle model',
-        [
-          'auto',
-          'granite-97m',
-          'granite-311m',
-        ],
-      ],
-    ] as const) {
-    add({
-      id: key,
-      label,
-      words: 'search meaning words local models',
-      content: (
-        <>
-          <span>{label}</span>
-          <Select
-            label={label}
-            value={settings[key] ?? options[0]}
-            options={options.map(value => ({
-              value,
-              label: value,
-            }))}
-            onChange={({ value }) => void persist({
-              key,
-              value,
-            })}
-          />
-        </>
-      ),
     })
   }
 
@@ -589,58 +503,6 @@ export function Oracle({
       notify={notify}
     />,
   })
-  const catalog = JSON.stringify(rows.map(row => ({
-    id: row.id,
-    text: row.text.slice(
-      0,
-      500,
-    ),
-  })))
-  const words = queryWords({ query })
-  useEffect(
-    () => {
-      if (!expanded || !words || !connected) {
-        return
-      }
-
-      let live = true
-      const timer = setTimeout(
-        () => {
-          void command({
-            name: 'oracle-commands',
-            args: [
-              words,
-              catalog,
-            ],
-          }).then(
-            receipt => {
-              if (live) {
-                setSemantic({
-                  query: words,
-                  catalog,
-                  matches: receipt.matches as string[],
-                })
-              }
-            },
-            () => {},
-          )
-        },
-        180,
-      )
-
-      return () => {
-        live = false; clearTimeout(timer)
-      }
-    },
-    [
-      command,
-      words,
-      catalog,
-      connected,
-      expanded,
-    ],
-  )
-  const meaning = semantic?.query === words && semantic.catalog === catalog ? semantic.matches : []
   const matchingRows = rows.filter(row =>
     matchesCommand({
       query,
@@ -648,7 +510,7 @@ export function Oracle({
         0,
         500,
       ),
-    }) || meaning.includes(row.id))
+    }))
 
   const visibleHits = commandQuery({ query }) ? [] : hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card].hidden))
   const searchRows: ResultRow[] = visibleHits.map(hit => ({
@@ -661,7 +523,6 @@ export function Oracle({
         </Button>
         <small>
           {hit.kind === 'hydra' ? 'Hydra conversation' : 'Task'}
-          {hit.match === 'semantic' ? ' · similar meaning' : ''}
         </small>
         {hit.snippets.map((
           snippet,

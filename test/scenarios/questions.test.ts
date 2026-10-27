@@ -1,24 +1,327 @@
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { test } from 'node:test'
-import { taskTimeline } from '../../web/src/hydra/task-updates.ts'
-import { HYDRA_CARD } from '../../src/core/hydra.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
-
-const pnyx = scenarioGroup({ incorporateSteering: true })
+import { openDecisions } from '../../src/core/decisions.ts'
+import { openPage, until } from './harness.ts'
+import { pnyx } from './pnyx.ts'
 
 test(
-  'a worker asks, Hydra escalates, the owner answers on the page, the worker gets it once, and it stays answered after a restart',
+  'a worker’s permission request waits on its task in Needs you until Hydra or the owner decides it once, the worker gets that decision and its answers, a Codex worker’s turn permissions grant only what it asked, and a restart expires what was left waiting',
   async () => {
     const s = await pnyx.scenario()
-    const folder = s.folder({ name: 'web-app' })
+    const folder = s.folder({ name: 'service' })
+    const hydraAgent = await s.chat({ text: 'Clean up the service build.' })
+    const hydra = s.as({ agent: hydraAgent })
+    await hydra.run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Clean the build',
+        '--key',
+        'clean',
+        '--folder',
+        folder,
+        '--reason',
+        'the owner asked for it',
+      ],
+    })
+    await hydra.run({
+      args: [
+        'task',
+        'start',
+        'clean',
+        '--reason',
+        'the owner asked for it',
+      ],
+    })
+    const agent = await s.agent({ cwd: folder })
+    await until({
+      what: 'the worker to finish its opening turn',
+      check: () => s.task({ key: 'clean' }).sessionActivity === 'finished',
+    })
+    const pending = () => until({
+      what: 'a pending permission request',
+      check: () => s.task({ key: 'clean' }).permissions?.find(r => r.status === 'pending'),
+    })
+
+    const heard = hydraAgent.received.length
+    const bash = agent.useTool!({
+      tool: 'Bash',
+      input: {
+        command: 'rm -rf build',
+        description: 'Remove the build folder',
+      },
+    })
+    const request = await pending()
+    assert.deepEqual(
+      [
+        request.tool,
+        request.input,
+        s.task({ key: 'clean' }).column,
+      ],
+      [
+        'Bash',
+        {
+          command: 'rm -rf build',
+          description: 'Remove the build folder',
+        },
+        s.column({ role: 'needs_you' }),
+      ],
+    )
+    await until({
+      what: 'the request to wake Hydra',
+      check: () => hydraAgent.received.slice(heard).some(text => text.startsWith('<pnyx-wake>')),
+    })
+    assert.match(
+      await hydra.run({
+        args: [
+          'hydra',
+          'check',
+          '--after',
+          '0',
+        ],
+      }),
+      new RegExp(request.id),
+    )
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'permission',
+          'clean',
+          request.id,
+          'allow',
+        ],
+      }),
+      'VALIDATION_ERROR',
+    )
+    await hydra.run({
+      args: [
+        'task',
+        'permission',
+        'clean',
+        request.id,
+        'allow',
+        '--reason',
+        'it only removes build output',
+      ],
+    })
+    assert.deepEqual(
+      await bash,
+      { behavior: 'allow' },
+    )
+    assert.deepEqual(
+      [
+        await s.ownerRefusal({
+          args: [
+            'task',
+            'permission',
+            'clean',
+            request.id,
+            'deny',
+          ],
+        }),
+        s.task({ key: 'clean' }).permissions?.find(r => r.id === request.id)?.status,
+        s.task({ key: 'clean' }).column,
+      ],
+      [
+        {
+          code: 'PERMISSION_CLOSED',
+          error: 'permission request is already allow',
+        },
+        'allow',
+        s.column({ role: 'in_progress' }),
+      ],
+    )
+
+    const question = {
+      question: 'Which database should the cache use?',
+      header: 'Cache',
+      multiSelect: false,
+      options: [
+        {
+          label: 'Postgres',
+          description: 'The existing database',
+        },
+        {
+          label: 'SQLite',
+          description: 'A local file',
+        },
+      ],
+    }
+    const asked = agent.useTool!({
+      tool: 'AskUserQuestion',
+      input: { questions: [question] },
+    })
+    const ask = await pending()
+    await s.owner({
+      args: [
+        'task',
+        'permission',
+        'clean',
+        ask.id,
+        'allow',
+        '--answer',
+        JSON.stringify({ answers: [{ pick: [2] }] }),
+      ],
+    })
+    assert.deepEqual(
+      await asked,
+      {
+        behavior: 'allow',
+        updatedInput: {
+          questions: [question],
+          answers: { [question.question]: 'SQLite' },
+        },
+      },
+    )
+
+    const write = agent.useTool!({
+      tool: 'Write',
+      input: {
+        file_path: '/etc/hosts',
+        content: '',
+      },
+    })
+    const left = await pending()
+    await s.owner({
+      args: [
+        'task',
+        'permission',
+        'clean',
+        left.id,
+        'deny',
+        '--reason',
+        'outside the task',
+      ],
+    })
+    assert.equal(
+      (await write)?.behavior,
+      'deny',
+    )
+
+    // A Codex worker asks for turn permissions: allowing grants only what it requested, for this turn,
+    // and a denial grants nothing.
+    const network = s.folder({ name: 'network' })
     await s.owner({
       args: [
         'task',
         'create',
         '--title',
-        'Deslop the web app',
+        'Fetch the schema',
         '--key',
-        'ship',
+        'fetch',
+        '--folder',
+        network,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'fetch',
+        '--harness',
+        'codex',
+      ],
+    })
+    const codex = await s.agent({ cwd: network })
+
+    for (const choice of [
+      'allow',
+      'deny',
+    ]) {
+      const asked = codex.ask!({
+        method: 'item/permissions/requestApproval',
+        params: {
+          permissions: {
+            network: { enabled: true },
+            fileSystem: null,
+          },
+        },
+      })
+      const turn = await until({
+        what: `the ${choice} turn permission request`,
+        check: () => s.task({ key: 'fetch' }).permissions?.find(r => r.status === 'pending'),
+      })
+      assert.deepEqual(
+        [
+          turn.tool,
+          turn.input.scope,
+        ],
+        [
+          'Turn permissions',
+          'turn',
+        ],
+      )
+      await s.owner({
+        args: [
+          'task',
+          'permission',
+          'fetch',
+          turn.id,
+          choice,
+        ],
+      })
+      assert.deepEqual(
+        await asked,
+        {
+          permissions: choice === 'allow' ? { network: { enabled: true } } : {},
+          scope: 'turn',
+        },
+      )
+    }
+
+    const later = agent.useTool!({
+      tool: 'Bash',
+      input: { command: 'make release' },
+    })
+    const waiting = await pending()
+    await pnyx.restart()
+    assert.deepEqual(
+      [
+        await later,
+        s.task({ key: 'clean' }).permissions?.find(r => r.id === waiting.id)?.status,
+      ],
+      [
+        {
+          behavior: 'deny',
+          message: 'This permission request expired.',
+        },
+        'expired',
+      ],
+    )
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'task',
+          'permission',
+          'clean',
+          waiting.id,
+          'allow',
+        ],
+      }),
+      'PERMISSION_CLOSED',
+    )
+  },
+)
+
+test(
+  'a report choice survives completion, origin hiding and restart, only the owner answers it, and the answer is recorded',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'research' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'report',
+        '--title',
+        'Cache investigation',
+        '--kind',
+        'investigation',
         '--folder',
         folder,
       ],
@@ -27,300 +330,293 @@ test(
       args: [
         'task',
         'start',
-        'ship',
+        'report',
       ],
     })
     const worker = s.as({ agent: await s.agent({ cwd: folder }) })
-    const taskId = s.task({ key: 'ship' }).id
-    await until({
-      what: 'the worker to finish its opening turn',
-      check: () => s.task({ key: 'ship' }).sessionActivity === 'finished',
-    })
+    const file = join(
+      folder,
+      'report.md',
+    )
+    writeFileSync(
+      file,
+      'The cache is slow. The owner must choose whether to retain historical entries.',
+    )
     await worker.run({
       args: [
         'task',
-        'status',
-        'ship',
-        'working',
-        '--note',
-        'Cleaning up',
+        'report',
+        'report',
+        '--file',
+        file,
       ],
     })
-    const id = /^ask: (\S+)$/m.exec(await worker.run({
-      args: [
-        'task',
-        'ask',
-        'ship',
-        '--question',
-        'Delete the legacy theme?',
-        '--choice',
-        'Delete',
-        '--choice',
-        'Keep',
-      ],
-    }))![1]!
-    assert.equal(
-      s.task({ key: 'ship' }).column,
-      s.column({ role: 'in_progress' }),
-    )
-
-    const hydraAgent = await s.agent({ hydra: true })
-    await until({
-      what: 'Hydra to hear the question',
-      check: () => hydraAgent.received.some(text => text.includes('Delete the legacy theme?')),
-    })
-    const hydra = s.as({ agent: hydraAgent })
+    const report = s.task({ key: 'report' }).report!
     assert.equal(
       await worker.refused({
         args: [
           'task',
-          'escalate',
-          'ship',
-          id,
-          '--reason',
-          'I want the owner',
-        ],
-      }),
-      'NOT_ALLOWED',
-    )
-    assert.equal(
-      await hydra.refused({
-        args: [
-          'task',
-          'escalate',
-          'ship',
-          id,
+          'ask',
+          'report',
+          '--from-report',
+          'report',
+          '--question',
+          'Worker cannot link a Hydra question',
         ],
       }),
       'VALIDATION_ERROR',
     )
+    assert.equal(
+      await worker.refused({
+        args: [
+          'task',
+          'status',
+          'report',
+          'done',
+        ],
+      }),
+      'NOT_LANDED',
+    )
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'task',
+          'hide',
+          'report',
+        ],
+      }),
+      'REPORT_REVIEW_REQUIRED',
+    )
+    const doneColumn = s.column({ role: 'done' })
+    assert.ok(doneColumn)
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'move',
+          'report',
+          doneColumn,
+        ],
+      }),
+      'REPORT_REVIEW_REQUIRED',
+    )
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'outcome',
+          'report',
+          'done',
+        ],
+      }),
+      'REPORT_REVIEW_REQUIRED',
+    )
+    assert.equal(
+      await s.ownerRefused({
+        args: [
+          'task',
+          'build',
+          'report',
+        ],
+      }),
+      'REPORT_REVIEW_REQUIRED',
+    )
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'cache',
+        '--title',
+        'Fix cache retention',
+      ],
+    })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review the cache report and ask about retention.' }) })
     await hydra.run({
       args: [
         'task',
-        'escalate',
-        'ship',
-        id,
+        'ask',
+        'cache',
+        '--from-report',
+        'report',
         '--question',
-        'Can the legacy theme go?',
-        '--reason',
-        'it is user-visible',
+        'Retain historical cache entries?',
+        '--choice',
+        'Retain',
+        '--choice',
+        'Remove',
       ],
     })
-
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    const ask = await page.shows({
-      what: 'the escalated question in Needs you',
-      check: ({ state }) => {
-        const card = state.cards[taskId]
-
-        return card?.column === s.column({ role: 'needs_you' }) && card.asks?.find(a => a.id === id && a.escalated)
+    const ask = s.task({ key: 'cache' }).asks![0]!
+    const call = `${s.task({ key: 'cache' }).id}/${ask.id}`
+    assert.deepEqual(
+      ask.origin,
+      {
+        task: s.task({ key: 'report' }).id,
+        report: report.id,
       },
-    })
-    assert.deepEqual(
-      [
-        ask.question,
-        ask.actor,
-        ask.audience,
-        ask.escalated?.question,
-        ask.escalated?.actor,
-        ask.escalated?.reason,
-      ],
-      [
-        'Delete the legacy theme?',
-        `worker:${taskId}`,
-        'owner',
-        'Can the legacy theme go?',
-        'hydra',
-        'it is user-visible',
-      ],
     )
     assert.equal(
-      s.events().find(e => e.type === 'task.asked')?.actor,
-      `worker:${taskId}`,
+      await worker.refused({
+        args: [
+          'task',
+          'report-review',
+          'report',
+          '--report',
+          report.id,
+          '--none',
+        ],
+      }),
+      'VALIDATION_ERROR',
     )
-
-    for (const [
-      agent,
-      args,
-      code,
-    ] of [
-        [
-          hydra,
-          [
-            'answer',
-            'ship',
-            id,
-            '--choice',
-            '1',
-            '--reason',
-            'obvious',
-          ],
-          'OWNER_ONLY',
-        ],
-        [
-          hydra,
-          [
-            'escalate',
-            'ship',
-            id,
-            '--reason',
-            'again',
-          ],
-          'ASK_CLOSED',
-        ],
-        [
-          worker,
-          [
-            'answer',
-            'ship',
-            id,
-            '--choice',
-            '1',
-            '--actor',
-            'web',
-          ],
-          'NOT_ALLOWED',
-        ],
-      ] as const) {
-      assert.equal(
-        await agent.refused({
-          args: [
-            'task',
-            ...args,
-          ],
-        }),
-        code,
-      )
-    }
-
-    // The page answers through the server, whose own environment may carry a worker's actor.
-    process.env.PNYX_ACTOR = `worker:${taskId}`
-
-    try {
-      assert.equal(
-        (await page.command({
-          name: 'task',
-          args: [
-            'answer',
-            taskId,
-            id,
-            '--text',
-            'Keep it one more release.',
-          ],
-        })).state,
-        'delivered',
-      )
-    } finally {
-      delete process.env.PNYX_ACTOR
-    }
-
     assert.equal(
-      s.events().findLast(e => e.type === 'card.replied' && e.data.answers === id)?.actor,
-      'web',
+      await worker.refused({
+        args: [
+          'task',
+          'report-review',
+          'report',
+          '--report',
+          report.id,
+          '--call',
+          `${s.task({ key: 'cache' }).id}/missing`,
+        ],
+      }),
+      'VALIDATION_ERROR',
     )
-    const answers = () => s.received({ cwd: folder }).filter(text => text.includes('Keep it one more release.'))
-    await until({
-      what: 'the worker to get the answer',
-      check: () => answers().length > 0,
-    })
-    assert.match(
-      answers().join('\n---\n'),
-      /^Answer from the owner to your question .*: Delete the legacy theme\?\nKeep it one more release\.$/,
-    )
-    const shown = await page.shows({
-      what: 'the task back in progress',
-      check: ({ state }) => state.cards[taskId]?.column === s.column({ role: 'in_progress' }) && state,
-    })
-    const history = await page.command({
-      name: 'history',
+    await worker.run({
       args: [
-        '--card',
-        taskId,
-        '--full',
-        '--updates',
+        'task',
+        'report-review',
+        'report',
+        '--report',
+        report.id,
+        '--call',
+        call,
       ],
     })
-    const decision = taskTimeline({
-      card: shown.cards[taskId]!,
-      events: history.events as Parameters<typeof taskTimeline>[0]['events'],
-      columns: shown.config!.columns,
-    }).find(u => u.id === id)!.decision!
-    assert.deepEqual(
-      [
-        decision.actor,
-        decision.answer,
-        decision.choice,
-        decision.ask?.escalation?.question,
+    const count = s.events().filter(event => event.type === 'task.report-reviewed').length
+    await worker.run({
+      args: [
+        'task',
+        'report-review',
+        'report',
+        '--report',
+        report.id,
+        '--call',
+        call,
       ],
-      [
-        'You',
-        'Keep it one more release.',
-        undefined,
-        'Can the legacy theme go?',
-      ],
+    })
+    assert.equal(
+      s.events().filter(event => event.type === 'task.report-reviewed').length,
+      count,
     )
-    page.close()
-    await until({
-      what: 'the worker and Hydra to finish their turns',
-      check: () => [
-        s.task({ key: 'ship' }),
-        s.state().cards[HYDRA_CARD],
-      ].every(card => card?.sessionActivity !== 'working'),
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'report',
+        'done',
+      ],
     })
-
-    await pnyx.restart()
-    const after = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    await after.shows({
-      what: 'the question still answered after the restart',
-      check: ({ state }) => state.cards[taskId]?.asks?.find(a => a.id === id)?.answered,
+    await s.owner({
+      args: [
+        'task',
+        'hide',
+        'report',
+      ],
     })
     assert.equal(
       await s.ownerRefused({
         args: [
           'task',
-          'answer',
-          'ship',
-          id,
-          '--text',
-          'Delete it after all.',
+          'hide',
+          'cache',
         ],
       }),
-      'ASK_CLOSED',
+      'OWNER_DECISION_PENDING',
     )
-    // A later message reaches the resumed worker; by then any repeat of the answer would have too.
-    await s.owner({
-      args: [
-        'reply',
-        taskId,
-        '--text',
-        'Thanks, carry on.',
-      ],
-    })
-    await until({
-      what: 'the resumed worker to get the next message',
-      check: () => s.received({ cwd: folder }).at(-1) === 'Thanks, carry on.',
-    })
     assert.equal(
-      answers().length,
+      s.task({ key: 'cache' }).column,
+      s.column({ role: 'needs_you' }),
+    )
+    assert.equal(
+      openDecisions({ state: s.state() }).filter(item => item.id === ask.id).length,
       1,
     )
-    const resumed = await s.agent({ cwd: folder })
-    assert.deepEqual(
-      [
-        resumed.resumed,
-        resumed.id,
+    await pnyx.restart()
+    await s.owner({
+      args: [
+        'task',
+        'rename',
+        'cache',
+        '--title',
+        'Cache work after restart',
       ],
-      [
-        true,
-        s.task({ key: 'ship' }).agent?.sessionId,
-      ],
+    })
+    // The restarted server still offers the owner the retained report choice.
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    await page.shows({
+      what: 'the same choice after restart',
+      check: ({ state }) => openDecisions({ state }).some(item => item.id === ask.id)
+        && state.cards[s.task({ key: 'cache' }).id]?.title === 'Cache work after restart',
+    })
+    assert.equal(
+      s.task({ key: 'cache' }).asks![0]!.closed,
+      undefined,
     )
-    after.close()
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'answer',
+          'cache',
+          ask.id,
+          '--text',
+          'Approved',
+          '--reason',
+          'recommended default',
+        ],
+      }),
+      'OWNER_ONLY',
+    )
+    const answer = 'Retain existing history; only expire new entries after 30 days.'
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'cache',
+        ask.id,
+        '--text',
+        answer,
+      ],
+    })
+    await page.shows({
+      what: 'the answered choice to leave the open decisions',
+      check: ({ state }) => !openDecisions({ state }).some(item => item.id === ask.id),
+    })
+    page.close()
+    const decision = s.state().hydraMessages!.find(message => message.answers === ask.id)!
+    assert.equal(
+      decision.text,
+      answer,
+    )
+    assert.ok(s.task({ key: 'cache' }).asks![0]!.answered)
+    assert.notEqual(
+      s.task({ key: 'cache' }).column,
+      s.column({ role: 'done' }),
+    )
+    assert.notEqual(
+      s.task({ key: 'cache' }).column,
+      s.column({ role: 'needs_you' }),
+    )
+    assert.equal(
+      s.task({ key: 'cache' }).status?.state === 'done',
+      false,
+    )
+    assert.equal(
+      s.task({ key: 'cache' }).copy,
+      undefined,
+    )
   },
 )
