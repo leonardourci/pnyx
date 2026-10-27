@@ -18,11 +18,11 @@ export function focusedHelp({
     /^usage:/,
     '',
   ).trim()
+  // The subcommand word, or its alternatives: `hide|unhide <id>` names hide and unhide.
   const names = ({ line }: { line: string }) => bare({ line })
     .slice(prefix.length)
-    .split(/[<[]|--/)[0]
-    .split(/[\s|]+/)
-    .filter(Boolean)
+    .split(/\s/)[0]!
+    .split('|')
   const kept: string[] = []
   let keep = false
 

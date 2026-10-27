@@ -38,8 +38,11 @@ const focused = full && sub ? focusedHelp({
 }) : full
 
 // Named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
-invocation.name = focused !== full ? `${command} ${sub}` : command
-invocation.help = focused
+// The server runs other commands in its own process for the web, so serve sets nothing.
+if (command !== 'serve') {
+  invocation.name = focused !== full ? `${command} ${sub}` : command
+  invocation.help = focused
+}
 
 // A usage error with no next step points at the subcommand's own help.
 const hinted = ({ run }: { run: AxiCliCommand<undefined> }): AxiCliCommand<undefined> =>
