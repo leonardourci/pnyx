@@ -19,6 +19,8 @@ export default tseslint.config(
       'src/**',
       'test/**',
       'scripts/**',
+      'eslint/**',
+      'e2e/**',
       '*.js',
     ],
     languageOptions: { globals: globals.node },

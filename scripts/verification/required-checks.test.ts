@@ -28,6 +28,19 @@ const rows = [
     tests: 'changed',
   },
   {
+    paths: [
+      'src/tasks/tasks.test.ts',
+      'e2e/tasks.test.ts',
+    ],
+    reviews: ['audit-tests'],
+    tests: 'changed',
+  },
+  {
+    paths: ['src/integrations/hooks/fixtures/note.md'],
+    reviews: REVIEW_CHECKLISTS,
+    tests: 'full',
+  },
+  {
     paths: ['web/src/app.tsx'],
     reviews: REVIEW_CHECKLISTS,
     tests: 'full',
