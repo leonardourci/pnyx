@@ -6,7 +6,8 @@ import {
 import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { commandCapture } from './command-capture.ts'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -1336,7 +1337,8 @@ test(
 
 test(
   'the Hydra command receives the task brief before explicit opening instructions',
-  async () => {
+  async t => {
+    const capture = commandCapture({ t })
     const f = fixture()
 
     try {
@@ -1345,7 +1347,7 @@ test(
         args: [
           'set',
           '--command',
-          'node -e \'require("fs").writeFileSync("prompt.json", JSON.stringify(process.env.PNYX_PROMPT))\'',
+          'node -e \'const fs=require("fs");fs.writeFileSync("prompt.json.tmp", JSON.stringify(process.env.PNYX_PROMPT));fs.renameSync("prompt.json.tmp","prompt.json")\'',
         ],
       })
       await f.run({
@@ -1377,12 +1379,7 @@ test(
         'prompt.json',
       )
 
-      for (let i = 0; !existsSync(path) && i < 100; i++) {
-        await new Promise(resolve => setTimeout(
-          resolve,
-          20,
-        ))
-      }
+      await capture.completed()
 
       assert.match(
         JSON.parse(readFileSync(

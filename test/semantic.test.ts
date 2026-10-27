@@ -4,6 +4,8 @@ import { execFile, execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs'
 import { createServer } from 'node:http'
+import { createServer as createSocketServer } from 'node:net'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -177,6 +179,81 @@ function hydraId({
     ),
   }
 }
+
+test(
+  'semantic restart replies keep one deadline and report the recent worker state',
+  async t => {
+    const previous = {
+      home: process.env.PNYX_HOME,
+      stub: process.env.PNYX_SEMANTIC_STUB,
+      semantic: process.env.PNYX_SEMANTIC,
+    }
+    process.env.PNYX_HOME = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-sem-restart-',
+    ))
+    process.env.PNYX_SEMANTIC_STUB = '1'
+    delete process.env.PNYX_SEMANTIC
+    const {
+      semanticStatus,
+      workerSocket,
+    } = await import('../src/oracle/semantic.ts')
+    let now = 0
+    let requests = 0
+    const server = createSocketServer(socket => {
+      socket.once(
+        'data',
+        () => {
+          requests++
+          now += 15_000
+          socket.end(`${JSON.stringify({ code: 'RESTART' })}\n`)
+        },
+      )
+    })
+    server.listen(workerSocket())
+    await once(
+      server,
+      'listening',
+    )
+    t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
+
+    try {
+      const status = await semanticStatus({ hydraId: 'semantic-restarts' })
+      assert.equal(
+        requests,
+        2,
+      )
+      assert.match(
+        status.semantic,
+        /timed out waiting for the semantic worker after 30000ms/,
+      )
+      assert.ok(status.semantic.includes('"request":"status"'))
+      assert.ok(status.semantic.includes('"recent":["RESTART","RESTART"]'))
+    } finally {
+      t.mock.restoreAll()
+      await new Promise<void>(resolve => server.close(() => resolve()))
+
+      for (const [
+        key,
+        value,
+      ] of Object.entries({
+          PNYX_HOME: previous.home,
+          PNYX_SEMANTIC_STUB: previous.stub,
+          PNYX_SEMANTIC: previous.semantic,
+        })) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+    }
+  },
+)
 
 async function embedded({ run }: {
   run: (

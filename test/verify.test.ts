@@ -46,10 +46,14 @@ function fixture({
   t,
   docs = false,
   ui = false,
+  paths,
+  body = `Description\n\n${reviews}`,
 }: {
   t: test.TestContext
   docs?: boolean
   ui?: boolean
+  paths?: string[]
+  body?: string
 }) {
   const root = mkdtempSync(join(
     tmpdir(),
@@ -201,6 +205,7 @@ function fixture({
   for (const name of [
     'verify.ts',
     'marker.ts',
+    'required-checks.ts',
   ]) {
     copyFileSync(
       resolve(
@@ -305,20 +310,23 @@ function fixture({
     changed = 'web/behavior.ts'
   }
 
-  mkdirSync(
-    dirname(join(
-      repo,
-      changed,
-    )),
-    { recursive: true },
-  )
-  writeFileSync(
-    join(
-      repo,
-      changed,
-    ),
-    'changed\n',
-  )
+  for (const path of paths ?? [changed]) {
+    mkdirSync(
+      dirname(join(
+        repo,
+        path,
+      )),
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        repo,
+        path,
+      ),
+      'changed\n',
+    )
+  }
+
   git({
     args: [
       'add',
@@ -343,7 +351,7 @@ function fixture({
     JSON.stringify({
       number: 7,
       headRefOid: head,
-      body: `Description\n\n${reviews}`,
+      body,
     }),
   )
 
@@ -375,6 +383,7 @@ if (command === 'gh') {
     console.error(lintStep + ': behavior.ts:1 unused variable cannot be fixed')
     process.exitCode = 1
   }
+  if (args.includes('build') && process.env.BUILD_FAIL) process.exitCode = 1
   if (args.includes('build') && process.env.MOVE_HEAD) {
     require('node:child_process').execFileSync('git', ['commit', '--allow-empty', '-m', 'move HEAD'])
   }
@@ -718,7 +727,7 @@ test(
 )
 
 test(
-  'UI-only verification selects web tests and browser journeys with serialized scenarios',
+  'UI-only verification runs the full suite including back-end tests',
   t => {
     const f = fixture({
       t,
@@ -738,14 +747,14 @@ test(
           command: 'node',
           args: [
             'scripts/test.ts',
-            'test/web.test.ts',
+            'unit',
           ],
         },
         {
           command: 'node',
           args: [
             'scripts/test.ts',
-            'test/scenarios/browser.test.ts',
+            'scenarios',
           ],
         },
       ],
@@ -793,11 +802,12 @@ test(
 )
 
 test(
-  'docs-only verification skips automated checks but still requires reviews',
+  'docs-only verification requires only deslop and skips automated checks',
   t => {
     const f = fixture({
       t,
       docs: true,
+      body: '- [ ] Ran `review-code`\n- [ ] Ran `audit-tests`\n- [x] Ran `deslop`',
     })
     const result = f.run()
     assert.equal(
@@ -1009,5 +1019,294 @@ test(
       result.output,
       /Usage: pnpm verify/,
     )
+  },
+)
+
+for (const {
+  name,
+  paths,
+  required,
+  checks,
+} of [
+    {
+      name: 'skill text',
+      paths: ['skills/pnyx-worker/SKILL.md'],
+      required: ['deslop'],
+      checks: 'skills',
+    },
+    {
+      name: 'tests',
+      paths: ['test/new.test.ts'],
+      required: ['audit-tests'],
+      checks: 'changed',
+    },
+    {
+      name: 'docs and tests',
+      paths: [
+        'README.md',
+        'test/new.test.ts',
+      ],
+      required: [
+        'audit-tests',
+        'deslop',
+      ],
+      checks: 'changed',
+    },
+    {
+      name: 'skill text and tests',
+      paths: [
+        'skills/pnyx-worker/SKILL.md',
+        'test/new.test.ts',
+      ],
+      required: [
+        'audit-tests',
+        'deslop',
+      ],
+      checks: 'skills',
+    },
+    {
+      name: 'docs and code',
+      paths: [
+        'README.md',
+        'src/new.ts',
+      ],
+      required: [
+        'review-code',
+        'audit-tests',
+        'deslop',
+      ],
+      checks: 'full',
+    },
+  ]) {
+  test(
+    `${name} selects its reviews and checks`,
+    t => {
+      const body = [
+        'review-code',
+        'audit-tests',
+        'deslop',
+      ].map(name =>
+        `- [${required.includes(name) ? 'x' : ' '}] Ran \`${name}\``).join('\n')
+      const f = fixture({
+        t,
+        paths,
+        body,
+      })
+      const result = f.run()
+      assert.equal(
+        result.status,
+        0,
+        result.output,
+      )
+      assert.match(
+        result.output,
+        new RegExp(`required reviews: ${required.join(', ')}`),
+      )
+      const automated = result.calls.filter(call => call.command !== 'gh')
+      const tests = automated.filter(call => call.command === 'node')
+
+      if (checks === 'changed') {
+        assert.deepEqual(
+          automated.slice(
+            0,
+            4,
+          ),
+          staticChecks,
+        )
+        assert.deepEqual(
+          tests.map(call => call.args),
+          [
+            [
+              'scripts/test.ts',
+              'test/new.test.ts',
+            ],
+          ],
+        )
+      } else if (checks === 'skills') {
+        const expectedTests = [
+          'test/skills.test.ts',
+          'test/skills-cli.test.ts',
+          'test/start.test.ts',
+          'test/task-context.test.ts',
+          'test/hydra-host.test.ts',
+          'test/catalog.test.ts',
+          'test/catalog-server.test.ts',
+          'test/setup-check.test.ts',
+          'test/scenarios/hydra.test.ts',
+          'test/scenarios/worker-conventions.test.ts',
+        ]
+        const expectedChecks: typeof staticChecks = []
+
+        if (paths.includes('test/new.test.ts')) {
+          expectedTests.push('test/new.test.ts')
+          expectedChecks.push(...staticChecks)
+        } else {
+          expectedChecks.push({
+            command: 'pnpm',
+            args: [
+              'run',
+              'build',
+            ],
+          })
+        }
+
+        expectedChecks.push({
+          command: 'node',
+          args: [
+            'scripts/test.ts',
+            ...expectedTests,
+          ],
+        })
+        assert.deepEqual(
+          automated,
+          expectedChecks,
+        )
+      } else {
+        assert.deepEqual(
+          tests.map(call => call.args),
+          [
+            [
+              'scripts/test.ts',
+              'unit',
+            ],
+            [
+              'scripts/test.ts',
+              'scenarios',
+            ],
+          ],
+        )
+      }
+    },
+  )
+}
+
+test(
+  'mechanical verification requires its PR declaration and still runs the full suite',
+  t => {
+    for (const declaration of [
+      'Change: mechanical (rename)',
+      'Change: mechanical (move)',
+      '',
+      '<!-- Change: mechanical (rename) -->',
+      '```md\nChange: mechanical (rename)\n```',
+    ]) {
+      const valid = declaration.startsWith('Change:')
+      const f = fixture({
+        t,
+        docs: true,
+        body: `${declaration}\n- [x] Ran \`deslop\``,
+      })
+      const result = f.run({ args: ['--mechanical'] })
+      assert.equal(
+        result.status,
+        valid ? 0 : 1,
+        result.output,
+      )
+      const automated = result.calls.filter(call => call.command !== 'gh')
+
+      if (valid) {
+        assert.deepEqual(
+          automated.filter(call => call.command === 'node').map(call => call.args),
+          [
+            [
+              'scripts/test.ts',
+              'unit',
+            ],
+            [
+              'scripts/test.ts',
+              'scenarios',
+            ],
+          ],
+        )
+        assert.match(
+          result.body!,
+          /"mechanical":true/,
+        )
+      } else {
+        assert.deepEqual(
+          automated,
+          [],
+        )
+        assert.equal(
+          result.body,
+          undefined,
+        )
+      }
+    }
+  },
+)
+
+test(
+  'a PR mechanical line alone cannot lower the normal review requirement',
+  t => {
+    const f = fixture({
+      t,
+      body: 'Change: mechanical (rename)\n- [x] Ran `deslop`',
+    })
+    const result = f.run()
+    assert.equal(
+      result.status,
+      1,
+      result.output,
+    )
+    assert.match(
+      result.output,
+      /complete review-code/,
+    )
+    assert.equal(
+      result.body,
+      undefined,
+    )
+  },
+)
+
+test(
+  'mechanical checks-only is rejected without accessing GitHub',
+  t => {
+    const f = fixture({ t })
+    const result = f.run({
+      args: [
+        '--checks-only',
+        '--mechanical',
+      ],
+    })
+    assert.equal(
+      result.status,
+      1,
+    )
+    assert.deepEqual(
+      result.calls,
+      [],
+    )
+  },
+)
+
+test(
+  'a failed scoped build skips reader or changed tests and refuses a marker',
+  t => {
+    for (const paths of [
+      ['skills/pnyx-worker/SKILL.md'],
+      ['test/new.test.ts'],
+    ]) {
+      const f = fixture({
+        t,
+        paths,
+      })
+      const result = f.run({ extra: { BUILD_FAIL: '1' } })
+      assert.equal(
+        result.status,
+        1,
+        result.output,
+      )
+      assert.match(
+        result.output,
+        /skipped, build failed/,
+      )
+      assert.ok(result.calls.every(call => call.command !== 'node'))
+      assert.equal(
+        result.body,
+        undefined,
+      )
+    }
   },
 )

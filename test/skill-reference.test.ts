@@ -1,7 +1,7 @@
 import { sendReply } from '../src/cli/reply.ts'
 import { startTask } from '../src/cli/start.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
-import { startServer } from '../src/server/server.ts'
+import { hostObserver } from './host-observer.ts'
 import { fakeCodex } from './codex-fixture.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
@@ -380,7 +380,8 @@ for (const harness of [
       ])
       const sdk = hydraSdk()
       const codex = fakeCodex({ root })
-      const server = await startServer({
+      const observer = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
+      const server = await observer.startServer({
         hydraId: 'lab',
         port: 0,
         homes: [],
@@ -409,20 +410,7 @@ for (const harness of [
         return state.cards[state.keys.review!]!
       }
 
-      const until = async ({ check }: { check(): boolean }) => {
-        const deadline = Date.now() + 5000
-
-        while (!check()) {
-          assert.ok(
-            Date.now() < deadline,
-            'task did not receive its skill reply',
-          )
-          await new Promise(resolve => setTimeout(
-            resolve,
-            10,
-          ))
-        }
-      }
+      const { until } = observer
 
       await startTask({
         hydraId: 'lab',

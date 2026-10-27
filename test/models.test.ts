@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { hostObserver } from './host-observer.ts'
 import { mkdtempSync, readFileSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -398,7 +401,7 @@ test(
 
 test(
   'The model list is stored for every Hydra, answers before the harness and is rewritten only when it changes',
-  async () => {
+  async t => {
     const root = mkdtempSync(join(
       scratch,
       'pnyx-stored-models-',
@@ -427,6 +430,37 @@ test(
     const stored = () => entry()?.map(m => m.label)
     const labels = async ({ host }: { host: ReturnType<typeof createHost> }) => (await host.models({ harness: 'claude' })).map(m => m.label)
     let reads = 0
+    let lookupsClosed = 0
+    const observer = hostObserver({
+      describe: () => ({
+        reads,
+        lookupsClosed,
+        stored: stored(),
+      }),
+    })
+    const rename = fs.renameSync
+    t.mock.method(
+      fs,
+      'renameSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
+      (...args: Parameters<typeof fs.renameSync>) => {
+        const result = rename(...args)
+
+        if (String(args[1]) === join(
+          root,
+          'harness-models.json',
+        )) {
+          observer.notify()
+        }
+
+        return result
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    })
 
     let answer = async (): Promise<{
       value: string
@@ -441,7 +475,10 @@ test(
 
         return answer()
       },
-      close: () => {},
+      close: () => {
+        lookupsClosed++
+        observer.notify()
+      },
     })) as unknown as QueryFn
     const open = () => createHost({
       hydraId: 'lab',
@@ -510,12 +547,7 @@ test(
       )
       release()
 
-      for (let attempt = 0; attempt < 200 && stored()?.[0] !== 'Opus 6'; attempt++) {
-        await new Promise(resolve => setTimeout(
-          resolve,
-          10,
-        ))
-      }
+      await observer.until({ check: () => stored()?.[0] === 'Opus 6' })
 
       assert.deepEqual(
         stored(),
@@ -545,10 +577,7 @@ test(
         await labels({ host: offline }),
         ['Opus 6'],
       )
-      await new Promise(resolve => setTimeout(
-        resolve,
-        10,
-      ))
+      await observer.until({ check: () => lookupsClosed === 4 })
       assert.equal(
         reads,
         4,
