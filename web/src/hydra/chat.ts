@@ -490,10 +490,12 @@ export const clock = ({
 // The header's word for Hydra: down outranks everything, since nothing else can happen until a start works.
 export const hydraPill = ({
   status,
+  upgrading = false,
   working,
   starting,
 }: {
   status?: HydraStatus
+  upgrading?: boolean
   working: boolean
   starting: boolean
 }): {
@@ -508,7 +510,7 @@ export const hydraPill = ({
   }
 
   return {
-    text: working ? 'Working' : starting ? 'Starting' : 'Idle',
+    text: upgrading ? 'Upgrading' : working ? 'Working' : starting ? 'Starting' : 'Idle',
     down: false,
   }
 }
