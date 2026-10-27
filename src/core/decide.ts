@@ -1,28 +1,18 @@
-import { requireReportReview } from '../investigation/inventory.ts'
 import { taskInstructions } from './intent.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { AUTO_TITLE_SOURCES, HydraError, EVENT_VERSION, LINK_KINDS, LINK_STATES, NOTE_KINDS, type AgentRef, type AgentSettings, type Attention, type AutoTitle, type Card, type Column, type Link, type Note, FORM_FIELD_TYPES, type Outcome, type FormField, type PushFields, type Question, type RepliedEvent, type SessionEvent, type TerminalFacts, type ViewEvent, type ViewPreferences } from './model.ts'
-import { type HydraEvent, type HydraState, type SourceRef } from '../app/model.ts'
+import { AUTO_TITLE_SOURCES, HydraError, LINK_KINDS, LINK_STATES, NOTE_KINDS, type AgentRef, type AgentSettings, type Attention, type AutoTitle, type Card, type Column, type Link, type Note, FORM_FIELD_TYPES, type Outcome, type FormField, type PushFields, type Question, type RepliedEvent, type SessionEvent, type TerminalFacts, type ViewEvent, type ViewPreferences } from './model.ts'
+import { type HydraState, type SourceRef } from '../app/model.ts'
 import { TERMINAL_FIELDS } from './route.ts'
 import { patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, wouldCycle } from './reducer.ts'
-import { reduce } from '../app/reducer.ts'
 import { columnCards, findSession, interactive, liveTask, rankOf } from './tasks.ts'
 import { hydraConfig, fallbackColumn, HYDRA_CARD } from './hydra.ts'
-
-export interface Meta {
-  at: string
-  actor: string
-  // Caller-chosen event id; repeating it is a no-op.
-  id?: string
-  // Expected card revision; 0 for a card that does not exist yet.
-  ifRevision?: number
-  reason?: string
-  details?: string
-}
-
-export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
+import { base } from '../app/command-meta.ts'
+import type { Meta } from '../app/command-meta.ts'
+import type { Decision } from '../app/model.ts'
+import { decided } from '../app/decision.ts'
+import { text, invalid, asRecord, onlyKeys, optionalText } from '../app/command-validation.ts'
 
 export function findCard({
   state,
@@ -45,7 +35,7 @@ export function findCard({
 }
 
 // Generated ids share a namespace with caller-chosen ones, so skip any already used.
-function freeId({
+export function freeId({
   state,
   seq,
 }: {
@@ -61,38 +51,7 @@ function freeId({
   return id
 }
 
-export function base({
-  state,
-  meta,
-  cardId,
-}: {
-  state: HydraState
-  meta: Meta
-  cardId: string
-}) {
-  const seq = state.seq + 1
-
-  const event: Pick<HydraEvent, 'v' | 'seq' | 'id' | 'at' | 'actor' | 'cardId' | 'reason' | 'details'> = {
-    v: EVENT_VERSION,
-    seq,
-    id: meta.id ?? freeId({
-      state,
-      seq,
-    }),
-    at: meta.at,
-    actor: meta.actor,
-    cardId,
-    ...(meta.reason ? { reason: meta.reason } : {}),
-  }
-
-  if (meta.details) {
-    event.details = meta.details
-  }
-
-  return event
-}
-
-function strip({ card }: { card: Card | undefined }) {
+export function strip({ card }: { card: Card | undefined }) {
   if (!card) {
     return undefined
   }
@@ -103,55 +62,6 @@ function strip({ card }: { card: Card | undefined }) {
   delete content.updatedAt
 
   return content
-}
-
-export function decided({
-  state,
-  meta,
-  event,
-}: {
-  state: HydraState
-  meta: Meta
-  event: HydraEvent
-}): Decision {
-  if (event.id in state.eventIds) {
-    return { skipped: 'duplicate' }
-  }
-
-  const card = state.cards[event.cardId]
-  const movedToDone = event.type === 'card.moved'
-    && hydraConfig({ state }).columns.find(column => column.id === event.data.after)?.role === 'done'
-  const completed = event.type === 'card.outcome' && event.data.after?.state === 'done'
-
-  if (card && (movedToDone || completed)) {
-    requireReportReview({
-      state,
-      card,
-    })
-  }
-
-  checkRevision({
-    card: state.cards[event.cardId],
-    ifRevision: meta.ifRevision,
-  })
-  const before = strip({ card: state.cards[event.cardId] })
-  // The reducer reads eventIds only for the duplicate check above; cloning them is half of each decision's cost.
-  const reduced = reduce({
-    state: {
-      ...state,
-      eventIds: {},
-    },
-    event,
-  })
-  const after = strip({ card: reduced.cards[event.cardId] })
-
-  return before && isDeepStrictEqual(
-    before,
-    after,
-  ) && isDeepStrictEqual(
-    state.sessions,
-    reduced.sessions,
-  ) ? { skipped: 'unchanged' } : { event }
 }
 
 export function checkRevision({
@@ -172,57 +82,6 @@ export function checkRevision({
   }
 }
 
-export function notUndoable({ message }: { message: string }): HydraError {
-  return new HydraError({
-    message,
-    code: 'NOT_UNDOABLE',
-    help: ['Run `pnyx-axi history` to find an undoable edit'],
-  })
-}
-
-function invalid({ message }: { message: string }): HydraError {
-  return new HydraError({
-    message,
-    code: 'VALIDATION_ERROR',
-  })
-}
-
-function asRecord({ value }: { value: unknown }): Record<string, unknown> | undefined {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : undefined
-}
-
-function onlyKeys({
-  value,
-  allowed,
-  what,
-}: {
-  value: Record<string, unknown>
-  allowed: string[]
-  what: string
-}): void {
-  const extra = Object.keys(value).filter(k => !allowed.includes(k))
-
-  if (extra.length > 0) {
-    throw invalid({ message: `${what}: unknown field ${extra.join(', ')}; allowed: ${allowed.join(', ')}` })
-  }
-}
-
-function text({
-  value,
-  what,
-}: {
-  value: unknown
-  what: string
-}): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw invalid({ message: `${what} must be a non-empty string` })
-  }
-
-  return value
-}
-
 export function projectLabel({ value }: { value: unknown }): string | null {
   if (value === null || value === '') {
     return null
@@ -238,19 +97,6 @@ export function projectLabel({ value }: { value: unknown }): string | null {
   }
 
   return label
-}
-
-function optionalText({
-  value,
-  what,
-}: {
-  value: unknown
-  what: string
-}): string | undefined {
-  return value === undefined ? undefined : text({
-    value,
-    what,
-  })
 }
 
 function parseAttention({ value }: { value: unknown }): Attention[] {

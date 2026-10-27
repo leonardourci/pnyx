@@ -1,6 +1,7 @@
 import { cpSync, mkdirSync, readFileSync, realpathSync } from 'node:fs'
 import { join } from 'node:path'
-import { decideLink, decideNote, decidePush, decideView, type Decision } from '../core/decide.ts'
+import { decideLink, decideNote, decidePush, decideView } from '../core/decide.ts'
+import { type Decision } from '../app/model.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import type { Note } from '../core/model.ts'
 import { withWriter } from '../app/writer.ts'

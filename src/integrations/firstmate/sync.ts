@@ -5,17 +5,9 @@ import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { hydraConfig, declareTask, hydraEvent, migrateColumns, roleColumn } from '../../core/hydra.ts'
 import { parseStatusLine } from './status.ts'
-import {
-  decideLink,
-  decideMove,
-  decideNote,
-  decideOutcome,
-  decidePush,
-  noteId,
-  parseLink,
-  type Decision,
-  type Meta,
-} from '../../core/decide.ts'
+import { decideLink, decideMove, decideNote, decideOutcome, decidePush, noteId, parseLink } from '../../core/decide.ts'
+import { type Decision } from '../../app/model.ts'
+import { type Meta } from '../../app/command-meta.ts'
 import type { Attention, COLUMNS, Card } from '../../core/model.ts'
 import type { HydraState, SourceRef } from '../../app/model.ts'
 import { drainSpool } from '../hooks/ingest.ts'

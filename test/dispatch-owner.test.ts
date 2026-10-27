@@ -1,6 +1,6 @@
 import { project } from '../src/projects/cli.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
-import { approval } from '../src/confirmations/commands.ts'
+import { approval } from '../src/app/confirmations.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'

@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { findCard, type Meta } from '../core/decide.ts'
+import { findCard } from '../core/decide.ts'
+import { type Meta } from '../app/command-meta.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { EVENT_VERSION, HydraError, type Card, type SteeringAck, type SteeringAttempt, type SteeringClaim, type SteeringMessage } from '../core/model.ts'
 import { type HydraState } from '../app/model.ts'

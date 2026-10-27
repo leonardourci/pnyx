@@ -4,10 +4,8 @@ import { createHash } from 'node:crypto'
 import { hydraConfig } from '../core/hydra.ts'
 import { parseArgs, type ParseArgsConfig } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
-import {
-  type Decision,
-  type Meta,
-} from '../core/decide.ts'
+import { type Decision } from './model.ts'
+import { type Meta } from './command-meta.ts'
 import { HydraError } from '../core/model.ts'
 import { type HydraEvent, type HydraState, type EventType } from './model.ts'
 import { HYDRA_ACTOR } from './actors.ts'

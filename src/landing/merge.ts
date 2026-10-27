@@ -1,6 +1,7 @@
 import { mergeApproval } from '../core/asks.ts'
 import { commit, required, type Output } from '../app/cli-support.ts'
-import { decideLink, findCard, type Meta } from '../core/decide.ts'
+import { decideLink, findCard } from '../core/decide.ts'
+import { type Meta } from '../app/command-meta.ts'
 import { HydraError, type Link } from '../core/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../integrations/github/merge-evidence.ts'

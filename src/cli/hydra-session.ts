@@ -1,4 +1,4 @@
-import { proposeOwnerCommand } from '../confirmations/commands.ts'
+import { proposeOwnerCommand } from '../app/confirmations.ts'
 import { parseArgs } from 'node:util'
 import { loadHydra } from '../app/store.ts'
 import { DEFAULT_HYDRA } from '../app/home-migration.ts'

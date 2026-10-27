@@ -1,7 +1,7 @@
 import { EVENT_VERSION, HydraError, type Card, type PermissionRequest } from './model.ts'
 import { type HydraEvent, type HydraState } from '../app/model.ts'
 import { checkAnswer, type Prompt } from './answer.ts'
-import type { Meta } from './decide.ts'
+import type { Meta } from '../app/command-meta.ts'
 
 export const PERMISSION_PREFIX = 'pnyx:permission:'
 

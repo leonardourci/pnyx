@@ -381,3 +381,5 @@ export interface HydraState {
   // undone event id -> id of the event that reversed it
   undone: Record<string, string>
 }
+
+export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }

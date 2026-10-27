@@ -1,5 +1,5 @@
 import { type TaskSpend } from '../spend/tasks.ts'
-import { approval } from '../confirmations/commands.ts'
+import { approval } from './confirmations.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'
 import { project } from '../projects/cli.ts'
 import { type LatestMessage, type ThreadPage } from '../thread/read.ts'

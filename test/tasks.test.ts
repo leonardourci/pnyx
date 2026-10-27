@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush, decideSession, joinedKey, type Decision } from '../src/core/decide.ts'
+import { decidePush, decideSession, joinedKey } from '../src/core/decide.ts'
+import { type Decision } from '../src/app/model.ts'
 import { decideUndo } from '../src/app/undo.ts'
 import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
