@@ -7,7 +7,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { taskPrompt } from '../src/cli/start.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { project } from '../src/projects/cli.ts'

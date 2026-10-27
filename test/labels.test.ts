@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { LABEL_COLORS } from '../src/core/model.ts'
 import { type HydraEvent } from '../src/app/model.ts'

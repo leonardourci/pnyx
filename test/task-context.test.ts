@@ -11,7 +11,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } fr
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { type Output } from '../src/app/cli-support.ts'
 import { startTask } from '../src/cli/start.ts'
 import { hydraCheck, workerCommands } from '../src/cli/workers.ts'

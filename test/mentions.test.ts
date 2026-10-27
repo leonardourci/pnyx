@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } f
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { sendTaskMessage } from '../src/cli/task-message.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, replay } from '../src/app/reducer.ts'

@@ -4,7 +4,7 @@ import { copyFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSy
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { decidePush, decideSession } from '../src/core/decide.ts'
 import { bufferedCaptures, commitCapture } from '../src/external-sources/capture.ts'
 import { createSourceRunner } from '../src/external-sources/runner.ts'

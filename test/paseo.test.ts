@@ -22,7 +22,7 @@ import { withWriter } from '../src/app/writer.ts'
 import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 import { startTask } from '../src/cli/start.ts'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 

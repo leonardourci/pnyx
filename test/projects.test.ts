@@ -6,7 +6,7 @@ import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, sym
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 import { firstmateProjects } from '../src/integrations/firstmate/projects.ts'

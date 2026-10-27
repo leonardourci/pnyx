@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { startTask } from '../src/cli/start.ts'
 import { decidePush, decideSession } from '../src/core/decide.ts'

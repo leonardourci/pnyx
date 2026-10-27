@@ -1,38 +1,17 @@
-import {
-  ORCHESTRATE_SKILL,
-  REPORT_PROGRESS_SKILL,
-  CLI_SKILL,
-} from '../integrations/skills/names.ts'
-import { inboxCommand } from '../task-inbox/cli.ts'
-import { taskReadiness } from '../core/dependencies.ts'
-import { decideDependencies } from '../core/dependency-decisions.ts'
-import { sourceCommand } from '../external-sources/cli.ts'
 import { columnRule, parseColumnRule } from '../core/columns.ts'
 import { lifecycleMoves } from '../core/lifecycle.ts'
-import { decideHold, requireUnheld } from '../core/holds.ts'
-import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { requireSetupHome } from '../setup/home.ts'
-import { mergeCommand } from '../landing/merge.ts'
-import { taskLandingCommand } from '../landing/task-landing.ts'
-import { buildCommand, reportCommand, reportReviewCommand } from '../investigation/cli.ts'
-import { parseKind } from '../investigation/report.ts'
-import { refuseEarlyDone } from '../landing/done.ts'
-import { taskSpend } from '../spend/tasks.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { learningChange, staleLearnings } from '../memory/learnings.ts'
-import { ownerAsk } from '../core/intent.ts'
 import { setupCheckOutput } from '../setup/check.ts'
-import { decideQueue } from '../queue/decide.ts'
-import { queuePosition, workerQueue } from '../queue/state.ts'
 import { mentionContext, REFERENCE, referenceLabel } from '../mentions/mentions.ts'
 import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
-import { waitingReminders } from '../reminders/state.ts'
-import { findProject, projectRows, taskProject } from '../projects/read.ts'
+import { findProject, projectRows } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
@@ -42,33 +21,27 @@ import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_ME
 import { moveOwnerLearning, ownerArchive, ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
-import { askCommand, askRows } from './asks.ts'
-import { findSession, interactive, liveTask, rankOf, selfSession } from '../core/tasks.ts'
-import { paseoStatus } from '../integrations/paseo/launch.ts'
-import { setupHydra, startHydra, startTask, taskPrompt } from './start.ts'
+import { findSession, liveTask, rankOf, selfSession } from '../core/tasks.ts'
+import { setupHydra, startHydra, taskPrompt } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
-import { copyCommand } from '../copies/cli.ts'
-import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
-import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
+import { hydraConfig, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
-import { readThread } from '../thread/read.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
-import { decideLink, decideMove, decideOutcome, decidePush, decideView, decideSession, findCard, parseLink } from '../core/decide.ts'
+import { decideLink, decideMove, decideOutcome, decidePush, decideView, findCard, parseLink } from '../core/decide.ts'
 import { type Meta } from '../app/command-meta.ts'
-import { decideUndo } from '../app/undo.ts'
 import { HydraError, OUTCOME_STATES, type Card, type Column, type NotedEvent, type OutcomeState } from '../core/model.ts'
-import { EVENT_TYPES, type HydraEvent, type HydraState } from '../app/model.ts'
+import { type HydraEvent, type HydraState } from '../app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { askHost, readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { answerPrompt } from '../core/answer.ts'
-import { showsUpdate, tagsTask } from '../core/updates.ts'
+import { tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
@@ -77,10 +50,8 @@ import { withWriter } from '../app/writer.ts'
 import { loadHydra } from '../app/store.ts'
 import { DEFAULT_HYDRA, hydraDir, hydraIds } from '../app/home-migration.ts'
 import { readEvents } from '../app/event-log.ts'
-import { HOME_LIMIT, guard, parse, WRITE, meta, required, commit, explained, integer, HISTORY_LIMIT, HISTORY_MAX, COMMON } from '../app/cli-support.ts'
+import { HOME_LIMIT, guard, parse, WRITE, meta, required, commit, explained, integer, HISTORY_LIMIT, HISTORY_MAX, COMMON, summarize } from '../app/cli-support.ts'
 import type { Output, Options } from '../app/cli-support.ts'
-import { repair } from '../app/repair-cli.ts'
-import { summarize } from '../app/cli.ts'
 
 function column({ value }: { value: string }): Column {
   return (value.startsWith('custom:') ? value : value.replace(
@@ -89,7 +60,7 @@ function column({ value }: { value: string }): Column {
   )) as Column
 }
 
-function cardRow({ card }: { card: Card }) {
+export function cardRow({ card }: { card: Card }) {
   return {
     id: card.id,
     title: card.title,
@@ -228,7 +199,7 @@ export async function home(): Promise<Output> {
   return out
 }
 
-const push = guard({
+export const push = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -282,7 +253,11 @@ const push = guard({
   },
 })
 
-function startOverride({ values }: { values: Record<string, unknown> }): Override | undefined {
+export function startOverride({
+  values,
+}: {
+  values: Record<string, unknown>
+}): Override | undefined {
   const { fast } = values
 
   if (fast !== undefined && fast !== 'on' && fast !== 'off') {
@@ -319,7 +294,7 @@ function startOverride({ values }: { values: Record<string, unknown> }): Overrid
 }
 
 // A paused worker's --until takes the same times as a reminder.
-function untilTime({
+export function untilTime({
   until,
   now,
 }: {
@@ -336,1116 +311,11 @@ function untilTime({
   })
 }
 
-export const TASK_OPTIONS: Options = {
-  ...WRITE,
-  title: { type: 'string' },
-  project: { type: 'string' },
-  brief: { type: 'string' },
-  ask: { type: 'string' },
-  message: { type: 'string' },
-  key: { type: 'string' },
-  folder: { type: 'string' },
-  session: { type: 'string' },
-  'replace-session': { type: 'string' },
-  parent: { type: 'string' },
-  column: { type: 'string' },
-  note: { type: 'string' },
-  limit: { type: 'string' },
-  before: { type: 'string' },
-  behind: { type: 'string' },
-  on: {
-    type: 'string',
-    multiple: true,
-  },
-  full: { type: 'boolean' },
-  harness: { type: 'string' },
-  prompt: { type: 'string' },
-  'paseo-url': { type: 'string' },
-  check: { type: 'boolean' },
-  via: { type: 'string' },
-  command: { type: 'string' },
-  rule: { type: 'string' },
-  answer: { type: 'string' },
-  model: { type: 'string' },
-  effort: { type: 'string' },
-  mode: { type: 'string' },
-  fast: { type: 'string' },
-  'in-place': { type: 'boolean' },
-  safe: { type: 'boolean' },
-  discard: { type: 'boolean' },
-  question: { type: 'string' },
-  context: { type: 'string' },
-  evidence: { type: 'string' },
-  choice: {
-    type: 'string',
-    multiple: true,
-  },
-  recommend: { type: 'string' },
-  'details-file': { type: 'string' },
-  text: { type: 'string' },
-  to: { type: 'string' },
-  undelivered: { type: 'boolean' },
-  'from-message': { type: 'string' },
-  'from-report': { type: 'string' },
-  report: { type: 'string' },
-  none: { type: 'boolean' },
-  call: {
-    type: 'string',
-    multiple: true,
-  },
-  kind: { type: 'string' },
-  file: { type: 'string' },
-  url: { type: 'string' },
-  landing: { type: 'string' },
-  merge: { type: 'string' },
-  clear: { type: 'boolean' },
-  until: { type: 'string' },
-  hold: { type: 'boolean' },
-}
-
-function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
-  if (args[0] === 'source') {
-    return sourceCommand({ args: args.slice(1) })
-  }
-
-  if (args[0] === 'inbox') {
-    return inboxCommand({ args: args.slice(1) })
-  }
-
-  const {
-    values,
-    positionals,
-    hydraId,
-  } = parse({
-    args,
-    options: TASK_OPTIONS,
-    positionals: 4,
-  })
-  const action = positionals[0]
-  const m = meta({ values })
-  const url = values['paseo-url'] as string | undefined
-
-  if (action === 'report-review') {
-    return reportReviewCommand({
-      hydraId,
-      ref: positionals[1],
-      report: values.report as string | undefined,
-      calls: (values.call ?? []) as string[],
-      none: values.none === true,
-      meta: m,
-    })
-  }
-
-  if (action === 'report') {
-    return reportCommand({
-      hydraId,
-      ref: positionals[1],
-      file: values.file as string | undefined,
-      meta: m,
-    })
-  }
-
-  if (action === 'build') {
-    return buildCommand({
-      hydraId,
-      ref: positionals[1],
-      meta: m,
-    })
-  }
-
-  if (action === 'landing') {
-    return taskLandingCommand({
-      hydraId,
-      ref: positionals[1],
-      landing: values.landing as string | undefined,
-      merge: values.merge as string | undefined,
-      clear: values.clear === true,
-      meta: m,
-    })
-  }
-
-  if (action === 'merge') {
-    return mergeCommand({
-      hydraId,
-      ref: positionals[1],
-      url: values.url as string | undefined,
-      meta: m,
-    })
-  }
-
-  if (action === 'reminders') {
-    const reminders = waitingReminders({ state: loadHydra({ hydraId }).state })
-
-    return {
-      hydraId,
-      count: reminders.length,
-      reminders: reminders.length ? reminders : 'none: no waiting reminders',
-    }
-  }
-
-  if (action === 'remind') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const when = required({
-      value: positionals[2],
-      what: 'reminder time or clear',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.reminder',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-
-        if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'Choose a task for the reminder',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const after = when === 'clear' ? null : reminderTime({
-          when,
-          now: m.at,
-        })
-
-        return after === (task.reminder?.at ?? null) && !task.reminder?.dueAt ? { skipped: 'unchanged' }
-          : hydraEvent({
-            state,
-            meta: m,
-            cardId: task.id,
-            change: {
-              type: 'task.reminder',
-              data: {
-                before: task.reminder?.at ?? null,
-                after,
-              },
-            },
-          })
-      },
-    })
-  }
-
-  if (action === 'permission') {
-    const reason = explained({ meta: m })
-    const choice = positionals[3]
-
-    if (choice !== 'allow' && choice !== 'deny') {
-      // A quoted "<task> <request>" arrives as one argument, so say what was parsed.
-      const got = positionals.slice(1).map(arg => `'${arg}'`)
-        .join(' ') || 'nothing'
-
-      throw new HydraError({
-        message: `Use task permission <task> <request> allow|deny (got ${got})`,
-        code: 'VALIDATION_ERROR',
-        help: ['Pass the task, the request id and allow or deny as separate arguments'],
-      })
-    }
-
-    let answer: unknown
-
-    try {
-      answer = typeof values.answer === 'string' ? JSON.parse(values.answer) : undefined
-    } catch {
-      throw new HydraError({
-        message: '--answer must be JSON',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    return askHost({
-      hydraId,
-      body: {
-        action: 'permission',
-        task: required({
-          value: positionals[1],
-          what: 'task id',
-        }),
-        request: required({
-          value: positionals[2],
-          what: 'request id',
-        }),
-        choice,
-        ...(answer !== undefined ? { answer } : {}),
-        actor: m.actor,
-        ...(reason ? { reason } : {}),
-        ...(m.details ? { details: m.details } : {}),
-      },
-    })
-  }
-
-  if (action === 'paseo') {
-    return paseoStatus({ url })
-  }
-
-  if (action === 'continue') {
-    requireUnheld({
-      card: findCard({
-        state: loadHydra({ hydraId }).state,
-        ref: required({
-          value: positionals[1],
-          what: 'task id',
-        }),
-      }),
-    })
-  }
-
-  if (action === 'continue' && values.check) {
-    return askHost({
-      hydraId,
-      body: {
-        action: 'continue',
-        task: required({
-          value: positionals[1],
-          what: 'task id',
-        }),
-        check: true,
-        id: m.id ?? randomUUID(),
-        actor: m.actor,
-      },
-    })
-  }
-
-  if (action === 'start' || action === 'continue') {
-    explained({ meta: m })
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const started = action === 'continue' ? askHost({
-      hydraId,
-      body: {
-        action: 'continue',
-        task: ref,
-        id: m.id ?? randomUUID(),
-        actor: m.actor,
-        ...(m.reason ? { reason: m.reason } : {}),
-      },
-    }) : startTask({
-      hydraId,
-      task: ref,
-      replacement: values['replace-session'] as string | undefined,
-      commandName: values.command as string | undefined,
-      via: values.via as string | undefined,
-      rule: values.rule as string | undefined,
-      harness: values.harness as string | undefined,
-      override: startOverride({ values }),
-      prompt: values.prompt as string | undefined,
-      folder: values.folder as string | undefined,
-      inPlace: Boolean(values['in-place']),
-      url,
-      meta: m,
-    })
-
-    return started
-  }
-
-  if (action === 'copy') {
-    return copyCommand({
-      hydraId,
-      ref: required({
-        value: positionals[1],
-        what: 'task id',
-      }),
-      action: positionals[2],
-      values,
-      meta: m,
-    })
-  }
-
-  if (action === 'sessions') {
-    const sessions = Object.values(loadHydra({ hydraId }).state.sessions ?? {}).map(s => ({
-      id: s.id,
-      provider: s.agent.provider,
-      task: s.taskId ?? 'none',
-      interactive: interactive({ session: s }),
-    }))
-
-    return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
-  }
-
-  if (action === 'depend' || action === 'undepend') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const prerequisites = values.on as string[] | undefined
-
-    if (!prerequisites?.length) {
-      throw new HydraError({
-        message: 'pass --on <prerequisite task>; repeat --on for several tasks',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.dependencies',
-        card: ref,
-      },
-      decide: ({ state }) => decideDependencies({
-        state,
-        ref,
-        prerequisites,
-        remove: action === 'undepend',
-        meta: m,
-      }),
-    })
-  }
-
-  if (action === 'hold' || action === 'release') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: action === 'hold' ? 'task.held' : 'task.released',
-        card: ref,
-      },
-      decide: ({ state }) => decideHold({
-        state,
-        ref,
-        release: action === 'release',
-        message: values['from-message'] as string | undefined,
-        meta: m,
-      }),
-    })
-  }
-
-  if (action === 'create') {
-    const title = required({
-      value: values.title as string | undefined,
-      what: '--title',
-    }).trim()
-    required({
-      value: title,
-      what: '--title',
-    })
-    const key = values.key as string | undefined ?? `task:${m.id ?? randomUUID()}`
-
-    if (key.startsWith('$')) {
-      throw new HydraError({
-        message: 'task keys beginning with $ are reserved',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const folder = canonical({ path: values.folder })
-    const brief = taskBrief({ value: values.brief })
-    const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.created',
-        card: key,
-      },
-      decide: ({ state }) => {
-        if (state.keys[key]) {
-          throw new HydraError({
-            message: `task key already exists: ${key}`,
-            code: 'CONFLICT',
-          })
-        }
-
-        const project = values.project
-          ? taskProject({
-            state,
-            ref: String(values.project),
-          }) : undefined
-        const parent = values.parent ? findCard({
-          state,
-          ref: String(values.parent),
-        }) : undefined
-
-        if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'subtasks have one level under a task',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const columns = hydraConfig({
-          state,
-          id: hydraId,
-        }).columns
-        const selected = values.column
-          ? columns.find(c => c.id === values.column || c.title === values.column
-            || c.role === values.column) : undefined
-
-        if (values.column && !selected) {
-          throw new HydraError({
-            message: 'unknown Hydra column',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const cardId = `task-${randomUUID()}`
-        const holdReason = m.reason?.trim() || title
-        const created: TaskCreated['data'] = {
-          key,
-          title,
-          ...(values.hold ? { hold: holdReason } : {}),
-          ...(project ? { project } : {}),
-          ...(brief !== undefined ? { brief } : {}),
-          ...(folder ? { folder } : {}),
-          ...(parent ? { parentId: parent.id } : {}),
-          ...(selected ? { column: selected.id } : {}),
-        }
-
-        // A build task, the default, records no kind.
-        if (kind === 'investigation') {
-          created.kind = kind
-        }
-
-        const ask = values.ask
-
-        if (ask !== undefined && String(ask).trim()) {
-          created.ask = ownerAsk({
-            state,
-            text: String(ask),
-            message: values.message as string | undefined,
-            actor: m.actor,
-            at: m.at,
-          })
-        }
-
-        return hydraEvent({
-          state,
-          meta: m,
-          cardId,
-          change: {
-            type: 'task.created',
-            data: created,
-          },
-        })
-      },
-    })
-  }
-
-  if (action === 'queue' || action === 'unqueue' || action === 'reorder') {
-    const task = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const behind = action === 'unqueue' ? undefined : required({
-      value: values.behind as string | undefined,
-      what: '--behind <task|session>',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.queue',
-        card: task,
-      },
-      decide: ({ state }) => {
-        if (action === 'reorder' && !findCard({
-          state,
-          ref: task,
-        }).queue) {
-          throw new HydraError({
-            message: 'only a queued task can be reordered',
-            code: 'CONFLICT',
-          })
-        }
-
-        return decideQueue({
-          state,
-          task,
-          behind,
-          meta: m,
-        })
-      },
-    })
-  }
-
-  if (action === 'list') {
-    hideDone({ hydraId })
-    const state = loadHydra({ hydraId }).state
-
-    const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
-      .map(c => ({
-        ...cardRow({ card: c }),
-        parent: c.parentId ?? '',
-        status: c.status?.state ?? 'paused',
-        worker: c.sessionIds?.[0] ?? '',
-        ...(c.hold ? { hold: c.hold.reason } : {}),
-        ...(c.queue ? {
-          queue: queuePosition({
-            state,
-            card: c,
-          }),
-        } : {}),
-      }))
-
-    return tasks.length
-      ? {
-        hydraId,
-        tasks,
-        help: [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`],
-      }
-      : {
-        hydraId,
-        tasks: 'none: no tasks on this Hydra',
-        help: [`Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add one`],
-      }
-  }
-
-  if (action === 'history') {
-    return taskHistory({
-      hydraId,
-      ref: required({
-        value: positionals[1],
-        what: 'task id',
-      }),
-      before: integer({
-        value: values.before,
-        flag: '--before',
-      }),
-      limit: integer({
-        value: values.limit,
-        flag: '--limit',
-      }) ?? HISTORY_LIMIT,
-      full: Boolean(values.full),
-    })
-  }
-
-  if (action === 'show') {
-    const state = loadHydra({ hydraId }).state
-    const task = findCard({
-      state,
-      ref: required({
-        value: positionals[1],
-        what: 'task id',
-      }),
-    })
-
-    const spend = taskSpend({
-      state,
-      events: readEvents({ hydraId }),
-      task: task.id,
-    })
-
-    if (values.full) {
-      return {
-        task,
-        spend,
-        worker: task.sessionIds?.[0] ? state.sessions?.[task.sessionIds[0]] : undefined,
-      }
-    }
-
-    return {
-      task: {
-        ...cardRow({ card: task }),
-        key: task.key,
-        ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
-        ask: task.ask?.length ? task.ask : 'none: no owner words recorded',
-        spend,
-        brief: task.brief ?? 'none',
-        parent: task.parentId ?? 'none',
-        status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
-        worker: task.sessionIds?.[0] ?? 'none',
-        ...(task.queue ? {
-          queue: queuePosition({
-            state,
-            card: task,
-          }),
-        } : {}),
-        prerequisites: (task.prerequisites ?? []).map(id => ({
-          id,
-          title: state.cards[id]?.title ?? id,
-        })),
-        readiness: taskReadiness({
-          state,
-          card: task,
-        }),
-        ...(task.queueNote ? { handoff: task.queueNote } : {}),
-        next: task.sessionIds?.[0] ? workerQueue({
-          state,
-          session: task.sessionIds[0],
-        }).map(c => ({
-          id: c.id,
-          title: c.title,
-          ...queuePosition({
-            state,
-            card: c,
-          }),
-        })) : [],
-        declarations: task.statusLog?.length ?? 0,
-        ...(task.hold ? { hold: task.hold } : {}),
-        ...(task.asks?.length ? { questions: askRows({ card: task }) } : {}),
-        firstmate: task.mirror ? 'mirrored' : 'none',
-      },
-      help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
-    }
-  }
-
-  if (action === 'chat') {
-    const state = loadHydra({ hydraId }).state
-    const task = findCard({
-      state,
-      ref: required({
-        value: positionals[1],
-        what: 'task id',
-      }),
-    })
-    const session = values.session ? findSession({
-      state,
-      ref: String(values.session),
-    }) : undefined
-
-    if (session && !taskSessions({
-      hydraId,
-      ids: new Set([task.id]),
-    }).has(session.id)) {
-      throw new HydraError({
-        message: 'this session has no recorded membership on the task',
-        code: 'NOT_FOUND',
-      })
-    }
-
-    const card = session ? {
-      ...task,
-      agent: session.agent,
-      sessionIds: [session.id],
-    } : task
-
-    return {
-      thread: readThread({
-        hydraId,
-        state,
-        card,
-        homes: [],
-        before: values.before as string | undefined,
-      }),
-    }
-  }
-
-  if (action === 'project') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const project = required({
-      value: values.project as string | undefined,
-      what: '--project <name|path>',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.project',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-        const after = findProject({
-          state,
-          ref: project,
-          attached: true,
-        }).path
-
-        return task.project === after ? { skipped: 'unchanged' }
-          : hydraEvent({
-            state,
-            meta: m,
-            cardId: task.id,
-            change: {
-              type: 'task.project',
-              data: {
-                before: task.project ?? null,
-                after,
-              },
-            },
-          })
-      },
-    })
-  }
-
-  if (action === 'status') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    if (positionals[2] === 'done') {
-      const state = loadHydra({ hydraId }).state
-      refuseEarlyDone({
-        state,
-        card: findCard({
-          state,
-          ref,
-        }),
-        hydraId,
-      })
-    }
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.declared',
-        card: ref,
-      },
-      decide: ({ state }) => declareTask({
-        state,
-        ref,
-        status: required({
-          value: positionals[2],
-          what: 'status',
-        }),
-        note: String(values.note ?? ''),
-        meta: m,
-        until: untilTime({
-          until: values.until as string | undefined,
-          now: m.at,
-        }),
-        hold: values.hold as boolean | undefined,
-      }),
-    })
-  }
-
-  if (action === 'hide-after') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const raw = required({
-      value: positionals[2],
-      what: 'hours or default',
-    }).trim()
-    const after = raw === 'default' ? null : Number(raw)
-
-    if (after !== null
-      && (!raw || !Number.isFinite(after) || after < 0 || after > MAX_DONE_HOURS)) {
-      throw new HydraError({
-        message: `use hours from 0 to ${MAX_DONE_HOURS}, or default (0 keeps the card visible)`,
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.retention',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-
-        if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'choose a task',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const before = task.doneAfterHours ?? null
-
-        return before === after && !task.keepDone ? { skipped: 'unchanged' }
-          : hydraEvent({
-            state,
-            meta: m,
-            cardId: task.id,
-            change: {
-              type: 'task.retention',
-              data: {
-                before,
-                after,
-              },
-            },
-          })
-      },
-    })
-  }
-
-  if (action === 'intent') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.intent',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-
-        if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'Choose a task for the owner ask',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const entry = ownerAsk({
-          state,
-          text: required({
-            value: values.text as string | undefined,
-            what: '--text',
-          }),
-          message: values.message as string | undefined,
-          actor: m.actor,
-          at: m.at,
-        })
-
-        const recorded = task.ask?.some(ask => ask.message === entry.message
-          && ask.text === entry.text)
-
-        if (entry.message && recorded) {
-          return { skipped: 'unchanged' }
-        }
-
-        return hydraEvent({
-          state,
-          meta: m,
-          cardId: task.id,
-          change: {
-            type: 'task.intent',
-            data: entry,
-          },
-        })
-      },
-    })
-  }
-
-  if (action === 'brief' || action === 'hide' || action === 'unhide') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: action === 'brief' ? 'task.brief' : 'task.visibility',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-
-        if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'choose a task',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        if (action === 'brief') {
-          const after = taskBrief({ value: values.brief })
-
-          if (after === undefined) {
-            throw new HydraError({
-              message: 'pass --brief <text> (empty text clears it)',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          return after === (task.brief ?? '') ? { skipped: 'unchanged' } : hydraEvent({
-            state,
-            meta: m,
-            cardId: task.id,
-            change: {
-              type: 'task.brief',
-              data: {
-                before: task.brief ?? '',
-                after,
-              },
-            },
-          })
-        }
-
-        const after = action === 'hide'
-
-        return Boolean(task.hidden) === after ? { skipped: 'unchanged' } : hydraEvent({
-          state,
-          meta: m,
-          cardId: task.id,
-          change: {
-            type: 'task.visibility',
-            data: {
-              before: Boolean(task.hidden),
-              after,
-            },
-          },
-        })
-      },
-    })
-  }
-
-  if (action === 'rename') {
-    if (values.title === undefined && values.project === undefined) {
-      throw new HydraError({
-        message: 'pass --title or --project (empty text clears the label)',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'card.pushed',
-        card: ref,
-      },
-      decide: ({ state }) => decidePush({
-        state,
-        key: findCard({
-          state,
-          ref,
-        }).key,
-        input: {
-          ...(values.title !== undefined ? {
-            title: required({
-              value: values.title as string,
-              what: '--title',
-            }),
-          } : {}),
-          ...(values.project !== undefined ? { project: values.project } : {}),
-        },
-        meta: m,
-      }),
-    })
-  }
-
-  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question') {
-    return askCommand({
-      action,
-      positionals,
-      values,
-      hydraId,
-      meta: m,
-    })
-  }
-
-  if (action !== 'attach' && action !== 'detach') {
-    throw new AxiError(
-      'Use task create, list, show, status, ask, answer, escalate, history, rename, start, copy, permission, paseo, sessions, attach or detach',
-      'VALIDATION_ERROR',
-    )
-  }
-
-  const ref = required({
-    value: positionals[1],
-    what: 'task id',
-  })
-
-  const result = commit({
-    hydraId,
-    meta: m,
-    intent: {
-      type: 'task.session',
-      card: ref,
-    },
-    decide: ({
-      state,
-      meta: current,
-    }) => {
-      if (!liveTask({
-        card: findCard({
-          state,
-          ref,
-        }),
-      })) {
-        throw new HydraError({
-          message: 'choose an explicit task; use hydra set to configure Hydra',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      if (action === 'detach' && !findCard({
-        state,
-        ref,
-      }).sessionIds?.length) {
-        return { skipped: 'unchanged' }
-      }
-
-      const session = action === 'attach'
-        ? sessionRef({
-          state,
-          ref: required({
-            value: values.session as string | undefined,
-            what: '--session',
-          }),
-        })
-        : findSession({
-          state,
-          ref,
-        }).id
-
-      return decideSession({
-        state,
-        ref: session,
-        task: action === 'attach' ? ref : null,
-        meta: current,
-      })
-    },
-  })
-
-  if (action === 'attach' && typeof result.event === 'object' && result.event !== null && 'id' in result.event) {
-    const eventId = result.event.id
-    const attachment = readEvents({ hydraId }).find(e => e.id === eventId)
-
-    if (attachment?.type === 'task.session') {
-      return afterAttach({
-        hydraId,
-        result,
-        attachment,
-        meta: m,
-      })
-    }
-  }
-
-  return result
-}
-
 type Attachment = Extract<HydraEvent, { type: 'task.session' }>
-type TaskCreated = Extract<HydraEvent, { type: 'task.created' }>
+export type TaskCreated = Extract<HydraEvent, { type: 'task.created' }>
 
 // Attachment is durable even when delivery fails.
-async function afterAttach({
+export async function afterAttach({
   hydraId,
   result,
   attachment,
@@ -1495,7 +365,7 @@ async function afterAttach({
   }
 }
 
-function taskBrief({ value }: { value: unknown }): string | undefined {
+export function taskBrief({ value }: { value: unknown }): string | undefined {
   if (value === undefined) {
     return undefined
   }
@@ -1510,9 +380,7 @@ function taskBrief({ value }: { value: unknown }): string | undefined {
   return value
 }
 
-const task = guard({ handler: ({ args }) => taskCommand({ args }) })
-
-function sessionRef({
+export function sessionRef({
   state,
   ref,
 }: {
@@ -1531,7 +399,7 @@ function sessionRef({
     : ref
 }
 
-function taskHistory({
+export function taskHistory({
   hydraId,
   ref,
   before,
@@ -1608,7 +476,7 @@ function taskHistory({
   }
 }
 
-function taskSessions({
+export function taskSessions({
   hydraId,
   ids,
 }: {
@@ -2397,7 +1265,7 @@ function columnCommand({ args }: { args: string[] }): Output {
   })
 }
 
-const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
+export const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (args[0] === 'worker-notes') {
@@ -2906,9 +1774,9 @@ function memoryChange({
   }
 }
 
-const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
 
-const owner = guard({
+export const owner = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3044,8 +1912,8 @@ const owner = guard({
   },
 })
 
-const NOTES_SHOWN = 3
-const NOTE_CUT = 280
+export const NOTES_SHOWN = 3
+export const NOTE_CUT = 280
 const NOTE_SECTIONS = {
   summary: 'summary',
   decision: 'decisions',
@@ -3115,7 +1983,7 @@ function cardNotes({
   }
 }
 
-const card = guard({
+export const card = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3174,7 +2042,7 @@ const card = guard({
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.
 // ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
-const harvest = guard({
+export const harvest = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3251,7 +2119,7 @@ const harvest = guard({
   },
 })
 
-const move = guard({
+export const move = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3298,7 +2166,7 @@ const move = guard({
   },
 })
 
-const link = guard({
+export const link = guard({
   handler: ({ args }) => {
     const options: Options = {
       ...WRITE,
@@ -3359,7 +2227,7 @@ const link = guard({
   },
 })
 
-const outcome = guard({
+export const outcome = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3422,167 +2290,7 @@ const outcome = guard({
   },
 })
 
-const history = guard({
-  handler: ({ args }) => {
-    const options: Options = {
-      ...COMMON,
-      card: { type: 'string' },
-      kind: { type: 'string' },
-      workspace: { type: 'string' },
-      before: { type: 'string' },
-      limit: { type: 'string' },
-      full: { type: 'boolean' },
-      updates: { type: 'boolean' },
-    }
-    const {
-      values,
-      hydraId,
-    } = parse({
-      args,
-      options,
-      positionals: 0,
-    })
-    const limit = Math.min(
-      integer({
-        value: values.limit,
-        flag: '--limit',
-      }) ?? HISTORY_LIMIT,
-      HISTORY_MAX,
-    )
-    const before = integer({
-      value: values.before,
-      flag: '--before',
-    })
-    const kind = values.kind as string | undefined
-    const type = kind && (kind.includes('.') ? kind : `card.${kind}`)
-
-    if (type && !(EVENT_TYPES as readonly string[]).includes(type)) {
-      throw new AxiError(
-        `unknown kind: ${kind}`,
-        'VALIDATION_ERROR',
-        ['Use one of pushed, moved, linked, outcome, replied, noted'],
-      )
-    }
-
-    const { state } = loadHydra({ hydraId })
-    const cardId = values.card ? findCard({
-      state,
-      ref: values.card as string,
-    }).id : undefined
-    const workspace = values.workspace as string | undefined
-    // An outcome keeps the workspace it was recorded under; other events use the card's current one.
-    const inWorkspace = ({ e }: { e: HydraEvent }) =>
-      (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
-
-    const tagged = new Set(cardId ? [cardId] : [])
-    const matches = readEvents({ hydraId })
-      .filter(e => (before === undefined || e.seq < before)
-        && (!cardId || e.cardId === cardId || tagsTask({
-          event: e,
-          ids: tagged,
-        })))
-      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
-        && (!values.updates || showsUpdate({ event: e })))
-      .reverse()
-    const page = matches.slice(
-      0,
-      limit,
-    )
-
-    if (page.length === 0) {
-      return { events: 'none: no matching events' }
-    }
-
-    const out: Output = {
-      events: page.map(e => ({
-        seq: e.seq,
-        id: e.id,
-        at: e.at,
-        type: e.type,
-        card: e.cardId,
-        actor: e.actor,
-        summary: summarize({ event: e }),
-        ...(values.full ? {
-          data: e.data,
-          reason: e.reason,
-          details: e.details,
-        } : {}),
-      })),
-    }
-
-    if (matches.length > limit) {
-      const flags = [
-        'card',
-        'kind',
-        'workspace',
-        'limit',
-        'hydra',
-      ].flatMap(f => (values[f] ? [
-        `--${f}`,
-        String(values[f]),
-      ] : []))
-      out.help = [
-        `Run \`pnyx-axi history ${[
-          ...flags,
-          ...values.updates ? ['--updates'] : [],
-          '--before',
-          String(page.at(-1)!.seq),
-        ].join(' ')}\` for older events`,
-      ]
-    }
-
-    return out
-  },
-})
-
-const undo = guard({
-  handler: ({ args }) => {
-    const {
-      values,
-      positionals,
-      hydraId,
-    } = parse({
-      args,
-      options: WRITE,
-      positionals: 1,
-    })
-    const m = meta({ values })
-    const id = required({
-      value: positionals[0],
-      what: 'event id',
-    })
-    const target = readEvents({ hydraId }).find(e => e.id === id)
-
-    if (!target) {
-      throw new AxiError(
-        `event not found: ${id}`,
-        'NOT_FOUND',
-        ['Run `pnyx-axi history` to find event ids'],
-      )
-    }
-
-    return commit(
-      {
-        hydraId,
-        meta: m,
-        intent: {
-          type: target.type,
-          card: target.cardId,
-        },
-        decide: ({
-          state,
-          meta: current,
-        }) => decideUndo({
-          state,
-          target,
-          meta: current,
-        }),
-      },
-    )
-  },
-})
-
-const setup = guard({
+export const setup = guard({
   handler: ({ args }) => {
     const options: Options = {
       ...WRITE,
@@ -3708,7 +2416,7 @@ const setup = guard({
   },
 })
 
-const view = guard({
+export const view = guard({
   handler: ({ args }) => {
     const [
       sub,
@@ -3781,7 +2489,7 @@ const view = guard({
   },
 })
 
-const layout = guard({
+export const layout = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -3833,353 +2541,3 @@ const layout = guard({
     })
   },
 })
-
-export const commands = supervisedCommands({
-  commands: {
-    layout,
-    column: columnCommandHandler,
-    hydra: hydraCommandHandler,
-    owner,
-    task,
-    view,
-    push,
-    card,
-    harvest,
-    move,
-    link,
-    outcome,
-    history,
-    undo,
-    repair,
-    setup,
-  },
-})
-
-export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
-description: Pnyx shows every agent and its work in Hydras
-commands:
-  pnyx-axi                                   Show the Hydra summary
-  hydra create|list|homes|show|set|memory     Configure Hydras and their own notes; owner memory list|set|forget keeps the owner's for every Hydra
-  project add|list|set|remove                   Attach, list or detach projects
-  column create|rename|describe|rule|resize|delete|reorder|list  Edit columns
-  task create|list|show|rename|status|history|permission Tasks and one level of subtasks (--parent <id>)
-  task start|continue <task>                  Start a worker or host an ended outside session
-  hydra start|send|messages|check            Start the Hydra, queue task context in its chat, read it, or wait for changes
-  rule; account list|set|remove              Heads dispatch rules and worker login folders
-  task sessions|queue|unqueue|reorder        Sessions and ordered worker queues
-  task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
-  push --key <key> --file <card.json|->      Create or update the card with this key
-  card <id|key> [--full]                     Show one card with its summary, decisions and context
-  harvest [--card <id>]                      Collect summaries and decisions sources already recorded
-  move <id> <column> [--before <id>]         Put a card in a column, above another card or at its end
-  link <id> --url <url> [--state open]       Add, update or --remove a link
-  outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
-  history [--card <id>] [--before <seq>]     Page through past events, newest first
-  oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
-  settings [set <key> <value>]               Oracle settings: semantic search, reranker and model
-  undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
-  view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
-  repair                                     Set aside a torn log tail and rebuild the snapshot
-  serve [--port <n>]                         Run the one server of every Hydra until stopped
-  stop                                       Stop the running server
-  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
-  setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
-  integrations                               Show which integrations are ready and how to set each up
-  reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
-  agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
-  firstmate sync|watch --home <path>         Fold a Firstmate home's tasks into the Hydra, once or on every change
-flags:
-  --hydra <name>     Hydra to use (default: default)
-  --event-id <id>    On writes: idempotency key; a repeat returns the original receipt
-  --if-revision <n>  On writes: expected card revision (0 for a new card)
-  --help | --version Show command help or the installed version
-`
-
-const COMMAND_HELP: Record<string, string> = {
-  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--identity <identity>] [--session <session>] [--firstmate <home>]
-pnyx-axi hydra create --firstmate <home>
-pnyx-axi hydra list
-pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>] [--review-minutes <n>]
-Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
---session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
-hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
-in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
---helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
---review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
---done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
---command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
---command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
-pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
-pnyx-axi hydra send --text <message> [--details <text>]
-pnyx-axi hydra send --task <id> --kind progress --text <message>
---kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
-pnyx-axi hydra stop
-hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
-pnyx-axi hydra usage
-hydra usage prints the hosted Hydra's context window use and session cost when known, and its account's plan windows from quota-axi.
-pnyx-axi hydra resize --width <pixels>
-pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
-Standing worker instructions are included verbatim in every new worker header.
-pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
-pnyx-axi hydra digest
-Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
-pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
-pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
-pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
-pnyx-axi hydra start --via firstmate --home <firstmate home>
-hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
-session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
-prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
-Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
-Hydra reads messages and task history through AXI. --after is an event sequence cursor.
-check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
-except its chat lines, which are listed but never end a wait; with --wait it blocks up to that many seconds until something else appears. It also records native task conversations
-and returns a compact conversations digest of owner instructions and agent replies. Read task history --full
-for complete messages. Pass the printed through as the next --after; unavailable native sources are reported for retry.
-`,
-  owner: `usage: pnyx-axi owner memory list|set|forget|confirm|move|save|archive [--project <name|path>] [--key <key>] [--text <text>] [--reason <why>] [--if-revision <n>]
-Owner memory is Pnyx-wide: every Hydra's digest prints it. Keep the owner's preferences under the key preferences and general learnings under learnings,
-one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET} characters; a save over budget is refused.
-Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
-New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
-A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
-Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
-Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
-Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
-`,
-  column: `usage: pnyx-axi column list
-pnyx-axi column create --title <title> [--id custom:<id>]
-pnyx-axi column rename <id> --title <title>
-pnyx-axi column describe <id> --description <text>
-pnyx-axi column rule <id> --when <fact[,fact]> [--when <fact[,fact]>] --reason <why>
-pnyx-axi column rule <id> --clear --reason <why>
-pnyx-axi column resize <id> --width <pixels>
-pnyx-axi column delete <id> [--to <remaining-column>]
-pnyx-axi column reorder <id> [--before <id>]
-All columns, including template columns, can be edited. Deletion moves cards to the fallback;
-the final column cannot be deleted. Rule edits, reorder and delete first return confirmation: needed and a token;
-repeat the same command with --confirm <token>. Browser actions already carry the owner’s intent.
-Rules use comma-separated facts as AND, repeated --when as OR, and !fact as NOT.
-The first matching column in display order wins; --clear makes a column manual only.
-Facts: worker:none|working|checks|blocked|hydra|paused|ended, owner-question, held,
-pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, done, reminder-due, queued.
-Use --if-revision for the Hydra revision (the view revision for resize).
-`,
-  task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
-pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
-pnyx-axi task hold <id> --reason <topic>
-pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
-Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
-pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
-pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
-pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
-pnyx-axi task list | show <id> [--full]
-pnyx-axi task rename <id> [--title <title>] [--project <name>]
---project adds a compact project label; an empty value clears it.
-pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
-A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
---hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
-done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
-or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
-pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
-Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
-pnyx-axi task report <id> [--file <path>]
-Stores an investigation's report with the task (every version stays in the log), or prints the latest one.
-pnyx-axi task inbox read <task> [--all]
-pnyx-axi task source register <task> <source-id> --executable <absolute-path> --argv <json-array> --cwd <absolute-path> [--timeout-ms <n> --max-bytes <n> --expires <ISO-time> --restart never|on-failure --max-runs <n>]
-pnyx-axi task source lavish <task> <source-id> --page <path> --executable <absolute-lavish-axi> [--agent-reply-file <path>] [--after <source-id> --sequence <n> --session <session> --generation <n>]
-pnyx-axi task source list <task>
-pnyx-axi task source read <task> <source-id> [--all]
-pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
-pnyx-axi task source stop <task> <source-id>
-pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
-pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
-pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
-Inbox reads return the active session/generation claim and pending instructions in order. Acknowledge the oldest instruction after incorporating it.
-A blocked acknowledgement requires --note; it records why incorporation could not proceed. Delivery receipts never mark an instruction handled.
-Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
-pnyx-axi task build <id>
-Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
-pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
-Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
-pnyx-axi task merge <id> [--url <pull request>]
-Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
-and never while a check is red or still running.
-pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
-A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
-pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
-Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
-An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
-pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
-pnyx-axi task reopen-question <task> <question> --answer <current answer event>
-pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
-Hydra hands a worker's question to the owner under the same id; the worker's wording stays in its history.
-pnyx-axi task history <id> [--before <seq>] [--limit <n>] [--full]
-pnyx-axi task chat <id> [--session <past-or-current-session>] [--before <cursor>]
-pnyx-axi task permission <task> <request> allow|deny [--answer <json>] [--reason <text>]
-A question request is allowed with its answers, --answer '{"answers":[{"pick":[1]},{"text":"..."}]}' (one per question, picks
-numbered from 1), and a form with --answer '{"values":{"<field>":"<value>"}}'; deny skips it.
-pnyx-axi task project <task> --project <name|path>
-pnyx-axi task remind <task> <when|clear>
-pnyx-axi task reminders
-pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
-pnyx-axi task start <task> --via firstmate [--prompt <text>]
-pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
-pnyx-axi task copy <task> [remove [--safe | --discard]]
-Hydra (actor hydra) must pass --reason, one short why, to create, brief, hide, unhide, start and permission, as to move. Pnyx keeps it on the event,
-and shows the changes in the task’s Updates and the turn’s fold. --details keeps longer context on the same event.
-pnyx-axi task paseo [--paseo-url <url>]
-pnyx-axi task queue <task> --behind <task|session>
-pnyx-axi task unqueue <task>
-pnyx-axi task reorder <task> --behind <task|session>
-pnyx-axi task sessions
-pnyx-axi task attach <task> --session <session-id|card-id|key|self>
-pnyx-axi task detach <task>
-Dependencies name tasks in the same Hydra. Each prerequisite must complete its task-kind and landing lifecycle with no owner gate or hold. Reports alone do not complete investigations. Reopening a prerequisite blocks new dispatch; running dependents are reported to Hydra for judgment.
-Queueing behind a session appends; behind a queued task inserts immediately after it. Repeating task queue or using task reorder changes that position. Unqueue releases a task for a separate worker. Only unstarted tasks in the same project can queue. The server advances after a merged PR or a declared done task whose commit landed, never an open PR.
-Tasks accept one attached session. A second session cannot replace the recipient.
-attach moves an interactive session to the task; an occupied destination is rejected.
-detach removes the attachment without stopping the session; it stays in task sessions and History.
-attach sends a saved task brief as its first task message and reports the delivery result; detach never stops a process. Writes accept --if-revision and --event-id.
-task create accepts --project <name|path>; task project assigns an existing task to an attached project.
-task remind sets one reminder per task; use a future ISO timestamp with a timezone, "tomorrow 9:00" (laptop time), or "in 2 hours". clear removes it. task reminders lists waiting reminders and their count. The server fires overdue reminders on startup, moves the task to Needs you, and records a line in Hydra’s chat.
-
-task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
-It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
-task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's
-Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
-and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
-go straight to it; after a server restart the next message resumes the same session. A turn that was
-running when the server stopped is marked interrupted and waits for a message. Permission prompts and
-questions wait on the task for task permission. Codex mode is its approval policy (untrusted, on-request or
-never) with its sandbox: never, or bypassPermissions, runs with full access, the others write only in the folder and Pnyx's home. Codex applies picker changes on the next turn and queues messages during a turn.
---via paseo asks the local Paseo daemon (PNYX_PASEO_URL, default ws://127.0.0.1:6767/ws) to start a
-Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
-and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
-Repeating the same --event-id never starts a second agent.
---rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
---model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
-by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
---model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
-must be in the harness's catalog and the task records the override.
---via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
---via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
-environment; the session it starts attaches to the task when its hooks first report.
-The default route is firstmate for a Hydra run by a Firstmate home, otherwise pnyx.
-A task with an attached project starts in its own copy: a git worktree slot copies/<project>-<n> on branch
-pnyx/<hydra>-<task> (or the project's copy command, see project set), taken once and reused by later starts. A start
-takes a clean idle slot from the project's pool when there is one, keeping its ignored files such as installed
-dependencies, and starts the branch from the fetched origin default branch. A failed refresh stops allocation;
-projects without origin use local HEAD. --in-place works in the project folder
-itself and is refused while a worker of another Hydra runs there; --folder names the folder outright. Firstmate Hydras
-make their own copies.
-When the task reaches Done and its agent stops working, Pnyx releases its copy if it has no uncommitted changes and its
-commit is on the default branch or its linked pull request merged; the branch stays. Copies from a project's copy
-command are only released. Otherwise the task keeps the copy, flagged, and Hydra gets a message.
-A released slot goes back to the pool when fewer than ${POOL_IDLE} clean idle slots of the project are already there, or
-when an attached worker still runs in it; otherwise it is deleted. A slot a worker runs in is never handed to another task.
-Queued handoff prepares the next branch and transfers the folder; manual task attach only moves the session.
-task copy shows the copy and that check. task copy remove settles it again; --safe (Hydra) confirms a clean copy whose work
-already landed or is empty; --discard removes work that never landed and needs the owner's --confirm <token>, never Hydra's.
-`,
-  push: `usage: pnyx-axi push --key <key> --file <card.json|-> [--event-id <id>] [--if-revision <n>] [--actor <who>] [--reason <text>]
-Creates or updates the card with this key. Repeating the same push, or the same --event-id, appends nothing.
-card.json fields (all optional): title, autoTitle {from: session|prompt|agent|folder, text} (used only while no title is set), workspace, tags[], parent (card id or key, null to clear), activity,
-  agent {provider, sessionId, agentId, agentType, cwd, transcriptPath}, attention[] {kind, key, blocking, text, questions[] {question, header, options[] {label, description}, multiSelect}, form[] {name, title, type, options[], required}, answered},
-  settings {<name>: <value>, or null to remove it} merged into the card's settings, such as model, effort, mode, fast,
-  terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane},
-  folder (absolute path, null to clear; a hook session started there reports to this card),
-  source {adapter, objectId, instanceId, generation, cursor, observedAt}
-An observation older than the card's latest one from the same source is ignored.
-`,
-  card: `usage: pnyx-axi card <id|key> [--full] [--hydra <name>]
-Shows the card and its notes in three sections, summary, decisions and context, newest first:
-${NOTES_SHOWN} per section with text cut at ${NOTE_CUT} characters, or every note in full with --full.
-`,
-  harvest: `usage: pnyx-axi harvest [--card <id>] [--hydra <name>]
-Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
-compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
-linked pull request's title and description through gh-axi. Sessions are also harvested whenever a
-turn ends; Firstmate decisions, reports and Captain's intent arrive through \`firstmate sync\`.
-Sources are only read. Each note is kept once, so running it again appends only what is new.
-`,
-  move: `usage: pnyx-axi move <id> <column-id> [--before <id>] [--event-id <id>] [--if-revision <n>] [--reason <text>] [--details <text>]
-Puts the card in the column just above the --before card, or at the end of the column without it.
-First returns confirmation: needed and a token; repeat with --confirm <token> to act.
-Pnyx applies column rules on phase changes; a manual move lasts until the next rule result changes.
-Hydra uses manual placement for an exceptional correction with a reason. Read rules with \`pnyx-axi column list\`.
-Hydra's moves need --reason, kept on the event and shown in the task's Updates. The owner's moves need none.
-`,
-  link: `usage: pnyx-axi link <id> --url <url> [--kind github_pr|linear|url] [--number <n>] [--title <text>] [--state open|merged|closed] [--remove] [--event-id <id>] [--if-revision <n>]
-GitHub pull request URLs get kind and number filled in. A link never moves the card.
-`,
-  outcome: `usage: pnyx-axi outcome <id> done|failed|cancelled [--note <text>] | --clear [--event-id <id>] [--if-revision <n>]
-`,
-  history: `usage: pnyx-axi history [--card <id>] [--kind pushed|moved|linked|outcome|replied|noted] [--workspace <name>] [--before <seq>] [--limit <n>] [--full] [--updates]
-Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}). --updates keeps only the events a task's Updates list shows.
-`,
-  undo: `usage: pnyx-axi undo <event-id> [--event-id <id>] [--if-revision <n>]
-Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
-Source observations, card creation and merges cannot be undone.
-`,
-  setup: `usage: pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup service [--port <n>] [--remove] [--preview] [--allow-custom-home]
-pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
-pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
-pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
-setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
-project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
-setup service refuses a port reserved by another Pnyx home; choose a different --port.
-setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
-(or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
-Existing files and unrelated links are never replaced. Legacy Pnyx skill links are removed.
---remove takes out this install's global links and legacy Pnyx links.
-Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
-every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
-changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
-so they never add to the agent's context: no session-start Hydra summary is installed.
-Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
-setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
-setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
-.agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
-Firstmate's own files are not changed.
-`,
-  repair: `usage: pnyx-axi repair [--hydra <name>]
-A crash mid-append can leave a torn last line; writes refuse until it is repaired.
-Repair copies the torn bytes to a side file and appends a marker so readers skip them; the log is never cut.
-`,
-  serve: `usage: pnyx-axi serve [--port <n>] [--hydra <name>] [--home <Firstmate path>]...
-Serves every Hydra in PNYX_HOME on 127.0.0.1 port 4747 (--port overrides it; 0 picks a random one) until SIGINT, SIGTERM or \`pnyx-axi stop\`.
-Each Hydra lives at /hydra/<id>/; / opens the --hydra Hydra. A Hydra that fails to load is skipped and reported, and a Hydra created
-while the server runs is served once its folder appears. --hydra names the Hydra whose address is printed (default: default); it and
-the default Hydra must load. A Hydra run by a Firstmate home watches that home and replies through it. Each --home is a Firstmate home
-for the --hydra Hydra instead: replies to its cards go through it, and its tasks are folded in as \`pnyx-axi firstmate watch\` would.
-Hook events arrive on each Hydra's server.sock or through its spool. Browsers get one WebSocket per Hydra at /hydra/<id>/ws:
-a snapshot on connect, then events by sequence; ?after=<seq> resumes, a gap gets a fresh snapshot.
-The handshake needs ?token=<token>: each Hydra page served here carries it, local programs read $PNYX_HOME/token.
-Commands go over the same socket: {"type":"command","id":"<id>","name":"move|link|outcome|undo|rule|account","args":[...]}
-gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. They always write that socket's Hydra;
---hydra is refused and the actor defaults to web. GET /hydra/<id>/health answers {"hydraId","pid","build"};
-GET /health answers {"pid","build","hydras","skipped"}.
-`,
-  stop: `usage: pnyx-axi stop
-Stops the one server of every Hydra. A login service starts it again; \`pnyx-axi setup service --remove\` keeps it stopped.
-`,
-}
-
-export function commandHelp({ command }: { command: string }): string | undefined {
-  if (command === 'layout') {
-    return 'usage: pnyx-axi layout show|reset [--hydra <name>] [--if-revision <view revision>]'
-  }
-
-  if (command === 'view') {
-    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]'
-  }
-
-  return COMMAND_HELP[command]
-}

@@ -10,7 +10,7 @@ import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFile
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { followUpReplies } from '../src/cli/reply-retry.ts'
 import { decidePush, decideReply, decideSession } from '../src/core/decide.ts'
 import type { ReplyState } from '../src/core/model.ts'

@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { browserFixture } from '../src/test-harness/browser-fixture.ts'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { startServer } from '../src/app/server-daemon.ts'
 import { loadHydra } from '../src/app/store.ts'
 

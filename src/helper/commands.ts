@@ -1,5 +1,5 @@
 import { parseArgs } from 'node:util'
-import { TASK_OPTIONS } from '../cli/commands.ts'
+import { TASK_OPTIONS } from '../app/task-cli.ts'
 import { HydraError, type Card } from '../core/model.ts'
 import { type HydraState } from '../app/model.ts'
 import { reportActor } from '../core/hydra.ts'

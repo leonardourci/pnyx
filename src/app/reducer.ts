@@ -6,7 +6,7 @@ import { applyExternalSource } from '../external-sources/state.ts'
 import { EVENT_VERSION, SESSION_TITLE } from '../core/model.ts'
 import { type HydraEvent, type HydraState } from './model.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from '../core/tasks.ts'
-import { refreshTasks } from '../core/hydra.ts'
+import { refreshTasks, HYDRA_CARD, hydraConfig, roleColumn, ROLE_STATUS } from '../core/hydra.ts'
 import { applyPermission } from '../core/permissions.ts'
 import { applyAsk } from '../core/asks.ts'
 import { refreshDone } from '../core/retention.ts'
@@ -16,7 +16,6 @@ import { requestId } from '../core/answer.ts'
 import { applyLabelColors } from '../core/labels.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle, isStaleLink } from '../core/reducer.ts'
 import { ownerActor } from './actors.ts'
-import { HYDRA_CARD, hydraConfig, roleColumn, ROLE_STATUS } from '../core/hydra.ts'
 
 export function emptyHydra(): HydraState {
   return {
