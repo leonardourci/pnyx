@@ -1,12 +1,13 @@
 import { spawnSync } from 'node:child_process'
 import { resolve } from 'node:path'
-import { discoverTests, isScenario } from './discover.ts'
+import { isScenario, selectTests } from './discover.ts'
 import { createTestEnvironment } from './test-environment.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
+  'scripts/verification/marker.test.ts',
   'test/action-label.test.ts',
   'test/card-open.test.ts',
   'test/card-states.test.ts',
@@ -19,7 +20,6 @@ const PURE_TESTS = new Set([
   'test/draft.test.ts',
   'test/keyboard.test.ts',
   'test/lavish-output.test.ts',
-  'scripts/verification/marker.test.ts',
   'test/memory-budgets.test.ts',
   'test/model-picker.test.ts',
   'test/optimistic.test.ts',
@@ -36,12 +36,8 @@ const PURE_TESTS = new Set([
 const inputs = process.argv.slice(2)
 const options = inputs.filter(input => input.startsWith('--test-name-pattern='))
 const files = inputs.filter(input => !options.includes(input)).flatMap(input => {
-  if (input === 'unit') {
-    return discoverTests().filter(file => !isScenario({ file }))
-  }
-
-  if (input === 'scenarios') {
-    return discoverTests().filter(file => isScenario({ file }))
+  if (input === 'unit' || input === 'scenarios') {
+    return selectTests({ input })
   }
 
   return input

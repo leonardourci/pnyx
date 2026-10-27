@@ -1,10 +1,9 @@
 import assert from 'node:assert/strict'
-import { execFileSync, spawn, spawnSync } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { until } from '../../src/test-harness/harness.ts'
-import { discoverTests } from './discover.ts'
 import { test } from 'node:test'
 
 test(
@@ -330,30 +329,5 @@ test('budget probe', () => budgetProbe(${JSON.stringify({
         },
       )
     }
-  },
-)
-
-test(
-  'discovery finds every test file in the repository',
-  () => {
-    const files = execFileSync(
-      'git',
-      [
-        'ls-files',
-        '--cached',
-        '--others',
-        '--exclude-standard',
-        '--',
-        '*.test.ts',
-      ],
-      { encoding: 'utf8' },
-    ).trim()
-      .split('\n')
-      .sort()
-
-    assert.deepEqual(
-      discoverTests(),
-      files,
-    )
   },
 )

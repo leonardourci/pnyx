@@ -15,7 +15,7 @@ export function isScenario({ file }: { file: string }): boolean {
   return file.includes('test/scenarios/') || /\.(scenario|e2e)\.test\.ts$/.test(file)
 }
 
-// Every test file under the roots, relative to the repository and sorted.
+// Paths are relative to the working directory, which must be the repository root.
 export function discoverTests(): string[] {
   return ROOTS.filter(root => existsSync(root)).flatMap(root => readdirSync(
     root,
@@ -26,4 +26,8 @@ export function discoverTests(): string[] {
   )))
     .filter(file => file.endsWith('.test.ts'))
     .sort()
+}
+
+export function selectTests({ input }: { input: 'unit' | 'scenarios' }): string[] {
+  return discoverTests().filter(file => isScenario({ file }) === (input === 'scenarios'))
 }
