@@ -1,4 +1,4 @@
-import { COMMON, integer, meta, parse, required, type Output } from '../cli/commands.ts'
+import { COMMON, integer, meta, parse, required, type Output } from '../app/cli-support.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
 import { steeringClaim } from '../task-inbox/state.ts'

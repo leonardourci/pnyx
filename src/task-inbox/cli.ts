@@ -1,7 +1,7 @@
 import { commentInput } from '../compaction/comments.ts'
 import { pendingSteering, steeringClaim } from './state.ts'
 import { readFileSync } from 'node:fs'
-import { integer, meta, parse, required, COMMON, type Output } from '../cli/commands.ts'
+import { integer, meta, parse, required, COMMON, type Output } from '../app/cli-support.ts'
 import { HydraError, type SteeringAck, type SteeringAttempt, type SteeringClaim } from '../core/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'

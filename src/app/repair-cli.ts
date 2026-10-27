@@ -1,4 +1,4 @@
-import { guard, parse, COMMON } from '../cli/commands.ts'
+import { guard, parse, COMMON } from './cli-support.ts'
 import { repairHydra } from './repair.ts'
 
 export const repair = guard({

@@ -10,7 +10,7 @@ import { HydraError, type AgentConfig, type AgentRef } from '../../core/model.ts
 import { paseoUrl } from '../../core/paseo.ts'
 import { sessionId } from '../../core/tasks.ts'
 import { drainSpool } from '../hooks/ingest.ts'
-import type { Output } from '../../cli/commands.ts'
+import type { Output } from '../../app/cli-support.ts'
 import { canonical } from '../../store/paths.ts'
 import { withWriter } from '../../app/writer.ts'
 import { pnyxHome } from '../../store/hydra-store.ts'

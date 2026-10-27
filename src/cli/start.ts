@@ -40,7 +40,7 @@ import { askHost } from '../server/state.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
 import { pnyxHome } from '../store/hydra-store.ts'
-import type { Output } from './commands.ts'
+import type { Output } from '../app/cli-support.ts'
 
 export const VIAS = [
   'pnyx',

@@ -1,5 +1,5 @@
 import { requireReady } from '../core/dependencies.ts'
-import { commit, required, type Output } from '../cli/commands.ts'
+import { commit, required, type Output } from '../app/cli-support.ts'
 import { sendReply } from '../cli/reply.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { decideMove, findCard } from '../core/decide.ts'

@@ -1,5 +1,5 @@
 import { mergeApproval } from '../core/asks.ts'
-import { commit, required, type Output } from '../cli/commands.ts'
+import { commit, required, type Output } from '../app/cli-support.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { decideLink, findCard } from '../core/decide.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'

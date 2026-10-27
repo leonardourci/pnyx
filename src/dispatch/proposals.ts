@@ -4,7 +4,7 @@ import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, type DispatchProposal } from '../core/model.ts'
 import { withWriter } from '../app/writer.ts'
 import { withRegistryLock } from '../store/hydra-store.ts'
-import { meta, type Output } from '../cli/commands.ts'
+import { meta, type Output } from '../app/cli-support.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { configPath, effectiveDispatch, parseAccounts, parseDispatch, readConfig, writeConfig } from './config.ts'
 

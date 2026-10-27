@@ -1,6 +1,6 @@
 import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
-import { flagError } from '../cli/commands.ts'
+import { flagError } from '../app/cli-support.ts'
 import { serverPids } from '../server/server.ts'
 import { RESTART_SIGNAL } from './restart.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
