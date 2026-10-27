@@ -1,12 +1,14 @@
 #!/bin/sh
-# Hooks must stay silent and always exit 0 so reporting never blocks the agent.
-exec >/dev/null 2>&1
+# Hooks always exit 0 so reporting never blocks the agent. Only SessionStart prints: the
+# Hydra's summary for this folder, on the saved stdout (fd 3). Everything else stays silent.
+exec 3>&1 >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
 set -f
 
 harness=$1
 event=$2
+cli=${3:-}
 case $harness in claude | codex) ;; *) exit 0 ;; esac
 case $event in '' | *[!A-Za-z]*) exit 0 ;; esac
 
@@ -86,8 +88,14 @@ fi
 # socket file, so the common path never starts nc.
 if [ -S "$hydra_dir/server.sock" ] && nc -U -w 1 "$hydra_dir/server.sock" <"$tmp"; then
   rm -f "$tmp"
-  exit 0
+else
+  mv "$tmp" "$spool/$name" || rm -f "$tmp"
 fi
 
-mv "$tmp" "$spool/$name" || rm -f "$tmp"
+# A worker gets its context from Pnyx itself; other sessions get the summary when the
+# folder belongs to an attached project. The harness's hook timeout bounds the call.
+if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$cli" ]; then
+  summary=$(PNYX_HOME=$home node "$cli" context --hydra "$hydra_name" --cwd "$PWD" 2>/dev/null) || summary=
+  [ -z "$summary" ] || printf '%s\n' "$summary" >&3
+fi
 exit 0

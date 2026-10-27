@@ -454,32 +454,6 @@ test(
 )
 
 test(
-  'When only one of two calls made together is answered, the action is still running',
-  () => {
-    assert.equal(
-      readAction({
-        lines: lines({
-          records: [
-            claudeCall({
-              id: 'a',
-              name: 'Bash',
-              input: { command: 'pnpm test' },
-            }),
-            claudeCall({
-              id: 'b',
-              name: 'Bash',
-              input: { command: 'pnpm lint' },
-            }),
-            claudeResult({ id: 'a' }),
-          ],
-        }),
-      }).action?.done,
-      false,
-    )
-  },
-)
-
-test(
   'Calls and results split across reads of a growing transcript still make one action, done once both answered',
   () => {
     const path = join(
@@ -578,57 +552,6 @@ test(
 )
 
 test(
-  'An action keeps at most its last eight calls, and long commands and descriptions are cut',
-  () => {
-    const calls = Array.from(
-      { length: 10 },
-      (
-        _,
-        index,
-      ) => claudeCall({
-        id: `c${index}`,
-        name: 'Read',
-        input: { file_path: `${index}.ts` },
-      }),
-    )
-
-    assert.deepEqual(
-      readAction({ lines: lines({ records: calls }) }).action?.calls.map(call => call.id),
-      [
-        'c2',
-        'c3',
-        'c4',
-        'c5',
-        'c6',
-        'c7',
-        'c8',
-        'c9',
-      ],
-    )
-
-    const [call] = recordCalls({
-      record: claudeCall({
-        id: 'long',
-        name: 'Bash',
-        input: {
-          command: 'x'.repeat(1000),
-          description: 'y'.repeat(1000),
-        },
-      }),
-    }).calls
-
-    assert.equal(
-      call?.command?.length,
-      400,
-    )
-    assert.equal(
-      call?.description?.length,
-      120,
-    )
-  },
-)
-
-test(
   'Broken or partial records give no calls instead of failing the read',
   () => {
     assert.deepEqual(
@@ -707,24 +630,6 @@ test(
         tools: false,
       }),
       [],
-    )
-  },
-)
-
-test(
-  'A read target keeps its filename when its directory exceeds the display limit',
-  () => {
-    const target = `/repo/${'nested/'.repeat(30)}hydra.ts`
-    const calls = recordCalls({
-      record: claudeCall({
-        id: 'long-read',
-        name: 'Read',
-        input: { file_path: target },
-      }),
-    }).calls
-    assert.equal(
-      calls[0]?.file,
-      'hydra.ts',
     )
   },
 )

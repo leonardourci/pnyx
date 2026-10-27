@@ -754,7 +754,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setActive(id); setPage('hydra')
   }
 
-  const openFromTitle = ({
+  const openFromPointer = ({
     id,
     signal,
   }: {
@@ -781,10 +781,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const open = async ({
     id,
-    fromTitle = false,
+    pointer = false,
+    focusUpdates = true,
   }: {
     id: string
-    fromTitle?: boolean
+    pointer?: boolean
+    focusUpdates?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -812,8 +814,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setPage('hydra'); setRevealing(id)
 
     try {
-      if (fromTitle) {
-        const card = await openFromTitle({
+      if (pointer) {
+        const card = await openFromPointer({
           id,
           signal,
         })
@@ -848,7 +850,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       }
 
       const updates = element.querySelector<HTMLElement>('.task-updates')
-      updates?.focus({ preventScroll: true })
+
+      if (focusUpdates) {
+        updates?.focus({ preventScroll: true })
+      }
 
       return !!updates && element.isConnected && !signal.aborted
     } finally {
@@ -1221,7 +1226,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     save={save}
                                     open={({
                                       id,
-                                      fromTitle,
+                                      pointer,
+                                      focusUpdates,
                                     }) => {
                                       if (expandedIds.includes(id)) {
                                         close({ id })
@@ -1231,7 +1237,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
                                       return open({
                                         id,
-                                        fromTitle,
+                                        pointer,
+                                        focusUpdates,
                                       })
                                     }}
                                     command={command}

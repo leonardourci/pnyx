@@ -1,27 +1,35 @@
 # Contributing to Pnyx
 
-Open a GitHub issue describing the problem or proposed change, and wait for a quick yes from the repository owner before starting. Typos, docs fixes and hotfixes may skip the issue; explain the problem in the pull request instead.
+An issue is where a change gets talked through and its decisions are recorded, so start there for anything worth discussing: say what should change and why. Typos, small doc fixes and hotfixes have little to discuss, so they can go straight to a pull request whose description records what changed and why; open an issue anyway if you want to talk it through. For a bigger change, also describe the approach in the issue. You don't need to wait for a reply before opening the pull request. Report vulnerabilities privately through [SECURITY.md](SECURITY.md) instead of an issue.
 
-Fork the repository and work on a branch. Follow the [README](README.md#install) to install dependencies and build, and [AGENTS.md](AGENTS.md) for the project conventions. Use an isolated `PNYX_HOME` and an unused port when running Pnyx; tests use temporary homes and fixtures.
+Fork the repository, then clone your fork and create a branch:
 
-Open a pull request against `main` with the problem, the fix and how you validated it. Include `Closes #n` when it has an issue. Complete the required review checkboxes in the [PR template](.github/pull_request_template.md), following the linked checklists, and note anything those reviews fixed.
+```sh
+git clone https://github.com/<your-user>/pnyx.git
+cd pnyx
+git remote add upstream https://github.com/leonardourci/pnyx.git
+git switch -c your-change
+pnpm install
+pnpm run build
+```
 
-Every PR needs `pnpm verify` passing locally on its pushed head. Run it from a clean checkout with `origin/main` fetched and GitHub CLI authenticated for your PR. It selects checks for the changed files and writes the hidden verification marker into the PR description only when its requirements pass. If formatting changes files, commit and push them, then run it again. Docs-only PRs also run verify and need the marker, even when no build or tests are selected. See [Development](README.md#development) for check selection and browser prerequisites.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. Run Pnyx with an isolated `PNYX_HOME` and an unused port; see [Development](docs/development.md). Follow [AGENTS.md](AGENTS.md) and the [follow-conventions skill](.agents/skills/follow-conventions/SKILL.md) for code conventions, and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
 
-GitHub checks must pass before merging. The Verification workflow automatically runs the selected checks for every PR; that run supplements local verification. The repository owner reviews and merges PRs into `main` with a merge commit.
+## Pull requests and checks
 
-## Verification by change kind
+Commit with Conventional Commits, split by concern, with each area or module in its own commit. Then, in order:
 
-Run `pnpm verify` on the clean, pushed PR head. It prints the changed path groups, required review boxes and selected checks. Tick only the required `Ran` boxes after completing those checklists; other template boxes may stay unticked. Mixed changes take the union of their requirements.
+1. **Open the pull request.** Push your branch and open a pull request against `main`. Explain the problem, the fix and how you checked it, and link its issue with a line such as `Closes #12`. Add images or a short recording for visible changes.
+2. **Do the reviews your change needs, in order:** [review-code](.agents/skills/review-code/SKILL.md), [audit-tests](.agents/skills/audit-tests/SKILL.md), then [deslop](.agents/skills/deslop/SKILL.md). [Verification by change kind](docs/development.md#verification-by-change-kind) lists which ones each kind of change needs. Fix what they find, push the fixes, tick their boxes in the [PR template](.github/pull_request_template.md) and note the fixes in the description.
+3. **Run `pnpm verify` last.** Every pull request needs it, docs-only ones included. Run it from your pushed PR branch with a clean working tree. It needs GitHub CLI signed in, and your branch must include your fork's `main`, so keep that synced with upstream; if your branch is behind, it prints the rebase command to run. It looks at the files you changed and picks the checks to match: none for docs, the changed tests for test files, and the full suite (lint, type checks, build, unit tests and flows) for code. Full runs on one machine take turns, so a second one waits for the first to finish. If it changes formatting, commit, push and run it again. Once the checks pass, it writes a hidden line in the PR description naming the commit it tested.
 
-| Change kind | Required reviews | Checks |
-| --- | --- | --- |
-| Files under `docs/`, or Markdown outside shipped skills and test fixtures | `deslop` | None |
-| Shipped skill Markdown under `skills/` | `deslop` | Build and tests that read the shipped skills |
-| Test files (`test/**/*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
-| UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, build, unit tests and scenarios |
-| Explicit mechanical rename or move | `deslop` | Full suite |
+A pull request has two GitHub checks:
 
-For a mechanical rename or move, run `pnpm verify --mechanical` and put exactly one standalone line, `Change: mechanical (rename)` or `Change: mechanical (move)`, in the PR description. The flag requires the visible declaration and records it in the verification marker. It changes only the required reviews and always runs the full suite. `--mechanical` cannot be combined with `--checks-only`, which never reads or edits the PR description.
+- **pnpm verify** runs on every push. It runs nothing itself; it confirms that `pnpm verify` passed on that exact commit and that the review boxes are ticked. A new push needs a new `pnpm verify` run.
+- **The full test run** runs the test suite on GitHub. It starts only after a maintainer approves it.
 
-Verification does not merge a PR. Merging requires explicit approval.
+Both must pass before merging. The repository owner reviews and merges with a merge commit. [Development](docs/development.md#verification) has the details, including which checks each kind of change runs and `pnpm verify --mechanical` for renames and moves.
+
+## Reporting bugs
+
+For bugs, include the Pnyx version, OS, harness, reproduction steps, expected behavior and actual behavior. Use made-up tasks and an isolated home for a reproduction; remove private paths, transcripts, tokens and account details from logs.

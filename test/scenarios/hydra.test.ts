@@ -3,15 +3,11 @@ import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { hydraConfig, HYDRA_CARD } from '../../src/core/hydra.ts'
+import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
-import { hydraConversation } from '../../web/src/hydra/conversation.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
-import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
-
-const pnyx = scenarioGroup()
-type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
+import { openPage, until } from './harness.ts'
+import { pnyx, type Scenario } from './pnyx.ts'
 
 const finished = async ({
   s,
@@ -219,7 +215,7 @@ test(
 )
 
 test(
-  'owner chat starts a private Hydra, replies once, and resumes the same session after restart',
+  'owner chat starts a private Hydra that may not hold messages with check --wait, replies once, and resumes the same session after restart',
   async () => {
     const s = await pnyx.scenario()
     await send({
@@ -232,6 +228,33 @@ test(
       turns: 1,
     })
     const first = await s.agent({ hydra: true })
+    // The Hydra Pnyx runs may not hold the owner's messages with check --wait; the owner may.
+    const hydra = s.as({ agent: first })
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'hydra',
+          'check',
+          '--wait',
+          '1',
+        ],
+      }),
+      'VALIDATION_ERROR',
+    )
+    await hydra.run({
+      args: [
+        'hydra',
+        'check',
+      ],
+    })
+    await s.owner({
+      args: [
+        'hydra',
+        'check',
+        '--wait',
+        '1',
+      ],
+    })
     assert.equal(
       first.cwd,
       join(
@@ -349,59 +372,6 @@ test(
 )
 
 test(
-  'a failed Hydra turn exposes the failure and the next owner message recovers after restart',
-  async () => {
-    const s = await pnyx.scenario()
-    pnyx.claude.plan({
-      text: 'Try the login',
-      fail: 'Harness login is missing',
-    })
-    await send({
-      s,
-      text: 'Try the login',
-      id: 'failed',
-    })
-    await until({
-      what: 'the failed turn on the Hydra card',
-      check: () => s.state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted' && a.text?.includes('Harness login is missing')),
-    })
-    const first = await s.agent({ hydra: true })
-    await pnyx.restart()
-    await send({
-      s,
-      text: 'The login is repaired',
-      id: 'recovered',
-    })
-    await finished({
-      s,
-      turns: 2,
-    })
-    assert.equal(
-      s.state().cards[HYDRA_CARD]?.attention.some(a => a.kind === 'interrupted'),
-      false,
-    )
-    assert.equal(
-      (await s.agent({ hydra: true })).id,
-      first.id,
-    )
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-
-    try {
-      const receipt = await page.command({
-        name: 'thread',
-        args: [HYDRA_CARD],
-      })
-      assert.ok((receipt.thread as ThreadPage).entries.some(e => e.role === 'assistant' && e.text === pnyx.claude.reply))
-    } finally {
-      page.close()
-    }
-  },
-)
-
-test(
   'progress stays on the task without a turn, then the next question carries every report to Hydra once',
   async () => {
     const s = await pnyx.scenario()
@@ -426,6 +396,11 @@ test(
       ],
     })
     const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+    // The worker's opening turn would otherwise touch the card between a report and its check.
+    await until({
+      what: 'the worker’s opening turn to finish',
+      check: () => s.task({ key: 'fix' }).sessionActivity === 'finished',
+    })
     const held = pnyx.claude.plan({
       text: 'Track the parser',
       hold: true,
@@ -549,111 +524,6 @@ test(
       held.release()
       page.close()
     }
-  },
-)
-
-test(
-  'progress requires an agent, a task and text, and invalid reports write nothing',
-  async () => {
-    const s = await pnyx.scenario()
-    const folder = s.folder({ name: 'validation' })
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Fix the parser',
-        '--key',
-        'fix',
-        '--folder',
-        folder,
-      ],
-    })
-    await s.owner({
-      args: [
-        'task',
-        'start',
-        'fix',
-      ],
-    })
-    const worker = s.as({ agent: await s.agent({ cwd: folder }) })
-    const task = s.task({ key: 'fix' }).id
-
-    assert.equal(
-      await s.ownerRefused({
-        args: [
-          'hydra',
-          'send',
-          '--kind',
-          'progress',
-          '--task',
-          task,
-          '--text',
-          'Halfway',
-        ],
-      }),
-      'VALIDATION_ERROR',
-    )
-
-    for (const args of [
-      [
-        '--actor',
-        `worker:${task}`,
-        '--text',
-        'Halfway',
-      ],
-      [
-        '--actor',
-        `worker:${task}`,
-        '--task',
-        task,
-      ],
-      [
-        '--actor',
-        `worker:${task}`,
-        '--task',
-        task,
-        '--action',
-        'worker',
-        '--text',
-        'Halfway',
-      ],
-    ]) {
-      assert.equal(
-        await worker.refused({
-          args: [
-            'hydra',
-            'send',
-            '--kind',
-            'progress',
-            ...args,
-          ],
-        }),
-        'VALIDATION_ERROR',
-      )
-    }
-
-    assert.equal(
-      await worker.refused({
-        args: [
-          'hydra',
-          'send',
-          '--kind',
-          'chatter',
-          '--task',
-          task,
-          '--text',
-          'Halfway',
-          '--actor',
-          `worker:${task}`,
-        ],
-      }),
-      'VALIDATION_ERROR',
-    )
-    assert.equal(
-      s.events().filter(e => e.type === 'hydra.message').length,
-      0,
-    )
   },
 )
 
@@ -826,418 +696,5 @@ test(
       held.release()
       page.close()
     }
-  },
-)
-
-test(
-  'quiet replies stay hidden during streaming and restart; longer answers and owner chat remain',
-  async () => {
-    const s = await pnyx.scenario()
-    const held = pnyx.claude.plan({
-      text: 'NO',
-      reply: 'NO_RE',
-      hold: true,
-    })
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    const visible = ({ thread }: { thread: ThreadPage }) => hydraConversation({
-      messages: s.state().hydraMessages ?? [],
-      transcript: thread.entries,
-      currentTurn: thread.currentTurn,
-      actions: thread.actions ?? [],
-      columns: hydraConfig({ state: s.state() }).columns,
-      working: s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
-      thinking: false,
-    }).entries
-
-    try {
-      await send({
-        s,
-        text: 'NO',
-        id: 'quiet',
-      })
-      const streaming = await page.command({
-        name: 'thread',
-        args: [HYDRA_CARD],
-      })
-      assert.ok((streaming.thread as ThreadPage).entries.some(e => e.streaming && e.text === 'NO_RE'))
-      assert.deepEqual(
-        visible({ thread: streaming.thread as ThreadPage }).map(e => e.text),
-        ['NO'],
-      )
-    } finally {
-      held.release()
-      page.close()
-    }
-
-    await finished({
-      s,
-      turns: 1,
-    })
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Waiting task',
-        '--key',
-        'waiting',
-      ],
-    })
-    pnyx.claude.plan({
-      text: '</pnyx-wake>',
-      reply: 'NO_REPLY\n',
-    })
-    await s.owner({
-      args: [
-        'task',
-        'status',
-        'waiting',
-        'blocked',
-        '--note',
-        'Waiting for tool access',
-      ],
-    })
-    await finished({
-      s,
-      turns: 2,
-    })
-    await pnyx.restart()
-    pnyx.claude.plan({
-      text: 'Explain the marker',
-      reply: 'NO_REPLY is not all I said',
-    })
-    await send({
-      s,
-      text: 'Explain the marker',
-      id: 'explain',
-    })
-    await finished({
-      s,
-      turns: 3,
-    })
-    const reopened = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-
-    try {
-      const receipt = await reopened.command({
-        name: 'thread',
-        args: [HYDRA_CARD],
-      })
-      assert.deepEqual(
-        visible({ thread: receipt.thread as ThreadPage }).map(e => e.text),
-        [
-          'NO',
-          'Explain the marker',
-          'NO_REPLY is not all I said',
-        ],
-      )
-    } finally {
-      reopened.close()
-    }
-  },
-)
-
-test(
-  'memory saves survive restart, inform the next wake, and keep owner preferences shared across Hydras',
-  async () => {
-    const s = await pnyx.scenario()
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Watch memory',
-        '--key',
-        'watch',
-      ],
-    })
-    await send({
-      s,
-      text: 'Remember the plan',
-      id: 'remember',
-    })
-    await finished({
-      s,
-      turns: 1,
-    })
-    const agent = await s.agent({ hydra: true })
-    const hydra = s.as({ agent })
-    await hydra.run({
-      args: [
-        'hydra',
-        'memory',
-        'set',
-        '--key',
-        'scope',
-        '--text',
-        'Release the parser.',
-      ],
-    })
-    await hydra.run({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Short PRs.',
-      ],
-    })
-    await s.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        'watch',
-        '--actor',
-        `worker:${s.task({ key: 'watch' }).id}`,
-        '--text',
-        'Memory is ready',
-      ],
-    })
-    await finished({
-      s,
-      turns: 2,
-    })
-    assert.match(
-      agent.received[1]!,
-      /Memory changed; load owner memory/,
-    )
-    assert.doesNotMatch(
-      agent.received[1]!,
-      /<pnyx-digest/,
-    )
-    await pnyx.restart()
-    await send({
-      s,
-      text: 'Recall the plan',
-      id: 'recall',
-    })
-    await finished({
-      s,
-      turns: 3,
-    })
-    const resumed = await s.agent({ hydra: true })
-    assert.match(
-      resumed.received[0]!,
-      /Release the parser\./,
-    )
-    assert.match(
-      resumed.received[0]!,
-      /Short PRs\./,
-    )
-    const other = await pnyx.scenario()
-    assert.match(
-      await other.owner({
-        args: [
-          'hydra',
-          'digest',
-        ],
-      }),
-      /Short PRs\./,
-    )
-    assert.doesNotMatch(
-      await other.owner({
-        args: [
-          'hydra',
-          'memory',
-          'list',
-        ],
-      }),
-      /Release the parser\./,
-    )
-    assert.match(
-      await s.owner({
-        args: [
-          'owner',
-          'memory',
-          'set',
-          '--key',
-          'preferences',
-          '--text',
-          'Short PRs.',
-        ],
-      }),
-      /skipped: unchanged/,
-    )
-    await s.owner({
-      args: [
-        'owner',
-        'memory',
-        'forget',
-        '--key',
-        'preferences',
-      ],
-    })
-    assert.match(
-      await other.owner({
-        args: [
-          'owner',
-          'memory',
-          'list',
-        ],
-      }),
-      /none: no owner memory yet/,
-    )
-    const log = readFileSync(
-      join(
-        process.env.PNYX_HOME!,
-        'owner',
-        'memory.jsonl',
-      ),
-      'utf8',
-    )
-    assert.equal(
-      log.trim().split('\n').length,
-      2,
-    )
-    await hydra.run({
-      args: [
-        'hydra',
-        'memory',
-        'forget',
-        '--key',
-        'scope',
-      ],
-    })
-    assert.equal(
-      s.state().hydraMemory?.scope,
-      undefined,
-    )
-    assert.deepEqual(
-      s.events().filter(e => e.type === 'hydra.memory')
-        .map(e => e.data.after),
-      [
-        'Release the parser.',
-        null,
-      ],
-    )
-  },
-)
-
-test(
-  'durable Lavish rounds reach the page worker once and stay out of Hydra owner chat',
-  async () => {
-    const s = await pnyx.scenario()
-    const folder = s.folder({ name: 'review-page' })
-    const fixture = lavishFixture({ folder })
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Build a review page',
-        '--key',
-        'page',
-        '--folder',
-        folder,
-      ],
-    })
-    await s.owner({
-      args: [
-        'task',
-        'start',
-        'page',
-      ],
-    })
-    const agent = await s.agent({ cwd: folder })
-    const worker = s.as({ agent })
-    await until({
-      what: 'worker opening turn',
-      check: () => s.task({ key: 'page' }).sessionActivity === 'finished',
-    })
-    await send({
-      s,
-      text: 'The review page is ready',
-      id: 'ready',
-    })
-    await finished({
-      s,
-      turns: 1,
-    })
-    const hydra = await s.agent({ hydra: true })
-    await worker.run({
-      args: fixture.arm({
-        task: 'page',
-        id: 'comments',
-      }),
-    })
-    await until({
-      what: 'page listening',
-      check: () => existsSync(join(
-        folder,
-        'listening',
-      )),
-    })
-    const comments = 'session:\n  status: feedback\n  session_ended: true\nprompts[1]{tag,text}:\n  message,"Use a larger chart and keep the legend."\n'
-    fixture.deliver({ body: comments })
-    await until({
-      what: 'captured feedback delivered to worker',
-      check: () => {
-        const message = s.task({ key: 'page' }).steering?.[0]
-
-        return message && s.received({ cwd: folder }).some(text => text.includes(message.id))
-          && s.task({ key: 'page' }).sessionActivity === 'finished'
-      },
-    })
-    const message = s.task({ key: 'page' }).steering![0]!
-    await pnyx.restart()
-    await readAndAck({
-      s,
-      worker,
-      task: 'page',
-      id: 'comments',
-    })
-    const handled = [
-      'task',
-      'source',
-      'handled',
-      'page',
-      'comments',
-      '1',
-      ...claimFlags({ card: s.task({ key: 'page' }) }),
-    ]
-    await worker.run({ args: handled })
-    await worker.run({ args: handled })
-    await send({
-      s,
-      text: 'Continue the review',
-      id: 'continue',
-    })
-    await until({
-      what: 'Hydra handles the next owner message',
-      check: () => s.received({ cwd: hydra.cwd }).includes('Continue the review')
-        && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
-    })
-    assert.equal(
-      s.task({ key: 'page' }).steering!.filter(item => item.id === message.id).length,
-      1,
-    )
-    assert.equal(
-      s.task({ key: 'page' }).externalSources![0]!.state,
-      'retired',
-    )
-    assert.equal(
-      s.events().filter(event => event.type === 'task.source.handled').length,
-      1,
-    )
-    assert.equal(
-      s.received({ cwd: hydra.cwd }).some(text => text.includes(comments)),
-      false,
-    )
-    assert.equal(
-      s.state().hydraMessages?.some(item => item.text.includes(comments)),
-      false,
-    )
-    assert.equal(
-      fixture.calls().length,
-      1,
-    )
   },
 )

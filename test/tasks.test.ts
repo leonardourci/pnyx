@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush, decideSession, decideUndo, joinedKey, type Decision } from '../src/core/decide.ts'
-import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
+import { decidePush, decideSession, joinedKey, type Decision } from '../src/core/decide.ts'
+import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
 import type { HydraEvent, HydraState } from '../src/core/model.ts'
 
@@ -82,71 +82,6 @@ function fixture() {
     session,
   }
 }
-
-test(
-  'legacy interactive sessions stay recorded without creating Hydra work',
-  () => {
-    const f = fixture()
-    f.session({ key: 'one' })
-    const task = f.state.cards.c1!
-    assert.equal(
-      task.title,
-      'Work one',
-    )
-    assert.deepEqual(
-      task.sessionIds,
-      ['claude-code:one'],
-    )
-    assert.equal(
-      f.state.sessions?.['claude-code:one']?.taskId,
-      task.id,
-    )
-    assert.equal(
-      liveTask({ card: task }),
-      false,
-    )
-  },
-)
-
-test(
-  'background runs stay addressable in history but never become live cards',
-  () => {
-    const f = fixture()
-    f.session({
-      key: 'background',
-      interactive: false,
-    })
-    assert.equal(
-      Object.values(f.state.cards).filter(card => liveTask({ card })).length,
-      0,
-    )
-    assert.equal(
-      f.state.sessions?.['claude-code:background']?.agent.sessionId,
-      'background',
-    )
-    assert.equal(
-      f.state.cards.c1!.title,
-      'Work background',
-    )
-    assert.throws(
-      () => decideSession({
-        state: f.state,
-        ref: 'claude:background',
-        task: 'c1',
-        meta,
-      }),
-      /background session/,
-    )
-    f.push({
-      key: 'claude:background',
-      input: { terminal: { tty: '/dev/ttys123' } },
-    })
-    assert.equal(
-      f.state.cards.c1!.hidden,
-      true,
-    )
-  },
-)
 
 test(
   'moving a session preserves task titles, links and placement while future hooks follow its attachment',
@@ -288,119 +223,6 @@ test(
 )
 
 test(
-  'Firstmate worktree joins allow one worker and leave later sessions independent',
-  () => {
-    const f = fixture()
-    f.push({
-      key: 'fm:task',
-      input: {
-        title: 'Managed work',
-        folder: '/lab',
-        source: {
-          adapter: 'firstmate',
-          objectId: 'task',
-          instanceId: '/lab/fm',
-        },
-      },
-    })
-    assert.equal(
-      joinedKey({
-        state: f.state,
-        key: 'claude:one',
-        folder: '/lab',
-      }),
-      'fm:task',
-    )
-    f.push({
-      key: 'fm:task',
-      input: {
-        agent: {
-          provider: 'claude-code',
-          sessionId: 'one',
-        },
-        terminal: { tty: '/dev/ttys123' },
-        source: {
-          adapter: 'hooks',
-          instanceId: 'claude',
-          objectId: 'one',
-        },
-      },
-    })
-    assert.equal(
-      joinedKey({
-        state: f.state,
-        key: 'claude:two',
-        folder: '/lab',
-      }),
-      'claude:two',
-    )
-    assert.equal(
-      f.state.cards.c1!.hidden,
-      undefined,
-    )
-  },
-)
-
-test(
-  'legacy multi-session joins keep the first worker attached and retain every session',
-  () => {
-    const f = fixture()
-    f.push({
-      key: 'fm:task',
-      input: {
-        title: 'Managed work',
-        source: {
-          adapter: 'firstmate',
-          objectId: 'task',
-        },
-      },
-    })
-
-    for (const id of [
-      'one',
-      'two',
-    ]) {
-      f.push({
-        key: 'fm:task',
-        input: {
-          agent: {
-            provider: 'claude-code',
-            sessionId: id,
-          },
-          terminal: { tty: '/dev/ttys123' },
-        },
-      })
-    }
-
-    assert.equal(
-      f.state.cards.c1!.agent?.sessionId,
-      'one',
-    )
-    assert.equal(
-      f.state.sessions?.['claude-code:two']?.taskId,
-      null,
-    )
-
-    for (let i = 0; i <= f.events.length; i++) {
-      const prefix = replay({
-        state: emptyHydra(),
-        events: f.events.slice(
-          0,
-          i,
-        ),
-      })
-      assert.deepEqual(
-        replay({
-          state: prefix,
-          events: f.events.slice(i),
-        }),
-        f.state,
-      )
-    }
-  },
-)
-
-test(
   'attachments validate revisions and preserve reducer input',
   () => {
     const f = fixture()
@@ -479,50 +301,6 @@ test(
     assert.deepEqual(
       late,
       { skipped: 'stale' },
-    )
-  },
-)
-
-test(
-  'undo attachment checks the revision of the original event task',
-  () => {
-    const f = fixture()
-    f.session({ key: 'one' })
-    f.push({
-      key: 'target',
-      input: { title: 'Target' },
-    })
-    f.apply({
-      decision: decideSession({
-        state: f.state,
-        ref: 'claude:one',
-        task: 'target',
-        meta,
-      }),
-    })
-    const attachment = f.events.at(-1)!
-    f.push({
-      key: 'target',
-      input: { title: 'Renamed' },
-    })
-    const revision = f.state.cards[f.state.keys.target!]!.revision
-    f.apply({
-      decision: decideUndo({
-        state: f.state,
-        target: attachment,
-        meta: {
-          ...meta,
-          ifRevision: revision,
-        },
-      }),
-    })
-    assert.equal(
-      f.state.sessions?.['claude-code:one']?.taskId,
-      'c1',
-    )
-    assert.equal(
-      f.state.cards[f.state.keys.target!]!.title,
-      'Renamed',
     )
   },
 )

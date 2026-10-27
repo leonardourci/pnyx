@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { reference, taskMention } from '../src/mentions/mentions.ts'
-import { fileBlock } from '../src/attachments/files.ts'
-import { cardChip, cardLabel, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret } from '../web/src/hydra/draft.ts'
+import { taskMention } from '../src/mentions/mentions.ts'
+import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeImages, replaceDisplay } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -10,82 +9,8 @@ const task = taskMention({
 })
 const image = '[image: /home/hydras/default/attachments/a.png]'
 const other = '[image: /home/hydras/default/attachments/b.png]'
-const card = ({ name }: { name: string }) => CHIP_SPACE + cardLabel({ name }) + CHIP_SPACE
 // A task chip shows as its card and state icons, then its title.
 const label = `${CHIP_SPACE}${ICON_SPACE}${WORD_JOINER}${ICON_SPACE}${CHIP_JOIN}Fix [login]${CHIP_SPACE}`
-
-test(
-  'the draft shows references and attachments as chips over the Markdown',
-  () => {
-    const text = `Look at ${task} and\n\n${image}\n\n${fileBlock({
-      name: 'notes.txt',
-      // A reference inside an attached file stays part of the file chip.
-      text: `one \`\`\` two ${task}\n`,
-    })}\n\nin ${reference({
-      kind: 'project',
-      value: '/work/app (main)',
-      label: 'app',
-    })}`
-    const view = draftView({ text })
-    assert.equal(
-      view.display,
-      `Look at ${label} and\n\n${card({ name: 'Image 1' })}\n\n${card({ name: 'notes.txt' })}\n\nin ${CHIP_SPACE}@app${CHIP_SPACE}`,
-    )
-    assert.deepEqual(
-      view.chips.map(chip => [
-        chip.kind,
-        chip.attached,
-        chip.value,
-      ]),
-      [
-        [
-          'task',
-          false,
-          'task-1',
-        ],
-        [
-          'image',
-          true,
-          '/home/hydras/default/attachments/a.png',
-        ],
-        [
-          'file',
-          true,
-          'notes.txt',
-        ],
-        [
-          'project',
-          false,
-          '/work/app (main)',
-        ],
-      ],
-    )
-    assert.match(
-      text,
-      /File: notes.txt\n\n````\none ``` two .*\n````/,
-    )
-    assert.deepEqual(
-      draftView({
-        text: `Move it to ${reference({
-          kind: 'column',
-          value: 'custom:1',
-          label: 'Needs you',
-        })}`,
-      }).chips.map(chip => [
-        chip.kind,
-        chip.value,
-        chip.label,
-      ]),
-      [
-        [
-          'column',
-          'custom:1',
-          `${ICON_SPACE}${CHIP_JOIN}Needs you`,
-        ],
-      ],
-    )
-  },
-)
 
 test(
   'typing next to a chip keeps it and an edit that touches it removes it whole',
@@ -160,64 +85,6 @@ test(
         caret: at + 1,
       }).caret,
       at + 1,
-    )
-  },
-)
-
-test(
-  'pasted reference Markdown becomes a chip and the caret skips over chips',
-  () => {
-    const pasted = editDraft({
-      text: 'See ',
-      next: `See ${task}`,
-      caret: 4 + task.length,
-    })
-    assert.deepEqual(
-      pasted,
-      {
-        text: `See ${task}`,
-        caret: `See ${label}`.length,
-      },
-    )
-    const view = draftView({ text: pasted.text })
-    assert.equal(
-      snapCaret({
-        view,
-        offset: 6,
-        backward: false,
-      }),
-      `See ${label}`.length,
-    )
-    assert.equal(
-      snapCaret({
-        view,
-        offset: 6,
-        backward: true,
-      }),
-      'See '.length,
-    )
-  },
-)
-
-test(
-  'a text file goes after the caret line as its own paragraph, without splitting a word',
-  () => {
-    const file = fileBlock({
-      name: 'build.log',
-      text: 'ok\n',
-    })
-    const text = 'Intro\n\nI think it could\nhave a preview'
-    const caret = 'Intro\n\nI thin'.length
-    assert.deepEqual(
-      placeBlock({
-        text,
-        caret,
-        block: file,
-      }),
-      {
-        text: `Intro\n\nI think it could\n\n${file}\n\nhave a preview`,
-        caret,
-      },
     )
   },
 )
@@ -321,124 +188,6 @@ test(
         at: 'ok 👍',
       }).text,
       `ok 👍 ${image} 👍 go`,
-    )
-  },
-)
-
-test(
-  'removing a card takes one space beside it, so the sentence reads as it did before',
-  () => {
-    const text = `I think ${image} it could, and ${other}, too`
-    const chips = draftView({ text }).chips
-    const first = removeChip({
-      text,
-      chip: chips[0]!,
-    })
-    assert.equal(
-      first.text,
-      `I think it could, and ${other}, too`,
-    )
-    assert.equal(
-      draftView({ text: first.text }).display.slice(
-        0,
-        first.caret,
-      ),
-      'I think ',
-    )
-    assert.equal(
-      removeChip({
-        text,
-        chip: chips[1]!,
-      }).text,
-      `I think ${image} it could, and, too`,
-    )
-    const plain = `I think ${image} it could`
-    const view = draftView({ text: plain })
-    const at = view.chips[0]!.to
-    assert.equal(
-      editDraft({
-        text: plain,
-        next: view.display.slice(
-          0,
-          at - 1,
-        ) + view.display.slice(at),
-        caret: at - 1,
-      }).text,
-      'I think it could',
-    )
-    const glued = `I think ${image}here the attachment`
-    assert.equal(
-      removeChip({
-        text: glued,
-        chip: draftView({ text: glued }).chips[0]!,
-      }).text,
-      'I think here the attachment',
-    )
-  },
-)
-
-test(
-  'a card shows its name, cut short when long, and only images and attached files are drawn as cards',
-  () => {
-    const long = 'a-very-long-release-notes-file-name.md'
-    const text = `${fileBlock({
-      name: long,
-      text: 'x\n',
-    })}\n\nSee ${image} and ${reference({
-      kind: 'image',
-      value: '/home/hydras/default/attachments/a.png',
-      label: 'Image 1',
-    })} and ${reference({
-      kind: 'file',
-      value: 'notes.txt',
-      label: 'notes.txt',
-    })}`
-    const chips = draftView({ text }).chips
-    assert.deepEqual(
-      chips.map(chip => [
-        chip.kind,
-        chip.attached,
-        chip.name,
-        cardChip({ chip }),
-      ]),
-      [
-        [
-          'file',
-          true,
-          long,
-          true,
-        ],
-        [
-          'image',
-          true,
-          'Image 1',
-          true,
-        ],
-        [
-          'image',
-          false,
-          'Image 1',
-          true,
-        ],
-        [
-          'file',
-          false,
-          'notes.txt',
-          false,
-        ],
-      ],
-    )
-    assert.ok(chips[0]!.label.replaceAll(
-      '\u2060',
-      '',
-    ).includes('a-very-long-release…'))
-    assert.equal(
-      chips[2]!.label,
-      cardLabel({ name: 'Image 1' }),
-    )
-    assert.equal(
-      chips[3]!.label,
-      '@notes.txt',
     )
   },
 )

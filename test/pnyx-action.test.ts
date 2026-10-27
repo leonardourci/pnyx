@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ThreadEntry } from '../src/thread/read.ts'
-import { pnyxCalls, pnyxSentence, pnyxWords, shellCommand, type PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
+import { pnyxCalls, pnyxWords, shellCommand, type PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
 
 const lookup: PnyxLookup = {
   task: ({ ref }) => ref === 'login' || ref === 'task-1' ? {
@@ -14,94 +14,6 @@ const lookup: PnyxLookup = {
     role: 'needs_you',
   } : undefined,
 }
-
-const sentence = ({
-  command,
-  output,
-}: {
-  command: string
-  output?: string
-}) => pnyxSentence({
-  words: pnyxWords({ command })!,
-  output,
-  lookup,
-})
-
-test(
-  'a Pnyx command reads as what it did, with its task as a chip',
-  () => {
-    const chip = {
-      task: 'task-1',
-      label: 'Fix login loop',
-    }
-    assert.deepEqual(
-      sentence({ command: 'PNYX_ACTOR=hydra pnyx-axi move login needs_you --reason "its agent asked which schema" --confirm abc --hydra default' }),
-      [
-        'Moved ',
-        chip,
-        ' to ',
-        {
-          column: {
-            id: 'custom:1',
-            role: 'needs_you',
-          },
-          label: 'Needs you',
-        },
-        ': its agent asked which schema',
-      ],
-    )
-    assert.deepEqual(
-      sentence({
-        command: 'pnyx-axi move login needs_you --reason x',
-        output: 'confirmation: needed\ntoken: abc',
-      })[0],
-      'Asked to confirm moving ',
-    )
-    assert.deepEqual(
-      sentence({
-        command: 'pnyx-axi task create --title "Fix login loop" --brief "Fix it" --reason "owner asked"',
-        output: 'event:\n  seq: 2\ncard:\n  id: task-1\n  column: queued',
-      }),
-      [
-        'Created ',
-        chip,
-        ': owner asked',
-      ],
-    )
-    assert.deepEqual(
-      sentence({ command: 'pnyx-axi reply task-1 --text \'Use the v2 schema.\nThen rerun the tests.\'' }),
-      [
-        'Sent ',
-        chip,
-        '’s worker: Use the v2 schema.',
-      ],
-    )
-    assert.deepEqual(
-      sentence({ command: 'pnyx-axi task start login --harness codex && pnyx-axi hydra check' }),
-      [
-        'Started a worker on ',
-        chip,
-        ' with Codex',
-      ],
-    )
-    assert.deepEqual(
-      sentence({ command: 'pnyx-axi task status login needs_you --note "Which schema?"' }),
-      [
-        'Marked ',
-        chip,
-        ' needs you: Which schema?',
-      ],
-    )
-    assert.deepEqual(
-      sentence({ command: 'pnyx-axi hydra memory set --key scope --text "Billing only"' }),
-      ['Saved Hydra memory “scope”'],
-    )
-    assert.deepEqual(
-      sentence({ command: 'pnyx-axi rule propose --name fast' }),
-      ['Pnyx: rule propose'],
-    )
-  },
-)
 
 test(
   'only pnyx-axi itself counts as a Pnyx command',

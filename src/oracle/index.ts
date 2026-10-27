@@ -673,8 +673,6 @@ export interface Query {
   workspace?: string
   limit: number
   live?: boolean
-  // Also return each snippet's docs.id, for semantic search to fuse entries by.
-  withIds?: boolean
   highlight?: boolean
 }
 
@@ -684,7 +682,6 @@ export interface Snippet {
   kind: Kind
   at: string
   snippet: string
-  id?: number
 }
 
 // lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
@@ -1042,7 +1039,7 @@ function run(
           })
   ) as Row[]
   const top = db.prepare(
-    `SELECT d.id, d.kind, d.at, snippet(docs_fts, 0, :startMark, :endMark, '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
+    `SELECT d.kind, d.at, snippet(docs_fts, 0, :startMark, :endMark, '…', 16) AS s FROM docs_fts JOIN docs d ON d.id = docs_fts.rowid
      WHERE docs_fts MATCH :match AND d.card = :card AND (:kind IS NULL OR d.kind = :kind) ORDER BY ${RANK}, d.id LIMIT :n`,
   )
   const snippetMatch = query.card || query.kind ? match : exprs.join(' OR ')
@@ -1060,7 +1057,6 @@ function run(
         kind: query.kind ?? null,
         n: query.card ? query.limit : SNIPPETS,
       }) as {
-        id: number
         kind: Kind
         at: string
         s: string
@@ -1072,7 +1068,6 @@ function run(
         /\s+/g,
         ' ',
       ),
-      ...(query.withIds ? { id: t.id } : {}),
     })),
   }))
 

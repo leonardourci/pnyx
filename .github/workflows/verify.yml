@@ -1,48 +1,43 @@
-name: Verification
+name: Verify
 
+# pull_request_target runs this workflow and its checker from the base branch, so a pull
+# request cannot change the check that judges it. It reads the PR through the API only and
+# never checks out or runs PR code.
 on:
-  pull_request:
-    types: [opened, synchronize, reopened, ready_for_review]
+  pull_request_target:
+    types: [opened, edited, synchronize, reopened]
     branches: [main]
 
 permissions:
   contents: read
+  pull-requests: read
 
 concurrency:
-  group: verify-${{ github.event.pull_request.number }}
+  group: verify-marker-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  verify:
-    name: Verify contribution
+  check:
+    name: pnpm verify
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 5
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: ${{ github.event.pull_request.head.sha }}
-          fetch-depth: 0
-          persist-credentials: true
+          sparse-checkout: |
+            scripts/check-marker.ts
+            scripts/marker.ts
+            scripts/required-checks.ts
+          sparse-checkout-cone-mode: false
+          persist-credentials: false
 
       - uses: actions/setup-node@v4
         with:
           node-version: 24
 
-      - uses: pnpm/action-setup@v4
-
-      - run: pnpm install --frozen-lockfile
-
-      - name: Check browser prerequisite
-        run: google-chrome --version
-
-      - run: pnpm verify --checks-only
+      - name: Check the pnpm verify marker against the PR head
         env:
-          PNYX_CHROME: /usr/bin/google-chrome
-
-      - name: Keep verification failure logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: verify-${{ github.event.pull_request.number }}-${{ github.run_attempt }}
-          path: /tmp/pnyx-verify-*/*.log
-          if-no-files-found: ignore
+          GITHUB_TOKEN: ${{ github.token }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: node scripts/check-marker.ts
