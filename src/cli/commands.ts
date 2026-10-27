@@ -92,11 +92,11 @@ import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
 import { loadHydra, spoolFiles, withWriter } from '../store/hydra-store.ts'
-import { repairHydra } from '../app/repair.ts'
 import { DEFAULT_HYDRA, hydraDir, hydraIds } from '../app/home-migration.ts'
 import { readEvents } from '../app/event-log.ts'
 import { HOME_LIMIT, guard, parse, WRITE, meta, required, commit, explained, integer, HISTORY_LIMIT, HISTORY_MAX, COMMON } from '../app/cli-support.ts'
 import type { Output, Options } from '../app/cli-support.ts'
+import { repair } from '../app/repair-cli.ts'
 import { summarize } from '../app/cli.ts'
 
 function column({ value }: { value: string }): Column {
@@ -3596,23 +3596,6 @@ const undo = guard({
         }),
       },
     )
-  },
-})
-
-const repair = guard({
-  handler: ({ args }) => {
-    const { hydraId } = parse({
-      args,
-      options: COMMON,
-      positionals: 0,
-    })
-    const result = repairHydra({ hydraId })
-
-    return {
-      repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
-      ...(result.preserved ? { preserved: result.preserved } : {}),
-      snapshot: `rebuilt through seq ${result.seq}`,
-    }
   },
 })
 
