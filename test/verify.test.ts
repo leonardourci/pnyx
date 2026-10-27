@@ -1126,21 +1126,44 @@ for (const {
           ],
         )
       } else if (checks === 'skills') {
-        assert.equal(
-          tests.length,
-          1,
-        )
-        assert.ok(tests[0]!.args.includes('test/skills.test.ts'))
-        assert.ok(tests[0]!.args.includes('test/task-context.test.ts'))
-        assert.ok(tests[0]!.args.includes('test/scenarios/worker-conventions.test.ts'))
-        assert.equal(
-          tests[0]!.args.includes('test/new.test.ts'),
-          paths.includes('test/new.test.ts'),
-        )
-        assert.ok(tests.every(call => !call.args.some(arg => arg.includes('*'))))
-        assert.equal(
-          automated.some(call => call.args.includes('typecheck')),
-          paths.includes('test/new.test.ts'),
+        const expectedTests = [
+          'test/skills.test.ts',
+          'test/skills-cli.test.ts',
+          'test/start.test.ts',
+          'test/task-context.test.ts',
+          'test/hydra-host.test.ts',
+          'test/catalog.test.ts',
+          'test/catalog-server.test.ts',
+          'test/setup-check.test.ts',
+          'test/scenarios/hydra.test.ts',
+          'test/scenarios/worker-conventions.test.ts',
+        ]
+        const expectedChecks: typeof staticChecks = []
+
+        if (paths.includes('test/new.test.ts')) {
+          expectedTests.push('test/new.test.ts')
+          expectedChecks.push(...staticChecks)
+        } else {
+          expectedChecks.push({
+            command: 'pnpm',
+            args: [
+              'run',
+              'build',
+            ],
+          })
+        }
+
+        expectedChecks.push({
+          command: 'node',
+          args: [
+            '--test',
+            '--test-concurrency=1',
+            ...expectedTests,
+          ],
+        })
+        assert.deepEqual(
+          automated,
+          expectedChecks,
         )
       } else {
         assert.ok(tests.some(call => call.args.includes('test/*.test.ts')))
