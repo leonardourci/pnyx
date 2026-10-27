@@ -196,7 +196,13 @@ export function HydraChat({
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const compactOperations = card?.compaction?.operations ?? []
   const upgrades = state.upgrades ?? []
+  // Only the newest result shows; a new attempt replaces the last one.
   const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
+    .sort((
+      a,
+      b,
+    ) => a.queuedAt.localeCompare(b.queuedAt))
+    .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
   const pending = sending.filter(s => !messages.some(m => m.id === s.id))
   // A queued /upgrade waits in the same box, with the same Send now.
