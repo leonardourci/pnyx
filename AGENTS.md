@@ -18,7 +18,7 @@ pnpm run web:dev # Vite dev server for the Hydra
 
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
-Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and `test/fixtures/`.
+Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and fixtures from `test/fixtures/` or a `fixtures/` folder beside the code.
 
 ## Layout
 
@@ -27,13 +27,14 @@ One folder per feature. Code for a feature lives in its folder. Usage and setup 
 | Folder | Holds |
 |---|---|
 | `src/cli/` | the `pnyx-axi` entry and its commands |
-| `src/core/` | event schema, Hydra rules and the pure reducer |
-| `src/store/` | `events.jsonl`, `snapshot.json`, the writer lock and the hook spool |
+| `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the command registry, the daemon and its transport |
+| `src/core/` | feature event types and Hydra rules |
+| `src/store/` | storage helpers: private folders, durable writes, the writer lock and spool files, plus owner memory and retention |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
-| `src/server/` | the local daemon, its WebSocket and the agents it runs |
+| `src/server/` | each Hydra's server routes, the host and the agents it runs |
 | `src/thread/` | the transcript and reply thread reader |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
-| `web/` | the React + Vite + Tailwind Hydra; its shared UI primitives in `web/src/shared/ui/` |
+| `web/` | the React + Vite + Tailwind Hydra; its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/` and feature-bound ones still in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: scenario and browser runners, fake agents and hosts, and the recorded agent sessions |
