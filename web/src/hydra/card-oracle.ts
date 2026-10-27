@@ -4,7 +4,7 @@ import type { Command } from './connection.ts'
 
 // Every search box ranks cards through the Hydra server's search, the same
 // full-text ranking as `pnyx-axi oracle` and recorded history.
-export const findCards = ({
+export const findCards = async ({
   command,
   query,
   workspace = '',
@@ -14,15 +14,18 @@ export const findCards = ({
   query: string
   workspace?: string
   live?: boolean
-}) =>
-  command({
+}) => {
+  const result = await command({
     name: 'oracle',
     args: [
       query,
       workspace,
       ...(live ? ['hydra'] : []),
     ],
-  }).then(r => r.hits as Hit[])
+  })
+
+  return result.hits as Hit[]
+}
 
 export function useFoundCards({
   command,
