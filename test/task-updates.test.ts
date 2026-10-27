@@ -5,7 +5,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { loadHydra } from '../src/store/hydra-store.ts'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { Card, HydraEvent } from '../src/core/model.ts'
 import type { Command } from '../web/src/hydra/connection.ts'
 import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from '../web/src/hydra/updates-cache.ts'
 import { relevantUpdate, type TaskEvent, type TaskUpdate } from '../src/core/updates.ts'
@@ -723,6 +723,65 @@ const columns = [
     role: 'done' as const,
   },
 ]
+
+test(
+  'closing a task shows one Done row for its status, outcome and move',
+  () => {
+    const closedAt = '2026-10-20T16:42:09Z'
+    const updates = taskTimeline({
+      card: {
+        id: 'c1',
+        statusLog: [],
+      } as unknown as Card,
+      columns,
+      events: [
+        {
+          type: 'task.declared',
+          data: {
+            state: 'done',
+            note: 'Merged and released',
+          },
+        },
+        {
+          type: 'card.outcome',
+          data: {
+            before: null,
+            after: { state: 'done' },
+          },
+        },
+        {
+          type: 'card.moved',
+          data: {
+            before: 'in_progress',
+            after: 'done',
+          },
+        },
+      ].map((
+        closing,
+        index,
+      ) => event({
+        seq: 1 + index,
+        at: closedAt,
+        ...closing,
+      })),
+    })
+
+    assert.deepEqual(
+      updates.map(update => [
+        update.kind,
+        update.state,
+        update.note,
+      ]),
+      [
+        [
+          'done',
+          'Done',
+          'Merged and released',
+        ],
+      ],
+    )
+  },
+)
 
 test(
   'Updates show your asks, the Hydra’s words and its reasons, and hide what adds nothing',
