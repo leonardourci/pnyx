@@ -1,4 +1,4 @@
-name: Checks required
+name: Verify
 
 on:
   pull_request:
@@ -10,12 +10,12 @@ permissions:
   pull-requests: read
 
 concurrency:
-  group: checks-required-${{ github.event.pull_request.number }}
+  group: verify-marker-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
   check:
-    name: Tests
+    name: pnpm verify
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
