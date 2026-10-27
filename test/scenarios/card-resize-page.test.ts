@@ -51,7 +51,7 @@ test(
     const task = s.task({ key: 'resize' })
     const card = `.card[data-task="${task.id}"]`
     const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
-    await page.click({ selector: `${card} .card-open` })
+    await page.click({ selector: `${card} .card-state` })
     await page.shows({
       what: 'loaded history with expandable links',
       arg: { card },

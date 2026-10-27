@@ -31,12 +31,14 @@ test(
       ],
     })
     const page = await chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
+    const card = `.card[data-task="${s.task({ key: 'client' }).id}"]`
     await page.shows({
       what: 'the connected Hydra and its closed client card',
-      check: () => document.querySelector('[data-connected="true"]')
-        && document.querySelector('.card-open[aria-label="Open task Build client"]')?.getAttribute('aria-expanded') === 'false',
+      arg: { card },
+      check: ({ card }) => document.querySelector('[data-connected="true"]')
+        && document.querySelector(card)?.classList.contains('selected') === false,
     })
-    await page.click({ selector: '.card-open[aria-label="Open task Build client"]' })
+    await page.click({ selector: `${card} .card-state` })
     await page.shows({
       what: 'task detail before prerequisites',
       check: () => document.querySelector('[aria-label="Details for Build client"]'),
