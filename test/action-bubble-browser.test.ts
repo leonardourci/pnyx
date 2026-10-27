@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
-import { createServer } from 'node:http'
 import { test } from 'node:test'
 import { browserFixture } from './browser-fixture.ts'
 
@@ -26,23 +25,13 @@ test(
       <span>28s</span><span class="action-bubble"><span class="live-label" style="width:1000px">
       <span class="live-label-item"><span class="action-text">Reading a very long configuration filename that needs an ellipsis.ts</span></span>
       </span></span></div>`
-    const server = createServer((
-      _,
-      response,
-    ) => response.end(markup))
-    await new Promise<void>(resolve => server.listen(
-      0,
-      '127.0.0.1',
-      resolve,
-    ))
-    const address = server.address()
-    assert.ok(address && typeof address === 'object')
 
     try {
       await browser({
         args: [
           'open',
-          `http://127.0.0.1:${address.port}`,
+          // Chrome on Linux keeps a spare connection open to a local server, which never lets it close.
+          `data:text/html,${encodeURIComponent(markup)}`,
         ],
       })
       const result = await browser({
@@ -71,11 +60,7 @@ test(
         /passed.*true/,
       )
     } finally {
-      try {
-        await browser({ args: ['stop'] })
-      } finally {
-        await new Promise<void>(resolve => server.close(() => resolve()))
-      }
+      await browser({ args: ['stop'] })
     }
   },
 )
