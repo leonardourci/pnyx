@@ -4,7 +4,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { watchPath } from '../src/runtime/watch.ts'
+import { watchPath } from '../src/app/watch.ts'
 
 async function until({ check }: { check(): boolean }) {
   const deadline = Date.now() + 5000

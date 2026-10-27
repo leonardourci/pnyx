@@ -3,8 +3,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { hydraDir } from '../app/home-migration.ts'
-import { withWriter } from '../app/writer.ts'
+import { hydraDir } from './home-migration.ts'
+import { withWriter } from './writer.ts'
 import { pnyxHome } from '../store/hydra-store.ts'
 
 export const DEFAULT_PORT = 4747

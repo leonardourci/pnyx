@@ -1,4 +1,4 @@
-import { proposeOwnerCommand } from '../confirmations/commands.ts'
+import { proposeOwnerCommand } from '../app/confirmations.ts'
 import { createHash } from 'node:crypto'
 import type { Output } from '../app/cli-support.ts'
 import type { Meta } from '../app/command-meta.ts'

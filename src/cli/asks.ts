@@ -8,8 +8,8 @@ import { hydraConfig, hydraDelivery, hydraEvent, reportActor } from '../core/hyd
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
-import { askHost, readServer } from '../server/state.ts'
-import { browserCommand } from '../server/browser.ts'
+import { askHost, readServer } from '../app/server-state.ts'
+import { browserCommand } from '../app/server-browser.ts'
 import { commit, explained, required, type Output } from '../app/cli-support.ts'
 import { sendReply } from './reply.ts'
 

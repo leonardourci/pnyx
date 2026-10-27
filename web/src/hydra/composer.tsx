@@ -1,7 +1,7 @@
 import type { Card, HydraColumn, HydraProject, SavedLabelColor } from '../../../src/core/model.ts'
 import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
-import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'

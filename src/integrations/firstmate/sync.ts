@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { watchPath, type PathWatch } from '../../runtime/watch.ts'
-import { background } from '../../runtime/background.ts'
+import { watchPath, type PathWatch } from '../../app/watch.ts'
+import { background } from '../../app/background.ts'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
 import { hydraConfig, declareTask, hydraEvent, migrateColumns, roleColumn } from '../../core/hydra.ts'

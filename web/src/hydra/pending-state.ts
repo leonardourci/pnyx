@@ -1,4 +1,4 @@
-import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/server/protocol.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'
 import type { HydraState } from '../../../src/app/model.ts'
 import { argument, optimisticState, type Edit } from './optimistic.ts'
 import { CommandFailure, createPendingResource } from './pending-intents.ts'

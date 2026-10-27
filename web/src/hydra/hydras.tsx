@@ -1,6 +1,6 @@
 import { Icon } from '../components/ui/icon.tsx'
 import { useEffect, useState } from 'react'
-import type { HydraSummary } from '../../../src/server/hydras.ts'
+import type { HydraSummary } from '../../../src/app/server-hydras.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { InlineTitle } from '../components/ui/inline-title.tsx'
 import type { Command } from './connection.ts'

@@ -7,7 +7,7 @@ import { HydraError } from '../core/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { pnyxHome, privateDir } from '../store/hydra-store.ts'
 import { canonical } from '../store/paths.ts'
-import { DEFAULT_PORT } from './state.ts'
+import { DEFAULT_PORT } from '../app/server-state.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll(
   '&',

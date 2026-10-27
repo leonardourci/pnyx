@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { commandBytes, MAX_MESSAGE_BYTES } from '../src/server/protocol.ts'
+import { commandBytes, MAX_MESSAGE_BYTES } from '../src/app/server-protocol.ts'
 
 test(
   'command size includes the complete serialized envelope at the transport boundary',

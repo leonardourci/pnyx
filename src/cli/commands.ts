@@ -37,7 +37,7 @@ import { decideLink, decideMove, decideOutcome, decidePush, decideView, findCard
 import { type HydraEvent, type HydraState } from '../app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { HydraError, OUTCOME_STATES, type Card, type Column, type NotedEvent, type OutcomeState } from '../core/model.ts'
-import { askHost, readServer, socketPath } from '../server/state.ts'
+import { askHost, readServer, socketPath } from '../app/server-state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
