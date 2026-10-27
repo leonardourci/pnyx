@@ -592,8 +592,13 @@ export function acquireLock({
   )
   const takeover = `${path}.takeover`
   const deadline = Date.now() + timeout
+  let attempts = 0
+  let retryTakeover: boolean
 
-  for (;;) {
+  do {
+    attempts++
+    retryTakeover = false
+
     try {
       const fd = openSync(
         path,
@@ -619,24 +624,40 @@ export function acquireLock({
       path,
       takeover,
     })) {
+      retryTakeover = timeout === 0 && attempts === 1
       continue
-    }
-
-    if (Date.now() >= deadline) {
-      throw new HydraError({
-        message: 'Hydra is locked by another pnyx-axi writer',
-        code: 'LOCKED',
-        help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
-      })
     }
 
     Atomics.wait(
       new Int32Array(new SharedArrayBuffer(4)),
       0,
       0,
-      25,
+      Math.min(
+        25,
+        Math.max(
+          0,
+          deadline - Date.now(),
+        ),
+      ),
     )
+  } while (retryTakeover || Date.now() < deadline)
+
+  let owner: string
+
+  try {
+    owner = readFileSync(
+      path,
+      'utf8',
+    ).trim()
+  } catch {
+    owner = 'unreadable'
   }
+
+  throw new HydraError({
+    message: `Hydra is locked by another pnyx-axi writer after ${timeout}ms: ${path} (owner: ${owner})`,
+    code: 'LOCKED',
+    help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
+  })
 }
 
 export function withRegistryLock<T>({ fn }: { fn(): T }): T {

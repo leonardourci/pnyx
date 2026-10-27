@@ -1,11 +1,11 @@
-import { useEffect, useState, useSyncExternalStore } from 'react'
+import { useEffect, useId, useState, useSyncExternalStore } from 'react'
 import type { Card, HydraColumn } from '../../../src/core/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
-import { groupUpdates, taskTimeline } from './task-updates.ts'
+import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
 import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
-import { UpdateGroupRow } from './update-rows.tsx'
+import { UpdateRow } from './update-rows.tsx'
 
 export function TaskUpdates({
   card,
@@ -93,6 +93,34 @@ export function TaskUpdates({
     && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
   const groups = groupUpdates({ updates: history.toReversed() })
   const shown = oldestFirst ? groups : groups.toReversed()
+  const id = useId()
+  const [
+    layout,
+    setLayout,
+  ] = useState(() => updateLayout({ groups }))
+  const nextLayout = updateLayout({
+    groups,
+    previous: layout,
+  })
+
+  if (nextLayout !== layout) {
+    setLayout(nextLayout)
+  }
+
+  const toggle = ({ id }: { id: string }) => setLayout(current => {
+    const open = new Set(current.open)
+
+    if (open.has(id)) {
+      open.delete(id)
+    } else {
+      open.add(id)
+    }
+
+    return {
+      ...current,
+      open,
+    }
+  })
   const pending = questionPending ? (
     <li key="pending-question" className="pending-question">
       <div className="pending-question-panel">
@@ -126,7 +154,20 @@ export function TaskUpdates({
       {(shown.length > 0 || pending) && (
         <ol>
           {!oldestFirst && pending}
-          {shown.map(group => <UpdateGroupRow key={group.updates[0]!.id} group={group} />)}
+          {shown.flatMap(group => group.updates.map((
+            update,
+            index,
+          ) => (
+            <UpdateRow
+              key={update.id}
+              update={update}
+              group={group}
+              index={index}
+              prefix={id}
+              open={nextLayout.open.has(group.updates[0]!.id)}
+              toggle={() => toggle({ id: group.updates[0]!.id })}
+            />
+          )))}
           {oldestFirst && pending}
         </ol>
       )}

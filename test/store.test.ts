@@ -434,6 +434,171 @@ test(
 )
 
 test(
+  'a zero-timeout writer reclaims one stale lock without waiting',
+  () => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stale-immediate-',
+    ))
+    const path = join(
+      dir,
+      'writer.lock',
+    )
+    const dead = spawnSync(
+      process.execPath,
+      [
+        '-e',
+        '',
+      ],
+    ).pid
+    writeFileSync(
+      path,
+      String(dead),
+    )
+    const release = acquireLock({
+      dir,
+      timeout: 0,
+    })
+
+    try {
+      assert.equal(
+        readFileSync(
+          path,
+          'utf8',
+        ),
+        String(process.pid),
+      )
+      assert.equal(
+        existsSync(`${path}.takeover`),
+        false,
+      )
+    } finally {
+      release()
+    }
+
+    assert.equal(
+      existsSync(path),
+      false,
+    )
+  },
+)
+
+test(
+  'writer lock expiry reports the live owner and leaves its lock intact',
+  () => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-live-lock-',
+    ))
+    const path = join(
+      dir,
+      'writer.lock',
+    )
+    const owner = String(process.pid)
+    writeFileSync(
+      path,
+      owner,
+    )
+    assert.throws(
+      () => acquireLock({
+        dir,
+        timeout: 0,
+      }),
+      error => {
+        assert.ok(error instanceof HydraError)
+        assert.equal(
+          error.code,
+          'LOCKED',
+        )
+        assert.ok(error.message.includes(path))
+        assert.ok(error.message.includes(`owner: ${owner}`))
+        assert.match(
+          error.message,
+          /after 0ms/,
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      readFileSync(
+        path,
+        'utf8',
+      ),
+      owner,
+    )
+  },
+)
+
+test(
+  'repeated stale writer takeovers obey the original deadline',
+  t => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-stale-lock-',
+    ))
+    const path = join(
+      dir,
+      'writer.lock',
+    )
+    const open = fs.openSync
+    let now = 0
+    let attempts = 0
+    t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
+    t.mock.method(
+      fs,
+      'openSync',
+      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
+      (...args: Parameters<typeof fs.openSync>) => {
+        if (args[0] === path && args[1] === 'wx') {
+          assert.ok(
+            ++attempts <= 3,
+            'takeovers must stop at the deadline',
+          )
+          now += 10
+          writeFileSync(
+            path,
+            '2147483647',
+          )
+          throw Object.assign(
+            new Error('another stale writer won'),
+            { code: 'EEXIST' },
+          )
+        }
+
+        return open(...args)
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      rejects({
+        fn: () => acquireLock({
+          dir,
+          timeout: 20,
+        }),
+        code: 'LOCKED',
+      })
+      assert.equal(
+        attempts,
+        2,
+      )
+      assert.equal(
+        existsSync(`${path}.takeover`),
+        false,
+      )
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
+  },
+)
+
+test(
   'a stale writer observation cannot remove a lock acquired before takeover',
   t => {
     const dir = hydraDir({ hydraId: 'default' })

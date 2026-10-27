@@ -1,6 +1,7 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { setImmediate as yieldToChild } from 'node:timers/promises'
 import type { SpawnCodex } from '../src/server/codex.ts'
 
 export function fakeCodex({
@@ -87,11 +88,50 @@ export function fakeCodex({
       result?: Record<string, unknown>
     })
 
+  const waitForRequest = async ({
+    method,
+    failure = () => undefined,
+    timeoutMs = 30_000,
+  }: {
+    method: string
+    failure?(): unknown
+    timeoutMs?: number
+  }) => {
+    const deadline = performance.now() + timeoutMs
+
+    while (performance.now() < deadline) {
+      const error = failure()
+
+      if (error) {
+        throw error
+      }
+
+      const request = messages().find(message => message.method === method)
+
+      if (request) {
+        return request
+      }
+
+      await yieldToChild()
+    }
+
+    throw new Error(`timed out waiting for Codex ${method} after ${timeoutMs}ms: ${JSON.stringify({
+      failure: String(failure() ?? 'none'),
+      recent: messages().slice(-10),
+      children: children.map(child => ({
+        pid: child.pid,
+        exit: child.exitCode,
+        signal: child.signalCode,
+      })),
+    })}`)
+  }
+
   return {
     spawnCodex,
     children,
     environments,
     messages,
+    waitForRequest,
     transcript,
     initializing,
   }

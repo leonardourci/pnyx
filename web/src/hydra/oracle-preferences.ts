@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useSyncExternalStore } from 'react'
 import type { Command } from './connection.ts'
-
-type Entries = Record<string, string>
+import { oracleSettings } from './installation-resources.ts'
 
 export function useOraclePreferences({
   command,
@@ -12,52 +11,37 @@ export function useOraclePreferences({
   notify({ text }: { text: string }): void
   enabled?: boolean
 }) {
-  const [
-    confirmed,
-    setConfirmed,
-  ] = useState<Entries | null>(null)
-  const [
-    pending,
-    setPending,
-  ] = useState<Record<string, {
-    key: string
-    value: string
-  }>>({})
-  const [
-    error,
-    setError,
-  ] = useState('')
+  const resource = oracleSettings()
+  const snapshot = useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  )
   useEffect(
     () => {
-      if (!enabled) {
-        return
-      }
-
-      let active = true
-      void command({
-        name: 'settings',
-        args: [],
-      }).then(
-        r => {
-          if (active) {
-            setConfirmed(r.settings as Entries); setError('')
-          }
-        },
-        (e: Error) => {
-          if (active) {
-            setError(e.message); notify({ text: e.message })
-          }
-        },
-      )
-
-      return () => {
-        active = false
+      if (enabled) {
+        void resource.refresh({
+          command,
+          name: 'settings',
+          args: [],
+        })
       }
     },
     [
       command,
-      notify,
       enabled,
+      resource,
+    ],
+  )
+  useEffect(
+    () => {
+      if (enabled && snapshot.error) {
+        notify({ text: snapshot.error })
+      }
+    },
+    [
+      enabled,
+      snapshot.error,
+      notify,
     ],
   )
 
@@ -67,47 +51,21 @@ export function useOraclePreferences({
   }: {
     key: string
     value: string
-  }) => {
-    const id = crypto.randomUUID()
-    setPending(pending => ({
-      ...pending,
-      [id]: {
-        key,
-        value,
-      },
-    }))
-
-    return command({
-      name: 'settings',
-      args: [
-        'set',
-        key,
-        value,
-      ],
-    }).then(r => {
-      setConfirmed(r.settings as Entries)
-    })
-      .finally(() => setPending(pending => {
-        const next = { ...pending }; delete next[id]
-
-        return next
-      }))
-  }
-
-  const settings = confirmed || Object.keys(pending).length > 0 ? {
-    ...confirmed,
-    ...Object.fromEntries(Object.values(pending).map(({
+  }) => resource.write({
+    command,
+    name: 'settings',
+    args: [
+      'set',
       key,
       value,
-    }) => [
-      key,
-      value,
-    ])),
-  } : null
+    ],
+    patch: { [key]: value },
+    targets: [key],
+  })
 
   return {
-    settings,
+    settings: snapshot.view,
     set,
-    error,
+    error: snapshot.error,
   }
 }

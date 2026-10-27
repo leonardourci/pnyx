@@ -448,3 +448,98 @@ test(
     )
   },
 )
+
+test(
+  'task creation projects a stable key and parent without claiming daemon revisions',
+  () => {
+    const state = fixture()
+    const projected = optimisticState({
+      state,
+      edit: {
+        name: 'task',
+        args: [
+          'create',
+          '--title',
+          'Pending subtask',
+          '--parent',
+          'one',
+          '--column',
+          'queued',
+          '--event-id',
+          'create-child',
+        ],
+      },
+    })
+    const pending = projected.cards['task:create-child']!
+    assert.equal(
+      pending.title,
+      'Pending subtask',
+    )
+    assert.equal(
+      pending.parentId,
+      'one',
+    )
+    assert.equal(
+      projected.keys['task:create-child'],
+      pending.id,
+    )
+    assert.equal(
+      pending.revision,
+      0,
+    )
+    assert.equal(
+      projected.seq,
+      state.seq,
+    )
+    assert.deepEqual(
+      projected.eventIds,
+      state.eventIds,
+    )
+    const edited = optimisticState({
+      state: projected,
+      edit: {
+        name: 'task',
+        args: [
+          'rename',
+          pending.key,
+          '--title',
+          'Edited before creation confirms',
+        ],
+      },
+    })
+    assert.equal(
+      edited.cards[pending.id]?.title,
+      'Edited before creation confirms',
+    )
+  },
+)
+
+test(
+  'Hydra agent selection previews without advancing configuration revision',
+  () => {
+    const state = fixture()
+    const projected = optimisticState({
+      state,
+      edit: {
+        name: 'hydra-agent',
+        args: ['{"harness":"codex","model":"new-model","fast":true}'],
+      },
+    })
+    assert.equal(
+      projected.config?.hydra.agent?.model,
+      'new-model',
+    )
+    assert.equal(
+      projected.config?.hydra.agent?.fast,
+      true,
+    )
+    assert.equal(
+      projected.configRevision,
+      state.configRevision,
+    )
+    assert.equal(
+      projected.seq,
+      state.seq,
+    )
+  },
+)

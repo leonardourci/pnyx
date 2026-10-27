@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { commandCapture } from './command-capture.ts'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -519,7 +520,8 @@ test(
 
 test(
   'a command worker never inherits Hydra’s actor',
-  async () => {
+  async t => {
+    const capture = commandCapture({ t })
     const folder = mkdtempSync(join(
       tmpdir(),
       'pnyx-run-',
@@ -529,7 +531,7 @@ test(
 
     try {
       runCommand({
-        command: 'printf "%s" "${PNYX_ACTOR-unset}" > actor.txt',
+        command: 'printf "%s" "${PNYX_ACTOR-unset}" > actor.tmp && mv actor.tmp actor.txt',
         cwd: folder,
         env: {},
       })
@@ -537,21 +539,7 @@ test(
       process.env.PNYX_ACTOR = previous
     }
 
-    for (let i = 0; i < 100 && !readFileSync(
-      join(
-        folder,
-        'actor.txt',
-      ),
-      {
-        flag: 'a+',
-        encoding: 'utf8',
-      },
-    ); i++) {
-      await new Promise(resolve => setTimeout(
-        resolve,
-        20,
-      ))
-    }
+    await capture.completed()
 
     assert.equal(
       readFileSync(

@@ -927,6 +927,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card > .resize-y::after { opacity: .7; background: var(--color-muted); transition: background .12s, opacity .12s; }
 
+.card { padding-bottom: 24px; }
+
 .card > .resize-y { bottom: 0; }
 
 .card > .resize-y::after { top: 17px; }
@@ -1056,6 +1058,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .oracle-row > [role=gridcell] { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .oracle-row[aria-selected=true] { background: var(--color-raised); }
 .oracle-row > [role=gridcell] > span { flex: 1; }
+.oracle-row > [role=gridcell] > .settings-box { flex: 1; }
 .oracle-row > [role=gridcell] > .button { text-align: left; justify-content: flex-start; }
 .oracle-row .number-field { width: 100%; }
 .oracle-row .switch-label { margin: 0; }
@@ -1287,7 +1290,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .task-updates > ol > li { padding: 8px 4px; border-bottom: 1px solid var(--color-subtle); transition: background-color 110ms ease; }
 .task-updates > ol > li:last-child { border-bottom: 0; }
 .task-updates > ol > li:first-child { padding-top: 6px; }
-.task-updates > ol > li:is(.update-decision, :has(.update-fold, .show-more)):hover { border-radius: 6px; background: color-mix(in srgb, var(--color-hover) 55%, transparent); }
+.task-updates > ol > li:is(.update-decision, :has(.update-fold, .update-group-toggle, .show-more)):hover { border-radius: 6px; background: color-mix(in srgb, var(--color-hover) 55%, transparent); }
 .task-updates > ol > li:hover .update-fold-chevron { color: var(--color-ink); }
 @media (prefers-reduced-motion: reduce) { .task-updates > ol > li { transition: none; } }
 .update-heading { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 4px 10px; margin-bottom: 4px; }
@@ -1299,6 +1302,16 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-main > .update-title { grid-column: 1; grid-row: 1; }
 .update-main time { color: var(--color-muted); font-size: var(--text-meta); line-height: 22px; white-space: nowrap; }
 .card .markdown, .ask .markdown { font-size: var(--text-meta); font-weight: inherit; line-height: 1.4; }
+
+.task-updates > ol > .update-row:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false])) { border-bottom: 0; }
+.task-updates > ol > .update-row.update-group-continuation { padding-top: 0; }
+.update-group-toggle { display: block; width: 100%; text-align: left; padding: 0; white-space: normal; }
+.update-group-toggle[aria-expanded=true] .update-fold-chevron { transform: rotate(90deg); }
+.update-group-workers > .update-entry, .update-group-changes > .update-entry { padding: 6px 0 0 30px; }
+.update-group-decisions > .update-entry > .update-line { display: none; }
+.update-group-moment.update-group-continuation .update-icon, .update-group-moment.update-group-continuation .update-main > .tooltip-anchor:has(time) { display: none; }
+.update-group-moment.update-group-continuation .update-main { grid-column: 2; }
+
 .task-updates .markdown > :first-child { margin-top: 0; }
 .task-updates .markdown > :last-child { margin-bottom: 0; }
 .update-title { font-weight: 600; line-height: 22px; overflow-wrap: anywhere; }

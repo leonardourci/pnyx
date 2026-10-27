@@ -265,3 +265,43 @@ export function groupUpdates({ updates }: { updates: TaskUpdate[] }): UpdateGrou
     updates: group.updates,
   } : group)
 }
+
+interface UpdateLayout {
+  signature: string
+  groups: {
+    id: string
+    ids: string[]
+    folded: boolean
+  }[]
+  open: Set<string>
+}
+
+export function updateLayout({
+  groups,
+  previous,
+}: {
+  groups: UpdateGroup[]
+  previous?: UpdateLayout
+}): UpdateLayout {
+  const layout = groups.map(group => ({
+    id: group.updates[0]!.id,
+    ids: group.updates.map(update => update.id),
+    folded: group.type === 'workers' || group.type === 'changes',
+  }))
+  const signature = JSON.stringify(layout)
+
+  if (previous?.signature === signature) {
+    return previous
+  }
+
+  const visible = new Set(previous?.groups.flatMap(group =>
+    !group.folded || previous.open.has(group.id) ? group.ids : []) ?? [])
+
+  return {
+    signature,
+    groups: layout,
+    open: new Set(layout.filter(group => group.folded
+      && (previous?.open.has(group.id) || group.ids.some(id => visible.has(id))))
+      .map(group => group.id)),
+  }
+}
