@@ -63,7 +63,8 @@ import { hydraDir, hydraIds, hydrasDir } from '../app/home-migration.ts'
 import { readEvents, readEventsFrom } from '../app/event-log.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
-import { createHost, hostRequest, type HydraQueue, type QueryFn } from './host.ts'
+import { createHost, type HydraQueue, type QueryFn } from './host.ts'
+import { hostRequest } from '../app/host-request.ts'
 import type { SpawnCodex } from './codex.ts'
 
 const commands = {
