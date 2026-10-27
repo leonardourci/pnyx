@@ -243,11 +243,13 @@ export function browserGroup() {
       await exited
     }
 
+    // On Linux, Chrome's helper processes can still write to the profile just after the browser exits.
     rmSync(
       profile,
       {
         recursive: true,
         force: true,
+        maxRetries: 10,
       },
     )
   })
