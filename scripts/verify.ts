@@ -409,8 +409,6 @@ try {
   process.exit(1)
 }
 
-await holdRunLock({ name: 'verify' })
-
 const headSha = head()
 const dirtyAtStart = changedPaths().length
 const failed = new Set<string>()
@@ -442,6 +440,10 @@ if (mechanical) {
 }
 
 console.log(`verify: ${steps.length ? `running ${steps.map(step => step.name).join(', ')}` : 'running no checks'}; ${why}`)
+
+if (steps.some(step => step.needs === 'build')) {
+  await holdRunLock({ name: 'verify' })
+}
 
 for (const step of steps) {
   console.log(`verify: ${step.name}`)

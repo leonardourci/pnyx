@@ -1,8 +1,10 @@
-import { readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
 
 // Shared by every checkout on the machine, so two full runs never load it at once.
 const LOCK = '/tmp/pnyx-full-run.lock'
 const POLL_MS = 1000
+// A run writes its line right after creating the lock; an empty lock this old lost its writer.
+const EMPTY_LOCK_MS = 10_000
 
 function holder({ path }: { path: string }): string | undefined {
   try {
@@ -12,6 +14,14 @@ function holder({ path }: { path: string }): string | undefined {
     )
   } catch {
     return undefined
+  }
+}
+
+function abandoned({ path }: { path: string }): boolean {
+  try {
+    return Date.now() - statSync(path).mtimeMs > EMPTY_LOCK_MS
+  } catch {
+    return false
   }
 }
 
@@ -49,15 +59,19 @@ export async function holdRunLock({
       return
     }
 
-    // An empty lock is one another run is still writing.
-    if (owner === undefined || (owner && !alive({ pid: Number.parseInt(owner) }))) {
+    const dead = owner !== undefined
+      && (owner ? !alive({ pid: Number.parseInt(owner) }) : abandoned({ path }))
+
+    if (dead) {
       // ponytail: two waiters that find the same dead holder at once may both take over; they then
       // only run side by side, as they would without the lock.
       rmSync(
         path,
         { force: true },
       )
+    }
 
+    if (owner === undefined || dead) {
       try {
         writeFileSync(
           path,

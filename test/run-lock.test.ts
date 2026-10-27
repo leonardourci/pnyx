@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { spawn } from 'node:child_process'
+import { spawn, spawnSync } from 'node:child_process'
 import { once } from 'node:events'
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -51,13 +51,13 @@ test(
     const [held] = await once(
       first.stdout,
       'data',
+      { signal: AbortSignal.timeout(30_000) },
     ) as [Buffer]
     assert.equal(
       held.toString().trim(),
       'held',
     )
     let waited = ''
-    let acquired = false
     const second = holdRunLock({
       name: 'second',
       path: lock,
@@ -66,25 +66,63 @@ test(
         // The first run exits only after the second has seen it and is waiting.
         first.stdin.end()
       },
-    }).then(() => {
-      acquired = true
     })
-    await once(
-      first,
-      'exit',
-    )
+
+    try {
+      await Promise.race([
+        once(
+          first,
+          'exit',
+        ),
+        second.then(() => assert.fail('the second run took the lock while the first held it')),
+      ])
+    } finally {
+      first.stdin.end()
+    }
+
     assert.match(
       waited,
       new RegExp(`^${first.pid} first since `),
     )
     await second
-    assert.ok(acquired)
+    const mine = readFileSync(
+      lock,
+      'utf8',
+    )
     assert.match(
+      mine,
+      new RegExp(`^${process.pid} second since `),
+    )
+    // A run started by the holder, as verify starts its test steps, shares the lock.
+    const nested = spawnSync(
+      process.execPath,
+      [
+        '--input-type=module',
+        '-e',
+        `import { holdRunLock } from ${JSON.stringify(new URL(
+          '../scripts/run-lock.ts',
+          import.meta.url,
+        ).href)}
+        await holdRunLock({ name: 'nested', path: ${JSON.stringify(lock)}, waiting: () => process.exit(3) })`,
+      ],
+      {
+        env: {
+          ...process.env,
+          PNYX_RUN_LOCK: mine,
+        },
+        timeout: 30_000,
+      },
+    )
+    assert.equal(
+      nested.status,
+      0,
+    )
+    assert.equal(
       readFileSync(
         lock,
         'utf8',
       ),
-      new RegExp(`^${process.pid} second since `),
+      mine,
     )
 
     delete process.env.PNYX_RUN_LOCK
