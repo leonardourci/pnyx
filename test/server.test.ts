@@ -2960,6 +2960,8 @@ test(
       ],
     })
     const watch = fs.watch
+    const watchFile = fs.watchFile
+    const statWatchers: fs.StatWatcher[] = []
     const watchers: Promise<unknown[]>[] = []
     context.mock.method(
       fs,
@@ -2974,6 +2976,20 @@ test(
             'close',
             { signal: AbortSignal.timeout(TIMEOUT_MS) },
           ))
+        }
+
+        return watcher
+      },
+    )
+    context.mock.method(
+      fs,
+      'watchFile',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watchFile's signature.
+      (...args: Parameters<typeof fs.watchFile>) => {
+        const watcher = watchFile(...args)
+
+        if (String(args[0]).startsWith(process.env.PNYX_HOME!)) {
+          statWatchers.push(watcher)
         }
 
         return watcher
@@ -3036,6 +3052,14 @@ test(
       'the server opened native watchers',
     )
     await Promise.all(watchers)
+    assert.ok(
+      statWatchers.length > 0,
+      'the server opened stat watchers',
+    )
+    assert.deepEqual(
+      statWatchers.map(watcher => watcher.listenerCount('change')),
+      statWatchers.map(() => 0),
+    )
     assert.equal(
       existsSync(socket),
       false,
@@ -4154,14 +4178,6 @@ test(
       ],
     })
     const id = loadHydra({ hydraId: 'default' }).state.keys.expire!
-    cli({
-      args: [
-        'hydra',
-        'set',
-        '--done-after-hours',
-        '1',
-      ],
-    })
     const doneAt = Date.parse(loadHydra({ hydraId: 'default' }).state.cards[id]!.doneAt!)
     t.mock.timers.enable({
       apis: [
@@ -4173,6 +4189,19 @@ test(
     server = await startServer({ hydraId: 'default' })
     const page = await tab()
     await page.next()
+    page.command({
+      id: 'enable-retention',
+      name: 'hydra',
+      args: [
+        'set',
+        '--done-after-hours',
+        '1',
+      ],
+    })
+    assert.equal(
+      (await page.reply({ id: 'enable-retention' })).type,
+      'receipt',
+    )
     t.mock.timers.tick(60 * 60 * 1000 - 1)
     await page.idle()
     assert.equal(
