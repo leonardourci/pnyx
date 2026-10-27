@@ -1,4 +1,3 @@
-import { incorporateInboxNotice } from '../inbox-fixture.ts'
 // Fake Claude Code and Codex that replay the real sessions recorded in test/fixtures/agents/
 // (`pnpm refresh-agent-fixtures`), so scenarios run Pnyx's own provider code over real agent output.
 import assert from 'node:assert/strict'
@@ -66,8 +65,14 @@ export interface AgentSession {
     tool: string
     input: Record<string, unknown>
   }): Promise<PermissionResult | null>
-  // Claude only: the media type of each image it received.
-  images?: string[]
+  // Codex only: the agent sends this request mid-turn, as Codex asks for an approval, and gets Pnyx's answer.
+  ask?({
+    method,
+    params,
+  }: {
+    method: string
+    params: Message
+  }): Promise<unknown>
 }
 
 const textOf = ({ message }: { message: SDKUserMessage }) => {
@@ -76,20 +81,9 @@ const textOf = ({ message }: { message: SDKUserMessage }) => {
   return typeof content === 'string' ? content : content.flatMap(block => block.type === 'text' ? [block.text] : []).join('\n')
 }
 
-const imagesOf = ({ message }: { message: SDKUserMessage }) => {
-  const { content } = message.message
-
-  if (typeof content === 'string') {
-    return []
-  }
-
-  return content.flatMap(block => block.type === 'image' && block.source.type === 'base64' ? [block.source.media_type] : [])
-}
-
 interface TurnPlan {
   text: string
   reply?: string
-  fail?: string
   hold?: boolean
 }
 
@@ -102,7 +96,6 @@ function plannedTurns() {
     plan: ({
       text,
       reply,
-      fail,
       hold,
     }: TurnPlan) => {
       let release = () => {}
@@ -112,7 +105,6 @@ function plannedTurns() {
       plans.push({
         text,
         reply,
-        fail,
         hold,
         wait,
       })
@@ -137,9 +129,7 @@ function plannedTurns() {
 }
 
 // Each message starts the recorded turn again under the session's own id; the transcript is written as Claude Code writes it.
-export function replayClaude(
-  { incorporateSteering = false }: { incorporateSteering?: boolean } = {},
-) {
+export function replayClaude() {
   const sessions: AgentSession[] = []
   const turns = plannedTurns()
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
@@ -164,14 +154,12 @@ export function replayClaude(
     // Without its own environment an agent's commands would reach the owner's real Pnyx.
     assert.ok(options.env)
     const id = options.sessionId ?? options.resume!
-    const images: string[] = []
     const session: AgentSession = {
       id,
       resumed: Boolean(options.resume),
       cwd: options.cwd!,
       env: options.env,
       received: [],
-      images,
       model: options.model,
       useTool: ({
         tool,
@@ -214,57 +202,16 @@ export function replayClaude(
       })}\n`,
     )
 
-    let cancelCompact: (() => void) | undefined
-
     async function* run() {
       for await (const message of prompt) {
-        const input = textOf({ message })
-        const text = incorporateSteering ? incorporateInboxNotice({
-          text: input,
-          env: session.env,
-        }) : input
+        const text = textOf({ message })
         session.received.push(text)
-        images.push(...imagesOf({ message }))
         record({
           role: 'user',
           text,
         })
 
-        const plan = turns.take({ text: text.trim() === '/compact' ? '/compact' : text })
-
-        if (text.trim() === '/compact') {
-          const cancelled = new Promise<boolean>(resolve => {
-            cancelCompact = () => resolve(true)
-          })
-          yield {
-            type: 'system',
-            subtype: 'status',
-            status: 'compacting',
-            uuid: randomUUID(),
-          }
-          const interrupted = await Promise.race([
-            cancelled,
-            Promise.resolve(plan?.wait).then(() => false),
-          ])
-          cancelCompact = undefined
-          yield {
-            type: 'system',
-            subtype: 'status',
-            status: null,
-            compact_result: interrupted || plan?.fail ? 'failed' : 'success',
-            compact_error: interrupted ? 'Request was aborted.' : plan?.fail,
-          }
-          yield {
-            type: 'result',
-            is_error: false,
-          }
-          continue
-        }
-
-        if (plan?.fail) {
-          throw new Error(plan.fail)
-        }
-
+        const plan = turns.take({ text })
         const answer = plan?.reply ?? reply
 
         for (const recorded of claudeRecording.turn) {
@@ -315,9 +262,7 @@ export function replayClaude(
       run(),
       {
         close: () => {},
-        interrupt: async () => {
-          cancelCompact?.()
-        },
+        interrupt: async () => {},
         setModel: async () => {},
         setPermissionMode: async () => {},
         applyFlagSettings: async () => {},
@@ -335,9 +280,7 @@ export function replayClaude(
 
 // An app-server in this process: each request gets its recorded result, followed by the notifications
 // recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
-export function replayCodex(
-  { incorporateSteering = false }: { incorporateSteering?: boolean } = {},
-) {
+export function replayCodex() {
   const sessions: AgentSession[] = []
   const turns = plannedTurns()
   // refuse: a method answered with an error while set, as a harness that cannot open a thread; refused counts them.
@@ -388,15 +331,33 @@ export function replayCodex(
       env,
       received: [],
       requests: [],
+      ask: ({
+        method,
+        params,
+      }) => new Promise(resolve => {
+        const id = `ask-${randomUUID()}`
+        answers.once(
+          id,
+          resolve,
+        )
+        send({
+          message: {
+            id,
+            method,
+            params: {
+              threadId: session.id,
+              turnId: id,
+              ...params,
+            },
+          },
+        })
+      }),
     }
+    const answers = new EventEmitter()
     const stdin = new PassThrough()
     const stdout = new PassThrough()
     const stderr = new PassThrough()
     let exited = false
-    let compacting: {
-      id: string
-      cancel(): void
-    } | undefined
     const child = Object.assign(
       new EventEmitter(),
       {
@@ -433,6 +394,13 @@ export function replayCodex(
       async line => {
         const message = JSON.parse(line) as Message
 
+        if (message.method === undefined && answers.emit(
+          String(message.id),
+          message.result ?? message.error,
+        )) {
+          return
+        }
+
         if (typeof message.method !== 'string' || message.id === undefined) {
           return
         }
@@ -462,124 +430,16 @@ export function replayCodex(
           sessions.push(session)
         }
 
-        if (message.method === 'turn/interrupt' && compacting) {
-          send({
-            message: {
-              id: message.id,
-              result: {},
-            },
-          })
-          compacting.cancel()
-
-          return
-        }
-
-        if (message.method === 'thread/compact/start') {
-          session.received.push('/compact')
-          const plan = turns.take({ text: '/compact' })
-          const id = randomUUID()
-          const cancelled = new Promise<boolean>(resolve => {
-            compacting = {
-              id,
-              cancel: () => resolve(true),
-            }
-          })
-          send({
-            message: {
-              id: message.id,
-              result: {},
-            },
-          })
-          send({
-            message: {
-              method: 'turn/started',
-              params: {
-                threadId: session.id,
-                turn: {
-                  id,
-                  status: 'inProgress',
-                },
-              },
-            },
-          })
-          const item = {
-            type: 'contextCompaction',
-            id: randomUUID(),
-          }
-          send({
-            message: {
-              method: 'item/started',
-              params: {
-                threadId: session.id,
-                turnId: id,
-                item,
-              },
-            },
-          })
-          const interrupted = await Promise.race([
-            cancelled,
-            Promise.resolve(plan?.wait).then(() => false),
-          ])
-          compacting = undefined
-
-          if (!interrupted && !plan?.fail) {
-            send({
-              message: {
-                method: 'item/completed',
-                params: {
-                  threadId: session.id,
-                  turnId: id,
-                  item,
-                },
-              },
-            })
-          }
-
-          send({
-            message: {
-              method: 'turn/completed',
-              params: {
-                threadId: session.id,
-                turn: {
-                  id,
-                  status: interrupted ? 'interrupted' : plan?.fail ? 'failed' : 'completed',
-                  error: plan?.fail ? { message: plan.fail } : null,
-                },
-              },
-            },
-          })
-
-          return
-        }
-
         let plan: ReturnType<typeof turns.take>
 
         if (message.method === 'turn/start' || message.method === 'turn/steer') {
           const input = (message.params as { input?: { text?: string }[] }).input ?? []
-          const received = input.map(part => part.text ?? '').join('\n')
-          const text = incorporateSteering ? incorporateInboxNotice({
-            text: received,
-            env: session.env,
-          }) : received
+          const text = input.map(part => part.text ?? '').join('\n')
           session.received.push(text)
           plan = turns.take({ text })
         }
 
         if (message.method === 'turn/steer') {
-          if (plan?.fail) {
-            send({
-              message: {
-                id: message.id,
-                error: {
-                  code: -32000,
-                  message: plan.fail,
-                },
-              },
-            })
-
-            return
-          }
-
           send({
             message: {
               id: message.id,

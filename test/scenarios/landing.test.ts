@@ -1,10 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, writeFileSync } from 'node:fs'
+import fs, { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import fsPromises from 'node:fs/promises'
+import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { git, scenarioGroup, until } from './harness.ts'
-
-const pnyx = scenarioGroup({ incorporateSteering: true })
+import { wakeReasons } from '../../src/core/wake-reasons.ts'
+import { followPullRequests } from '../../src/landing/follow.ts'
+import { refreshProject } from '../../src/projects/refresh.ts'
+import type { ProjectRefresh } from '../../src/projects/refresh-types.ts'
+import { git, until } from './harness.ts'
+import { pnyx, type Scenario } from './pnyx.ts'
 
 const change = ({
   copy,
@@ -64,6 +69,177 @@ const push = ({
     to,
   ],
 })
+
+async function prepare({ s }: { s: Scenario }) {
+  const path = await s.project({ name: 'app' })
+  const publisher = s.folder({ name: 'publisher' })
+  git({
+    cwd: publisher,
+    args: [
+      'clone',
+      '-q',
+      `${path}.git`,
+      '.',
+    ],
+  })
+  writeFileSync(
+    join(
+      publisher,
+      'landed.txt',
+    ),
+    'landed\n',
+  )
+  git({
+    cwd: publisher,
+    args: [
+      'add',
+      '.',
+    ],
+  })
+  git({
+    cwd: publisher,
+    args: [
+      'commit',
+      '-qm',
+      'Land change',
+    ],
+  })
+  git({
+    cwd: publisher,
+    args: [
+      'push',
+      '-q',
+      'origin',
+      'main',
+    ],
+  })
+  const target = git({
+    cwd: publisher,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  })
+  const before = git({
+    cwd: path,
+    args: [
+      'rev-parse',
+      'HEAD',
+    ],
+  })
+  await s.owner({
+    args: [
+      'task',
+      'create',
+      '--title',
+      'Ship change',
+      '--key',
+      'ship',
+      '--project',
+      path,
+    ],
+  })
+
+  return {
+    path,
+    publisher,
+    target,
+    before,
+  }
+}
+
+async function land({
+  s,
+  target,
+}: {
+  s: Scenario
+  target: string
+}) {
+  const url = s.pullRequest({
+    number: 1,
+    head: target,
+    merge: target,
+  })
+  await s.owner({
+    args: [
+      'link',
+      'ship',
+      '--url',
+      url,
+    ],
+  })
+  s.pullRequest({
+    number: 1,
+    state: 'merged',
+    head: target,
+    merge: target,
+  })
+  const result = await until({
+    what: 'confirmed merge to record its project refresh',
+    check: () => s.task({ key: 'ship' }).projectRefresh?.[url],
+  })
+
+  const card = s.task({ key: 'ship' })
+  assert.equal(
+    card.links[0]?.state,
+    'merged',
+  )
+  assert.equal(
+    card.links[0]?.mergeProof?.commit,
+    target,
+  )
+  assert.equal(
+    card.status?.state,
+    'done',
+  )
+
+  return {
+    url,
+    result,
+  }
+}
+
+function contents({ path }: { path: string }) {
+  return {
+    head: git({
+      cwd: path,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    }),
+    branch: git({
+      cwd: path,
+      args: [
+        'rev-parse',
+        '--abbrev-ref',
+        'HEAD',
+      ],
+    }),
+    files: git({
+      cwd: path,
+      args: [
+        'status',
+        '--porcelain',
+        '--untracked-files=all',
+      ],
+    }),
+    diff: git({
+      cwd: path,
+      args: [
+        'diff',
+        'HEAD',
+      ],
+    }),
+    readme: readFileSync(
+      join(
+        path,
+        'README.md',
+      ),
+      'utf8',
+    ),
+  }
+}
 
 test(
   'a branch-landing task is done once all its work is committed, its unlanded copy is kept for Hydra, and a task given the pull request rule is done when GitHub merges its pull request',
@@ -274,6 +450,29 @@ test(
       ],
     )
 
+    // 2d732aa0: a copy is never removed without proof its work landed.
+    assert.match(
+      await hydra.run({
+        args: [
+          'task',
+          'copy',
+          'copy-fix',
+          'remove',
+        ],
+      }),
+      /^ {2}landed: false$/m,
+    )
+    assert.deepEqual(
+      [
+        s.task({ key: 'copy-fix' }).copy?.state,
+        existsSync(copies[0]!),
+      ],
+      [
+        'flagged',
+        true,
+      ],
+    )
+
     // The owner lands the branch.
     push({
       copy: copies[0]!,
@@ -434,5 +633,578 @@ test(
       s.merges({ number: 147 }),
       1,
     )
+  },
+)
+
+test(
+  'a merge waits for every required check green on its head; a queued merge stays unfinished with its copy and is not submitted twice; the merge GitHub confirms finishes the task, advances the clean project once, and holds across restart',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({
+      name: 'app',
+      flags: [
+        '--merge',
+        'hydra',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship safely',
+        '--key',
+        'ship',
+        '--project',
+        app,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'ship',
+      ],
+    })
+    const copy = s.task({ key: 'ship' }).copy!.path
+    await s.agent({ cwd: copy })
+    writeFileSync(
+      join(
+        copy,
+        'work.txt',
+      ),
+      'retain until merged\n',
+    )
+    git({
+      cwd: copy,
+      args: [
+        'add',
+        'work.txt',
+      ],
+    })
+    git({
+      cwd: copy,
+      args: [
+        'commit',
+        '-qm',
+        'ship',
+      ],
+    })
+    git({
+      cwd: copy,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        'HEAD',
+      ],
+    })
+    const head = git({
+      cwd: copy,
+      args: [
+        'rev-parse',
+        'HEAD',
+      ],
+    })
+
+    // 97c60b05, 157ededf: a merge needs every required check verified green on the head, including
+    // checks past the first page, whatever the aggregate claims.
+    const required = Array.from(
+      { length: 101 },
+      (
+        _,
+        index,
+      ) => ({
+        context: `check-${index}`,
+        app: 10,
+      }),
+    )
+    const runs = required.map(check => ({
+      name: check.context,
+      app: 10,
+      conclusion: 'success' as string | null,
+    }))
+    const url = s.pullRequest({
+      number: 1,
+      head,
+      checks: '102 passed, 0 failed, 102 total',
+      required,
+      runs: [
+        ...runs.map((
+          run,
+          index,
+        ) => ({
+          ...run,
+          conclusion: index === 100 ? 'failure' : run.conclusion,
+        })),
+        {
+          name: 'deploy',
+          app: 10,
+          conclusion: null,
+        },
+      ],
+    })
+    await s.owner({
+      args: [
+        'link',
+        'ship',
+        '--url',
+        url,
+      ],
+    })
+    assert.deepEqual(
+      [
+        await s.ownerRefusal({
+          args: [
+            'task',
+            'merge',
+            'ship',
+          ],
+        }),
+        s.merges({ number: 1 }),
+      ],
+      [
+        {
+          code: 'CONFLICT',
+          error: 'check is not green: check-100; check still running: deploy',
+        },
+        0,
+      ],
+    )
+    s.pullRequest({
+      number: 1,
+      head,
+      required,
+      runs,
+      mergeBehavior: 'queued',
+    })
+    const output = await s.owner({
+      args: [
+        'task',
+        'merge',
+        'ship',
+      ],
+    })
+    assert.match(
+      output,
+      new RegExp('merge: queued'),
+    )
+    const pending = s.task({ key: 'ship' })
+    assert.equal(
+      pending.links[0]?.state,
+      'open',
+    )
+    assert.equal(
+      pending.links[0]?.mergeAttempt?.head,
+      head,
+    )
+    assert.notEqual(
+      pending.status?.state,
+      'done',
+    )
+    assert.notEqual(
+      pending.copy?.state,
+      'removed',
+    )
+    assert.equal(
+      existsSync(join(
+        copy,
+        'work.txt',
+      )),
+      true,
+    )
+    assert.equal(
+      s.merges({ number: 1 }),
+      1,
+    )
+    assert.equal(
+      s.events().some(event => event.type === 'card.linked' && event.data.after?.state === 'merged'),
+      false,
+    )
+    await pnyx.restart()
+    assert.equal(
+      s.task({ key: 'ship' }).links[0]?.mergeAttempt?.outcome,
+      'queued',
+    )
+
+    await s.owner({
+      args: [
+        'task',
+        'merge',
+        'ship',
+      ],
+    })
+
+    assert.equal(
+      s.merges({ number: 1 }),
+      1,
+    )
+
+    git({
+      cwd: copy,
+      args: [
+        'push',
+        '-q',
+        'origin',
+        'HEAD:main',
+      ],
+    })
+    s.pullRequest({
+      number: 1,
+      head,
+      merge: head,
+      state: 'merged',
+    })
+    await until({
+      what: 'confirmed merge to finish the task',
+      check: () => s.task({ key: 'ship' }).status?.state === 'done',
+    })
+    await until({
+      what: 'confirmed landing to settle the retained copy',
+      check: () => s.task({ key: 'ship' }).copy?.state === 'removed',
+    })
+    const confirmed = s.task({ key: 'ship' }).links[0]!
+    // The confirmed merge advances the clean attached project, which needs no wake.
+    const refreshed = await until({
+      what: 'the confirmed merge to refresh the project',
+      check: () => s.task({ key: 'ship' }).projectRefresh?.[url],
+    })
+    assert.deepEqual(
+      [
+        refreshed.state,
+        refreshed.after,
+        git({
+          cwd: app,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        wakeReasons({
+          state: s.state(),
+          events: s.events().filter(event => event.type === 'project.refreshed'),
+        }),
+      ],
+      [
+        'advanced',
+        head,
+        head,
+        [],
+      ],
+    )
+    assert.equal(
+      confirmed.state,
+      'merged',
+    )
+    assert.equal(
+      confirmed.mergeProof?.head,
+      head,
+    )
+    assert.equal(
+      confirmed.mergeProof?.commit,
+      head,
+    )
+    assert.equal(
+      s.merges({ number: 1 }),
+      1,
+    )
+    await pnyx.restart()
+    assert.deepEqual(
+      s.task({ key: 'ship' }).links[0]?.mergeProof,
+      confirmed.mergeProof,
+    )
+    await followPullRequests({ hydraId: s.hydraId })
+    assert.equal(
+      s.events().filter(event => event.type === 'project.refreshed').length,
+      1,
+    )
+    assert.equal(
+      s.merges({ number: 1 }),
+      1,
+    )
+  },
+)
+
+test(
+  'follower preserves a dirty copy and tells Hydra why',
+  async () => {
+    const s = await pnyx.scenario()
+    const {
+      path,
+      target,
+    } = await prepare({ s })
+    writeFileSync(
+      join(
+        path,
+        'README.md',
+      ),
+      'owner edits\n',
+    )
+    const saved = contents({ path })
+    const defaultHead = git({
+      cwd: path,
+      args: [
+        'rev-parse',
+        'refs/heads/main',
+      ],
+    })
+    await s.chat({ text: 'Watch this landing' })
+    const hydra = await s.agent({ hydra: true })
+    const { result } = await land({
+      s,
+      target,
+    })
+    assert.ok(result.state === 'needs-attention' || result.state === 'unknown')
+    assert.ok(result.reason)
+    assert.deepEqual(
+      contents({ path }),
+      saved,
+    )
+    assert.equal(
+      git({
+        cwd: path,
+        args: [
+          'rev-parse',
+          'refs/heads/main',
+        ],
+      }),
+      defaultHead,
+    )
+    await until({
+      what: 'Hydra to receive an actionable refresh failure',
+      check: () => hydra.received.some(text => text.includes('project refresh:') && text.includes(result.reason!)),
+    })
+    const recorded = s.events().filter(event => event.type === 'project.refreshed')
+    await pnyx.restart()
+    await followPullRequests({ hydraId: s.hydraId })
+    assert.equal(
+      s.events().filter(event => event.type === 'project.refreshed').length,
+      recorded.length,
+    )
+  },
+)
+
+test(
+  'refresh lock churn cannot bypass its deadline',
+  async t => {
+    const s = await pnyx.scenario()
+    const {
+      path,
+      target,
+      before,
+    } = await prepare({ s })
+    const lock = join(
+      path,
+      '.git',
+      'pnyx-project-refresh.lock',
+    )
+    const symlink = fsPromises.symlink
+    const readlink = fsPromises.readlink
+    let now = 0
+    let attempts = 0
+    let result: ProjectRefresh | undefined
+    t.mock.method(
+      fsPromises,
+      'symlink',
+      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
+      async (...args: Parameters<typeof symlink>) => {
+        if (args[1] === lock) {
+          assert.ok(
+            ++attempts <= 3,
+            'lock churn must stop at the deadline',
+          )
+          now += 15_000
+          throw Object.assign(
+            new Error('lock was just created'),
+            { code: 'EEXIST' },
+          )
+        }
+
+        return symlink(...args)
+      },
+    )
+    t.mock.method(
+      fsPromises,
+      'readlink',
+      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
+      async (...args: Parameters<typeof readlink>) => {
+        if (args[0] === lock) {
+          throw Object.assign(
+            new Error('lock was just removed'),
+            { code: 'ENOENT' },
+          )
+        }
+
+        return readlink(...args)
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      await refreshProject({
+        path,
+        url: 'https://github.com/fixture/project/pull/1',
+        merge: target,
+        isPending: () => true,
+        lockWait: {
+          now: () => now,
+          schedule: () => {
+            throw new Error('a vanished lock needs no timer')
+          },
+        },
+        complete: ({ result: completed }) => {
+          result = completed
+        },
+      })
+      assert.equal(
+        attempts,
+        2,
+      )
+      assert.ok(result)
+      assert.equal(
+        result.state,
+        'unknown',
+      )
+      assert.match(
+        result.reason!,
+        /timed out waiting for the active project refresh after 30000ms/,
+      )
+      assert.ok(result.reason!.includes(lock))
+      assert.equal(
+        git({
+          cwd: path,
+          args: [
+            'rev-parse',
+            'HEAD',
+          ],
+        }),
+        before,
+      )
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
+  },
+)
+
+test(
+  'project refresh waits for its owner under EMFILE and advances after release',
+  async t => {
+    const s = await pnyx.scenario()
+    const {
+      path,
+      target,
+      before,
+    } = await prepare({ s })
+    // Fault injection needs a free native slot, independent of earlier Hydras.
+    await pnyx.restart({
+      whileStopped: async () => {
+        const lock = join(
+          path,
+          '.git',
+          'pnyx-project-refresh.lock',
+        )
+        symlinkSync(
+          `pnyx-refresh:${process.pid}:external-owner`,
+          lock,
+        )
+        const original = fs.watch
+        let injected = false
+        const errors = t.mock.method(
+          console,
+          'error',
+          () => {},
+        )
+        t.mock.method(
+          fs,
+          'watch',
+          // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+          (...args: Parameters<typeof fs.watch>) => {
+            if (String(args[0]) !== join(
+              path,
+              '.git',
+            )) {
+              return Reflect.apply(
+                original,
+                fs,
+                args,
+              ) as fs.FSWatcher
+            }
+
+            injected = true
+            throw Object.assign(
+              new Error('refresh watcher limit'),
+              { code: 'EMFILE' },
+            )
+          },
+        )
+        syncBuiltinESMExports()
+        t.after(() => {
+          fs.rmSync(
+            lock,
+            { force: true },
+          )
+          t.mock.restoreAll()
+          syncBuiltinESMExports()
+        })
+        let result: ProjectRefresh | undefined
+        const results: ProjectRefresh[] = []
+        const refreshing = refreshProject({
+          path,
+          url: 'https://github.com/fixture/project/pull/1',
+          merge: target,
+          isPending: () => true,
+          complete: ({ result: value }) => {
+            result = value
+            results.push(value)
+          },
+        })
+
+        try {
+          await until({
+            what: 'refresh to wait through its watcher failure',
+            check: () => injected && errors.mock.calls.length > 0,
+          })
+          assert.equal(
+            result,
+            undefined,
+          )
+          assert.equal(
+            git({
+              cwd: path,
+              args: [
+                'rev-parse',
+                'HEAD',
+              ],
+            }),
+            before,
+          )
+          unlinkSync(lock)
+          await refreshing
+          assert.equal(
+            results[0]?.state,
+            'advanced',
+          )
+          assert.equal(
+            git({
+              cwd: path,
+              args: [
+                'rev-parse',
+                'HEAD',
+              ],
+            }),
+            target,
+          )
+        } finally {
+          fs.rmSync(
+            lock,
+            { force: true },
+          )
+          await refreshing
+          t.mock.restoreAll()
+          syncBuiltinESMExports()
+        }
+      },
+    })
   },
 )

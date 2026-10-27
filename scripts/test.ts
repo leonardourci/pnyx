@@ -15,7 +15,6 @@ const PURE_TESTS = new Set([
   'card-open',
   'card-states',
   'chat',
-  'comment-markers',
   'conversation',
   'decide',
   'decisions',
@@ -66,7 +65,7 @@ if (inputs.includes('unit') || inputs.includes('scenarios')) {
   await holdRunLock({ name: 'tests' })
 }
 
-const serial = ({ file }: { file: string }) => file.includes('test/scenarios/') || file.endsWith('-browser.test.ts')
+const flow = ({ file }: { file: string }) => file.includes('test/scenarios/')
 const lanes = [
   {
     name: 'pure',
@@ -78,16 +77,18 @@ const lanes = [
     name: 'process/Git',
     testTimeout: 3 * MINUTE_MS,
     concurrency: HEAVY_CONCURRENCY,
-    files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !serial({ file })),
+    files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !flow({ file })),
   },
   {
-    name: 'scenarios/browser',
+    name: 'flows',
     testTimeout: 5 * MINUTE_MS,
     concurrency: 1,
-    files: files.filter(file => serial({ file })),
+    // One process, so every flow shares the one server its group starts.
+    isolation: 'none',
+    files: files.filter(file => flow({ file })),
   },
 ]
-const isolated = createTestEnvironment({ inherited: process.env })
+const isolated = createTestEnvironment()
 
 try {
   for (const lane of lanes) {
@@ -106,6 +107,7 @@ try {
         ).href,
         '--test',
         `--test-concurrency=${lane.concurrency}`,
+        ...lane.isolation ? [`--test-isolation=${lane.isolation}`] : [],
         // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
         // running.
         `--test-timeout=${lane.testTimeout}`,

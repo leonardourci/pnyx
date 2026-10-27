@@ -6,11 +6,8 @@ import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
-import { openPage, scenarioGroup, until } from './harness.ts'
-import { claimFlags, lavishFixture, readAndAck } from './lavish-fixture.ts'
-
-const pnyx = scenarioGroup()
-type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
+import { openPage, until } from './harness.ts'
+import { pnyx, type Scenario } from './pnyx.ts'
 
 const finished = async ({
   s,
@@ -218,7 +215,7 @@ test(
 )
 
 test(
-  'owner chat starts a private Hydra, replies once, and resumes the same session after restart',
+  'owner chat starts a private Hydra that may not hold messages with check --wait, replies once, and resumes the same session after restart',
   async () => {
     const s = await pnyx.scenario()
     await send({
@@ -231,6 +228,33 @@ test(
       turns: 1,
     })
     const first = await s.agent({ hydra: true })
+    // The Hydra Pnyx runs may not hold the owner's messages with check --wait; the owner may.
+    const hydra = s.as({ agent: first })
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'hydra',
+          'check',
+          '--wait',
+          '1',
+        ],
+      }),
+      'VALIDATION_ERROR',
+    )
+    await hydra.run({
+      args: [
+        'hydra',
+        'check',
+      ],
+    })
+    await s.owner({
+      args: [
+        'hydra',
+        'check',
+        '--wait',
+        '1',
+      ],
+    })
     assert.equal(
       first.cwd,
       join(
@@ -667,305 +691,5 @@ test(
       held.release()
       page.close()
     }
-  },
-)
-
-test(
-  'memory saves survive restart, inform the next wake, and keep owner preferences shared across Hydras',
-  async () => {
-    const s = await pnyx.scenario()
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Watch memory',
-        '--key',
-        'watch',
-      ],
-    })
-    await send({
-      s,
-      text: 'Remember the plan',
-      id: 'remember',
-    })
-    await finished({
-      s,
-      turns: 1,
-    })
-    const agent = await s.agent({ hydra: true })
-    const hydra = s.as({ agent })
-    await hydra.run({
-      args: [
-        'hydra',
-        'memory',
-        'set',
-        '--key',
-        'scope',
-        '--text',
-        'Release the parser.',
-      ],
-    })
-    await hydra.run({
-      args: [
-        'owner',
-        'memory',
-        'set',
-        '--key',
-        'preferences',
-        '--text',
-        'Short PRs.',
-      ],
-    })
-    await s.owner({
-      args: [
-        'hydra',
-        'send',
-        '--task',
-        'watch',
-        '--actor',
-        `worker:${s.task({ key: 'watch' }).id}`,
-        '--text',
-        'Memory is ready',
-      ],
-    })
-    await finished({
-      s,
-      turns: 2,
-    })
-    assert.match(
-      agent.received[1]!,
-      /Memory changed; load owner memory/,
-    )
-    assert.doesNotMatch(
-      agent.received[1]!,
-      /<pnyx-digest/,
-    )
-    await pnyx.restart()
-    await send({
-      s,
-      text: 'Recall the plan',
-      id: 'recall',
-    })
-    await finished({
-      s,
-      turns: 3,
-    })
-    const resumed = await s.agent({ hydra: true })
-    assert.match(
-      resumed.received[0]!,
-      /Release the parser\./,
-    )
-    assert.match(
-      resumed.received[0]!,
-      /Short PRs\./,
-    )
-    const other = await pnyx.scenario()
-    assert.match(
-      await other.owner({
-        args: [
-          'hydra',
-          'digest',
-        ],
-      }),
-      /Short PRs\./,
-    )
-    assert.doesNotMatch(
-      await other.owner({
-        args: [
-          'hydra',
-          'memory',
-          'list',
-        ],
-      }),
-      /Release the parser\./,
-    )
-    assert.match(
-      await s.owner({
-        args: [
-          'owner',
-          'memory',
-          'set',
-          '--key',
-          'preferences',
-          '--text',
-          'Short PRs.',
-        ],
-      }),
-      /skipped: unchanged/,
-    )
-    await s.owner({
-      args: [
-        'owner',
-        'memory',
-        'forget',
-        '--key',
-        'preferences',
-      ],
-    })
-    assert.match(
-      await other.owner({
-        args: [
-          'owner',
-          'memory',
-          'list',
-        ],
-      }),
-      /none: no owner memory yet/,
-    )
-    const log = readFileSync(
-      join(
-        process.env.PNYX_HOME!,
-        'owner',
-        'memory.jsonl',
-      ),
-      'utf8',
-    )
-    assert.equal(
-      log.trim().split('\n').length,
-      2,
-    )
-    await hydra.run({
-      args: [
-        'hydra',
-        'memory',
-        'forget',
-        '--key',
-        'scope',
-      ],
-    })
-    assert.equal(
-      s.state().hydraMemory?.scope,
-      undefined,
-    )
-    assert.deepEqual(
-      s.events().filter(e => e.type === 'hydra.memory')
-        .map(e => e.data.after),
-      [
-        'Release the parser.',
-        null,
-      ],
-    )
-  },
-)
-
-test(
-  'durable Lavish rounds reach the page worker once and stay out of Hydra owner chat',
-  async () => {
-    const s = await pnyx.scenario()
-    const folder = s.folder({ name: 'review-page' })
-    const fixture = lavishFixture({ folder })
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Build a review page',
-        '--key',
-        'page',
-        '--folder',
-        folder,
-      ],
-    })
-    await s.owner({
-      args: [
-        'task',
-        'start',
-        'page',
-      ],
-    })
-    const agent = await s.agent({ cwd: folder })
-    const worker = s.as({ agent })
-    await until({
-      what: 'worker opening turn',
-      check: () => s.task({ key: 'page' }).sessionActivity === 'finished',
-    })
-    await send({
-      s,
-      text: 'The review page is ready',
-      id: 'ready',
-    })
-    await finished({
-      s,
-      turns: 1,
-    })
-    const hydra = await s.agent({ hydra: true })
-    await worker.run({
-      args: fixture.arm({
-        task: 'page',
-        id: 'comments',
-      }),
-    })
-    await until({
-      what: 'page listening',
-      check: () => existsSync(join(
-        folder,
-        'listening',
-      )),
-    })
-    const comments = 'session:\n  status: feedback\n  session_ended: true\nprompts[1]{tag,text}:\n  message,"Use a larger chart and keep the legend."\n'
-    fixture.deliver({ body: comments })
-    await until({
-      what: 'captured feedback delivered to worker',
-      check: () => {
-        const message = s.task({ key: 'page' }).steering?.[0]
-
-        return message && s.received({ cwd: folder }).some(text => text.includes(message.id))
-          && s.task({ key: 'page' }).sessionActivity === 'finished'
-      },
-    })
-    const message = s.task({ key: 'page' }).steering![0]!
-    await pnyx.restart()
-    await readAndAck({
-      s,
-      worker,
-      task: 'page',
-      id: 'comments',
-    })
-    const handled = [
-      'task',
-      'source',
-      'handled',
-      'page',
-      'comments',
-      '1',
-      ...claimFlags({ card: s.task({ key: 'page' }) }),
-    ]
-    await worker.run({ args: handled })
-    await worker.run({ args: handled })
-    await send({
-      s,
-      text: 'Continue the review',
-      id: 'continue',
-    })
-    await until({
-      what: 'Hydra handles the next owner message',
-      check: () => s.received({ cwd: hydra.cwd }).includes('Continue the review')
-        && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
-    })
-    assert.equal(
-      s.task({ key: 'page' }).steering!.filter(item => item.id === message.id).length,
-      1,
-    )
-    assert.equal(
-      s.task({ key: 'page' }).externalSources![0]!.state,
-      'retired',
-    )
-    assert.equal(
-      s.events().filter(event => event.type === 'task.source.handled').length,
-      1,
-    )
-    assert.equal(
-      s.received({ cwd: hydra.cwd }).some(text => text.includes(comments)),
-      false,
-    )
-    assert.equal(
-      s.state().hydraMessages?.some(item => item.text.includes(comments)),
-      false,
-    )
-    assert.equal(
-      fixture.calls().length,
-      1,
-    )
   },
 )

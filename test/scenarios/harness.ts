@@ -1,4 +1,4 @@
-// The scenario harness: one disposable Pnyx per test file, a fresh Hydra per scenario, real
+// The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See test/README.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
@@ -26,8 +26,8 @@ const BIN = join(
   'pnyx-axi.js',
 )
 // Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
-export const TIMEOUT_MS = 30_000
-export const POLL_MS = 20
+const TIMEOUT_MS = 30_000
+const POLL_MS = 20
 // How often the server reads a followed pull request; the real minute would outlast the waits.
 const FOLLOW_MS = 100
 
@@ -244,13 +244,11 @@ export async function openPage({
   }
 }
 
-// Starts one disposable Pnyx for the test file (temporary PNYX_HOME, random port, fake agents);
-// call it at the top level of the file. Nothing outside its temporary folder is read or written.
+// Starts one disposable Pnyx (temporary PNYX_HOME, random port, fake agents); pnyx.ts calls it once
+// for every flow, since it sets process.env. Nothing outside its temporary folder is read or written.
 export function scenarioGroup({
   retryDelays,
-  incorporateSteering = false,
 }: {
-  incorporateSteering?: boolean
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
 } = {}) {
@@ -289,6 +287,11 @@ export function scenarioGroup({
         root,
         'no-login/codex',
       ),
+      // Every pnyx-axi run reuses the compiled CLI instead of compiling it again.
+      NODE_COMPILE_CACHE: join(
+        root,
+        'compile-cache',
+      ),
     },
   )
 
@@ -301,6 +304,9 @@ export function scenarioGroup({
     delete process.env[name]
   }
 
+  // The flows share one test process, whose test-runner flags would turn a forked helper, such as an
+  // external source's supervisor, into a test run.
+  process.execArgv = process.execArgv.filter(flag => !flag.startsWith('--test'))
   mkdirSync(process.env.HOME!)
   // Accounts claude:test and codex:test, and a quota-axi on PATH that reports them usable.
   fakeDispatch({ root })
@@ -318,8 +324,8 @@ export function scenarioGroup({
     process.env.PNYX_HOME!,
     { recursive: true },
   )
-  const claude = replayClaude({ incorporateSteering })
-  const codex = replayCodex({ incorporateSteering })
+  const claude = replayClaude()
+  const codex = replayCodex()
   let server: RunningServer | undefined
   let scenarios = 0
 
@@ -606,19 +612,6 @@ function hydraScenario({
       hydraId,
       ...input,
     }),
-    mergeArguments: ({ number }: { number: number }) => {
-      const file = join(
-        repo,
-        `${number}.arguments`,
-      )
-
-      return existsSync(file) ? readFileSync(
-        file,
-        'utf8',
-      ).trim()
-        .split('\n')
-        .map(line => JSON.parse(line) as string[]) : []
-    },
     // Accepted requests include queued merges, so this detects duplicate submissions.
     merges: ({ number }: { number: number }) => {
       const log = join(
