@@ -14,7 +14,7 @@ export function PendingStatus({ intents }: { intents: PendingIntent<unknown>[] }
 
   return (
     <p className="pending-status" role="status" data-pending={unknown ? 'unknown' : 'saving'}>
-      {unknown ? 'Changes unconfirmed. Check their outcome before retrying.' : 'Saving changes…'}
+      {unknown ? 'Checking whether your changes were saved…' : 'Saving changes…'}
     </p>
   )
 }

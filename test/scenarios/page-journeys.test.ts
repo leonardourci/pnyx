@@ -854,8 +854,20 @@ test(
     const newest = await page.shows({
       what: 'the new declaration on top',
       check: () => {
-        // What the owner sees in each row: a closed fold shows only its summary.
-        const shown = [...document.querySelectorAll<HTMLElement>('.task-updates > ol > li')].map(row => row.innerText)
+        const groups = new Map<string, string[]>()
+
+        for (const row of document.querySelectorAll<HTMLElement>('.task-updates > ol > li:not([hidden])')) {
+          const key = row.dataset.updateGroup!
+          groups.set(
+            key,
+            [
+              ...(groups.get(key) ?? []),
+              row.innerText,
+            ],
+          )
+        }
+
+        const shown = [...groups.values()].map(parts => parts.join('\n'))
 
         return shown[0]?.includes('Styling the header') && shown
       },
@@ -865,7 +877,20 @@ test(
       what: 'the same Updates oldest first',
       arg: { newest },
       check: ({ newest }) => {
-        const shown = [...document.querySelectorAll<HTMLElement>('.task-updates > ol > li')].map(row => row.innerText)
+        const groups = new Map<string, string[]>()
+
+        for (const row of document.querySelectorAll<HTMLElement>('.task-updates > ol > li:not([hidden])')) {
+          const key = row.dataset.updateGroup!
+          groups.set(
+            key,
+            [
+              ...(groups.get(key) ?? []),
+              row.innerText,
+            ],
+          )
+        }
+
+        const shown = [...groups.values()].map(parts => parts.join('\n'))
 
         return document.querySelector('.updates-order')?.textContent?.startsWith('Oldest first')
           && JSON.stringify(shown) === JSON.stringify([...newest].reverse())

@@ -1,4 +1,5 @@
 import type { MouseEvent, ReactNode } from 'react'
+import { Button } from '../components/ui/controls.tsx'
 import { CollapsibleText, Disclosure } from '../components/ui/disclosure.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
@@ -150,7 +151,19 @@ function UpdateText({ update }: { update: TaskUpdate }) {
   return update.note ? <CollapsibleText text={update.note} /> : null
 }
 
-export function UpdateEntry({ update }: { update: TaskUpdate }) {
+export function UpdateEntry({
+  update,
+  index = 0,
+  count = 1,
+}: {
+  update: TaskUpdate
+  index?: number
+  count?: number
+}) {
+  if (update.kind === 'decision') {
+    return <Decision update={update} index={index} count={count} />
+  }
+
   if (update.kind === 'report') {
     return (
       <Disclosure
@@ -249,17 +262,22 @@ function AskParts({
   )
 }
 
-function Decisions({ updates }: { updates: TaskUpdate[] }) {
-  const many = updates.length > 1
+function Decision({
+  update,
+  index,
+  count,
+}: {
+  update: TaskUpdate
+  index: number
+  count: number
+}) {
+  const many = count > 1
 
   return (
     <>
-      <UpdateLine kind="decision" at={updates[0]!.at} title={many ? `${updates.length} decisions` : 'Decision'} />
+      <UpdateLine kind="decision" at={update.at} title={many ? `${count} decisions` : 'Decision'} />
       <ol className="decision-list">
-        {updates.map((
-          update,
-          index,
-        ) => update.decision && (
+        {update.decision && (
           <li key={update.id}>
             <div className="decision-question">
               {many && <span className="decision-number">{index + 1}</span>}
@@ -274,70 +292,50 @@ function Decisions({ updates }: { updates: TaskUpdate[] }) {
             <Answer decision={update.decision} />
             {update.decision.reason && <CollapsibleText className="decision-why" text={update.decision.reason} />}
           </li>
-        ))}
+        )}
       </ol>
     </>
   )
 }
 
-function Folded({ group }: { group: UpdateGroup }) {
+function GroupHeading({
+  group,
+  open,
+  controls,
+  toggle,
+}: {
+  group: UpdateGroup
+  open: boolean
+  controls: string
+  toggle(): void
+}) {
+  if (group.type === 'decisions') {
+    return <UpdateLine kind="decision" at={group.updates[0]!.at} title={`${group.updates.length} decisions`} />
+  }
+
   const workers = group.type === 'workers'
   const states = [...new Set(group.updates.map(update => stateLabel({ state: update.state })))].join(', ')
 
   return (
-    <Disclosure
-      className="update-fold"
-      title={(
-        <UpdateLine
-          kind={workers ? 'status' : 'renamed'}
-          label={workers ? 'Worker updates' : 'Card changes'}
-          at={group.updates.at(-1)!.at}
-          plain
-          title={(
-            <>
-              {group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states">{states}</span>
-              <span className="update-fold-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
-            </>
-          )}
-        />
-      )}
+    <Button
+      className="update-group-toggle"
+      aria-expanded={open}
+      aria-controls={controls}
+      onClick={toggle}
     >
-      {group.updates.map(update => <UpdateEntry key={update.id} update={update} />)}
-    </Disclosure>
+      <UpdateLine
+        kind={workers ? 'status' : 'renamed'}
+        label={workers ? 'Worker updates' : 'Card changes'}
+        at={group.updates.at(-1)!.at}
+        plain
+        title={(
+          <>{group.updates.length} {workers ? 'worker updates' : 'card changes'} <span className="update-states">{states}</span>
+            <span className="update-fold-chevron" aria-hidden="true"><Icon name="chevron_right" size={14} /></span>
+          </>
+        )}
+      />
+    </Button>
   )
-}
-
-function Moment({ updates }: { updates: TaskUpdate[] }) {
-  const [
-    first,
-    ...rest
-  ] = updates
-
-  return (
-    <UpdateLine kind={first!.kind} at={first!.at} title={<UpdateTitle update={first!} />}>
-      <UpdateText update={first!} />
-      {rest.map(update => (
-        <div key={update.id} className="update-part">
-          <UpdateTitle update={update} />
-          {update.note && <CollapsibleText className="muted" text={update.note} />}
-        </div>
-      ))}
-    </UpdateLine>
-  )
-}
-
-function GroupBody({ group }: { group: UpdateGroup }) {
-  const first = group.updates[0]!
-
-  switch (group.type) {
-    case 'workers':
-    case 'changes': return <Folded group={group} />
-    case 'decisions': return <Decisions updates={group.updates} />
-    case 'moment': return <Moment updates={group.updates} />
-    default: return first.kind === 'decision'
-      ? <Decisions updates={group.updates} />
-      : group.updates.map(update => <UpdateEntry key={update.id} update={update} />)
-  }
 }
 
 // A click anywhere in an expandable row opens or closes all of it, never the card; selecting text does neither.
@@ -370,12 +368,58 @@ function toggleRow({ event }: { event: MouseEvent<HTMLLIElement> }) {
   toggled.forEach(button => button.click())
 }
 
-export function UpdateGroupRow({ group }: { group: UpdateGroup }) {
-  const decision = group.updates.every(update => update.kind === 'decision')
+export function UpdateRow({
+  update,
+  group,
+  index,
+  prefix,
+  open,
+  toggle,
+}: {
+  update: TaskUpdate
+  group: UpdateGroup
+  index: number
+  prefix: string
+  open: boolean
+  toggle(): void
+}) {
+  const folded = group.type === 'workers' || group.type === 'changes'
+  const many = group.updates.length > 1
+  const heading = index === 0 && (folded || (many && group.type === 'decisions'))
+  const groupId = group.updates[0]!.id
 
   return (
-    <li className={decision ? 'update-decision' : undefined} onClick={event => toggleRow({ event })}>
-      <GroupBody group={group} />
+    <li
+      className={`update-row update-group-${group.type}${index ? ' update-group-continuation' : ''}${update.kind === 'decision' ? ' update-decision' : ''}`}
+      data-update={update.id}
+      data-update-group={groupId}
+      data-update-group-end={index === group.updates.length - 1 || undefined}
+      hidden={folded && !open && index > 0}
+      onClick={event => {
+        if (!folded) {
+          return toggleRow({ event })
+        }
+
+        event.stopPropagation()
+
+        if (!window.getSelection()?.toString() && !(event.target instanceof Element && event.target.closest('a, button, summary'))) {
+          toggle()
+        }
+      }}
+    >
+      <div hidden={!heading}>
+        {heading && (
+          <GroupHeading
+            group={group}
+            open={open}
+            controls={group.updates.map(update => `${prefix}:${update.id}`).join(' ')}
+            toggle={toggle}
+          />
+        )}
+      </div>
+      <div id={`${prefix}:${update.id}`} className="update-entry" hidden={folded && !open}>
+        <UpdateEntry update={update} index={index} count={group.updates.length} />
+      </div>
     </li>
   )
 }

@@ -1,4 +1,4 @@
-import type { HydraState } from '../../../src/core/model.ts'
+import type { AgentConfig, Card, HydraState } from '../../../src/core/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import { columnCards, rankOf } from '../../../src/core/tasks.ts'
 import { patchView } from '../../../src/core/view.ts'
@@ -52,6 +52,73 @@ export function optimisticState({
         },
       },
     } : state
+
+  if (name === 'task' && action === 'create') {
+    const event = option({ flag: '--event-id' })
+    const title = option({ flag: '--title' })?.trim()
+    const key = option({ flag: '--key' }) ?? `task:${event}`
+    const columnRef = option({ flag: '--column' })
+    const column = config.columns.find(column =>
+      column.id === columnRef || column.role === columnRef)
+      ?? config.columns.find(column => column.role === 'queued')
+    const parentRef = option({ flag: '--parent' })
+    const parentId = parentRef ? state.keys[parentRef] ?? parentRef : undefined
+
+    if (!event || !title || !column || state.keys[key] || (parentId && !state.cards[parentId])) {
+      return state
+    }
+
+    const first = columnCards({
+      state,
+      column: column.id,
+    })[0]
+    const pending: Card = {
+      id: key,
+      key,
+      title,
+      titleSet: true,
+      workspace: 'unassigned',
+      tags: [],
+      attention: [],
+      links: [],
+      sourceRefs: [],
+      tracking: 'declared',
+      parentId,
+      column: column.id,
+      rank: first ? rankOf({ card: first }) - 1 : 0,
+      revision: 0,
+      createdSeq: 0,
+      updatedSeq: 0,
+      updatedAt: '',
+    }
+
+    return {
+      ...state,
+      cards: {
+        ...state.cards,
+        [key]: pending,
+      },
+      keys: {
+        ...state.keys,
+        [key]: key,
+      },
+    }
+  }
+
+  if (name === 'hydra-agent') {
+    const agent = JSON.parse(args[0] ?? '{}') as AgentConfig
+
+    return {
+      ...state,
+      config: {
+        ...config,
+        hydra: {
+          ...config.hydra,
+          agent,
+        },
+      },
+    }
+  }
 
   if (name === 'view' && action === 'set') {
     return {

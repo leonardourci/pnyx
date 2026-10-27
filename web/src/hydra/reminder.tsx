@@ -1,8 +1,9 @@
 import { Icon } from '../components/ui/icon.tsx'
-import { useId, useState } from 'react'
+import { useId, useRef, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
 import { Button, Input } from '../components/ui/controls.tsx'
 import type { Command } from './connection.ts'
+import { CommandFailure } from './pending-intents.ts'
 
 export function ReminderLabel({ card }: { card: Card }) {
   if (!card.reminder || card.reminder.dueAt) {
@@ -21,52 +22,69 @@ export function ReminderLabel({ card }: { card: Card }) {
   return <span className="reminder-label" title={date.toISOString()}><Icon name="reminder" size={14} />reminds you {when}</span>
 }
 
+export interface ReminderDraft {
+  value: string
+  attempt: string
+  error: string
+}
+
 export function ReminderEditor({
   card,
   command,
   connected,
   close,
+  submitted,
+  recover,
+  draft,
 }: {
   card: Card
   command: Command
   connected: boolean
   close(): void
+  submitted(): void
+  recover({ draft }: { draft: ReminderDraft }): void
+  draft?: ReminderDraft
 }) {
   const id = useId()
   const [
     when,
     setWhen,
-  ] = useState(card.reminder?.dueAt ? '' : card.reminder?.at ?? '')
-  const [
-      busy,
-      setBusy,
-    ] = useState(false), [
-      error,
-      setError,
-    ] = useState('')
+  ] = useState(draft?.value ?? (card.reminder?.dueAt ? '' : card.reminder?.at ?? ''))
+  const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
+  const sending = useRef(false)
 
-  const save = async ({ value }: { value: string }) => {
-    setBusy(true); setError('')
-
-    try {
-      await command({
-        name: 'task',
-        args: [
-          'remind',
-          card.id,
-          value,
-          '--if-revision',
-          String(card.revision),
-          '--event-id',
-          crypto.randomUUID(),
-        ],
-      })
-      close()
-    } catch (error) {
-      setError((error as Error).message)
-    } finally {
-      setBusy(false)
+  const save = ({ value }: { value: string }) => {
+    if (sending.current) {
+      return
     }
+
+    sending.current = true
+    const saving = command({
+      name: 'task',
+      args: [
+        'remind',
+        card.id,
+        value,
+        '--if-revision',
+        String(card.revision),
+        '--event-id',
+        attempt.current,
+      ],
+    })
+    submitted()
+    void saving.catch((error: Error) => {
+      if (error instanceof CommandFailure && error.outcome === 'unknown') {
+        return
+      }
+
+      recover({
+        draft: {
+          value: when,
+          attempt: attempt.current,
+          error: error.message,
+        },
+      })
+    })
   }
 
   return (
@@ -89,15 +107,15 @@ export function ReminderEditor({
         autoFocus
         placeholder="tomorrow 9:00 or in 2 hours"
         value={when}
-        disabled={!connected || busy}
+        disabled={!connected}
         onChange={event => setWhen(event.target.value)}
       />
       <small className="muted">“Tomorrow” uses the laptop’s time. You can also enter an ISO timestamp with a timezone.</small>
-      {error && <p role="alert">{error}</p>}
+      {draft?.error && <p role="alert">{draft.error}</p>}
       <div className="row">
-        <Button type="submit" disabled={!connected || busy || !when.trim()}>Set reminder</Button>
-        {card.reminder && <Button disabled={!connected || busy} onClick={() => void save({ value: 'clear' })}>Clear reminder</Button>}
-        <Button disabled={busy} onClick={close}>Cancel</Button>
+        <Button type="submit" disabled={!connected || !when.trim()}>Set reminder</Button>
+        {card.reminder && <Button disabled={!connected} onClick={() => void save({ value: 'clear' })}>Clear reminder</Button>}
+        <Button onClick={close}>Cancel</Button>
       </div>
     </form>
   )

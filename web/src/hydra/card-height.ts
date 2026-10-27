@@ -38,6 +38,7 @@ export function useCardHeight({
     bounds,
     setBounds,
   ] = useState({
+    measured: false,
     minimum: 0,
     maximum: Number.MAX_SAFE_INTEGER,
     available: 0,
@@ -102,6 +103,7 @@ export function useCardHeight({
         }
 
         const next = {
+          measured: true,
           minimum: Math.ceil(minimum),
           maximum: Math.ceil(Math.max(
             minimum,
@@ -109,7 +111,8 @@ export function useCardHeight({
           )),
           available: column.clientHeight - spacing({ element: column }),
         }
-        setBounds(old => old.minimum === next.minimum && old.maximum === next.maximum
+        setBounds(old => old.measured && old.minimum === next.minimum
+          && old.maximum === next.maximum
           && old.available === next.available ? old : next)
       }
 

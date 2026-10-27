@@ -1,5 +1,5 @@
 import { Icon } from '../components/ui/icon.tsx'
-import { useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { HydraColumn, Card, Column as ColumnId, ViewPreferences } from '../../../src/core/model.ts'
 import { LOCKED_DELETE } from '../../../src/core/hydra.ts'
 import { DEFAULT_COLUMN_WIDTH, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
@@ -51,6 +51,7 @@ export function Column({
     parent?: string
   }): void
 }) {
+  const descriptionVersion = useRef(0)
   const [
     width,
     setWidth,
@@ -198,6 +199,7 @@ export function Column({
           <Button
             disabled={!connected}
             onClick={() => {
+              descriptionVersion.current++
               setDraft(description ?? ''); setDescribing(true)
             }}
           >Edit description
@@ -220,6 +222,8 @@ export function Column({
           className="column-description"
           onSubmit={e => {
             e.preventDefault()
+            const version = ++descriptionVersion.current
+            setDescribing(false)
             void edit({
               args: [
                 'describe',
@@ -227,8 +231,13 @@ export function Column({
                 '--description',
                 draft,
               ],
-            }).then(() => setDescribing(false))
-              .catch(error => report({ error }))
+            }).catch((error: Error) => {
+              if (descriptionVersion.current === version) {
+                setDescribing(true)
+              }
+
+              report({ error })
+            })
           }}
         >
           <Textarea
