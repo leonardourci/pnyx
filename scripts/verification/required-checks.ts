@@ -58,11 +58,11 @@ export function changeKind({ path }: { path: string }): Kind {
     return 'skill text'
   }
 
-  if (path.startsWith('docs/') || (path.endsWith('.md') && !path.startsWith('test/fixtures/'))) {
+  if (path.startsWith('docs/') || (path.endsWith('.md') && !/(^|\/)fixtures\//.test(path))) {
     return 'docs'
   }
 
-  if (path.startsWith('test/') && path.endsWith('.test.ts')) {
+  if (path.endsWith('.test.ts')) {
     return 'tests'
   }
 

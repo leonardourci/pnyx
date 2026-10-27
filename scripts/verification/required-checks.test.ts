@@ -28,6 +28,11 @@ const rows = [
     tests: 'changed',
   },
   {
+    paths: ['src/tasks/example.test.ts'],
+    reviews: ['audit-tests'],
+    tests: 'changed',
+  },
+  {
     paths: ['web/src/app.tsx'],
     reviews: REVIEW_CHECKLISTS,
     tests: 'full',
@@ -39,6 +44,11 @@ const rows = [
   },
   {
     paths: ['test/fixtures/input.md'],
+    reviews: REVIEW_CHECKLISTS,
+    tests: 'full',
+  },
+  {
+    paths: ['src/integrations/firstmate/fixtures/input.md'],
     reviews: REVIEW_CHECKLISTS,
     tests: 'full',
   },
