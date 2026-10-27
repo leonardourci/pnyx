@@ -1,4 +1,4 @@
-import { COMMON, integer, meta, parse, required, type Output } from '../cli/commands.ts'
+import { COMMON, integer, meta, parse, required, type Output } from '../app/cli-support.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { steeringClaim } from '../task-inbox/state.ts'
 import { armLavish } from './lavish.ts'

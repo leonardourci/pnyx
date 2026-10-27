@@ -36,7 +36,7 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { canonical } from '../store/paths.ts'
 import { askHost } from '../server/state.ts'
 import { loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
-import type { Output } from './commands.ts'
+import type { Output } from '../app/cli-support.ts'
 
 export const VIAS = [
   'pnyx',

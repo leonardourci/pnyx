@@ -1,7 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
 import { HydraError } from '../core/model.ts'
-import { COMMON, guard, parse, type Options, type Output } from '../cli/commands.ts'
+import { COMMON, guard, parse, type Options, type Output } from '../app/cli-support.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, type IndexResult, type Kind } from './index.ts'

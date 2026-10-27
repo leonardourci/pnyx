@@ -5,7 +5,7 @@ import { DEFAULT_HYDRA } from '../app/home-migration.ts'
 import { AxiError } from 'axi-sdk-js'
 import { HYDRA_CARD, hydraBypasses } from '../core/hydra.ts'
 import { HYDRA_ACTOR } from '../core/model.ts'
-import { guard, WRITE } from './commands.ts'
+import { guard, WRITE } from '../app/cli-support.ts'
 
 type Command = ReturnType<typeof guard>
 const flag = ({

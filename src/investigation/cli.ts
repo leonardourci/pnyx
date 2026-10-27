@@ -1,5 +1,5 @@
 import { requireReady } from '../core/dependencies.ts'
-import { commit, required, type Output } from '../cli/commands.ts'
+import { commit, required, type Output } from '../app/cli-support.ts'
 import { sendReply } from '../cli/reply.ts'
 import { decideMove, findCard, type Meta } from '../core/decide.ts'
 import { declareTask, hydraConfig, roleColumn } from '../core/hydra.ts'

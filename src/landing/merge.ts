@@ -1,5 +1,5 @@
 import { mergeApproval } from '../core/asks.ts'
-import { commit, required, type Output } from '../cli/commands.ts'
+import { commit, required, type Output } from '../app/cli-support.ts'
 import { decideLink, findCard, type Meta } from '../core/decide.ts'
 import { HYDRA_ACTOR, HydraError, ownerActor, type Link } from '../core/model.ts'
 import { pullRequestMergeEvidence, pullRequestMergeOutcome } from '../integrations/github/merge-evidence.ts'

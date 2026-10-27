@@ -1,4 +1,4 @@
-import { commit, required, type Output } from '../cli/commands.ts'
+import { commit, required, type Output } from '../app/cli-support.ts'
 import { findCard, type Meta } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
 import { HydraError, type HydraState, type LandingRule } from '../core/model.ts'

@@ -145,7 +145,7 @@ const boundary = ({
     return true // AXI command handlers receive argv.
   }
 
-  if (filename.endsWith('/src/cli/commands.ts') && parent.type === 'ReturnStatement'
+  if (filename.endsWith('/src/app/cli-support.ts') && parent.type === 'ReturnStatement'
     && owner({
       node,
       types: ['FunctionDeclaration'],

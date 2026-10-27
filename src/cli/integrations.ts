@@ -8,7 +8,7 @@ import { paseoStatus } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 import { onPath } from '../setup/check.ts'
-import { COMMON, guard, parse, type Output } from './commands.ts'
+import { COMMON, guard, parse, type Output } from '../app/cli-support.ts'
 
 export async function integrations({
   hydraId,

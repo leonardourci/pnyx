@@ -24,7 +24,7 @@ import { paseoReply } from '../integrations/paseo/reply.ts'
 import { askHost } from '../server/state.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { COMMON, guard, meta, parse, required, type Options, type Output } from './commands.ts'
+import { COMMON, guard, meta, parse, required, type Options, type Output } from '../app/cli-support.ts'
 import { askAnswer } from '../core/asks.ts'
 
 export interface ReplyRequest {

@@ -1,7 +1,7 @@
 import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { learningChange, staleLearnings } from '../memory/learnings.ts'
-import { explained, meta, parse, required, WRITE, type Output } from '../cli/commands.ts'
+import { explained, meta, parse, required, WRITE, type Output } from '../app/cli-support.ts'
 import { HydraError } from '../core/model.ts'
 import { loadHydra } from '../store/hydra-store.ts'
 import { findProject } from './read.ts'

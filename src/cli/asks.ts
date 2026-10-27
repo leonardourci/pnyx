@@ -7,7 +7,7 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra, withWriter } from '../store/hydra-store.ts'
 import { askHost, readServer } from '../server/state.ts'
 import { browserCommand } from '../server/browser.ts'
-import { commit, explained, required, type Output } from './commands.ts'
+import { commit, explained, required, type Output } from '../app/cli-support.ts'
 import { sendReply } from './reply.ts'
 
 type Values = Record<string, string | boolean | string[] | undefined>

@@ -1,6 +1,6 @@
 import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { createHash } from 'node:crypto'
-import type { Output } from '../cli/commands.ts'
+import type { Output } from '../app/cli-support.ts'
 import { findCard, type Meta } from '../core/decide.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { HydraError, HYDRA_ACTOR } from '../core/model.ts'
