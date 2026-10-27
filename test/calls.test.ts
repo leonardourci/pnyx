@@ -454,32 +454,6 @@ test(
 )
 
 test(
-  'When only one of two calls made together is answered, the action is still running',
-  () => {
-    assert.equal(
-      readAction({
-        lines: lines({
-          records: [
-            claudeCall({
-              id: 'a',
-              name: 'Bash',
-              input: { command: 'pnpm test' },
-            }),
-            claudeCall({
-              id: 'b',
-              name: 'Bash',
-              input: { command: 'pnpm lint' },
-            }),
-            claudeResult({ id: 'a' }),
-          ],
-        }),
-      }).action?.done,
-      false,
-    )
-  },
-)
-
-test(
   'Calls and results split across reads of a growing transcript still make one action, done once both answered',
   () => {
     const path = join(

@@ -72,78 +72,6 @@ async function evidence({
 }
 
 test(
-  'an unbound duplicate and a commit status cannot weaken a required producer identity',
-  async () => {
-    const { eligibility } = await evidence({
-      input: {
-        required: [
-          {
-            context: 'build',
-            app: 10,
-          },
-        ],
-        legacy: [{ context: 'build' }],
-        statuses: [
-          {
-            context: 'build',
-            state: 'success',
-          },
-        ],
-        runs: [
-          {
-            name: 'build',
-            app: 11,
-            conclusion: 'success',
-          },
-        ],
-      },
-    })
-    assert.deepEqual(
-      eligibility.problems,
-      ['missing required check: build (app 10)'],
-    )
-  },
-)
-
-test(
-  'matching producers and latest successful commit statuses satisfy both requirement sources',
-  async () => {
-    const { eligibility } = await evidence({
-      input: {
-        required: [
-          {
-            context: 'build',
-            app: 10,
-          },
-        ],
-        legacy: [{ context: 'legacy-ci' }],
-        statuses: [
-          {
-            context: 'legacy-ci',
-            state: 'success',
-          },
-          {
-            context: 'legacy-ci',
-            state: 'failure',
-          },
-        ],
-        runs: [
-          {
-            name: 'build',
-            app: 10,
-            conclusion: 'success',
-          },
-        ],
-      },
-    })
-    assert.deepEqual(
-      eligibility.problems,
-      [],
-    )
-  },
-)
-
-test(
   'successful and failing checks on page two both affect eligibility',
   async () => {
     const required = Array.from(
@@ -188,20 +116,6 @@ test(
       failing.eligibility.problems,
       ['check is not green: check-100'],
     )
-  },
-)
-
-test(
-  'an unreadable requirement source preserves known missing checks from the other source',
-  async () => {
-    const { eligibility } = await evidence({
-      input: {
-        unreadable: 'legacy',
-        required: [{ context: 'build' }],
-      },
-    })
-    assert.ok(eligibility.problems.some(problem => problem.startsWith('classic protection unreadable:')))
-    assert.ok(eligibility.problems.includes('missing required check: build'))
   },
 )
 

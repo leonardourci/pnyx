@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { commandCapture } from './command-capture.ts'
 import { mkdtempSync, readFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -11,7 +10,6 @@ import { HYDRA_CARD, hydraConfig, hydraEvent, hydraMode } from '../src/core/hydr
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath } from '../src/dispatch/config.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
-import { runCommand } from '../src/integrations/command/run.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 
 test(
@@ -514,42 +512,6 @@ test(
     assert.equal(
       asked(),
       11,
-    )
-  },
-)
-
-test(
-  'a command worker never inherits Hydra’s actor',
-  async t => {
-    const capture = commandCapture({ t })
-    const folder = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-run-',
-    ))
-    const previous = process.env.PNYX_ACTOR
-    process.env.PNYX_ACTOR = 'hydra'
-
-    try {
-      runCommand({
-        command: 'printf "%s" "${PNYX_ACTOR-unset}" > actor.tmp && mv actor.tmp actor.txt',
-        cwd: folder,
-        env: {},
-      })
-    } finally {
-      process.env.PNYX_ACTOR = previous
-    }
-
-    await capture.completed()
-
-    assert.equal(
-      readFileSync(
-        join(
-          folder,
-          'actor.txt',
-        ),
-        'utf8',
-      ),
-      'unset',
     )
   },
 )

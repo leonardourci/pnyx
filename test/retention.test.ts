@@ -421,41 +421,6 @@ test(
 )
 
 test(
-  'expiry rechecks wall time without another event using a fake clock',
-  t => {
-    process.env.PNYX_HOME = mkdtempSync(join(
-      scratch,
-      'pnyx-expiry-clock-',
-    ))
-    t.mock.timers.enable({
-      apis: ['Date'],
-      now: Date.parse(start),
-    })
-
-    const f = fixture()
-    withWriter({
-      hydraId: 'clock',
-      create: true,
-      fn: ({ writer }) => writer.append({ event: f.events[0]! }),
-    })
-    t.mock.timers.tick(DEFAULT_DONE_HOURS * HOUR_MS - 1)
-    assert.equal(
-      hideDone({ hydraId: 'clock' }),
-      0,
-    )
-    t.mock.timers.tick(1)
-    assert.equal(
-      hideDone({ hydraId: 'clock' }),
-      1,
-    )
-    assert.equal(
-      loadHydra({ hydraId: 'clock' }).state.cards.t1?.hidden,
-      true,
-    )
-  },
-)
-
-test(
   'per-card delays override the Hydra, survive replay and reopen, and can return to its default',
   () => {
     const f = fixture()

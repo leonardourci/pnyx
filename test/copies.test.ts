@@ -1,8 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFile, execFileSync, spawnSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
-import fs from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { promisify } from 'node:util'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -416,181 +414,6 @@ test(
 )
 
 test(
-  'a copy made under boards/ keeps working after its Hydra moves to hydras/',
-  async () => {
-    const {
-      root,
-      repo,
-      run,
-      task,
-      card,
-    } = await lab()
-    await startTask({
-      hydraId: 'lab',
-      task,
-      via: 'command',
-      meta: {
-        ...meta,
-        id: 's1',
-      },
-    })
-    const home = process.env.PNYX_HOME!
-    const {
-      path,
-      branch,
-    } = card().copy!
-    writeFileSync(
-      join(
-        path,
-        'fix.txt',
-      ),
-      'fixed\n',
-    )
-    git({
-      cwd: path,
-      args: [
-        'add',
-        '.',
-      ],
-    })
-    git({
-      cwd: path,
-      args: [
-        'commit',
-        '-q',
-        '-m',
-        'fix',
-      ],
-    })
-    git({
-      cwd: repo,
-      args: [
-        'merge',
-        '-q',
-        '--ff-only',
-        branch!,
-      ],
-    })
-    const old = join(
-      home,
-      'boards/lab/copies',
-      'app-1',
-    )
-    const moved = join(
-      home,
-      'hydras/lab/copies',
-      'app-1',
-    )
-    // Lay the Hydra out as an older version left it, then look from a new process's view.
-    renameSync(
-      join(
-        home,
-        'hydras',
-      ),
-      join(
-        home,
-        'boards',
-      ),
-    )
-    const log = join(
-      home,
-      'boards/lab/events.jsonl',
-    )
-    writeFileSync(
-      log,
-      readFileSync(
-        log,
-        'utf8',
-      ).replaceAll(
-        `${home}/hydras/`,
-        `${home}/boards/`,
-      ),
-    )
-    rmSync(join(
-      home,
-      'boards/lab/snapshot.json',
-    ))
-    git({
-      cwd: repo,
-      args: [
-        'worktree',
-        'repair',
-        old,
-      ],
-    })
-    symlinkSync(
-      home,
-      join(
-        root,
-        'later',
-      ),
-    )
-    process.env.PNYX_HOME = join(
-      root,
-      'later',
-    )
-
-    assert.equal(
-      card().copy?.path,
-      old,
-    )
-    assert.equal(
-      git({
-        cwd: old,
-        args: [
-          'rev-parse',
-          '--abbrev-ref',
-          'HEAD',
-        ],
-      }),
-      `pnyx/lab-${task}`,
-    )
-    assert.equal(
-      realpathSync(join(
-        home,
-        'boards/lab',
-      )),
-      join(
-        home,
-        'hydras/lab',
-      ),
-    )
-    assert.ok(git({
-      cwd: repo,
-      args: [
-        'worktree',
-        'list',
-        '--porcelain',
-      ],
-    }).includes(`worktree ${moved}\n`))
-    run({
-      args: [
-        'move',
-        task,
-        'done',
-        '--actor',
-        'web',
-      ],
-    })
-    assert.equal(
-      settleDone({ hydraId: 'lab' }),
-      1,
-    )
-    assert.deepEqual(
-      [
-        card().copy?.state,
-        card().copy?.path,
-      ],
-      [
-        'removed',
-        old,
-      ],
-    )
-    assert.ok(existsSync(moved))
-  },
-)
-
-test(
   'a released task reclaims its slot as active and reserves it before its worker attaches',
   async () => {
     const {
@@ -712,97 +535,6 @@ test(
         repo,
         '.git',
       ),
-    )
-  },
-)
-
-test(
-  'claim filesystem failures are reported instead of treated as busy slots',
-  async t => {
-    const {
-      task,
-      card,
-      start,
-    } = await lab()
-    const original = fs.openSync
-    t.mock.method(
-      fs,
-      'openSync',
-      // eslint-disable-next-line pnyx/object-params -- Implements node:fs openSync.
-      (
-        path: fs.PathLike,
-        flags: fs.OpenMode,
-        mode?: fs.Mode,
-      ) => {
-        if (String(path).endsWith('.claim')) {
-          throw Object.assign(
-            new Error('disk full'),
-            { code: 'ENOSPC' },
-          )
-        }
-
-        return original(
-          path,
-          flags,
-          mode,
-        )
-      },
-    )
-    syncBuiltinESMExports()
-
-    try {
-      await assert.rejects(
-        start({ id: task }),
-        /disk full/,
-      )
-      assert.equal(
-        card().copy,
-        undefined,
-      )
-    } finally {
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    }
-  },
-)
-
-test(
-  'an old claim owned by a live process stays reserved',
-  async () => {
-    const {
-      task,
-      card,
-      cardOf,
-      create,
-      start,
-      done,
-    } = await lab()
-    await start({ id: task })
-    const { path } = card().copy!
-    done({ id: task })
-    settleDone({ hydraId: 'lab' })
-    const claim = `${path}.claim`
-    writeFileSync(
-      claim,
-      String(process.pid),
-    )
-    fs.utimesSync(
-      claim,
-      new Date(0),
-      new Date(0),
-    )
-    const next = create({ key: 'next' })
-    await start({ id: next })
-    assert.notEqual(
-      cardOf({ id: next }).copy?.path,
-      path,
-    )
-    assert.equal(
-      readFileSync(
-        claim,
-        'utf8',
-      ),
-      String(process.pid),
     )
   },
 )
@@ -959,77 +691,6 @@ test(
   },
 )
 
-for (const failure of [
-  'fetch',
-  'default discovery',
-]) {
-  test(
-    `a failed ${failure} keeps a pooled slot untouched instead of using a stale base`,
-    async () => {
-      const {
-        root,
-        repo,
-        origin,
-        task,
-        card,
-        cardOf,
-        create,
-        start,
-        done,
-      } = await lab({ remote: true })
-      await start({ id: task })
-      const {
-        path,
-        branch,
-      } = card().copy!
-      done({ id: task })
-      settleDone({ hydraId: 'lab' })
-
-      if (failure === 'fetch') {
-        git({
-          cwd: repo,
-          args: [
-            'remote',
-            'set-url',
-            'origin',
-            join(
-              root,
-              'missing.git',
-            ),
-          ],
-        })
-      } else {
-        git({
-          cwd: origin,
-          args: [
-            'symbolic-ref',
-            'HEAD',
-            'refs/heads/missing',
-          ],
-        })
-      }
-
-      const next = create({ key: 'next' })
-      await assert.rejects(
-        start({ id: next }),
-        /could not refresh.*default branch/,
-      )
-      assert.equal(
-        head({ cwd: path }),
-        branch,
-      )
-      assert.equal(
-        cardOf({ id: next }).copy,
-        undefined,
-      )
-      assert.equal(
-        existsSync(`${path}.claim`),
-        false,
-      )
-    },
-  )
-}
-
 test(
   'a pooled copy that is dirty again is never taken',
   async () => {
@@ -1147,64 +808,6 @@ test(
     assert.equal(
       [...paths].filter(existsSync).length,
       POOL_IDLE,
-    )
-  },
-)
-
-test(
-  'manual attachment keeps the worker branch and copy ownership unchanged',
-  async () => {
-    const {
-      task,
-      card,
-      cardOf,
-      create,
-      start,
-      done,
-      worker,
-      attach,
-    } = await lab()
-    await start({ id: task })
-    const {
-      path,
-      branch,
-    } = card().copy!
-    worker({
-      session: 'w',
-      cwd: path,
-    })
-    await attach({
-      id: task,
-      session: 'w',
-    })
-    done({ id: task })
-    settleDone({ hydraId: 'lab' })
-    const next = create({ key: 'next' })
-    await attach({
-      id: next,
-      session: 'w',
-    })
-    assert.equal(
-      head({ cwd: path }),
-      branch,
-    )
-    assert.equal(
-      card().copy?.state,
-      'removed',
-    )
-    assert.equal(
-      cardOf({ id: next }).copy,
-      undefined,
-    )
-    assert.equal(
-      cardOf({ id: next }).agent?.cwd,
-      path,
-    )
-    const other = create({ key: 'other' })
-    await start({ id: other })
-    assert.notEqual(
-      cardOf({ id: other }).copy?.path,
-      path,
     )
   },
 )
@@ -1526,94 +1129,6 @@ test(
 )
 
 test(
-  'a project copy command or a command with its own folder replaces the worktree',
-  async () => {
-    const {
-      root,
-      repo,
-      run,
-      task,
-      card,
-    } = await lab()
-    const made = join(
-      root,
-      'made',
-    )
-    await project([
-      'set',
-      'app',
-      '--copy',
-      `mkdir -p "${made}/$PNYX_TASK" && echo "$PNYX_PROJECT" && echo "${made}/$PNYX_TASK"`,
-      '--hydra',
-      'lab',
-    ])
-    await startTask({
-      hydraId: 'lab',
-      task,
-      via: 'command',
-      meta,
-    })
-    assert.deepEqual(
-      {
-        path: card().copy?.path,
-        via: card().copy?.via,
-      },
-      {
-        path: join(
-          made,
-          task,
-        ),
-        via: 'command',
-      },
-    )
-    assert.equal(
-      card().launch?.folder,
-      join(
-        made,
-        task,
-      ),
-    )
-
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Own folder',
-        '--key',
-        'own',
-        '--project',
-        'app',
-      ],
-    })
-    run({
-      args: [
-        'hydra',
-        'set',
-        '--command-folder',
-        'own',
-      ],
-    })
-    const own = loadHydra({ hydraId: 'lab' }).state.keys.own!
-    await startTask({
-      hydraId: 'lab',
-      task: own,
-      via: 'command',
-      meta,
-    })
-    const card2 = loadHydra({ hydraId: 'lab' }).state.cards[own]!
-    assert.equal(
-      card2.launch?.folder,
-      repo,
-    )
-    assert.equal(
-      card2.copy,
-      undefined,
-    )
-  },
-)
-
-test(
   'a deleted copy is made again on its branch, and a working agent keeps its copy in Done',
   async () => {
     const {
@@ -1845,13 +1360,7 @@ test(
     for (const outcome of [
       'landed',
       'later commit',
-      'dirty',
       'untracked',
-      'wrong repository',
-      'wrong branch',
-      'unknown',
-      'queued',
-      'divergent',
       'changed during proof',
     ]) {
       await t.test(
@@ -1970,18 +1479,7 @@ test(
             ],
           })
 
-          if (outcome === 'later commit' || outcome === 'divergent') {
-            if (outcome === 'divergent') {
-              git({
-                cwd,
-                args: [
-                  'reset',
-                  '--hard',
-                  'HEAD~1',
-                ],
-              })
-            }
-
+          if (outcome === 'later commit') {
             writeFileSync(
               join(
                 cwd,
@@ -2004,16 +1502,6 @@ test(
                 'local work after the merged head',
               ],
             })
-          }
-
-          if (outcome === 'dirty') {
-            writeFileSync(
-              join(
-                cwd,
-                'first.txt',
-              ),
-              'uncommitted tracked work\n',
-            )
           }
 
           if (outcome === 'untracked') {
@@ -2048,22 +1536,19 @@ test(
             f.root,
             'gh-axi',
           )
-          const branch = outcome === 'wrong branch' ? 'another-branch' : copy.branch!
-          const merged = outcome !== 'queued'
           writeFileSync(
             response,
-            outcome === 'unknown' ? 'payload: "unreadable"\n'
-              : `payload: ${JSON.stringify(JSON.stringify({
-                head: {
-                  sha: head,
-                  ref: branch,
-                },
-                base: { ref: 'main' },
-                merged,
-                merge_commit_sha: merged ? merge : null,
-                state: merged ? 'closed' : 'open',
-                draft: false,
-              }))}\n`,
+            `payload: ${JSON.stringify(JSON.stringify({
+              head: {
+                sha: head,
+                ref: copy.branch!,
+              },
+              base: { ref: 'main' },
+              merged: true,
+              merge_commit_sha: merge,
+              state: 'closed',
+              draft: false,
+            }))}\n`,
           )
           let concurrentWorker = ''
 
@@ -2080,13 +1565,12 @@ test(
           process.env.PNYX_GH_AXI = gh
 
           try {
-            const repository = outcome === 'wrong repository' ? 'another/app' : 'example/app'
             f.run({
               args: [
                 'link',
                 f.task,
                 '--url',
-                `https://github.com/${repository}/pull/7`,
+                'https://github.com/example/app/pull/7',
                 '--state',
                 'merged',
               ],

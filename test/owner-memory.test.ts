@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
-import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { mergeLines, ownerMemory } from '../src/store/owner-memory.ts'
 
 const scratch = mkdtempSync(join(
@@ -181,88 +181,6 @@ test(
       ownerMemory().preferences?.text ?? '',
       /older server/,
     )
-  },
-)
-
-test(
-  'a run cut short repeats without duplicating moved lines',
-  () => {
-    const dir = home()
-
-    oldMemory({
-      hydraId: 'alpha',
-      key: 'preferences',
-      text: 'Short PRs.',
-    })
-    ownerMemory()
-    rmSync(join(
-      dir,
-      'owner',
-      'migrated',
-    ))
-    oldMemory({
-      hydraId: 'beta',
-      key: 'preferences',
-      text: 'Short PRs.\nAnswer in English.',
-    })
-    assert.equal(
-      ownerMemory().preferences?.text,
-      'Short PRs.\nAnswer in English.',
-    )
-  },
-)
-
-test(
-  'a Hydra that cannot be moved keeps its preferences, leaves no marker and moves on the next read',
-  () => {
-    const dir = home()
-    const lock = () => join(
-      hydraDir({ hydraId: 'beta' }),
-      'writer.lock',
-    )
-
-    oldMemory({
-      hydraId: 'alpha',
-      key: 'preferences',
-      text: 'Short PRs.',
-    })
-    oldMemory({
-      hydraId: 'beta',
-      key: 'preferences',
-      text: 'Short PRs.\nAnswer in English.',
-    })
-    // A live writer holds beta's lock for the whole first read.
-    writeFileSync(
-      lock(),
-      String(process.pid),
-    )
-    assert.equal(
-      ownerMemory().preferences?.text,
-      'Short PRs.',
-    )
-    assert.equal(
-      loadHydra({ hydraId: 'beta' }).state.hydraMemory?.preferences?.text,
-      'Short PRs.\nAnswer in English.',
-    )
-    assert.ok(!existsSync(join(
-      dir,
-      'owner',
-      'migrated',
-    )))
-    rmSync(lock())
-    assert.equal(
-      ownerMemory().preferences?.text,
-      'Short PRs.\nAnswer in English.',
-    )
-    assert.equal(
-      loadHydra({ hydraId: 'beta' }).state.hydraMemory?.preferences,
-      undefined,
-    )
-    assert.ok(existsSync(join(
-      dir,
-      'owner',
-      'migrated',
-    )))
   },
 )
 

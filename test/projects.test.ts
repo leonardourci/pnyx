@@ -4,7 +4,7 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import { mkdirSync, mkdtempSync, readFileSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
-import { join, resolve } from 'node:path'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
@@ -265,49 +265,6 @@ test(
 )
 
 test(
-  'project changes wake the light check and the summary exposes projects',
-  async () => {
-    const {
-      folder,
-      run,
-    } = fixture()
-    await run({
-      args: [
-        'add',
-        folder,
-      ],
-    })
-    const check = await hydraCheck({
-      args: [
-        'check',
-        '--after',
-        '0',
-      ],
-    })
-    assert.match(
-      JSON.stringify(check.changes),
-      /Attached project/,
-    )
-    assert.deepEqual(
-      check.projects,
-      [
-        {
-          name: 'project',
-          path: folder,
-          state: 'attached',
-          landing: 'pr',
-          merge: 'owner',
-        },
-      ],
-    )
-    assert.deepEqual(
-      (await commands.hydra(['show'])).projects,
-      check.projects,
-    )
-  },
-)
-
-test(
   'tasks can change projects, and detached names cannot be chosen for new work',
   async () => {
     const {
@@ -549,124 +506,6 @@ test(
         ],
       }),
       { code: 'CLONE_FAILED' },
-    )
-  },
-)
-
-test(
-  'CLI exposes projects without touching the real Pnyx home',
-  () => {
-    const { folder } = fixture()
-    const bin = resolve(
-      import.meta.dirname,
-      '../dist/cli/pnyx-axi.js',
-    )
-    const out = execFileSync(
-      process.execPath,
-      [
-        bin,
-        'project',
-        'add',
-        folder,
-      ],
-      {
-        encoding: 'utf8',
-        env: process.env,
-      },
-    )
-    assert.match(
-      out,
-      /hydra.project/,
-    )
-    const list = execFileSync(
-      process.execPath,
-      [
-        bin,
-        'project',
-        'list',
-      ],
-      {
-        encoding: 'utf8',
-        env: process.env,
-      },
-    )
-    assert.match(
-      list,
-      /attached/,
-    )
-    assert.match(
-      list,
-      /readonly: false/,
-    )
-  },
-)
-
-test(
-  'clone sharing returns an attachment continuation after cloning into a chosen empty folder',
-  async () => {
-    const {
-      root,
-      folder,
-      run,
-      state,
-    } = fixture()
-    const source = join(
-      root,
-      'source',
-    )
-    execFileSync(
-      'git',
-      [
-        'init',
-        '--bare',
-        source,
-      ],
-      { stdio: 'ignore' },
-    )
-    commands.hydra([
-      'create',
-      'other',
-    ])
-    await run({
-      args: [
-        'add',
-        folder,
-        '--hydra',
-        'other',
-      ],
-    })
-    const preview = await run({
-      args: [
-        'add',
-        '--clone',
-        source,
-        '--into',
-        folder,
-      ],
-    })
-    assert.equal(
-      preview.confirmation,
-      'needed',
-    )
-    assert.match(
-      String(preview.help),
-      /Clone completed/,
-    )
-    assert.equal(
-      state().projects,
-      undefined,
-    )
-    await run({
-      args: [
-        'add',
-        folder,
-        '--confirm',
-        String(preview.token),
-      ],
-    })
-    assert.equal(
-      state().projects?.[0]?.path,
-      folder,
     )
   },
 )

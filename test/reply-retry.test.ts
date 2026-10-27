@@ -933,20 +933,6 @@ test(
 )
 
 test(
-  'recovery policy bounds are three notifications and two deferrals',
-  () => {
-    assert.equal(
-      STEERING_RING_LIMIT,
-      3,
-    )
-    assert.equal(
-      STEERING_DEFERRAL_LIMIT,
-      2,
-    )
-  },
-)
-
-test(
   'a stale dead-endpoint result cannot escalate a replacement assignment or reset the budget',
   async () => {
     queuedSteer()

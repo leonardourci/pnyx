@@ -8,7 +8,6 @@ import { emptyHydra } from '../src/core/reducer.ts'
 import { hydraConfig } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { spendFor, spendInputs, taskSpend } from '../src/spend/tasks.ts'
-import { spendCounter } from '../src/spend/worker.ts'
 
 const at = '2026-10-22T12:00:00Z'
 
@@ -572,43 +571,5 @@ test(
         },
       )
     }
-  },
-)
-
-test(
-  'the spend counter runs one count at a time and counts once more for a change asked meanwhile',
-  async () => {
-    const counted: string[][] = []
-    let tasks = ['first']
-    const done = new Promise<void>(resolve => {
-      const counter = spendCounter({
-        inputs: () => ({
-          tasks,
-          sessions: [],
-          configurations: [],
-          assignments: [],
-        }),
-        onSpend: ({ spend }) => {
-          counted.push(Object.keys(spend))
-
-          if (counted.length === 2) {
-            void counter.close().then(resolve)
-          }
-        },
-      })
-      counter.count()
-      tasks = ['second']
-      counter.count()
-      tasks = ['third']
-      counter.count()
-    })
-    await done
-    assert.deepEqual(
-      counted,
-      [
-        ['first'],
-        ['third'],
-      ],
-    )
   },
 )

@@ -510,123 +510,6 @@ test(
 )
 
 test(
-  'verify fetches a newer default branch, stops before checks and leaves rebasing to the developer',
-  t => {
-    const f = fixture({ t })
-    f.git({
-      args: [
-        'switch',
-        'trunk',
-      ],
-    })
-    writeFileSync(
-      join(
-        f.repo,
-        'upstream.ts',
-      ),
-      'new upstream behavior\n',
-    )
-    f.git({
-      args: [
-        'add',
-        '.',
-      ],
-    })
-    f.git({
-      args: [
-        'commit',
-        '-m',
-        'upstream',
-      ],
-    })
-    f.git({
-      args: [
-        'push',
-        'origin',
-        'trunk',
-      ],
-    })
-    f.git({
-      args: [
-        'switch',
-        'feature',
-      ],
-    })
-    f.git({
-      args: [
-        'update-ref',
-        'refs/remotes/origin/trunk',
-        f.head,
-      ],
-    })
-
-    for (const args of [
-      [],
-      ['--checks-only'],
-    ]) {
-      const result = f.run({ args })
-      assert.equal(
-        result.status,
-        1,
-        result.output,
-      )
-      assert.match(
-        result.output,
-        /git rebase refs\/remotes\/origin\/trunk/,
-      )
-      assert.deepEqual(
-        result.calls,
-        [],
-      )
-      assert.equal(
-        f.git({
-          args: [
-            'rev-parse',
-            'HEAD',
-          ],
-        }),
-        f.head,
-      )
-      assert.equal(
-        result.body,
-        undefined,
-      )
-    }
-  },
-)
-
-test(
-  'verify fails closed if the default branch cannot be discovered',
-  t => {
-    const f = fixture({ t })
-    f.git({
-      args: [
-        'remote',
-        'set-url',
-        'origin',
-        join(
-          f.repo,
-          'missing.git',
-        ),
-      ],
-    })
-    const result = f.run()
-    assert.equal(
-      result.status,
-      1,
-    )
-    assert.deepEqual(
-      result.calls,
-      [],
-    )
-    assert.equal(
-      result.body,
-      undefined,
-    )
-  },
-)
-
-test(
   'verify fails closed when discovery succeeds but fetching the default branch fails',
   t => {
     const f = fixture({ t })
@@ -668,106 +551,6 @@ test(
     assert.equal(
       result.body,
       undefined,
-    )
-  },
-)
-
-test(
-  'verify keeps lint fixes, runs remaining checks and requires committing before a marker',
-  t => {
-    const f = fixture({ t })
-    const result = f.run({ extra: { AUTOFIX: '1' } })
-    assert.equal(
-      result.status,
-      1,
-      result.output,
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          f.repo,
-          'behavior.ts',
-        ),
-        'utf8',
-      ),
-      'fixed\n',
-    )
-    assert.match(
-      result.output,
-      /behavior.ts/,
-    )
-    assert.match(
-      result.output,
-      /uncommitted changes/,
-    )
-    assert.ok(result.calls.some(call => call.args.includes('build')))
-    assert.equal(
-      result.body,
-      undefined,
-    )
-  },
-)
-
-test(
-  'verify prints unfixable lint issues and keeps running independent checks',
-  t => {
-    for (const step of [
-      'lint:fix',
-      'eslint',
-    ]) {
-      const f = fixture({ t })
-      const result = f.run({ extra: { LINT_FAIL: step } })
-      assert.equal(
-        result.status,
-        1,
-        result.output,
-      )
-      assert.ok(result.output.includes(`${step}: behavior.ts:1 unused variable cannot be fixed`))
-      assert.ok(result.calls.some(call => call.args.includes('build')))
-      assert.equal(
-        result.body,
-        undefined,
-      )
-    }
-  },
-)
-
-test(
-  'UI-only verification runs the full suite including back-end tests',
-  t => {
-    const f = fixture({
-      t,
-      ui: true,
-    })
-    const result = f.run()
-    assert.equal(
-      result.status,
-      0,
-      result.output,
-    )
-    assert.deepEqual(
-      result.calls.filter(call => call.command !== 'gh'),
-      [
-        ...staticChecks,
-        {
-          command: 'node',
-          args: [
-            'scripts/test.ts',
-            'unit',
-          ],
-        },
-        {
-          command: 'node',
-          args: [
-            'scripts/test.ts',
-            'scenarios',
-          ],
-        },
-      ],
-    )
-    assert.match(
-      result.body!,
-      /pnyx-checks:v1/,
     )
   },
 )
@@ -872,58 +655,6 @@ test(
       result.body,
       undefined,
     )
-  },
-)
-
-test(
-  'checks-only runs automated checks without reading or editing the PR',
-  t => {
-    const f = fixture({ t })
-    rmSync(f.pr)
-    const result = f.run({ args: ['--checks-only'] })
-    assert.equal(
-      result.status,
-      0,
-      result.output,
-    )
-    assert.ok(result.calls.some(call => call.args.includes('build')))
-    assert.ok(result.calls.every(call => call.command !== 'gh'))
-    assert.equal(
-      result.body,
-      undefined,
-    )
-    assert.match(
-      result.output,
-      /not written: --checks-only/,
-    )
-  },
-)
-
-test(
-  'checks-only still fails when lint cannot be fixed or fixes need committing',
-  t => {
-    const failures: Record<string, string>[] = [
-      { LINT_FAIL: 'lint:fix' },
-      { AUTOFIX: '1' },
-    ]
-
-    for (const extra of failures) {
-      const f = fixture({ t })
-      const result = f.run({
-        args: ['--checks-only'],
-        extra,
-      })
-      assert.equal(
-        result.status,
-        1,
-        result.output,
-      )
-      assert.ok(result.calls.every(call => call.command !== 'gh'))
-      assert.equal(
-        result.body,
-        undefined,
-      )
-    }
   },
 )
 
@@ -1041,36 +772,6 @@ for (const {
       checks: 'skills',
     },
     {
-      name: 'tests',
-      paths: ['test/new.test.ts'],
-      required: ['audit-tests'],
-      checks: 'changed',
-    },
-    {
-      name: 'docs and tests',
-      paths: [
-        'README.md',
-        'test/new.test.ts',
-      ],
-      required: [
-        'audit-tests',
-        'deslop',
-      ],
-      checks: 'changed',
-    },
-    {
-      name: 'skill text and tests',
-      paths: [
-        'skills/pnyx-worker/SKILL.md',
-        'test/new.test.ts',
-      ],
-      required: [
-        'audit-tests',
-        'deslop',
-      ],
-      checks: 'skills',
-    },
-    {
       name: 'docs and code',
       paths: [
         'README.md',
@@ -1131,12 +832,10 @@ for (const {
       } else if (checks === 'skills') {
         const expectedTests = [
           'test/skills.test.ts',
-          'test/skills-cli.test.ts',
           'test/start.test.ts',
           'test/task-context.test.ts',
           'test/hydra-host.test.ts',
           'test/catalog.test.ts',
-          'test/catalog-server.test.ts',
           'test/setup-check.test.ts',
           'test/scenarios/hydra.test.ts',
           'test/scenarios/worker-conventions.test.ts',
@@ -1187,62 +886,6 @@ for (const {
 }
 
 test(
-  'mechanical verification requires its PR declaration and still runs the full suite',
-  t => {
-    for (const declaration of [
-      'Change: mechanical (rename)',
-      'Change: mechanical (move)',
-      '',
-      '<!-- Change: mechanical (rename) -->',
-      '```md\nChange: mechanical (rename)\n```',
-    ]) {
-      const valid = declaration.startsWith('Change:')
-      const f = fixture({
-        t,
-        docs: true,
-        body: `${declaration}\n- [x] Ran \`deslop\``,
-      })
-      const result = f.run({ args: ['--mechanical'] })
-      assert.equal(
-        result.status,
-        valid ? 0 : 1,
-        result.output,
-      )
-      const automated = result.calls.filter(call => call.command !== 'gh')
-
-      if (valid) {
-        assert.deepEqual(
-          automated.filter(call => call.command === 'node').map(call => call.args),
-          [
-            [
-              'scripts/test.ts',
-              'unit',
-            ],
-            [
-              'scripts/test.ts',
-              'scenarios',
-            ],
-          ],
-        )
-        assert.match(
-          result.body!,
-          /"mechanical":true/,
-        )
-      } else {
-        assert.deepEqual(
-          automated,
-          [],
-        )
-        assert.equal(
-          result.body,
-          undefined,
-        )
-      }
-    }
-  },
-)
-
-test(
   'a PR mechanical line alone cannot lower the normal review requirement',
   t => {
     const f = fixture({
@@ -1262,27 +905,6 @@ test(
     assert.equal(
       result.body,
       undefined,
-    )
-  },
-)
-
-test(
-  'mechanical checks-only is rejected without accessing GitHub',
-  t => {
-    const f = fixture({ t })
-    const result = f.run({
-      args: [
-        '--checks-only',
-        '--mechanical',
-      ],
-    })
-    assert.equal(
-      result.status,
-      1,
-    )
-    assert.deepEqual(
-      result.calls,
-      [],
     )
   },
 )

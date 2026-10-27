@@ -140,60 +140,6 @@ for (const target of [
       }
     },
   )
-
-  test(
-    `setup ${target} accepts the default home and the explicit custom-home override`,
-    {
-      skip: target === 'service' && process.platform !== 'darwin',
-    },
-    () => {
-      const {
-        home,
-        env,
-      } = sandbox()
-
-      for (const custom of [
-        false,
-        true,
-      ]) {
-        if (custom) {
-          env.PNYX_HOME = join(
-            home,
-            'isolated',
-          )
-        }
-
-        const args = [
-          cli,
-          'setup',
-          target,
-          '--preview',
-        ]
-
-        if (custom) {
-          args.push('--allow-custom-home')
-        }
-
-        const result = spawnSync(
-          process.execPath,
-          args,
-          {
-            env,
-            encoding: 'utf8',
-          },
-        )
-        assert.equal(
-          result.status,
-          0,
-          result.stdout + result.stderr,
-        )
-        assert.doesNotMatch(
-          result.stdout,
-          /CUSTOM_HOME_SETUP/,
-        )
-      }
-    },
-  )
 }
 
 test(

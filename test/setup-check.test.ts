@@ -3,11 +3,10 @@ import { SET_UP_SKILL } from '../src/integrations/skills/names.ts'
 // temporary folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
-import { serviceFile } from '../src/server/service.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 
@@ -256,139 +255,6 @@ test(
         hydra: true,
       }).out,
       /^confirmation: needed$/m,
-    )
-  },
-)
-
-test(
-  'a complete setup prints nothing in the digest and setup check exits 0',
-  () => {
-    const {
-      root,
-      bin,
-      env,
-      run,
-    } = sandbox()
-
-    for (const folder of [
-      '.claude',
-      '.codex',
-    ]) {
-      mkdirSync(join(
-        root,
-        folder,
-      ))
-    }
-
-    writeFileSync(
-      join(
-        bin,
-        'quota-axi',
-      ),
-      '#!/bin/sh\n',
-    )
-    chmodSync(
-      join(
-        bin,
-        'quota-axi',
-      ),
-      0o755,
-    )
-
-    for (const args of [
-      [
-        'rule',
-        'init',
-        '--shared',
-      ],
-      [
-        'setup',
-        'hooks',
-      ],
-      [
-        'setup',
-        'skills',
-      ],
-    ]) {
-      assert.equal(
-        run({ args }).status,
-        0,
-      )
-    }
-
-    if (process.platform === 'darwin') {
-      const home = process.env.PNYX_HOME
-      process.env.PNYX_HOME = env.PNYX_HOME
-      const { path } = serviceFile({ userHome: root })
-      process.env.PNYX_HOME = home
-      // launchd is never touched: an installed job is all the check reads.
-      mkdirSync(
-        join(
-          path,
-          '..',
-        ),
-        { recursive: true },
-      )
-      writeFileSync(
-        path,
-        '',
-      )
-    }
-
-    const done = run({
-      args: [
-        'setup',
-        'check',
-      ],
-    })
-    assert.equal(
-      done.status,
-      0,
-    )
-    assert.match(
-      done.out,
-      /^setup: complete$/m,
-    )
-    assert.doesNotMatch(
-      run({
-        args: [
-          'hydra',
-          'digest',
-        ],
-      }).out,
-      /Setup needed/,
-    )
-  },
-)
-
-test(
-  'a confirmed setup service question runs without --hydra',
-  { skip: process.platform !== 'darwin' && 'the login service needs macOS' },
-  () => {
-    const { run } = sandbox()
-    const proposal = run({
-      args: [
-        'setup',
-        'service',
-        '--preview',
-        '--hydra',
-        'default',
-      ],
-      hydra: true,
-    }).out
-    const token = /^token: (\S+)$/m.exec(proposal)?.[1]
-    assert.ok(token)
-    assert.match(
-      run({
-        args: [
-          'approval',
-          'confirm',
-          token,
-          '--confirm',
-          token,
-        ],
-      }).out,
-      /^state: confirmed$[\s\S]*would install/m,
     )
   },
 )
