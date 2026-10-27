@@ -3,6 +3,7 @@ import type { UpgradeStatus } from '../../../src/upgrade/model.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Popover } from '../components/ui/popover.tsx'
+import { Tooltip } from '../components/ui/tooltip.tsx'
 import { clock } from '../hydra/chat.ts'
 
 const checkedDay = ({ at }: { at: string }) => {
@@ -30,12 +31,13 @@ export function UpgradeHint({
     return null
   }
 
+  // The pill keeps a short label so it fits the brand row; the full label is its tooltip.
   return (
     <Popover
       below
       label="Upgrade available"
       className="upgrade-hint"
-      trigger={<><Icon name="upgrade" size={14} />Upgrade available</>}
+      trigger={<Tooltip content="Upgrade available"><Icon name="upgrade" size={14} /><span className="upgrade-hint-label">Upgrade</span></Tooltip>}
     >
       {({ close }) => (
         <div className="upgrade-popover">
