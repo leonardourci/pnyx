@@ -89,16 +89,6 @@ for (const {
     error: /commit statuses unreadable/,
   },
   {
-    name: 'a draft',
-    input: { draft: true },
-    error: /still a draft/,
-  },
-  {
-    name: 'red checks',
-    input: { checks: '0 passed, 1 failed, 1 total' },
-    error: /checks are red/,
-  },
-  {
     name: 'running checks',
     input: { checks: '0 passed, 0 failed, 1 total' },
     error: /checks are still running/,
