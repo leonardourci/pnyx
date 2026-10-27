@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { readFileSync, readdirSync } from 'node:fs'
 import { createServer } from 'node:http'
 import { test } from 'node:test'
-import { browserFixture } from './browser-fixture.ts'
+import { browserFixture } from '../src/test-harness/browser-fixture.ts'
 
 const browser = browserFixture()
 

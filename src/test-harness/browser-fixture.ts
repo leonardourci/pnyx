@@ -1,6 +1,6 @@
 /* eslint-disable pnyx/object-params -- Matches the chrome-devtools-axi page API used by these journeys. */
 import assert from 'node:assert/strict'
-import { browserGroup } from './scenarios/browser.ts'
+import { browserGroup } from './browser.ts'
 
 type Page = Awaited<ReturnType<ReturnType<typeof browserGroup>['open']>>
 
