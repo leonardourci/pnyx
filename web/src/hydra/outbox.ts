@@ -12,6 +12,38 @@ export function storageKey({
   return `pnyx:${hydraId ?? ''}:${key}`
 }
 
+export function moveHydraStorage({
+  storage,
+  from,
+  to,
+}: {
+  storage: Storage
+  from: string
+  to: string
+}): void {
+  if (from === to) {
+    return
+  }
+
+  try {
+    const prefix = `pnyx:${from}:`
+
+    for (const key of Object.keys(storage).filter(key => key.startsWith(prefix))) {
+      const value = storage.getItem(key)
+      const target = `pnyx:${to}:${key.slice(prefix.length)}`
+
+      if (value !== null && storage.getItem(target) === null) {
+        storage.setItem(
+          target,
+          value,
+        )
+      }
+
+      storage.removeItem(key)
+    }
+  } catch { /* The mounted view still retains drafts when storage is blocked. */ }
+}
+
 export interface MessageAttempt {
   text: string
   id: string

@@ -22,15 +22,26 @@ const cards = ({ out }: { out: string }) => [...out.matchAll(/^ {2}- card: (\S+)
 
 // A Hydra in a temporary home. With stub, the worker embeds with hash vectors and
 // reranks by word overlap, so no model is ever downloaded or loaded.
-function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
+function hydraId({
+  extra = {},
+  holdDownload = false,
+}: {
+  extra?: Record<string, string>
+  holdDownload?: boolean
+} = {}) {
   const home = mkdtempSync(join(
     tmpdir(),
     'pnyx-sem-',
   ))
+  const downloadGate = join(
+    home,
+    'download.release',
+  )
   const env = {
     ...process.env,
     PNYX_HOME: home,
     PNYX_SEMANTIC_STUB: '1',
+    ...(holdDownload ? { PNYX_SEMANTIC_STUB_DOWNLOAD_GATE: downloadGate } : {}),
     ...extra,
   }
   const cli = ({ semantic }: { semantic: boolean }) => fixtureCli({
@@ -160,6 +171,10 @@ function hydraId({ extra = {} }: { extra?: Record<string, string> } = {}) {
     lexical: cli({ semantic: false }),
     fails,
     stop,
+    releaseDownload: () => writeFileSync(
+      downloadGate,
+      '',
+    ),
   }
 }
 
@@ -206,7 +221,8 @@ test(
       run,
       lexical: off,
       stop,
-    } = hydraId({ extra: { PNYX_SEMANTIC_STUB_DOWNLOAD_MS: '3000' } })
+      releaseDownload,
+    } = hydraId({ holdDownload: true })
     process.env.PNYX_HOME = home
     process.env.PNYX_SEMANTIC_STUB = '1'
     const { matchActions } = await import('../src/oracle/semantic.ts')
@@ -239,7 +255,11 @@ test(
         ],
       })
 
-      for (let i = 0; i < 20 && !/downloading/.test(out); i += 1) {
+      for (const deadline = Date.now() + 30_000; !/downloading/.test(out);) {
+        assert.ok(
+          Date.now() < deadline,
+          `the worker never started downloading: ${out}`,
+        )
         await new Promise(resolve => setTimeout(
           resolve,
           100,
@@ -273,6 +293,7 @@ test(
         /^semantic: "preparing \(stub\): downloading the model, \d+% of 347 MB; full-text results until it is ready"$/m,
       )
 
+      releaseDownload()
       const status = await embedded({ run })
       // The stub counts as a GPU machine: the 311m-sized stub embedder and the reranker.
       assert.match(
@@ -329,6 +350,7 @@ test(
         )
       }
     } finally {
+      releaseDownload()
       stop()
     }
 

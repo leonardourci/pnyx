@@ -15,17 +15,9 @@ pnpm run lint
 pnpm test
 ```
 
-Run `pnpm lint:fix` to apply formatting.
-Objects, destructuring patterns, type literals,
-arrays, parameter lists and call arguments with more than one item use one item per line.
-A single item may stay inline.
-`pnpm run lint` checks the same rules without fixing them.
+Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules.
-`pnpm run lint` and `pnpm test` give deterministic verification.
-`pnpm run web:dev` serves the Hydra through Vite.
-The scenarios include the owner's browser journeys (`test/scenarios/page-journeys.test.ts`), which drive the built page in a headless Chrome of their own with temporary data; they need Chrome installed, or `PNYX_CHROME` set to its binary.
-After building, `PNYX_BROWSER_TESTS=1 node --test test/chat-browser.test.ts` runs the chat’s long-history regression with an isolated headless `chrome-devtools-axi` session and temporary data; it needs that CLI and Chrome installed.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity and browser endpoints, and limits process concurrency. See the [test harness](../test/README.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The scenarios include the owner's browser journeys (`test/scenarios/page-journeys.test.ts`), which drive the built page in a headless Chrome of their own with temporary data; they need Chrome installed, or `PNYX_CHROME` set to its binary. After building, `PNYX_BROWSER_TESTS=1 node scripts/test.ts test/chat-browser.test.ts` runs the chat’s long-history regression with an isolated headless `chrome-devtools-axi` session and temporary data; it needs that CLI and Chrome installed.
 
 ## Run a development server
 
@@ -33,36 +25,24 @@ After building, `PNYX_BROWSER_TESTS=1 node --test test/chat-browser.test.ts` run
 pnpm dev
 ```
 
-`pnpm dev` runs a Pnyx server with its own data folder (`~/.pnyx-dev`, or `PNYX_DEV_HOME`), so it never competes with your installed server for your Hydras, opening its `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`.
-Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
+`pnpm dev` runs a Pnyx server with its own data folder (`~/.pnyx-dev`, or `PNYX_DEV_HOME`), so it never competes with your installed server for your Hydras, opening its `dev` Hydra under `node --watch`, which restarts it when server code changes, and the Vite dev server, which updates the web app in place as you edit `web/`. Open the URL Vite prints; it forwards the Hydra's WebSocket to the dev server on port 4319 (set `PNYX_DEV_PORT` to change it).
 
 ## Verification
 
-Run `pnpm verify` on a PR's pushed head before it merges.
-It picks the checks from the files the branch changes against `origin/main` and prints what it picked and why: a back-end change (alone or with UI changes) runs `pnpm lint:fix`, the type check, ESLint, the build, the unit tests and the scenarios in `test/scenarios/`; a change only under `web/` runs the first four, the tests that import the web code and the browser journeys; a docs-only change runs nothing.
-It keeps going when a step fails, and ends with one summary that gives each failed step's log.
-A `lint:fix` that changed files counts as failed: commit them and run again.
-When every step passed, the tree is clean and HEAD is the PR's head, it adds a hidden `<!-- pnyx-checks:v1 ... -->` line naming the tested commit and its git tree to the PR description; a rerun replaces it.
+Run `pnpm verify` on a PR's pushed head before it merges. It discovers and fetches origin's default branch, then stops if your branch does not include it. It prints the `git rebase` command for you to run; it never rebases automatically.
 
-The "Checks ran for this commit" workflow (`.github/workflows/checks-required.yml`) runs for every PR and installs and builds nothing.
-It reads the PR and fails unless that line names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit.
-Docs here means Markdown outside `skills/` and `test/`, since the shipped skills and test fixtures are read by Pnyx and its tests.
-Docs-only PRs still need the marker from `pnpm verify`.
-Only `pnpm verify` writes the line.
-Anyone who can edit the description, or the check in their own PR, could forge a pass, so it is an honesty check, not a signature.
+Verification picks checks from the files changed against that default branch. Back-end or mixed changes run `pnpm lint:fix`, the type check, ESLint, the build, unit tests and scenarios. Changes only under `web/` run the first four, tests importing web code and browser journeys. Docs-only changes need no automated checks. Verification continues after a check fails and prints a summary with log paths. Lint failures also print the issues the fixer could not resolve. Review and commit any automatic fixes, push them, and rerun on the clean PR head.
 
-The Verification workflow runs `pnpm verify --checks-only` automatically on every PR's pushed head, with the pinned pnpm version and Chrome for browser tests.
-It runs the selected checks with a read-only token and leaves the PR description unchanged.
-Local verification and the marker check still apply.
+Everyone completes the same three checklists, in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), and [deslop](../.agents/skills/deslop/SKILL.md). Verification ends by listing their paths. Go through them, fix findings, tick the three matching PR boxes and note fixes or no findings in the description. Agents carry out these steps themselves. The checklists are a declared review, not something the command can perform or prove automatically.
+
+Only when every selected check passes, the tree stays clean, HEAD matches the pushed PR head and all three boxes are ticked does verification write the hidden `<!-- pnyx-checks:v1 ... -->` marker. The marker records the tested commit and git tree; a rerun replaces it.
+
+Use `pnpm verify --checks-only` when the environment has read-only GitHub access, such as an approved outside-contributor workflow. It runs the same freshness check and automated checks, including local lint fixes, and prints the review checklist paths. It never reads or edits the PR description and never writes a marker. A pass requires successful checks, a clean working tree and unchanged HEAD. Review declarations and the normal marker still belong to the PR readiness process.
+
+The "Checks ran for this commit" workflow (`.github/workflows/checks-required.yml`) runs for every PR and installs and builds nothing. It reads the PR, requires all three review boxes to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means Markdown outside `skills/` and `test/`, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description, or the check in their own PR, could forge a pass, so it is an honesty check, not a signature.
+
+The Verification workflow runs `pnpm verify --checks-only` automatically on every PR's pushed head, with the pinned pnpm version and Chrome for browser tests. It runs the selected checks with a read-only token and leaves the PR description unchanged. Local verification and the marker check still apply.
 
 ## Review
 
-Review the whole branch diff against its PR base, including documentation and shipped skills.
-Use the `review-code` and `deslop-code` skills when they are available in your agent environment; the checks below also apply to a manual review.
-
-- Correctness: check command examples against CLI help, task lifecycle rules, error handling and tests for changed behavior.
-- Integration: follow each changed path through its callers, event log, server and UI where applicable; check documentation links and setup prerequisites.
-- Clarity: remove dead code, unnecessary abstractions and comments that narrate obvious steps; keep prose short and concrete.
-
-Apply [AGENTS.md](../AGENTS.md) and the [front-end conventions](../.agents/skills/write-front-end/SKILL.md) where they apply.
-Report review findings, fixes and remaining validation gaps in the PR.
+Review the whole branch diff against its PR base, including documentation and shipped skills. Complete the repository checklists in order: [review-code](../.agents/skills/review-code/SKILL.md), [audit-tests](../.agents/skills/audit-tests/SKILL.md), then [deslop](../.agents/skills/deslop/SKILL.md). Apply [AGENTS.md](../AGENTS.md) and the [front-end conventions](../.agents/skills/write-front-end/SKILL.md) where they apply. Record findings, fixes and pending checks in the PR description, then tick its three matching review boxes.
