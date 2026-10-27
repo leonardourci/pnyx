@@ -9,7 +9,8 @@ import { commands } from '../src/cli/commands.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { hydraCheck } from '../src/cli/workers.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),

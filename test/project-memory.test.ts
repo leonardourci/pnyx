@@ -13,7 +13,8 @@ import { workerCommands } from '../src/cli/workers.ts'
 import { project } from '../src/projects/cli.ts'
 import { PROJECT_MEMORY_BUDGET } from '../src/projects/memory.ts'
 import { normalizedRemote, projectIdentity } from '../src/projects/sources.ts'
-import { loadHydra, readEvents } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 function commitFixture({
   folder,

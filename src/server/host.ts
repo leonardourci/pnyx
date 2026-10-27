@@ -47,7 +47,8 @@ import { decideOutcome, decidePush, decideSession, findCard, type Decision } fro
 import { HydraError, HYDRA_ACTOR, ownerActor, type AgentConfig, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraEvent, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
-import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraDir, loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { readEvents } from '../app/event-log.ts'
 
 export type { QueryFn } from './claude.ts'
 

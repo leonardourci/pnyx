@@ -4,7 +4,8 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createHydra } from '../src/server/hydras.ts'
-import { hydraDir, readEvents } from '../src/store/hydra-store.ts'
+import { hydraDir } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 test(
   'a creation attempt recovers the same sequential identity from the configuration event',

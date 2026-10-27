@@ -24,7 +24,8 @@ import { hostObserver } from '../src/test-harness/host-observer.ts'
 import type { RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
-import { loadHydra, readEvents, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 const meta = {
   at: '2026-10-15T00:00:00Z',

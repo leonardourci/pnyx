@@ -13,7 +13,8 @@ import { firstmateProjects } from '../src/integrations/firstmate/projects.ts'
 import { project } from '../src/projects/cli.ts'
 import { findProject, projectsFor } from '../src/projects/read.ts'
 import { listHydras } from '../src/server/hydras.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 

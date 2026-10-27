@@ -14,7 +14,8 @@ import { sendReply } from '../cli/reply.ts'
 import { pullRequestLanding, pullRequestState } from '../integrations/github/pull-request.ts'
 import { checkAttachments, seenAt } from '../integrations/presence/check.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { hydraIds, loadHydra, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
+import { hydraIds, loadHydra, withWriter, type Writer } from '../store/hydra-store.ts'
+import { readEvents } from '../app/event-log.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './state.ts'
 
 const GIT_TIMEOUT_MS = 30_000

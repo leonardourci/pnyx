@@ -95,7 +95,8 @@ import { showsUpdate, tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { readEvents } from '../app/event-log.ts'
 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100

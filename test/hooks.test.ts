@@ -23,7 +23,8 @@ import { promisify } from 'node:util'
 import type { Attention } from '../src/core/model.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
-import { loadHydra, readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
+import { loadHydra, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'

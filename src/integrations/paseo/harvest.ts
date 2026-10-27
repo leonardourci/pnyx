@@ -3,7 +3,8 @@ import { EVENT_VERSION, type SessionEvent } from '../../core/model.ts'
 import { localPaseoUrl } from '../../core/paseo.ts'
 import { taskForMessage } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry } from '../../thread/read.ts'
-import { loadHydra, readEvents, withWriter } from '../../store/hydra-store.ts'
+import { loadHydra, withWriter } from '../../store/hydra-store.ts'
+import { readEvents } from '../../app/event-log.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 const PAGE_SIZE = 100

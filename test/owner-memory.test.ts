@@ -6,7 +6,8 @@ import { after, test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { workerCommands } from '../src/cli/workers.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
-import { hydraDir, loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 import { mergeLines, ownerMemory } from '../src/store/owner-memory.ts'
 
 const scratch = mkdtempSync(join(

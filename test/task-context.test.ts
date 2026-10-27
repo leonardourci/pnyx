@@ -18,7 +18,8 @@ import { decideLink, decidePush } from '../src/core/decide.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, patchView, traces, viewFor } from '../src/core/view.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET, TEMPLATE_NUDGE } from '../src/core/digest.ts'
-import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 // The digest's setup check reads harness configs; keep it off the real ones.
 const harnesses = mkdtempSync(join(

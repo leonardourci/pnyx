@@ -18,7 +18,8 @@ import { followPullRequests, workerNews } from '../src/landing/follow.ts'
 import { mergeCommand } from '../src/landing/merge.ts'
 import { decideLink } from '../src/core/decide.ts'
 import { project } from '../src/projects/cli.ts'
-import { readEvents, loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 process.env.PNYX_GH_AXI = join(
