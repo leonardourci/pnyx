@@ -90,7 +90,8 @@ test(
   async () => {
     const from = repo.head()
     repo.publish({
-      files: { 'build.sh': 'echo "src/card.tsx(4,7): error TS2322: Type string is not assignable" >&2\nexit 2\n' },
+      // Writes before failing, so only a rebuild of the old commit leaves 'one' behind.
+      files: { 'build.sh': 'echo broken > built.txt\necho "src/card.tsx(4,7): error TS2322: Type string is not assignable" >&2\nexit 2\n' },
       message: 'broken build',
     })
 
@@ -111,6 +112,10 @@ test(
     assert.equal(
       result.from,
       from,
+    )
+    assert.equal(
+      result.rolledBack,
+      true,
     )
     assert.equal(
       repo.head(),
@@ -228,7 +233,7 @@ test(
       result.reasons,
       [
         'On fix-cards, not main.',
-        '6 files with local changes: a.ts, b.ts, build.sh and 3 more',
+        '6 files with local changes: a.ts, b.ts, build.sh and 3 more.',
       ],
     )
     assert.deepEqual(
@@ -255,6 +260,21 @@ test(
 test(
   'the daily check sees only a newer origin main',
   async () => {
+    assert.equal(
+      await upgradeAvailable({ root: repo.install }),
+      false,
+    )
+
+    git({
+      cwd: repo.install,
+      args: [
+        'commit',
+        '--allow-empty',
+        '-m',
+        'local only',
+      ],
+    })
+
     assert.equal(
       await upgradeAvailable({ root: repo.install }),
       false,

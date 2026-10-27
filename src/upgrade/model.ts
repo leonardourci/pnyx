@@ -61,6 +61,8 @@ export interface UpgradeOperation {
   // The step that failed, and the last lines of its output.
   failed?: UpgradeStepName
   error?: string
+  // Whether a failed upgrade put the folder back on from; false leaves it partly upgraded.
+  rolledBack?: boolean
   // Why a refused upgrade did not start.
   reasons?: string[]
 }

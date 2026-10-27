@@ -46,6 +46,7 @@ async function run({
         env: {
           ...process.env,
           GIT_TERMINAL_PROMPT: '0',
+          GIT_SSH_COMMAND: process.env.GIT_SSH_COMMAND ?? 'ssh -o BatchMode=yes',
           ...env,
         },
       },
@@ -171,12 +172,12 @@ export async function refusals({ root }: { root: string }): Promise<string[]> {
   ).join(', ')
 
   return [
-    ...branch === 'main' ? [] : [branch === 'HEAD' ? 'Not on a branch, not main.' : `On ${branch}, not main.`],
-    ...changed.length ? [`${changed.length} ${changed.length === 1 ? 'file' : 'files'} with local changes: ${shown}${changed.length > 3 ? ` and ${changed.length - 3} more` : ''}`] : [],
+    ...branch === 'main' ? [] : [branch === 'HEAD' ? 'Detached HEAD, not on main.' : `On ${branch}, not main.`],
+    ...changed.length ? [`${changed.length} ${changed.length === 1 ? 'file' : 'files'} with local changes: ${shown}${changed.length > 3 ? ` and ${changed.length - 3} more` : ''}.`] : [],
   ]
 }
 
-export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons'> & {
+export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
   state: 'upgraded' | 'current' | 'failed' | 'refused'
 }
 
@@ -346,6 +347,7 @@ async function upgrade({
   } catch (error) {
     const failed = steps.at(-1)!.step
     let detail = (error as Error).message
+    let rolledBack = true
 
     try {
       await rollback({
@@ -354,10 +356,8 @@ async function upgrade({
         failed,
       })
     } catch (rollbackError) {
-      detail += `\nGoing back to ${from!.slice(
-        0,
-        7,
-      )} failed too: ${(rollbackError as Error).message}`
+      rolledBack = false
+      detail += `\nGoing back failed too: ${(rollbackError as Error).message}`
     }
 
     return {
@@ -367,6 +367,7 @@ async function upgrade({
       to,
       failed,
       error: detail,
+      rolledBack,
     }
   }
 }
@@ -385,7 +386,8 @@ async function rollback({
     root,
     args: [
       'reset',
-      '--hard',
+      // Keeps, or refuses over, any edit made in the folder while the upgrade ran.
+      '--keep',
       from,
     ],
   })

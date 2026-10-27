@@ -30,8 +30,7 @@ export const git = ({
   },
 ).trim()
 
-// A throwaway Pnyx folder cloned from its own bare origin, built once. Its pnpm, put first on PATH,
-// runs install.sh and <script>.sh from the folder, so a published commit decides what fails.
+// A throwaway Pnyx folder cloned from its own bare origin, built once. Its pnpm, put first on PATH, runs install.sh and <script>.sh from the folder, so a published commit decides what fails.
 export function upgradeRepo({ root }: { root: string }) {
   const dir = mkdtempSync(join(
     root,
