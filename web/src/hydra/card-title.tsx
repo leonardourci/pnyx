@@ -20,7 +20,7 @@ export function CardTitle({
       className="button card-open"
       role="button"
       aria-expanded={briefOpen}
-      aria-description="Space shows the brief, Enter opens the task"
+      aria-description="Space shows or hides the brief, Enter opens the task, F2 or Command/Control+E edits"
       onClick={event => {
         event.stopPropagation(); toggleBrief()
       }}

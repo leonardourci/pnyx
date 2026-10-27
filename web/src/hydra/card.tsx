@@ -72,9 +72,11 @@ export function HydraCard({
   open({
     id,
     pointer,
+    focusUpdates,
   }: {
     id: string
     pointer?: boolean
+    focusUpdates?: boolean
   }): Promise<boolean>
   onEdit(): void
   recoverSelection({ id }: { id: string }): void
@@ -98,6 +100,19 @@ export function HydraCard({
     draft?: TaskDraft
   } | null>(null)
   const editVersion = useRef(0)
+  // A refused save reopens the editor from an older render, so it reads selection here.
+  const isSelected = useRef(selected)
+  isSelected.current = selected
+  const refocusTitle = useRef(false)
+  useEffect(
+    () => {
+      if (!editing && refocusTitle.current) {
+        refocusTitle.current = false
+        element.current?.querySelector<HTMLElement>('.card-open')?.focus({ preventScroll: true })
+      }
+    },
+    [editing],
+  )
 
   const edit = ({ draft }: { draft?: TaskDraft } = {}) => {
     onEdit(); setBriefOpen(true)
@@ -106,8 +121,11 @@ export function HydraCard({
       draft,
     })
 
-    if (!selected) {
-      void open({ id: card.id })
+    if (!isSelected.current) {
+      void open({
+        id: card.id,
+        focusUpdates: false,
+      })
     }
   }
 
@@ -395,7 +413,9 @@ export function HydraCard({
             card={card}
             draft={editing.draft}
             command={command}
-            close={() => setEditing(null)}
+            close={() => {
+              refocusTitle.current = true; setEditing(null)
+            }}
             failed={({
               draft,
               error,
@@ -416,7 +436,7 @@ export function HydraCard({
           >
             {card.brief?.trim()
               ? <CollapsibleText text={card.brief} />
-              : <p className="muted">No brief yet. The pencil adds one.</p>}
+              : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
           </section>
         )}
         {!selected && labels}

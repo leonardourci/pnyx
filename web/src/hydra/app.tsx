@@ -782,9 +782,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const open = async ({
     id,
     pointer = false,
+    focusUpdates = true,
   }: {
     id: string
     pointer?: boolean
+    focusUpdates?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -848,7 +850,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       }
 
       const updates = element.querySelector<HTMLElement>('.task-updates')
-      updates?.focus({ preventScroll: true })
+
+      if (focusUpdates) {
+        updates?.focus({ preventScroll: true })
+      }
 
       return !!updates && element.isConnected && !signal.aborted
     } finally {
@@ -1222,6 +1227,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     open={({
                                       id,
                                       pointer,
+                                      focusUpdates,
                                     }) => {
                                       if (expandedIds.includes(id)) {
                                         close({ id })
@@ -1232,6 +1238,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                       return open({
                                         id,
                                         pointer,
+                                        focusUpdates,
                                       })
                                     }}
                                     command={command}

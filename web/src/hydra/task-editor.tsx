@@ -8,7 +8,7 @@ export interface TaskDraft {
   brief: string
 }
 
-// Edits the title and the brief together; only the fields that changed are sent.
+// Only the fields that changed are sent; automatic tasks have no brief to edit.
 export function TaskEditor({
   card,
   draft,
@@ -70,7 +70,7 @@ export function TaskEditor({
           ],
         }),
       ] : []),
-      ...(nextBrief !== (card.brief ?? '').trim() ? [
+      ...(!card.automaticTask && nextBrief !== (card.brief ?? '').trim() ? [
         command({
           name: 'task',
           args: [
@@ -85,12 +85,12 @@ export function TaskEditor({
       ] : []),
     ]
     close()
-    void Promise.all(saving).catch((error: Error) => failed({
+    void Promise.all(saving).catch((error: unknown) => failed({
       draft: {
         title,
         brief,
       },
-      error,
+      error: error instanceof Error ? error : new Error(String(error)),
     }))
   }
 
@@ -124,15 +124,19 @@ export function TaskEditor({
           }
         }}
       />
-      <span className="eyebrow">Brief</span>
-      <Textarea
-        ref={briefField}
-        aria-label="Brief"
-        placeholder="Add a brief…"
-        maxLength={24000}
-        value={brief}
-        onChange={event => setBrief(event.target.value)}
-      />
+      {!card.automaticTask && (
+        <>
+          <span className="eyebrow">Brief</span>
+          <Textarea
+            ref={briefField}
+            aria-label="Brief"
+            placeholder="Add a brief…"
+            maxLength={24000}
+            value={brief}
+            onChange={event => setBrief(event.target.value)}
+          />
+        </>
+      )}
       <div className="row">
         <Button type="submit" variant="primary">Save</Button>
         <Button onClick={close}>Cancel</Button>
