@@ -14,11 +14,15 @@ export const stoppedWhile = ({ operation }: { operation: UpgradeOperation }) => 
 export function fixPrompt({ operation }: { operation: UpgradeOperation }): string {
   const from = short({ commit: operation.from }) ?? 'the installed version'
   const to = short({ commit: operation.to }) ?? 'the latest main'
-  // The sentence adds its own period after the error.
+  // One line, so the error reads as part of the sentence, which adds its own period.
   const error = (operation.state === 'refused' ? operation.reasons?.join(' ') : operation.error)?.replace(
-    /\.$/,
-    '',
-  )
+    /\s+/g,
+    ' ',
+  ).trim()
+    .replace(
+      /\.$/,
+      '',
+    )
   const after = operation.rolledBack === false ? `Going back to ${from} failed, so the Pnyx folder may be partly upgraded.`
     : `Pnyx went back to ${from} and is still running.`
 

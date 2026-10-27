@@ -1504,13 +1504,17 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .compaction-queued .tooltip-anchor { flex-shrink: 0; }
 .upgrade-row { align-items: flex-start; }
 .upgrade-row > svg { flex-shrink: 0; margin-top: 3px; }
-.upgrade-body { display: grid; gap: 6px; min-width: 0; }
+.upgrade-body { display: grid; gap: 6px; min-width: 0; flex: 1; }
+.upgrade-title { font-weight: 500; }
+.upgrade-detail, .upgrade-steps, .upgrade-reasons { color: var(--color-muted); }
+.upgrade-detail { margin-top: -4px; }
 .upgrade-steps { display: flex; flex-wrap: wrap; gap: 4px 12px; margin: 0; padding: 0; list-style: none; }
 .upgrade-steps li { display: inline-flex; align-items: center; gap: 4px; }
-.upgrade-steps li[data-state="todo"] { color: var(--color-subtle); }
+.upgrade-steps li[data-state="todo"] { color: var(--color-control); }
+.upgrade-steps li[data-state="done"] svg { color: var(--color-green); }
 .upgrade-steps li[data-state="failed"] { color: var(--color-red); }
-.upgrade-reasons { margin: 0; padding-left: 18px; }
-.upgrade-error { max-height: 10lh; margin: 0; padding: 8px 10px; overflow: auto; border-radius: 8px; background: var(--color-raised); color: var(--color-ink); font: var(--text-code)/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+.upgrade-reasons { display: grid; gap: 2px; margin: 0; padding-left: 16px; list-style: disc; }
+.upgrade-error { max-height: calc(10lh + 14px); margin: 0; padding: 6px 8px; overflow: auto; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); color: var(--color-ink); font: var(--text-meta)/1.5 var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
 .upgrade-fix { justify-self: start; display: inline-flex; align-items: center; gap: 6px; }
 .upgrade-hint { flex-shrink: 0; }
 .upgrade-hint .tooltip-anchor { align-items: center; gap: 4px; }

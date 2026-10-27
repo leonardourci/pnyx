@@ -54,19 +54,29 @@ export function UpgradeRow({
     running: active,
   })
   const stopped = operation.state === 'failed' || operation.state === 'refused'
-  const label = active ? `Upgrading Pnyx… ${elapsed}`
-    : operation.state === 'done' ? `Upgraded · ${elapsed}`
-      : operation.state === 'current' ? 'Pnyx is already up to date'
-        : operation.state === 'refused' ? `Upgrade not started. The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`
-          : `Upgrade failed while ${stoppedWhile({ operation })}. ${operation.rolledBack === false
-            ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
-            : 'Went back to the previous version; nothing changed.'}`
+  const [
+    title,
+    detail,
+  ] = active ? [`Upgrading Pnyx… ${elapsed}`]
+    : operation.state === 'done' ? [`Upgraded · ${elapsed}`]
+      : operation.state === 'current' ? ['Pnyx is already up to date']
+        : operation.state === 'refused' ? [
+          'Upgrade not started.',
+          `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
+        ]
+          : [
+            `Upgrade failed while ${stoppedWhile({ operation })}.`,
+            operation.rolledBack === false
+              ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+              : 'Went back to the previous version; nothing changed.',
+          ]
 
   return (
     <div className="compaction-row upgrade-row" data-state={stopped ? 'failed' : operation.state} role={active ? 'status' : undefined}>
       <Icon name={active ? 'upgrade' : stopped ? 'error' : 'check'} size={14} />
       <div className="upgrade-body">
-        <span>{label}</span>
+        <span className="upgrade-title">{title}</span>
+        {detail && <span className="upgrade-detail">{detail}</span>}
         {operation.state === 'refused' ? (
           <ul className="upgrade-reasons">
             {operation.reasons?.map(reason => <li key={reason}>{reason}</li>)}
