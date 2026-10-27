@@ -4,12 +4,34 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
+import { once } from 'node:events'
+import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
 import { enqueueSteering } from '../src/task-inbox/inbox.ts'
 import { STEERING_GRACE_MS } from '../src/task-inbox/follow-up.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { startServer } from '../src/server/server.ts'
+import { localToken } from '../src/server/state.ts'
+import { seedWebFixture } from './web-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+
+// The hook writes the pid file in one call, so an empty read means the worker has not started yet.
+async function heldPid({ pidFile }: { pidFile: string }) {
+  for (let waited = 0; waited < 10_000; waited += 50) {
+    const pid = existsSync(pidFile) ? Number(readFileSync(
+      pidFile,
+      'utf8',
+    )) : 0
+
+    if (pid > 0) {
+      return pid
+    }
+
+    await sleep(50)
+  }
+
+  throw new Error('the held worker never started')
+}
 
 test(
   'closing the server waits for the inbox-follow worker and nothing is written afterwards',
@@ -107,15 +129,7 @@ if (process.argv.includes('inbox-follow')) {
       query: hydraSdk().query,
     })
 
-    for (let waited = 0; !existsSync(pidFile) && waited < 10_000; waited += 50) {
-      await sleep(50)
-    }
-
-    const pid = Number(readFileSync(
-      pidFile,
-      'utf8',
-    ))
-    assert.ok(pid > 0)
+    const pid = await heldPid({ pidFile })
     await server.close()
     assert.throws(
       () => process.kill(
@@ -130,5 +144,103 @@ if (process.argv.includes('inbox-follow')) {
     )
     const card = loadHydra({ hydraId: 'lab' }).state.cards[loadHydra({ hydraId: 'lab' }).state.keys.one!]!
     assert.ok(card.steering![0]!.recovery!.length > 0)
+  },
+)
+
+test(
+  'closing the server waits for a page reply worker',
+  async t => {
+    const root = realpathSync(mkdtempSync(join(
+      tmpdir(),
+      'pnyx-worker-shutdown-',
+    )))
+    const pidFile = join(
+      root,
+      'worker.pid',
+    )
+    const doneFile = join(
+      root,
+      'worker.done',
+    )
+    const delay = join(
+      root,
+      'delay.mjs',
+    )
+    const saved = {
+      NODE_OPTIONS: process.env.NODE_OPTIONS,
+      PNYX_HOME: process.env.PNYX_HOME,
+      PNYX_SEMANTIC: process.env.PNYX_SEMANTIC,
+    }
+    process.env.PNYX_HOME = join(
+      root,
+      'home',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    // Holds the page's reply worker before its first write, so the server closes while it is still running.
+    writeFileSync(
+      delay,
+      `import { writeFileSync } from 'node:fs'
+import { setTimeout } from 'node:timers/promises'
+if (process.argv.includes('reply')) {
+  writeFileSync(${JSON.stringify(pidFile)}, String(process.pid))
+  await setTimeout(1500)
+  process.once('exit', () => writeFileSync(${JSON.stringify(doneFile)}, 'done'))
+}
+`,
+    )
+    process.env.NODE_OPTIONS = `${saved.NODE_OPTIONS ?? ''} --import ${delay}`.trim()
+    t.after(() => {
+      for (const [
+        key,
+        value,
+      ] of Object.entries(saved)) {
+        if (value === undefined) {
+          delete process.env[key]
+        } else {
+          process.env[key] = value
+        }
+      }
+
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const fixture = seedWebFixture({ home: process.env.PNYX_HOME })
+    const server = await startServer({
+      hydraId: 'default',
+      homes: [fixture.nativeHome],
+    })
+    const ws = new WebSocket(`ws://127.0.0.1:${server.port}/hydra/default/ws?token=${localToken()}`)
+    await once(
+      ws,
+      'open',
+    )
+    ws.send(JSON.stringify({
+      type: 'command',
+      id: 'reply-1',
+      name: 'reply',
+      args: [
+        fixture.state.keys.layout!,
+        'A held reply',
+        'held-reply',
+      ],
+    }))
+    const pid = await heldPid({ pidFile })
+    await server.close()
+    assert.throws(
+      () => process.kill(
+        pid,
+        0,
+      ),
+      { code: 'ESRCH' },
+    )
+    assert.ok(
+      existsSync(doneFile),
+      'close returned before the page reply worker finished',
+    )
   },
 )
