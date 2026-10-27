@@ -1,6 +1,6 @@
 # Contributing to Pnyx
 
-Every change starts with an issue that says what should change and why, so the reasoning stays on record. Typos, small doc fixes and hotfixes can go straight to a pull request without an issue, though an issue is still welcome for them. For a bigger change, also describe the approach in the issue. You don't need to wait for a reply before opening the pull request. Report vulnerabilities privately through [SECURITY.md](SECURITY.md) instead of an issue.
+An issue is where a change gets talked through and its decisions are recorded, so start there for anything worth discussing: say what should change and why. Typos, small doc fixes and hotfixes have little to discuss, so they can go straight to a pull request whose description records what changed and why; open an issue anyway if you want to talk it through. For a bigger change, also describe the approach in the issue. You don't need to wait for a reply before opening the pull request. Report vulnerabilities privately through [SECURITY.md](SECURITY.md) instead of an issue.
 
 Fork the repository, then clone your fork and create a branch:
 
