@@ -22,7 +22,7 @@
     "dev:server": "node --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
     "verify": "node scripts/verification/verify.ts",
-    "refresh-agent-fixtures": "node scripts/refresh-agent-fixtures.ts"
+    "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",

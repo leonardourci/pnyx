@@ -8,7 +8,7 @@ import { emptyHydra } from '../src/core/reducer.ts'
 import { configPath, effectiveDispatch, onTemplate, parseDispatch, readTemplate, writeConfig, type EffectiveDispatch } from '../src/dispatch/config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
 
 const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })

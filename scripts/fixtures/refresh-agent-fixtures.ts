@@ -1,5 +1,5 @@
 // pnpm refresh-agent-fixtures, by hand after upgrading the Agent SDK or Codex (never in verify): records one real
-// turn of each into test/fixtures/agents/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
+// turn of each into src/test-harness/recordings/ with your logins, in a temporary folder and PNYX_HOME so no hook reaches your Pnyx.
 import { execFileSync, spawn } from 'node:child_process'
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
@@ -10,9 +10,10 @@ import { query, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claud
 const OUT = join(
   import.meta.dirname,
   '..',
-  'test',
-  'fixtures',
-  'agents',
+  '..',
+  'src',
+  'test-harness',
+  'recordings',
 )
 const PROMPT = 'Reply with exactly this sentence and nothing else: Recorded reply.'
 const TIMEOUT_MS = 120_000
@@ -59,7 +60,7 @@ function write({
       2,
     )}\n`,
   )
-  console.log(`wrote test/fixtures/agents/${name}`)
+  console.log(`wrote src/test-harness/recordings/${name}`)
 }
 
 // System messages that list the local commands, plugins and servers are left out; init keeps only what a session needs.
@@ -155,6 +156,7 @@ async function recordClaude() {
   const { version } = JSON.parse(readFileSync(
     join(
       import.meta.dirname,
+      '..',
       '..',
       'node_modules/@anthropic-ai/claude-agent-sdk/package.json',
     ),

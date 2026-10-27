@@ -10,7 +10,7 @@ import { HYDRA_CARD, hydraConfig, hydraEvent, hydraMode } from '../src/core/hydr
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath } from '../src/dispatch/config.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 test(
   'a hosted Hydra in Bypass permissions or Codex never runs owner-only commands at once; other modes and a mid-switch still ask',

@@ -8,8 +8,8 @@ import type { Card } from '../../src/core/model.ts'
 import { emptyHydra, replay } from '../../src/core/reducer.ts'
 import { hydraDir } from '../../src/store/hydra-store.ts'
 import { steeringNotice } from '../../src/task-inbox/notice.ts'
-import { openPage, until } from './harness.ts'
-import { pnyx } from './pnyx.ts'
+import { openPage, until } from '../../src/test-harness/harness.ts'
+import { pnyx } from '../../src/test-harness/pnyx.ts'
 
 const pending = ({ card }: { card: Card }) => {
   const messages = card.steering ?? []

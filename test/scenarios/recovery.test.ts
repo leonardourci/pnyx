@@ -5,8 +5,8 @@ import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
 import { HYDRA_CARD, hydraEvent } from '../../src/core/hydra.ts'
 import { withWriter } from '../../src/store/hydra-store.ts'
-import { openPage, until } from './harness.ts'
-import { pnyx } from './pnyx.ts'
+import { openPage, until } from '../../src/test-harness/harness.ts'
+import { pnyx } from '../../src/test-harness/pnyx.ts'
 
 test(
   'an owner message while Hydra is down tries the start again; once it works Hydra answers it, then recaps only what no turn took',

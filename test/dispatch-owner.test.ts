@@ -7,7 +7,7 @@ import { commands } from '../src/cli/commands.ts'
 import { ownerOnly } from '../src/cli/hydra-session.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
-import { fakeDispatch } from './dispatch-fixture.ts'
+import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 function lab() {
   const root = mkdtempSync(join(

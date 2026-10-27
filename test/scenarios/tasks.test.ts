@@ -5,8 +5,8 @@ import { test } from 'node:test'
 import { taskReadiness } from '../../src/core/dependencies.ts'
 import { hydraDigest } from '../../src/core/digest.ts'
 import { boardReview } from '../../src/review/board.ts'
-import { openPage, until } from './harness.ts'
-import { pnyx } from './pnyx.ts'
+import { openPage, until } from '../../src/test-harness/harness.ts'
+import { pnyx } from '../../src/test-harness/pnyx.ts'
 
 function followsProject({ prompt }: { prompt: string }): void {
   assert.match(

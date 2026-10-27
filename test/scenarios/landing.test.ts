@@ -8,8 +8,8 @@ import { wakeReasons } from '../../src/core/wake-reasons.ts'
 import { followPullRequests } from '../../src/landing/follow.ts'
 import { refreshProject } from '../../src/projects/refresh.ts'
 import type { ProjectRefresh } from '../../src/projects/refresh-types.ts'
-import { git, until } from './harness.ts'
-import { pnyx, type Scenario } from './pnyx.ts'
+import { git, until } from '../../src/test-harness/harness.ts'
+import { pnyx, type Scenario } from '../../src/test-harness/pnyx.ts'
 
 const change = ({
   copy,

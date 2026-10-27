@@ -1,4 +1,4 @@
-// Fake Claude Code and Codex that replay the real sessions recorded in test/fixtures/agents/
+// Fake Claude Code and Codex that replay the real sessions recorded in src/test-harness/recordings/
 // (`pnpm refresh-agent-fixtures`), so scenarios run Pnyx's own provider code over real agent output.
 import assert from 'node:assert/strict'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
@@ -9,14 +9,12 @@ import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import type { ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import { transcriptPath, type QueryFn } from '../../src/server/claude.ts'
-import type { SpawnCodex } from '../../src/server/codex.ts'
+import { transcriptPath, type QueryFn } from '../server/claude.ts'
+import type { SpawnCodex } from '../server/codex.ts'
 
 const FIXTURES = join(
   import.meta.dirname,
-  '..',
-  'fixtures',
-  'agents',
+  'recordings',
 )
 
 const recording = <T>({ name }: { name: string }) => JSON.parse(readFileSync(

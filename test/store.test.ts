@@ -9,7 +9,7 @@ import { beforeEach, test } from 'node:test'
 import { HydraError, type HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { acquireLock, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, withWriter } from '../src/store/hydra-store.ts'
-import { STREAMS, assertGolden, readStream } from './streams.ts'
+import { STREAMS, assertGolden, readStream } from '../src/test-harness/streams.ts'
 
 beforeEach(() => {
   process.env.PNYX_HOME = mkdtempSync(join(

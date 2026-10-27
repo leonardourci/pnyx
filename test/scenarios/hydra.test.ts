@@ -6,8 +6,8 @@ import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
 import type { ThreadPage } from '../../src/thread/read.ts'
-import { openPage, until } from './harness.ts'
-import { pnyx, type Scenario } from './pnyx.ts'
+import { openPage, until } from '../../src/test-harness/harness.ts'
+import { pnyx, type Scenario } from '../../src/test-harness/pnyx.ts'
 
 const finished = async ({
   s,

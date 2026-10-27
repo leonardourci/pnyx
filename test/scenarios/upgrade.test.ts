@@ -5,9 +5,9 @@ import { WebSocket } from 'ws'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { localToken } from '../../src/server/state.ts'
 import type { UpgradeStatus } from '../../src/upgrade/model.ts'
-import { building } from '../upgrade-fixture.ts'
-import { openPage, until } from './harness.ts'
-import { pnyx, type Scenario } from './pnyx.ts'
+import { building } from '../../src/test-harness/upgrade-fixture.ts'
+import { openPage, until } from '../../src/test-harness/harness.ts'
+import { pnyx, type Scenario } from '../../src/test-harness/pnyx.ts'
 
 // The flows share one Pnyx folder, so each publishes what it needs on top of the last.
 const repo = pnyx.upgrade
