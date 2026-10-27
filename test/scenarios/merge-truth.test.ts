@@ -5,7 +5,7 @@ import { test } from 'node:test'
 import { git, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 import type { FakePullRequest } from '../../src/test-harness/github.ts'
 
-import { withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/app/writer.ts'
 import { decideLink } from '../../src/core/decide.ts'
 import { advanceQueues } from '../../src/queue/advance.ts'
 

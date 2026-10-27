@@ -14,7 +14,8 @@ import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 import { commands } from '../src/cli/commands.ts'
 import { createHost } from '../src/server/host.ts'
 import { hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { hydraSdk } from '../src/test-harness/hydra-host-fixture.ts'
 
 const scratch = mkdtempSync(join(

@@ -9,7 +9,8 @@ import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { hookSettings } from '../src/integrations/hooks/settings.ts'
-import { loadHydra, spoolWrite } from '../src/store/hydra-store.ts'
+import { spoolWrite } from '../src/app/spool.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 const BIN = join(

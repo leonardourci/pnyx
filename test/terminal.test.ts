@@ -13,7 +13,7 @@ import type { TerminalRoute } from '../src/core/route.ts'
 import type { Card } from '../src/core/model.ts'
 import { confirms, findOption, inputReason } from '../src/core/control.ts'
 import { replyRoute, terminalFacts } from '../src/core/route.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
 
 const ROOT = join(
   import.meta.dirname,

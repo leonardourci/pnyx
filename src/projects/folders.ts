@@ -1,7 +1,7 @@
 import { opendir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 import { hydraIds } from '../app/home-migration.ts'
 
 export interface Folder {

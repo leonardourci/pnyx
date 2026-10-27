@@ -3,7 +3,8 @@ import { join } from 'node:path'
 import { decideLink, decideNote, decidePush, decideView, type Decision } from '../core/decide.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import type { Note } from '../core/model.ts'
-import { loadHydra, withWriter } from '../store/hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 
 export function seedWebFixture({ home }: { home: string }) {
   const nativePath = join(

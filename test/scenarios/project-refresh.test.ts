@@ -14,7 +14,7 @@ import { git, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 import { wakeReasons } from '../../src/core/wake-reasons.ts'
 import { decideLink } from '../../src/core/decide.ts'
 import { declareTask } from '../../src/core/hydra.ts'
-import { withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/app/writer.ts'
 import { confirmedMerge } from '../../src/landing/confirmed.ts'
 import { followPullRequests } from '../../src/landing/follow.ts'
 

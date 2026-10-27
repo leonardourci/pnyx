@@ -24,7 +24,9 @@ import { hostObserver } from '../src/test-harness/host-observer.ts'
 import type { RunningServer } from '../src/server/server.ts'
 import { askHost } from '../src/server/state.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
-import { loadHydra, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { spoolWrite } from '../src/app/spool.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 const meta = {

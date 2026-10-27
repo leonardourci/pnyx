@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { writeProjectMemory, readProjectMemory } from '../src/projects/memory.ts'
 import { projectIdentity } from '../src/projects/sources.ts'
 

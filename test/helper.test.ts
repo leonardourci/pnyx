@@ -26,7 +26,8 @@ import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes 
 import { helperLeases, outcomeLines, type HelperChange } from '../src/helper/state.ts'
 import { hydraDigest } from '../src/core/digest.ts'
 import type { Provider } from '../src/server/provider.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 let root = ''

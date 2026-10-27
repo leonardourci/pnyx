@@ -1,7 +1,7 @@
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { acknowledgeSteering, inboxTask, requireSteeringWorker } from '../task-inbox/inbox.ts'
 import { pendingSteering, steeringClaim } from '../task-inbox/state.ts'
-import { withWriter } from '../store/hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
 
 export function incorporateInboxNotice({
   text,

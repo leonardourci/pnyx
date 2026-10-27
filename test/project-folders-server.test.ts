@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { startServer } from '../src/server/server.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
 
 process.env.PNYX_SEMANTIC = 'off'
 

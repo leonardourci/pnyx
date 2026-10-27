@@ -11,7 +11,8 @@ import { emptyHydra } from '../src/core/reducer.ts'
 import { wakeReasons } from '../src/core/wake-reasons.ts'
 import { boardReview, MINUTE_MS, QUESTION_REMINDER_MS } from '../src/review/board.ts'
 import { REVIEW_MS, startReviewTimer } from '../src/review/timer.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 const NOW = Date.parse('2026-10-24T12:00:00Z')

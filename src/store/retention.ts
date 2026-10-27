@@ -1,7 +1,8 @@
 import { reportReviewGaps } from '../investigation/inventory.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
-import { loadHydra, withWriter } from './hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 
 export function hideDone({
   hydraId,

@@ -7,7 +7,8 @@ import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import type { Column, HydraChange, HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { DEFAULT_DONE_HOURS, doneDeadline, HOUR_MS } from '../src/core/retention.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { hideDone } from '../src/store/retention.ts'
 
 const scratch = mkdtempSync(join(

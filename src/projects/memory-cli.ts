@@ -3,7 +3,7 @@ import { memoryConditions } from '../memory/conditions.ts'
 import { learningChange, staleLearnings } from '../memory/learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '../app/cli-support.ts'
 import { HydraError } from '../core/model.ts'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 import { findProject } from './read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView, writeProjectMemory, type ProjectMemoryKey } from './memory.ts'
 

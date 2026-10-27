@@ -1,5 +1,6 @@
 import { hydraEvent } from '../src/core/hydra.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { loadHydra } from '../src/app/store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'

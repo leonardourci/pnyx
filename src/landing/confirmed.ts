@@ -1,7 +1,7 @@
 import { refreshConfirmedProject } from '../projects/refresh-confirmed.ts'
 import { declareTask } from '../core/hydra.ts'
 import type { Link } from '../core/model.ts'
-import { withWriter, type Writer } from '../store/hydra-store.ts'
+import { withWriter, type Writer } from '../app/writer.ts'
 
 function declareMerged({
   writer,

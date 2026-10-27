@@ -6,7 +6,7 @@ import { browserFixture } from '../src/test-harness/browser-fixture.ts'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { startServer } from '../src/server/server.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
 
 const browser = browserFixture()
 

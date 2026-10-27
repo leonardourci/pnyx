@@ -18,7 +18,7 @@ import {
 import { emptyHydra, replay } from '../core/reducer.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { withWriter, type Writer } from '../store/hydra-store.ts'
+import { withWriter, type Writer } from './writer.ts'
 import { DEFAULT_HYDRA } from './home-migration.ts'
 import { readEvents } from './event-log.ts'
 import { summarize } from './cli.ts'

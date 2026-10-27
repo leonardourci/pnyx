@@ -9,7 +9,7 @@ import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
 import { startServer } from '../src/server/server.ts'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
 
 const browser = browserFixture()
 

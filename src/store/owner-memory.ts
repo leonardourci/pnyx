@@ -7,7 +7,9 @@ import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '
 import { hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
 import type { Meta } from '../core/decide.ts'
-import { loadHydra, pnyxHome, privateDir, withRegistryLock, withWriter, writeDurably } from './hydra-store.ts'
+import { pnyxHome, privateDir, withRegistryLock, writeDurably } from './hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 import { hydraIds } from '../app/home-migration.ts'
 
 interface OwnerLog {

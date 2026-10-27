@@ -10,7 +10,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { codexThreadTitle, transcriptNotes } from '../src/integrations/hooks/notes.ts'
 import { transcriptMessages } from '../src/oracle/text.ts'
-import { loadHydra, spoolWrite } from '../src/store/hydra-store.ts'
+import { spoolWrite } from '../src/app/spool.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.

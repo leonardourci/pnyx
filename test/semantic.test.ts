@@ -590,7 +590,7 @@ test(
       env,
     } = hydraId({ })
     process.env.PNYX_HOME = home
-    const { withWriter } = await import('../src/store/hydra-store.ts')
+    const { withWriter } = await import('../src/app/writer.ts')
     withWriter({
       hydraId: 'default',
       fn: ({ writer }) => {

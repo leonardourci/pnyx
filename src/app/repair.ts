@@ -6,7 +6,9 @@ import { emptyHydra, replay } from '../core/reducer.ts'
 import { readLog } from './event-log.ts'
 import type { LogRead, RepairMarker } from './event-log.ts'
 import { hydraDir } from './home-migration.ts'
-import { privateDir, logPath, writeDurably, writeSnapshot, acquireLock, requireHydra } from '../store/hydra-store.ts'
+import { privateDir, logPath, writeDurably, acquireLock } from '../store/hydra-store.ts'
+import { requireHydra } from './store.ts'
+import { writeSnapshot } from './snapshot.ts'
 
 export interface Repair {
   tornBytes: number

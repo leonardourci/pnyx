@@ -2,7 +2,7 @@ import { commit, required, type Output } from '../app/cli-support.ts'
 import { findCard, type Meta } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
 import { HydraError, type HydraState, type LandingRule } from '../core/model.ts'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 import { parseLanding, parseMerger, taskLanding } from './rule.ts'
 
 // Only the owner, or Hydra on the owner's word, gives one task a rule other than its project's.

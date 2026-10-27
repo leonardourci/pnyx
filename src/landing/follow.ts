@@ -9,7 +9,8 @@ import { liveTask } from '../core/tasks.ts'
 import { pullRequestRef, pullRequestStatus, type PullRequestStatus } from '../integrations/github/pull-request.ts'
 import { pullRequestMergeOutcome, type MergeOutcome } from '../integrations/github/merge-evidence.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { loadHydra, withWriter } from '../store/hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 
 // GitHub changes on human time; once a minute keeps a few followed pull requests well inside gh's rate limit.
 export const FOLLOW_POLL_MS = 60_000

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { hydraEvent, HYDRA_CARD } from '../../src/core/hydra.ts'
-import { withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/app/writer.ts'
 import type { HelperChange } from '../../src/helper/state.ts'
 import { browserGroup } from '../../src/test-harness/browser.ts'
 import { claudeRecording } from '../../src/test-harness/fake-agents.ts'

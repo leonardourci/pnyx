@@ -5,7 +5,7 @@ import { appendFileSync, copyFileSync, mkdtempSync, readFileSync, renameSync, st
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { ftsQuery, search, updateIndex } from '../src/oracle/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/oracle/text.ts'

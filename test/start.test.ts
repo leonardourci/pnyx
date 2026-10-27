@@ -20,7 +20,7 @@ import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 import { integrations } from '../src/cli/integrations.ts'
 import { HYDRA_SKILL, setupHydra, startHydra, startTask, workerHeader } from '../src/cli/start.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
 
 const at = '2026-10-15T00:00:00Z'
 const meta = {

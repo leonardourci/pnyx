@@ -35,7 +35,9 @@ import type { Connect } from '../integrations/paseo/client.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { canonical } from '../store/paths.ts'
 import { askHost } from '../server/state.ts'
-import { loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/hydra-store.ts'
+import { withWriter, type Writer } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 import type { Output } from '../app/cli-support.ts'
 
 export const VIAS = [

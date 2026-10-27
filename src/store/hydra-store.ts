@@ -1,9 +1,3 @@
-import { guardTaskLease, isHelper } from '../helper/leases.ts'
-import { helperGrant } from '../helper/route.ts'
-import { reconcileAsks } from '../core/asks.ts'
-import { randomInt } from 'node:crypto'
-import { LABEL_COLORS } from '../core/model.ts'
-import { labelsForEvent } from '../core/labels.ts'
 import {
   chmodSync,
   closeSync,
@@ -14,22 +8,13 @@ import {
   openSync,
   readFileSync,
   readdirSync,
-  renameSync,
   rmSync,
   statSync,
-  writeFileSync,
   writeSync,
 } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError, EVENT_VERSION, type HydraEvent, type HydraState } from '../core/model.ts'
-import { emptyHydra, reduce, replay } from '../core/reducer.ts'
-import { agentActor, declareTask, migrateColumns } from '../core/hydra.ts'
-import { decideMove } from '../core/decide.ts'
-import { lifecycleMoveId, lifecycleMoves, operationDeclarations } from '../core/lifecycle.ts'
+import { HydraError } from '../core/model.ts'
 import { pnyxHome } from './paths.ts'
-import { readLog } from '../app/event-log.ts'
-import type { LogRead } from '../app/event-log.ts'
-import { DEFAULT_HYDRA, hydraDir } from '../app/home-migration.ts'
 
 export { pnyxHome } from './paths.ts'
 
@@ -55,7 +40,7 @@ export const logPath = ({ dir }: { dir: string }) => join(
   dir,
   'events.jsonl',
 )
-const snapshotPath = ({ dir }: { dir: string }) => join(
+export const snapshotPath = ({ dir }: { dir: string }) => join(
   dir,
   'snapshot.json',
 )
@@ -63,34 +48,6 @@ export const spoolDir = ({ dir }: { dir: string }) => join(
   dir,
   'spool',
 )
-
-// Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 15
-
-interface Snapshot {
-  v: typeof EVENT_VERSION
-  rules?: number
-  offset: number
-  state: HydraState
-}
-
-function readSnapshot({ dir }: { dir: string }): Snapshot | null {
-  try {
-    const snap = JSON.parse(readFileSync(
-      snapshotPath({ dir }),
-      'utf8',
-    )) as Snapshot
-
-    return snap.v === EVENT_VERSION
-      && snap.rules === RULES
-      && Number.isInteger(snap.offset)
-      && snap.state?.v === EVENT_VERSION
-      ? snap
-      : null
-  } catch {
-    return null
-  }
-}
 
 export function writeDurably({
   path,
@@ -119,64 +76,6 @@ export function writeDurably({
     fsyncSync(fd)
   } finally {
     closeSync(fd)
-  }
-}
-
-export function writeSnapshot({
-  dir,
-  state,
-  offset,
-}: {
-  dir: string
-  state: HydraState
-  offset: number
-}): void {
-  const tmp = `${snapshotPath({ dir })}.tmp-${process.pid}`
-  writeDurably({
-    path: tmp,
-    data: JSON.stringify({
-      v: EVENT_VERSION,
-      rules: RULES,
-      offset,
-      state,
-    } satisfies Snapshot),
-    flag: 'w',
-  })
-  renameSync(
-    tmp,
-    snapshotPath({ dir }),
-  )
-}
-
-export interface HydraSnapshot {
-  dir: string
-  state: HydraState
-  offset: number
-  tornBytes: number
-}
-
-export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
-  const dir = hydraDir({ hydraId })
-  const snap = readSnapshot({ dir })
-  let log = snap ? readLog({
-    dir,
-    from: snap.offset,
-  }) : null
-  let start = snap?.state ?? emptyHydra()
-
-  if (!log || (snap && log.events.length > 0 && log.events[0]!.seq !== snap.state.seq + 1)) {
-    log = readLog({ dir }) as LogRead
-    start = emptyHydra()
-  }
-
-  return {
-    dir,
-    state: replay({
-      state: start,
-      events: log.events,
-    }),
-    offset: log.end,
-    tornBytes: log.size - log.end,
   }
 }
 
@@ -333,288 +232,6 @@ export function withRegistryLock<T>({ fn }: { fn(): T }): T {
   } finally {
     release()
   }
-}
-
-export interface Writer {
-  readonly state: HydraState
-  readonly dir: string
-  append({ event }: { event: HydraEvent }): void
-}
-
-// A Hydra exists once its log does; a bare folder, such as one a config write made, does not count.
-export function requireHydra({ hydraId }: { hydraId: string }): void {
-  if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({ dir: hydraDir({ hydraId }) }))) {
-    throw new HydraError({
-      message: `unknown Hydra: ${hydraId}`,
-      code: 'NOT_FOUND',
-      help: ['Run `pnyx-axi hydra list` for the Hydras, or `pnyx-axi hydra create <id>` to add one'],
-    })
-  }
-}
-
-// Runs `fn` as the Hydra's single writer. Each append is flushed to disk before
-// the state advances; the snapshot is replaced afterwards.
-export function withWriter<T>({
-  hydraId,
-  fn,
-  create = false,
-  lockTimeout,
-}: {
-  hydraId: string
-  // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
-  create?: boolean
-  lockTimeout?: number
-  fn: (
-    { writer }: {
-      writer: Writer
-    },
-  ) => T
-}): T {
-  const dir = hydraDir({ hydraId })
-
-  if (!create) {
-    requireHydra({ hydraId })
-  }
-
-  privateDir({ dir })
-  const release = acquireLock({
-    dir,
-    timeout: lockTimeout,
-  })
-
-  try {
-    let {
-      state,
-      offset,
-    } = loadTail({ hydraId })
-    let dirty = false
-
-    try {
-      const writer: Writer = {
-        dir,
-        get state() {
-          return state
-        },
-        append({ event }) {
-          if (!agentActor({ actor: event.actor }) && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
-            const task = event.type === 'hydra.message' ? event.data.task : event.cardId
-
-            if (task && state.cards[task]) {
-              guardTaskLease({
-                dir,
-                task,
-                actor: event.actor,
-              })
-            }
-
-            if (isHelper({ actor: event.actor }) && (!task || !helperGrant({
-              state,
-              task,
-              actor: event.actor,
-            }))) {
-              throw new HydraError({
-                message: 'Helper mutation is outside its task scope',
-                code: 'MAIN_ONLY',
-              })
-            }
-          }
-
-          if (event.seq !== state.seq + 1) {
-            throw new Error(`append out of sequence: ${event.seq} after ${state.seq}`)
-          }
-
-          const knownLabels = new Set(state.labelColors?.map(entry => entry.label))
-          const labelColors = labelsForEvent({
-            state,
-            event,
-          })
-            .filter(label => !knownLabels.has(label))
-            .map(label => ({
-              label,
-              color: LABEL_COLORS[randomInt(LABEL_COLORS.length)] ?? 'slate',
-            }))
-
-          if (labelColors.length) {
-            event = {
-              ...event,
-              labelColors,
-            }
-          }
-
-          const card = state.cards[event.cardId]
-          const parent = event.type === 'task.created' ? event.data.parentId : card?.parentId
-          const session = event.type === 'task.session' ? event.data.session : card?.sessionIds?.[0]
-          const agent = event.type === 'card.pushed' && event.data.agent
-            ? event.data.agent : session ? state.sessions?.[session]?.agent : card?.agent
-          const observedSession = agent
-            ? `${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}` : session
-          event = {
-            boardId: hydraId,
-            ...(event.cardId !== '$board' ? { taskId: parent ?? event.cardId } : {}),
-            ...(parent ? { subtaskId: event.cardId } : {}),
-            ...(agent ? { agentId: `${agent.provider}:${agent.agentId ?? agent.sessionId}` } : {}),
-            ...(observedSession ? { sessionId: observedSession } : {}),
-            commandId: event.id,
-            ...(event.type === 'card.replied' ? { messageId: event.data.reply } : {}),
-            ...event,
-          }
-          const line = `${JSON.stringify(event)}\n`
-          writeDurably({
-            path: logPath({ dir }),
-            data: line,
-            flag: 'a',
-          })
-          offset += Buffer.byteLength(line)
-          const before = state
-          state = reduce({
-            state,
-            event,
-          })
-          dirty = true
-
-          for (const question of reconcileAsks({
-            state,
-            event,
-          })) {
-            writer.append({ event: question })
-          }
-
-          for (const declaration of operationDeclarations({
-            before,
-            state,
-            event,
-          })) {
-            const declared = declareTask({
-              state,
-              ref: declaration.cardId,
-              status: declaration.status,
-              note: declaration.note,
-              until: declaration.until,
-              waitingFor: declaration.waitingFor,
-              restores: declaration.restores,
-              meta: {
-                id: `${event.id}:${declaration.cardId}:declaration`,
-                at: event.at,
-                actor: 'pnyx',
-              },
-            })
-
-            if ('event' in declared) {
-              writer.append({ event: declared.event })
-            }
-          }
-
-          // A task's explicit lifecycle change moves its card, as its own event in the same write.
-          for (const move of lifecycleMoves({
-            before,
-            state,
-            event,
-          })) {
-            const moved = decideMove({
-              state,
-              ref: move.cardId,
-              column: move.column,
-              meta: {
-                id: lifecycleMoveId({
-                  event: event.id,
-                  cardId: move.cardId,
-                }),
-                at: event.at,
-                actor: 'pnyx',
-                reason: move.reason,
-              },
-            })
-
-            if ('event' in moved) {
-              writer.append({ event: moved.event })
-            }
-          }
-        },
-      }
-      // A Hydra still on an older layout moves onto the default columns before its next write.
-      const migrated = migrateColumns({
-        state,
-        meta: {
-          at: new Date().toISOString(),
-          actor: 'pnyx',
-        },
-      })
-
-      if ('event' in migrated) {
-        writer.append({ event: migrated.event })
-      }
-
-      return fn({ writer })
-    } finally {
-      if (dirty) {
-        writeSnapshot({
-          dir,
-          state,
-          offset,
-        })
-      }
-    }
-  } finally {
-    release()
-  }
-}
-
-function loadTail({ hydraId }: { hydraId: string }): HydraSnapshot {
-  const loaded = loadHydra({ hydraId })
-
-  if (loaded.tornBytes > 0) {
-    throw new HydraError({
-      message: `events.jsonl ends with ${loaded.tornBytes} bytes of a torn append`,
-      code: 'TORN_TAIL',
-      help: ['Run `pnyx-axi repair` to set them aside and continue'],
-    })
-  }
-
-  return loaded
-}
-
-// Writes one hook event to the spool without taking the writer lock. The next
-// writer ingests it; the spool is a buffer, never a second writer of the log.
-export function spoolWrite({
-  hydraId,
-  entry,
-}: {
-  hydraId: string
-  entry: {
-    id: string
-  } & Record<string, unknown>
-}): string {
-  const dir = spoolDir({ dir: hydraDir({ hydraId }) })
-  privateDir({ dir })
-  // Millisecond time orders files across processes; hrtime keeps same-millisecond writes apart.
-  const name = `${String(Date.now()).padStart(
-    15,
-    '0',
-  )}-${process.hrtime.bigint()}-${entry.id.replace(
-    /[^A-Za-z0-9._-]/g,
-    '_',
-  )}.json`
-  const tmp = join(
-    dir,
-    `.tmp-${process.pid}-${name}`,
-  )
-  writeFileSync(
-    tmp,
-    JSON.stringify(entry),
-    { mode: 0o600 },
-  )
-  renameSync(
-    tmp,
-    join(
-      dir,
-      name,
-    ),
-  )
-
-  return join(
-    dir,
-    name,
-  )
 }
 
 export function spoolFiles({ dir }: { dir: string }): string[] {

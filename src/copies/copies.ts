@@ -13,7 +13,9 @@ import { liveTask } from '../core/tasks.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { projectsFor } from '../projects/read.ts'
 import { canonical } from '../store/paths.ts'
-import { loadHydra, pnyxHome, withWriter, type Writer } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/hydra-store.ts'
+import { withWriter, type Writer } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 import { hydraDir, hydraIds } from '../app/home-migration.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.

@@ -5,7 +5,8 @@ import { decideMove, findCard, type Meta } from '../core/decide.ts'
 import { declareTask, hydraConfig, roleColumn } from '../core/hydra.ts'
 import { HydraError, type LandingRule } from '../core/model.ts'
 import { landingLine, taskLanding } from '../landing/rule.ts'
-import { loadHydra, type Writer } from '../store/hydra-store.ts'
+import { type Writer } from '../app/writer.ts'
+import { loadHydra } from '../app/store.ts'
 import { decideBuild, decideReport, decideReportReview, readReport, readReportFile } from './report.ts'
 
 // task report <task> [--file <path>] stores a report, or prints the stored one.
