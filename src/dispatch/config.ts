@@ -3,7 +3,8 @@ import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { HydraError, type AgentConfig, type HydraState } from '../core/model.ts'
-import { hydraDir, pnyxHome } from '../store/hydra-store.ts'
+import { hydraDir } from '../app/home-migration.ts'
+import { pnyxHome } from '../store/hydra-store.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>

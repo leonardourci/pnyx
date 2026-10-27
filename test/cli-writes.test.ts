@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
-import { readEvents } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 test(
   'a repeated hydra create is a no-op, other settings conflict, and task create needs an attached project',

@@ -13,7 +13,8 @@ import { taskLease } from '../src/helper/leases.ts'
 import { helperEvent, helperReason } from '../src/helper/route.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from '../src/helper/runner.ts'
 import type { Provider } from '../src/server/provider.ts'
-import { loadHydra, readEvents } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
+import { readEvents } from '../src/app/event-log.ts'
 
 let root = ''
 let restore: NodeJS.ProcessEnv

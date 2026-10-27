@@ -9,7 +9,8 @@ import { decidePush } from '../src/core/decide.ts'
 import { HYDRA_CARD, hydraConfig, hydraEvent, hydraMode } from '../src/core/hydra.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { configPath } from '../src/dispatch/config.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
+import { withWriter } from '../src/app/writer.ts'
 import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
 
 test(

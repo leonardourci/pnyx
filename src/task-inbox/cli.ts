@@ -1,11 +1,11 @@
 import { commentInput } from '../compaction/comments.ts'
-import { pendingSteering } from './state.ts'
+import { pendingSteering, steeringClaim } from './state.ts'
 import { readFileSync } from 'node:fs'
 import { integer, meta, parse, required, COMMON, type Output } from '../cli/commands.ts'
 import { HydraError, type SteeringAck, type SteeringAttempt, type SteeringClaim } from '../core/model.ts'
-import { loadHydra, withWriter } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
+import { withWriter } from '../app/writer.ts'
 import { acknowledgeSteering, enqueueSteering, inboxTask, recordSteeringAttempt, requireSteeringWorker } from './inbox.ts'
-import { steeringClaim } from './state.ts'
 
 export function inboxCommand({ args }: { args: string[] }): Output {
   const {

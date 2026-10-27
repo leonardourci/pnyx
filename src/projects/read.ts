@@ -3,7 +3,8 @@ import { statSync } from 'node:fs'
 import { basename } from 'node:path'
 import { HydraError, landingRule, type HydraProject, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { hydraIds, loadHydra } from '../store/hydra-store.ts'
+import { hydraIds } from '../app/home-migration.ts'
+import { loadHydra } from '../app/store.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
 
 export function projectsFor({

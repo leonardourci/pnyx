@@ -6,7 +6,7 @@ import { readFileSync } from 'node:fs'
 import { findCard, type Meta } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
 import { HydraError, TASK_KINDS, type Card, type HydraState, type TaskKind, type ReportCall } from '../core/model.ts'
-import { readEvents } from '../store/hydra-store.ts'
+import { readEvents } from '../app/event-log.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.
 export const REPORT_MAX_CHARS = 100_000

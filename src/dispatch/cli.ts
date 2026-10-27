@@ -4,7 +4,8 @@ import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../cli/commands.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
-import { loadHydra, requireHydra, withRegistryLock } from '../store/hydra-store.ts'
+import { loadHydra, requireHydra } from '../app/store.ts'
+import { withRegistryLock } from '../store/hydra-store.ts'
 import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
 
 const OPTIONS = {

@@ -4,7 +4,8 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync,
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { loadHydra, pnyxHome, privateDir } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
+import { pnyxHome, privateDir } from '../store/hydra-store.ts'
 import { canonical } from '../store/paths.ts'
 import { DEFAULT_PORT } from './state.ts'
 

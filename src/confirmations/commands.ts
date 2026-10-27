@@ -6,7 +6,8 @@ import { WRITE, guard, meta, parse, required, type Output } from '../cli/command
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import { HydraError, type HydraState } from '../core/model.ts'
-import { pnyxHome, withWriter } from '../store/hydra-store.ts'
+import { withWriter } from '../app/writer.ts'
+import { pnyxHome } from '../store/hydra-store.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(

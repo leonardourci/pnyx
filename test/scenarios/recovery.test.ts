@@ -4,7 +4,7 @@ import { ServerResponse } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
 import { HYDRA_CARD, hydraEvent } from '../../src/core/hydra.ts'
-import { withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/app/writer.ts'
 import { openPage, until } from '../../src/test-harness/harness.ts'
 import { pnyx } from '../../src/test-harness/pnyx.ts'
 

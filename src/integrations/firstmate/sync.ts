@@ -18,7 +18,7 @@ import {
 } from '../../core/decide.ts'
 import type { Attention, COLUMNS, HydraState, Card, SourceRef } from '../../core/model.ts'
 import { drainSpool } from '../hooks/ingest.ts'
-import { withWriter, type Writer } from '../../store/hydra-store.ts'
+import { withWriter, type Writer } from '../../app/writer.ts'
 import { HOOK } from '../hooks/observe.ts'
 import {
   ADAPTER,

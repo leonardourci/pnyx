@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { withWriter } from '../src/store/hydra-store.ts'
+import { withWriter } from '../src/app/writer.ts'
 import { search, updateIndex } from '../src/oracle/index.ts'
 import { redact, transcriptMessages } from '../src/oracle/text.ts'
 

@@ -2,7 +2,7 @@ import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
 import type { Meta } from '../core/decide.ts'
 import type { SteeringClaim } from '../core/model.ts'
-import type { Writer } from '../store/hydra-store.ts'
+import type { Writer } from '../app/writer.ts'
 import type { ExternalSource } from './model.ts'
 import { lavishCanRearm } from './lavish-output.ts'
 import {

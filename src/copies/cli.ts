@@ -4,7 +4,7 @@ import type { Output } from '../cli/commands.ts'
 import { findCard, type Meta } from '../core/decide.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { HydraError, HYDRA_ACTOR } from '../core/model.ts'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 import { checkCopy, settleCopy } from './copies.ts'
 
 export function copyCommand({

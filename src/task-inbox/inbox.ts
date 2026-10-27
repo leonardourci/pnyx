@@ -3,7 +3,7 @@ import { findCard, type Meta } from '../core/decide.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { EVENT_VERSION, HydraError, type Card, type SteeringAck, type SteeringAttempt, type SteeringClaim, type SteeringMessage, type HydraState } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
-import type { Writer } from '../store/hydra-store.ts'
+import type { Writer } from '../app/writer.ts'
 import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './state.ts'
 
 function invalid({ message }: { message: string }): never {

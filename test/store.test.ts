@@ -8,7 +8,12 @@ import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { HydraError, type HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { acquireLock, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, withWriter } from '../src/store/hydra-store.ts'
+import { hydraDir, hydraIds } from '../src/app/home-migration.ts'
+import { loadHydra } from '../src/app/store.ts'
+import { readEvents } from '../src/app/event-log.ts'
+import { repairHydra } from '../src/app/repair.ts'
+import { withWriter } from '../src/app/writer.ts'
+import { acquireLock } from '../src/store/hydra-store.ts'
 import { STREAMS, assertGolden, readStream } from '../src/test-harness/streams.ts'
 
 beforeEach(() => {

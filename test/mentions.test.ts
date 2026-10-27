@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { project } from '../src/projects/cli.ts'
-import { loadHydra } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
 import { matchingTasks, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from '../src/mentions/mentions.ts'
 
 async function fixture() {

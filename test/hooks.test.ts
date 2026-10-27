@@ -18,7 +18,9 @@ import { test } from 'node:test'
 import type { Attention } from '../src/core/model.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
-import { readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
+import { readEvents } from '../src/app/event-log.ts'
+import { spoolWrite } from '../src/app/spool.ts'
+import { spoolFiles } from '../src/store/hydra-store.ts'
 
 const ROOT = join(
   import.meta.dirname,

@@ -3,7 +3,7 @@ import { ownerActor } from '../core/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { taggedParagraphs, taskMentions } from '../mentions/mentions.ts'
 import { redact } from '../oracle/text.ts'
-import type { Writer } from '../store/hydra-store.ts'
+import type { Writer } from '../app/writer.ts'
 
 // The card keeps the words the owner already read in chat, so no model is asked anything.
 export function copyTagged({

@@ -96,7 +96,12 @@ import { showsUpdate, tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
 import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
-import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, spoolFiles, withWriter, type Writer } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA, hydraDir, hydraIds } from '../app/home-migration.ts'
+import { loadHydra } from '../app/store.ts'
+import { readEvents } from '../app/event-log.ts'
+import { withWriter, type Writer } from '../app/writer.ts'
+import { spoolFiles } from '../store/hydra-store.ts'
+import { repair } from '../app/repair-cli.ts'
 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
@@ -4525,23 +4530,6 @@ const undo = guard({
         }),
       },
     )
-  },
-})
-
-const repair = guard({
-  handler: ({ args }) => {
-    const { hydraId } = parse({
-      args,
-      options: COMMON,
-      positionals: 0,
-    })
-    const result = repairHydra({ hydraId })
-
-    return {
-      repair: result.tornBytes > 0 ? `set aside ${result.tornBytes} torn bytes` : 'none: log ends cleanly',
-      ...(result.preserved ? { preserved: result.preserved } : {}),
-      snapshot: `rebuilt through seq ${result.seq}`,
-    }
   },
 })
 

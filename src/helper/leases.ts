@@ -3,7 +3,9 @@ import { helperGrant } from './route.ts'
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { acquireLock, hydraDir, loadHydra } from '../store/hydra-store.ts'
+import { hydraDir } from '../app/home-migration.ts'
+import { loadHydra } from '../app/store.ts'
+import { acquireLock } from '../store/hydra-store.ts'
 
 interface Lease {
   actor: string

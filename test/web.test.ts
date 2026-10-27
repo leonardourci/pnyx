@@ -9,7 +9,8 @@ import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { COLUMNS, type HydraEvent, type HydraState } from '../src/core/model.ts'
 import { patchView, viewFor } from '../src/core/view.ts'
 import { columnsFor } from '../web/src/hydra/view.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra } from '../src/app/store.ts'
+import { withWriter } from '../src/app/writer.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 
 const meta = {

@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { Writer } from '../store/hydra-store.ts'
+import type { Writer } from '../app/writer.ts'
 import type { CompactionChange } from './model.ts'
 
 export function recordCompaction({

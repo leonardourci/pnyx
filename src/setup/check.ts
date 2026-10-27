@@ -9,7 +9,7 @@ import { skillStatus } from '../integrations/skills/install.ts'
 import { projectMemoryView } from '../projects/memory.ts'
 import { projectsFor } from '../projects/read.ts'
 import { serviceFile } from '../server/service.ts'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 
 export interface SetupItem {
   name: string

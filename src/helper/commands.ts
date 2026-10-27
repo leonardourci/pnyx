@@ -4,7 +4,7 @@ import { HydraError, type Card, type HydraState } from '../core/model.ts'
 import { reportActor } from '../core/hydra.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '../core/decide.ts'
-import { loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../app/store.ts'
 import { helperGrant } from './route.ts'
 import { isHelper, taskLease } from './leases.ts'
 
