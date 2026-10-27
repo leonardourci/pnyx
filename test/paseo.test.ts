@@ -16,8 +16,9 @@ import { liveTask } from '../src/core/tasks.ts'
 import { openPaseo } from '../src/integrations/paseo/client.ts'
 import { paseoStatus, startAgent } from '../src/integrations/paseo/launch.ts'
 import { paseoNotice, paseoReply } from '../src/integrations/paseo/reply.ts'
+import { harvestPaseoChats } from '../src/integrations/paseo/harvest.ts'
 import { paseoConversation } from '../src/integrations/paseo/thread.ts'
-import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { startTask } from '../src/cli/start.ts'
 import { commands } from '../src/cli/commands.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
@@ -62,6 +63,7 @@ function fakePaseo({ send }: { send?: () => Promise<void> } = {}) {
         return { id }
       },
       ref: (agent: string) => ({
+        refresh: async () => undefined,
         send: send ?? (async (
           text: string,
           options?: { messageId?: string },
@@ -161,6 +163,197 @@ function hydraId() {
     folder,
     state: () => loadHydra({ hydraId: 'lab' }).state,
   }
+}
+
+test(
+  'Paseo history persists ordered messages and stops at saved replies on the next harvest',
+  async () => {
+    const {
+      folder,
+      state,
+    } = hydraId()
+    const paseo = fakePaseo()
+    await startAgent({
+      hydraId: 'lab',
+      task: 'work',
+      harness: 'codex',
+      prompt: 'Read history',
+      folder,
+      url,
+      meta: {
+        at,
+        actor: 'test',
+        id: 'history-start',
+      },
+      connect: paseo.connect,
+    })
+    assert.deepEqual(
+      await harvestPaseoChats({
+        hydraId: 'lab',
+        connect: paseo.connect,
+      }),
+      [],
+    )
+    const messages = readEvents({ hydraId: 'lab' }).filter(event => event.type === 'chat.message')
+    assert.deepEqual(
+      messages.map(event => [
+        event.data.role,
+        event.data.text,
+      ]),
+      [
+        [
+          'user',
+          'Lab prompt',
+        ],
+        [
+          'assistant',
+          'Lab answer',
+        ],
+      ],
+    )
+    const seq = state().seq
+    assert.deepEqual(
+      await harvestPaseoChats({
+        hydraId: 'lab',
+        connect: paseo.connect,
+      }),
+      [],
+    )
+    assert.equal(
+      state().seq,
+      seq,
+    )
+    assert.equal(
+      paseo.calls.closed,
+      3,
+    )
+  },
+)
+
+for (const stalled of [
+  false,
+  true,
+]) {
+  test(
+    `Paseo history has one deadline when ${stalled ? 'a page never answers' : 'older pages never end'}`,
+    async t => {
+      const {
+        folder,
+        state,
+      } = hydraId()
+      const paseo = fakePaseo()
+      await startAgent({
+        hydraId: 'lab',
+        task: 'work',
+        harness: 'codex',
+        prompt: 'Read history',
+        folder,
+        url,
+        meta: {
+          at,
+          actor: 'test',
+          id: 'history-start',
+        },
+        connect: paseo.connect,
+      })
+      const client = await paseo.connect()
+      const agent = client.agents.ref('lab-1')
+      let now = 0
+      let pages = 0
+      t.mock.method(
+        client.agents,
+        'ref',
+        () => ({
+          ...agent,
+          refresh: async () => undefined,
+          timeline: {
+            ...agent.timeline,
+            refetch: async () => {
+              pages++
+
+              if (stalled) {
+                return new Promise(() => {})
+              }
+
+              now += 15_000
+
+              return {
+                epoch: 'lab',
+                hasOlder: true,
+                startCursor: {
+                  epoch: 'lab',
+                  seq: 100 - pages,
+                },
+                staleCursor: false,
+                gap: false,
+                entries: [],
+              }
+            },
+          },
+        }),
+      )
+      t.mock.method(
+        Date,
+        'now',
+        () => now,
+      )
+
+      if (stalled) {
+        t.mock.timers.enable({ apis: ['setTimeout'] })
+      }
+
+      const harvesting = harvestPaseoChats({
+        hydraId: 'lab',
+        connect: paseo.connect,
+      })
+
+      try {
+        if (stalled) {
+          // Client connection and agent refresh resolve before the page deadline starts.
+          await new Promise<void>(resolve => setImmediate(resolve))
+          t.mock.timers.tick(30_000)
+        }
+
+        const failures = await harvesting
+        assert.equal(
+          failures.length,
+          1,
+        )
+        assert.equal(
+          failures[0]!.task,
+          state().keys.work,
+        )
+        assert.match(
+          failures[0]!.error,
+          /timed out waiting for Paseo history after 30000ms/,
+        )
+        const diagnostic = JSON.parse(failures[0]!.error.split('ms: ')[1]!)
+        assert.equal(
+          diagnostic.session,
+          'codex:lab-1',
+        )
+        assert.equal(
+          diagnostic.recent.length,
+          stalled ? 0 : 2,
+        )
+        assert.equal(
+          diagnostic.cursor?.seq,
+          stalled ? undefined : 98,
+        )
+        assert.equal(
+          pages,
+          stalled ? 1 : 2,
+        )
+        assert.equal(
+          paseo.calls.closed,
+          2,
+        )
+      } finally {
+        t.mock.restoreAll()
+        t.mock.timers.reset()
+      }
+    },
+  )
 }
 
 test(
