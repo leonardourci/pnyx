@@ -797,7 +797,7 @@ test(
     )
     assert.match(
       out,
-      /^ {2}c1,x,in_progress,none$/m,
+      /^ {2}c1,x,none,in_progress$/m,
     )
   },
 )

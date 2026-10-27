@@ -1,16 +1,17 @@
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { sendTaskMessage } from '../src/cli/task-message.ts'
+import { project } from '../src/projects/cli.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { matchingTasks, mentionContext, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from '../src/mentions/mentions.ts'
 
-function fixture() {
+async function fixture() {
   const home = realpathSync(mkdtempSync(join(
     tmpdir(),
     'pnyx-mentions-',
@@ -19,6 +20,15 @@ function fixture() {
   commands.hydra([
     'create',
     'default',
+  ])
+  const api = join(
+    home,
+    'API',
+  )
+  mkdirSync(api)
+  await project([
+    'add',
+    api,
   ])
   commands.task([
     'create',
@@ -58,6 +68,7 @@ function fixture() {
   })}`
 
   return {
+    api,
     home,
     native,
     state,
@@ -125,8 +136,8 @@ test(
 
 test(
   'matching searches the title and original prompt across projects in this Hydra',
-  () => {
-    const f = fixture()
+  async () => {
+    const f = await fixture()
 
     try {
       commands.task([
@@ -146,7 +157,7 @@ test(
       )
       assert.equal(
         matches[0]?.card.project,
-        'API',
+        f.api,
       )
       assert.match(
         matches[0]?.excerpt ?? '',
@@ -184,8 +195,8 @@ test(
 
 test(
   'ticket title mentions ignore spaces and case while retaining the original reference',
-  () => {
-    const f = fixture()
+  async () => {
+    const f = await fixture()
     const title = 'commands and skills are not showing up properly in the composer when I type "/"'
 
     try {
@@ -250,8 +261,8 @@ test(
 
 test(
   'Hydra receives referenced context while history retains the captured title after rename and replay',
-  () => {
-    const f = fixture()
+  async () => {
+    const f = await fixture()
 
     try {
       commands.task([
@@ -346,7 +357,7 @@ test(
 test(
   'card mentions enrich only the receiving agent and Hydra, without attaching or messaging the reference',
   async () => {
-    const f = fixture()
+    const f = await fixture()
 
     try {
       commands.hydra([
@@ -455,7 +466,7 @@ test(
 test(
   'mention-only messages on unassigned cards save context without starting or contacting a worker',
   async () => {
-    const f = fixture()
+    const f = await fixture()
 
     try {
       const receipt = await sendTaskMessage({
