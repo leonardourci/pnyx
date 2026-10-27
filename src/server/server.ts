@@ -1891,7 +1891,8 @@ async function mountOwnedHydra({
   let scheduled = false
 
   // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
-  const workers = new Set<ChildProcess>()
+  // The value says whether shutdown may kill the worker: only a follow, which the next run repeats.
+  const workers = new Map<ChildProcess, boolean>()
 
   const startWorker = ({
     args,
@@ -1924,7 +1925,10 @@ async function mountOwnedHydra({
         stdout,
       }),
     )
-    workers.add(child)
+    workers.set(
+      child,
+      args[0] === 'inbox-follow',
+    )
     child.once(
       'close',
       () => workers.delete(child),
@@ -1936,7 +1940,7 @@ async function mountOwnedHydra({
     reject,
   ) => {
     if (closed) {
-      return reject(new Error('server is closed'))
+      return reject(new Error('Pnyx is shutting down'))
     }
 
     startWorker({
@@ -1948,15 +1952,19 @@ async function mountOwnedHydra({
     })
   })
 
-  // No worker starts once closed is set, so the set only shrinks while this waits.
+  // No worker starts once closed is set, so the map only shrinks while this waits.
+  // A send is never killed here: its receipt is written after the send, and a queued reply without one stays stuck.
   const joinWorkers = async () => {
     const killer = setTimeout(
-      () => workers.forEach(child => child.kill('SIGKILL')),
+      () => workers.forEach((
+        killable,
+        child,
+      ) => killable && child.kill('SIGKILL')),
       WORKER_GRACE_MS,
     )
 
     while (workers.size > 0) {
-      await new Promise(resolve => [...workers][0]!.once(
+      await new Promise(resolve => [...workers.keys()][0]!.once(
         'close',
         resolve,
       ))
@@ -2081,6 +2089,10 @@ async function mountOwnedHydra({
                     hydraId,
                   ],
                 })
+              }
+
+              if (closed) {
+                return
               }
 
               await followUpReplies({
