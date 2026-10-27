@@ -29,7 +29,7 @@ One folder per feature. Code for a feature lives in its folder. Usage and setup 
 | `src/cli/` | the `pnyx-axi` entry and its commands |
 | `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the command registry, the daemon and its transport |
 | `src/core/` | feature event types and Hydra rules |
-| `src/store/` | storage helpers: private folders, durable writes, the writer lock and spool files, plus owner memory and retention |
+| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError`, plus owner memory and retention |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | each Hydra's server routes, the host and the agents it runs |
 | `src/thread/` | the transcript and reply thread reader |
