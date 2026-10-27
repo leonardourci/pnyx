@@ -172,7 +172,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 - [pnyx-axi reference](docs/pnyx-axi.md): commands, projects, tasks, workers, memory and the interface.
 - [Hooks and sessions](docs/hooks-and-sessions.md): attach existing agents and deliver replies.
 - [Data, privacy and uninstall](docs/data.md): storage, retained history and removal.
-- [Development](docs/development.md): build, tests, verification and browser prerequisites.
+- [Development](docs/development.md): build, tests and verification.
 - [Contributing](CONTRIBUTING.md): propose a change and open a pull request.
 - [Security](SECURITY.md): report a vulnerability privately.
 

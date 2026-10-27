@@ -17,7 +17,7 @@ pnpm test
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity and browser endpoints, and limits process concurrency. See the [test harness](../test/README.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity, and limits process concurrency. See the [test harness](../test/README.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots.
 
 ## Run a development server
 
@@ -56,6 +56,8 @@ Only when every selected check passes, the tree stays clean, HEAD matches the pu
 Use `pnpm verify --checks-only` when the environment has read-only GitHub access. It runs the same freshness check and automated checks, including local lint fixes, and prints the review checklist paths. It never reads or edits the PR description and never writes a marker. A pass requires successful checks, a clean working tree and unchanged HEAD. Review declarations and the normal marker still belong to the PR readiness process.
 
 The "pnpm verify" check in the "Verify" workflow (`.github/workflows/verify.yml`) runs for every PR and installs and builds nothing. It runs on `pull_request_target`, so the workflow and its checker scripts come from the base branch and PR code is never checked out. It reads the PR, derives the required review boxes from the PR files and requires them to remain ticked, and fails unless the marker names the PR head, so a new push voids it, with two exceptions: commits after the run that change only docs, and a head whose git tree a recorded run already tested, on this PR or on another PR linked to the commit. Docs here means files under `docs/` and Markdown outside `skills/` and `test/fixtures/`, since the shipped skills and test fixtures are read by Pnyx and its tests. Docs-only PRs still need the marker from `pnpm verify`. Only `pnpm verify` writes the line. Anyone who can edit the description could forge a pass, so it is an honesty check, not a signature.
+
+The "Lint, build and tests" check (`.github/workflows/tests.yml`) runs the typecheck, lint, build, unit tests and flows on GitHub. It runs on `pull_request`, forks included, with a read-only token and no secrets, and starts only after a maintainer approves it in the `ci` environment. A newer push cancels the older run. A docs-only change skips the tests, using the same selection as `pnpm verify`, and still reports success. It does nothing while the repository is private.
 
 Verification does not merge a PR. Merging requires explicit approval.
 
