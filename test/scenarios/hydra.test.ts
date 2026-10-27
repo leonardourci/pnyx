@@ -1,3 +1,4 @@
+import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -219,18 +220,18 @@ test(
       readFileSync(
         join(
           first.cwd,
-          '.claude/skills/inscribe/SKILL.md',
+          `.claude/skills/${INSCRIBE_SKILL}/SKILL.md`,
         ),
         'utf8',
       ),
-      /^---\nname: inscribe/,
+      new RegExp(String.raw`^---\nname: ${INSCRIBE_SKILL}`),
     )
     assert.equal(
       existsSync(join(
         first.cwd,
-        '.agents/skills/pnyx-hydra',
+        `.agents/skills/${ORCHESTRATE_SKILL}`,
       )),
-      false,
+      true,
     )
     assert.match(
       first.received[0]!,

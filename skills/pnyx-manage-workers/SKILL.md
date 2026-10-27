@@ -1,6 +1,9 @@
 ---
-name: pnyx-hydra-workers
+name: pnyx-manage-workers
 description: Use when you are Hydra and are about to start, queue, continue, replace, move or detach a task's worker, remove a task copy, or answer a worker's permission request.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Hydra workers

@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { readOwnerEntries } from '../store/owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
@@ -409,7 +410,7 @@ export function checkProjectMemoryBudget({
     throw new HydraError({
       message: `Project memory would use ${used} of ${PROJECT_MEMORY_BUDGET} characters`,
       code: 'MEMORY_FULL',
-      help: ['Load inscribe: merge, shorten or forget project entries, then save again'],
+      help: [`Load ${INSCRIBE_SKILL}: merge, shorten or forget project entries, then save again`],
     })
   }
 
