@@ -38,6 +38,8 @@ const BIN = join(
 )
 // Waits end as soon as their condition holds; the bound only has to outlast a heavily loaded machine.
 const TIMEOUT_MS = 30000
+const watchdog = setTimeout
+const clearWatchdog = clearTimeout
 // CLI children start a fresh node process; under a parallel test run that can take far longer than a poll.
 const CLI_TIMEOUT_MS = 30000
 
@@ -203,7 +205,7 @@ function inbox<T>() {
           resolve,
           reject,
         ) => {
-          const timer = setTimeout(
+          const timer = watchdog(
             () => {
             // A wait that timed out must not swallow the message that arrives after it.
               waiting.splice(
@@ -216,7 +218,7 @@ function inbox<T>() {
           ).unref()
 
           const waiter = ({ m }: { m: T }) => {
-            clearTimeout(timer)
+            clearWatchdog(timer)
             resolve(m)
           }
 
@@ -489,10 +491,35 @@ async function tab({
       }
     },
     async idle() {
-      await new Promise(r => setTimeout(
-        r,
-        150,
-      ))
+      const id = `drain-${crypto.randomUUID()}`
+      ws.send(JSON.stringify({
+        type: 'command',
+        id,
+        name: 'history',
+        args: [
+          '--limit',
+          '1',
+        ],
+      }))
+      const unexpected: ServerMessage[] = []
+      await waitForMessage({
+        hydraId,
+        what: `drain receipt ${id}`,
+        next: ({ ms }) => main.next({ ms }),
+        matches: ({ message }) => {
+          if (message.type === 'receipt' && message.id === id) {
+            return true
+          }
+
+          unexpected.push(message)
+
+          return false
+        },
+      })
+      assert.deepEqual(
+        unexpected,
+        [],
+      )
       assert.deepEqual(
         queue,
         [],
@@ -1629,7 +1656,7 @@ test(
 
 test(
   'a server.json whose pid is gone counts as not running at once, even when its port accepts and never answers',
-  async () => {
+  async t => {
     const gone = spawn(
       process.execPath,
       [
@@ -1666,12 +1693,21 @@ test(
     )
 
     try {
-      const asked = Date.now()
+      const probe = t.mock.method(
+        globalThis,
+        'fetch',
+        async () => {
+          throw new Error('a dead PID must not be probed')
+        },
+      )
       assert.equal(
         await readServer({ hydraId: 'default' }),
         null,
       )
-      assert.ok(Date.now() - asked < 5000)
+      assert.equal(
+        probe.mock.callCount(),
+        0,
+      )
     } finally {
       silent.close()
     }
@@ -2901,8 +2937,8 @@ test(
 )
 
 test(
-  'a stopped server leaves no open handles, even with Hydra and transcript changes still in flight',
-  async () => {
+  'a stopped server closes its sockets and watchers with Hydra and transcript changes still in flight',
+  async context => {
     const fixture = seedWebFixture({ home: process.env.PNYX_HOME! })
     const card = fixture.state.keys.layout!
     const input = join(
@@ -2923,12 +2959,31 @@ test(
         input,
       ],
     })
-    const settle = () => new Promise(r => setTimeout(
-      r,
-      300,
-    ))
-    await settle()
-    const before = process.getActiveResourcesInfo().sort()
+    const watch = fs.watch
+    const watchers: Promise<unknown[]>[] = []
+    context.mock.method(
+      fs,
+      'watch',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.watch's signature.
+      (...args: Parameters<typeof fs.watch>) => {
+        const watcher = watch(...args)
+
+        if (String(args[0]).startsWith(process.env.PNYX_HOME!)) {
+          watchers.push(once(
+            watcher,
+            'close',
+            { signal: AbortSignal.timeout(TIMEOUT_MS) },
+          ))
+        }
+
+        return watcher
+      },
+    )
+    syncBuiltinESMExports()
+    context.after(() => {
+      context.mock.restoreAll()
+      syncBuiltinESMExports()
+    })
     server = await startServer({ hydraId: 'default' })
     const t = await tab(); await t.next()
     assert.ok(await t.latest({ card }))
@@ -2967,12 +3022,31 @@ test(
         'done',
       ],
     })
+    const port = server.port
+    const socket = socketPath({ hydraId: 'default' })
+    const closed = once(
+      t.ws,
+      'close',
+    )
     await server.close()
     server = undefined
-    await settle()
-    assert.deepEqual(
-      process.getActiveResourcesInfo().sort(),
-      before,
+    await closed
+    assert.ok(
+      watchers.length > 0,
+      'the server opened native watchers',
+    )
+    await Promise.all(watchers)
+    assert.equal(
+      existsSync(socket),
+      false,
+    )
+    assert.equal(
+      await readServer({ hydraId: 'default' }),
+      null,
+    )
+    await assert.rejects(
+      fetch(`http://127.0.0.1:${port}/health`),
+      /fetch failed/,
     )
   },
 )
@@ -4057,7 +4131,7 @@ test(
 
 test(
   'a running server hides an idle Done task when its delay passes, with no other event',
-  async () => {
+  async t => {
     cli({
       args: [
         'hydra',
@@ -4080,19 +4154,41 @@ test(
       ],
     })
     const id = loadHydra({ hydraId: 'default' }).state.keys.expire!
-    server = await startServer({ hydraId: 'default' })
     cli({
       args: [
         'hydra',
         'set',
         '--done-after-hours',
-        '0.0003',
+        '1',
       ],
     })
-    await until({
-      check: () => loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden || undefined,
-      what: 'idle Done expiry',
+    const doneAt = Date.parse(loadHydra({ hydraId: 'default' }).state.cards[id]!.doneAt!)
+    t.mock.timers.enable({
+      apis: [
+        'Date',
+        'setTimeout',
+      ],
+      now: doneAt,
     })
+    server = await startServer({ hydraId: 'default' })
+    const page = await tab()
+    await page.next()
+    t.mock.timers.tick(60 * 60 * 1000 - 1)
+    await page.idle()
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden,
+      undefined,
+    )
+    t.mock.timers.tick(1)
+    const event = await page.next()
+    assert.equal(
+      event.type,
+      'event',
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden,
+      true,
+    )
   },
 )
 
