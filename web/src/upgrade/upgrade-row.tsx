@@ -98,7 +98,7 @@ export function UpgradeRow({
         {operation.state === 'restarting' && (
           <span className="upgrade-stop-note">
             <Button variant="surface" className="upgrade-fix" disabled><Icon name="stop" size={12} />Stop</Button>
-            Restarting; this can't be stopped now.
+            Can't stop during the restart.
           </span>
         )}
         {needsFix && operation.error && <pre className="upgrade-error">{operation.error}</pre>}
