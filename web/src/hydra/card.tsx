@@ -1,7 +1,7 @@
 import { AgentDetails } from './agent-details.tsx'
 import { answerPrompt } from '../../../src/core/answer.ts'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { ReminderEditor, ReminderLabel } from './reminder.tsx'
+import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
@@ -125,7 +125,11 @@ export function HydraCard({
   const [
     reminding,
     setReminding,
-  ] = useState(false)
+  ] = useState<{
+    version: number
+    draft?: ReminderDraft
+  } | null>(null)
+  const reminderVersion = useRef(0)
   const [
     now,
     setNow,
@@ -312,7 +316,14 @@ export function HydraCard({
               ><Icon name="renamed" size={15} />
               </Button>
             </Tooltip>
-            <Tooltip content="Remind"><Button aria-label="Remind" disabled={!connected} onClick={() => setReminding(true)}><Icon name="reminder" size={15} /></Button></Tooltip>
+            <Tooltip content="Remind">
+              <Button
+                aria-label="Remind"
+                disabled={!connected}
+                onClick={() => setReminding({ version: ++reminderVersion.current })}
+              ><Icon name="reminder" size={15} />
+              </Button>
+            </Tooltip>
             <Tooltip content="Hide">
               <Button
                 aria-label="Hide"
@@ -412,7 +423,25 @@ export function HydraCard({
                 card={card}
                 command={command}
                 connected={connected}
-                close={() => setReminding(false)}
+                draft={reminding.draft}
+                close={() => setReminding(null)}
+                submitted={() => {
+                  setReminding(null)
+
+                  if (selected) {
+                    setMetadataOpen(true)
+                  }
+                }}
+                recover={({ draft }) => {
+                  if (reminderVersion.current === reminding.version) {
+                    setReminding({
+                      ...reminding,
+                      draft,
+                    })
+                  }
+
+                  notify({ text: draft.error })
+                }}
               />
             )}
           </div>
