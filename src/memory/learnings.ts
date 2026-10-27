@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { HydraError, type HydraState } from '../core/model.ts'
 import { hydraConfig } from '../core/hydra.ts'
 
@@ -344,7 +345,7 @@ export function learningDigest({
   })
 
   if (stale.size) {
-    text.push('Load inscribe: recheck stale learnings, confirm with session evidence or archive; old versions stay recoverable in the memory log.')
+    text.push(`Load ${INSCRIBE_SKILL}: recheck stale learnings, confirm with session evidence or archive; old versions stay recoverable in the memory log.`)
   }
 
   return text.join('\n')

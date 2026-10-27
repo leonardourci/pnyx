@@ -6,7 +6,7 @@ import { cardLanding, failedChecks, HYDRA_ACTOR, pendingChecks, ranChecks, type 
 import { columnCards } from './tasks.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
-// The fixed words a reason line names its fact with; the pnyx-hydra skill and docs/cli.md list them.
+// The fixed words a reason line names its fact with; the orchestrator skill and docs/cli.md list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'
   | 'approved merge is green' | 'quiet' | 'wait ended' | 'not confirmed' | 'reminder due' | 'queue released'
   | 'instruction unread' | 'prerequisite' | 'queued' | 'kind' | 'permission' | 'slot free' | 'timed review'

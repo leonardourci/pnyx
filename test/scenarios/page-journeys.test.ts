@@ -11,6 +11,30 @@ const pnyx = scenarioGroup({ incorporateSteering: true })
 const chrome = browserGroup()
 type Scenario = Awaited<ReturnType<typeof pnyx.scenario>>
 
+function installFixtureSkill() {
+  for (const folder of [
+    process.env.CLAUDE_CONFIG_DIR!,
+    process.env.CODEX_HOME!,
+  ]) {
+    const skill = join(
+      folder,
+      'skills',
+      'fixture-cli',
+    )
+    mkdirSync(
+      skill,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        skill,
+        'SKILL.md',
+      ),
+      '---\nname: fixture-cli\ndescription: Fixture command\n---\n',
+    )
+  }
+}
+
 const openHydra = ({ s }: { s: Scenario }) => chrome.open({ url: `http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/` })
 
 const hydraFinished = async ({
@@ -120,6 +144,7 @@ test(
 test(
   'the composer completes a session command, turns a mention and attachments into cards, and Hydra gets them in one message',
   async () => {
+    installFixtureSkill()
     const s = await pnyx.scenario()
     await s.owner({
       args: [
@@ -147,18 +172,18 @@ test(
     })
     const page = await openHydra({ s })
     await page.click({ selector: '.hydra-chat textarea' })
-    await page.type({ text: '/ins' })
+    await page.type({ text: '/fixture-c' })
     await page.shows({
-      what: 'Hydra’s own skill among the grouped suggestions',
+      what: 'the fixture skill among the grouped suggestions',
       check: () => [...document.querySelectorAll('.slash-menu [role=option]')]
-        .find(o => o.querySelector('strong')?.textContent === '/inscribe'
-          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Pnyx Hydra'),
+        .find(o => o.querySelector('strong')?.textContent === '/fixture-cli'
+          && document.querySelector('.slash-menu .picker-group')?.textContent === 'Global · .claude'),
     })
     await page.press({ key: 'ArrowDown' })
     await page.press({ key: 'Enter' })
     await page.shows({
       what: 'the skill badge in the draft',
-      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/inscribe')
+      check: () => document.querySelector('.hydra-chat .draft-skill')?.textContent?.includes('/fixture-cli')
         && !document.querySelector('.slash-menu'),
     })
 
@@ -226,7 +251,7 @@ test(
       check: () => {
         const mine = [...document.querySelectorAll('.hydra-chat .message.mine')].at(-1)
 
-        return mine?.querySelector('.draft-skill')?.textContent?.includes('/inscribe') && mine.textContent?.includes('what we chose for') && mine.textContent.includes('Ship the layout')
+        return mine?.querySelector('.draft-skill')?.textContent?.includes('/fixture-cli') && mine.textContent?.includes('what we chose for') && mine.textContent.includes('Ship the layout')
           && mine.textContent.includes('Remember the grid.') && mine.querySelector('img')
           && !document.querySelector('.composer .draft-chip')
       },
@@ -351,7 +376,7 @@ test(
     assert.ok(sent)
     assert.match(
       sent,
-      /\n\n\/inscribe what we chose for /,
+      /\n\n\/fixture-cli what we chose for /,
     )
     assert.ok(sent.includes('Ship the layout'))
     assert.ok(sent.includes('Remember the grid.'))
@@ -371,6 +396,7 @@ for (const harness of [
   test(
     `sent ${harness} skill mentions follow native boundaries and survive a reload`,
     async () => {
+      installFixtureSkill()
       const s = await pnyx.scenario()
       await s.owner({
         args: [
@@ -382,8 +408,8 @@ for (const harness of [
         ],
       })
       const text = harness === 'codex'
-        ? 'Please ($inscribe), then `$inscribe` and\n\n```text\n$inscribe\n```\n\n$not-a-known-skill stays literal.\n\n[Skill documentation](https://example.com/$inscribe)\n\n[$inscribe]\n\n[$inscribe]: https://example.com/guide'
-        : '/inscribe first, then /inscribe safely. /inscribe, and /not-a-known-skill stay literal.\n\n**prefix**/inscribe and **/inscribe** safely. [link](/inscribe) [**/inscribe**](https://example.com). `/inscribe` and\n\n```text\n/inscribe\n```'
+        ? 'Please ($fixture-cli), then `$fixture-cli` and\n\n```text\n$fixture-cli\n```\n\n$not-a-known-skill stays literal.\n\n[Skill documentation](https://example.com/$fixture-cli)\n\n[$fixture-cli]\n\n[$fixture-cli]: https://example.com/guide'
+        : '/fixture-cli first, then /fixture-cli safely. /fixture-cli, and /not-a-known-skill stay literal.\n\n**prefix**/fixture-cli and **/fixture-cli** safely. [link](/fixture-cli) [**/fixture-cli**](https://example.com). `/fixture-cli` and\n\n```text\n/fixture-cli\n```'
       await s.owner({
         args: [
           'hydra',
@@ -420,7 +446,7 @@ for (const harness of [
           })
           assert.equal(
             href,
-            'https://example.com/$inscribe',
+            'https://example.com/$fixture-cli',
           )
           await page.shows({
             what: 'the reference-style skill link',
@@ -437,6 +463,7 @@ for (const harness of [
 test(
   'sent Codex skill mentions remain readable in literal HTML',
   async () => {
+    installFixtureSkill()
     const s = await pnyx.scenario()
     await s.owner({
       args: [
@@ -447,7 +474,7 @@ test(
         'codex',
       ],
     })
-    const text = 'Use $inscribe here <!-- $inscribe -->.\n\n<div>$inscribe</div>'
+    const text = 'Use $fixture-cli here <!-- $fixture-cli -->.\n\n<div>$fixture-cli</div>'
     await s.owner({
       args: [
         'hydra',
