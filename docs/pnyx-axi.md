@@ -4,6 +4,7 @@
 
 ## Contents
 
+- [Output and errors](#output-and-errors)
 - [Install](#install)
 - [Projects and landing](#projects)
 - [Run the server](#run)
@@ -14,6 +15,22 @@
 - [Dispatch, checks and wakes](#kinds-the-light-check-and-the-worker-contract)
 - [Using Pnyx](#using-pnyx)
 - [Retention and appearance](#retention-and-appearance)
+
+## Output and errors
+
+`pnyx-axi` follows [AXI](https://axi.md/): it prints [TOON](https://toonformat.dev/) on stdout, never prompts, and writes nothing an agent needs to stderr.
+
+- Bare `pnyx-axi` prints the Hydra summary: the executable, server state, attached projects, cards per column and the first cards.
+- `pnyx-axi <command> <subcommand> --help` prints that subcommand's usage and notes; `pnyx-axi <command> --help` prints the whole command.
+- Lists show a few fields per row and the total, such as `count: 20 of 85 total`. `task list` shows id, title, project and column; `--fields status,worker` adds more.
+- Detail views cut long text to 1,000 characters and say how long it was, such as `… (truncated, 4200 chars total)`; `--full` shows the whole record.
+- An empty answer is explicit, such as `tasks: "none: no tasks on this Hydra"`. A write that changes nothing, such as attaching an attached project again, returns `event: "none: unchanged"` and exits 0.
+- Errors print on stdout as `error`, `code` (`VALIDATION_ERROR`, `NOT_FOUND`, `CONFLICT` and others) and `help` lines with the command that fixes them. An unknown flag is named and the subcommand's valid flags are listed.
+- Exit codes: 0 for success and no-ops, 1 for errors, 2 for usage errors.
+- `help` lines suggest next commands, carrying `--hydra` forward and leaving runtime values as `<id>`.
+- Writes take `--event-id <id>` as an idempotency key and `--if-revision <n>` for an expected revision. Risky changes return a token to repeat with `--confirm <token>`.
+
+The reporting hooks print nothing, except at session start: in a folder inside an attached project, they print that project's open tasks (`pnyx-axi context`) into the new session. Agents learn the commands from the `pnyx-cli` skill (`pnyx-axi setup skills`).
 
 ## Install
 
@@ -336,12 +353,12 @@ Preferences, shortcuts and layout change from the Oracle; projects, agents, inte
 - **Oracle:** the left-panel Oracle field and `pnyx-axi oracle "<words>"` find cards by keyword across titles, links, events, notes and transcripts, matching word stems, synonyms and, when nothing matches exactly, near spellings.
 The panel field filters tasks in place and lists matching task conversations and Hydra’s chat in a floating list directly beneath it, without dimming or moving the page. Escape closes the list and clears the filter. Settings change directly in their result rows, and layout actions are available there too; start a query with `>` to show only settings and actions. Hidden sessions stay available through `pnyx-axi history` and `pnyx-axi oracle`. ⌘K (Ctrl+K elsewhere) focuses the same field, including from a reply composer and when the panel is hidden.
 
-Run `pnyx-axi --help` for every command.
+Run `pnyx-axi --help` for the main commands and `pnyx-axi <command> --help` for every subcommand of one.
 
 ## Retention and appearance
 
 Done cards are hidden from their Hydra after 24 continuous hours in Done. They are never deleted: their tasks, events and conversations stay in recorded history and CLI Oracle. Set the delay for each Hydra with `pnyx-axi hydra set --hydra <id> --done-after-hours <hours>`; `0` keeps Done cards visible. Per-task overrides are available through `pnyx-axi task hide-after <task> <hours|default>` (`0` keeps it visible). Done cards show “done · 2h ago” until their last six hours, then “hidden in 3h”. Other columns never fade. Run `pnyx-axi task unhide <id> --hydra <id>`; a restored card stays visible until it moves out of Done and enters again, or you choose a new hide time. A reopened expired card returns automatically.
 
-Cards show a compact project label beside their short title. Firstmate tasks use the item's project and omit a matching leading `<project>:` from the displayed title. Other tasks accept `pnyx-axi task create --title <title> --project <name>` or `pnyx-axi task rename <id> --project <name>`; an empty project value clears the label. Project labels and task tags receive a curated color on the next write, saved in the event log and reused across the Hydra. Labels use a soft fill and outline and remain searchable in the Hydra and Oracle.
+Cards show a compact project label beside their short title. Firstmate tasks use the item's project and omit a matching leading `<project>:` from the displayed title. Other tasks take an attached project with `pnyx-axi task create --title <title> --project <name|path>`; `pnyx-axi task rename <id> --project <name>` sets any label, and an empty value clears it. Project labels and task tags receive a curated color on the next write, saved in the event log and reused across the Hydra. Labels use a soft fill and outline and remain searchable in the Hydra and Oracle.
 
 The interface and conversations use Inter with a system sans-serif fallback; the brand and pane headings use bundled GFS Neohellenic, and code uses JetBrains Mono. Settings keeps UI, chat and code font-size preferences. Column wells and headings use slate for Queued, blue for In progress, gold for Needs you, violet for Parked and green for Done, with an icon and text identifying each state. Settings → About Pnyx → License notices lists the font and icon licenses.
