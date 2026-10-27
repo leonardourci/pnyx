@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS } from '../scripts/required-checks.ts'
-import { checkPullRequest, markerBlockers, withMarker } from '../scripts/marker.ts'
+import { requiredChecks, mechanicalDeclaration, REVIEW_CHECKLISTS } from './required-checks.ts'
+import { checkPullRequest, markerBlockers, withMarker } from './marker.ts'
 
 const rows = [
   {

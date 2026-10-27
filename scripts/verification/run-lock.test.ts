@@ -5,7 +5,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { holdRunLock } from '../scripts/run-lock.ts'
+import { holdRunLock } from './run-lock.ts'
 
 const root = mkdtempSync(join(
   tmpdir(),
@@ -33,7 +33,7 @@ test(
         '--input-type=module',
         '-e',
         `import { holdRunLock } from ${JSON.stringify(new URL(
-          '../scripts/run-lock.ts',
+          './run-lock.ts',
           import.meta.url,
         ).href)}
         await holdRunLock({ name: 'first', path: ${JSON.stringify(lock)} })
@@ -105,7 +105,7 @@ test(
         '--input-type=module',
         '-e',
         `import { holdRunLock } from ${JSON.stringify(new URL(
-          '../scripts/run-lock.ts',
+          './run-lock.ts',
           import.meta.url,
         ).href)}
         await holdRunLock({ name: 'nested', path: ${JSON.stringify(lock)}, waiting: () => process.exit(3) })`,

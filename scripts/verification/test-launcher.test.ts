@@ -8,8 +8,8 @@ test(
     const result = spawnSync(
       process.execPath,
       [
-        'scripts/test.ts',
-        'test/fixtures/launcher-probe.ts',
+        'scripts/verification/test.ts',
+        'scripts/verification/fixtures/launcher-probe.ts',
       ],
       {
         env: {

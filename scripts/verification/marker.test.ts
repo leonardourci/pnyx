@@ -1,4 +1,4 @@
-import { CLI_SKILL } from '../src/integrations/skills/names.ts'
+import { CLI_SKILL } from '../../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
@@ -10,7 +10,7 @@ import {
   reviewBlockers,
   type PullRequest,
   withMarker,
-} from '../scripts/marker.ts'
+} from './marker.ts'
 
 const marker = {
   head_sha: 'tested',

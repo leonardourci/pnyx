@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
-import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
 
@@ -11,47 +11,41 @@ const MINUTE_MS = 60_000
 const LANE_TIMEOUT_MS = 60 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
-  'action-label',
-  'card-open',
-  'card-states',
-  'chat',
-  'conversation',
-  'decide',
-  'decisions',
-  'dependencies',
-  'help',
-  'draft',
-  'keyboard',
-  'lavish-output',
-  'marker',
-  'memory-budgets',
-  'model-picker',
-  'optimistic',
-  'owner-ask',
-  'permissions',
-  'pnyx-action',
-  'presence',
-  'reducer',
-  'tasks',
-  'usage-limits',
-  'wake-reasons',
-].map(name => resolve(`test/${name}.test.ts`)))
-
-function discover({ folder }: { folder: string }) {
-  return readdirSync(folder).filter(name => name.endsWith('.test.ts'))
-    .sort()
-    .map(name => `${folder}/${name}`)
-}
+  'test/action-label.test.ts',
+  'test/card-open.test.ts',
+  'test/card-states.test.ts',
+  'test/chat.test.ts',
+  'test/conversation.test.ts',
+  'test/decide.test.ts',
+  'test/decisions.test.ts',
+  'test/dependencies.test.ts',
+  'test/help.test.ts',
+  'test/draft.test.ts',
+  'test/keyboard.test.ts',
+  'test/lavish-output.test.ts',
+  'scripts/verification/marker.test.ts',
+  'test/memory-budgets.test.ts',
+  'test/model-picker.test.ts',
+  'test/optimistic.test.ts',
+  'test/owner-ask.test.ts',
+  'test/permissions.test.ts',
+  'test/pnyx-action.test.ts',
+  'test/presence.test.ts',
+  'test/reducer.test.ts',
+  'test/tasks.test.ts',
+  'test/usage-limits.test.ts',
+  'test/wake-reasons.test.ts',
+].map(file => resolve(file)))
 
 const inputs = process.argv.slice(2)
 const options = inputs.filter(input => input.startsWith('--test-name-pattern='))
 const files = inputs.filter(input => !options.includes(input)).flatMap(input => {
   if (input === 'unit') {
-    return discover({ folder: 'test' })
+    return discover({ lane: 'unit' })
   }
 
   if (input === 'scenarios') {
-    return discover({ folder: 'test/scenarios' })
+    return discover({ lane: 'scenarios' })
   }
 
   return input
@@ -66,7 +60,6 @@ if (inputs.includes('unit') || inputs.includes('scenarios')) {
   await holdRunLock({ name: 'tests' })
 }
 
-const flow = ({ file }: { file: string }) => file.includes('test/scenarios/')
 const lanes = [
   {
     name: 'pure',
@@ -80,7 +73,7 @@ const lanes = [
     testTimeout: 3 * MINUTE_MS,
     concurrency: HEAVY_CONCURRENCY,
     nodeArgs: [],
-    files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !flow({ file })),
+    files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !isFlow({ file })),
   },
   {
     name: 'flows',
@@ -88,7 +81,7 @@ const lanes = [
     concurrency: 1,
     // One process, so every flow shares the one server its group starts.
     nodeArgs: ['--test-isolation=none'],
-    files: files.filter(file => flow({ file })),
+    files: files.filter(file => isFlow({ file })),
   },
 ]
 const isolated = createTestEnvironment()
