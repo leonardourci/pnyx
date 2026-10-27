@@ -179,6 +179,8 @@ test(
         script: `
       await page.open(${JSON.stringify(url)});
       await page.wait('.waiting-decisions button');
+      // Until the latest history page arrives, the chat cannot tell which questions are older.
+      await page.until(() => [...document.querySelectorAll('.hydra-stream button')].some(button => button.textContent === 'Older messages'));
       console.log(await page.eval(() => !document.querySelector('[data-entry-id="ask:chat-ui-task:old-question"]')));
       await page.click('.waiting-decisions [aria-haspopup="dialog"]');
       await page.wait('.waiting-decisions [role="dialog"] li button:not(:disabled)');
