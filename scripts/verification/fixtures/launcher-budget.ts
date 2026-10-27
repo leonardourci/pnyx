@@ -1,5 +1,5 @@
 import { appendFileSync, existsSync } from 'node:fs'
-import { until } from '../scenarios/harness.ts'
+import { until } from '../../../test/scenarios/harness.ts'
 
 export async function budgetProbe({
   events,

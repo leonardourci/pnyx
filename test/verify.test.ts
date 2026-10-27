@@ -471,14 +471,14 @@ test(
         {
           command: 'node',
           args: [
-            'scripts/test.ts',
+            'scripts/verification/test.ts',
             'unit',
           ],
         },
         {
           command: 'node',
           args: [
-            'scripts/test.ts',
+            'scripts/verification/test.ts',
             'scenarios',
           ],
         },
@@ -746,14 +746,14 @@ test(
         {
           command: 'node',
           args: [
-            'scripts/test.ts',
+            'scripts/verification/test.ts',
             'unit',
           ],
         },
         {
           command: 'node',
           args: [
-            'scripts/test.ts',
+            'scripts/verification/test.ts',
             'scenarios',
           ],
         },
@@ -1117,7 +1117,7 @@ for (const {
           tests.map(call => call.args),
           [
             [
-              'scripts/test.ts',
+              'scripts/verification/test.ts',
               'test/new.test.ts',
             ],
           ],
@@ -1153,7 +1153,7 @@ for (const {
         expectedChecks.push({
           command: 'node',
           args: [
-            'scripts/test.ts',
+            'scripts/verification/test.ts',
             ...expectedTests,
           ],
         })
@@ -1166,11 +1166,11 @@ for (const {
           tests.map(call => call.args),
           [
             [
-              'scripts/test.ts',
+              'scripts/verification/test.ts',
               'unit',
             ],
             [
-              'scripts/test.ts',
+              'scripts/verification/test.ts',
               'scenarios',
             ],
           ],
@@ -1209,11 +1209,11 @@ test(
           automated.filter(call => call.command === 'node').map(call => call.args),
           [
             [
-              'scripts/test.ts',
+              'scripts/verification/test.ts',
               'unit',
             ],
             [
-              'scripts/test.ts',
+              'scripts/verification/test.ts',
               'scenarios',
             ],
           ],

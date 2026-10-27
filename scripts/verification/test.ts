@@ -1,53 +1,47 @@
 import { spawnSync } from 'node:child_process'
-import { readdirSync } from 'node:fs'
 import { resolve } from 'node:path'
+import { discoverTests, isScenario } from './discover.ts'
 import { createTestEnvironment } from './test-environment.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
-  'action-label',
-  'card-open',
-  'card-states',
-  'chat',
-  'comment-markers',
-  'conversation',
-  'decide',
-  'decisions',
-  'dependencies',
-  'draft',
-  'keyboard',
-  'lavish-output',
-  'marker',
-  'memory-budgets',
-  'model-picker',
-  'optimistic',
-  'owner-ask',
-  'permissions',
-  'pnyx-action',
-  'presence',
-  'reducer',
-  'tasks',
-  'usage-limits',
-  'wake-reasons',
-].map(name => resolve(`test/${name}.test.ts`)))
-
-function discover({ folder }: { folder: string }) {
-  return readdirSync(folder).filter(name => name.endsWith('.test.ts'))
-    .sort()
-    .map(name => `${folder}/${name}`)
-}
+  'test/action-label.test.ts',
+  'test/card-open.test.ts',
+  'test/card-states.test.ts',
+  'test/chat.test.ts',
+  'test/comment-markers.test.ts',
+  'test/conversation.test.ts',
+  'test/decide.test.ts',
+  'test/decisions.test.ts',
+  'test/dependencies.test.ts',
+  'test/draft.test.ts',
+  'test/keyboard.test.ts',
+  'test/lavish-output.test.ts',
+  'test/marker.test.ts',
+  'test/memory-budgets.test.ts',
+  'test/model-picker.test.ts',
+  'test/optimistic.test.ts',
+  'test/owner-ask.test.ts',
+  'test/permissions.test.ts',
+  'test/pnyx-action.test.ts',
+  'test/presence.test.ts',
+  'test/reducer.test.ts',
+  'test/tasks.test.ts',
+  'test/usage-limits.test.ts',
+  'test/wake-reasons.test.ts',
+].map(path => resolve(path)))
 
 const inputs = process.argv.slice(2)
 const options = inputs.filter(input => input.startsWith('--test-name-pattern='))
 const files = inputs.filter(input => !options.includes(input)).flatMap(input => {
   if (input === 'unit') {
-    return discover({ folder: 'test' })
+    return discoverTests().filter(file => !isScenario({ file }))
   }
 
   if (input === 'scenarios') {
-    return discover({ folder: 'test/scenarios' })
+    return discoverTests().filter(file => isScenario({ file }))
   }
 
   return input
@@ -57,7 +51,7 @@ if (!files.length) {
   throw new Error('Pass unit, scenarios, or explicit test paths')
 }
 
-const serial = ({ file }: { file: string }) => file.includes('test/scenarios/') || file.endsWith('-browser.test.ts')
+const serial = ({ file }: { file: string }) => isScenario({ file }) || file.endsWith('-browser.test.ts')
 const lanes = [
   {
     name: 'pure',

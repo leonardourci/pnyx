@@ -8,12 +8,12 @@ Run the scenarios after a build, one file at a time:
 
 ```sh
 pnpm build
-node scripts/test.ts scenarios
+node scripts/verification/test.ts scenarios
 ```
 
 `pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, stub semantic models, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port, browser endpoint and model settings from the calling shell are discarded. Only PNYX_CHROME and PNYX_BROWSER_TESTS are inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time; process and Git files run two at a time, and scenarios and browser files run one at a time. Tests within a file remain sequential and Node process isolation stays enabled.
 
-For a small batch, pass explicit paths: `node scripts/test.ts test/reminders.test.ts`.
+For a small batch, pass explicit paths: `node scripts/verification/test.ts test/reminders.test.ts`.
 
 `pnpm verify` picks what to run from the files the branch changes (see the root README).
 

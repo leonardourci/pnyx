@@ -84,7 +84,7 @@ const EVERYTHING: Step[] = [
     name: 'unit tests',
     command: 'node',
     args: [
-      'scripts/test.ts',
+      'scripts/verification/test.ts',
       'unit',
     ],
     needs: 'build',
@@ -94,7 +94,7 @@ const EVERYTHING: Step[] = [
     name: 'scenarios',
     command: 'node',
     args: [
-      'scripts/test.ts',
+      'scripts/verification/test.ts',
       'scenarios',
     ],
     needs: 'build',
@@ -228,7 +228,7 @@ function selection({ defaultRef }: { defaultRef: string }) {
         name: testName,
         command: 'node',
         args: [
-          'scripts/test.ts',
+          'scripts/verification/test.ts',
           ...tests,
         ],
         needs: 'build',

@@ -1,9 +1,10 @@
 import assert from 'node:assert/strict'
-import { spawn, spawnSync } from 'node:child_process'
+import { execFileSync, spawn, spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { until } from './scenarios/harness.ts'
+import { until } from '../../test/scenarios/harness.ts'
+import { discoverTests } from './discover.ts'
 import { test } from 'node:test'
 
 test(
@@ -12,8 +13,8 @@ test(
     const result = spawnSync(
       process.execPath,
       [
-        'scripts/test.ts',
-        'test/fixtures/launcher-probe.ts',
+        'scripts/verification/test.ts',
+        'scripts/verification/fixtures/launcher-probe.ts',
       ],
       {
         env: {
@@ -82,6 +83,14 @@ test(
         lane: 'serial',
       },
       {
+        name: 'one.scenario',
+        lane: 'serial',
+      },
+      {
+        name: 'one.e2e',
+        lane: 'serial',
+      },
+      {
         name: 'one-browser',
         lane: 'serial',
       },
@@ -120,6 +129,7 @@ test('budget probe', () => budgetProbe(${JSON.stringify({
       return {
         path,
         gate,
+        lane,
       }
     })
 
@@ -146,7 +156,7 @@ test('budget probe', () => budgetProbe(${JSON.stringify({
     const child = spawn(
       process.execPath,
       [
-        'scripts/test.ts',
+        'scripts/verification/test.ts',
         ...probes.map(probe => probe.path),
       ],
       {
@@ -209,7 +219,9 @@ test('budget probe', () => budgetProbe(${JSON.stringify({
         )
       }
 
-      for (let index = 0; index < 4; index++) {
+      const serialProbes = probes.filter(probe => probe.lane === 'serial').length
+
+      for (let index = 0; index < serialProbes; index++) {
         const started = await until({
           what: `serial probe ${index + 1} to reach its release gate`,
           check: () => {
@@ -318,5 +330,30 @@ test('budget probe', () => budgetProbe(${JSON.stringify({
         },
       )
     }
+  },
+)
+
+test(
+  'discovery finds every test file in the repository',
+  () => {
+    const files = execFileSync(
+      'git',
+      [
+        'ls-files',
+        '--cached',
+        '--others',
+        '--exclude-standard',
+        '--',
+        '*.test.ts',
+      ],
+      { encoding: 'utf8' },
+    ).trim()
+      .split('\n')
+      .sort()
+
+    assert.deepEqual(
+      discoverTests(),
+      files,
+    )
   },
 )
