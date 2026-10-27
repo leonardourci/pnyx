@@ -8,7 +8,9 @@ import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import { HydraError, type HydraEvent } from '../src/core/model.ts'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { acquireLock, hydraDir, hydraIds, loadHydra, repairHydra, withWriter } from '../src/store/hydra-store.ts'
+import { acquireLock, loadHydra, withWriter } from '../src/store/hydra-store.ts'
+import { repairHydra } from '../src/app/repair.ts'
+import { hydraDir, hydraIds } from '../src/app/home-migration.ts'
 import { readEvents } from '../src/app/event-log.ts'
 import { STREAMS, assertGolden, readStream } from '../src/test-harness/streams.ts'
 
@@ -1392,7 +1394,7 @@ test(
     })
     const store = join(
       import.meta.dirname,
-      '../src/store/hydra-store.ts',
+      '../src/app/home-migration.ts',
     )
     const runs = Array.from(
       { length: 6 },

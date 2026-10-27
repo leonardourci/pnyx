@@ -3,7 +3,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/core/hydra.ts'
 import { HELPER_INSTRUCTIONS } from '../../src/helper/runner.ts'
-import { hydraDir } from '../../src/store/hydra-store.ts'
+import { hydraDir } from '../../src/app/home-migration.ts'
 import { browserGroup } from '../../src/test-harness/browser.ts'
 import { openPage, scenarioGroup, until } from '../../src/test-harness/harness.ts'
 

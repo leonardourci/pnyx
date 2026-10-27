@@ -6,7 +6,8 @@ import type { Card } from '../../src/core/model.ts'
 import { emptyHydra, replay } from '../../src/core/reducer.ts'
 import { captureResult, registerSource, commandIdentity, appendSource } from '../../src/external-sources/sources.ts'
 import { steeringClaim } from '../../src/task-inbox/state.ts'
-import { hydraDir, withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/store/hydra-store.ts'
+import { hydraDir } from '../../src/app/home-migration.ts'
 import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()

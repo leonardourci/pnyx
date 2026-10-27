@@ -1,6 +1,7 @@
 import { proposeOwnerCommand } from '../confirmations/commands.ts'
 import { parseArgs } from 'node:util'
-import { DEFAULT_HYDRA, loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../store/hydra-store.ts'
+import { DEFAULT_HYDRA } from '../app/home-migration.ts'
 import { AxiError } from 'axi-sdk-js'
 import { HYDRA_CARD, hydraBypasses } from '../core/hydra.ts'
 import { HYDRA_ACTOR } from '../core/model.ts'

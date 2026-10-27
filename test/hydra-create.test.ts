@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { createHydra } from '../src/server/hydras.ts'
-import { hydraDir } from '../src/store/hydra-store.ts'
+import { hydraDir } from '../src/app/home-migration.ts'
 import { readEvents } from '../src/app/event-log.ts'
 
 test(

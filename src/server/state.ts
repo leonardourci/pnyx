@@ -3,7 +3,8 @@ import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
-import { hydraDir, pnyxHome, withWriter } from '../store/hydra-store.ts'
+import { pnyxHome, withWriter } from '../store/hydra-store.ts'
+import { hydraDir } from '../app/home-migration.ts'
 
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.

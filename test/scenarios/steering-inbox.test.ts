@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Card } from '../../src/core/model.ts'
 import { emptyHydra, replay } from '../../src/core/reducer.ts'
-import { hydraDir } from '../../src/store/hydra-store.ts'
+import { hydraDir } from '../../src/app/home-migration.ts'
 import { scenarioGroup, until } from '../../src/test-harness/harness.ts'
 
 const pnyx = scenarioGroup()

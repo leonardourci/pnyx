@@ -1,6 +1,7 @@
 import { learningConditions } from './learnings.ts'
 import type { HydraState } from '../core/model.ts'
-import { hydraIds, loadHydra } from '../store/hydra-store.ts'
+import { loadHydra } from '../store/hydra-store.ts'
+import { hydraIds } from '../app/home-migration.ts'
 
 export function memoryConditions() {
   const states: Record<string, HydraState> = {}
