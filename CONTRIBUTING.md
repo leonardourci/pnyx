@@ -13,18 +13,30 @@ pnpm install
 pnpm run build
 ```
 
-Use Node 22.13 or newer, the pnpm version pinned in `package.json`, and Chrome for browser journeys. Run Pnyx with an isolated `PNYX_HOME` and an unused port; see [Development](docs/development.md). Follow [AGENTS.md](AGENTS.md) for code conventions and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
+Use Node 22.13 or newer, the pnpm version pinned in `package.json`, and Chrome for the browser scenarios. Run Pnyx with an isolated `PNYX_HOME` and an unused port; see [Development](docs/development.md). Follow [AGENTS.md](AGENTS.md) for code conventions and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
+
+## Pull requests and checks
+
+Commit with Conventional Commits, split by concern, with each area or module in its own commit. Before pushing, apply formatting and run the static checks:
 
 ```sh
 pnpm lint:fix
 pnpm run lint
-pnpm test
 ```
 
-Use Conventional Commits, split by concern, with each area or module in its own commit. Open a pull request against `main` explaining the problem, fix and validation, and link its issue with a line such as `Closes #12`. Include images or a short recording for visible changes.
+Then, in order:
 
-Every PR, including documentation-only changes, needs `pnpm verify` passing locally on its clean, pushed head. Keep your fork's default branch synced with upstream and authenticate GitHub CLI for the upstream PR. Verification fetches origin's default branch and requires your branch to include it; it prints a rebase command if you need to update. It selects checks and reviews from the changed files, as listed in [Verification by change kind](docs/development.md#verification-by-change-kind). Complete the reviews it requires, in order: [review-code](.agents/skills/review-code/SKILL.md), [audit-tests](.agents/skills/audit-tests/SKILL.md), then [deslop](.agents/skills/deslop/SKILL.md). Tick their [PR template](.github/pull_request_template.md) boxes and record what they fixed. Verification records the tested commit in the PR description only after its checks pass and the required boxes are ticked. If formatting changes files, commit and push them, then rerun verification. A mechanical rename or move uses `pnpm verify --mechanical` with a declaration line in the PR description; see [Development](docs/development.md) for details and browser prerequisites.
+1. **Open the pull request.** Push your branch and open a pull request against `main`. Explain the problem, the fix and how you checked it, and link its issue with a line such as `Closes #12`. Add images or a short recording for visible changes.
+2. **Run `pnpm verify` on the pushed branch.** Every pull request needs it, docs-only ones included. Run it from your PR branch with a clean working tree, after your last push. It needs GitHub CLI signed in, and your branch must include your fork's `main`, so keep that synced with upstream; if your branch is behind, it prints the rebase command to run. It looks at the files you changed and picks the checks to match: none for docs, the changed tests for test files, and the full suite (lint, type checks, build, unit tests and browser scenarios) for code. Full runs on one machine take turns, so a second one waits for the first to finish. If it changes formatting, commit, push and run it again.
+3. **Do the reviews it lists, in order:** [review-code](.agents/skills/review-code/SKILL.md), [audit-tests](.agents/skills/audit-tests/SKILL.md), then [deslop](.agents/skills/deslop/SKILL.md). Fix what they find, tick their boxes in the [PR template](.github/pull_request_template.md) and note the fixes in the description. Once the checks pass and the boxes are ticked, `pnpm verify` writes a hidden line in the PR description naming the commit it tested. It writes that line only if the boxes were already ticked when it ran, so run it again if you ticked them afterwards.
 
-GitHub checks must pass before merging. The repository owner reviews and merges with a merge commit.
+A pull request has two GitHub checks:
+
+- **pnpm verify** runs on every push. It runs nothing itself; it confirms that `pnpm verify` passed on that exact commit and that the review boxes are ticked. A new code push needs a new `pnpm verify` run.
+- **The full test run** runs the test suite on GitHub. It starts only after a maintainer approves it.
+
+Both must pass before merging. The repository owner reviews and merges with a merge commit. [Development](docs/development.md#verification) has the details, including which checks each kind of change runs and `pnpm verify --mechanical` for renames and moves.
+
+## Reporting bugs
 
 For bugs, include the Pnyx version, OS, harness, reproduction steps, expected behavior and actual behavior. Use made-up tasks and an isolated home for a reproduction; remove private paths, transcripts, tokens and account details from logs.
