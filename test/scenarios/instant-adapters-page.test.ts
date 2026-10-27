@@ -28,7 +28,7 @@ for (const outcome of [
         check: ({ outcome }) => {
           const send = WebSocket.prototype.send
           const control = window as unknown as {
-            release(): void
+            release(): boolean
             disconnect(): void
             creates: string[]
             renames: number
@@ -46,20 +46,31 @@ for (const outcome of [
               control.attempt = message.args[message.args.indexOf('--event-id') + 1]
 
               if (control.creates.length === 1) {
-                control.release = () => send.call(
-                  this,
-                  [
-                    'refused',
-                    'newer-draft',
-                  ].includes(outcome) ? JSON.stringify({
-                      ...message,
-                      args: [
-                        ...message.args,
-                        '--parent',
-                        'missing-parent',
-                      ],
-                    }) : data,
-                )
+                // Release sends only on an open socket and says whether it did, so the
+                // release step waits until the page's send has reached a live hold.
+                control.release = () => {
+                  if (this.readyState !== WebSocket.OPEN) {
+                    return false
+                  }
+
+                  send.call(
+                    this,
+                    [
+                      'refused',
+                      'newer-draft',
+                    ].includes(outcome) ? JSON.stringify({
+                        ...message,
+                        args: [
+                          ...message.args,
+                          '--parent',
+                          'missing-parent',
+                        ],
+                      }) : data,
+                  )
+
+                  return true
+                }
+
                 control.disconnect = () => this.close()
 
                 return
@@ -164,17 +175,17 @@ for (const outcome of [
         arg: { outcome },
         check: ({ outcome }) => {
           const control = window as unknown as {
-            release(): void
-            disconnect(): void
+            release?(): boolean
+            disconnect?(): void
           }
 
-          if (outcome === 'reconnect') {
-            control.disconnect()
-          } else {
-            control.release()
+          if (outcome !== 'reconnect') {
+            return control.release?.()
           }
 
-          return true
+          control.disconnect?.()
+
+          return !!control.disconnect
         },
       })
 
@@ -329,7 +340,7 @@ for (const outcome of [
         arg: { outcome },
         check: ({ outcome }) => {
           const send = WebSocket.prototype.send
-          const control = window as unknown as { release(): void }
+          const control = window as unknown as { release(): boolean }
 
           // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
           WebSocket.prototype.send = function(data) {
@@ -356,10 +367,16 @@ for (const outcome of [
               }
 
               control.release = () => {
+                if (this.readyState !== WebSocket.OPEN) {
+                  return false
+                }
+
                 WebSocket.prototype.send = send; send.call(
                   this,
                   data,
                 )
+
+                return true
               }
 
               return
@@ -397,11 +414,7 @@ for (const outcome of [
 
       await page.shows({
         what: 'release attachment',
-        check: () => {
-          ;(window as unknown as { release(): void }).release()
-
-          return true
-        },
+        check: () => (window as unknown as { release?(): boolean }).release?.(),
       })
 
       if (outcome === 'shared') {
@@ -461,7 +474,7 @@ for (const outcome of [
           what: 'hold project settings and detach',
           check: () => {
             const send = WebSocket.prototype.send
-            const control = window as unknown as { releaseProject(): void }
+            const control = window as unknown as { releaseProject?(): boolean }
 
             // eslint-disable-next-line pnyx/object-params -- WebSocket.send takes one payload.
             WebSocket.prototype.send = function(data) {
@@ -471,10 +484,19 @@ for (const outcome of [
                 'set',
                 'remove',
               ].includes(message.args[0])) {
-                control.releaseProject = () => send.call(
-                  this,
-                  data,
-                )
+                control.releaseProject = () => {
+                  if (this.readyState !== WebSocket.OPEN) {
+                    return false
+                  }
+
+                  delete control.releaseProject
+                  send.call(
+                    this,
+                    data,
+                  )
+
+                  return true
+                }
 
                 return
               }
@@ -501,11 +523,7 @@ for (const outcome of [
         })
         await page.shows({
           what: 'release landing save',
-          check: () => {
-            ;(window as unknown as { releaseProject(): void }).releaseProject()
-
-            return true
-          },
+          check: () => (window as unknown as { releaseProject?(): boolean }).releaseProject?.(),
         })
         await page.shows({
           what: 'landing save confirmed',
@@ -526,11 +544,7 @@ for (const outcome of [
         )
         await page.shows({
           what: 'release detach',
-          check: () => {
-            ;(window as unknown as { releaseProject(): void }).releaseProject()
-
-            return true
-          },
+          check: () => (window as unknown as { releaseProject?(): boolean }).releaseProject?.(),
         })
         await page.shows({
           what: 'detach confirmed',
@@ -569,7 +583,7 @@ for (const recovery of [
         check: ({ recovery }) => {
           const send = WebSocket.prototype.send
           const control = window as unknown as {
-            release(): void
+            release(): boolean
             settingsSent: number
             interrupted: boolean
           }
@@ -602,10 +616,18 @@ for (const recovery of [
                   )
                 }
               } else if (control.settingsSent === 1) {
-                control.release = () => send.call(
-                  this,
-                  data,
-                )
+                control.release = () => {
+                  if (this.readyState !== WebSocket.OPEN) {
+                    return false
+                  }
+
+                  send.call(
+                    this,
+                    data,
+                  )
+
+                  return true
+                }
 
                 return
               }
@@ -662,11 +684,7 @@ for (const recovery of [
         })
         await page.shows({
           what: 'release old Hydra save',
-          check: () => {
-            ;(window as unknown as { release(): void }).release()
-
-            return true
-          },
+          check: () => (window as unknown as { release?(): boolean }).release?.(),
         })
       } else {
         await page.shows({
