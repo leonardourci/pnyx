@@ -13,7 +13,7 @@ pnpm install
 pnpm run build
 ```
 
-Use Node 22.13 or newer, the pnpm version pinned in `package.json`, and Chrome for the browser scenarios. Run Pnyx with an isolated `PNYX_HOME` and an unused port; see [Development](docs/development.md). Follow [AGENTS.md](AGENTS.md) and the [follow-conventions skill](.agents/skills/follow-conventions/SKILL.md) for code conventions, and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
+Use Node 22.13 or newer and the pnpm version pinned in `package.json`. Run Pnyx with an isolated `PNYX_HOME` and an unused port; see [Development](docs/development.md). Follow [AGENTS.md](AGENTS.md) and the [follow-conventions skill](.agents/skills/follow-conventions/SKILL.md) for code conventions, and the [front-end skill](.agents/skills/write-front-end/SKILL.md) for `web/` changes.
 
 ## Pull requests and checks
 
