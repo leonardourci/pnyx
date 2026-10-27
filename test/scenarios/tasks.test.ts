@@ -39,7 +39,7 @@ function followsProject({ prompt }: { prompt: string }): void {
 }
 
 test(
-  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, Done, the session hands off to the next task, and the card survives a restart',
+  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner's answer once, Done, the session hands off to the next task, and the card survives a restart',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
@@ -193,6 +193,44 @@ test(
       ],
       role: 'in_progress',
     })
+    // The worker's own question gets the owner's answer, once.
+    const asked = await worker.run({
+      args: [
+        'task',
+        'ask',
+        'crash',
+        '--question',
+        'Keep the old crash format?',
+        '--choice',
+        'Keep',
+        '--choice',
+        'Drop',
+      ],
+    })
+    const ask = /^ask: (\S+)$/m.exec(asked)![1]!
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'crash',
+        ask,
+        '--choice',
+        'Keep',
+      ],
+    })
+    const answers = () => agent.received.filter(text => text.includes(`your question ${ask}`))
+    await until({
+      what: 'the worker to get the answer',
+      check: () => answers().length > 0,
+    })
+    assert.equal(
+      answers().length,
+      1,
+    )
+    assert.match(
+      answers()[0]!,
+      /Choice: Keep/,
+    )
     await declare({
       state: 'done',
       flags: [],
