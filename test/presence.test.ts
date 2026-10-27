@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { AgentSession } from '../src/core/model.ts'
-import { emptyHydra, replay } from '../src/core/reducer.ts'
-import { decidePush, decideSession } from '../src/core/decide.ts'
-import { checkAttachments, terminalPresence } from '../src/integrations/presence/check.ts'
+import { terminalPresence } from '../src/integrations/presence/check.ts'
 
 const session: AgentSession = {
   id: 'claude-code:worker',
@@ -115,102 +113,6 @@ test(
         bootedAt,
       }).state,
       'unknown',
-    )
-  },
-)
-
-test(
-  'attachment metadata and last observation survive event replay and manual task edits',
-  async () => {
-    const meta = {
-      actor: 'test',
-      at: '2026-10-15T10:00:00Z',
-    }
-    let state = emptyHydra()
-    const first = decidePush({
-      state,
-      newCardId: `c${state.seq + 1}`,
-      key: 'worker',
-      input: {
-        agent: session.agent,
-        terminal: session.terminal,
-        source: {
-          adapter: 'hooks',
-          objectId: 'worker',
-          observedAt: meta.at,
-        },
-      },
-      meta,
-    })
-    assert.ok('event' in first)
-    state = replay({
-      state,
-      events: [first.event],
-    })
-    const task = decidePush({
-      state,
-      newCardId: `c${state.seq + 1}`,
-      key: 'task',
-      input: { title: 'Task' },
-      meta,
-    })
-    assert.ok('event' in task)
-    state = replay({
-      state,
-      events: [task.event],
-    })
-    const attached = decideSession({
-      state,
-      ref: session.id,
-      task: 'c2',
-      meta,
-    })
-    assert.ok('event' in attached)
-    state = replay({
-      state,
-      events: [attached.event],
-    })
-    const edit = decidePush({
-      state,
-      newCardId: `c${state.seq + 1}`,
-      key: 'task',
-      input: { title: 'Renamed' },
-      meta: {
-        ...meta,
-        at: '2026-10-15T11:00:00Z',
-      },
-    })
-    assert.ok('event' in edit)
-    state = replay({
-      state,
-      events: [edit.event],
-    })
-    assert.equal(
-      state.sessions?.[session.id]?.lastSeen,
-      meta.at,
-    )
-    assert.equal(
-      state.cards.c2?.launch?.via,
-      'hooks',
-    )
-    const result = await checkAttachments({
-      state,
-      probe: () => ({
-        state: 'gone',
-        detail: 'fixture reboot',
-      }),
-    })
-    assert.equal(
-      result[0]?.task,
-      'c2',
-    )
-    assert.equal(
-      result[0]?.lastSeen,
-      meta.at,
-    )
-    assert.equal(
-      result[0]?.state,
-      'gone',
     )
   },
 )

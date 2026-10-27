@@ -97,13 +97,18 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   if (action === 'list' && !ref && !values.clone && !values.into) {
     const projects = projectRows({ state: current })
 
-    return {
+    const listed: Output = {
       hydraId,
       readonly,
       revision: current.projectsRevision ?? 0,
       projects: projects.length ? projects : 'none: no projects attached',
-      ...(projects.length || readonly ? {} : { help: [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`] }),
     }
+
+    if (projects.length === 0 && !readonly) {
+      listed.help = [`Run \`pnyx-axi project add <path> --hydra ${hydraId}\` to attach one`]
+    }
+
+    return listed
   }
 
   if (action !== 'add' && action !== 'remove' && action !== 'set') {

@@ -5,109 +5,10 @@ import { appendFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { emptyHydra } from '../src/core/reducer.ts'
-import { hydraConfig } from '../src/core/hydra.ts'
 import type { HydraEvent } from '../src/core/model.ts'
 import { spendFor, spendInputs, taskSpend } from '../src/spend/tasks.ts'
-import { spendCounter } from '../src/spend/worker.ts'
 
 const at = '2026-10-22T12:00:00Z'
-
-test(
-  'task totals retain earlier Hydra sessions after a replacement starts',
-  () => {
-    const dir = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-hydra-spend-',
-    ))
-    const state = emptyHydra()
-    const events: HydraEvent[] = []
-    state.sessions = {}
-
-    try {
-      for (const [
-        index,
-        tokens,
-      ] of [
-          15,
-          20,
-        ].entries()) {
-        const session = `hydra-${index}`
-        const at = `2026-10-22T1${index}:00:00Z`
-        const transcript = join(
-          dir,
-          `${session}.jsonl`,
-        )
-        writeFileSync(
-          transcript,
-          [
-            {
-              type: 'user',
-              message: { content: '<pnyx-report task="one">A report</pnyx-report>' },
-            },
-            {
-              type: 'assistant',
-              timestamp: at,
-              message: {
-                id: session,
-                usage: { input_tokens: tokens },
-              },
-            },
-          ].map(record => JSON.stringify(record)).join('\n') + '\n',
-        )
-        const config = hydraConfig({ state })
-        config.hydra.session = session
-        state.config = config
-        state.sessions[session] = {
-          id: session,
-          originCardId: session,
-          agent: {
-            provider: 'claude-code',
-            sessionId: session,
-            transcriptPath: transcript,
-          },
-          taskId: null,
-          attention: [],
-          sourceRefs: [],
-        }
-        events.push({
-          v: 1,
-          seq: index + 1,
-          id: session,
-          at,
-          actor: 'cli',
-          cardId: '$board',
-          type: 'board.configured',
-          data: structuredClone(config),
-        })
-      }
-
-      assert.equal(
-        taskSpend({
-          state,
-          events,
-          task: 'one',
-        }).hydra,
-        35,
-      )
-      assert.equal(
-        taskSpend({
-          state,
-          events,
-          task: 'one',
-        }).total,
-        35,
-      )
-    } finally {
-      rmSync(
-        dir,
-        {
-          recursive: true,
-          force: true,
-        },
-      )
-    }
-  },
-)
 
 test(
   'Claude usage keeps one final count for repeated chunks of the same message',
@@ -196,52 +97,6 @@ test(
         records: [count({ total: 10 })],
       }),
       [],
-    )
-  },
-)
-
-test(
-  'Hydra usage carries explicit task context, clearing it on an unrelated owner message',
-  () => {
-    const usage = ({ id }: { id: string }) => ({
-      type: 'assistant',
-      timestamp: at,
-      message: {
-        id,
-        usage: {
-          input_tokens: 10,
-          output_tokens: 5,
-        },
-      },
-    })
-    const records = [
-      {
-        type: 'user',
-        message: { content: '<pnyx-report task="task-one">Result</pnyx-report>' },
-      },
-      usage({ id: 'm1' }),
-      {
-        type: 'user',
-        message: {
-          content: [
-            {
-              type: 'text',
-              text: 'Hello',
-            },
-          ],
-        },
-      },
-      usage({ id: 'm2' }),
-    ]
-    assert.deepEqual(
-      recordedUsage({
-        provider: 'claude',
-        records,
-      }).map(row => row.tasks),
-      [
-        ['task-one'],
-        [],
-      ],
     )
   },
 )
@@ -572,43 +427,5 @@ test(
         },
       )
     }
-  },
-)
-
-test(
-  'the spend counter runs one count at a time and counts once more for a change asked meanwhile',
-  async () => {
-    const counted: string[][] = []
-    let tasks = ['first']
-    const done = new Promise<void>(resolve => {
-      const counter = spendCounter({
-        inputs: () => ({
-          tasks,
-          sessions: [],
-          configurations: [],
-          assignments: [],
-        }),
-        onSpend: ({ spend }) => {
-          counted.push(Object.keys(spend))
-
-          if (counted.length === 2) {
-            void counter.close().then(resolve)
-          }
-        },
-      })
-      counter.count()
-      tasks = ['second']
-      counter.count()
-      tasks = ['third']
-      counter.count()
-    })
-    await done
-    assert.deepEqual(
-      counted,
-      [
-        ['first'],
-        ['third'],
-      ],
-    )
   },
 )

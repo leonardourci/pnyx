@@ -90,6 +90,15 @@ export const KEY_ACTIONS = [
     scopes: ['hydra'],
   }),
   action({
+    id: 'card.edit',
+    label: 'Edit title and brief',
+    keys: [
+      'Mod+e',
+      'F2',
+    ],
+    scopes: ['hydra'],
+  }),
+  action({
     id: 'thread.up',
     label: 'Previous message block',
     keys: [

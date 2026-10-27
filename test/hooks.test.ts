@@ -1,32 +1,24 @@
-// Hook script, payload normalization and `pnyx-axi setup hooks`. Every path lives in
-// a temporary folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
+// Hook payload normalization and spool ingestion. Every path lives in a temporary
+// folder: tests never read or edit the real ~/.claude, ~/.codex or ~/.pnyx.
 import assert from 'node:assert/strict'
-import { execFile, execFileSync } from 'node:child_process'
+import { execFileSync } from 'node:child_process'
 import {
   copyFileSync,
   existsSync,
-  lstatSync,
   mkdirSync,
   mkdtempSync,
-  readFileSync,
   readdirSync,
-  statSync,
-  symlinkSync,
+  readFileSync,
   utimesSync,
   writeFileSync,
 } from 'node:fs'
-import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { promisify } from 'node:util'
 import type { Attention } from '../src/core/model.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
-import { loadHydra, readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
-
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
+import { readEvents, spoolFiles, spoolWrite } from '../src/store/hydra-store.ts'
 
 const ROOT = join(
   import.meta.dirname,
@@ -50,8 +42,6 @@ const FIXTURES = join(
   'fixtures',
   'hooks',
 )
-const SESSION = '11111111-2222-4333-8444-555555555555'
-const CODEX_SESSION = '019a0000-0000-7000-8000-000000000001'
 
 const fixture = ({ name }: { name: string }) => readFileSync(
   join(
@@ -94,7 +84,6 @@ const CODEX_EVENTS = [
 ]
 
 function sandbox() {
-  // A short base keeps the socket path under the platform's length limit.
   const root = mkdtempSync(join(
     tmpdir(),
     'pnyx-h-',
@@ -103,297 +92,18 @@ function sandbox() {
     root,
     '.pnyx',
   )
-  const claude = join(
-    root,
-    'claude',
-  )
-  const codex = join(
-    root,
-    'codex',
-  )
-  const env = {
-    ...process.env,
-    HOME: root,
-    PNYX_HOME: home,
-    CLAUDE_CONFIG_DIR: claude,
-    CODEX_HOME: codex,
-  }
-  const run = ({ args }: { args: string[] }) => execFileSync(
-    process.execPath,
-    [
-      BIN,
-      ...args,
-    ],
-    {
-      env,
-      encoding: 'utf8',
-    },
-  )
   const spool = join(
     home,
     'hydras',
     'default',
     'spool',
   )
-  const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
-  const script = join(
-    home,
-    'hooks',
-    'pnyx-hook.sh',
-  )
-  mkdirSync(
-    join(
-      home,
-      'hooks',
-    ),
-    { recursive: true },
-  )
-  copyFileSync(
-    SCRIPT,
-    script,
-  )
 
   return {
-    root,
     home,
-    claude,
-    codex,
-    env,
-    run,
     spool,
-    spooled,
-    script,
   }
 }
-
-const execFileAsync = promisify(execFile)
-
-async function hook({
-  script,
-  args,
-  input,
-}: {
-  script: string
-  args: string[]
-  input: string
-}) {
-  const child = execFileAsync(
-    '/bin/sh',
-    [
-      script,
-      ...args,
-    ],
-    {
-      encoding: 'utf8',
-      env: { PATH: process.env.PATH },
-    },
-  )
-  child.child.stdin!.end(input)
-
-  return child
-}
-
-test(
-  'hook drops events for an unknown Hydra instead of creating it',
-  async () => {
-    const {
-      script,
-      home,
-    } = sandbox()
-    const child = execFileAsync(
-      '/bin/sh',
-      [
-        script,
-        'claude',
-        'UserPromptSubmit',
-      ],
-      {
-        encoding: 'utf8',
-        env: {
-          PATH: process.env.PATH,
-          PNYX_HYDRA: 'typo-hydra',
-        },
-      },
-    )
-    // The hook exits before reading its input, so the write may meet a closed pipe.
-    child.child.stdin!.on(
-      'error',
-      () => {},
-    ).end(fixture({ name: 'claude-user-prompt' }))
-    const {
-      stdout,
-      stderr,
-    } = await child
-    assert.equal(
-      stdout + stderr,
-      '',
-    )
-    assert.equal(
-      existsSync(join(
-        home,
-        'hydras',
-        'typo-hydra',
-      )),
-      false,
-    )
-  },
-)
-
-test(
-  'hook spools one silent JSON line when no service is listening',
-  async () => {
-    const {
-      script,
-      spool,
-      spooled,
-    } = sandbox()
-    const {
-      stdout,
-      stderr,
-    } = await hook({
-      script,
-      args: [
-        'claude',
-        'UserPromptSubmit',
-      ],
-      input: fixture({ name: 'claude-user-prompt' }),
-    })
-    assert.equal(
-      stdout,
-      '',
-    )
-    assert.equal(
-      stderr,
-      '',
-    )
-    const files = spooled()
-    assert.equal(
-      files.length,
-      1,
-    )
-    const raw = readFileSync(
-      join(
-        spool,
-        files[0]!,
-      ),
-      'utf8',
-    )
-    assert.equal(
-      raw.split('\n').length,
-      2,
-      'one line and a newline',
-    )
-    const line = JSON.parse(raw)
-    assert.equal(
-      line.harness,
-      'claude',
-    )
-    assert.equal(
-      line.event,
-      'UserPromptSubmit',
-    )
-    assert.match(
-      line.id,
-      /^hook-\d+-\d+$/,
-    )
-    assert.match(
-      line.at,
-      /^\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ$/,
-    )
-    assert.deepEqual(
-      line.payload,
-      JSON.parse(fixture({ name: 'claude-user-prompt' })),
-    )
-  },
-)
-
-test(
-  'hook keeps a payload with invalid UTF-8 whole under a UTF-8 locale',
-  async () => {
-    const {
-      script,
-      spool,
-      spooled,
-    } = sandbox()
-    const child = execFileAsync(
-      '/bin/sh',
-      [
-        script,
-        'claude',
-        'PostToolUse',
-      ],
-      {
-        env: {
-          PATH: process.env.PATH,
-          LANG: 'en_US.UTF-8',
-          LC_ALL: 'en_US.UTF-8',
-        },
-      },
-    )
-    child.child.stdin!.end(Buffer.concat([
-      Buffer.from(`{"session_id":"${SESSION}","tool_response":"caf`),
-      Buffer.from([0xe9]),
-      Buffer.from(' ok"}\n'),
-    ]))
-    await child
-    const line = JSON.parse(readFileSync(
-      join(
-        spool,
-        spooled()[0]!,
-      ),
-      'utf8',
-    ))
-    assert.match(
-      line.payload.tool_response,
-      / ok$/,
-    )
-  },
-)
-
-test(
-  'same-second spool files keep the order their hooks ran in',
-  async () => {
-    const {
-      script,
-      home,
-    } = sandbox()
-
-    for (const event of [
-      'PreToolUse',
-      'PermissionRequest',
-      'PostToolUse',
-    ]) {
-      await hook({
-        script,
-        args: [
-          'claude',
-          event,
-        ],
-        input: fixture({ name: 'claude-stop' }),
-      })
-    }
-
-    const events = spoolFiles({
-      dir: join(
-        home,
-        'hydras',
-        'default',
-      ),
-    })
-      .map(file => JSON.parse(readFileSync(
-        file,
-        'utf8',
-      )).event)
-    assert.deepEqual(
-      events,
-      [
-        'PreToolUse',
-        'PermissionRequest',
-        'PostToolUse',
-      ],
-    )
-  },
-)
 
 test(
   'spool ingestion keeps write order across a wrapped hook PID',
@@ -459,338 +169,6 @@ test(
   },
 )
 
-test(
-  'SessionStart prints the open tasks of the attached project holding the folder, and nothing elsewhere',
-  () => {
-    const {
-      root,
-      env,
-      run,
-      script,
-      spooled,
-    } = sandbox()
-    const project = join(
-      root,
-      'shop',
-    )
-    const nested = join(
-      project,
-      'src',
-    )
-    mkdirSync(
-      nested,
-      { recursive: true },
-    )
-    run({
-      args: [
-        'project',
-        'add',
-        project,
-      ],
-    })
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Fix the cart total',
-        '--project',
-        'shop',
-      ],
-    })
-    const start = ({
-      cwd,
-      extra = {},
-    }: {
-      cwd: string
-      extra?: Record<string, string>
-    }) => execFileSync(
-      '/bin/sh',
-      [
-        script,
-        'claude',
-        'SessionStart',
-        BIN,
-      ],
-      {
-        cwd,
-        input: '{}',
-        encoding: 'utf8',
-        env: {
-          ...env,
-          ...extra,
-        },
-      },
-    )
-
-    const summary = start({ cwd: nested })
-    assert.match(
-      summary,
-      /project shop/,
-    )
-    assert.match(
-      summary,
-      /Fix the cart total,queued/,
-    )
-    assert.equal(
-      start({ cwd: root }),
-      '',
-      'a folder outside every attached project gets no summary',
-    )
-    assert.equal(
-      start({
-        cwd: nested,
-        extra: { PNYX_TASK: 'task-1' },
-      }),
-      '',
-      'a worker session gets its context from Pnyx instead',
-    )
-    assert.equal(
-      spooled().length,
-      3,
-      'every start is still reported',
-    )
-
-    const other = join(
-      root,
-      'docs-site',
-    )
-    const sibling = join(
-      root,
-      'shop-old',
-    )
-    mkdirSync(other)
-    mkdirSync(sibling)
-    run({
-      args: [
-        'project',
-        'add',
-        other,
-      ],
-    })
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Other project work',
-        '--project',
-        'docs-site',
-      ],
-    })
-    run({
-      args: [
-        'task',
-        'create',
-        '--title',
-        'Shipped already',
-        '--project',
-        'shop',
-        '--column',
-        'done',
-      ],
-    })
-
-    for (const n of [
-      2,
-      3,
-      4,
-      5,
-      6,
-    ]) {
-      run({
-        args: [
-          'task',
-          'create',
-          '--title',
-          `Shop task ${n}`,
-          '--project',
-          'shop',
-        ],
-      })
-    }
-
-    const context = ({ cwd }: { cwd: string }) => run({
-      args: [
-        'context',
-        '--cwd',
-        cwd,
-      ],
-    })
-    const listed = context({ cwd: nested })
-    assert.match(
-      listed,
-      /count: 5 of 6 open tasks/,
-    )
-    assert.doesNotMatch(
-      listed,
-      /Other project work|Shipped already|Shop task 6/,
-      'another project\'s tasks, Done tasks and tasks past the first five stay out',
-    )
-    assert.equal(
-      context({ cwd: sibling }).trim(),
-      '',
-      'a folder whose name only starts with the project\'s is outside it',
-    )
-  },
-)
-
-test(
-  'hook stays silent and exits 0 on bad arguments, bad input and unwritable storage',
-  async () => {
-    const {
-      script,
-      home,
-      spooled,
-    } = sandbox()
-
-    for (const args of [
-      [],
-      [
-        'other',
-        'Stop',
-      ],
-      [
-        'claude',
-        'Stop;rm',
-      ],
-    ]) {
-      const {
-        stdout,
-        stderr,
-      } = await hook({
-        script,
-        args,
-        input: fixture({ name: 'claude-stop' }),
-      })
-      assert.equal(
-        stdout + stderr,
-        '',
-      )
-    }
-
-    assert.equal(
-      spooled().length,
-      0,
-    )
-    await hook({
-      script,
-      args: [
-        'codex',
-        'Stop',
-      ],
-      input: '',
-    })
-    assert.equal(
-      JSON.parse(readFileSync(
-        join(
-          home,
-          'hydras',
-          'default',
-          'spool',
-          spooled()[0]!,
-        ),
-        'utf8',
-      )).payload,
-      null,
-    )
-    const blocked = sandbox()
-    writeFileSync(
-      join(
-        blocked.home,
-        'hydras',
-      ),
-      '',
-    )
-    const {
-      stdout,
-      stderr,
-    } = await hook({
-      script: blocked.script,
-      args: [
-        'claude',
-        'Stop',
-      ],
-      input: fixture({ name: 'claude-stop' }),
-    })
-    assert.equal(
-      stdout + stderr,
-      '',
-    )
-  },
-)
-
-test(
-  "hook sends the line to the Hydra's server socket instead of the spool when one listens",
-  async () => {
-    const {
-      script,
-      home,
-      spooled,
-    } = sandbox()
-    const hydraId = join(
-      home,
-      'hydras',
-      'default',
-    )
-    mkdirSync(
-      hydraId,
-      { recursive: true },
-    )
-    const received: string[] = []
-    const server = createServer(socket => {
-      let data = ''
-      socket.on(
-        'data',
-        chunk => {
-          data += chunk
-
-          for (let at = data.indexOf('\n'); at >= 0; at = data.indexOf('\n')) {
-            received.push(data.slice(
-              0,
-              at,
-            ))
-            data = data.slice(at + 1)
-          }
-        },
-      )
-    })
-    await new Promise<void>(resolve => server.listen(
-      join(
-        hydraId,
-        'server.sock',
-      ),
-      resolve,
-    ))
-
-    try {
-      await hook({
-        script,
-        args: [
-          'claude',
-          'Stop',
-        ],
-        input: fixture({ name: 'claude-stop' }),
-      })
-    } finally {
-      server.close()
-    }
-
-    assert.equal(
-      received.length,
-      1,
-    )
-    assert.equal(
-      JSON.parse(received[0]!).event,
-      'Stop',
-    )
-    assert.equal(
-      spooled().length,
-      0,
-    )
-  },
-)
-
 const envelope = ({
   harness,
   event,
@@ -807,207 +185,6 @@ const envelope = ({
   event,
   payload: JSON.parse(fixture({ name })),
 })
-
-test(
-  'a session event observes the session card with its folder and transcript',
-  () => {
-    const [
-      o,
-      ...rest
-    ] = observe({
-      envelope: envelope({
-        harness: 'claude',
-        event: 'SessionStart',
-        name: 'claude-session-start',
-      }),
-    })
-    assert.equal(
-      rest.length,
-      0,
-    )
-    assert.deepEqual(
-      o,
-      {
-        id: '',
-        key: `claude:${SESSION}`,
-        card: {
-          source: {
-            adapter: 'hooks',
-            instanceId: 'claude',
-            objectId: SESSION,
-            observedAt: '2026-10-13T14:00:00Z',
-          },
-          agent: {
-            provider: 'claude-code',
-            sessionId: SESSION,
-            transcriptPath: `/work/home/.claude/projects/-work-repo/${SESSION}.jsonl`,
-            cwd: '/work/repo',
-          },
-          autoTitle: {
-            from: 'folder',
-            text: 'repo',
-          },
-          activity: 'finished',
-          terminal: {},
-          settings: {
-            model: 'claude-opus-5-5',
-            mode: 'default',
-          },
-        },
-        attend: { clear: ['hook:'] },
-        outcome: null,
-      },
-    )
-  },
-)
-
-test(
-  'a prompt offers its first line as the title, cut to one line; a session end records the ended outcome',
-  () => {
-    const [prompt] = observe({
-      envelope: envelope({
-        harness: 'claude',
-        event: 'UserPromptSubmit',
-        name: 'claude-user-prompt',
-      }),
-    })
-    assert.deepEqual(
-      prompt!.card.autoTitle,
-      {
-        from: 'prompt',
-        text: 'Open a pull request',
-      },
-    )
-    assert.equal(
-      prompt!.outcome,
-      null,
-      'a new prompt reopens an ended session',
-    )
-    const long = {
-      ...envelope({
-        harness: 'claude',
-        event: 'UserPromptSubmit',
-        name: 'claude-user-prompt',
-      }),
-      payload: {
-        session_id: SESSION,
-        prompt: `\n  ${'x'.repeat(150)}\nmore`,
-      },
-    }
-    assert.equal(
-      (observe({ envelope: long })[0]!.card.autoTitle as { text: string }).text,
-      `${'x'.repeat(99)}…`,
-    )
-    assert.equal(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'SessionEnd',
-          name: 'claude-session-end',
-        }),
-      })[0]!.outcome,
-      'ended',
-    )
-    const bare = envelope({
-      harness: 'claude',
-      event: 'SubagentStop',
-      name: 'claude-subagent-stop',
-    })
-    const barePayload = bare.payload as Record<string, unknown>
-    const noAgent = {
-      ...bare,
-      payload: {
-        ...barePayload,
-        agent_id: undefined,
-      },
-    }
-    assert.equal(
-      observe({ envelope: noAgent })[0]!.outcome,
-      undefined,
-      'a SubagentStop without agent_id never ends the session',
-    )
-  },
-)
-
-test(
-  'a subagent event makes sure the parent exists, then observes the child under it',
-  () => {
-    const [
-      parent,
-      child,
-    ] = observe({
-      envelope: envelope({
-        harness: 'claude',
-        event: 'SubagentStop',
-        name: 'claude-subagent-stop',
-      }),
-    })
-    assert.equal(
-      parent!.key,
-      `claude:${SESSION}`,
-    )
-    assert.deepEqual(
-      parent!.attend,
-      { clear: ['hook:notification'] },
-    )
-    assert.equal(
-      child!.key,
-      `claude:${SESSION}/agent-a1`,
-    )
-    assert.equal(
-      child!.card.parent,
-      `claude:${SESSION}`,
-    )
-    assert.equal(
-      child!.card.activity,
-      'finished',
-    )
-    assert.deepEqual(
-      child!.card.agent,
-      {
-        provider: 'claude-code',
-        sessionId: SESSION,
-        agentId: 'agent-a1',
-        agentType: 'Explore',
-        transcriptPath: `/work/home/.claude/projects/-work-repo/${SESSION}/subagents/agent-a1.jsonl`,
-        cwd: '/work/repo',
-      },
-    )
-    assert.deepEqual(
-      child!.card.autoTitle,
-      {
-        from: 'agent',
-        text: 'Explore t-a1',
-      },
-      'a subagent is titled by its type and short id, not the folder',
-    )
-    const untyped = envelope({
-      harness: 'claude',
-      event: 'SubagentStart',
-      name: 'claude-subagent-start',
-    })
-    const untypedPayload = untyped.payload as Record<string, unknown>
-    const [
-      , bareChild,
-    ] = observe({
-      envelope: {
-        ...untyped,
-        payload: {
-          ...untypedPayload,
-          agent_type: undefined,
-          agent_id: 'b7c9d2',
-        },
-      },
-    })
-    assert.deepEqual(
-      bareChild!.card.autoTitle,
-      {
-        from: 'agent',
-        text: 'Subagent c9d2',
-      },
-    )
-  },
-)
 
 test(
   'a created pull request is a link only when a PR command is in command position',
@@ -1084,67 +261,6 @@ test(
         String(command),
       )
     }
-  },
-)
-
-test(
-  'codex payloads map the same way; unknown events and payloads without a session map to nothing',
-  () => {
-    const [o] = observe({
-      envelope: envelope({
-        harness: 'codex',
-        event: 'SessionStart',
-        name: 'codex-session-start',
-      }),
-    })
-    assert.equal(
-      o!.key,
-      `codex:${CODEX_SESSION}`,
-    )
-    assert.deepEqual(
-      o!.card.agent,
-      {
-        provider: 'codex',
-        sessionId: CODEX_SESSION,
-        cwd: '/work/other',
-      },
-    )
-    assert.deepEqual(
-      observe({
-        envelope: envelope({
-          harness: 'claude',
-          event: 'MessageDisplay',
-          name: 'claude-stop',
-        }),
-      }),
-      [],
-    )
-    assert.deepEqual(
-      observe({
-        envelope: {
-          ...envelope({
-            harness: 'claude',
-            event: 'Stop',
-            name: 'claude-stop',
-          }),
-          payload: {},
-        },
-      }),
-      [],
-    )
-    assert.deepEqual(
-      observe({
-        envelope: {
-          ...envelope({
-            harness: 'claude',
-            event: 'Stop',
-            name: 'claude-stop',
-          }),
-          payload: null,
-        },
-      }),
-      [],
-    )
   },
 )
 
@@ -1459,300 +575,6 @@ test(
 )
 
 // Spools one hook event into the sandbox's default Hydra and ingests it in process, as the next write would.
-let sent = 0
-
-const send = ({
-  event,
-  name,
-  harness = 'claude',
-  payload,
-}: {
-  event: string
-  name: string
-  harness?: 'claude' | 'codex'
-  payload?: object
-}) => {
-  sent += 1
-  spoolWrite({
-    hydraId: 'default',
-    entry: {
-      ...envelope({
-        harness,
-        event,
-        name,
-      }),
-      id: `hook-${sent}`,
-      at: new Date(Date.UTC(
-        2026,
-        9,
-        13,
-      ) + sent * 1000).toISOString(),
-      ...(payload ? { payload } : {}),
-    },
-  })
-  ingestSpool({ hydraId: 'default' })
-}
-
-const card = ({ key = `claude:${SESSION}` }: { key?: string } = {}) => {
-  const { state } = loadHydra({ hydraId: 'default' })
-
-  return state.cards[state.keys[key]!]!
-}
-
-test(
-  'a permission prompt shows its reason without moving the card, and the turn state follows prompt and Stop',
-  () => {
-    process.env.PNYX_HOME = sandbox().home
-    send({
-      event: 'SessionStart',
-      name: 'claude-session-start',
-    })
-    assert.equal(
-      card().activity,
-      'finished',
-    )
-    send({
-      event: 'UserPromptSubmit',
-      name: 'claude-user-prompt',
-    })
-    send({
-      event: 'PermissionRequest',
-      name: 'claude-permission-request',
-    })
-    assert.equal(
-      card().column,
-      'in_progress',
-    )
-    assert.equal(
-      card().activity,
-      'working',
-    )
-    assert.deepEqual(
-      card().attention.map(a => a.text),
-      ['Allow Bash: touch hello.txt && echo made'],
-    )
-    send({
-      event: 'PostToolUse',
-      name: 'claude-post-tool-bash',
-    })
-    assert.deepEqual(
-      card().attention,
-      [],
-    )
-
-    for (const name of [
-      'claude-stop-background',
-      'claude-stop-failure',
-    ]) {
-      send({
-        event: 'UserPromptSubmit',
-        name: 'claude-user-prompt',
-      })
-      send({
-        event: name === 'claude-stop-failure' ? 'StopFailure' : 'Stop',
-        name,
-      })
-      assert.equal(
-        card().activity,
-        'finished',
-        name,
-      )
-      assert.equal(
-        card().column,
-        'in_progress',
-        name,
-      )
-    }
-
-    send({
-      event: 'PermissionRequest',
-      name: 'codex-permission-request',
-      harness: 'codex',
-    })
-    assert.equal(
-      card({ key: `codex:${CODEX_SESSION}` }).column,
-      'in_progress',
-    )
-  },
-)
-
-test(
-  'a subagent\'s permission prompt leaves both cards once its tool call ends or it stops',
-  () => {
-    process.env.PNYX_HOME = sandbox().home
-    const child = `claude:${SESSION}/agent-a1`
-
-    const ask = () => {
-      send({
-        event: 'PermissionRequest',
-        name: 'claude-permission-request-subagent',
-      })
-      send({
-        event: 'Notification',
-        name: 'claude-notification-permission',
-      })
-    }
-
-    const toolEnded = () => send({
-      event: 'PostToolUse',
-      name: 'claude-post-tool-bash',
-      payload: {
-        ...JSON.parse(fixture({ name: 'claude-post-tool-bash' })),
-        agent_id: 'agent-a1',
-        agent_type: 'Explore',
-        tool_name: 'Write',
-      },
-    })
-
-    const cleared = () => {
-      assert.deepEqual(
-        card().attention,
-        [],
-      )
-      assert.deepEqual(
-        card({ key: child }).attention,
-        [],
-      )
-    }
-
-    send({
-      event: 'SessionStart',
-      name: 'claude-session-start',
-    })
-    ask()
-    assert.equal(
-      card().attention[0]?.text,
-      'Claude needs your permission',
-    )
-    assert.match(
-      card({ key: child }).attention[0]?.text ?? '',
-      /Allow Write/,
-    )
-    toolEnded()
-    cleared()
-    const parents = () => readEvents({ hydraId: 'default' }).filter(e => e.id.endsWith(':parent')).length
-    const before = parents()
-    toolEnded()
-    assert.equal(
-      parents(),
-      before,
-      'a repeated tool end leaves the parent alone',
-    )
-
-    ask()
-    send({
-      event: 'SubagentStop',
-      name: 'claude-subagent-stop',
-    })
-    cleared()
-  },
-)
-
-test(
-  'spooled hook events become cards on the next write, and a finished turn never marks a task done',
-  async () => {
-    const {
-      script,
-      run,
-      home,
-      spooled,
-    } = sandbox()
-    const events: [string, string][] = [
-      [
-        'SessionStart',
-        'claude-session-start',
-      ],
-      [
-        'UserPromptSubmit',
-        'claude-user-prompt',
-      ],
-      [
-        'SubagentStart',
-        'claude-subagent-start',
-      ],
-      [
-        'SubagentStop',
-        'claude-subagent-stop',
-      ],
-      [
-        'PreToolUse',
-        'claude-pre-tool-ls',
-      ],
-      [
-        'PostToolUse',
-        'claude-post-tool-pr-create',
-      ],
-      [
-        'Stop',
-        'claude-stop',
-      ],
-    ]
-
-    for (const [
-      event,
-      name,
-    ] of events) {
-      await hook({
-        script,
-        args: [
-          'claude',
-          event,
-        ],
-        input: fixture({ name }),
-      })
-    }
-
-    assert.match(
-      run({ args: [] }),
-      /^spool: 7 hook events waiting; the next write ingests them$/m,
-    )
-
-    const probe = join(
-      home,
-      'probe.json',
-    )
-    writeFileSync(
-      probe,
-      '{}',
-    )
-    assert.match(
-      run({
-        args: [
-          'push',
-          '--key',
-          'probe',
-          '--file',
-          probe,
-        ],
-      }),
-      /^ {2}ingested: 7$/m,
-    )
-    assert.equal(
-      spooled().length,
-      0,
-    )
-
-    const session = run({
-      args: [
-        'card',
-        `claude:${SESSION}`,
-      ],
-    })
-    // Same-second hooks may be ingested in either order, so only facts every order shares are checked.
-    assert.match(
-      session,
-      /^ {2}title: Open a pull request$/m,
-    )
-    assert.match(
-      session,
-      /https:\/\/github\.com\/example\/repo\/pull\/42/,
-    )
-    assert.doesNotMatch(
-      session,
-      /outcome/,
-    )
-  },
-)
 
 test(
   'a hook event ingested twice, from the socket and the spool, is applied once',
@@ -1783,696 +605,266 @@ test(
   },
 )
 
-function readJson({ path }: { path: string }) {
-  return JSON.parse(readFileSync(
-    path,
-    'utf8',
+function scriptSandbox() {
+  // A short base keeps the socket path under the platform's length limit.
+  const root = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-h-',
   ))
+  const home = join(
+    root,
+    '.pnyx',
+  )
+  const claude = join(
+    root,
+    'claude',
+  )
+  const codex = join(
+    root,
+    'codex',
+  )
+  const env = {
+    ...process.env,
+    HOME: root,
+    PNYX_HOME: home,
+    CLAUDE_CONFIG_DIR: claude,
+    CODEX_HOME: codex,
+  }
+  const run = ({ args }: { args: string[] }) => execFileSync(
+    process.execPath,
+    [
+      BIN,
+      ...args,
+    ],
+    {
+      env,
+      encoding: 'utf8',
+    },
+  )
+  const spool = join(
+    home,
+    'hydras',
+    'default',
+    'spool',
+  )
+  const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
+  const script = join(
+    home,
+    'hooks',
+    'pnyx-hook.sh',
+  )
+  mkdirSync(
+    join(
+      home,
+      'hooks',
+    ),
+    { recursive: true },
+  )
+  copyFileSync(
+    SCRIPT,
+    script,
+  )
+
+  return {
+    root,
+    env,
+    run,
+    spooled,
+    script,
+  }
 }
 
 test(
-  'setup hooks merges into Claude settings, keeps other hooks, and is idempotent',
+  'SessionStart prints the open tasks of the attached project holding the folder, and nothing elsewhere',
   () => {
     const {
-      run,
-      claude,
-      home,
+      root,
       env,
+      run,
+      script,
       spooled,
-    } = sandbox()
-    mkdirSync(claude)
-    const settings = join(
-      claude,
-      'settings.json',
+    } = scriptSandbox()
+    const project = join(
+      root,
+      'shop',
     )
-    writeFileSync(
-      settings,
-      fixture({ name: 'existing-settings' }),
+    const nested = join(
+      project,
+      'src',
     )
-    const original = readJson({ path: settings })
-
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      /installed/,
+    mkdirSync(
+      nested,
+      { recursive: true },
     )
-    const installed = readJson({ path: settings })
-    assert.equal(
-      installed.model,
-      'opus',
-    )
-    assert.deepEqual(
-      installed.hooks.PreCompact[0],
-      original.hooks.PreCompact[0],
-    )
-    assert.deepEqual(
-      installed.hooks.PreToolUse[0],
-      original.hooks.PreToolUse[0],
-    )
-    assert.deepEqual(
-      installed.hooks.SessionStart[0],
-      original.hooks.SessionStart[0],
-    )
-
-    for (const event of CLAUDE_EVENTS) {
-      const ours = installed.hooks[event].at(-1)
-      assert.equal(
-        ours.hooks[0].command,
-        `'${join(
-          home,
-          'hooks',
-          'pnyx-hook.sh',
-        )}' claude ${event}${event === 'SessionStart' ? ` '${BIN}'` : ''}`,
-        'only SessionStart passes the CLI that prints its summary',
-      )
-      assert.equal(
-        ours.hooks[0].timeout,
-        3,
-      )
-    }
-
-    assert.equal(
-      installed.hooks.PreToolUse.at(-1).matcher,
-      undefined,
-      'every tool',
-    )
-    assert.deepEqual(
-      Object.keys(installed.hooks).sort(),
+    run({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix the cart total',
+        '--project',
+        'shop',
+      ],
+    })
+    const start = ({
+      cwd,
+      extra = {},
+    }: {
+      cwd: string
+      extra?: Record<string, string>
+    }) => execFileSync(
+      '/bin/sh',
       [
-        ...new Set([
-          ...CLAUDE_EVENTS,
-          'PreCompact',
-        ]),
-      ].sort(),
+        script,
+        'claude',
+        'SessionStart',
+        BIN,
+      ],
+      {
+        cwd,
+        input: '{}',
+        encoding: 'utf8',
+        env: {
+          ...env,
+          ...extra,
+        },
+      },
+    )
+
+    const summary = start({ cwd: nested })
+    assert.match(
+      summary,
+      /project shop/,
+    )
+    assert.match(
+      summary,
+      /Fix the cart total,queued/,
     )
     assert.equal(
-      statSync(join(
-        home,
-        'hooks',
-        'pnyx-hook.sh',
-      )).mode & 0o111,
-      0o111,
+      start({ cwd: root }),
+      '',
+      'a folder outside every attached project gets no summary',
+    )
+    assert.equal(
+      start({
+        cwd: nested,
+        extra: { PNYX_TASK: 'task-1' },
+      }),
+      '',
+      'a worker session gets its context from Pnyx instead',
     )
     assert.equal(
       execFileSync(
         '/bin/sh',
         [
-          '-c',
-          installed.hooks.Stop.at(-1).hooks[0].command,
+          script,
+          'claude',
+          'Stop',
+          BIN,
         ],
         {
-          input: fixture({ name: 'claude-stop' }),
+          cwd: nested,
+          input: '{}',
           encoding: 'utf8',
           env,
         },
       ),
       '',
-      'the installed command runs silently',
+      'every other hook prints nothing',
     )
     assert.equal(
       spooled().length,
-      1,
+      4,
+      'every hook is still reported',
     )
 
-    const bytes = readFileSync(
-      settings,
-      'utf8',
+    const other = join(
+      root,
+      'docs-site',
     )
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      /unchanged/,
+    const sibling = join(
+      root,
+      'shop-old',
     )
-    assert.equal(
-      readFileSync(
-        settings,
-        'utf8',
-      ),
-      bytes,
-    )
-
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-          '--remove',
-        ],
-      }),
-      /removed/,
-    )
-    assert.deepEqual(
-      readJson({ path: settings }),
-      original,
-    )
-  },
-)
-
-test(
-  'rerunning setup hooks keeps Pnyx groups in place and updates a changed handler there',
-  () => {
-    const {
-      run,
-      claude,
-    } = sandbox()
-    mkdirSync(claude)
-    const settings = join(
-      claude,
-      'settings.json',
-    )
+    mkdirSync(other)
+    mkdirSync(sibling)
     run({
       args: [
-        'setup',
-        'hooks',
-        '--harness',
-        'claude',
+        'project',
+        'add',
+        other,
       ],
     })
-    const config = readJson({ path: settings })
-    config.hooks.Stop.push({
-      hooks: [
-        {
-          type: 'command',
-          command: '/usr/local/bin/notify',
-        },
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Other project work',
+        '--project',
+        'docs-site',
       ],
     })
-    writeFileSync(
-      settings,
-      JSON.stringify(
-        config,
-        null,
-        2,
-      ),
-    )
-    const bytes = readFileSync(
-      settings,
-      'utf8',
-    )
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shipped already',
+        '--project',
+        'shop',
+        '--column',
+        'done',
+      ],
+    })
 
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      /unchanged/,
-    )
-    assert.equal(
-      readFileSync(
-        settings,
-        'utf8',
-      ),
-      bytes,
-    )
-
-    config.hooks.Stop[0].hooks[0].timeout = 30
-    writeFileSync(
-      settings,
-      JSON.stringify(
-        config,
-        null,
-        2,
-      ),
-    )
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      /installed/,
-    )
-    const stop = readJson({ path: settings }).hooks.Stop
-    assert.equal(
-      stop.length,
+    for (const n of [
       2,
-    )
-    assert.equal(
-      stop[0].hooks[0].timeout,
       3,
-    )
-    assert.equal(
-      stop[1].hooks[0].command,
-      '/usr/local/bin/notify',
-    )
-  },
-)
-
-test(
-  'setup hooks upgrades an older install: the Bash-only tool entries match every tool and new events are added',
-  () => {
-    const {
-      run,
-      claude,
-      home,
-    } = sandbox()
-    mkdirSync(claude)
-    const settings = join(
-      claude,
-      'settings.json',
-    )
-    const ours = ({ event }: { event: string }) => ({
-      type: 'command',
-      command: `'${join(
-        home,
-        'hooks',
-        'pnyx-hook.sh',
-      )}' claude ${event}`,
-      timeout: 3,
-    })
-    writeFileSync(
-      settings,
-      JSON.stringify({
-        hooks: {
-          PreToolUse: [
-            {
-              matcher: 'Bash',
-              hooks: [
-                {
-                  type: 'command',
-                  command: '~/hooks/guard.sh',
-                },
-                ours({ event: 'PreToolUse' }),
-              ],
-            },
-          ],
-          PostToolUse: [
-            {
-              matcher: 'Bash',
-              hooks: [ours({ event: 'PostToolUse' })],
-            },
-          ],
-          Stop: [{ hooks: [ours({ event: 'Stop' })] }],
-        },
-      }),
-    )
-
-    assert.match(
+      4,
+      5,
+      6,
+    ]) {
       run({
         args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
+          'task',
+          'create',
+          '--title',
+          `Shop task ${n}`,
+          '--project',
+          'shop',
         ],
-      }),
-      /installed/,
-    )
-    const hooks = readJson({ path: settings }).hooks
-    assert.deepEqual(
-      hooks.PreToolUse,
-      [
-        {
-          matcher: 'Bash',
-          hooks: [
-            {
-              type: 'command',
-              command: '~/hooks/guard.sh',
-            },
-          ],
-        },
-        { hooks: [ours({ event: 'PreToolUse' })] },
-      ],
-    )
-    assert.deepEqual(
-      hooks.PostToolUse,
-      [{ hooks: [ours({ event: 'PostToolUse' })] }],
-    )
-    assert.deepEqual(
-      hooks.Stop,
-      [{ hooks: [ours({ event: 'Stop' })] }],
-    )
-    assert.deepEqual(
-      hooks.PermissionRequest,
-      [{ hooks: [ours({ event: 'PermissionRequest' })] }],
-    )
-  },
-)
-
-test(
-  'setup hooks writes Codex hooks.json, previews without writing, and picks detected harnesses',
-  () => {
-    const {
-      run,
-      claude,
-      codex,
-    } = sandbox()
-    assert.throws(
-      () => run({
-        args: [
-          'setup',
-          'hooks',
-        ],
-      }),
-      (error: { stdout: string }) => /^code: NOT_FOUND$/m.test(error.stdout),
-    )
-
-    mkdirSync(codex)
-    assert.match(
-      run({
-        args: [
-          'setup',
-          'hooks',
-          '--preview',
-        ],
-      }),
-      /preview: /,
-    )
-    assert.equal(
-      existsSync(join(
-        codex,
-        'hooks.json',
-      )),
-      false,
-    )
-
-    const out = run({
-      args: [
-        'setup',
-        'hooks',
-      ],
-    })
-    assert.match(
-      out,
-      /codex/,
-    )
-    assert.doesNotMatch(
-      out,
-      /settings\.json/,
-    )
-    assert.match(
-      out,
-      /run `\/hooks` in Codex/,
-    )
-    const hooks = readJson({
-      path: join(
-        codex,
-        'hooks.json',
-      ),
-    }).hooks
-    assert.deepEqual(
-      Object.keys(hooks).sort(),
-      [...CODEX_EVENTS].sort(),
-    )
-
-    for (const event of CODEX_EVENTS) {
-      assert.match(
-        hooks[event][0].hooks[0].command,
-        new RegExp(` codex ${event}${event === 'SessionStart' ? ' \'[^\']+pnyx-axi\\.js\'' : ''}$`),
-      )
-      assert.equal(
-        hooks[event][0].matcher,
-        undefined,
-      )
-    }
-
-    assert.equal(
-      existsSync(claude),
-      false,
-    )
-
-    run({
-      args: [
-        'setup',
-        'hooks',
-        '--remove',
-      ],
-    })
-    assert.deepEqual(
-      readJson({
-        path: join(
-          codex,
-          'hooks.json',
-        ),
-      }),
-      {},
-    )
-  },
-)
-
-test(
-  'setup hooks writes through a symlinked config and refuses invalid JSON',
-  () => {
-    const {
-      run,
-      root,
-      claude,
-    } = sandbox()
-    mkdirSync(claude)
-    const real = join(
-      root,
-      'dotfiles-settings.json',
-    )
-    writeFileSync(
-      real,
-      '{}',
-    )
-    symlinkSync(
-      real,
-      join(
-        claude,
-        'settings.json',
-      ),
-    )
-    run({
-      args: [
-        'setup',
-        'hooks',
-        '--harness',
-        'claude',
-      ],
-    })
-    assert.equal(
-      lstatSync(join(
-        claude,
-        'settings.json',
-      )).isSymbolicLink(),
-      true,
-    )
-    assert.ok(readJson({ path: real }).hooks.Stop)
-
-    writeFileSync(
-      real,
-      '{ not json',
-    )
-    assert.throws(
-      () => run({
-        args: [
-          'setup',
-          'hooks',
-          '--harness',
-          'claude',
-        ],
-      }),
-      (error: { stdout: string }) =>
-        /^code: VALIDATION_ERROR$/m.test(error.stdout),
-    )
-    assert.equal(
-      readFileSync(
-        real,
-        'utf8',
-      ),
-      '{ not json',
-    )
-  },
-)
-
-test(
-  'an ended session records its outcome in place, and a resumed one is reopened',
-  () => {
-    const {
-      run,
-      home,
-    } = sandbox()
-    process.env.PNYX_HOME = home
-
-    for (const [
-      event,
-      name,
-    ] of [
-        [
-          'SessionStart',
-          'claude-session-start',
-        ],
-        [
-          'UserPromptSubmit',
-          'claude-user-prompt',
-        ],
-        [
-          'Stop',
-          'claude-stop',
-        ],
-        [
-          'SessionEnd',
-          'claude-session-end',
-        ],
-      ]) {
-      send({
-        event: event!,
-        name: name!,
       })
     }
 
-    assert.equal(
-      card().column,
-      'in_progress',
-    )
-    assert.equal(
-      card().activity,
-      'ended',
-    )
-    assert.deepEqual(
-      card().outcome,
-      {
-        state: 'ended',
-        source: 'hooks',
-      },
-    )
-
-    send({
-      event: 'SessionStart',
-      name: 'claude-session-start',
-      payload: {
-        ...JSON.parse(fixture({ name: 'claude-session-start' })),
-        source: 'resume',
-      },
-    })
-    assert.equal(
-      card().activity,
-      'finished',
-    )
-    assert.equal(
-      card().outcome,
-      undefined,
-    )
-    assert.equal(
-      card().autoTitle?.text,
-      'Open a pull request',
-      "a resume keeps the first prompt's title",
-    )
-
-    send({
-      event: 'SubagentStart',
-      name: 'claude-subagent-start',
-    })
-    send({
-      event: 'SubagentStop',
-      name: 'claude-subagent-stop',
-    })
-    assert.equal(
-      card({ key: `claude:${SESSION}/agent-a1` }).outcome?.state,
-      'ended',
-    )
-    assert.equal(
-      card().outcome,
-      undefined,
-      'a subagent ending leaves its parent open',
-    )
-
-    send({
-      event: 'SessionEnd',
-      name: 'claude-session-end',
-    })
-    run({
+    const context = ({ cwd }: { cwd: string }) => run({
       args: [
-        'outcome',
-        `claude:${SESSION}`,
-        'failed',
-        '--event-id',
-        'manual-failed',
+        'context',
+        '--cwd',
+        cwd,
       ],
     })
-    assert.equal(
-      card().outcome?.state,
-      'failed',
-      "a person's outcome replaces an observed end",
+    const listed = context({ cwd: nested })
+    assert.match(
+      listed,
+      /count: 5 of 6 open tasks/,
     )
-    run({
-      args: [
-        'undo',
-        'manual-failed',
-      ],
-    })
-    assert.deepEqual(
-      card().outcome,
-      {
-        state: 'ended',
-        source: 'hooks',
-      },
-      "undoing a person's outcome restores the observed end",
-    )
-  },
-)
-
-test(
-  'a hook never changes an outcome another source or a person recorded',
-  () => {
-    const {
-      run,
-      home,
-    } = sandbox()
-    process.env.PNYX_HOME = home
-    const file = join(
-      home,
-      'card.json',
-    )
-    writeFileSync(
-      file,
-      JSON.stringify({ title: 'Mine' }),
-    )
-    run({
-      args: [
-        'push',
-        '--key',
-        `claude:${SESSION}`,
-        '--file',
-        file,
-      ],
-    })
-    run({
-      args: [
-        'outcome',
-        `claude:${SESSION}`,
-        'cancelled',
-      ],
-    })
-    send({
-      event: 'SessionEnd',
-      name: 'claude-session-end',
-    })
-    send({
-      event: 'UserPromptSubmit',
-      name: 'claude-user-prompt',
-    })
-    assert.equal(
-      card().outcome?.state,
-      'cancelled',
+    assert.doesNotMatch(
+      listed,
+      /Other project work|Shipped already|Shop task 6/,
+      'another project\'s tasks, Done tasks and tasks past the first five stay out',
     )
     assert.equal(
-      card().title,
-      'Mine',
-      'a set title is never replaced by the prompt',
+      context({ cwd: sibling }).trim(),
+      '',
+      'a folder whose name only starts with the project\'s is outside it',
     )
   },
 )

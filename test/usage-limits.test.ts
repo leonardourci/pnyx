@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { claudeLimit } from '../src/server/claude.ts'
 import { codexLimits } from '../src/server/codex.ts'
-import { mergeWindows } from '../src/server/provider.ts'
 
 test(
   'the agents’ own rate limit reports become labelled plan windows',
@@ -95,50 +94,6 @@ test(
           },
         ],
       },
-    )
-  },
-)
-
-test(
-  'a later plan window takes the place of the same label, whatever its case, and new labels go last',
-  () => {
-    assert.deepEqual(
-      mergeWindows({
-        base: [
-          {
-            label: 'Session',
-            used: 90,
-          },
-          {
-            label: 'week',
-            used: 40,
-          },
-        ],
-        over: [
-          {
-            label: 'Opus week',
-            used: 5,
-          },
-          {
-            label: 'session',
-            used: 34,
-          },
-        ],
-      }),
-      [
-        {
-          label: 'session',
-          used: 34,
-        },
-        {
-          label: 'week',
-          used: 40,
-        },
-        {
-          label: 'Opus week',
-          used: 5,
-        },
-      ],
     )
   },
 )

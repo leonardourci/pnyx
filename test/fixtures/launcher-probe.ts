@@ -13,8 +13,6 @@ test(
       'PNYX_HYDRA',
       'PNYX_TASK',
       'PORT',
-      'PNYX_SEMANTIC',
-      'PNYX_SEMANTIC_STUB_FAIL',
       'NODE_OPTIONS',
       'CHROME_DEVTOOLS_AXI_PORT',
       'CHROME_DEVTOOLS_AXI_AUTO_CONNECT',
