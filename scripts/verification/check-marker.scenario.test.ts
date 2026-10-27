@@ -4,7 +4,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 import test from 'node:test'
-import { withMarker } from '../scripts/marker.ts'
+import { withMarker } from './marker.ts'
 
 function fixture({
   t,
@@ -72,7 +72,7 @@ globalThis.fetch = async url => {
     [
       '--import',
       bootstrap,
-      resolve('scripts/check-marker.ts'),
+      resolve('scripts/verification/check-marker.ts'),
     ],
     {
       cwd: folder,

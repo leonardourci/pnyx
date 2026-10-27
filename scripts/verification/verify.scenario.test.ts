@@ -197,10 +197,13 @@ function fixture({
       origin,
     ],
   })
-  mkdirSync(join(
-    repo,
-    'scripts',
-  ))
+  mkdirSync(
+    join(
+      repo,
+      'scripts/verification',
+    ),
+    { recursive: true },
+  )
 
   for (const name of [
     'verify.ts',
@@ -209,12 +212,12 @@ function fixture({
   ]) {
     copyFileSync(
       resolve(
-        'scripts',
+        'scripts/verification',
         name,
       ),
       join(
         repo,
-        'scripts',
+        'scripts/verification',
         name,
       ),
     )
@@ -413,7 +416,7 @@ if (command === 'gh') {
         [
           join(
             repo,
-            'scripts/verify.ts',
+            'scripts/verification/verify.ts',
           ),
           ...args,
         ],
