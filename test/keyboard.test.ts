@@ -40,6 +40,29 @@ test(
     )
     assert.equal(
       resolve({
+        event: {
+          key: 'e',
+          metaKey: true,
+        },
+      }).action,
+      'card.edit',
+    )
+    assert.equal(
+      resolve({
+        event: {
+          key: 'e',
+          ctrlKey: true,
+        },
+        change: { platform: 'other' },
+      }).action,
+      'card.edit',
+    )
+    assert.equal(
+      resolve({ event: { key: 'F2' } }).action,
+      'card.edit',
+    )
+    assert.equal(
+      resolve({
         event: { key: 'j' },
         change: { scope: 'thread' },
       }).action,
