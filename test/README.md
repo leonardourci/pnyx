@@ -11,7 +11,7 @@ pnpm build
 node scripts/test.ts scenarios
 ```
 
-`pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port, browser endpoint and model settings from the calling shell are discarded. Only PNYX_CHROME and PNYX_BROWSER_TESTS are inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time; process and Git files run two at a time, and scenarios and browser files run one at a time. Tests within a file remain sequential and Node process isolation stays enabled.
+`pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port, browser endpoint and model settings from the calling shell are discarded. Only PNYX_CHROME, PNYX_BROWSER_TESTS and PNYX_BROWSER_SLOWDOWN are inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time; process and Git files run two at a time, and scenarios and browser files run one at a time. Tests within a file remain sequential and Node process isolation stays enabled.
 
 For a small batch, pass explicit paths: `node scripts/test.ts test/reminders.test.ts`.
 
@@ -66,9 +66,10 @@ await page.close()                    // fails if the page threw
 ```
 
 - `shows` runs its check in the page until it returns something truthy, and returns that. The check is sent as source, so it sees only its `arg` and the page.
-- `click` is a real mouse click on the first visible match (narrowed by `text`), once nothing covers its centre; `upload` picks files in a file input.
+- `click` is a real mouse click on the first visible match (narrowed by `text`), once it holds still and nothing covers its centre; a press the page moved onto another element is stopped and aimed again. `upload` picks files in a file input.
 - Check what the owner sees once it has settled, not a passing moment: a state that lasts only until a timer or an animation ends makes the test depend on the machine.
 - Chrome comes from `PNYX_CHROME` or its usual install path. Browser journeys run with the UI checks in `pnpm verify`.
+- `PNYX_BROWSER_SLOWDOWN=4` throttles each page's CPU four times, to reproduce what a busy machine does to a journey.
 
 ## The fake agents
 

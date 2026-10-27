@@ -287,7 +287,7 @@ export function browserGroup() {
       })
       await call({ method: 'Runtime.enable' })
 
-      // A slower page reproduces what a busy machine does to a journey: PNYX_BROWSER_SLOWDOWN=6.
+      // PNYX_BROWSER_SLOWDOWN=<n> throttles the page's CPU n times, as a busy machine slows a journey.
       if (process.env.PNYX_BROWSER_SLOWDOWN) {
         await call({
           method: 'Emulation.setCPUThrottlingRate',
@@ -572,13 +572,27 @@ export function browserGroup() {
                   'mouseup',
                   'click',
                 ]
-                // A press whose element went away once pressed, as a menu item does, has landed.
-                const gone = () => !candidate.isConnected || !candidate.getClientRects().length
+
+                // A press that made the page hide or cover its element, as a menu does, has landed;
+                // one whose element only moved away before the release is pressed again.
+                const answered = () => {
+                  if (!candidate.isConnected || !candidate.getClientRects().length) {
+                    return true
+                  }
+
+                  const box = candidate.getBoundingClientRect()
+
+                  return !candidate.contains(document.elementFromPoint(
+                    box.left + box.width / 2,
+                    box.top + box.height / 2,
+                  ))
+                }
+
                 const press = {
                   down: false,
                   up: false,
                   stray: '',
-                  landed: () => press.down && (press.up || gone()),
+                  landed: () => press.down && (press.up || answered()),
                   stop: () => {
                     for (const type of types) {
                       window.removeEventListener(
