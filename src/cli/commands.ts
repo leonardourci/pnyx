@@ -69,19 +69,9 @@ import {
   parseLink,
   type Meta,
 } from '../core/decide.ts'
-import {
-  HydraError,
-  EVENT_TYPES,
-  HYDRA_ACTOR,
-  OUTCOME_STATES,
-  ownerActor,
-  type HydraEvent,
-  type HydraState,
-  type Card,
-  type Column,
-  type NotedEvent,
-  type OutcomeState,
-} from '../core/model.ts'
+import { HydraError, OUTCOME_STATES, type Card, type Column, type NotedEvent, type OutcomeState } from '../core/model.ts'
+import { EVENT_TYPES, type HydraEvent, type HydraState } from '../app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { askHost, readServer } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'

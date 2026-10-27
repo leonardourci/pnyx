@@ -3,7 +3,8 @@ import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from '../core/control.ts'
 import type { PlanWindow } from '../server/provider.ts'
-import { HydraError, type HydraState, type StartOverride } from '../core/model.ts'
+import { HydraError, type StartOverride } from '../core/model.ts'
+import { type HydraState } from '../app/model.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './config.ts'
 
 interface EffectiveQuota {

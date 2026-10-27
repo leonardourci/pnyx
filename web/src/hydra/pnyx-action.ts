@@ -1,4 +1,5 @@
-import type { HydraColumn, HydraState } from '../../../src/core/model.ts'
+import type { HydraColumn } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { commandOf, firstLine, obj } from '../../../src/thread/calls.ts'

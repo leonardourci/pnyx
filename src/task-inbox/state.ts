@@ -1,6 +1,7 @@
 import { activeCompaction } from '../compaction/state.ts'
 import { pausedDeclaration } from '../core/lifecycle.ts'
-import type { Card, HydraEvent, HydraState, SteeringClaim } from '../core/model.ts'
+import type { Card, SteeringClaim } from '../core/model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 import { cardSessionId } from '../core/tasks.ts'
 
 export function pendingSteering({ card }: { card: Card }) {

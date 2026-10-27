@@ -186,7 +186,7 @@ const eventRecorded = ({
   what,
 }: {
   hydraId: string
-  matches({ event }: { event: import('../src/core/model.ts').HydraEvent }): boolean
+  matches({ event }: { event: import('../src/app/model.ts').HydraEvent }): boolean
   what: string
 }) => until({
   hydraId,

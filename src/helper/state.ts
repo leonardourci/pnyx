@@ -1,4 +1,4 @@
-import type { HydraEvent, HydraState } from '../core/model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
 export interface HelperBatch {

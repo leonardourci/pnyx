@@ -1,4 +1,4 @@
-import type { HydraEvent } from '../../../src/core/model.ts'
+import type { HydraEvent } from '../../../src/app/model.ts'
 import { showsUpdate, tagsTask, type TaskEvent } from '../../../src/core/updates.ts'
 import type { Command } from '../app/connection.ts'
 

@@ -10,7 +10,8 @@ import { spoolWrite } from '../src/app/spool.ts'
 import { hydraDir } from '../src/app/home-migration.ts'
 import { DEFAULT_COLUMNS, lockedColumn, migrateColumns } from '../src/core/hydra.ts'
 import { decideUndo } from '../src/core/decide.ts'
-import { HydraError, type HydraState, type HydraColumn, type Card } from '../src/core/model.ts'
+import { HydraError, type HydraColumn, type Card } from '../src/core/model.ts'
+import { type HydraState } from '../src/app/model.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.

@@ -1,6 +1,7 @@
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { decideReply } from '../core/decide.ts'
-import type { Card, HydraEvent, HydraState, ReplyState } from '../core/model.ts'
+import type { Card, ReplyState } from '../core/model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 import { liveTask } from '../core/tasks.ts'
 import { HOOK } from '../integrations/hooks/observe.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'

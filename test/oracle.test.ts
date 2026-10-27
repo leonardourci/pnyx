@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { withWriter } from '../src/app/writer.ts'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 import { ftsQuery, search, updateIndex } from '../src/oracle/index.ts'
 import { chunk, eventText, redact, transcriptMessages } from '../src/oracle/text.ts'
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { emptyHydra } from '../src/core/reducer.ts'
 import { hydraConfig } from '../src/core/hydra.ts'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 import { spendFor, spendInputs, taskSpend } from '../src/spend/tasks.ts'
 import { spendCounter } from '../src/spend/worker.ts'
 
@@ -267,7 +267,7 @@ test(
       'transcript.jsonl',
     )
     const state = emptyHydra()
-    const events: import('../src/core/model.ts').HydraEvent[] = [
+    const events: import('../src/app/model.ts').HydraEvent[] = [
       {
         v: 1,
         boardId: 'test',

@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import { decidePush } from '../src/core/decide.ts'
 import { permissionDetails, permissionEvent } from '../src/core/permissions.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
-import type { HydraEvent, PermissionRequest } from '../src/core/model.ts'
+import type { PermissionRequest } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 
 const meta = {
   at: '2026-10-15T12:00:00Z',

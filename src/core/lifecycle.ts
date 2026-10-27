@@ -1,5 +1,6 @@
 import { ownerGates } from './gates.ts'
-import type { Card, Column, HydraEvent, HydraState, TaskStatus } from './model.ts'
+import type { Card, Column, TaskStatus } from './model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 import { HYDRA_CARD, hydraConfig } from './hydra.ts'
 import { cardFacts, placeCard } from './columns.ts'
 

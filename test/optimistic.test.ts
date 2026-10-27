@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, replay } from '../src/core/reducer.ts'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import { optimisticState, currentRevision, projectEdits } from '../web/src/hydra/optimistic.ts'
 

@@ -7,7 +7,8 @@ import { cardFacts, placeCard } from '../src/core/columns.ts'
 import { lifecycleMoves } from '../src/core/lifecycle.ts'
 import { DEFAULT_COLUMNS } from '../src/core/hydra.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
-import type { Card, CardFact, HydraColumn, HydraEvent, TaskStatus } from '../src/core/model.ts'
+import type { Card, CardFact, HydraColumn, TaskStatus } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 
 const placement = ({ card }: { card: Card }) => placeCard({
   card: cardFacts({

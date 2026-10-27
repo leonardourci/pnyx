@@ -4,7 +4,7 @@ import { appendFileSync, chmodSync, existsSync, mkdirSync, mkdtempSync, readFile
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { HydraState, HydraEvent } from '../src/core/model.ts'
+import type { HydraState, HydraEvent } from '../src/app/model.ts'
 import { liveTask } from '../src/core/tasks.ts'
 import { hydraName } from '../src/cli/commands.ts'
 

@@ -1,4 +1,5 @@
-import type { AgentConfig, Card, HydraState } from '../../../src/core/model.ts'
+import type { AgentConfig, Card } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import { columnCards, rankOf } from '../../../src/core/tasks.ts'
 import { patchView } from '../../../src/core/view.ts'

@@ -1,8 +1,6 @@
 import { declaredState } from '../core/hydra.ts'
-import {
-  HYDRA_ACTOR,
-  type HydraEvent,
-} from '../core/model.ts'
+import { type HydraEvent } from './model.ts'
+import { HYDRA_ACTOR } from './actors.ts'
 import { landingWording } from '../tasks/delivery/cli.ts'
 
 export function summarize({ event }: { event: HydraEvent }): string {

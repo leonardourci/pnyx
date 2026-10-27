@@ -8,13 +8,9 @@ import {
   type Decision,
   type Meta,
 } from '../core/decide.ts'
-import {
-  HydraError,
-  HYDRA_ACTOR,
-  type HydraEvent,
-  type HydraState,
-  type EventType,
-} from '../core/model.ts'
+import { HydraError } from '../core/model.ts'
+import { type HydraEvent, type HydraState, type EventType } from './model.ts'
+import { HYDRA_ACTOR } from './actors.ts'
 import { emptyHydra, replay } from '../core/reducer.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'

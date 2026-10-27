@@ -1,5 +1,5 @@
 import { learningConditions } from './learnings.ts'
-import type { HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { hydraIds } from '../app/home-migration.ts'
 

@@ -1,6 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { HydraState } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 
 // Text assertions use stable fixture names while production IDs remain random.
 export function fixtureCli({

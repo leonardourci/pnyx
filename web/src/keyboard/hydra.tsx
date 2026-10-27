@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { HydraState } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
 import type { Command } from '../app/connection.ts'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from '../hydra/caret.ts'
 import { focusElement, type ActionContext } from './registry.tsx'

@@ -1,4 +1,5 @@
-import { HydraError, type AgentRef, type AgentSession, type HydraEvent, type HydraState, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
+import { HydraError, type AgentRef, type AgentSession, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
+import { type HydraEvent, type HydraState } from '../app/model.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.

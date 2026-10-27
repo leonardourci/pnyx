@@ -1,4 +1,6 @@
-import { HydraError, HYDRA_ACTOR, ownerActor, type AnswerMessage, type Ask, type AskAudience, type Card, type HydraEvent, type HydraState, type Link, type Question } from './model.ts'
+import { HydraError, type AnswerMessage, type Ask, type AskAudience, type Card, type Link, type Question } from './model.ts'
+import { type HydraEvent, type HydraState } from '../app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { findCard, type Decision, type Meta } from './decide.ts'
 import { cardLanding } from './model.ts'
 import { HYDRA_CARD, hydraEvent, reportActor } from './hydra.ts'

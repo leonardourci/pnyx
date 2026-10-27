@@ -1,6 +1,7 @@
 import { openAsks } from './asks.ts'
 import { reportReviewGaps } from '../investigation/inventory.ts'
-import type { Card, HydraState } from './model.ts'
+import type { Card } from './model.ts'
+import type { HydraState } from '../app/model.ts'
 
 export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000

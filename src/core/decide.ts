@@ -2,35 +2,8 @@ import { requireReportReview } from '../investigation/inventory.ts'
 import { taskInstructions } from './intent.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import {
-  AUTO_TITLE_SOURCES,
-  HydraError,
-  EVENT_VERSION,
-  LINK_KINDS,
-  LINK_STATES,
-  NOTE_KINDS,
-  type AgentRef,
-  type AgentSettings,
-  type Attention,
-  type AutoTitle,
-  type HydraEvent,
-  type HydraState,
-  type Card,
-  type Column,
-  type Link,
-  type Note,
-  FORM_FIELD_TYPES,
-  type Outcome,
-  type FormField,
-  type PushFields,
-  type Question,
-  type RepliedEvent,
-  type SessionEvent,
-  type SourceRef,
-  type TerminalFacts,
-  type ViewEvent,
-  type ViewPreferences,
-} from './model.ts'
+import { AUTO_TITLE_SOURCES, HydraError, EVENT_VERSION, LINK_KINDS, LINK_STATES, NOTE_KINDS, type AgentRef, type AgentSettings, type Attention, type AutoTitle, type Card, type Column, type Link, type Note, FORM_FIELD_TYPES, type Outcome, type FormField, type PushFields, type Question, type RepliedEvent, type SessionEvent, type TerminalFacts, type ViewEvent, type ViewPreferences } from './model.ts'
+import { type HydraEvent, type HydraState, type SourceRef } from '../app/model.ts'
 import { TERMINAL_FIELDS } from './route.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, reduce, wouldCycle } from './reducer.ts'

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
-import type { HydraState } from '../src/core/model.ts'
+import type { HydraState } from '../src/app/model.ts'
 
 const bin = join(
   import.meta.dirname,

@@ -3,7 +3,8 @@ import { test } from 'node:test'
 import { taskReadiness } from '../src/core/dependencies.ts'
 import { wakeReasons } from '../src/core/wake-reasons.ts'
 import { emptyHydra } from '../src/core/reducer.ts'
-import type { Card, HydraEvent, TaskStatus } from '../src/core/model.ts'
+import type { Card, TaskStatus } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 
 const AT = '2026-10-23T10:00:00.000Z'
 const task = ({

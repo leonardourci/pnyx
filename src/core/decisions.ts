@@ -1,6 +1,7 @@
 import { askWording, openAsks } from './asks.ts'
 import { HYDRA_CARD } from './hydra.ts'
-import { failedChecks, pendingChecks, type Attention, type Card, type HydraState, type Link } from './model.ts'
+import { failedChecks, pendingChecks, type Attention, type Card, type Link } from './model.ts'
+import { type HydraState } from '../app/model.ts'
 import { PERMISSION_PREFIX } from './permissions.ts'
 import { INTERRUPTED, liveTask } from './tasks.ts'
 import { mergeApproved, quote } from './wake-reasons.ts'

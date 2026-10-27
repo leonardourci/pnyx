@@ -1,5 +1,6 @@
 import { interactive, liveTask } from '../core/tasks.ts'
-import type { AgentSession, Card, HydraEvent, HydraState } from '../core/model.ts'
+import type { AgentSession, Card } from '../core/model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 
 export const QUEUE_STALL_MS = 30 * 60 * 1000
 export const QUEUE_MAX_TASKS = 3

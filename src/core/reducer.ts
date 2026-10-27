@@ -3,19 +3,8 @@ import { applyCompaction } from '../compaction/state.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
 import { applyExternalSource } from '../external-sources/state.ts'
-import {
-  AUTO_TITLE_SOURCES,
-  EVENT_VERSION,
-  LEGACY_IN_PROGRESS,
-  SESSION_TITLE,
-  type AutoTitle,
-  type HydraEvent,
-  type HydraState,
-  type Card,
-  type Column,
-  type Link,
-  type SourceRef,
-} from './model.ts'
+import { AUTO_TITLE_SOURCES, EVENT_VERSION, LEGACY_IN_PROGRESS, SESSION_TITLE, type AutoTitle, type Card, type Column, type Link } from './model.ts'
+import { type HydraEvent, type HydraState, type SourceRef } from '../app/model.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from './tasks.ts'
 import { applyHydra, fallbackColumn, hydraConfig, refreshTasks, roleColumn } from './hydra.ts'
 import { applyPermission } from './permissions.ts'

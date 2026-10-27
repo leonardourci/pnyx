@@ -1,4 +1,5 @@
-import type { Card, HydraState } from '../core/model.ts'
+import type { Card } from '../core/model.ts'
+import type { HydraState } from '../app/model.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { liveTask } from '../core/tasks.ts'
 import { paragraphs } from '../oracle/text.ts'

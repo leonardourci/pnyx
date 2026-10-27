@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { HydraState } from '../../../src/core/model.ts'
+import type { HydraState } from '../../../src/app/model.ts'
 import { AddProject, ProjectSharing } from './add-project.tsx'
 import { Button, Input, Switch, Textarea } from '../shared/ui/controls.tsx'
 import type { Command } from '../app/connection.ts'

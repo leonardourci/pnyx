@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { decidePush, decideSession, decideUndo, joinedKey, type Decision } from '../src/core/decide.ts'
 import { emptyHydra, reduce, replay } from '../src/core/reducer.ts'
 import { liveTask } from '../src/core/tasks.ts'
-import type { HydraEvent, HydraState } from '../src/core/model.ts'
+import type { HydraEvent, HydraState } from '../src/app/model.ts'
 
 const at = '2026-10-14T12:00:00Z'
 const meta = {

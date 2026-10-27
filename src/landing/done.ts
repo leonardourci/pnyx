@@ -1,5 +1,6 @@
 import { reportReviewGaps } from '../investigation/inventory.ts'
-import { HydraError, type Card, type HydraState } from '../core/model.ts'
+import { HydraError, type Card } from '../core/model.ts'
+import { type HydraState } from '../app/model.ts'
 import { isFolder } from '../copies/copies.ts'
 import { git } from '../copies/git.ts'
 import { landedWork } from './proof.ts'

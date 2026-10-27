@@ -3,7 +3,8 @@ import { type HostedSession, type HydraUsage, type ModelOption } from '../server
 import type { liveReplies } from '../server/streaming.ts'
 import type { CurrentAction } from '../thread/calls.ts'
 import type { ThreadPage } from '../thread/read.ts'
-import { type AgentConfig, type AgentSettings, type HydraEvent, type HydraState, type Card } from '../core/model.ts'
+import { type AgentConfig, type AgentSettings, type Card } from '../core/model.ts'
+import { type HydraEvent, type HydraState } from './model.ts'
 import type { HydraQueue, inbox } from '../server/host.ts'
 
 export interface Host {

@@ -1,4 +1,5 @@
-import type { HydraEvent, HydraState, SavedLabelColor } from './model.ts'
+import type { SavedLabelColor } from './model.ts'
+import type { HydraEvent, HydraState } from '../app/model.ts'
 
 export function labelsForEvent({
   state,

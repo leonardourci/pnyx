@@ -1,4 +1,5 @@
-import type { Attention, HydraEvent } from '../core/model.ts'
+import type { Attention } from '../core/model.ts'
+import type { HydraEvent } from '../app/model.ts'
 
 // Bump when chunk() or the filters change what is indexed; the index rebuilds on mismatch.
 export const CHUNKER_VERSION = 6

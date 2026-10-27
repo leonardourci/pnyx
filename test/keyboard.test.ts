@@ -4,7 +4,7 @@ import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError, resolveKey, type KeyConte
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 import { decideUndo, decideView, type Decision } from '../src/core/decide.ts'
 import { DEFAULT_VIEW, patchView, viewFor } from '../src/core/view.ts'
-import type { HydraEvent } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 import { navigate, restoreAnchor } from '../web/src/keyboard/navigation.ts'
 import { hintLabels } from '../web/src/keyboard/hints.ts'
 import { matchesCommand, SHORTCUT_QUERY, shortcutLabel } from '../web/src/hydra/oracle-catalog.ts'

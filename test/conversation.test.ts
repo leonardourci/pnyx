@@ -1,7 +1,8 @@
 import { loadEarlierMessages, mergeThreadPages } from '../web/src/hydra/conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent, HydraMessage } from '../src/core/model.ts'
+import type { HydraMessage } from '../src/core/model.ts'
+import type { HydraEvent } from '../src/app/model.ts'
 import { recordEntries, type ThreadEntry } from '../src/thread/read.ts'
 import { hydraConversation } from '../web/src/hydra/conversation.ts'
 

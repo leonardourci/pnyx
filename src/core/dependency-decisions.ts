@@ -1,6 +1,8 @@
 import { findCard, type Decision, type Meta } from './decide.ts'
 import { hydraEvent, HYDRA_CARD } from './hydra.ts'
-import { HydraError, HYDRA_ACTOR, ownerActor, type HydraState } from './model.ts'
+import { HydraError } from './model.ts'
+import { type HydraState } from '../app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 
 export function decideDependencies({
   state,
