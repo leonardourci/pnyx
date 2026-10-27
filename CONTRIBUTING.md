@@ -17,14 +17,7 @@ Use Node 22.13 or newer, the pnpm version pinned in `package.json`, and Chrome f
 
 ## Pull requests and checks
 
-Commit with Conventional Commits, split by concern, with each area or module in its own commit. Before pushing, apply formatting and run the static checks:
-
-```sh
-pnpm lint:fix
-pnpm run lint
-```
-
-Then, in order:
+Commit with Conventional Commits, split by concern, with each area or module in its own commit. Then, in order:
 
 1. **Open the pull request.** Push your branch and open a pull request against `main`. Explain the problem, the fix and how you checked it, and link its issue with a line such as `Closes #12`. Add images or a short recording for visible changes.
 2. **Do the reviews your change needs, in order:** [review-code](.agents/skills/review-code/SKILL.md), [audit-tests](.agents/skills/audit-tests/SKILL.md), then [deslop](.agents/skills/deslop/SKILL.md). [Verification by change kind](docs/development.md#verification-by-change-kind) lists which ones each kind of change needs. Fix what they find, push the fixes, tick their boxes in the [PR template](.github/pull_request_template.md) and note the fixes in the description.
