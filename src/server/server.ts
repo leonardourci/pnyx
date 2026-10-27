@@ -55,6 +55,9 @@ import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyStat
 import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEvents, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
+import { RESTART_SIGNAL, relaunch } from '../upgrade/restart.ts'
+import { UPGRADE_SUGGESTION, type UpgradeStatus } from '../upgrade/model.ts'
+import { PNYX_ROOT, upgradeAvailable } from '../upgrade/runner.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
 import { createHost, hostRequest, type HydraQueue, type QueryFn } from './host.ts'
@@ -165,6 +168,11 @@ type ServerPayload =
     hydraId: string
     hydras: HydraSummary[]
   }
+  // What the daily check found; sent on connect once known, then whenever it changes.
+  | {
+    type: 'upgrade'
+    upgrade: UpgradeStatus
+  }
   // Hydra's unread changes: after a snapshot when there are any, then again whenever they change.
   | {
     type: 'hydraQueue'
@@ -235,6 +243,7 @@ interface MountedHydra {
     after: string | null
   }): HydraSubscription
   summaries({ hydras }: { hydras: HydraSummary[] }): void
+  upgrade(): void
   close(): Promise<void>
 }
 
@@ -252,6 +261,7 @@ const requestUrl = ({ url = '/' }: { url?: string }) => URL.parse(
   'http://localhost',
 ) ?? new URL(`http://localhost${url}`)
 const RETRY_MS = 60_000
+const UPGRADE_CHECK_MS = 24 * 60 * 60_000
 const CREATION_POLL_MS = 1000
 const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
@@ -315,6 +325,10 @@ export async function startServer({
   followDelay?: number
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
+  // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
+  // Only serve checks the real folder, so a test server never asks GitHub.
+  upgradeRoot?: string
+  restart?(): void
 }): Promise<RunningServer> {
   const wss = new WebSocketServer({
     noServer: true,
@@ -326,6 +340,7 @@ export async function startServer({
   const skipped: Record<string, string> = {}
   let closed = false
   let summariesQueued = false, summariesKey = ''
+  let upgradeStatus: UpgradeStatus | undefined
 
   const hydrasChanged = () => {
     if (closed || summariesQueued) {
@@ -824,6 +839,7 @@ export async function startServer({
       homes: id === hydraId ? homes : undefined,
       open,
       hydrasChanged,
+      upgradeStatus: () => upgradeStatus,
       ...options,
     })
     mounts.set(
@@ -899,11 +915,34 @@ export async function startServer({
     }),
     RETRY_MS,
   ).unref()
+  // Once at start, then daily: an offline check leaves the last answer, and no answer shows no hint.
+  const checkUpgrade = () => options.upgradeRoot && background({
+    name: 'upgrade check',
+    run: async () => {
+      const available = await upgradeAvailable({ root: options.upgradeRoot })
+
+      if (closed || available === undefined) {
+        return
+      }
+
+      upgradeStatus = {
+        available,
+        checkedAt: new Date().toISOString(),
+      }
+      served.forEach(m => m.upgrade())
+    },
+  })
+  checkUpgrade()
+  const upgradeTimer = setInterval(
+    checkUpgrade,
+    UPGRADE_CHECK_MS,
+  ).unref()
 
   const close = async () => {
     closed = true
     watcher.close()
     clearInterval(retry)
+    clearInterval(upgradeTimer)
     pendingLogs.forEach(stop => stop())
 
     try {
@@ -958,6 +997,9 @@ async function mountHydra({
   reminderScheduler,
   open,
   hydrasChanged,
+  upgradeRoot,
+  restart,
+  upgradeStatus,
 }: {
   hydraId: string
   url: string
@@ -977,6 +1019,9 @@ async function mountHydra({
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
+  upgradeRoot?: string
+  restart?(): void
+  upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   const release = claimServer({ hydraId })
 
@@ -1000,6 +1045,9 @@ async function mountHydra({
       open,
       release,
       hydrasChanged,
+      upgradeRoot,
+      restart,
+      upgradeStatus,
     })
   } catch (error) {
     release()
@@ -1026,6 +1074,9 @@ async function mountOwnedHydra({
   open,
   release,
   hydrasChanged,
+  upgradeRoot,
+  restart,
+  upgradeStatus,
 }: {
   hydraId: string
   url: string
@@ -1045,6 +1096,9 @@ async function mountOwnedHydra({
   open({ id }: { id: string }): Promise<string>
   release(): void
   hydrasChanged(): void
+  upgradeRoot?: string
+  restart?(): void
+  upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
     throw new HydraError({
@@ -2123,6 +2177,8 @@ async function mountOwnedHydra({
     stallRepeatMax,
     pauseDelay,
     retryDelays,
+    upgradeRoot,
+    restart,
     changed: () => kick(),
     queued: () => {
       for (const ws of clients) {
@@ -2636,6 +2692,7 @@ async function mountOwnedHydra({
                 return {
                   ...catalog,
                   suggestions: [
+                    ...card.id === HYDRA_CARD ? [UPGRADE_SUGGESTION] : [],
                     ...catalog.suggestions,
                     ...native,
                   ],
@@ -3191,6 +3248,18 @@ async function mountOwnedHydra({
         installation: hydraIdentity({ hydraId: '' }),
       },
     })
+    const upgrade = upgradeStatus()
+
+    if (upgrade) {
+      send({
+        ws,
+        message: {
+          type: 'upgrade',
+          upgrade,
+        },
+      })
+    }
+
     resume({
       ws,
       after,
@@ -3421,6 +3490,21 @@ async function mountOwnedHydra({
               type: 'hydras',
               hydraId,
               hydras,
+            },
+          })
+        }
+      }
+    },
+    upgrade() {
+      const upgrade = upgradeStatus()
+
+      for (const ws of clients) {
+        if (upgrade) {
+          send({
+            ws,
+            message: {
+              type: 'upgrade',
+              upgrade,
             },
           })
         }
@@ -3786,6 +3870,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
       hydraId,
       port,
       homes: values.home,
+      upgradeRoot: PNYX_ROOT,
     })
   } catch (error) {
     if (error instanceof HydraError) {
@@ -3820,23 +3905,36 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   ]) => `skipped: ${JSON.stringify(`Hydra ${id}: ${reason}`)}\n`)
     .join('')
   process.stdout.write(`server: running\nhydra: ${hydraId}\nurl: ${JSON.stringify(server.url)}\n${watching}${skipped}help[1]: Run \`pnyx-axi stop\` to stop it\n`)
-  await new Promise(resolve => {
-    process.once(
+  const signal = await new Promise<NodeJS.Signals>(resolve => {
+    for (const name of [
       'SIGINT',
-      resolve,
-    )
-    process.once(
       'SIGTERM',
-      resolve,
-    )
+      RESTART_SIGNAL,
+    ] as const) {
+      process.once(
+        name,
+        resolve,
+      )
+    }
   })
   const watched = firstmate?.close()
   await server.close()
 
+  if (signal === RESTART_SIGNAL) {
+    relaunch()
+  }
+
   return {
-    server: 'stopped',
+    server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped',
     ...(watched ? { firstmate: watched } : {}),
   }
+}
+
+// Usually one process; a server an older version started for a single Hydra counts too.
+export async function serverPids(): Promise<number[]> {
+  const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
+
+  return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
 }
 
 export async function stop(args: string[]): Promise<Record<string, unknown>> {
@@ -3848,14 +3946,7 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
     )
   }
 
-  // Usually one process; a server an older version started for a single Hydra is stopped too.
-  const running = async () => {
-    const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
-
-    return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
-  }
-
-  const pids = await running()
+  const pids = await serverPids()
 
   if (pids.length === 0) {
     return {

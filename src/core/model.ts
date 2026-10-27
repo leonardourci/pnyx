@@ -1216,6 +1216,7 @@ export type ChatEvent = EventBase & {
 
 export type HydraEvent =
   | import('../compaction/model.ts').CompactionEvent
+  | import('../upgrade/model.ts').UpgradeEvent
   | ExternalSourceEvent
   | SteeringEvent
   | PushedEvent
@@ -1232,6 +1233,7 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 export const EVENT_TYPES: readonly EventType[] = [
   'session.compaction',
+  'pnyx.upgrade',
   'task.source.registered',
   'task.source.lavish.published',
   'task.source.started',
@@ -1321,6 +1323,7 @@ export interface HydraState {
     reminders: Record<string, string>
   }
   hydraMessages?: HydraMessage[]
+  upgrades?: import('../upgrade/model.ts').UpgradeOperation[]
   // seq is the event that set it, so a recap can list what came after Hydra went down.
   hydraStatus?: HydraStatus & { seq: number }
   hydraMemory?: Record<string, {

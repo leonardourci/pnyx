@@ -4,6 +4,7 @@ import {
   CLI_SKILL,
 } from '../integrations/skills/names.ts'
 import { inboxCommand } from '../task-inbox/cli.ts'
+import { upgradeCommand } from '../upgrade/model.ts'
 import { taskReadiness } from '../core/dependencies.ts'
 import { decideDependencies } from '../core/dependency-decisions.ts'
 import { sourceCommand } from '../external-sources/cli.ts'
@@ -3640,7 +3641,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
   }
 
-  if (config.hydra.kind === 'firstmate' || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
+  // Pnyx runs /upgrade itself, whichever agent the Hydra is.
+  const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
+
+  if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result
   }
 
@@ -4283,6 +4287,7 @@ function summary({ event }: { event: HydraEvent }): string {
 
   switch (event.type) {
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
+    case 'pnyx.upgrade': return `Upgrade ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'task.source.registered': return `External source ${event.data.source.id} registered`
     case 'task.source.lavish.published': return `Lavish source ${event.data.source} reply ${event.data.reply} accepted`
     case 'task.source.started': return `External source ${event.data.source} run started`
@@ -4841,6 +4846,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
+  upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up

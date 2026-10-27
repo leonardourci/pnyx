@@ -1,4 +1,5 @@
 import type { Suggestion } from '../../../src/thread/catalog.ts'
+import { UPGRADE_SUGGESTION } from '../../../src/upgrade/model.ts'
 
 export function knownCommands({
   text,
@@ -19,7 +20,8 @@ export function knownCommands({
     .flatMap(match => {
       const candidates = suggestions.filter(item => item.command === match[0] && !item.file)
       const item = candidates.length === 1 ? candidates[0] : undefined
-      const startOnly = item?.source === 'Agent commands' || item?.command.startsWith('/prompts:')
+      const startOnly = item?.source === 'Agent commands' || item?.source === UPGRADE_SUGGESTION.source
+        || item?.command.startsWith('/prompts:')
 
       if (startOnly && text.slice(
         0,

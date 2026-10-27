@@ -5,14 +5,23 @@ import { Disclosure } from '../components/ui/disclosure.tsx'
 import { Icon } from '../components/ui/icon.tsx'
 import { Tooltip } from '../components/ui/tooltip.tsx'
 
-export function CompactionRow({ operation }: { operation: Compaction }) {
+// m:ss since startedAt, ticking while running.
+export function useElapsed({
+  startedAt,
+  endedAt,
+  running,
+}: {
+  startedAt: string
+  endedAt?: string
+  running: boolean
+}) {
   const [
     now,
     setNow,
   ] = useState(Date.now)
   useEffect(
     () => {
-      if (operation.state !== 'running') {
+      if (!running) {
         return
       }
 
@@ -25,19 +34,28 @@ export function CompactionRow({ operation }: { operation: Compaction }) {
       return () => clearInterval(timer)
     },
     [
-      operation.id,
-      operation.state,
+      startedAt,
+      running,
     ],
   )
-  const end = operation.endedAt ? Date.parse(operation.endedAt) : now
+  const end = endedAt ? Date.parse(endedAt) : now
   const seconds = Math.max(
     0,
-    Math.floor((end - Date.parse(operation.startedAt)) / 1000),
+    Math.floor((end - Date.parse(startedAt)) / 1000),
   )
-  const elapsed = `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(
+
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(
     2,
     '0',
   )}`
+}
+
+export function CompactionRow({ operation }: { operation: Compaction }) {
+  const elapsed = useElapsed({
+    startedAt: operation.startedAt,
+    endedAt: operation.endedAt,
+    running: operation.state === 'running',
+  })
   const label = operation.state === 'running' ? `${operation.trigger === 'auto' ? 'Auto-compacting' : 'Compacting'}… ${elapsed}`
     : operation.state === 'done' ? `Compacted in ${elapsed}`
       : `Compaction ${operation.state === 'cancelled' ? 'cancelled' : 'failed'} after ${elapsed}`

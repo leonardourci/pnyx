@@ -31,7 +31,7 @@ pnyx-axi --version
 
 If pnpm's global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal, and retry the global install. You can also run `./dist/cli/pnyx-axi.js` directly from the clone.
 
-The global install links this clone; keep it in place. After pulling updates, run `pnpm install` and `pnpm run build` again.
+The global install links this clone; keep it in place. To upgrade, run `pnyx-axi upgrade` or send `/upgrade` in Hydra's chat; both pull `main`, install, build and restart the server.
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
@@ -139,6 +139,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi` | Show the Hydra summary. |
 | `pnyx-axi serve` | Run the one server for every Hydra until stopped. |
 | `pnyx-axi stop` | Stop the running server. |
+| `pnyx-axi upgrade [--check]` | Pull, install and build the latest `main`, then restart the server. |
 | `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
 | `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
 | `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |

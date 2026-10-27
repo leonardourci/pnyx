@@ -5,6 +5,7 @@ import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/core/reducer.ts'
 import type { HydraState } from '../../../src/core/model.ts'
 import type { ServerMessage } from '../../../src/server/server.ts'
+import type { UpgradeStatus } from '../../../src/upgrade/model.ts'
 import type { HydraSummary } from '../../../src/server/hydras.ts'
 import type { HydraQueue } from '../../../src/server/host.ts'
 import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
@@ -121,6 +122,7 @@ export function createHydraConnection() {
   let attempt = 0
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
+  let upgrade: UpgradeStatus | undefined
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
@@ -280,6 +282,7 @@ export function createHydraConnection() {
       error: scope.error,
       hydraThread: scope.thread,
       hydraQueue: scope.queue,
+      upgrade,
       latest: scope.latest,
       actions: scope.actions,
       navigation: {
@@ -861,6 +864,9 @@ export function createHydraConnection() {
     }
 
     if (message.type === 'hello') {
+      // A restarted server sends its own answer once its check has one.
+      upgrade = undefined
+
       if (message.installation !== installation) {
         active = false
         scope.ready = false
@@ -1021,6 +1027,8 @@ export function createHydraConnection() {
       scope.queue = message.queue
     } else if (message.type === 'hydras') {
       updateHydras({ rows: message.hydras })
+    } else if (message.type === 'upgrade') {
+      upgrade = message.upgrade
     } else if ('id' in message && message.id) {
       if (message.type !== 'error' && Array.isArray(message.hydras)) {
         updateHydras({ rows: message.hydras as HydraSummary[] })

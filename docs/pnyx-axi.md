@@ -48,7 +48,7 @@ pnyx-axi --version
 pnyx-axi setup skills
 ```
 
-If pnpm reports that its global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal and retry `pnpm add -g "$PWD"`. `pnpm add -g` links the clone, so after a `git pull` you only rerun `pnpm install && pnpm run build`. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
+If pnpm reports that its global bin directory is missing from PATH, run `pnpm setup`, reopen your terminal and retry `pnpm add -g "$PWD"`. `pnpm add -g` links the clone, so `pnyx-axi upgrade` (see [Upgrade](#upgrade)) is all an update needs. `pnpm link --global` does not work with this pnpm; use `pnpm add -g "$PWD"` (or `npm install -g .`). Without a global install, run `./dist/cli/pnyx-axi.js` from the clone.
 
 Setup commands for hooks, skills and the login service change user-wide configuration. They refuse a `PNYX_HOME` other than `~/.pnyx`, including previews and removals. Unset `PNYX_HOME` to use the default home, or pass `--allow-custom-home` to explicitly target another home. Installing its service also requires a `--port` that no other Pnyx home’s installed service uses; the override does not bypass that check.
 
@@ -138,6 +138,12 @@ pnyx-axi setup service --remove            # stop and uninstall the service
 ```
 
 There is one login service for every Hydra. Setting it up replaces the one-per-Hydra services older versions installed for the same data folder.
+
+### Upgrade
+
+`pnyx-axi upgrade`, or `/upgrade` in Hydra's chat, upgrades the Pnyx clone: it pulls `main`, runs `pnpm install` and `pnpm run build`, then restarts the server, and the open page reconnects. In the chat, `/upgrade` waits in the queued messages until Hydra's turn, any message already waiting to start one and any compaction are done; messages sent after it wait for the upgrade, and Send now starts it at once. Messages sent while it runs wait in the queued messages and reach Hydra when it ends, or after the restart. The server restarts only after the build passes; a failed pull, install or build puts the clone back on the commit it started from and leaves the server running. Stop on the upgrade's row, the chat's stop button or `pnyx-axi hydra stop` stops a running upgrade and goes back the same way; Ctrl-C does it for `pnyx-axi upgrade`. The few seconds of the restart itself cannot be stopped. A clone on another branch or with local changes is refused with every reason, and nothing is stashed. A failed or refused upgrade in the chat offers Ask Hydra to fix, which drafts a prompt for Hydra in the composer. Workers that Paseo, Firstmate or a command run do not notice the restart; ones Pnyx runs pick up again after it.
+
+Once a day the server asks the clone's `origin` (`git ls-remote`, no login) whether `main` has a newer commit, and an "Upgrade available" hint then appears next to the pnyx brand. An offline check keeps the last answer, and nothing shows until a check has answered. `pnyx-axi upgrade --check` asks the same question, and `pnyx-axi --version` shows the installed commit. Upgrading is never automatic: Hydra can only propose `pnyx-axi upgrade`, and workers cannot run it.
 
 ### Named links with portless
 

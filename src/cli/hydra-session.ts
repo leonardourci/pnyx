@@ -16,7 +16,7 @@ const flag = ({
 }) =>
   args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
-// What only the owner may change: what agents may run, which logins they use, and Hydra's own prompts.
+// What only the owner may change: what agents may run, which logins they use, Hydra's own prompts and the installed Pnyx.
 // Hydra may create the missing shared config (rule init never overwrites) and read the setup check.
 const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
   agent: ({ args }) => args[1] === 'mode',
@@ -43,6 +43,7 @@ const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
       name: '--discard',
     })),
   approval: () => true,
+  upgrade: ({ args }) => !args.includes('--check'),
 }
 
 // Bypass counts only for the Hydra the command runs in, never one it names with --hydra.

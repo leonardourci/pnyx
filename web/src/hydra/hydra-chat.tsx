@@ -1,5 +1,7 @@
 import { activeCompaction } from '../../../src/compaction/state.ts'
 import { CompactionQueue, CompactionRow } from '../compaction/compaction.tsx'
+import { UPGRADE_COMMAND } from '../../../src/upgrade/model.ts'
+import { UpgradeRow } from '../upgrade/upgrade-row.tsx'
 import { Tooltip, TooltipPanel, TooltipSection } from '../components/ui/tooltip.tsx'
 import { useTaskReferences } from './task-references.ts'
 import { WaitingDecisions } from './waiting-decisions.tsx'
@@ -190,17 +192,58 @@ export function HydraChat({
     [liveThread],
   )
   const compacting = activeCompaction({ card })
-  const held = new Set(card?.compaction?.inputs.map(input => input.id) ?? [])
+  const upgrades = state.upgrades ?? []
+  // Messages a running upgrade holds wait in the same queue as compaction's.
+  const upgradeHeld = upgrades.flatMap(operation => operation.held ?? [])
+  const held = new Set([
+    ...card?.compaction?.inputs.map(input => input.id) ?? [],
+    ...upgradeHeld.map(message => message.id),
+  ])
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const compactOperations = card?.compaction?.operations ?? []
+  // Only the newest result shows; a new attempt replaces the last one.
+  const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
+    .sort((
+      a,
+      b,
+    ) => a.queuedAt.localeCompare(b.queuedAt))
+    .slice(-1)
+  const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
+  const holding = Boolean(compacting) || upgrading
+  const upgradeRunning = upgrades.some(operation => operation.state === 'running')
+
+  // Stops Hydra's turn, its compaction or the upgrade running in their place.
+  const stop = async () => {
+    try {
+      await command({
+        name: 'hydra',
+        args: ['stop'],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const pending = sending.filter(s => !messages.some(m => m.id === s.id))
+  // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })) ?? []),
-    ...(compacting ? pending.filter(item => !held.has(item.id)).map(item => ({
+    ...upgrades.filter(operation => operation.state === 'queued').map(operation => ({
+      id: operation.id,
+      text: UPGRADE_COMMAND,
+      actor: 'web',
+      route: 'hydra' as const,
+      at: operation.queuedAt,
+    })),
+    ...upgradeHeld.filter(message => ownerActor({ actor: message.actor })).map(message => ({
+      ...message,
+      route: 'hydra' as const,
+    })),
+    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
       ...item,
       actor: 'web',
       route: 'hydra' as const,
-    })) : []),
+    })),
   ]
   useEffect(
     () => {
@@ -260,6 +303,18 @@ export function HydraChat({
     )
   }
 
+  for (const operation of shownUpgrades) {
+    inline.set(
+      `upgrade:${operation.id}`,
+      <UpgradeRow
+        key={operation.id}
+        operation={operation}
+        askHydra={setDraft}
+        stop={stop}
+      />,
+    )
+  }
+
   const listed: ChatEntry[] = [
     ...compactOperations.map(operation => ({
       id: `compact:${operation.id}`,
@@ -267,6 +322,13 @@ export function HydraChat({
       role: 'Pnyx',
       text: '',
       at: operation.startedAt,
+    })),
+    ...shownUpgrades.map(operation => ({
+      id: `upgrade:${operation.id}`,
+      kind: 'message' as const,
+      role: 'Pnyx',
+      text: '',
+      at: operation.startedAt ?? operation.queuedAt,
     })),
     ...chat.entries,
     ...shownDecisions.map(decision => ({
@@ -277,7 +339,7 @@ export function HydraChat({
       text: '',
       at: decision.at,
     })),
-    ...pending.filter(s => !compacting && !held.has(s.id)).map(s => ({
+    ...pending.filter(s => !holding && !held.has(s.id)).map(s => ({
       id: s.id,
       kind: 'message' as const,
       role: 'user',
@@ -519,6 +581,7 @@ export function HydraChat({
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
   const pill = hydraPill({
     status: state.hydraStatus,
+    upgrading,
     working,
     starting: pending.length > 0,
   })
@@ -707,7 +770,7 @@ export function HydraChat({
       />
       <CompactionQueue
         inputs={compactInputs}
-        disabled={!connected || !compacting}
+        disabled={!connected || (!compacting && !upgrades.some(operation => operation.state === 'queued'))}
         sendNow={async ({ id }) => {
           try {
             await command({
@@ -751,13 +814,7 @@ export function HydraChat({
         thread={route}
         command={deliver}
         notify={notify}
-        stop={(working || compacting) && card?.agent?.host === 'pnyx' ? () => command({
-          name: 'hydra',
-          args: ['stop'],
-        }).then(
-          () => {},
-          (error: Error) => notify({ text: error.message }),
-        ) : undefined}
+        stop={((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
         meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(
           <HydraAgent

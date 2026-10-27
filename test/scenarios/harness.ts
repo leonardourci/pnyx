@@ -15,6 +15,7 @@ import { loadHydra, readEvents } from '../../src/store/hydra-store.ts'
 import type { HydraQueue } from '../../src/server/host.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from '../dispatch-fixture.ts'
+import { upgradeRepo } from '../upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
 
 const BIN = join(
@@ -326,6 +327,10 @@ export function scenarioGroup({
   )
   const claude = replayClaude()
   const codex = replayCodex()
+  // The Pnyx folder /upgrade pulls into: a throwaway clone of its own local origin.
+  const upgrade = upgradeRepo({ root })
+  // A real restart signals this process, which the flows share; a flow restarts with pnyx.restart() instead.
+  let restarts = 0
   let server: RunningServer | undefined
   let scenarios = 0
 
@@ -337,6 +342,8 @@ export function scenarioGroup({
       wakeDelay: 50,
       retryDelays,
       followDelay: FOLLOW_MS,
+      upgradeRoot: upgrade.install,
+      restart: () => restarts++,
     })
   }
 
@@ -355,6 +362,9 @@ export function scenarioGroup({
   return {
     codex,
     claude,
+    upgrade,
+    // How many times an upgrade asked the server to restart.
+    restarts: () => restarts,
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.
