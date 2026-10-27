@@ -1,3 +1,4 @@
+import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { once } from 'node:events'
 import fs from 'node:fs'
@@ -340,12 +341,12 @@ test(
       /^# Hydra\n[\s\S]*## Load before/,
     )
     assert.match(
-      read({ path: '.claude/skills/inscribe/SKILL.md' }),
-      /^---\nname: inscribe/,
+      read({ path: `.claude/skills/${INSCRIBE_SKILL}/SKILL.md` }),
+      new RegExp(String.raw`^---\nname: ${INSCRIBE_SKILL}`),
     )
-    assert.ok(!existsSync(join(
+    assert.ok(existsSync(join(
       agent.cwd!,
-      '.agents/skills/pnyx-hydra',
+      `.agents/skills/${ORCHESTRATE_SKILL}`,
     )))
     const {
       options,

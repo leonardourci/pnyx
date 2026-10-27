@@ -17,9 +17,17 @@ import { taskFolder, settleDone } from '../src/copies/copies.ts'
 import { project } from '../src/projects/cli.ts'
 import { advanceQueues } from '../src/queue/advance.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from '../src/queue/state.ts'
-import { startServer } from '../src/server/server.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+import { hostObserver } from './host-observer.ts'
+
+const {
+  startServer,
+  until,
+  notify,
+} = hostObserver({
+  describe: () => loadHydra({ hydraId: 'lab' }).state,
+})
 
 const git = ({
   cwd,
@@ -329,21 +337,6 @@ printf 'pull_request:\\n  state: open\\n'
   }
 }
 
-async function until({ check }: { check(): boolean | Promise<boolean> }) {
-  for (let i = 0; i < 300; i++) {
-    if (await check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail('queue did not settle')
-}
-
 test(
   'queue order, unqueue, revisions, idempotency and CLI visibility',
   async t => {
@@ -645,6 +638,7 @@ for (const staleFailure of [
         readPR: async () => 'merged',
         readLanding: async () => {
           requested = true
+          notify()
           await paused
 
           if (staleFailure) {
@@ -986,13 +980,8 @@ test(
         'done',
       ],
     })
-    await until({
-      check: async () => {
-        await advanceQueues({ hydraId: 'lab' })
-
-        return f.card({ key: 'two' }).activity === 'finished'
-      },
-    })
+    await advanceQueues({ hydraId: 'lab' })
+    await until({ check: () => f.card({ key: 'two' }).activity === 'finished' })
     f.task({
       args: [
         'status',
@@ -1000,13 +989,8 @@ test(
         'done',
       ],
     })
-    await until({
-      check: async () => {
-        await advanceQueues({ hydraId: 'lab' })
-
-        return f.card({ key: 'three' }).activity === 'finished'
-      },
-    })
+    await advanceQueues({ hydraId: 'lab' })
+    await until({ check: () => f.card({ key: 'three' }).activity === 'finished' })
     f.task({
       args: [
         'status',
@@ -1282,13 +1266,8 @@ test(
         'done',
       ],
     })
-    await until({
-      check: async () => {
-        await advanceQueues({ hydraId: 'lab' })
-
-        return Boolean(f.card({ key: 'two' }).agent)
-      },
-    })
+    await advanceQueues({ hydraId: 'lab' })
+    await until({ check: () => Boolean(f.card({ key: 'two' }).agent) })
     const event = readEvents({ hydraId: 'lab' }).find(e => e.type === 'task.session' && e.data.handoff)!
     const state = f.state()
     const before = structuredClone(state)
@@ -1504,21 +1483,16 @@ test(
       'lab',
     ])
     f.queue({ key: 'two' })
-    await until({
-      check: async () => {
-        await advanceQueues({
-          hydraId: 'lab',
-          readLanding: async () => ({
-            head,
-            merge,
-            branch,
-            base: 'main',
-          }),
-        })
-
-        return Boolean(f.card({ key: 'two' }).agent)
-      },
+    await advanceQueues({
+      hydraId: 'lab',
+      readLanding: async () => ({
+        head,
+        merge,
+        branch,
+        base: 'main',
+      }),
     })
+    await until({ check: () => Boolean(f.card({ key: 'two' }).agent) })
     assert.equal(
       git({
         cwd: f.folder,
@@ -1619,13 +1593,8 @@ test(
         'done',
       ],
     })
-    await until({
-      check: async () => {
-        await advanceQueues({ hydraId: 'lab' })
-
-        return Boolean(f.card({ key: 'two' }).agent)
-      },
-    })
+    await advanceQueues({ hydraId: 'lab' })
+    await until({ check: () => Boolean(f.card({ key: 'two' }).agent) })
     assert.equal(
       git({
         cwd: f.folder,

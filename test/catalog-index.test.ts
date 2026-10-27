@@ -1,6 +1,5 @@
-import fs from 'node:fs'
-import { EventEmitter } from 'node:events'
-import { syncBuiltinESMExports } from 'node:module'
+import { catalogWatches } from './catalog-watch-fixture.ts'
+import { hostObserver } from './host-observer.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -11,11 +10,6 @@ import { readCatalog } from '../src/thread/catalog.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 
-const pause = () => new Promise(resolve => setTimeout(
-  resolve,
-  30,
-))
-
 for (const statOnly of [
   false,
   true,
@@ -23,24 +17,7 @@ for (const statOnly of [
   test(
     `catalog index follows edits and serves cached menus (${statOnly ? 'stat recovery' : 'file events'})`,
     async t => {
-      if (statOnly) {
-        t.mock.method(
-          fs,
-          'watch',
-          () => Object.assign(
-            new EventEmitter(),
-            {
-              close() {},
-              unref() {},
-            },
-          ),
-        )
-        syncBuiltinESMExports()
-        t.after(() => {
-          t.mock.restoreAll(); syncBuiltinESMExports()
-        })
-      }
-
+      const watches = catalogWatches({ t })
       const root = mkdtempSync(join(
         tmpdir(),
         'pnyx-catalog-index-',
@@ -72,6 +49,13 @@ for (const statOnly of [
         event: decision.event,
       }).cards.c1!
       let scans = 0
+      let finished = 0
+      const observer = hostObserver({
+        describe: () => ({
+          scans,
+          finished,
+        }),
+      })
       const index = createCatalogIndex({
         locations: {
           home: root,
@@ -92,12 +76,16 @@ for (const statOnly of [
         }) => {
           scans++
 
-          return readCatalog({
+          const catalog = await readCatalog({
             card,
             projects,
             locations,
             observe,
           })
+          finished++
+          observer.notify()
+
+          return catalog
         },
       })
       t.after(() => {
@@ -140,24 +128,16 @@ for (const statOnly of [
         `---\nname: review\ndescription: ${description}\n---\n`,
       )
 
+      let generation = finished
+
       const until = async ({ description }: { description?: string }) => {
-        const deadline = Date.now() + 5000
-
-        do {
-          const suggestions = (await index.read({ card })).suggestions
-
-          const ready = description
-            ? suggestions.some(item => item.description === description)
-            : suggestions.length === 0
-
-          if (ready) {
-            return
-          }
-
-          await pause()
-        } while (Date.now() < deadline)
-
-        assert.fail(`catalog did not refresh to ${description ?? 'empty'}`)
+        watches.changed({ stat: statOnly })
+        await observer.until({ check: () => finished > generation })
+        generation = finished
+        const suggestions = (await index.read({ card })).suggestions
+        assert.ok(description
+          ? suggestions.some(item => item.description === description)
+          : suggestions.length === 0)
       }
 
       write({ description: 'First skill' })
@@ -183,6 +163,8 @@ for (const statOnly of [
 test(
   'catalog edits refresh only scopes observing that path',
   async t => {
+    const watches = catalogWatches({ t })
+    const observer = hostObserver({ describe: () => [...scans] })
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-catalog-scopes-',
@@ -210,6 +192,7 @@ test(
           (scans.get(path) ?? 0) + 1,
         )
         observe?.({ path })
+        observer.notify()
 
         return { suggestions: [] }
       },
@@ -253,15 +236,11 @@ test(
       paths[0],
       'edited',
     )
-    const deadline = Date.now() + 5000
-
-    while (scans.get(paths[0]) === 1) {
-      assert.ok(
-        Date.now() < deadline,
-        'edited scope was not refreshed',
-      )
-      await pause()
-    }
+    watches.changed({
+      stat: false,
+      path: paths[0],
+    })
+    await observer.until({ check: () => scans.get(paths[0])! > 1 })
 
     assert.equal(
       scans.get(paths[1]),

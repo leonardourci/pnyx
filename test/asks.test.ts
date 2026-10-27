@@ -15,12 +15,21 @@ import type { Card, HydraEvent } from '../src/core/model.ts'
 import { HYDRA_CARD, hydraDelivery, hydraEvent } from '../src/core/hydra.ts'
 import { readThread } from '../src/thread/read.ts'
 import { hydraMessages, joinMessageParts } from '../web/src/hydra/chat.ts'
-import { startServer, type RunningServer } from '../src/server/server.ts'
+import type { RunningServer } from '../src/server/server.ts'
 import { loadHydra, readEvents, withWriter } from '../src/store/hydra-store.ts'
 import { taskTimeline } from '../web/src/hydra/task-updates.ts'
 import { cardState } from '../web/src/hydra/view.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+import { hostObserver } from './host-observer.ts'
+
+const {
+  startServer,
+  until,
+  checkpoint,
+} = hostObserver({
+  describe: () => loadHydra({ hydraId: 'lab' }).state,
+})
 
 // A worker or Hydra session running these tests must not lend them its actor.
 delete process.env.PNYX_ACTOR
@@ -32,21 +41,6 @@ afterEach(async () => {
   await server?.close()
   server = undefined
 })
-
-async function until({ check }: { check: () => boolean }) {
-  for (let i = 0; i < 300; i++) {
-    if (check()) {
-      return
-    }
-
-    await new Promise(resolve => setTimeout(
-      resolve,
-      10,
-    ))
-  }
-
-  assert.fail(`timed out waiting for ${check}`)
-}
 
 async function lab({ worker = true }: { worker?: boolean } = {}) {
   const root = realpathSync(mkdtempSync(join(
@@ -605,10 +599,8 @@ test(
       }),
       code: 'ASK_CLOSED',
     })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      50,
-    ))
+    await until({ check: () => f.task().sessionActivity === 'finished' })
+    await checkpoint()
     assert.equal(
       f.workerCall()!.messages.length,
       before + 1,
@@ -1060,10 +1052,8 @@ test(
         'ASK_CLOSED',
         'OWNER_ONLY',
       ].includes((r.reason as { code?: string }).code ?? '')))
-    await new Promise(resolve => setTimeout(
-      resolve,
-      100,
-    ))
+    await until({ check: () => f.task().sessionActivity === 'finished' })
+    await checkpoint()
     const ask = f.task().asks!.find(a => a.id === id)!
     assert.equal(
       f.workerCall()!.messages.length - before,

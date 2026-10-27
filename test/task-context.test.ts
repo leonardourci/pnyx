@@ -1,7 +1,13 @@
+import {
+  ORCHESTRATE_SKILL,
+  SET_UP_SKILL,
+  INSCRIBE_SKILL,
+} from '../src/integrations/skills/names.ts'
 import { checkRegistryLockOrder } from './registry-lock-order.ts'
 import { project } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { commandCapture } from './command-capture.ts'
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -887,7 +893,7 @@ test(
         digest,
         new RegExp(`Owner memory uses 10 of ${OWNER_MEMORY_BUDGET} characters\\.\n\nHydra memory \\(this Hydra only\\):\n- scope: API work\\.\nHydra memory uses 9 of ${HYDRA_MEMORY_BUDGET} characters\\.\n`),
       )
-      assert.ok(digest.includes(`\nSetup needed (load pnyx-setup):\n- config: ${TEMPLATE_NUDGE} · you: pnyx-axi rule init --shared --hydra default\n`))
+      assert.ok(digest.includes(`\nSetup needed (load ${SET_UP_SKILL}):\n- config: ${TEMPLATE_NUDGE} · you: pnyx-axi rule init --shared --hydra default\n`))
       assert.throws(
         () => f.run({
           name: 'hydra',
@@ -933,8 +939,8 @@ test(
       })
 
       for (const skill of [
-        'pnyx-hydra',
-        'inscribe',
+        ORCHESTRATE_SKILL,
+        INSCRIBE_SKILL,
       ]) {
         assert.match(
           readFileSync(
@@ -1010,7 +1016,7 @@ test(
           '--hydra',
           'default',
         ]) as unknown as string,
-        /Owner memory uses 24000 of 24000 characters\. Load the inscribe skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the inscribe skill/,
+        new RegExp(String.raw`Owner memory uses 24000 of 24000 characters\. Load the ${INSCRIBE_SKILL} skill[\s\S]*Hydra memory uses 1500 of 1500 characters\. Load the ${INSCRIBE_SKILL} skill`),
       )
     } finally {
       rmSync(
@@ -1331,7 +1337,8 @@ test(
 
 test(
   'the Hydra command receives the task brief before explicit opening instructions',
-  async () => {
+  async t => {
+    const capture = commandCapture({ t })
     const f = fixture()
 
     try {
@@ -1340,7 +1347,7 @@ test(
         args: [
           'set',
           '--command',
-          'node -e \'require("fs").writeFileSync("prompt.json", JSON.stringify(process.env.PNYX_PROMPT))\'',
+          'node -e \'const fs=require("fs");fs.writeFileSync("prompt.json.tmp", JSON.stringify(process.env.PNYX_PROMPT));fs.renameSync("prompt.json.tmp","prompt.json")\'',
         ],
       })
       await f.run({
@@ -1372,12 +1379,7 @@ test(
         'prompt.json',
       )
 
-      for (let i = 0; !existsSync(path) && i < 100; i++) {
-        await new Promise(resolve => setTimeout(
-          resolve,
-          20,
-        ))
-      }
+      await capture.completed()
 
       assert.match(
         JSON.parse(readFileSync(
