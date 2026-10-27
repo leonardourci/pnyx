@@ -5,6 +5,8 @@ const LOCK = '/tmp/pnyx-full-run.lock'
 const POLL_MS = 1000
 // A run writes its line right after creating the lock; an empty lock this old lost its writer.
 const EMPTY_LOCK_MS = 10_000
+// Longer than any full run, whose test lanes are each capped at 60 minutes.
+const WAIT_TIMEOUT_MS = 90 * 60_000
 
 function holder({ path }: { path: string }): string | undefined {
   try {
@@ -50,9 +52,10 @@ export async function holdRunLock({
   waiting?({ owner }: { owner: string }): void
 }): Promise<void> {
   const mine = `${process.pid} ${name} since ${new Date().toISOString()}`
+  const deadline = Date.now() + WAIT_TIMEOUT_MS
   let reported = ''
 
-  for (;;) {
+  while (Date.now() < deadline) {
     const owner = holder({ path })
 
     if (owner !== undefined && owner === process.env.PNYX_RUN_LOCK) {
@@ -111,4 +114,6 @@ export async function holdRunLock({
       POLL_MS,
     ))
   }
+
+  throw new Error(`${name}: gave up after ${WAIT_TIMEOUT_MS / 60_000} minutes waiting for the full run lock at ${path}, held by ${holder({ path })}`)
 }

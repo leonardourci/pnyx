@@ -68,13 +68,18 @@ test(
       },
     })
 
+    async function failIfTaken() {
+      await second
+      assert.fail('the second run took the lock while the first held it')
+    }
+
     try {
       await Promise.race([
         once(
           first,
           'exit',
         ),
-        second.then(() => assert.fail('the second run took the lock while the first held it')),
+        failIfTaken(),
       ])
     } finally {
       first.stdin.end()
