@@ -550,6 +550,88 @@ test(
       3,
       'every start is still reported',
     )
+
+    const other = join(
+      root,
+      'docs-site',
+    )
+    const sibling = join(
+      root,
+      'shop-old',
+    )
+    mkdirSync(other)
+    mkdirSync(sibling)
+    run({
+      args: [
+        'project',
+        'add',
+        other,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Other project work',
+        '--project',
+        'docs-site',
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shipped already',
+        '--project',
+        'shop',
+        '--column',
+        'done',
+      ],
+    })
+
+    for (const n of [
+      2,
+      3,
+      4,
+      5,
+      6,
+    ]) {
+      run({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Shop task ${n}`,
+          '--project',
+          'shop',
+        ],
+      })
+    }
+
+    const context = ({ cwd }: { cwd: string }) => run({
+      args: [
+        'context',
+        '--cwd',
+        cwd,
+      ],
+    })
+    const listed = context({ cwd: nested })
+    assert.match(
+      listed,
+      /count: 5 of 6 open tasks/,
+    )
+    assert.doesNotMatch(
+      listed,
+      /Other project work|Shipped already|Shop task 6/,
+      'another project\'s tasks, Done tasks and tasks past the first five stay out',
+    )
+    assert.equal(
+      context({ cwd: sibling }).trim(),
+      '',
+      'a folder whose name only starts with the project\'s is outside it',
+    )
   },
 )
 

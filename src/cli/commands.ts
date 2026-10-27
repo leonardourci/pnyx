@@ -86,7 +86,7 @@ import {
   type OutcomeState,
 } from '../core/model.ts'
 import { emptyHydra, replay } from '../core/reducer.ts'
-import { askHost, readServer } from '../server/state.ts'
+import { askHost, readServer, socketPath } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -894,7 +894,7 @@ const CONTEXT_TASKS = 5
 // The session-start hook's summary: the Hydra's open work for the attached project holding the
 // session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
 const context = guard({
-  handler: async ({ args }) => {
+  handler: ({ args }) => {
     const {
       values,
       hydraId,
@@ -922,7 +922,8 @@ const context = guard({
         a,
         b,
       ) => rankOf({ card: a }) - rankOf({ card: b }))
-    const server = await readServer({ hydraId })
+    // The server's socket file, not a health request: the hook never waits on the network.
+    const server = existsSync(socketPath({ hydraId }))
 
     return {
       pnyx: `Hydra ${hydraId}, project ${project.name}, server ${server ? 'running' : 'not running'}`,
@@ -5022,6 +5023,10 @@ An observation older than the card's latest one from the same source is ignored.
 Shows the card and its notes in three sections, summary, decisions and context, newest first:
 ${NOTES_SHOWN} per section with text cut at ${NOTE_CUT} characters, or every note in full with --full.
 `,
+  context: `usage: pnyx-axi context [--cwd <folder>] [--hydra <name>]
+Prints the open tasks (up to ${CONTEXT_TASKS}) of the attached project holding the folder (default: the current one),
+with the Hydra and server state. Prints nothing outside every attached project. The session-start hook runs it.
+`,
   harvest: `usage: pnyx-axi harvest [--card <id>] [--hydra <name>]
 Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
 compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
@@ -5063,8 +5068,8 @@ Existing files and unrelated links are never replaced. Legacy Pnyx skill links a
 --remove takes out this install's global links and legacy Pnyx links.
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
-changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
-so they never add to the agent's context: no session-start Hydra summary is installed.
+changes nothing; --remove takes out only Pnyx's entries. The hooks always exit 0 and print nothing,
+except at session start in a folder inside an attached project, where they print that project's open tasks.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
 setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's

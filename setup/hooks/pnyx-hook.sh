@@ -1,6 +1,6 @@
 #!/bin/sh
-# Hooks always exit 0 so reporting never blocks the agent. Only SessionStart prints, the
-# Hydra's summary for this folder on the saved stdout (fd 3); everything else stays silent.
+# Hooks always exit 0 so reporting never blocks the agent. Only SessionStart prints: the
+# Hydra's summary for this folder, on the saved stdout (fd 3). Everything else stays silent.
 exec 3>&1 >/dev/null 2>&1
 # Bytes, not characters: tr and grep must not stop at invalid UTF-8 in a payload.
 export LC_ALL=C
