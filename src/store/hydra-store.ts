@@ -265,6 +265,64 @@ const parsed = new Map<string, {
   end: number
 }>()
 
+export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
+  let fd: number
+
+  try {
+    fd = openSync(
+      logPath({ dir: hydraDir({ hydraId }) }),
+      'r',
+    )
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return null
+    }
+
+    throw error
+  }
+
+  try {
+    const chunks: Buffer[] = []
+    const buffer = Buffer.alloc(4096)
+
+    for (;;) {
+      const bytes = readSync(
+        fd,
+        buffer,
+        0,
+        buffer.length,
+        null,
+      )
+
+      if (!bytes) {
+        return null
+      }
+
+      const chunk = buffer.subarray(
+        0,
+        bytes,
+      )
+      const newline = chunk.indexOf(10)
+
+      if (newline !== -1) {
+        chunks.push(chunk.subarray(
+          0,
+          newline,
+        ))
+
+        return toEvent({
+          event: parseLine({ line: Buffer.concat(chunks).toString('utf8') }),
+          offset: 0,
+        })
+      }
+
+      chunks.push(Buffer.from(chunk))
+    }
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   const dir = hydraDir({ hydraId })
   let file: string
@@ -459,7 +517,7 @@ export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
   }
 }
 
-function lockIsStale({ path }: { path: string }): boolean {
+export function lockIsStale({ path }: { path: string }): boolean {
   try {
     const pid = Number(readFileSync(
       path,
@@ -521,15 +579,26 @@ function takeOver({
 }
 
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
-export function acquireLock({ dir }: { dir: string }): () => void {
+export function acquireLock({
+  dir,
+  timeout = LOCK_TIMEOUT_MS,
+}: {
+  dir: string
+  timeout?: number
+}): () => void {
   const path = join(
     dir,
     'writer.lock',
   )
   const takeover = `${path}.takeover`
-  const deadline = Date.now() + LOCK_TIMEOUT_MS
+  const deadline = Date.now() + timeout
+  let attempts = 0
+  let retryTakeover: boolean
 
-  for (;;) {
+  do {
+    attempts++
+    retryTakeover = false
+
     try {
       const fd = openSync(
         path,
@@ -555,24 +624,40 @@ export function acquireLock({ dir }: { dir: string }): () => void {
       path,
       takeover,
     })) {
+      retryTakeover = timeout === 0 && attempts === 1
       continue
-    }
-
-    if (Date.now() > deadline) {
-      throw new HydraError({
-        message: 'Hydra is locked by another pnyx-axi writer',
-        code: 'LOCKED',
-        help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
-      })
     }
 
     Atomics.wait(
       new Int32Array(new SharedArrayBuffer(4)),
       0,
       0,
-      25,
+      Math.min(
+        25,
+        Math.max(
+          0,
+          deadline - Date.now(),
+        ),
+      ),
     )
+  } while (retryTakeover || Date.now() < deadline)
+
+  let owner: string
+
+  try {
+    owner = readFileSync(
+      path,
+      'utf8',
+    ).trim()
+  } catch {
+    owner = 'unreadable'
   }
+
+  throw new HydraError({
+    message: `Hydra is locked by another pnyx-axi writer after ${timeout}ms: ${path} (owner: ${owner})`,
+    code: 'LOCKED',
+    help: [`Retry, or remove ${path} and ${takeover} if no pnyx-axi process is running`],
+  })
 }
 
 export function withRegistryLock<T>({ fn }: { fn(): T }): T {
@@ -610,10 +695,12 @@ export function withWriter<T>({
   hydraId,
   fn,
   create = false,
+  lockTimeout,
 }: {
   hydraId: string
   // Only `hydra create` makes a new Hydra; the default Hydra is made on first use.
   create?: boolean
+  lockTimeout?: number
   fn: (
     { writer }: {
       writer: Writer
@@ -627,7 +714,10 @@ export function withWriter<T>({
   }
 
   privateDir({ dir })
-  const release = acquireLock({ dir })
+  const release = acquireLock({
+    dir,
+    timeout: lockTimeout,
+  })
 
   try {
     let {

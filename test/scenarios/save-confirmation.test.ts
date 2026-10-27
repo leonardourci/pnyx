@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
+import { HYDRA_CARD } from '../../src/core/hydra.ts'
+import { browserCommand } from '../../src/server/browser.ts'
 import { localToken } from '../../src/server/state.ts'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
@@ -18,6 +20,11 @@ test(
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
+    t.after(() => page.close())
+    await page.shows({
+      what: 'the warm turn to finish before injecting snapshot failure',
+      check: ({ state }) => state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
     const rename = fs.renameSync
     let failed = false
     t.mock.method(
@@ -25,7 +32,8 @@ test(
       'renameSync',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
       (...args: Parameters<typeof fs.renameSync>) => {
-        if (!failed && String(args[1]).endsWith(`/hydras/${s.hydraId}/snapshot.json`)) {
+        if (!failed && browserCommand.getStore() && String(args[1]).endsWith(`/hydras/${s.hydraId}/snapshot.json`)
+          && s.events().some(event => event.id === 'saved-before-error')) {
           failed = true
           throw new Error('snapshot unavailable after the append')
         }
@@ -37,7 +45,6 @@ test(
     t.after(() => {
       t.mock.restoreAll()
       syncBuiltinESMExports()
-      page.close()
     })
     const receipt = await page.command({
       name: 'hydra',
@@ -52,6 +59,8 @@ test(
       failed,
       true,
     )
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
     assert.equal(
       receipt.saved,
       true,
@@ -72,6 +81,15 @@ test(
   async t => {
     const s = await pnyx.scenario()
     await s.chat({ text: 'Warm before the I/O failure.' })
+    const warmPage = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => warmPage.close())
+    await warmPage.shows({
+      what: 'the warm turn to finish before injecting writer failure',
+      check: ({ state }) => state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
     const ws = new WebSocket(`ws://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/ws?token=${localToken()}`)
     t.after(() => ws.close())
     await once(
@@ -85,7 +103,7 @@ test(
       'openSync',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
       (...args: Parameters<typeof fs.openSync>) => {
-        if (!failed && String(args[0]).endsWith(`/hydras/${s.hydraId}/writer.lock`)) {
+        if (!failed && browserCommand.getStore() && String(args[0]).endsWith(`/hydras/${s.hydraId}/writer.lock`)) {
           failed = true
           throw Object.assign(
             new Error('writer unavailable'),
@@ -124,9 +142,15 @@ test(
       args,
     }))
     const error = await answer
+    t.mock.restoreAll()
+    syncBuiltinESMExports()
     assert.equal(
       failed,
       true,
+    )
+    assert.match(
+      String(error.error),
+      /writer unavailable/,
     )
     assert.equal(
       error.type,

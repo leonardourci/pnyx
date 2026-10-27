@@ -1,3 +1,4 @@
+import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'
@@ -27,7 +28,7 @@ export function projectDigest({ state }: { state: HydraState }): string[] {
       })
       const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
 
-      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ' · nearly full: load inscribe with this project' : ''}${stale.length ? ` · ${stale.length} stale learnings: load inscribe` : ''}`
+      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`
     }),
   ]
 }

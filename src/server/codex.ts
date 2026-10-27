@@ -1,4 +1,5 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -6,7 +7,8 @@ import type { Question } from '../core/model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { attachedImages } from '../attachments/images.ts'
-import type { AskPermission, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import { compactCommand } from '../compaction/state.ts'
+import type { AskPermission, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -291,7 +293,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             items.clear()
             events.push(params)
             wake?.()
-          } else if (message.method === 'thread/tokenUsage/updated' || message.method === 'account/rateLimits/updated') {
+          } else if (message.method === 'thread/tokenUsage/updated' || message.method === 'account/rateLimits/updated' || message.method === 'turn/started') {
             events.push({
               ...object({ value: message.params }),
               method: message.method,
@@ -311,6 +313,11 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               wake?.()
             } else if (item.type === 'contextCompaction') {
               compacted = true
+              events.push({
+                ...params,
+                method: message.method,
+              })
+              wake?.()
             }
           } else if (message.method === 'item/started') {
             const params = object({ value: message.params })
@@ -323,7 +330,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               )
             }
 
-            if (item.type === 'reasoning' || TOOL_ITEMS.includes(String(item.type))) {
+            if (item.type === 'contextCompaction' || item.type === 'reasoning' || TOOL_ITEMS.includes(String(item.type))) {
               events.push({
                 ...params,
                 method: message.method,
@@ -425,12 +432,19 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     async* completed({
       threadId,
       turnId,
+      manualCompact = false,
+      started,
     }: {
       threadId: string
-      turnId: string
+      turnId?: string
+      manualCompact?: boolean
+      started?({ id }: { id: string }): Promise<void>
     }): AsyncGenerator<
-      HostedText | HostedTool | HostedThinking | HostedUsage | { turn: ObjectValue }
+      HostedText | HostedTool | HostedThinking | HostedUsage
+      | HostedCompaction | { turn: ObjectValue }
     > {
+      let compactId: string | undefined
+
       for (;;) {
         if (failure) {
           throw failure
@@ -464,7 +478,30 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             continue
           }
 
+          if (event.method === 'turn/started') {
+            if (!turnId && typeof turn.id === 'string') {
+              turnId = turn.id
+              await started?.({ id: turnId })
+            }
+
+            continue
+          }
+
           if (turn.id === turnId) {
+            if (manualCompact) {
+              compacted = turn.status === 'completed'
+            }
+
+            if (compactId) {
+              yield {
+                type: 'compaction',
+                id: compactId,
+                trigger: manualCompact ? 'manual' : 'auto',
+                state: turn.status === 'interrupted' ? 'cancelled' : turn.status === 'completed' ? 'done' : 'failed',
+                ...(turn.status === 'failed' ? { error: String(object({ value: turn.error }).message ?? 'Compaction failed') } : {}),
+              }
+            }
+
             yield { turn }
 
             return
@@ -473,6 +510,28 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
           if (event.turnId === turnId) {
             const item = object({ value: event.item })
             const toolEvent = event.method === 'item/started' || event.method === 'item/completed'
+
+            if (toolEvent && item.type === 'contextCompaction' && typeof item.id === 'string') {
+              if (event.method === 'item/started') {
+                compactId = item.id
+                yield {
+                  type: 'compaction',
+                  id: item.id,
+                  trigger: manualCompact ? 'manual' : 'auto',
+                  state: 'running',
+                }
+              } else if (!manualCompact) {
+                compactId = undefined
+                yield {
+                  type: 'compaction',
+                  id: item.id,
+                  trigger: 'auto',
+                  state: 'done',
+                }
+              }
+
+              continue
+            }
 
             if (toolEvent && item.type === 'reasoning' && typeof item.id === 'string') {
               yield {
@@ -638,6 +697,7 @@ export function codexProvider({
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {
   return {
+    compact: true,
     async models({
       cwd,
       env,
@@ -730,6 +790,11 @@ export function codexProvider({
       outputSchema,
       context,
     }) {
+      let deferredInterrupt: {
+        done: Promise<void>
+        resolve(): void
+        reject({ error }: { error: unknown }): void
+      } | undefined
       const rpc = connection({
         child: spawnCodex({
           cwd,
@@ -738,6 +803,8 @@ export function codexProvider({
       })
 
       const close = () => {
+        deferredInterrupt?.reject({ error: new Error('The Codex session closed before it could be interrupted') })
+        deferredInterrupt = undefined
         signal.removeEventListener(
           'abort',
           close,
@@ -797,6 +864,24 @@ export function codexProvider({
             turnId,
           },
         })
+
+        const interruptStartedTurn = async () => {
+          const waiting = deferredInterrupt
+
+          if (!waiting) {
+            return
+          }
+
+          deferredInterrupt = undefined
+
+          try {
+            await stopTurn()
+            waiting.resolve()
+          } catch (error) {
+            interrupted = false
+            waiting.reject({ error })
+          }
+        }
 
         return {
           id,
@@ -871,12 +956,30 @@ export function codexProvider({
                 incoming = messages.next()
               }
 
-              const text = context && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
-              fresh = false
-              yield 'working'
+              const manualCompact = compactCommand({ text: said })
+              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
+
+              if (!manualCompact) {
+                fresh = false
+              }
+
+              if (manualCompact && said.trim() !== '/compact') {
+                yield 'working'
+                const compactId = randomUUID()
+                yield {
+                  type: 'compaction',
+                  id: compactId,
+                  trigger: 'manual',
+                  state: 'failed',
+                  error: 'Codex compact does not accept instructions. Send /compact on its own.',
+                }
+                yield 'finished'
+                continue
+              }
+
               const result = await rpc.request({
-                method: 'turn/start',
-                params: {
+                method: manualCompact ? 'thread/compact/start' : 'turn/start',
+                params: manualCompact ? { threadId: id } : {
                   threadId: id,
                   ...(outputSchema ? { outputSchema } : {}),
                   input: turnInput({
@@ -899,23 +1002,32 @@ export function codexProvider({
               })
               const turn = object({ value: result.turn })
 
-              if (typeof turn.id !== 'string') {
+              if (!manualCompact && typeof turn.id !== 'string') {
                 throw new Error('Codex returned no turn id')
               }
 
-              turnId = turn.id
-              const runningTurn = turn.id
+              turnId = manualCompact ? undefined : turn.id as string
+              let runningTurn = turnId
 
               // A stop that came before Codex named the turn applies now.
-              if (interrupted) {
-                await stopTurn()
+              if (turnId) {
+                await interruptStartedTurn()
               }
 
               const events = rpc.completed({
                 threadId: id,
                 turnId: runningTurn,
+                manualCompact,
+                started: async ({ id }) => {
+                  turnId = id
+                  runningTurn = id
+                  await interruptStartedTurn()
+                },
               })[Symbol.asyncIterator]()
-              let pendingEvent = events.next()
+              // Compaction must receive its turn id even when the output consumer pauses.
+              const compactEvent = manualCompact ? events.next() : undefined
+              yield 'working'
+              let pendingEvent = compactEvent ?? events.next()
               type Arrival = {
                 kind: 'event'
                 result: Awaited<typeof pendingEvent>
@@ -955,8 +1067,8 @@ export function codexProvider({
                   messageArrival = messageArrives()
                   const message = settled.result.value
 
-                  // A turn being stopped answers nothing more, so the message waits for a turn of its own.
-                  if (interrupted) {
+                  // Compact turns cannot accept steering; an interrupted turn answers nothing more.
+                  if (interrupted || manualCompact) {
                     carried.push(message)
                     yield 'carried'
 
@@ -999,7 +1111,7 @@ export function codexProvider({
                 }
 
                 // A turn the owner stopped is a finished turn, not a failure.
-                if (event.turn.status !== 'completed' && !(interrupted && event.turn.status === 'interrupted')) {
+                if (!manualCompact && event.turn.status !== 'completed' && !(interrupted && event.turn.status === 'interrupted')) {
                   throw new Error(String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`))
                 }
               }
@@ -1019,8 +1131,38 @@ export function codexProvider({
             interrupted = true
 
             if (turnId) {
-              await stopTurn()
+              try {
+                await stopTurn()
+              } catch (error) {
+                interrupted = false
+                throw error
+              }
+
+              return
             }
+
+            if (!deferredInterrupt) {
+              let resolve = () => {}, reject: ({ error }: { error: unknown }) => void = () => {}
+              const done = new Promise<void>((
+                yes,
+                no,
+              ) => {
+                resolve = yes
+                reject = ({ error }) => no(error)
+              })
+              deferredInterrupt = {
+                done,
+                resolve,
+                reject,
+              }
+            }
+
+            await Promise.race([
+              deferredInterrupt.done,
+              rpc.ended.then(error => {
+                throw error
+              }),
+            ])
           },
           close,
         }

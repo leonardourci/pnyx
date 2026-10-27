@@ -471,16 +471,15 @@ test(
         {
           command: 'node',
           args: [
-            '--test',
-            'test/*.test.ts',
+            'scripts/test.ts',
+            'unit',
           ],
         },
         {
           command: 'node',
           args: [
-            '--test',
-            '--test-concurrency=1',
-            'test/scenarios/*.test.ts',
+            'scripts/test.ts',
+            'scenarios',
           ],
         },
       ],
@@ -747,16 +746,15 @@ test(
         {
           command: 'node',
           args: [
-            '--test',
-            'test/*.test.ts',
+            'scripts/test.ts',
+            'unit',
           ],
         },
         {
           command: 'node',
           args: [
-            '--test',
-            '--test-concurrency=1',
-            'test/scenarios/*.test.ts',
+            'scripts/test.ts',
+            'scenarios',
           ],
         },
       ],
@@ -1119,8 +1117,7 @@ for (const {
           tests.map(call => call.args),
           [
             [
-              '--test',
-              '--test-concurrency=1',
+              'scripts/test.ts',
               'test/new.test.ts',
             ],
           ],
@@ -1156,8 +1153,7 @@ for (const {
         expectedChecks.push({
           command: 'node',
           args: [
-            '--test',
-            '--test-concurrency=1',
+            'scripts/test.ts',
             ...expectedTests,
           ],
         })
@@ -1166,8 +1162,19 @@ for (const {
           expectedChecks,
         )
       } else {
-        assert.ok(tests.some(call => call.args.includes('test/*.test.ts')))
-        assert.ok(tests.some(call => call.args.includes('test/scenarios/*.test.ts')))
+        assert.deepEqual(
+          tests.map(call => call.args),
+          [
+            [
+              'scripts/test.ts',
+              'unit',
+            ],
+            [
+              'scripts/test.ts',
+              'scenarios',
+            ],
+          ],
+        )
       }
     },
   )
@@ -1198,8 +1205,19 @@ test(
       const automated = result.calls.filter(call => call.command !== 'gh')
 
       if (valid) {
-        assert.ok(automated.some(call => call.args.includes('test/*.test.ts')))
-        assert.ok(automated.some(call => call.args.includes('test/scenarios/*.test.ts')))
+        assert.deepEqual(
+          automated.filter(call => call.command === 'node').map(call => call.args),
+          [
+            [
+              'scripts/test.ts',
+              'unit',
+            ],
+            [
+              'scripts/test.ts',
+              'scenarios',
+            ],
+          ],
+        )
         assert.match(
           result.body!,
           /"mechanical":true/,

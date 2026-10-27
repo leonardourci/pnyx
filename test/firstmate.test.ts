@@ -3,6 +3,8 @@
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { appendFileSync, cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -1284,61 +1286,88 @@ test(
   },
 )
 
-test(
-  'watch reconciles on start and folds each change',
-  async () => {
-    const { home } = copyFixture()
-    const results: SyncResult[] = []
-    let wake: () => void = () => {}
-    const watcher = watchHome({
-      hydraId: 'default',
-      home,
-      onSync: ({ result: r }) => {
-        if (r instanceof Error) {
-          throw r
-        }
+for (const fallback of [
+  false,
+  true,
+]) {
+  test(
+    `watch reconciles on start and folds in-place changes${fallback ? ' after EMFILE' : ''}`,
+    async t => {
+      if (fallback) {
+        t.mock.method(
+          fs,
+          'watch',
+          () => {
+            throw Object.assign(
+              new Error('watch limit reached'),
+              { code: 'EMFILE' },
+            )
+          },
+        )
+        t.mock.method(
+          console,
+          'error',
+          () => {},
+        )
+        syncBuiltinESMExports()
+        t.after(() => {
+          t.mock.restoreAll(); syncBuiltinESMExports()
+        })
+      }
 
-        results.push(r)
-        wake()
-      },
-    })
+      const { home } = copyFixture()
+      const results: SyncResult[] = []
+      let wake: () => void = () => {}
+      const watcher = watchHome({
+        hydraId: 'default',
+        home,
+        onSync: ({ result: r }) => {
+          if (r instanceof Error) {
+            throw r
+          }
 
-    try {
-      assert.equal(
-        results[0]!.tasks,
-        5,
-      )
-      const changed = new Promise<void>(resolve => (wake = resolve))
-      appendFileSync(
-        join(
-          home,
-          'state',
-          'api-v2.status',
-        ),
-        'resolved [key=api-shape]: REST\n',
-      )
-      await Promise.race([
-        changed,
-        new Promise((
-          _,
-          reject,
-        ) => setTimeout(
-          () => reject(new Error('no sync after change')),
-          5000,
-        )),
-      ])
-      assert.deepEqual(
-        cardOf({
-          home,
-          task: 'api-v2',
-        }).attention.map(a => a.key),
-        ['ci-token'],
-      )
-    } finally {
-      watcher.close()
-    }
-  },
-)
+          results.push(r)
+          wake()
+        },
+      })
+
+      try {
+        assert.equal(
+          results[0]!.tasks,
+          5,
+        )
+        const changed = new Promise<void>(resolve => (wake = resolve))
+        appendFileSync(
+          join(
+            home,
+            'state',
+            'api-v2.status',
+          ),
+          'resolved [key=api-shape]: REST\n',
+        )
+        await Promise.race([
+          changed,
+          new Promise((
+            _,
+            reject,
+          ) => setTimeout(
+            () => reject(new Error('no sync after change')),
+            5000,
+          )),
+        ])
+        assert.deepEqual(
+          cardOf({
+            home,
+            task: 'api-v2',
+          }).attention.map(a => a.key),
+          ['ci-token'],
+        )
+      } finally {
+        watcher.close()
+      }
+    },
+  )
+}
 
 test(
   'firstmate sync through the CLI',

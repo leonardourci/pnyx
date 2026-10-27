@@ -2,11 +2,13 @@ import { TurnActionsFold } from './turn-actions.tsx'
 import type { TurnActions } from './conversation.ts'
 import {
   Fragment, useEffect, useLayoutEffect, useRef, useState,
-  type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent,
+  type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent, type ComponentProps,
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
-import type { HydraColumn } from '../../../src/core/model.ts'
+import type { HydraColumn, SavedLabelColor } from '../../../src/core/model.ts'
+import type { Catalog } from '../../../src/thread/catalog.ts'
+import { ChatTokensContext } from '../components/ui/chat-tokens.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { CopyButton } from '../components/ui/copy-button.tsx'
 import { ColumnChip } from '../components/ui/column-chip.tsx'
@@ -15,7 +17,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
 import {
-  CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED,
+  CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED, QUESTION_CONTROLS,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
@@ -49,6 +51,26 @@ const roleLabel = ({
   assistantLabel?: string
 }) => role === 'assistant' ? assistantLabel : role === 'user' ? 'You' : role
 
+function ChatMessageText({
+  catalog,
+  colors,
+  ...props
+}: ComponentProps<typeof MessageText> & {
+  catalog?: Catalog | null
+  colors?: SavedLabelColor[]
+}) {
+  return (
+    <ChatTokensContext.Provider
+      value={{
+        suggestions: catalog?.suggestions,
+        colors,
+      }}
+    >
+      <MessageText {...props} />
+    </ChatTokensContext.Provider>
+  )
+}
+
 export function Messages({
   entries: all,
   working,
@@ -65,7 +87,11 @@ export function Messages({
   folds,
   inline,
   timings,
+  catalog,
+  labelColors,
 }: {
+  catalog?: Catalog | null
+  labelColors?: SavedLabelColor[]
   timings?: Map<string, TurnTiming>
   folds?: Map<string, TurnActions>
   inline?: Map<string, React.ReactNode>
@@ -565,7 +591,7 @@ export function Messages({
     const control = event.target instanceof HTMLElement ? event.target : null
 
     if (control !== host) {
-      if (!plain || !control?.matches('.chat-decision .ask :is(button, textarea, input, summary)')) {
+      if (!plain || !control?.matches(QUESTION_CONTROLS)) {
         return
       }
 
@@ -817,7 +843,9 @@ export function Messages({
                 </div>
               )}
               {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
-                <MessageText
+                <ChatMessageText
+                  catalog={ownMessage({ entry }) ? catalog : undefined}
+                  colors={labelColors}
                   text={entry.text}
                   streaming={entry.streaming}
                   decorations={MESSAGE_DECORATIONS}

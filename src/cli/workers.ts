@@ -110,7 +110,7 @@ export async function hydraCheck({
     error: string
   }[]
 
-  for (;;) {
+  do {
     withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -231,7 +231,7 @@ export async function hydraCheck({
       POLL_MS,
       deadline - Date.now(),
     ))
-  }
+  } while (!woken && unavailable.length === 0)
 
   const page = changes.slice(
     0,

@@ -1,3 +1,4 @@
+import { COMMENT_NOTE } from '../../../src/compaction/comments.ts'
 import { HYDRA_ACTOR, type HydraMessage, type HydraStatus } from '../../../src/core/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/core/hydra.ts'
 import { withoutInjected } from '../../../src/oracle/text.ts'
@@ -36,6 +37,8 @@ export function hydraMessages({
     const report = reportActor({ actor: message.actor })
     const role = message.actor === HYDRA_ACTOR ? 'assistant' : message.actor === 'pnyx' ? 'Pnyx' : 'user'
     const text = message.details ? `${message.text}\n\n${message.details}` : message.text
+    const entered = message.enteredText ?? message.text
+    const shown = message.details ? `${entered}\n\n${message.details}` : entered
     const sent = message.context ? `${text}\n\n${message.context}` : text
     // An older server delivered a report as its bare words.
     const reportCopies = [
@@ -74,11 +77,11 @@ export function hydraMessages({
             hidden: true,
           })
         }
-      } else if (normalized(entry!) !== normalized({ text })) {
+      } else if (normalized(entry!) !== normalized({ text: shown })) {
         replaced.add(entry!)
         recorded.push({
           ...entry!,
-          text,
+          text: shown,
         })
       }
     } else if (!report) {
@@ -86,7 +89,7 @@ export function hydraMessages({
         id: message.id,
         kind: 'message',
         role,
-        text,
+        text: shown,
         at: message.at,
         hidden: boundaries && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
@@ -254,7 +257,7 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   } : entry)
 }
 
-export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
+export { COMMENT_NOTE } from '../../../src/compaction/comments.ts'
 
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`)

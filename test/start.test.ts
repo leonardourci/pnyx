@@ -1,9 +1,16 @@
+import {
+  ORCHESTRATE_SKILL,
+  MANAGE_WORKERS_SKILL,
+  INSCRIBE_SKILL,
+} from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { commandCapture } from './command-capture.ts'
+
 import type { PaseoClient } from '@getpaseo/client'
 import { project } from '../src/projects/cli.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
@@ -61,13 +68,14 @@ function lab() {
   }
 }
 
-async function written({ path }: { path: string }): Promise<string> {
-  for (let i = 0; i < 100 && !existsSync(path); i++) {
-    await new Promise(resolve => setTimeout(
-      resolve,
-      20,
-    ))
-  }
+async function written({
+  path,
+  captures,
+}: {
+  path: string
+  captures: ReturnType<typeof commandCapture>
+}): Promise<string> {
+  await captures.completed()
 
   return readFileSync(
     path,
@@ -130,7 +138,8 @@ const captureEnvironment = ({ path }: { path: string }) => {
 
 test(
   'task start --via command runs the Hydra command once and its session joins the task',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -203,7 +212,12 @@ test(
       state().cards[task]?.column,
       state().config?.columns.find(c => c.role === 'in_progress')?.id,
     )
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_TASK,
       task,
@@ -249,10 +263,10 @@ test(
       })).event,
       'none: duplicate',
     )
-    await new Promise(resolve => setTimeout(
-      resolve,
-      200,
-    ))
+    assert.equal(
+      captures.count(),
+      1,
+    )
     assert.equal(
       readFileSync(
         out,
@@ -312,7 +326,8 @@ test(
 
 test(
   'hydra start --via command makes its first session the Hydra, never a worker',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -351,7 +366,12 @@ test(
         id: 'h1',
       },
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_TASK,
       HYDRA_CARD,
@@ -362,7 +382,7 @@ test(
     )
     assert.match(
       env.PNYX_PROMPT!,
-      /pnyx-hydra/,
+      new RegExp(String.raw`${ORCHESTRATE_SKILL}`),
     )
 
     hook({
@@ -631,7 +651,10 @@ test(
         ),
         'utf8',
       ),
-      /^\/\.agents\/skills\/pnyx-hydra\/$/m,
+      new RegExp(
+        String.raw`^\/\.agents\/skills\/${ORCHESTRATE_SKILL}\/$`,
+        'm',
+      ),
     )
     assert.equal(
       spawnSync(
@@ -675,9 +698,9 @@ test(
     )
     assert.deepEqual(
       [
-        'pnyx-hydra',
-        'pnyx-hydra-workers',
-        'inscribe',
+        ORCHESTRATE_SKILL,
+        MANAGE_WORKERS_SKILL,
+        INSCRIBE_SKILL,
       ].map(name => excluded.split('\n').filter(line => line === `/.agents/skills/${name}/`).length),
       [
         1,
@@ -689,7 +712,7 @@ test(
       home,
       '.agents',
       'skills',
-      'inscribe',
+      INSCRIBE_SKILL,
       'SKILL.md',
     )))
     assert.equal(
@@ -934,7 +957,8 @@ test(
 
 test(
   'Hydra can select its task project’s start command by name',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -988,7 +1012,12 @@ test(
         'project-start',
       ],
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_FOLDER,
       folder,
@@ -1023,10 +1052,10 @@ test(
         'project-start',
       ],
     })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      100,
-    ))
+    assert.equal(
+      captures.count(),
+      1,
+    )
     assert.equal(
       readFileSync(
         out,
@@ -1079,7 +1108,8 @@ test(
 
 test(
   'a named command uses the task copy unless it brings its own folder',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -1135,7 +1165,12 @@ test(
         'fixture',
       ],
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_FOLDER,
       copy,
@@ -1180,6 +1215,189 @@ test(
         projectNotes: '',
       }),
       workerHeader(base),
+    )
+  },
+)
+
+test(
+  'Firstmate setup retires only excluded untracked legacy skill copies',
+  t => {
+    const { root } = lab()
+    t.after(() => rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const home = join(
+      root,
+      'home',
+    )
+    cpSync(
+      join(
+        ROOT,
+        'test',
+        'fixtures',
+        'firstmate-home',
+      ),
+      home,
+      { recursive: true },
+    )
+    assert.equal(
+      spawnSync(
+        'git',
+        [
+          'init',
+          '-q',
+          home,
+        ],
+      ).status,
+      0,
+    )
+    const skills = join(
+      home,
+      '.agents',
+      'skills',
+    )
+    const legacy = [
+      'pnyx-hydra',
+      'pnyx-hydra-workers',
+      'pnyx-hydra-columns',
+      'pnyx-hydra-firstmate',
+      'pnyx-setup',
+      'inscribe',
+    ]
+
+    for (const name of legacy) {
+      mkdirSync(
+        join(
+          skills,
+          name,
+        ),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skills,
+          name,
+          'SKILL.md',
+        ),
+        'Legacy Pnyx skill',
+      )
+    }
+
+    writeFileSync(
+      join(
+        home,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      legacy.map(name => `/.agents/skills/${name}/`).join('\n') + '\n',
+    )
+    setupHydra({
+      hydraId: 'lab',
+      home,
+      meta,
+    })
+    assert.ok(legacy.every(name => !existsSync(join(
+      skills,
+      name,
+    ))))
+    const names = [
+      'inscribe',
+      'pnyx-hydra-workers',
+      'pnyx-hydra-columns',
+      'pnyx-setup',
+    ]
+
+    for (const name of names) {
+      mkdirSync(
+        join(
+          skills,
+          name,
+        ),
+        { recursive: true },
+      )
+      writeFileSync(
+        join(
+          skills,
+          name,
+          'SKILL.md',
+        ),
+        `---\nname: ${name}\n---\nOriginal content`,
+      )
+    }
+
+    writeFileSync(
+      join(
+        skills,
+        'pnyx-setup',
+        'owner-notes.txt',
+      ),
+      'Keep this',
+    )
+    writeFileSync(
+      join(
+        home,
+        '.git',
+        'info',
+        'exclude',
+      ),
+      [
+        '/.agents/skills/inscribe/',
+        '/.agents/skills/pnyx-hydra-columns/',
+        '/.agents/skills/pnyx-setup/',
+      ].join('\n') + '\n',
+    )
+    assert.equal(
+      spawnSync(
+        'git',
+        [
+          '-C',
+          home,
+          'add',
+          '-f',
+          '.agents/skills/pnyx-hydra-columns/SKILL.md',
+        ],
+      ).status,
+      0,
+    )
+    setupHydra({
+      hydraId: 'lab',
+      home,
+      meta,
+    })
+    assert.ok(!existsSync(join(
+      skills,
+      'inscribe',
+    )))
+
+    for (const name of names.slice(1)) {
+      assert.equal(
+        readFileSync(
+          join(
+            skills,
+            name,
+            'SKILL.md',
+          ),
+          'utf8',
+        ),
+        `---\nname: ${name}\n---\nOriginal content`,
+      )
+    }
+
+    assert.equal(
+      readFileSync(
+        join(
+          skills,
+          'pnyx-setup',
+          'owner-notes.txt',
+        ),
+        'utf8',
+      ),
+      'Keep this',
     )
   },
 )

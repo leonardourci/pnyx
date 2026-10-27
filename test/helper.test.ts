@@ -9,6 +9,9 @@ import { helperTask } from '../src/helper/route.ts'
 import { wakeHandled } from '../src/helper/state.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import fs from 'node:fs'
+import { syncBuiltinESMExports } from 'node:module'
+import { HydraError } from '../src/core/model.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
@@ -459,7 +462,28 @@ function deferred() {
   }
 }
 
-function helperLab() {
+async function untilHelper({ check }: { check(): boolean }) {
+  const deadline = Date.now() + 10_000
+
+  while (!check()) {
+    assert.ok(
+      Date.now() < deadline,
+      'helper did not settle',
+    )
+    await new Promise(resolve => setTimeout(
+      resolve,
+      20,
+    ))
+  }
+}
+
+function helperLab({
+  failClose = false,
+  cost,
+}: {
+  failClose?: boolean
+  cost?: number
+} = {}) {
   let reply = ''
   let fail = false
   let held: Promise<void> | undefined
@@ -486,11 +510,22 @@ function helperLab() {
         id: 'helper-session',
         set: async () => {},
         interrupt: async () => {},
-        close() {},
+        close() {
+          if (failClose) {
+            throw new Error('session cleanup failed')
+          }
+        },
         async *run({ input }) {
           for await (const text of input) {
             inputs.push(text)
             await held
+
+            if (cost !== undefined) {
+              yield {
+                type: 'usage',
+                cost,
+              } as const
+            }
 
             if (fail) {
               throw new Error('provider failed')
@@ -552,10 +587,12 @@ function helperLab() {
       text,
       error = false,
       wait,
+      tasks = [state().keys.work!],
     }: {
       text: string
       error?: boolean
       wait?: Promise<void>
+      tasks?: string[]
     }) {
       reply = text
       fail = error
@@ -563,7 +600,7 @@ function helperLab() {
       idle = deferred()
       opened = deferred()
       helper.offer({
-        tasks: [state().keys.work!],
+        tasks,
         prompt: 'Worker turn ended',
         seqs: [state().seq],
         once: ['wait:expired'],
@@ -574,6 +611,342 @@ function helperLab() {
     },
   }
 }
+
+test(
+  'closing a helper during a writer retry never opens a provider and releases its batch',
+  async t => {
+    const lab = helperLab()
+    const original = fs.openSync
+    let blocked = false
+    t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.mock.method(
+      fs,
+      'openSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
+      (...args: Parameters<typeof fs.openSync>) => {
+        if (!blocked && String(args[0]).endsWith('/writer.lock') && new Error().stack?.includes('/helper/leases.ts')) {
+          blocked = true
+          throw new HydraError({
+            message: 'writer is busy',
+            code: 'LOCKED',
+          })
+        }
+
+        return original(...args)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      lab.helper.close(); t.mock.restoreAll(); syncBuiltinESMExports()
+    })
+    lab.helper.offer({
+      tasks: [state().keys.work!],
+      prompt: 'Progress',
+      seqs: [state().seq],
+    })
+    await untilHelper({ check: () => blocked })
+    lab.helper.close()
+    const deadline = Date.now() + 5000
+
+    while (lab.helper.busy()) {
+      assert.ok(
+        Date.now() < deadline,
+        'closed helper did not settle',
+      )
+      await new Promise(resolve => setTimeout(
+        resolve,
+        20,
+      ))
+    }
+
+    assert.equal(
+      lab.opens.length,
+      0,
+    )
+    assert.equal(
+      lab.handbacks.length,
+      0,
+    )
+    assert.ok(Object.values(state().helper?.runs ?? {}).every(batch => batch.error?.includes('stopped')))
+    assert.match(
+      readEvents({ hydraId: 'lab' }).findLast(event => event.type === 'hydra.helper-finished')?.data.error ?? '',
+      /stopped/,
+    )
+  },
+)
+
+for (const shutdown of [
+  false,
+  true,
+]) {
+  test(
+    `long writer contention parks after bounded attempts and ${shutdown ? 'shutdown retains the exact outcome for recovery' : 'unlock persists one outcome'}`,
+    async t => {
+      const lab = helperLab({ cost: 0.25 })
+      const held = deferred()
+      const task = state().keys.work!
+      const turn = await lab.run({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task,
+              audience: 'routine',
+              summary: 'Retain this result.',
+            },
+          ],
+        }),
+        wait: held.promise,
+      })
+      const lock = join(
+        root,
+        'hydras/lab/writer.lock',
+      )
+      fs.writeFileSync(
+        lock,
+        String(process.pid),
+      )
+      const original = fs.openSync
+      let attempts = 0
+      t.mock.method(
+        console,
+        'error',
+        () => {},
+      )
+      t.mock.method(
+        fs,
+        'openSync',
+        // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
+        (...args: Parameters<typeof fs.openSync>) => {
+          if (String(args[0]) === lock && new Error().stack?.includes('/helper/')) {
+            attempts++
+          }
+
+          return original(...args)
+        },
+      )
+      syncBuiltinESMExports()
+      t.after(() => {
+        lab.helper.close()
+        fs.rmSync(
+          lock,
+          { force: true },
+        )
+        t.mock.restoreAll()
+        syncBuiltinESMExports()
+      })
+      held.resolve()
+      await untilHelper({ check: () => attempts >= 5 })
+      assert.equal(
+        attempts,
+        5,
+      )
+      const journal = join(
+        root,
+        'hydras/lab/helper-pending',
+      )
+      assert.equal(
+        fs.readdirSync(journal).length,
+        1,
+      )
+      const before = performance.now()
+      await new Promise(resolve => setTimeout(
+        resolve,
+        500,
+      ))
+      assert.ok(
+        performance.now() - before < 2000,
+        'lock contention blocked the event loop',
+      )
+      assert.equal(
+        attempts,
+        5,
+        'parked helper kept retrying the writer',
+      )
+
+      if (shutdown) {
+        lab.helper.close()
+        await turn.finished
+        const stopped = attempts
+        fs.rmSync(lock)
+        await new Promise(resolve => setTimeout(
+          resolve,
+          500,
+        ))
+        assert.equal(
+          attempts,
+          stopped,
+          'writer retries continued after shutdown',
+        )
+        assert.equal(
+          lab.helper.busy(),
+          false,
+        )
+        const recovered = helperLab()
+        t.after(() => recovered.helper.close())
+        await recovered.helper.recover()
+        await recovered.helper.recover()
+        assert.equal(
+          recovered.opens.length,
+          0,
+        )
+        assert.equal(
+          recovered.handbacks.length,
+          0,
+        )
+      } else {
+        fs.rmSync(lock)
+        await turn.finished
+      }
+
+      assert.equal(
+        state().helper?.outcomes.filter(outcome => outcome.summary === 'Retain this result.').length,
+        1,
+      )
+      assert.equal(
+        readEvents({ hydraId: 'lab' }).filter(event => event.type === 'hydra.helper-started').length,
+        1,
+      )
+      assert.equal(
+        readEvents({ hydraId: 'lab' }).filter(event => event.type === 'hydra.helper-finished').length,
+        1,
+      )
+      assert.deepEqual(
+        state().helper?.usage,
+        {
+          cost: 0.25,
+          batches: 1,
+          measuredBatches: 1,
+        },
+      )
+      assert.equal(
+        fs.existsSync(join(
+          root,
+          `hydras/lab/helper-lease-${encodeURIComponent(task)}.json`,
+        )),
+        false,
+      )
+      assert.deepEqual(
+        fs.readdirSync(journal),
+        [],
+      )
+    },
+  )
+}
+
+test(
+  'a failed lease release does not skip the other lease and recovery finishes cleanup without duplicating the outcome',
+  async t => {
+    const lab = helperLab()
+    const tasks = [
+      state().keys.work!,
+      state().keys.other!,
+    ]
+    const original = fs.openSync
+    let failed = false
+    t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.mock.method(
+      fs,
+      'openSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
+      (...args: Parameters<typeof fs.openSync>) => {
+        if (!failed && String(args[0]).endsWith('/writer.lock') && new Error().stack?.includes('at releaseTask ')) {
+          failed = true
+          throw Object.assign(
+            new Error('lease cleanup failed'),
+            { code: 'EIO' },
+          )
+        }
+
+        return original(...args)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      lab.helper.close()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    })
+    const turn = await lab.run({
+      text: 'invalid outcome',
+      tasks,
+    })
+    await turn.finished
+    assert.ok(failed)
+    assert.equal(
+      lab.helper.busy(),
+      false,
+    )
+    assert.equal(
+      lab.handbacks.length,
+      1,
+    )
+    const lease = ({ task }: { task: string }) => join(
+      root,
+      `hydras/lab/helper-lease-${encodeURIComponent(task)}.json`,
+    )
+    assert.ok(fs.existsSync(lease({ task: tasks[0]! })))
+    assert.equal(
+      fs.existsSync(lease({ task: tasks[1]! })),
+      false,
+    )
+    await lab.helper.recover()
+    assert.equal(
+      fs.existsSync(lease({ task: tasks[0]! })),
+      false,
+    )
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).filter(event => event.type === 'hydra.helper-finished').length,
+      1,
+    )
+  },
+)
+
+test(
+  'a failed session cleanup still releases every task lease and resets busy',
+  async t => {
+    const lab = helperLab({
+      failClose: true,
+      cost: 0.25,
+    })
+    t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.after(() => lab.helper.close())
+    const turn = await lab.run({ text: 'invalid outcome' })
+    await turn.finished
+    assert.equal(
+      lab.helper.busy(),
+      false,
+    )
+    taskLease({
+      hydraId: 'lab',
+      task: state().keys.work!,
+      actor: 'main',
+    })()
+    assert.equal(
+      lab.handbacks.length,
+      1,
+    )
+    assert.deepEqual(
+      state().helper?.usage,
+      {
+        cost: 0.25,
+        batches: 1,
+        measuredBatches: 1,
+      },
+    )
+  },
+)
 
 test(
   'bounded turns record quiet outcomes, reuse their own session and relay owner outcomes once through main',
@@ -699,7 +1072,7 @@ test(
 
 test(
   'restart hands an unfinished durable batch to main, preserving its prompt and original event scope',
-  () => {
+  async () => {
     const task = state().keys.work!
     append({
       change: {
@@ -718,7 +1091,7 @@ test(
       actor: 'helper:cut',
     })
     const lab = helperLab()
-    lab.helper.recover()
+    await lab.helper.recover()
     assert.equal(
       lab.handbacks.length,
       1,

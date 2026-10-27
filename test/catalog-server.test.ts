@@ -8,12 +8,16 @@ import { WebSocket } from 'ws'
 import { commands } from '../src/cli/commands.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import type { QueryFn } from '../src/server/claude.ts'
-import { startServer, type ServerMessage } from '../src/server/server.ts'
+import { type ServerMessage } from '../src/server/server.ts'
 import { localToken } from '../src/server/state.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import type { Catalog } from '../src/thread/catalog.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { hydraSdk } from './hydra-host-fixture.ts'
+import { createHost } from '../src/server/host.ts'
+import { recordCompaction } from '../src/compaction/record.ts'
+import { sessionId } from '../src/core/tasks.ts'
+import { hostObserver } from './host-observer.ts'
 
 test(
   'WebSocket catalogs merge live Claude builtins, survive unavailable SDK commands and follow the receiving harness',
@@ -58,8 +62,10 @@ test(
       '---\nname: disk-review\ndescription: Review local files\n---\n',
     )
     const sdk = hydraSdk()
-    let mode: 'ready' | 'error' | 'hang' = 'ready'
+    let mode: 'ready' | 'error' | 'hang' | 'slow' = 'ready'
     let requests = 0
+    let finishLateLookup = () => {}
+    const lateLookup = new Promise<void>(resolve => finishLateLookup = resolve)
     // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
     const query = ((args: Parameters<QueryFn>[0]) => Object.assign(
       sdk.query(args),
@@ -75,10 +81,14 @@ test(
             return new Promise<never>(() => {})
           }
 
+          if (mode === 'slow') {
+            await lateLookup
+          }
+
           return [
             {
               name: 'compact',
-              description: 'Compact the session',
+              description: mode === 'slow' ? 'Late compact metadata' : 'Compact the session',
               builtin: true,
             },
             {
@@ -90,7 +100,8 @@ test(
         },
       },
     )) as QueryFn
-    const server = await startServer({
+    const observer = hostObserver({ describe: () => loadHydra({ hydraId: 'lab' }).state })
+    const server = await observer.startServer({
       hydraId: 'lab',
       port: 0,
       homes: [],
@@ -172,6 +183,10 @@ test(
     )
     const fresh = await catalog()
     assert.ok(fresh.suggestions.some(item => item.command === '/disk-review'))
+    assert.ok(
+      fresh.suggestions.some(item => item.command === '/compact'),
+      'native compact is available before the first turn',
+    )
     assert.equal(
       requests,
       0,
@@ -184,18 +199,7 @@ test(
       '--text',
       'Start the catalog session.',
     ])
-    const deadline = Date.now() + 5000
-
-    while (loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity !== 'finished') {
-      assert.ok(
-        Date.now() < deadline,
-        'Claude session did not finish',
-      )
-      await new Promise(resolve => setTimeout(
-        resolve,
-        10,
-      ))
-    }
+    await observer.until({ check: () => loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished' })
 
     const ready = await catalog()
     assert.deepEqual(
@@ -226,8 +230,8 @@ test(
         `${unavailable} must retain disk skills`,
       )
       assert.equal(
-        fallback.suggestions.some(item => item.source === 'Agent commands'),
-        false,
+        fallback.suggestions.some(item => item.command === '/compact'),
+        true,
       )
     }
 
@@ -235,6 +239,57 @@ test(
       requests,
       3,
     )
+    mode = 'slow'
+    const timedOut = await catalog()
+    assert.equal(
+      timedOut.suggestions.find(item => item.command === '/compact')?.description,
+      'Compact the session',
+    )
+    finishLateLookup()
+    await observer.until({
+      check: () => Object.values(loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]?.compaction?.catalogs ?? {})
+        .flat()
+        .some(item => item.description === 'Late compact metadata'),
+    })
+
+    const reopened = createHost({
+      hydraId: 'lab',
+      changed() {},
+    })
+
+    try {
+      const card = loadHydra({ hydraId: 'lab' }).state.cards[HYDRA_CARD]!
+      const retained = await reopened.catalogCommands({ card })
+      assert.ok(retained.some(item => item.description === 'Late compact metadata'))
+      withWriter({
+        hydraId: 'lab',
+        fn: ({ writer }) => recordCompaction({
+          writer,
+          card: card.id,
+          at: new Date().toISOString(),
+          change: {
+            kind: 'status',
+            operation: {
+              id: 'unsupported',
+              session: sessionId({ agent: card.agent! }),
+              trigger: 'manual',
+              state: 'failed',
+              startedAt: new Date().toISOString(),
+              endedAt: new Date().toISOString(),
+              error: 'Method not found: native compact is not supported',
+            },
+          },
+        }),
+      })
+      const unavailable = await reopened.catalogCommands({ card })
+      assert.match(
+        unavailable.find(item => item.command === '/compact')!.unavailable!,
+        /not supported/,
+      )
+    } finally {
+      reopened.close()
+    }
+
     mode = 'ready'
     withWriter({
       hydraId: 'lab',
@@ -262,26 +317,14 @@ test(
         writer.append({ event: decision.event })
       },
     })
-    let switched = await catalog()
-    const switchDeadline = Date.now() + 5000
-
-    while (!switched.suggestions.some(item => item.command === '$disk-review')) {
-      assert.ok(
-        Date.now() < switchDeadline,
-        JSON.stringify(switched),
-      )
-      await new Promise(resolve => setTimeout(
-        resolve,
-        20,
-      ))
-      switched = await catalog()
-    }
+    await observer.checkpoint()
+    const switched = await catalog()
 
     assert.ok(switched.suggestions.some(item => item.command === '$disk-review'))
     assert.equal(
-      switched.suggestions.some(item => item.source === 'Agent commands'),
-      false,
-      'Claude commands must not reach the selected Codex harness',
+      switched.suggestions.some(item => item.command === '/compact'),
+      true,
+      'the selected Codex harness has its own native compact command',
     )
   },
 )

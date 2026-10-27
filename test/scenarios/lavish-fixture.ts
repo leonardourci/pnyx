@@ -81,20 +81,18 @@ export function lavishFixture({ folder }: { folder: string }) {
       return args
     },
     deliver({ body }: { body: string }) {
-      const staged = join(
+      const delivery = join(
         folder,
-        'deliver.pending',
+        'deliver.toon',
       )
+      const pending = `${delivery}.tmp`
       writeFileSync(
-        staged,
+        pending,
         body,
       )
       renameSync(
-        staged,
-        join(
-          folder,
-          'deliver.toon',
-        ),
+        pending,
+        delivery,
       )
     },
     calls() {

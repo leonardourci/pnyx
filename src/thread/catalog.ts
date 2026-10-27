@@ -3,8 +3,6 @@ import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
-import { HYDRA_SKILLS, skillSource } from '../integrations/skills/install.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
 import type { Card, HydraProject } from '../core/model.ts'
 
 export interface Suggestion {
@@ -15,6 +13,7 @@ export interface Suggestion {
   file?: string
   project?: string
   projectPath?: string
+  unavailable?: string
 }
 export interface Catalog {
   suggestions: Suggestion[]
@@ -477,19 +476,6 @@ export async function readCatalog({
 
   const prefix = provider === 'codex' ? '$' : '/'
 
-  for (const name of card.id === HYDRA_CARD ? HYDRA_SKILLS.filter(name => name !== 'pnyx-hydra') : []) {
-    const path = skillSource({ name })
-    const meta = await reader.metadata({ path })
-
-    if (meta) {
-      add({
-        command: prefix + name,
-        meta,
-        source: 'Pnyx Hydra',
-      })
-    }
-  }
-
   const activeProjects = projects.filter(project => !project.detached)
   const attached = await Promise.all(activeProjects.map(async project => {
     try {
@@ -792,13 +778,7 @@ export async function readCatalog({
     }
   }
 
-  const sourceRank = ({ source }: { source: string }) => {
-    if (source === 'Pnyx Hydra') {
-      return 0
-    }
-
-    return source.startsWith('Global') ? 1 : 2
-  }
+  const sourceRank = ({ source }: { source: string }) => source.startsWith('Global') ? 0 : 1
 
   return {
     suggestions: [...suggestions.values()].sort((

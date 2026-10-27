@@ -1,8 +1,13 @@
 import { memoryConditions } from '../memory/conditions.ts'
+import { background } from '../runtime/background.ts'
 import { requireReady } from '../core/dependencies.ts'
 import { attachedImages } from '../attachments/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'
-import { steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '../task-inbox/state.ts'
+import { activeCompaction, compactCommand } from '../compaction/state.ts'
+import { recordCompaction } from '../compaction/record.ts'
+import type { CompactInput, CompactionChange } from '../compaction/model.ts'
+import { commentEpoch, commentInput, needsCommentNote } from '../compaction/comments.ts'
+import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '../task-inbox/state.ts'
 import { steeringNotice } from '../task-inbox/notice.ts'
 import { requireUnheld } from '../core/holds.ts'
 import { createRoutineHelper } from '../helper/runner.ts'
@@ -39,7 +44,7 @@ import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../store/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
 import { decideOutcome, decidePush, decideSession, findCard, type Decision } from '../core/decide.ts'
-import { HydraError, HYDRA_ACTOR, ownerActor, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraEvent, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
+import { HydraError, HYDRA_ACTOR, ownerActor, type AgentConfig, type AgentRef, type AgentSession, type AgentSettings, type Attention, type HydraMessage, type HydraEvent, type HydraState, type Card, type PermissionRequest } from '../core/model.ts'
 import { findOption, harnessControls } from '../core/control.ts'
 import { INTERRUPTED, liveTask, sessionId } from '../core/tasks.ts'
 import { hydraDir, loadHydra, pnyxHome, readEvents, withWriter, type Writer } from '../store/hydra-store.ts'
@@ -48,11 +53,18 @@ export type { QueryFn } from './claude.ts'
 
 export interface Host {
   hydraId: string
-  catalogCommands({ card }: { card: Card }): Promise<{
+  catalogCommands({
+    card,
+    provider,
+  }: {
+    card: Card
+    provider?: string
+  }): Promise<{
     command: string
     description: string
     source: string
     kind: 'command'
+    unavailable?: string
   }[]>
   models({ harness }: { harness: 'claude' | 'codex' }): Promise<ModelOption[]>
   hydra({
@@ -63,8 +75,17 @@ export interface Host {
     text: string
     actor: string
     id: string
+    release?: boolean
+    selected?: AgentConfig
   }): Promise<Record<string, unknown>>
   stop(): Promise<Record<string, unknown>>
+  compact({
+    card,
+    sendNow,
+  }: {
+    card: string
+    sendNow?: string
+  }): Promise<Record<string, unknown>>
   usage(): Promise<HydraUsage | { usage: string }>
   start({
     task,
@@ -111,7 +132,11 @@ export interface Host {
     steering?: string
     attempt?: string
     direct?: boolean
-  }): { deferred?: boolean } | void
+    inputId?: string
+  }): {
+    deferred?: boolean
+    queued?: boolean
+  } | void
   set({
     card,
     setting,
@@ -225,7 +250,7 @@ const RETRY_MS = [
 // How much of a message Hydra's Not confirmed wake quotes.
 const UNCONFIRMED_QUOTE_CHARS = 80
 const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
-// A worker runs the pnyx-worker skill's own commands without asking; any other pnyx-axi command still asks.
+// A worker runs the worker reporting skill's own commands without asking; any other pnyx-axi command still asks.
 const WORKER_COMMANDS = [
   'task show',
   'task history',
@@ -498,6 +523,7 @@ function inbox() {
     text: string
     id?: string
     steeringIds?: string[]
+    agent?: AgentConfig
   }[] = []
   let wake: (() => void) | undefined, done = false
 
@@ -506,15 +532,18 @@ function inbox() {
       text,
       id,
       steeringIds,
+      agent,
     }: {
       text: string
       id?: string
       steeringIds?: string[]
+      agent?: AgentConfig
     }) {
       items.push({
         text,
         ...(id ? { id } : {}),
         steeringIds,
+        agent,
       })
       wake?.()
     },
@@ -531,6 +560,7 @@ function inbox() {
       text: string
       id?: string
       steeringIds?: string[]
+      agent?: AgentConfig
     }> {
       for (;;) {
         if (items.length) {
@@ -617,6 +647,12 @@ export function createHost({
     codex: codexProvider({ spawnCodex }),
   }
   const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
+  const commandCatalogs = new Map<string, {
+    command: string
+    description: string
+    source: string
+    kind: 'command'
+  }[]>()
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
@@ -758,6 +794,248 @@ export function createHost({
   }
 
   const at = () => new Date().toISOString()
+
+  const compactChange = ({
+    card,
+    change,
+  }: {
+    card: string
+    change: CompactionChange
+  }) => write({
+    fn: ({ writer }) => recordCompaction({
+      writer,
+      card,
+      change,
+      at: at(),
+    }),
+  })
+  const teachComments = ({
+    card,
+    id,
+    text,
+  }: {
+    card: string
+    id: string
+    text: string
+  }) => write({
+    fn: ({ writer }) => {
+      const current = writer.state.cards[card]
+
+      if (current && needsCommentNote({
+        card: current,
+        text,
+      })) {
+        recordCompaction({
+          writer,
+          card,
+          at: at(),
+          change: {
+            kind: 'comments',
+            epoch: commentEpoch({ card: current }),
+            message: id,
+          },
+        })
+      }
+
+      return current ? commentInput({
+        card: writer.state.cards[card]!,
+        id,
+        text,
+      }) : text
+    },
+  })
+
+  const holdCompact = ({
+    card,
+    input,
+  }: {
+    card: Card
+    input: Omit<CompactInput, 'at'>
+  }) => {
+    if (!activeCompaction({ card })) {
+      return false
+    }
+
+    compactChange({
+      card: card.id,
+      change: {
+        kind: 'held',
+        input: {
+          ...input,
+          at: at(),
+        },
+      },
+    })
+
+    return true
+  }
+
+  const releasingCompact = new Set<string>()
+
+  const sessionOwner = ({
+    state,
+    session,
+    fallback,
+  }: {
+    state: HydraState
+    session: string
+    fallback: string
+  }) => state.cards[session === state.config?.hydra.session
+    ? HYDRA_CARD : state.sessions?.[session]?.taskId ?? fallback]
+
+  const syncCompactions = ({ state }: { state: HydraState }) => {
+    for (const card of Object.values(state.cards)) {
+      for (const operation of card.compaction?.operations ?? []) {
+        if (operation.state !== 'running') {
+          continue
+        }
+
+        const destination = sessionOwner({
+          state,
+          session: operation.session,
+          fallback: card.id,
+        })
+        const stays = card.agent && sessionId({ agent: card.agent }) === operation.session
+          && (!destination || destination.id === card.id)
+
+        if (stays) {
+          continue
+        }
+
+        compactChange({
+          card: card.id,
+          change: {
+            kind: 'status',
+            operation: {
+              ...operation,
+              state: 'failed',
+              endedAt: at(),
+              error: 'The agent session left this task during compaction',
+            },
+          },
+        })
+
+        if (destination?.agent && sessionId({ agent: destination.agent }) === operation.session) {
+          compactChange({
+            card: destination.id,
+            change: {
+              kind: 'status',
+              operation,
+            },
+          })
+        }
+
+        releaseCompact({ card: card.id })
+      }
+    }
+  }
+
+  const releaseCompact = ({ card: id }: { card: string }) => {
+    if (closing || releasingCompact.has(id)) {
+      return
+    }
+
+    releasingCompact.add(id)
+    let advanced = false
+    setTimeout(
+      () => {
+        void (async () => {
+          const card = loadHydra({ hydraId }).state.cards[id]
+
+          if (!card || activeCompaction({ card })) {
+            return
+          }
+
+          const inputs = [...(card.compaction?.inputs ?? [])].sort((
+            a,
+            b,
+          ) => Number(b.id === card.compaction?.priority)
+            - Number(a.id === card.compaction?.priority))
+
+          for (const input of inputs) {
+            if (closing) {
+              return
+            }
+
+            if (activeCompaction({ card: loadHydra({ hydraId }).state.cards[id] })) {
+              return
+            }
+
+            if (input.route === 'hydra') {
+              await host.hydra({
+                text: input.text,
+                actor: input.actor,
+                id: input.id,
+                release: input.accepted,
+                selected: input.agent,
+              })
+
+              while (!closing && queuedHydra.has(input.id)) {
+                await new Promise(resolve => setTimeout(
+                  resolve,
+                  20,
+                ))
+              }
+
+              const marker = input.accepted ? `${input.id}:compact:hosted` : `${input.id}:hosted`
+              const noOp = reportActor({ actor: input.actor })
+                || (input.id.startsWith('helper-outcomes:') && !helperPending())
+
+              if (closing || (!noOp && !(marker in loadHydra({ hydraId }).state.eventIds))) {
+                return
+              }
+            } else {
+              send({
+                card: id,
+                text: input.text,
+                actor: input.actor,
+                ...(input.route === 'steering' ? { steering: input.id } : {
+                  direct: true,
+                  inputId: input.id,
+                }),
+              })
+
+              if (input.route === 'direct') {
+                while (!closing && loadHydra({ hydraId }).state.cards[id]?.compaction?.inputs
+                  .some(queued => queued.id === input.id)) {
+                  await new Promise(resolve => setTimeout(
+                    resolve,
+                    20,
+                  ))
+                }
+
+                if (closing) {
+                  return
+                }
+              }
+            }
+
+            if (input.route !== 'direct') {
+              compactChange({
+                card: id,
+                change: {
+                  kind: 'taken',
+                  id: input.id,
+                },
+              })
+            }
+
+            advanced = true
+          }
+        })().catch((error: Error) => console.error(`pnyx-axi serve: compact queue retained: ${error.message}`))
+          .finally(() => {
+            releasingCompact.delete(id)
+            const current = loadHydra({ hydraId }).state.cards[id]
+
+            if (advanced && current?.compaction?.inputs.length
+              && !activeCompaction({ card: current })) {
+              releaseCompact({ card: id })
+            }
+          })
+      },
+      0,
+    ).unref()
+  }
 
   const record = ({
     writer,
@@ -1214,7 +1492,11 @@ export function createHost({
   }) => {
     const sameOpening = entry?.task === card.id && entry.generation === card.steeringGeneration
 
-    return (card.steering ?? []).filter(message => {
+    return [...(card.steering ?? [])].sort((
+      a,
+      b,
+    ) => Number(b.id === card.compaction?.priority)
+            - Number(a.id === card.compaction?.priority)).filter(message => {
       if (message.ack) {
         return false
       }
@@ -1240,7 +1522,8 @@ export function createHost({
     message?: string
     attempt?: string
   }) => {
-    if (card.id === HYDRA_CARD || !liveTask({ card }) || steeringHeld({ card })) {
+    if (card.id === HYDRA_CARD || !liveTask({ card })
+      || steeringHeld({ card }) || activeCompaction({ card })) {
       return
     }
 
@@ -1262,6 +1545,14 @@ export function createHost({
     }
 
     const ids = messages.map(message => message.id)
+
+    for (const message of messages) {
+      teachComments({
+        card: card.id,
+        id: message.id,
+        text: message.text,
+      })
+    }
 
     for (const id of ids) {
       entry.steering.add(id)
@@ -1381,8 +1672,84 @@ export function createHost({
         }
       }
 
+      const compactOwner = () => {
+        const state = loadHydra({ hydraId }).state
+
+        return sessionOwner({
+          state,
+          session: key,
+          fallback: card.id,
+        })
+      }
+
       const input = async function* () {
         for await (const item of entry.input) {
+          const current = compactOwner()
+
+          if (current && activeCompaction({ card: current })) {
+            if (item.steeringIds) {
+              for (const id of item.steeringIds) {
+                const message = current.steering?.find(message => message.id === id && !message.ack)
+                entry.steering.delete(id)
+
+                if (message) {
+                  holdCompact({
+                    card: current,
+                    input: {
+                      id,
+                      text: message.text,
+                      actor: message.source,
+                      route: 'steering',
+                    },
+                  })
+                }
+              }
+            } else {
+              holdCompact({
+                card: current,
+                input: {
+                  id: item.id ?? randomUUID(),
+                  text: item.text,
+                  actor: item.id ? loadHydra({ hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
+                  route: card.id === HYDRA_CARD ? 'hydra' : 'direct',
+                  accepted: card.id === HYDRA_CARD,
+                  agent: item.agent,
+                },
+              })
+            }
+
+            continue
+          }
+
+          if (compactCommand({ text: item.text })) {
+            while (!closing && live.get(key) === entry && turnRunning) {
+              await new Promise(resolve => setTimeout(
+                resolve,
+                20,
+              ))
+            }
+
+            if (closing || live.get(key) !== entry) {
+              return
+            }
+
+            if (!activeCompaction({ card: loadHydra({ hydraId }).state.cards[card.id] })) {
+              compactChange({
+                card: card.id,
+                change: {
+                  kind: 'status',
+                  operation: {
+                    id: `manual:${item.id ?? randomUUID()}`,
+                    session: key,
+                    trigger: 'manual',
+                    state: 'running',
+                    startedAt: at(),
+                  },
+                },
+              })
+            }
+          }
+
           if (item.steeringIds) {
             const current = loadHydra({ hydraId }).state.cards[card.id]
 
@@ -1423,9 +1790,27 @@ export function createHost({
             ] : answering
           }
 
-          yield item.text
+          const owner = compactOwner()
+
+          if (item.id && owner?.compaction?.inputs.some(input => input.id === item.id && input.route === 'direct')) {
+            compactChange({
+              card: owner.id,
+              change: {
+                kind: 'taken',
+                id: item.id,
+              },
+            })
+          }
+
+          yield item.id ? teachComments({
+            card: card.id,
+            id: item.id,
+            text: item.text,
+          }) : item.text
         }
       }
+
+      const compactionIds = new Map<string, string>()
 
       for await (const activity of entry.session.run({
         input: input(),
@@ -1449,6 +1834,49 @@ export function createHost({
       })) {
         if (entry.replaced || !closing && live.get(key) !== entry) {
           return
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'compaction') {
+          syncCompactions({ state: loadHydra({ hydraId }).state })
+          const current = compactOwner()
+
+          if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
+            continue
+          }
+
+          const mapped = compactionIds.get(activity.id)
+          const matched = current?.compaction?.operations.find(operation => operation.id === mapped)
+          const previous = matched
+            ?? activeCompaction({ card: current })
+          const operation = previous && (activity.trigger === 'manual' || previous.id === activity.id) ? previous : {
+            id: activity.id,
+            session: key,
+            trigger: activity.trigger,
+            state: 'running' as const,
+            startedAt: at(),
+          }
+          compactionIds.set(
+            activity.id,
+            operation.id,
+          )
+          compactChange({
+            card: current.id,
+            change: {
+              kind: 'status',
+              operation: {
+                ...operation,
+                state: activity.state,
+                ...(activity.state !== 'running' ? { endedAt: at() } : {}),
+                ...(activity.error ? { error: activity.error } : {}),
+              },
+            },
+          })
+
+          if (activity.state !== 'running') {
+            releaseCompact({ card: current.id })
+          }
+
+          continue
         }
 
         if (typeof activity !== 'string' && activity.type === 'usage') {
@@ -1534,6 +1962,25 @@ export function createHost({
         }
 
         if (activity === 'finished') {
+          const owner = compactOwner()
+          const unfinished = activeCompaction({ card: owner })
+
+          if (unfinished) {
+            compactChange({
+              card: owner!.id,
+              change: {
+                kind: 'status',
+                operation: {
+                  ...unfinished,
+                  state: entry.stopping ? 'cancelled' : 'failed',
+                  endedAt: at(),
+                  ...(!entry.stopping ? { error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.' } : {}),
+                },
+              },
+            })
+            releaseCompact({ card: owner!.id })
+          }
+
           turnRunning = false
           entry.stopping = false
           entry.tools.clear()
@@ -1683,9 +2130,12 @@ export function createHost({
               })
             } else {
               entry.idle = setTimeout(
-                () => retire({
-                  key,
-                  entry,
+                () => background({
+                  name: 'idle agent cleanup',
+                  run: () => retire({
+                    key,
+                    entry,
+                  }),
                 }),
                 IDLE_MS,
               ).unref()
@@ -1695,6 +2145,33 @@ export function createHost({
       }
     } catch (error) {
       failure = (error as Error).message
+    }
+
+    const compactCard = (() => {
+      const state = loadHydra({ hydraId }).state
+
+      return sessionOwner({
+        state,
+        session: key,
+        fallback: card.id,
+      })
+    })()
+    const unfinishedCompact = activeCompaction({ card: compactCard })
+
+    if (unfinishedCompact && !closing) {
+      compactChange({
+        card: compactCard!.id,
+        change: {
+          kind: 'status',
+          operation: {
+            ...unfinishedCompact,
+            state: 'failed',
+            endedAt: at(),
+            error: failure ?? 'The agent stopped during compaction',
+          },
+        },
+      })
+      releaseCompact({ card: card.id })
     }
 
     if (entry.replaced || !closing && live.get(key) !== entry) {
@@ -1814,6 +2291,7 @@ export function createHost({
     steering,
     attempt,
     direct,
+    inputId,
   }: {
     card: string
     text: string
@@ -1822,6 +2300,7 @@ export function createHost({
     steering?: string
     attempt?: string
     direct?: boolean
+    inputId?: string
   }) => {
     if (attempt !== undefined && (!attempt.trim() || !steering)) {
       throw new HydraError({
@@ -1830,6 +2309,7 @@ export function createHost({
       })
     }
 
+    direct ||= compactCommand({ text })
     const card = write({
       fn: ({ writer }) => {
         const card = hosted({
@@ -1846,10 +2326,11 @@ export function createHost({
               })
             }
           } else {
+            steering = inputId ?? randomUUID()
             enqueueSteering({
               writer,
               ref: card.id,
-              id: randomUUID(),
+              id: steering,
               text,
               source: actor,
               meta: {
@@ -1920,12 +2401,27 @@ export function createHost({
       return { deferred: true }
     }
 
+    if (holdCompact({
+      card,
+      input: {
+        id: steering ?? inputId ?? randomUUID(),
+        text,
+        actor,
+        route: steering ? 'steering' : 'direct',
+      },
+    })) {
+      return { queued: true }
+    }
+
     const entry = open({ card })
     entry.activity = 'working'
     entry.sentAt = Date.now()
 
     if (direct || card.id === HYDRA_CARD) {
-      entry.input.push({ text })
+      entry.input.push({
+        text,
+        id: inputId,
+      })
     } else {
       ringSteering({
         card,
@@ -1947,7 +2443,11 @@ export function createHost({
   const armWake = () => {
     if (!closing && !wakeTimer && (wakeThrough || helperPending())) {
       wakeTimer = setTimeout(
-        fireWake,
+        () => background({
+          name: 'Hydra wake',
+          run: fireWake,
+          retry: armWake,
+        }),
         wakeDelay,
       )
     }
@@ -1957,14 +2457,18 @@ export function createHost({
   let outage: NonNullable<HydraState['hydraStatus']> | undefined
 
   // One recap per outage: its id names the down event, so a retried or repeated recap starts at most one turn.
-  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => void host.hydra({
-    id: `back:${down.seq}`,
-    actor: 'pnyx',
-    text: recapText({
-      state: loadHydra({ hydraId }).state,
-      since: down.since,
-      after: down.after ?? down.seq,
-      now: Date.now(),
+  const recapTurn = ({ down }: { down: NonNullable<HydraState['hydraStatus']> }) => background({
+    name: 'Hydra recap',
+    retry: planRetry,
+    run: () => host.hydra({
+      id: `back:${down.seq}`,
+      actor: 'pnyx',
+      text: recapText({
+        state: loadHydra({ hydraId }).state,
+        since: down.since,
+        after: down.after ?? down.seq,
+        now: Date.now(),
+      }),
     }),
   })
 
@@ -2051,7 +2555,11 @@ export function createHost({
     }
 
     retryTimer = setTimeout(
-      retryStart,
+      () => background({
+        name: 'Hydra retry',
+        run: retryStart,
+        retry: planRetry,
+      }),
       retryDelays[Math.min(
         retries,
         retryDelays.length - 1,
@@ -2113,7 +2621,7 @@ export function createHost({
     outcomesReady: armWake,
   })
 
-  const fireWake = () => {
+  const fireWake = async () => {
     wakeTimer = undefined
     const state = loadHydra({ hydraId }).state
     const session = state.config?.hydra.session
@@ -2133,7 +2641,7 @@ export function createHost({
 
     if (wakeThrough <= after) {
       if (helperPending()) {
-        void host.hydra({
+        return host.hydra({
           id: `helper-outcomes:${state.seq}`,
           actor: 'pnyx',
           text: '<pnyx-wake>The routine helper left outcomes or handed a batch back. Handle the pending records below; relay owner outcomes in one plain line each with full links.</pnyx-wake>',
@@ -2187,7 +2695,7 @@ export function createHost({
     const routine = tasks.length > 0 && tasks.every(task => task !== undefined)
 
     if (helperAgent({ state }) && routine && !helper.busy()
-      && helper.offer({
+      && await helper.offer({
         tasks: tasks.filter(task => task !== undefined),
         prompt: text,
         seqs: batch.map(update => update.seq),
@@ -2207,7 +2715,7 @@ export function createHost({
       return
     }
 
-    void host.hydra({
+    return host.hydra({
       id: wakeId({
         through,
         state,
@@ -2233,9 +2741,9 @@ export function createHost({
   }
 
   // A stall or an ended wait makes no event, so it is polled.
-  const checkStalls = () => {
+  const checkStalls = async () => {
     try {
-      wakeOnStall()
+      return await wakeOnStall()
     } catch (error) {
       console.error(`pnyx-axi serve: ${(error as Error).message}`)
     }
@@ -2475,7 +2983,7 @@ export function createHost({
     }))
   }
 
-  const wakeOnStall = () => {
+  const wakeOnStall = async () => {
     const state = loadHydra({ hydraId }).state
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
@@ -2558,15 +3066,19 @@ export function createHost({
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
-    for (const item of fired) {
-      const count = stalled.get(item.id)?.count ?? 0
-      stalled.set(
-        item.id,
-        {
-          count: count + 1,
-          at: now,
-        },
-      )
+    const delivered = () => {
+      const at = Date.now()
+
+      for (const item of fired) {
+        const count = stalled.get(item.id)?.count ?? 0
+        stalled.set(
+          item.id,
+          {
+            count: count + 1,
+            at,
+          },
+        )
+      }
     }
 
     const after = wakeCursor({
@@ -2583,30 +3095,26 @@ export function createHost({
       kind: item.kind,
     }))
 
-    if (helperAgent({ state }) && routine && helper.offer({
+    if (helperAgent({ state }) && routine && helper.busy()) {
+      return
+    }
+
+    if (helperAgent({ state }) && routine && await helper.offer({
       tasks: fired.map(item => item.card),
       prompt: text,
       seqs: [],
       once: fired.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
     })) {
+      delivered()
+
       return
     }
 
-    void host.hydra({
+    return host.hydra({
       id: wakeTurnId,
       actor: 'pnyx',
       text,
-    }).then(() => {
-      const delivered = Date.now()
-
-      for (const item of fired) {
-        const entry = stalled.get(item.id)
-
-        if (entry) {
-          entry.at = delivered
-        }
-      }
-    })
+    }).then(delivered)
   }
 
   // Each stall or wait fired so far: how many times, and when last.
@@ -2615,7 +3123,10 @@ export function createHost({
     at: number
   }>()
   const stallTimer = setInterval(
-    checkStalls,
+    () => background({
+      name: 'worker stall check',
+      run: checkStalls,
+    }),
     Math.min(
       stallDelay / 4,
       15_000,
@@ -2624,35 +3135,97 @@ export function createHost({
   stallTimer.unref()
 
   const host: Host = {
-    async catalogCommands({ card }) {
-      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+    async catalogCommands({
+      card,
+      provider = card.agent?.provider ?? 'claude-code',
+    }) {
+      const harness = provider === 'codex' ? 'codex' : 'claude-code'
+      const cacheKey = JSON.stringify([
+        harness,
+        card.agent?.loginFolder,
+        card.agent?.cwd ?? card.folder,
+      ])
+
+      const retained = () => {
+        const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+        const commands = commandCatalogs.get(cacheKey) ?? saved?.[cacheKey] ?? []
+        const matches = card.agent?.provider === harness
+        const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
+        const operation = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.operations
+          .findLast(operation => operation.session === session)
+        const unavailable = operation?.state === 'failed'
+          && /method not found|unknown method|not supported|unavailable in this session/i.test(operation.error ?? '')
+          ? operation.error : undefined
+        const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
+          ...commands,
+          {
+            command: '/compact',
+            description: 'Compact the conversation',
+            source: 'Agent commands',
+            kind: 'command' as const,
+          },
+        ]
+
+        return native.map(item => item.command === '/compact' && unavailable ? {
+          ...item,
+          unavailable,
+          description: `Unavailable: ${unavailable}`,
+        } : item)
+      }
+
+      const matchesProvider = card.agent?.provider === harness
+      const session = matchesProvider && card.agent ? sessionId({ agent: card.agent }) : undefined
+      const entry = session ? live.get(session) : undefined
 
       if (!entry?.session?.commands) {
-        return []
+        return retained()
       }
 
       let timer: ReturnType<typeof setTimeout> | undefined
 
       try {
-        const commands = await Promise.race([
-          entry.session.commands(),
-          new Promise<[]>(resolve => {
+        const lookup = entry.session.commands().then(commands => {
+          const found = commands.filter(item => item.builtin).map(item => ({
+            command: `/${item.name}`,
+            description: item.description,
+            source: 'Agent commands',
+            kind: 'command' as const,
+          }))
+
+          if (found.length && !closing) {
+            commandCatalogs.set(
+              cacheKey,
+              found,
+            )
+            const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
+            const previous = saved?.[cacheKey]
+
+            if (JSON.stringify(previous) !== JSON.stringify(found)) {
+              compactChange({
+                card: card.id,
+                change: {
+                  kind: 'catalog',
+                  key: cacheKey,
+                  commands: found,
+                },
+              })
+            }
+          }
+        })
+        await Promise.race([
+          lookup,
+          new Promise<void>(resolve => {
             timer = setTimeout(
-              () => resolve([]),
+              resolve,
               100,
             )
           }),
         ])
 
-        return commands.filter(item => item.builtin).map(item => ({
-          command: `/${item.name}`,
-          description: item.description,
-          source: 'Agent commands',
-          kind: 'command' as const,
-        }))
+        return retained()
       } catch {
         // The disk index remains usable when the native command list is unavailable.
-        return []
+        return retained()
       } finally {
         clearTimeout(timer)
       }
@@ -2733,20 +3306,43 @@ export function createHost({
       text,
       actor,
       id,
+      release = false,
+      selected,
     }) => {
-      if (queuedHydra.has(id)) {
-        return Promise.resolve({ state: 'queued' })
-      }
-
-      // A worker's report waits for Hydra's next check turn, which the server queues once it reads the report's event.
       if (reportActor({ actor })) {
-        // The report is already in the log; reading it now beats waiting on a file watch that can miss a write.
         changed()
 
         return Promise.resolve({ state: 'queued' })
       }
 
-      const requestedAgent = loadHydra({ hydraId }).state.config?.hydra.agent
+      const queuedState = loadHydra({ hydraId }).state
+      const queuedDispatch = effectiveDispatch({
+        hydraId,
+        state: queuedState,
+      }).dispatch
+      const requestedAgent = selected ?? queuedState.config?.hydra.agent
+        ?? queuedDispatch.rules.hydra?.candidates[0] ?? queuedDispatch.default[0]
+        ?? { harness: 'claude' as const }
+      const deliveryId = release ? `${id}:compact:hosted` : `${id}:hosted`
+      const current = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+
+      if (current && holdCompact({
+        card: current,
+        input: {
+          id,
+          text,
+          actor,
+          route: 'hydra',
+          agent: requestedAgent,
+        },
+      })) {
+        return Promise.resolve({ state: 'queued' })
+      }
+
+      if (queuedHydra.has(id)) {
+        return Promise.resolve({ state: 'queued' })
+      }
+
       queuedHydra.add(id)
       const turn = hydraTurn.then(async () => {
         if (closing) {
@@ -2754,6 +3350,20 @@ export function createHost({
         }
 
         let state = loadHydra({ hydraId }).state
+        const compactCard = state.cards[HYDRA_CARD]
+
+        if (compactCard && holdCompact({
+          card: compactCard,
+          input: {
+            id,
+            text,
+            actor,
+            route: 'hydra',
+            agent: requestedAgent,
+          },
+        })) {
+          return { state: 'queued' }
+        }
 
         if (id.startsWith('helper-outcomes:') && !helperPending()) {
           return { state: 'queued' }
@@ -2768,7 +3378,7 @@ export function createHost({
           return { state: 'queued' }
         }
 
-        if (`${id}:hosted` in state.eventIds) {
+        if (deliveryId in state.eventIds) {
           return { state: 'queued' }
         }
 
@@ -2993,7 +3603,7 @@ export function createHost({
                   state: writer.state,
                   meta: {
                     ...meta,
-                    id: `${id}:hosted`,
+                    id: deliveryId,
                   },
                   cardId: HYDRA_CARD,
                   change: {
@@ -3072,8 +3682,9 @@ export function createHost({
           ) : text)
           entry.activity = 'working'
           entry.input.push({
-            text: inputText + helperText,
+            text: compactCommand({ text }) ? text : inputText + helperText,
             id,
+            agent: requestedAgent,
           })
           const wakeThroughSeq = WAKE_ID.exec(id)?.[1]
 
@@ -3192,9 +3803,64 @@ export function createHost({
 
       return Promise.resolve({ state: 'queued' })
     },
+    compact: async ({
+      card: ref,
+      sendNow,
+    }) => {
+      const card = findCard({
+        state: loadHydra({ hydraId }).state,
+        ref,
+      })
+      const operation = activeCompaction({ card })
+
+      if (!operation) {
+        return { stopped: 'none: no compaction is running' }
+      }
+
+      if (sendNow) {
+        if (!card.compaction?.inputs.some(input => input.id === sendNow)) {
+          throw new HydraError({
+            code: 'VALIDATION_ERROR',
+            message: 'That message is no longer queued',
+          })
+        }
+
+        compactChange({
+          card: card.id,
+          change: {
+            kind: 'priority',
+            id: sendNow,
+          },
+        })
+      }
+
+      const entry = card.agent && live.get(sessionId({ agent: card.agent }))
+
+      if (!entry?.session) {
+        throw new HydraError({
+          code: 'NO_ROUTE',
+          message: 'The compact session is unavailable',
+        })
+      }
+
+      entry.stopping = true
+
+      try {
+        await entry.session.interrupt()
+      } catch (error) {
+        entry.stopping = false; throw error
+      }
+
+      return { stopped: 'compaction' }
+    },
     // Stops only Hydra's running turn; workers keep going.
     stop: async () => {
       const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
+
+      if (activeCompaction({ card })) {
+        return host.compact({ card: HYDRA_CARD })
+      }
+
       const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
 
       if (!entry?.session || entry.activity !== 'working') {
@@ -3975,6 +4641,8 @@ export function createHost({
     },
 
     reconcile: ({ state }) => {
+      syncCompactions({ state })
+
       for (const [
         id,
         waiting,
@@ -4000,7 +4668,7 @@ export function createHost({
           continue
         }
 
-        const oldest = card.steering?.find(message => !message.ack)
+        const oldest = pendingSteering({ card })[0]
 
         if (!oldest) {
           continue
@@ -4031,8 +4699,34 @@ export function createHost({
         resumeAttemptId: string
       }[] = []
 
+      const cutCompactions = new Set<string>()
       write({
         fn: ({ writer }) => {
+          for (const card of Object.values(writer.state.cards)) {
+            const operation = card.compaction?.operations.findLast(operation => operation.state === 'running')
+
+            if (operation) {
+              if (operation.trigger === 'manual') {
+                cutCompactions.add(operation.session)
+              }
+
+              recordCompaction({
+                writer,
+                card: card.id,
+                at: at(),
+                change: {
+                  kind: 'status',
+                  operation: {
+                    ...operation,
+                    state: 'failed',
+                    endedAt: at(),
+                    error: 'Pnyx restarted during compaction',
+                  },
+                },
+              })
+            }
+          }
+
           for (const card of Object.values(writer.state.cards)) {
             for (const request of card.permissions ?? []) {
               if (request.status === 'pending' && !pending.has(request.id)) {
@@ -4064,7 +4758,7 @@ export function createHost({
             let resumeAttemptId: string | undefined
             const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
-            if (session.id === writer.state.config?.hydra.session
+            if (!cutCompactions.has(session.id) && session.id === writer.state.config?.hydra.session
               && hostedHydra({ state: writer.state })) {
               cutHydraTurn = findHydraTurnToResume({
                 hydraId,
@@ -4075,7 +4769,8 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
-            } else if (task && liveTask({ card: task }) && !steeringHeld({ card: task })
+            } else if (!cutCompactions.has(session.id) && task && liveTask({ card: task })
+              && !steeringHeld({ card: task })
               && session.id !== writer.state.config?.hydra.session) {
               resumeAttemptId = findWorkerTurnToResume({
                 hydraId,
@@ -4147,7 +4842,13 @@ export function createHost({
         }
       }
 
-      helper.recover()
+      await helper.recover()
+
+      for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
+        if (card.compaction?.inputs.length) {
+          releaseCompact({ card: card.id })
+        }
+      }
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
@@ -4321,7 +5022,15 @@ function findHydraTurnToResume({
 
     return finishedBeforeCut && recordedByServer && matchesSession
   })
-  const lastFinishedTurnSeq = lastFinishedTurn?.seq ?? 0
+  const sourceId = cutHydraTurn.id.replace(
+    /:compact:hosted$|:hosted$/,
+    '',
+  )
+  const source = events.find(event => event.type === 'hydra.message' && event.id === sourceId)
+  const lastFinishedTurnSeq = Math.min(
+    lastFinishedTurn?.seq ?? 0,
+    source ? source.seq - 1 : Infinity,
+  )
   const unansweredMessageSeqs = events.filter(event => {
     const isNewMessage = event.seq > lastFinishedTurnSeq && event.type === 'hydra.message'
     const sentToHydra = event.actor !== HYDRA_ACTOR
@@ -4494,6 +5203,18 @@ async function hostRequestUnlocked({
   }) ?? 'cli'
 
   switch (body.action) {
+    case 'compact':
+      return host.compact({
+        card: field({
+          body,
+          name: 'card',
+        })!,
+        sendNow: field({
+          body,
+          name: 'sendNow',
+          optional: true,
+        }),
+      })
     case 'hydra':
       return host.hydra({
         text: field({
@@ -4745,6 +5466,11 @@ async function hostRequestUnlocked({
       }
 
       const result = host.send({
+        inputId: field({
+          body,
+          name: 'inputId',
+          optional: true,
+        }),
         steering,
         attempt: field({
           body,
@@ -4763,6 +5489,7 @@ async function hostRequestUnlocked({
       return {
         sent: !result?.deferred,
         deferred: result?.deferred ?? false,
+        queued: result?.queued ?? false,
       }
     }
     case 'set': {

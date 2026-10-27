@@ -7,6 +7,7 @@ import { loadHydra, readEvents, withWriter } from '../../store/hydra-store.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 const PAGE_SIZE = 100
+const HISTORY_TIMEOUT_MS = 30_000
 const chatId = ({
   session,
   nativeId,
@@ -19,7 +20,7 @@ const chatId = ({
     ref: `chat:${nativeId}`,
   })
 
-async function collect({
+async function collectPaseoHistory({
   session,
   url,
   id,
@@ -34,6 +35,8 @@ async function collect({
 }): Promise<ThreadEntry[]> {
   const client = await connect({ url: localPaseoUrl({ url }) })
 
+  let timer: ReturnType<typeof setTimeout> | undefined
+
   try {
     const agent = client.agents.ref(id)
     await agent.refresh()
@@ -46,13 +49,50 @@ async function collect({
       seq: number
     } | undefined
 
-    for (;;) {
-      const page = await agent.timeline.refetch({
-        direction: cursor ? 'before' : 'tail',
-        ...(cursor ? { cursor } : {}),
-        limit: PAGE_SIZE,
-        projection: 'projected',
+    const deadline = Date.now() + HISTORY_TIMEOUT_MS
+    const recent: {
+      epoch: string
+      seq?: number
+      entries: number
+    }[] = []
+    const timedOut = () => new Error(`timed out waiting for Paseo history after ${HISTORY_TIMEOUT_MS}ms: ${JSON.stringify({
+      session,
+      cursor,
+      collected: entries.length,
+      recent,
+    })}`)
+    const expired = new Promise<never>((
+      _,
+      reject,
+    ) => {
+      timer = setTimeout(
+        () => reject(timedOut()),
+        HISTORY_TIMEOUT_MS,
+      )
+    })
+
+    while (Date.now() < deadline) {
+      const page = await Promise.race([
+        agent.timeline.refetch({
+          direction: cursor ? 'before' : 'tail',
+          ...(cursor ? { cursor } : {}),
+          limit: PAGE_SIZE,
+          projection: 'projected',
+        }),
+        expired,
+      ])
+      recent.push({
+        epoch: page.epoch,
+        seq: page.startCursor?.seq,
+        entries: page.entries.length,
       })
+      recent.splice(
+        0,
+        Math.max(
+          0,
+          recent.length - 10,
+        ),
+      )
       let reachedSavedReply = false
 
       for (const {
@@ -102,7 +142,10 @@ async function collect({
 
       cursor = page.startCursor
     }
+
+    throw timedOut()
   } finally {
+    clearTimeout(timer)
     await client.close().catch(() => undefined)
   }
 }
@@ -142,7 +185,7 @@ export async function harvestPaseoChats({
   }[] = []
   await Promise.all(cards.map(async card => {
     try {
-      const entries = await collect({
+      const entries = await collectPaseoHistory({
         ...card,
         known: state.eventIds,
         connect,
@@ -192,10 +235,7 @@ export async function harvestPaseoChats({
     } catch (error) {
       failures.push({
         task: card.task,
-        error: (error as Error).message.slice(
-          0,
-          200,
-        ),
+        error: (error as Error).message,
       })
     }
   }))
