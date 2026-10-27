@@ -27,6 +27,14 @@ const devToken: Plugin = {
       },
       injectTo: 'head',
     },
+    {
+      tag: 'meta',
+      attrs: {
+        name: 'pnyx-installation',
+        content: hydraIdentity({ hydraId: '' }),
+      },
+      injectTo: 'head',
+    },
   ],
 }
 

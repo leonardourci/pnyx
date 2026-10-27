@@ -3,7 +3,7 @@
 import assert from 'node:assert/strict'
 import { spawn } from 'node:child_process'
 import { once } from 'node:events'
-import { existsSync, mkdtempSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import type { Readable, Writable } from 'node:stream'
@@ -36,13 +36,19 @@ const describe = ({ details }: { details: ExceptionDetails }) =>
   details.exception?.description ?? details.text
 
 // The keys the journeys press; a key with text also types it, as Enter does in a field.
-const KEYS: Record<'Enter' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
+const KEYS: Record<'Enter' | 'Space' | 'ArrowDown' | 'ArrowUp' | 'Tab' | 'Escape' | 'ArrowLeft' | 'ArrowRight', {
   keyCode: number
+  key?: string
   text?: string
 }> = {
   Enter: {
     keyCode: 13,
     text: '\r',
+  },
+  Space: {
+    keyCode: 32,
+    key: ' ',
+    text: ' ',
   },
   ArrowDown: { keyCode: 40 },
   ArrowUp: { keyCode: 38 },
@@ -321,7 +327,62 @@ export function browserGroup() {
       return {
         shows,
         reload: async () => {
+          const before = await call({
+            method: 'Runtime.evaluate',
+            params: {
+              expression: 'performance.timeOrigin',
+              returnByValue: true,
+            },
+          }) as { result: { value: number } }
           await call({ method: 'Page.reload' })
+          const end = Date.now() + TIMEOUT_MS
+
+          while (Date.now() < end) {
+            try {
+              const current = await call({
+                method: 'Runtime.evaluate',
+                params: {
+                  expression: '({origin: performance.timeOrigin, ready: document.readyState})',
+                  returnByValue: true,
+                },
+              }) as {
+                result: {
+                  value?: {
+                    origin: number
+                    ready: string
+                  }
+                }
+              }
+
+              if (current.result.value?.origin !== before.result.value && current.result.value?.ready === 'complete') {
+                return
+              }
+            } catch (error) {
+              if (!/navigated|context.*destroyed|Cannot find context/i.test(String(error))) {
+                throw error
+              }
+            }
+
+            await new Promise(resolve => setTimeout(
+              resolve,
+              POLL_MS,
+            ))
+          }
+
+          throw new Error('timed out waiting for the reloaded document')
+        },
+        capture: async ({ path }: { path: string }) => {
+          const { data } = await call({
+            method: 'Page.captureScreenshot',
+            params: { format: 'png' },
+          }) as { data: string }
+          writeFileSync(
+            path,
+            Buffer.from(
+              data,
+              'base64',
+            ),
+          )
         },
         // A real mouse click on the first visible match (with this text, when given), so mousedown
         // handlers run too; it waits until nothing covers the element's centre.
@@ -393,13 +454,14 @@ export function browserGroup() {
         press: async ({ key }: { key: keyof typeof KEYS }) => {
           const {
             keyCode,
+            key: value = key,
             text,
           } = KEYS[key]
           await call({
             method: 'Input.dispatchKeyEvent',
             params: {
               type: text ? 'keyDown' : 'rawKeyDown',
-              key,
+              key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
               text,
@@ -409,7 +471,7 @@ export function browserGroup() {
             method: 'Input.dispatchKeyEvent',
             params: {
               type: 'keyUp',
-              key,
+              key: value,
               code: key,
               windowsVirtualKeyCode: keyCode,
             },

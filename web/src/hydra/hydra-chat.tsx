@@ -1,3 +1,5 @@
+import { activeCompaction } from '../../../src/compaction/state.ts'
+import { CompactionQueue, CompactionRow } from '../compaction/compaction.tsx'
 import { Tooltip, TooltipPanel, TooltipSection } from '../components/ui/tooltip.tsx'
 import { useTaskReferences } from './task-references.ts'
 import { WaitingDecisions } from './waiting-decisions.tsx'
@@ -9,7 +11,7 @@ import { Icon } from '../components/ui/icon.tsx'
 import { REDUCED_MOTION, WorkingDots } from '../components/ui/streaming.tsx'
 import { Button } from '../components/ui/controls.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
+import { ownerActor, type HydraState, type ViewPreferences } from '../../../src/core/model.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { traces, VIEW_SIZE_LIMITS } from '../../../src/core/view.ts'
 import type { ThreadPage } from '../../../src/thread/read.ts'
@@ -26,6 +28,7 @@ import { LiveLabel } from '../components/ui/live-label.tsx'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import { UsageRing } from './usage-ring.tsx'
 import { Composer } from './composer.tsx'
+import { useSkillsCatalog } from './skills-catalog.ts'
 import { HydraAgent } from './hydra-agent.tsx'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
@@ -112,6 +115,28 @@ export function HydraChat({
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
+  const [
+    catalogOpen,
+    setCatalogOpen,
+  ] = useState(false)
+  const onCatalogOpen = useCallback(
+    ({ open }: { open: boolean }) => setCatalogOpen(open),
+    [],
+  )
+  const receiving = config.hydra.agent?.harness ?? card?.agent?.provider ?? 'claude'
+  const catalog = useSkillsCatalog({
+    identity: JSON.stringify([
+      HYDRA_CARD,
+      card?.agent?.provider,
+      card?.agent?.cwd,
+      card?.agent?.sessionId,
+      receiving === 'claude-code' ? 'claude' : receiving,
+    ]),
+    card: HYDRA_CARD,
+    command,
+    connected,
+    open: catalogOpen,
+  })
   const {
     thinking,
   } = traces({
@@ -164,8 +189,19 @@ export function HydraChat({
     },
     [liveThread],
   )
+  const compacting = activeCompaction({ card })
+  const held = new Set(card?.compaction?.inputs.map(input => input.id) ?? [])
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
+  const compactOperations = card?.compaction?.operations ?? []
   const pending = sending.filter(s => !messages.some(m => m.id === s.id))
+  const compactInputs = [
+    ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })) ?? []),
+    ...(compacting ? pending.filter(item => !held.has(item.id)).map(item => ({
+      ...item,
+      actor: 'web',
+      route: 'hydra' as const,
+    })) : []),
+  ]
   useEffect(
     () => {
       if (pending.length < sending.length) {
@@ -187,7 +223,7 @@ export function HydraChat({
   const firstAt = transcript[0]?.at
   const working = hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working'
   const chat = hydraConversation({
-    messages,
+    messages: messages.filter(message => !held.has(message.id)),
     transcript,
     oldest: olderCursor ? firstAt : undefined,
     currentTurn: page?.currentTurn,
@@ -216,7 +252,22 @@ export function HydraChat({
       notify={notify}
     />,
   ]))
+
+  for (const operation of compactOperations) {
+    inline.set(
+      `compact:${operation.id}`,
+      <CompactionRow key={operation.id} operation={operation} />,
+    )
+  }
+
   const listed: ChatEntry[] = [
+    ...compactOperations.map(operation => ({
+      id: `compact:${operation.id}`,
+      kind: 'message' as const,
+      role: 'Pnyx',
+      text: '',
+      at: operation.startedAt,
+    })),
     ...chat.entries,
     ...shownDecisions.map(decision => ({
       id: decision.id,
@@ -226,7 +277,7 @@ export function HydraChat({
       text: '',
       at: decision.at,
     })),
-    ...pending.map(s => ({
+    ...pending.filter(s => !compacting && !held.has(s.id)).map(s => ({
       id: s.id,
       kind: 'message' as const,
       role: 'user',
@@ -553,6 +604,8 @@ export function HydraChat({
               </Button>
             )}
             <Messages
+              catalog={catalog}
+              labelColors={state.labelColors}
               folds={chat.folds}
               timings={chat.timings}
               inline={inline}
@@ -601,7 +654,7 @@ export function HydraChat({
             )}
           </div>
         </div>
-        {running && (
+        {running && !compacting && (
           <TaskReferencesProvider references={references} openTask={openTask}>
             <Running
               since={running ? since : null}
@@ -650,7 +703,26 @@ export function HydraChat({
         }}
         loading={loadingEarlier}
       />
+      <CompactionQueue
+        inputs={compactInputs}
+        disabled={!connected || !compacting}
+        sendNow={async ({ id }) => {
+          try {
+            await command({
+              name: 'compact',
+              args: [
+                HYDRA_CARD,
+                id,
+              ],
+            })
+          } catch (error) {
+            notify({ text: (error as Error).message })
+          }
+        }}
+      />
       <Composer
+        compacting={Boolean(compacting)}
+        serverComments={hosted}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
@@ -661,7 +733,8 @@ export function HydraChat({
           return true
         }}
         card={HYDRA_CARD}
-        catalogHarness={config.hydra.agent?.harness}
+        catalog={catalog}
+        onCatalogOpen={onCatalogOpen}
         labelColors={state.labelColors}
         cards={Object.values(state.cards)}
         projects={state.projects ?? []}
@@ -675,9 +748,8 @@ export function HydraChat({
         setComments={setComments}
         thread={route}
         command={deliver}
-        connected={connected}
         notify={notify}
-        stop={working && card?.agent?.host === 'pnyx' ? () => command({
+        stop={(working || compacting) && card?.agent?.host === 'pnyx' ? () => command({
           name: 'hydra',
           args: ['stop'],
         }).then(
