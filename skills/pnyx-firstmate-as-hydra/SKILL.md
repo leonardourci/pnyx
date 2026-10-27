@@ -1,6 +1,9 @@
 ---
-name: pnyx-hydra-firstmate
+name: pnyx-firstmate-as-hydra
 description: Use when you are a Firstmate home acting as a Pnyx Hydra, before dispatching a worker for a Hydra task or nesting a mirrored Firstmate task.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Hydra from a Firstmate home

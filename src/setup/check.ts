@@ -1,3 +1,4 @@
+import { SET_UP_SKILL } from '../integrations/skills/names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '../core/digest.ts'
@@ -9,8 +10,6 @@ import { projectMemoryView } from '../projects/memory.ts'
 import { projectsFor } from '../projects/read.ts'
 import { serviceFile } from '../server/service.ts'
 import { loadHydra } from '../store/hydra-store.ts'
-
-export const SETUP_SKILL = 'pnyx-setup'
 
 export interface SetupItem {
   name: string
@@ -188,7 +187,7 @@ export function setupCheck({
 }
 
 export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ? [
-  `Setup needed (load ${SETUP_SKILL}):`,
+  `Setup needed (load ${SET_UP_SKILL}):`,
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
@@ -210,6 +209,6 @@ export function setupCheckOutput({ hydraId }: { hydraId: string }) {
   return {
     hydraId,
     missing: items,
-    help: [`Hydra runs the hydra rows itself and asks you to confirm the owner rows; see the ${SETUP_SKILL} skill`],
+    help: [`Hydra runs the hydra rows itself and asks you to confirm the owner rows; see the ${SET_UP_SKILL} skill`],
   }
 }

@@ -11,9 +11,9 @@ const suggestions = [
     kind: 'command' as const,
   },
   {
-    command: '$inscribe',
+    command: '$fixture-cli',
     description: 'Save memory',
-    source: 'Pnyx Hydra',
+    source: 'Session skills',
     kind: 'skill' as const,
   },
   {
@@ -27,7 +27,7 @@ const suggestions = [
 test(
   'native tokens keep their surrounding text and require an exact catalog name',
   () => {
-    const text = 'Please /compact then $inscribe, /unknown /compact-extra /folder/compact $deploy'
+    const text = 'Please /compact then $fixture-cli, /unknown /compact-extra /folder/compact $deploy'
     assert.deepEqual(
       knownCommands({
         text,
@@ -36,7 +36,7 @@ test(
         match.start,
         match.end,
       )),
-      ['$inscribe'],
+      ['$fixture-cli'],
     )
   },
 )
@@ -77,7 +77,7 @@ test(
 test(
   'Codex scans names throughout a message including punctuation and code text',
   () => {
-    const text = 'Use ($inscribe), `x$inscribe` and $inscribe.md, then $unknown'
+    const text = 'Use ($fixture-cli), `x$fixture-cli` and $fixture-cli.md, then $unknown'
     assert.deepEqual(
       knownCommands({
         text,
@@ -87,14 +87,14 @@ test(
         match.end,
       )),
       [
-        '$inscribe',
-        '$inscribe',
-        '$inscribe',
+        '$fixture-cli',
+        '$fixture-cli',
+        '$fixture-cli',
       ],
     )
     assert.equal(
       knownCommands({
-        text: '$inscribe',
+        text: '$fixture-cli',
         suggestions: [
           ...suggestions,
           suggestions[1]!,
@@ -113,13 +113,13 @@ for (const text of [
   '`/review`',
   '```text\n/review\n```',
   'Please /review safely',
-  '**prefix** $inscribe',
-  '\\$inscribe',
-  '`\\$inscribe`',
-  '\uE0000\uE001 $inscribe',
-  '[$inscribe](https://example.com/$inscribe)',
-  '`$inscribe`',
-  '```text\n$inscribe\n```',
+  '**prefix** $fixture-cli',
+  '\\$fixture-cli',
+  '`\\$fixture-cli`',
+  '\uE0000\uE001 $fixture-cli',
+  '[$fixture-cli](https://example.com/$fixture-cli)',
+  '`$fixture-cli`',
+  '```text\n$fixture-cli\n```',
 ]) {
   test(
     `Markdown preserves raw invocation boundaries: ${text}`,
@@ -174,7 +174,7 @@ test(
   'literal marker characters and entities cannot become a skill badge',
   () => {
     const prepared = prepareChatTokens({
-      text: '&#57344;0&#57345; $inscribe',
+      text: '&#57344;0&#57345; $fixture-cli',
       suggestions,
     })
     assert.deepEqual(
@@ -188,7 +188,7 @@ test(
   'repeated skill names preserve Markdown reference links',
   () => {
     const prepared = prepareChatTokens({
-      text: '[$inscribe]\n\n[$inscribe]: https://example.com/guide',
+      text: '[$fixture-cli]\n\n[$fixture-cli]: https://example.com/guide',
       suggestions,
     })
     const parser = new Marked({ gfm: true })

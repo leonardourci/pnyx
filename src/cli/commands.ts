@@ -1,3 +1,8 @@
+import {
+  ORCHESTRATE_SKILL,
+  REPORT_PROGRESS_SKILL,
+  CLI_SKILL,
+} from '../integrations/skills/names.ts'
 import { inboxCommand } from '../task-inbox/cli.ts'
 import { taskReadiness } from '../core/dependencies.ts'
 import { decideDependencies } from '../core/dependency-decisions.ts'
@@ -4542,7 +4547,7 @@ commands:
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
   setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
-  setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the pnyx-hydra skill
+  setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
   agent <id> [<setting> <value>]             List or change a session's model, effort, mode or fast mode from its card
@@ -4590,7 +4595,7 @@ pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|cod
 pnyx-axi hydra start --via firstmate --home <firstmate home>
 hydra start starts Hydra: in Paseo (Claude Code by default) or with the configured command, its
 session becomes Hydra (in Paseo on the hydra rule's agent unless --rule names another); a Firstmate home becomes Hydra as \`setup hydra\` makes it. The default
-prompt points Hydra at the pnyx-hydra skill.
+prompt points Hydra at the ${ORCHESTRATE_SKILL} skill.
 Messages are durable entries in Hydra’s chat; one without --task is about the Hydra, not a task. No worker is launched or native terminal typed into.
 Hydra reads messages and task history through AXI. --after is an event sequence cursor.
 check is Hydra's light check: it lists only what Hydra tracks (messages, task creation, briefs, visibility, declarations, open agent questions, attachments, columns, moves, links) after --after (default: now), skipping Hydra's own writes (actor hydra)
@@ -4721,7 +4726,7 @@ Claude Code or Codex agent instead, then attaches it; replies and the conversati
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
 --rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
---model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the pnyx-worker skill. Known quota ranks
+--model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override.
@@ -4794,16 +4799,17 @@ setup check lists what is still missing (local config, logins, hooks, skills, qu
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
 setup hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
 setup service refuses a port reserved by another Pnyx home; choose a different --port.
-setup skills links pnyx-hydra and pnyx-worker from this installation into ~/.claude/skills
+setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
-Existing files and unrelated links are never replaced; --remove takes out only this install's links.
+Existing files and unrelated links are never replaced. Legacy Pnyx skill links are removed.
+--remove takes out this install's global links and legacy Pnyx links.
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start Hydra summary is installed.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
 setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
-setup hydra makes the Firstmate home the Hydra, copies the pnyx-hydra skill into the home's
+setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.
 `,

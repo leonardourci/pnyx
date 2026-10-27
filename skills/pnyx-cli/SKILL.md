@@ -1,6 +1,9 @@
 ---
-name: pnyx
+name: pnyx-cli
 description: Use when reading or updating the Pnyx app with the pnyx-axi CLI.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Pnyx
@@ -19,7 +22,7 @@ Run `pnyx-axi` for the Hydra summary and `pnyx-axi --help` for commands. Pnyx is
 
 When a session waits on its own question, permission or plan prompt, `pnyx-axi card <id>` lists the request with its options and `pnyx-axi reply <id> --answer <request key> --json <answer>` answers it in that session's tmux pane (see `pnyx-axi reply --help`).
 
-To start a worker for a task, run `pnyx-axi task start <task>`, which has the Hydra's Pnyx server run Claude Code or Codex according to the task kind, with `--harness claude|codex` to override it, or add `--via paseo|firstmate|command` (see `pnyx-axi task --help`). Hydra follows the `pnyx-hydra` skill and the workers it starts follow `pnyx-worker`; `pnyx-axi setup hydra --home <firstmate home>` gives it to a Firstmate home.
+To start a worker for a task, run `pnyx-axi task start <task>`, which has the Hydra's Pnyx server run Claude Code or Codex according to the task kind, with `--harness claude|codex` to override it, or add `--via paseo|firstmate|command` (see `pnyx-axi task --help`). Hydra follows the `pnyx-orchestrate` skill and the workers it starts follow `pnyx-report-progress`; `pnyx-axi setup hydra --home <firstmate home>` gives it to a Firstmate home.
 
 Tasks can keep instructions before an agent exists: `task create --title "<title>" --brief "<instructions>"`, then `task brief <task> --brief "<instructions>"` to edit them. Starting or explicitly attaching an agent hands it that brief. `task hide <task>` and `task unhide <task>` change visibility while preserving the record. Task and agent operations record their lifecycle facts and place cards with worker declarations. Column descriptions (`column list`, `column describe <id> --description "<when and why>"`) guide manual moves, reserved for owner requests or exceptional corrections with a reason. CLI card moves and column moves/deletes return a confirmation token first; repeat the exact command with `--confirm <token>` to act. `column resize <id> --width <pixels>`, `hydra resize --width <pixels>` and `layout reset` let Hydra adjust the layout. `owner memory list|set|forget|move` keeps the owner's preferences and learnings for every Hydra, and `hydra memory list|set|forget` what only one Hydra needs.
 

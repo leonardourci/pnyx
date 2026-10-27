@@ -1,6 +1,9 @@
 ---
-name: pnyx-hydra-columns
+name: pnyx-arrange-columns
 description: Use when you are Hydra and are about to move or reorder a card, or create, rename, describe, rule, reorder, delete or resize a Hydra column.
+user-invocable: false
+metadata:
+  internal: true
 ---
 
 # Hydra columns
