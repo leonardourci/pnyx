@@ -174,8 +174,25 @@ test(
     })
     await page.click({ selector: '[aria-label="New task in Queued"]' })
     await page.type({ text: 'Stay here after saving' })
-    await page.click({ selector: '[aria-label="Your ask"]' })
-    await page.type({ text: 'Keep the task visible while this longer owner ask is saved and confirmed in the background.' })
+    // The page can move focus back to the title, so focus the ask and write it in one step until it holds the text.
+    await page.shows({
+      what: 'the ask written',
+      arg: { text: 'Keep the task visible while this longer owner ask is saved and confirmed in the background.' },
+      check: ({ text }) => {
+        const ask = document.querySelector<HTMLTextAreaElement>('[aria-label="Your ask"]')
+
+        if (ask && ask.value !== text) {
+          ask.focus()
+          document.execCommand(
+            'insertText',
+            false,
+            text,
+          )
+        }
+
+        return ask?.value === text
+      },
+    })
     await page.shows({
       what: 'watch the creation lifetime before submitting',
       check: observeCreation,
