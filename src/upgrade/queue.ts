@@ -4,6 +4,8 @@ import type { HeldMessage, UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 
 const WAIT_MS = 100
+// The restart is a signal to this process; past this, the server did not restart and Hydra's queue moves on.
+const RESTART_WAIT_MS = 60_000
 
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
 
@@ -121,18 +123,23 @@ export function upgradeQueue({
     }
     save({ operation: running })
     stopping = new AbortController()
-    const result = await runUpgrade({
-      root: root!,
-      signal: stopping.signal,
-      progress: ({ steps }) => save({
-        operation: {
-          ...running,
-          steps: structuredClone(steps),
-        },
-      }),
-    }).finally(() => {
+    let result: Awaited<ReturnType<typeof runUpgrade>>
+
+    try {
+      result = await runUpgrade({
+        root: root!,
+        signal: stopping.signal,
+        progress: ({ steps }) => save({
+          operation: {
+            ...running,
+            steps: structuredClone(steps),
+          },
+        }),
+      })
+    } finally {
       stopping = undefined
-    })
+    }
+
     const {
       state: outcome,
       ...rest
@@ -170,61 +177,76 @@ export function upgradeQueue({
     restart()
 
     // Hydra's next turn waits for the restarted server, which hands it the held messages.
-    while (!closing()) {
+    const deadline = Date.now() + RESTART_WAIT_MS
+
+    while (!closing() && Date.now() < deadline) {
       await new Promise(resolve => setTimeout(
         resolve,
         WAIT_MS,
       ))
     }
+
+    if (!closing()) {
+      console.error('pnyx-axi serve: the server did not restart after the upgrade; run `pnyx-axi stop` and start it again')
+    }
   }
 
   const enqueue = ({ queued }: { queued: UpgradeOperation }) => schedule({
     id: queued.id,
-    run: () => run({ queued }).catch((error: Error) => {
-      save({
-        operation: {
-          ...queued,
-          state: 'failed',
-          error: error.message,
-          rolledBack: false,
-          endedAt: at(),
-        },
-      })
-      release()
-    }),
+    run: async () => {
+      try {
+        await run({ queued })
+      } catch (error) {
+        save({
+          operation: {
+            ...queued,
+            state: 'failed',
+            error: (error as Error).message,
+            rolledBack: false,
+            endedAt: at(),
+          },
+        })
+        release()
+      }
+    },
   })
 
   return {
     request({ id }: { id: string }) {
       // One upgrade at a time: a second /upgrade while one waits or runs changes nothing.
-      if (state().upgrades?.some(operation => operation.id === id
-        || [
-          'queued',
-          'running',
-          'restarting',
-        ].includes(operation.state))) {
+      if (active() || state().upgrades?.some(operation => operation.id === id)) {
+        return
+      }
+
+      if (!root) {
+        record({
+          operation: {
+            id,
+            state: 'refused',
+            folder: '',
+            queuedAt: at(),
+            endedAt: at(),
+            steps: [],
+            reasons: ['This Pnyx server has no folder to upgrade.'],
+          },
+          eventId: `${id}:hosted`,
+        })
+
         return
       }
 
       const queued: UpgradeOperation = {
         id,
-        state: root ? 'queued' : 'refused',
-        folder: root ? shortHome({ path: root }) : '',
+        state: 'queued',
+        folder: shortHome({ path: root }),
         queuedAt: at(),
         steps: [],
-        ...root ? {} : {
-          reasons: ['This Pnyx server has no folder to upgrade.'],
-          endedAt: at(),
-        },
       }
       record({
         operation: queued,
         eventId: `${id}:hosted`,
       })
-
-      if (root) {
-        enqueue({ queued })
-      }
+      enqueue({ queued })
     },
 
     // The queue's Send now: run without waiting for Hydra's turn to end.

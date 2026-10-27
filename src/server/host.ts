@@ -833,8 +833,19 @@ export function createHost({
       run,
     }) => {
       queuedHydra.add(id)
-      hydraTurn = hydraTurn.then(run).catch(() => {})
-        .finally(() => queuedHydra.delete(id))
+      const previous = hydraTurn
+      hydraTurn = (async () => {
+        await previous
+
+        // Hydra's later turns wait on this one, so it never rejects.
+        try {
+          await run()
+        } catch (error) {
+          console.error(`pnyx-axi serve: /upgrade could not run: ${(error as Error).message}`)
+        } finally {
+          queuedHydra.delete(id)
+        }
+      })()
     },
     working: () => {
       const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
@@ -844,11 +855,17 @@ export function createHost({
     },
     closing: () => closing,
     restart,
-    deliver: ({ message }) => void host.hydra({
-      text: message.text,
-      actor: message.actor,
-      id: message.id,
-    }),
+    deliver: async ({ message }) => {
+      try {
+        await host.hydra({
+          text: message.text,
+          actor: message.actor,
+          id: message.id,
+        })
+      } catch (error) {
+        console.error(`pnyx-axi serve: a message held during the upgrade could not reach Hydra: ${(error as Error).message}`)
+      }
+    },
     at,
   })
 
