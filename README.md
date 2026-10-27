@@ -130,6 +130,43 @@ Owner memory is shared across Hydras, project memory follows a project, and Hydr
 
 The **Oracle** searches tasks and recorded conversations by words or meaning, using local semantic models. Its index can be deleted and rebuilt from history.
 
+## CLI reference
+
+The main commands are below. `pnyx-axi --help` lists every command, and the [pnyx-axi reference](docs/pnyx-axi.md) covers them in full.
+
+| Command | Description |
+| --- | --- |
+| `pnyx-axi` | Show the Hydra summary. |
+| `pnyx-axi serve` | Run the one server for every Hydra until stopped. |
+| `pnyx-axi stop` | Stop the running server. |
+| `pnyx-axi hydra create\|list\|show\|set` | Create and configure Hydras. |
+| `pnyx-axi hydra start\|send\|messages\|check` | Start Hydra, queue a message in its chat, read the chat, or wait for changes. |
+| `pnyx-axi project add\|list\|set\|remove` | Attach, list, configure or detach projects. |
+| `pnyx-axi task create\|list\|show\|rename\|status\|history` | Manage tasks and one level of subtasks. |
+| `pnyx-axi task start\|continue <task>` | Start a worker, or host an ended outside session. |
+| `pnyx-axi task attach\|detach <task>` | Attach an interactive session to a task, or detach it. |
+| `pnyx-axi column create\|rename\|describe\|rule\|resize\|reorder\|delete\|list` | Edit the Hydra's columns. |
+| `pnyx-axi move <id> <column>` | Put a card in a column. |
+| `pnyx-axi card <id>` | Show one card with its summary, decisions and context. |
+| `pnyx-axi outcome <id> done\|failed\|cancelled` | Record a task's outcome. |
+| `pnyx-axi oracle "<words>"` | Search titles, links, events and transcripts with the Oracle. |
+| `pnyx-axi history` | Page through past events, newest first. |
+| `pnyx-axi rule`, `pnyx-axi account list\|set\|remove` | Edit dispatch rules and worker login folders. |
+| `pnyx-axi setup check\|skills\|hooks\|service` | List missing setup, or install global skills, reporting hooks or the macOS login service. |
+| `pnyx-axi integrations` | Show which integrations are ready and how to set each up. |
+| `pnyx-axi undo <event-id>` | Append the reverse of a manual edit, move, link or outcome. |
+| `pnyx-axi repair` | Set aside a torn log tail and rebuild the snapshot. |
+
+### Flags
+
+| Flag | Description |
+| --- | --- |
+| `--hydra <name>` | Hydra to use (default: `default`). |
+| `--port <n>` | Port for `serve`; `0` picks a free one. |
+| `--event-id <id>` | On writes, an idempotency key; a repeat returns the original receipt. |
+| `--if-revision <n>` | On writes, the expected card revision (`0` for a new card). |
+| `--help`, `--version` | Show command help or the installed version. |
+
 ## Documentation
 
 - [pnyx-axi reference](docs/pnyx-axi.md): commands, projects, tasks, workers, memory and the interface.
