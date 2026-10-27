@@ -782,8 +782,8 @@ test(
       })
       // The hook exits once it wrote the line; the server reads it after that.
       await until({
-        what: 'the hook connection to end',
-        check: () => ended,
+        what: 'the hook connection to end, or a spooled line',
+        check: () => ended || spooled().length > 0,
       })
     } finally {
       server.close()
