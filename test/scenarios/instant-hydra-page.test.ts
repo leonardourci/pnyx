@@ -249,7 +249,7 @@ test(
         }) => {
           const original = WebSocket.prototype.send
           const control = window as unknown as {
-            releaseA: () => void
+            releaseA?: () => boolean
             releaseB: () => void
             releaseAll: () => void
             socketCount: number
@@ -318,12 +318,20 @@ test(
             }
 
             if (message?.name === 'column' && message.args[0] === 'rename' && (!message.scope || message.scope === a)) {
+              // Release sends only on an open socket and says whether it did, so the
+              // release step waits until the page's send has reached a live hold.
               control.releaseA = () => {
+                if (this.readyState !== WebSocket.OPEN) {
+                  return false
+                }
+
+                delete control.releaseA
                 original.call(
                   this,
                   data,
                 )
-                control.releaseA = () => {}
+
+                return true
               }
             } else {
               original.call(
@@ -403,9 +411,10 @@ test(
       await page.shows({
         what: 'release B frames',
         check: () => {
-          ;(window as unknown as { releaseB: () => void }).releaseB()
+          const release = (window as unknown as { releaseB?: () => void }).releaseB
+          release?.()
 
-          return true
+          return !!release
         },
       })
       await page.shows({
@@ -457,11 +466,7 @@ test(
       )
       await page.shows({
         what: 'release A without changing the selected Hydra',
-        check: () => {
-          ;(window as unknown as { releaseA: () => void }).releaseA()
-
-          return true
-        },
+        check: () => (window as unknown as { releaseA?: () => boolean }).releaseA?.(),
       })
       await until({
         what: 'the original A write to confirm on A',
@@ -537,7 +542,7 @@ for (const recovery of [
           check: () => {
             const control = window as unknown as {
               sameDocument: boolean
-              releaseCreate?: () => void
+              releaseCreate?: () => boolean
               restoreCreate?: () => void
               disconnectCreate?: () => void
               creationAttempts: string[]
@@ -578,10 +583,18 @@ for (const recovery of [
                   return
                 }
 
-                control.releaseCreate = () => send.call(
-                  this,
-                  data,
-                )
+                control.releaseCreate = () => {
+                  if (this.readyState !== WebSocket.OPEN) {
+                    return false
+                  }
+
+                  send.call(
+                    this,
+                    data,
+                  )
+
+                  return true
+                }
 
                 control.restoreCreate = () => {
                   holding = false
@@ -625,17 +638,22 @@ for (const recovery of [
           arg: { recovery },
           check: ({ recovery }) => {
             const control = window as unknown as {
-              releaseCreate: () => void
+              releaseCreate?: () => boolean
               restoreCreate: () => void
-              disconnectCreate: () => void
+              disconnectCreate?: () => void
             }
-            control.restoreCreate()
 
-            if (recovery === 'reconnect') {
+            if (recovery !== 'reconnect') {
+              if (!control.releaseCreate?.()) {
+                return false
+              }
+            } else if (control.disconnectCreate) {
               control.disconnectCreate()
             } else {
-              control.releaseCreate()
+              return false
             }
+
+            control.restoreCreate()
 
             return true
           },

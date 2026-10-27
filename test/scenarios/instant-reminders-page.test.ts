@@ -46,7 +46,7 @@ for (const outcome of [
           const control = window as unknown as {
             holdReminder: boolean
             reminderIds: string[]
-            releaseReminder(): void
+            releaseReminder?(): boolean
             disconnectReminder(): void
           }
           control.holdReminder = true
@@ -64,7 +64,14 @@ for (const outcome of [
               if (control.holdReminder) {
                 control.disconnectReminder = () => this.close()
 
+                // A reconnect resends the reminder and holds it again, so release only the
+                // latest held frame, once, on an open socket, and say whether it was sent.
                 control.releaseReminder = () => {
+                  if (this.readyState !== WebSocket.OPEN) {
+                    return false
+                  }
+
+                  delete control.releaseReminder
                   control.holdReminder = false
                   const args = [...message.args]
 
@@ -80,6 +87,8 @@ for (const outcome of [
                       args,
                     }),
                   )
+
+                  return true
                 }
 
                 return
@@ -182,11 +191,7 @@ for (const outcome of [
 
       await page.shows({
         what: 'release the reminder outcome',
-        check: () => {
-          ;(window as unknown as { releaseReminder(): void }).releaseReminder()
-
-          return true
-        },
+        check: () => (window as unknown as { releaseReminder?(): boolean }).releaseReminder?.(),
       })
 
       if (outcome === 'refused' || outcome === 'newer-draft') {
@@ -298,11 +303,7 @@ for (const outcome of [
         )
         await page.shows({
           what: 'release reminder clearing',
-          check: () => {
-            ;(window as unknown as { releaseReminder(): void }).releaseReminder()
-
-            return true
-          },
+          check: () => (window as unknown as { releaseReminder?(): boolean }).releaseReminder?.(),
         })
         await page.shows({
           what: 'clearing confirmed',
