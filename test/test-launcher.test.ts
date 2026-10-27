@@ -19,8 +19,6 @@ test(
           PNYX_HYDRA: 'live',
           PNYX_TASK: 'live',
           PORT: '4747',
-          PNYX_SEMANTIC: 'off',
-          PNYX_SEMANTIC_STUB_FAIL: '1',
           NODE_OPTIONS: '--trace-warnings',
           CHROME_DEVTOOLS_AXI_PORT: '4747',
           CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '1',

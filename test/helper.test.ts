@@ -34,7 +34,6 @@ beforeEach(() => {
     root,
     'codex',
   )
-  process.env.PNYX_SEMANTIC = 'off'
   commands.hydra([
     'create',
     'lab',

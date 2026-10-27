@@ -88,7 +88,6 @@ beforeEach(() => {
     'pnyx-review-',
   ))
   process.env.PNYX_HOME = root
-  process.env.PNYX_SEMANTIC = 'off'
   commands.hydra([
     'create',
     'lab',

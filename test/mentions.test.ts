@@ -13,7 +13,7 @@ async function fixture() {
     tmpdir(),
     'pnyx-mentions-',
   )))
-  process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+  process.env.PNYX_HOME = home
   commands.hydra([
     'create',
     'default',

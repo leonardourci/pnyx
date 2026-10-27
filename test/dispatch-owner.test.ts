@@ -18,7 +18,6 @@ function lab() {
     root,
     'pnyx',
   )
-  process.env.PNYX_SEMANTIC = 'off'
   const fixture = fakeDispatch({ root })
   commands.hydra([
     'create',

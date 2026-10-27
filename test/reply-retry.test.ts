@@ -26,7 +26,6 @@ beforeEach(async () => {
     root,
     'pnyx',
   )
-  process.env.PNYX_SEMANTIC = 'off'
   const folder = join(
     root,
     'work',

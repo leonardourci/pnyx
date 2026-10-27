@@ -12,9 +12,6 @@ import { columnsFor } from '../web/src/hydra/view.ts'
 import { loadHydra, withWriter } from '../src/store/hydra-store.ts'
 import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
 
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
-
 const meta = {
   at: '2026-10-13T10:00:00Z',
   actor: 'test',

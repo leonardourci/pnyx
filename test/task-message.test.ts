@@ -16,7 +16,7 @@ function fixture() {
     tmpdir(),
     'pnyx-task-message-',
   )))
-  process.env.PNYX_HOME = home; process.env.PNYX_SEMANTIC = 'off'
+  process.env.PNYX_HOME = home
   commands.hydra([
     'create',
     'default',

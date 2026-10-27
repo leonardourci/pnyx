@@ -6,9 +6,6 @@ import { test } from 'node:test'
 import { codexThreadTitle, transcriptNotes } from '../src/integrations/hooks/notes.ts'
 import { transcriptMessages } from '../src/oracle/text.ts'
 
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
-
 const FIXTURES = join(
   import.meta.dirname,
   'fixtures',

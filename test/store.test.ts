@@ -11,9 +11,6 @@ import { emptyHydra, replay } from '../src/core/reducer.ts'
 import { acquireLock, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, withWriter } from '../src/store/hydra-store.ts'
 import { STREAMS, assertGolden, readStream } from './streams.ts'
 
-// Semantic search is on by default; these tests never start its worker or fetch models.
-process.env.PNYX_SEMANTIC = 'off'
-
 beforeEach(() => {
   process.env.PNYX_HOME = mkdtempSync(join(
     tmpdir(),

@@ -29,7 +29,6 @@ beforeEach(() => {
     'pnyx-reminders-',
   ))
   process.env.PNYX_HOME = home
-  process.env.PNYX_SEMANTIC = 'off'
   commands.hydra([
     'create',
     hydraId,
