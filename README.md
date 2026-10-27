@@ -96,7 +96,7 @@ pnyx-axi task start <task-id> --harness claude --hydra work
 
 Replace `project` with the attached folder's name and `<task-id>` with the ID returned by `task create`. Use `--harness codex` if that is your signed-in harness.
 
-Open the card to follow the worker's updates and reply. Stop a foreground server with Ctrl+C or `pnyx-axi stop`.
+Open the card to follow the worker's updates, and send follow-up instructions through Hydra's chat. Stop a foreground server with Ctrl+C or `pnyx-axi stop`.
 
 ## Core ideas
 
