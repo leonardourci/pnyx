@@ -30,17 +30,16 @@ function ProjectCommand({
   notify({ text }: { text: string }): void
 }) {
   const [
-    name,
-    setName,
-  ] = useState(project.startCommand?.name ?? '')
-  const [
-    shell,
-    setShell,
-  ] = useState(project.startCommand?.command ?? '')
-  const [
-    ownFolder,
-    setOwnFolder,
-  ] = useState(project.startCommand?.bringsOwnFolder ?? false)
+    draft,
+    setDraft,
+  ] = useState<Partial<NonNullable<ProjectRow['startCommand']>>>({})
+  const name = draft.name ?? project.startCommand?.name ?? ''
+  const shell = draft.command ?? project.startCommand?.command ?? ''
+  const ownFolder = draft.bringsOwnFolder ?? project.startCommand?.bringsOwnFolder ?? false
+  const edit = ({ patch }: { patch: typeof draft }) => setDraft(current => ({
+    ...current,
+    ...patch,
+  }))
   const [
     busy,
     setBusy,
@@ -52,6 +51,7 @@ function ProjectCommand({
       aria-label={`Start settings for ${project.name}`}
       onSubmit={async e => {
         e.preventDefault(); setBusy(true)
+        const submitted = draft
 
         try {
           await mutate({
@@ -68,6 +68,7 @@ function ProjectCommand({
               crypto.randomUUID(),
             ],
           })
+          setDraft(current => current === submitted ? {} : current)
           notify({ text: shell.trim() ? 'Project start command saved.' : 'Project start command cleared.' })
         } catch (error) {
           notify({ text: (error as Error).message })
@@ -80,7 +81,7 @@ function ProjectCommand({
         <label>Start command name<Input
           aria-label={`Start command name for ${project.name}`}
           value={name}
-          onChange={e => setName(e.target.value)}
+          onChange={e => edit({ patch: { name: e.target.value } })}
           placeholder="Local worker"
           required={!!shell.trim()}
         />
@@ -88,13 +89,13 @@ function ProjectCommand({
         <label>Command<Textarea
           aria-label={`Start command for ${project.name}`}
           value={shell}
-          onChange={e => setShell(e.target.value)}
+          onChange={e => edit({ patch: { command: e.target.value } })}
           rows={2}
           spellCheck={false}
           placeholder="Command to start a worker"
         />
         </label>
-        <Switch label="Brings its own folder" checked={ownFolder} onChange={({ value }) => setOwnFolder(value)} />
+        <Switch label="Brings its own folder" checked={ownFolder} onChange={({ value }) => edit({ patch: { bringsOwnFolder: value } })} />
         <p className="small muted">The command creates the worker’s folder when checked. Hydra can choose this command by name.</p>
         <Button type="submit" variant="surface">{busy ? 'Saving…' : 'Save start command'}</Button>
       </fieldset>
