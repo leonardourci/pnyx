@@ -4,6 +4,8 @@ import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync,
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { commandCapture } from './command-capture.ts'
+
 import type { PaseoClient } from '@getpaseo/client'
 import { project } from '../src/projects/cli.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
@@ -61,13 +63,14 @@ function lab() {
   }
 }
 
-async function written({ path }: { path: string }): Promise<string> {
-  for (let i = 0; i < 100 && !existsSync(path); i++) {
-    await new Promise(resolve => setTimeout(
-      resolve,
-      20,
-    ))
-  }
+async function written({
+  path,
+  captures,
+}: {
+  path: string
+  captures: ReturnType<typeof commandCapture>
+}): Promise<string> {
+  await captures.completed()
 
   return readFileSync(
     path,
@@ -130,7 +133,8 @@ const captureEnvironment = ({ path }: { path: string }) => {
 
 test(
   'task start --via command runs the Hydra command once and its session joins the task',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -203,7 +207,12 @@ test(
       state().cards[task]?.column,
       state().config?.columns.find(c => c.role === 'in_progress')?.id,
     )
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_TASK,
       task,
@@ -249,10 +258,10 @@ test(
       })).event,
       'none: duplicate',
     )
-    await new Promise(resolve => setTimeout(
-      resolve,
-      200,
-    ))
+    assert.equal(
+      captures.count(),
+      1,
+    )
     assert.equal(
       readFileSync(
         out,
@@ -312,7 +321,8 @@ test(
 
 test(
   'hydra start --via command makes its first session the Hydra, never a worker',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -351,7 +361,12 @@ test(
         id: 'h1',
       },
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_TASK,
       HYDRA_CARD,
@@ -934,7 +949,8 @@ test(
 
 test(
   'Hydra can select its task project’s start command by name',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -988,7 +1004,12 @@ test(
         'project-start',
       ],
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_FOLDER,
       folder,
@@ -1023,10 +1044,10 @@ test(
         'project-start',
       ],
     })
-    await new Promise(resolve => setTimeout(
-      resolve,
-      100,
-    ))
+    assert.equal(
+      captures.count(),
+      1,
+    )
     assert.equal(
       readFileSync(
         out,
@@ -1079,7 +1100,8 @@ test(
 
 test(
   'a named command uses the task copy unless it brings its own folder',
-  async () => {
+  async t => {
+    const captures = commandCapture({ t })
     const {
       root,
       folder,
@@ -1135,7 +1157,12 @@ test(
         'fixture',
       ],
     })
-    const env = environment({ text: await written({ path: out }) })
+    const env = environment({
+      text: await written({
+        path: out,
+        captures,
+      }),
+    })
     assert.equal(
       env.PNYX_FOLDER,
       copy,
