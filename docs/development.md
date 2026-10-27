@@ -39,7 +39,7 @@ Verification picks checks and reviews from the files changed against that defaul
 
 | Change kind | Required reviews | Checks |
 | --- | --- | --- |
-| Files under `docs/`, or Markdown outside shipped skills and test fixtures | `deslop` | None |
+| Files under `docs/`, or Markdown outside shipped skills and `fixtures/` folders | `deslop` | None |
 | Shipped skill Markdown under `skills/` | `deslop` | Build and tests that read the shipped skills |
 | Test files (`*.test.ts`) | `audit-tests` | Lint fixes, type checks, ESLint, build when needed, and the changed test files |
 | UI or back-end code, configuration, test helpers or fixtures | `review-code`, `audit-tests`, `deslop` | Full suite: lint fixes, type checks, ESLint, build, unit tests and scenarios |

@@ -38,6 +38,7 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: the flow runner, fake agents and their recorded sessions, and fake tools |
 | `scripts/verification/` | the isolated test launcher and `pnpm verify` |
+| `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
 | `test/` | tests not yet beside their code; synthetic inputs in `test/fixtures/` |
 | `docs/media/` | the README's demo GIF |
 

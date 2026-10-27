@@ -1,6 +1,6 @@
 # Tests
 
-- Every other `*.test.ts`, in `test/` or beside the code it covers: unit tests, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
+- Every other `*.test.ts`, in `test/` or beside the code it covers, is a unit test, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
 - `test/scenarios/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
 - `test/fixtures/`: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
