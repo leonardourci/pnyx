@@ -48,10 +48,15 @@ export function privateDir({ dir }: { dir: string }): void {
       mode: 0o700,
     },
   )
-  chmodSync(
-    dir,
-    0o700,
-  )
+
+  // Linux reports even an unchanged mode to watchers of the parent folder, and the server's
+  // watcher of the Hydras folder answers by retrying any Hydra it could not load, here again.
+  if ((statSync(dir).mode & 0o777) !== 0o700) {
+    chmodSync(
+      dir,
+      0o700,
+    )
+  }
 }
 
 const logPath = ({ dir }: { dir: string }) => join(
