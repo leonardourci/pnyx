@@ -705,10 +705,18 @@ test(
       unknown.stdout,
       /unknown flag --titel for `task create`/,
     )
-    assert.match(
-      unknown.stdout,
-      /Valid flags: --title, --project/,
-    )
+
+    for (const flag of [
+      '--title',
+      '--project',
+      '--brief',
+    ]) {
+      assert.match(
+        unknown.stdout,
+        new RegExp(`Valid flags:.*${flag}\\b`),
+      )
+    }
+
     assert.doesNotMatch(
       unknown.stdout,
       /positional argument/,
@@ -752,7 +760,7 @@ test(
     })
     assert.match(
       listing,
-      /tasks\[1\]\{id,title,project,column\}:/,
+      /count: 1\ntasks\[1\]\{id,title,project,column\}:/,
     )
     assert.match(
       listing,
@@ -770,18 +778,23 @@ test(
       }),
       /tasks\[1\]\{id,title,project,column,status,worker\}:/,
     )
+    const colour = failure({
+      run: () => f.run({
+        args: [
+          'task',
+          'list',
+          '--fields',
+          'colour',
+        ],
+      }),
+    })
     assert.equal(
-      failure({
-        run: () => f.run({
-          args: [
-            'task',
-            'list',
-            '--fields',
-            'colour',
-          ],
-        }),
-      }).status,
+      colour.status,
       2,
+    )
+    assert.match(
+      colour.stdout,
+      /unknown field: colour/,
     )
 
     const id = f.state().keys.long
@@ -800,6 +813,30 @@ test(
         args: [
           'task',
           'show',
+          id,
+          '--full',
+        ],
+      }),
+      /b{1500}/,
+    )
+    const card = f.run({
+      args: [
+        'card',
+        id,
+      ],
+    })
+    assert.match(
+      card,
+      /… \(truncated, 1500 chars total\)/,
+    )
+    assert.match(
+      card,
+      /card .+ --full` for the brief/,
+    )
+    assert.match(
+      f.run({
+        args: [
+          'card',
           id,
           '--full',
         ],
@@ -832,9 +869,24 @@ test(
       ],
     })
     create()
+    const events = () => readFileSync(
+      join(
+        f.home,
+        'hydras',
+        'work',
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    const before = events()
     assert.match(
       create(),
       /event: "none: unchanged"/,
+    )
+    assert.equal(
+      events(),
+      before,
+      'the repeat appends nothing',
     )
     assert.match(
       failure({
@@ -846,6 +898,50 @@ test(
         }),
       }).stdout,
       /Hydra already exists with other settings: work/,
+    )
+  },
+)
+
+test(
+  'hydra homes needs a base folder, and --version answers before the commands load',
+  () => {
+    const f = fixture()
+    const homes = failure({
+      run: () => execFileSync(
+        process.execPath,
+        [
+          bin,
+          'hydra',
+          'homes',
+        ],
+        {
+          env: {
+            ...process.env,
+            PNYX_HOME: f.home,
+            FIRSTMATE_FACTORY_BASE: '',
+          },
+          encoding: 'utf8',
+        },
+      ),
+    })
+    assert.equal(
+      homes.status,
+      2,
+    )
+    assert.match(
+      homes.stdout,
+      /missing --base/,
+    )
+    assert.equal(
+      f.run({ args: ['--version'] }).trim(),
+      JSON.parse(readFileSync(
+        join(
+          import.meta.dirname,
+          '..',
+          'package.json',
+        ),
+        'utf8',
+      )).version,
     )
   },
 )
