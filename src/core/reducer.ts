@@ -1,5 +1,6 @@
 import { applyDependencies } from './dependencies.ts'
 import { applyCompaction } from '../compaction/state.ts'
+import { applyUpgrade } from '../upgrade/state.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
 import { applyExternalSource } from '../external-sources/state.ts'
@@ -165,6 +166,9 @@ function apply({
   })
 
   if (applyCompaction({
+    state,
+    event,
+  }) || applyUpgrade({
     state,
     event,
   }) || applyExternalSource({
