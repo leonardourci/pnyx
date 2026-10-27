@@ -1,12 +1,14 @@
 import { AgentDetails } from './agent-details.tsx'
 import { answerPrompt } from '../../../src/core/answer.ts'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
+import { useKeyAction } from '../keyboard/registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { Card as CardData, SavedLabelColor, ViewPreferences } from '../../../src/core/model.ts'
 import { Label } from '../components/ui/label.tsx'
 import type { LatestMessage } from '../../../src/thread/read.ts'
 import { CollapsibleText } from '../components/ui/disclosure.tsx'
-import { EditableTitle } from '../components/ui/editable-title.tsx'
+import { CardTitle } from './card-title.tsx'
+import { TaskEditor, type TaskDraft } from './task-editor.tsx'
 import { useCardHeight } from './card-height.ts'
 import { Button } from '../components/ui/controls.tsx'
 import { taskUpdates } from '../../../src/thread/task.ts'
@@ -69,10 +71,10 @@ export function HydraCard({
   save({ patch }: { patch: unknown }): Promise<boolean>
   open({
     id,
-    fromTitle,
+    pointer,
   }: {
     id: string
-    fromTitle?: boolean
+    pointer?: boolean
   }): Promise<boolean>
   onEdit(): void
   recoverSelection({ id }: { id: string }): void
@@ -83,14 +85,44 @@ export function HydraCard({
   answer({ card }: { card: CardData }): void
 }) {
   const element = useRef<HTMLElement>(null)
+  const briefId = useId()
   const [
-    editingTitle,
-    setEditingTitle,
+    briefOpen,
+    setBriefOpen,
   ] = useState(false)
+  const [
+    editing,
+    setEditing,
+  ] = useState<{
+    version: number
+    draft?: TaskDraft
+  } | null>(null)
+  const editVersion = useRef(0)
 
-  const editTitle = () => {
-    onEdit(); setEditingTitle(true)
+  const edit = ({ draft }: { draft?: TaskDraft } = {}) => {
+    onEdit(); setBriefOpen(true)
+    setEditing({
+      version: ++editVersion.current,
+      draft,
+    })
+
+    if (!selected) {
+      void open({ id: card.id })
+    }
   }
+
+  useKeyAction({
+    id: 'card.edit',
+    handler: ({ context }) => {
+      if (context.target.closest('.card') !== element.current || !connected || editing) {
+        return false
+      }
+
+      edit()
+
+      return true
+    },
+  })
 
   const [
     preview,
@@ -220,12 +252,15 @@ export function HydraCard({
           && e.target.closest('a, button, input, textarea, form, summary, .menu, .resize')
 
         if (!control && !window.getSelection()?.toString()) {
-          open({ id: card.id })
+          open({
+            id: card.id,
+            pointer: true,
+          })
         }
       }}
-      draggable={connected && !selected && !reminding && !editingTitle}
+      draggable={connected && !selected && !reminding && !editing}
       onDragStart={e => {
-        if (e.target instanceof Element && e.target.closest('button, .resize, [contenteditable="plaintext-only"]')) {
+        if (e.target instanceof Element && e.target.closest('button, .resize, form')) {
           e.preventDefault()
 
           return
@@ -275,43 +310,25 @@ export function HydraCard({
 
         </div>
         <div className="card-title-row">
-          <EditableTitle
-            className="card-open"
-            value={card.title}
-            label={`Open task ${card.title}`}
-            editingLabel="Task title"
-            editing={editingTitle}
-            edit={editTitle}
-            finished={() => setEditingTitle(false)}
-            aria-expanded={selected}
-            disabled={!connected}
-            activate={({ pointer }) => open({
-              id: card.id,
-              fromTitle: pointer,
-            })}
-            notify={notify}
-            save={({ title }) => command({
-              name: 'task',
-              args: [
-                'rename',
-                card.id,
-                '--title',
-                title,
-                '--event-id',
-                crypto.randomUUID(),
-              ],
-            })}
-            data-card={card.id}
-            data-key-scope="hydra"
-            tabIndex={tabIndex}
-          />
+          {!editing && (
+            <CardTitle
+              title={card.title}
+              briefOpen={briefOpen}
+              toggleBrief={() => setBriefOpen(open => !open)}
+              open={() => void open({ id: card.id })}
+              aria-controls={briefId}
+              data-card={card.id}
+              data-key-scope="hydra"
+              tabIndex={tabIndex}
+            />
+          )}
           <HoverActions anchor={element}>
-            <Tooltip content="Edit title">
+            <Tooltip content="Edit title and brief">
               <Button
-                aria-label="Edit task title"
-                disabled={!connected}
+                aria-label="Edit title and brief"
+                disabled={!connected || !!editing}
                 onClick={event => {
-                  event.stopPropagation(); editTitle()
+                  event.stopPropagation(); edit()
                 }}
               ><Icon name="renamed" size={15} />
               </Button>
@@ -372,6 +389,36 @@ export function HydraCard({
             </Tooltip>
           )}
         </div>
+        {editing ? (
+          <TaskEditor
+            key={editing.version}
+            card={card}
+            draft={editing.draft}
+            command={command}
+            close={() => setEditing(null)}
+            failed={({
+              draft,
+              error,
+            }) => {
+              if (editVersion.current === editing.version) {
+                edit({ draft })
+              }
+
+              notify({ text: error.message })
+            }}
+          />
+        ) : (
+          <section
+            id={briefId}
+            className="card-brief"
+            aria-label="Brief"
+            hidden={!briefOpen}
+          >
+            {card.brief?.trim()
+              ? <CollapsibleText text={card.brief} />
+              : <p className="muted">No brief yet. The pencil adds one.</p>}
+          </section>
+        )}
         {!selected && labels}
         {selected && hasMetadata && (
           <div id={metadataId} className="card-metadata" hidden={!metadataOpen}>

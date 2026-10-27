@@ -754,7 +754,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setActive(id); setPage('hydra')
   }
 
-  const openFromTitle = ({
+  const openFromPointer = ({
     id,
     signal,
   }: {
@@ -781,10 +781,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
   const open = async ({
     id,
-    fromTitle = false,
+    pointer = false,
   }: {
     id: string
-    fromTitle?: boolean
+    pointer?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -812,8 +812,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setPage('hydra'); setRevealing(id)
 
     try {
-      if (fromTitle) {
-        const card = await openFromTitle({
+      if (pointer) {
+        const card = await openFromPointer({
           id,
           signal,
         })
@@ -1221,7 +1221,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     save={save}
                                     open={({
                                       id,
-                                      fromTitle,
+                                      pointer,
                                     }) => {
                                       if (expandedIds.includes(id)) {
                                         close({ id })
@@ -1231,7 +1231,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
                                       return open({
                                         id,
-                                        fromTitle,
+                                        pointer,
                                       })
                                     }}
                                     command={command}
