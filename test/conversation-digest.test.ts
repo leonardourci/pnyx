@@ -4,7 +4,6 @@ import { appendFileSync, cpSync, mkdtempSync, readFileSync, realpathSync, rmSync
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import type { PaseoClient } from '@getpaseo/client'
 import { commands } from '../src/cli/commands.ts'
 import { sendReply } from '../src/cli/reply.ts'
 import { hydraCheck } from '../src/cli/workers.ts'

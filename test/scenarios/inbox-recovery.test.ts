@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { sendReply } from '../../src/cli/reply.ts'
 import { followUpSteering, STEERING_GRACE_MS, STEERING_RING_LIMIT } from '../../src/task-inbox/follow-up.ts'
 import { steeringNotice } from '../../src/task-inbox/notice.ts'
-import { syncHome } from '../../src/integrations/firstmate/sync.ts'
 import { enqueueSteering } from '../../src/task-inbox/inbox.ts'
-import { loadHydra, withWriter } from '../../src/store/hydra-store.ts'
+import { withWriter } from '../../src/store/hydra-store.ts'
 import { scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup()

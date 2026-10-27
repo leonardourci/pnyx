@@ -7,9 +7,8 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { hydraDir, spoolWrite } from '../src/store/hydra-store.ts'
-import { DEFAULT_COLUMNS, lockedColumn, migrateColumns } from '../src/core/hydra.ts'
-import { decideUndo } from '../src/core/decide.ts'
-import { HydraError, type HydraState, type HydraColumn, type Card } from '../src/core/model.ts'
+import { migrateColumns } from '../src/core/hydra.ts'
+import { type HydraState, type HydraColumn, type Card } from '../src/core/model.ts'
 import { emptyHydra, reduce } from '../src/core/reducer.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.

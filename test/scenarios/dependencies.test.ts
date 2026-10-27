@@ -8,8 +8,6 @@ import { taskReadiness } from '../../src/core/dependencies.ts'
 import { hydraDigest } from '../../src/core/digest.ts'
 import { boardReview } from '../../src/review/board.ts'
 import { advanceQueues } from '../../src/queue/advance.ts'
-import { startAgent } from '../../src/integrations/paseo/launch.ts'
-import type { Connect } from '../../src/integrations/paseo/client.ts'
 import { git, scenarioGroup, until } from './harness.ts'
 
 const pnyx = scenarioGroup({ incorporateSteering: true })

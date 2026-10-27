@@ -1,25 +1,20 @@
 import {
   ORCHESTRATE_SKILL,
-  MANAGE_WORKERS_SKILL,
-  INSCRIBE_SKILL,
 } from '../src/integrations/skills/names.ts'
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commandCapture } from './command-capture.ts'
-
-import type { PaseoClient } from '@getpaseo/client'
 import { project } from '../src/projects/cli.ts'
 import { HYDRA_CARD } from '../src/core/hydra.ts'
 import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { commands } from '../src/cli/commands.ts'
-import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { integrations } from '../src/cli/integrations.ts'
-import { HYDRA_SKILL, setupHydra, startHydra, startTask, workerHeader } from '../src/cli/start.ts'
+import { startHydra, startTask, workerHeader } from '../src/cli/start.ts'
 import { loadHydra } from '../src/store/hydra-store.ts'
 
 const at = '2026-10-15T00:00:00Z'
