@@ -92,7 +92,7 @@ const EVERYTHING: Step[] = [
 ]
 
 // Tests of web/ code: those importing it, and the browser journeys that load the built page.
-const WEB_TEST_IMPORT = /from '((\.\.\/)+web\/|\.\/browser\.ts')/
+const WEB_TEST_IMPORT = /from '((\.\.\/)+web\/|\.\/browser\.ts|\.\/browser-fixture\.ts')/
 
 function webTests({ folder }: { folder: string }): string[] {
   return readdirSync(folder)

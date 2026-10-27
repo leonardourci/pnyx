@@ -5,13 +5,13 @@ import { taskMention, reference } from '../src/mentions/mentions.ts'
 import { fileBlock } from '../src/attachments/files.ts'
 import { project as projectCommand } from '../src/projects/cli.ts'
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { createServer } from 'node:net'
+import { browserFixture } from './browser-fixture.ts'
+import { openPage, POLL_MS, TIMEOUT_MS } from './scenarios/harness.ts'
+import type { Catalog } from '../src/thread/catalog.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { promisify } from 'node:util'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
@@ -27,6 +27,8 @@ function visibleLabelText({ text }: { text: string | null | undefined }): string
   )
 }
 
+const browser = browserFixture()
+
 for (const geometry of [
   false,
   true,
@@ -35,7 +37,6 @@ for (const geometry of [
     geometry ? 'Composer inline tokens keep text, caret and badges clear at edges and wrapped lines'
       : 'Hydra slash suggestions escape composer clipping and retain insertion, dismissal and mention behavior',
     {
-      skip: process.env.PNYX_BROWSER_TESTS !== '1',
       timeout: 120_000,
     },
     async t => {
@@ -209,54 +210,64 @@ for (const geometry of [
         ),
         '---\nname: global-review\ndescription: Review local changes\n---\n',
       )
-      withWriter({
-        hydraId: 'default',
-        fn: ({ writer }) => {
-          const pushed = decidePush({
-            state: writer.state,
-            key: 'codex:slash-fixture',
-            input: {
-              title: 'Hydra',
-              activity: 'finished',
-              agent: {
-                provider: 'codex',
-                sessionId: 'slash-fixture',
-                cwd,
+      await commands.hydra([
+        'create',
+        'alternate-cache-fixture',
+      ])
+
+      for (const hydraId of [
+        'default',
+        'alternate-cache-fixture',
+      ]) {
+        withWriter({
+          hydraId,
+          fn: ({ writer }) => {
+            const pushed = decidePush({
+              state: writer.state,
+              key: 'codex:slash-fixture',
+              input: {
+                title: 'Hydra',
+                activity: 'finished',
+                agent: {
+                  provider: 'codex',
+                  sessionId: 'slash-fixture',
+                  cwd,
+                },
               },
-            },
-            meta: {
-              actor: 'fixture',
-              at: '2026-10-23T10:00:00Z',
-            },
-          })
-          assert.ok('event' in pushed)
-          writer.append({ event: pushed.event })
-          const config = structuredClone(hydraConfig({ state: writer.state }))
-          config.hydra.session = 'codex:slash-fixture'
-          config.hydra.agent = {
-            harness: 'codex',
-            model: 'gpt-6.1-sol',
-          }
-          const configure = hydraEvent({
-            state: writer.state,
-            cardId: '$board',
-            meta: {
-              actor: 'fixture',
-              at: '2026-10-23T10:00:01Z',
-            },
-            change: {
-              type: 'board.configured',
-              data: config,
-            },
-          })
-          assert.ok('event' in configure)
-          writer.append({ event: configure.event })
-          assert.equal(
-            writer.state.cards[HYDRA_CARD]?.agent?.cwd,
-            cwd,
-          )
-        },
-      })
+              meta: {
+                actor: 'fixture',
+                at: '2026-10-23T10:00:00Z',
+              },
+            })
+            assert.ok('event' in pushed)
+            writer.append({ event: pushed.event })
+            const config = structuredClone(hydraConfig({ state: writer.state }))
+            config.hydra.session = 'codex:slash-fixture'
+            config.hydra.agent = {
+              harness: 'codex',
+              model: 'gpt-6.1-sol',
+            }
+            const configure = hydraEvent({
+              state: writer.state,
+              cardId: '$board',
+              meta: {
+                actor: 'fixture',
+                at: '2026-10-23T10:00:01Z',
+              },
+              change: {
+                type: 'board.configured',
+                data: config,
+              },
+            })
+            assert.ok('event' in configure)
+            writer.append({ event: configure.event })
+            assert.equal(
+              writer.state.cards[HYDRA_CARD]?.agent?.cwd,
+              cwd,
+            )
+          },
+        })
+      }
 
       for (const [
         family,
@@ -306,64 +317,6 @@ for (const geometry of [
           codex: process.env.CODEX_HOME,
         },
       })
-      const listener = createServer()
-      await new Promise<void>(resolve => listener.listen(
-        0,
-        '127.0.0.1',
-        resolve,
-      ))
-      const address = listener.address()
-      assert.ok(address && typeof address === 'object')
-      await promisify(listener.close.bind(listener))()
-      const browserEnv = {
-        ...process.env,
-        CHROME_DEVTOOLS_AXI_SESSION: `pnyx-slash-${address.port}`,
-        CHROME_DEVTOOLS_AXI_PORT: String(address.port),
-        CHROME_DEVTOOLS_AXI_AUTO_CONNECT: '',
-        CHROME_DEVTOOLS_AXI_BROWSER_URL: '',
-        CHROME_DEVTOOLS_AXI_MCP_SERVER_URL: '',
-        CHROME_DEVTOOLS_AXI_HEADED: '0',
-        CHROME_DEVTOOLS_AXI_USER_DATA_DIR: join(
-          root,
-          'chrome',
-        ),
-      }
-      const browser = ({
-        args,
-        script,
-      }: {
-        args: string[]
-        script?: string
-      }): Promise<string> =>
-        new Promise((
-          resolve,
-          reject,
-        ) => {
-          const child = execFile(
-            'chrome-devtools-axi',
-            args,
-            {
-              env: browserEnv,
-              cwd: tmpdir(),
-              timeout: 45_000,
-              maxBuffer: 2 * 1024 * 1024,
-            },
-            (
-              error,
-              stdout,
-              stderr,
-            ) => {
-              if (error) {
-                reject(new Error(`${error.message}\n${stdout}\n${stderr}`))
-
-                return
-              }
-
-              resolve(stdout)
-            },
-          )
-          child.stdin?.end(script)
-        })
       t.after(async () => {
         try {
           await browser({ args: ['stop'] })
@@ -385,25 +338,12 @@ for (const geometry of [
       })
       const url = `http://127.0.0.1:${server.port}/hydra/default/`
 
-      try {
-        await browser({
-          args: [
-            'open',
-            url,
-          ],
-        })
-      } catch (error) {
-        if (!(error instanceof Error) || !error.message.includes('BRIDGE_NOT_READY')) {
-          throw error
-        }
-
-        await browser({
-          args: [
-            'open',
-            url,
-          ],
-        })
-      }
+      await browser({
+        args: [
+          'open',
+          url,
+        ],
+      })
 
       const artifacts = process.env.PNYX_BROWSER_ARTIFACTS
 
@@ -418,14 +358,9 @@ for (const geometry of [
         const prefetched = await browser({
           args: ['run'],
           script: `
-        let loaded = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          loaded = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
-            && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '$native-codex')));
-          if (loaded) break;
-          await page.wait(50);
-        }
-        console.log(loaded && await page.eval(() => !document.querySelector('.slash-menu')));
+        await page.until(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
+          && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '$native-codex')));
+        console.log(await page.until(() => !document.querySelector('.slash-menu')));
       `,
         })
         assert.equal(
@@ -467,10 +402,7 @@ for (const geometry of [
         await page.click('.hydra-chat textarea');
         await page.press('/');
         await page.type('fixture-c');
-        for (let attempt = 0; attempt < 100; attempt++) {
-          if (await page.eval(() => !!document.querySelector('.slash-menu [role="option"]'))) break;
-          await page.wait(25);
-        }
+        await page.wait('.slash-menu [role="option"]');
         console.log(JSON.stringify(await page.eval(() => {
           const option = document.querySelector('.slash-menu [role="option"]');
           const bounds = option?.getBoundingClientRect();
@@ -511,7 +443,7 @@ for (const geometry of [
           args: ['run'],
           script: `
         await page.click('.slash-menu [role="option"]');
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const input = document.querySelector('.hydra-chat textarea');
           return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli') && input.selectionStart === input.value.length && document.activeElement === input;
         }));
@@ -521,14 +453,14 @@ for (const geometry of [
         await page.wait('.slash-menu [role="option"]');
         await page.press('ArrowDown');
         await page.press('Enter');
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const input = document.querySelector('.hydra-chat textarea');
           return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli') && input.value.endsWith(' TAIL') && input.selectionStart === input.value.length - 4 && !document.querySelector('.slash-menu');
         }));
         await page.fill('.hydra-chat textarea', '/fixture-c');
         await page.wait('.slash-menu [role="option"]');
         await page.press('Escape');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/fixture-c'));
+        console.log(await page.until(() => !document.querySelector('.slash-menu') && document.querySelector('.hydra-chat textarea').value === '/fixture-c'));
         await page.eval(() => {
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
@@ -554,7 +486,7 @@ for (const geometry of [
         });
         await page.fill('.hydra-chat textarea', '/');
         await page.wait('.slash-menu [role="option"]');
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const menu = document.querySelector('.slash-menu'), bounds = menu.getBoundingClientRect();
           return !menu.querySelector('[role="status"]')
             && menu.querySelector('[role="option"][aria-selected="true"]') !== null
@@ -566,20 +498,19 @@ for (const geometry of [
           window.selectedCommand = document.querySelector('.slash-menu [aria-selected="true"] strong').textContent;
         });
         await page.eval(() => window.releaseCatalog());
-        await page.wait(50);
-        console.log(await page.eval(() => document.querySelector('.slash-menu [aria-selected="true"]').textContent
+        console.log(await page.until(() => document.querySelector('.slash-menu [aria-selected="true"]').textContent
           === window.selectedSkill && !document.querySelector('.slash-menu [role="status"]')));
         await page.press('Enter');
-        console.log(await page.eval(() => document.querySelector('.draft-skill')?.textContent.includes(window.selectedCommand)));
+        console.log(await page.until(() => document.querySelector('.draft-skill')?.textContent.includes(window.selectedCommand)));
         await page.fill('.hydra-chat textarea', '/missing');
         await page.wait('.slash-menu [role="status"]');
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const menu = document.querySelector('.slash-menu'), bounds = menu.getBoundingClientRect();
           return !menu.querySelector('[role="option"]') && menu.contains(document.elementFromPoint(bounds.x + 15, bounds.y + 15));
         }));
         await page.fill('.hydra-chat textarea', '@Que');
         await page.wait('.mention-menu [role="option"]');
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const option = document.querySelector('.mention-menu [role="option"]'), bounds = option.getBoundingClientRect();
           return option.querySelector('strong').textContent === 'Queued' && option.contains(document.elementFromPoint(bounds.x + 10, bounds.y + 10));
         }));
@@ -615,17 +546,26 @@ for (const geometry of [
         await page.eval(() => {
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
-            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => new Promise(resolve => {
+              const id = JSON.parse(payload).id;
+              const received = event => {
+                if (JSON.parse(event.data).id !== id) return;
+                this.removeEventListener('message', received);
+                resolve();
+              };
+              this.addEventListener('message', received);
+              send.call(this, payload);
+            }));
             else send.call(this, payload);
           };
-          window.releaseCatalog = () => {
+          window.releaseCatalog = async () => {
             WebSocket.prototype.send = send;
-            for (const release of waiting) release();
+            await Promise.all(waiting.map(release => release()));
           };
         });
         await page.fill('.hydra-chat textarea', '/cache-restored');
         await page.wait('.slash-menu [role="option"]');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="status"]')
+        console.log(await page.until(() => !document.querySelector('.slash-menu [role="status"]')
           && document.querySelector('.slash-menu [role="option"]').textContent.includes('/cache-restored')));
         await page.eval(() => window.releaseCatalog());
         await page.fill('.hydra-chat textarea', '');
@@ -635,6 +575,35 @@ for (const geometry of [
           restoredCatalog.trim(),
           'true',
         )
+
+        const catalogPage = await openPage({
+          port: server.port,
+          hydraId: 'default',
+        })
+        t.after(() => catalogPage.close())
+
+        const catalogChanged = async ({ present }: { present: boolean }) => {
+          let last: Catalog | undefined
+
+          for (const end = Date.now() + TIMEOUT_MS; Date.now() < end;) {
+            const receipt = await catalogPage.command({
+              name: 'catalog',
+              args: [HYDRA_CARD],
+            })
+            last = receipt.catalog as Catalog
+
+            if (last.suggestions.some(item => item.command === '$cache-discovery') === present) {
+              return
+            }
+
+            await new Promise(resolve => setTimeout(
+              resolve,
+              POLL_MS,
+            ))
+          }
+
+          assert.fail(`catalog did not ${present ? 'discover' : 'remove'} the skill: ${JSON.stringify(last)}`)
+        }
 
         const discovered = join(
           root,
@@ -652,18 +621,12 @@ for (const geometry of [
           '---\nname: cache-discovery\ndescription: Newly discovered skill\n---\n',
         )
 
+        await catalogChanged({ present: true })
         const addedCatalog = await browser({
           args: ['run'],
           script: `
-        let added = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          await page.fill('.hydra-chat textarea', '/cache-discovery');
-          await page.wait(50);
-          added = await page.eval(() => !!document.querySelector('.slash-menu [role="option"]'));
-          if (added) break;
-          await page.fill('.hydra-chat textarea', '');
-        }
-        console.log(added);
+        await page.fill('.hydra-chat textarea', '/cache-discovery');
+        console.log(await page.until(() => document.querySelector('.slash-menu [role="option"]')?.textContent.includes('/cache-discovery')));
         await page.fill('.hydra-chat textarea', '');
       `,
         })
@@ -679,19 +642,13 @@ for (const geometry of [
           },
         )
 
+        await catalogChanged({ present: false })
         const removedCatalog = await browser({
           args: ['run'],
           script: `
-        let removed = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          await page.fill('.hydra-chat textarea', '/cache-discovery');
-          await page.wait(50);
-          removed = await page.eval(() => !document.querySelector('.slash-menu [role="option"]')
-            && !document.querySelector('.slash-menu')?.textContent.includes('Loading'));
-          if (removed) break;
-          await page.fill('.hydra-chat textarea', '');
-        }
-        console.log(removed);
+        await page.fill('.hydra-chat textarea', '/cache-discovery');
+        console.log(await page.until(() => !document.querySelector('.slash-menu [role="option"]')
+          && document.querySelector('.slash-menu [role="status"]')?.textContent.includes('No matching')));
         await page.fill('.hydra-chat textarea', '');
       `,
         })
@@ -731,28 +688,32 @@ for (const geometry of [
         const nativeClaude = await browser({
           args: ['run'],
           script: `
-        let prefetched = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          prefetched = await page.eval(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
-            && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '/native-claude')));
-          if (prefetched) break;
-          await page.wait(50);
-        }
-        console.log(prefetched && await page.eval(() => !document.querySelector('.slash-menu')));
+        await page.until(() => Object.keys(sessionStorage).some(key => key.includes(':skills:')
+          && JSON.parse(sessionStorage.getItem(key)).suggestions.some(item => item.command === '/native-claude')));
+        console.log(await page.until(() => !document.querySelector('.slash-menu')));
         await page.eval(() => {
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
-            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => new Promise(resolve => {
+              const id = JSON.parse(payload).id;
+              const received = event => {
+                if (JSON.parse(event.data).id !== id) return;
+                this.removeEventListener('message', received);
+                resolve();
+              };
+              this.addEventListener('message', received);
+              send.call(this, payload);
+            }));
             else send.call(this, payload);
           };
-          window.releaseCatalog = () => {
+          window.releaseCatalog = async () => {
             WebSocket.prototype.send = send;
-            for (const release of waiting) release();
+            await Promise.all(waiting.map(release => release()));
           };
         });
         await page.fill('.hydra-chat textarea', '/native-');
         await page.wait('.slash-menu [role="option"]');
-        console.log(await page.eval(() => document.querySelector('.slash-menu').textContent.includes('/native-claude')
+        console.log(await page.until(() => document.querySelector('.slash-menu').textContent.includes('/native-claude')
           && !document.querySelector('.slash-menu').textContent.includes('/native-codex')
           && !document.querySelector('.slash-menu [role="status"]')));
       `,
@@ -768,16 +729,10 @@ for (const geometry of [
         const nativeCodex = await browser({
           args: ['run'],
           script: `
-        let switched = false;
-        for (let attempt = 0; attempt < 60; attempt++) {
-          switched = await page.eval(() => document.querySelector('.slash-menu')?.textContent.includes('/native-codex'));
-          if (switched) break;
-          await page.wait(50);
-        }
-        console.log(switched && await page.eval(() => !document.querySelector('.slash-menu [role="status"]')));
+        await page.until(() => document.querySelector('.slash-menu')?.textContent.includes('/native-codex'));
+        console.log(await page.until(() => !document.querySelector('.slash-menu [role="status"]')));
         await page.eval(() => window.releaseCatalog());
-        await page.wait(100);
-        console.log(await page.eval(() => document.querySelector('.slash-menu').textContent.includes('/native-codex')));
+        console.log(await page.until(() => document.querySelector('.slash-menu').textContent.includes('/native-codex')));
         await page.fill('.hydra-chat textarea', '');
       `,
         })
@@ -793,36 +748,52 @@ for (const geometry of [
           args: ['run'],
           script: `
         await page.eval(() => {
-          const meta = document.querySelector('meta[name=pnyx-hydra]');
-          window.originalHydra = meta.content;
-          meta.content = 'alternate-cache-fixture';
           const send = WebSocket.prototype.send, waiting = [];
           WebSocket.prototype.send = function(payload) {
-            if (JSON.parse(payload).name === 'catalog') waiting.push(() => send.call(this, payload));
+            if (JSON.parse(payload).name === 'catalog') waiting.push(() => new Promise(resolve => {
+              const id = JSON.parse(payload).id;
+              const received = event => {
+                if (JSON.parse(event.data).id !== id) return;
+                this.removeEventListener('message', received);
+                resolve();
+              };
+              this.addEventListener('message', received);
+              send.call(this, payload);
+            }));
             else send.call(this, payload);
           };
-          window.releaseCatalog = () => {
+          window.releaseCatalog = async () => {
             WebSocket.prototype.send = send;
-            for (const release of waiting) release();
+            await Promise.all(waiting.map(release => release()));
           };
         });
+        await page.eval(() => [...document.querySelectorAll('.hydra-name')].find(button => button.textContent.trim() === 'alternate-cache-fixture').click());
+        await page.until(() => location.pathname === '/hydra/alternate-cache-fixture/'
+          && document.querySelector('.hydra-name[aria-current="page"]')?.textContent.trim() === 'alternate-cache-fixture'
+          && document.querySelector('[data-connected="true"]'));
         await page.fill('.hydra-chat textarea', '/native-');
         await page.wait('.slash-menu [role="status"]');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="option"]')
+        console.log(await page.until(() => !document.querySelector('.slash-menu [role="option"]')
           && document.querySelector('.slash-menu').textContent.includes('Loading')));
-        await page.eval(() => { document.querySelector('meta[name=pnyx-hydra]').content = window.originalHydra; });
+        await page.eval(() => [...document.querySelectorAll('.hydra-name')].find(button => button.textContent.trim() === 'default').click());
+        await page.until(() => location.pathname === '/hydra/default/'
+          && document.querySelector('.hydra-name[aria-current="page"]')?.textContent.trim() === 'default'
+          && document.querySelector('[data-connected="true"]'));
         await page.fill('.hydra-chat textarea', '');
         await page.fill('.hydra-chat textarea', '/native-');
         await page.wait('.slash-menu [role="option"]');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu [role="status"]')
+        console.log(await page.until(() => !document.querySelector('.slash-menu [role="status"]')
           && document.querySelector('.slash-menu').textContent.includes('/native-codex')));
         await page.eval(() => window.releaseCatalog());
+        console.log(await page.until(() => document.querySelector('.slash-menu').textContent.includes('/native-codex')
+          && !document.querySelector('.slash-menu [role="status"]')));
         await page.fill('.hydra-chat textarea', '');
       `,
         })
         assert.deepEqual(
           hydraIsolation.trim().split('\n'),
           [
+            'true',
             'true',
             'true',
           ],
@@ -834,7 +805,7 @@ for (const geometry of [
         for (const query of ['/missing-skill', '@missing-task']) {
           await page.fill('.hydra-chat textarea', query);
           await page.press('Tab');
-          console.log(await page.eval(() => document.activeElement !== document.querySelector('.hydra-chat textarea')
+          console.log(await page.until(() => document.activeElement !== document.querySelector('.hydra-chat textarea')
             && !document.querySelector('.slash-menu') && !document.querySelector('.mention-menu')));
         }
         await page.fill('.hydra-chat textarea', '');
@@ -853,19 +824,19 @@ for (const geometry of [
           script: `
       await page.fill('.hydra-chat textarea', 'Please run /dep');
       await page.wait('.slash-menu [role="option"]');
-      console.log(await page.eval(() => {
+      console.log(await page.until(() => {
         const options = [...document.querySelectorAll('.slash-menu [role="option"]')];
         return options.length === 4 && options[0].getAttribute('aria-selected') === 'true'
           && options.every(option => !!option.querySelector('.project-label'));
       }));
       await page.press('Tab');
-      console.log(await page.eval(() => {
+      console.log(await page.until(() => {
         const badge = document.querySelector('.draft-skill'), input = document.querySelector('.hydra-chat textarea');
         return badge?.textContent.includes('/deploy') && badge.querySelector('.project-label')
           && input.value.startsWith('Please run ') && !document.querySelector('.slash-menu');
       }));
       await page.type('then report.');
-      console.log(await page.eval(() => {
+      console.log(await page.until(() => {
         ${visibleLabelText.toString()}
         const badge = document.querySelector('.draft-skill'), label = badge.querySelector('.project-label');
         const taskLabel = [...document.querySelectorAll('.card .project-label')].find(item => visibleLabelText({ text: item.textContent }) === visibleLabelText({ text: label.textContent }));
@@ -874,7 +845,7 @@ for (const geometry of [
       }));
       await page.fill('.hydra-chat textarea', '/global-r');
       await page.wait('.slash-menu [role="option"]');
-      console.log(await page.eval(() => document.querySelector('.slash-menu [role="option"] strong').textContent === '/global-review'));
+      console.log(await page.until(() => document.querySelector('.slash-menu [role="option"] strong').textContent === '/global-review'));
       await page.press('Enter');
       await page.fill('.hydra-chat textarea', '');
     `,
@@ -914,7 +885,7 @@ for (const geometry of [
           })));
           await page.open(${JSON.stringify(url)});
           await page.wait('.draft-skill');
-          console.log(await page.eval(() => {
+          console.log(await page.until(() => {
             ${visibleLabelText.toString()}
             const badge = document.querySelector('.draft-skill');
             return badge.textContent.includes('/deploy')
@@ -923,7 +894,7 @@ for (const geometry of [
           }));
           await page.fill('.hydra-chat textarea', '/dep');
           await page.wait('.slash-menu [role="option"]');
-          console.log(await page.eval(() => {
+          console.log(await page.until(() => {
             const option = [...document.querySelectorAll('.slash-menu [role="option"]')]
               .find(option => option.querySelector('.mention-excerpt')?.textContent === ${JSON.stringify(project.description)});
             return option?.querySelector('.project-label')?.dataset.labelColor === ${JSON.stringify(project.color)};
@@ -970,17 +941,17 @@ for (const geometry of [
         await page.fill('.hydra-chat textarea', 'Keep this /dep');
         await page.wait('.slash-menu [role="option"]');
         await page.press('Home');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu')
+        console.log(await page.until(() => !document.querySelector('.slash-menu')
           && document.querySelector('.hydra-chat textarea').value === 'Keep this /dep'));
         await page.type('Prefix ');
-        console.log(await page.eval(() => document.querySelector('.hydra-chat textarea').value === 'Prefix Keep this /dep'));
+        console.log(await page.until(() => document.querySelector('.hydra-chat textarea').value === 'Prefix Keep this /dep'));
         await page.fill('.hydra-chat textarea', 'Keep this /dep');
         await page.wait('.slash-menu [role="option"]');
         for (let index = 0; index < 5; index++) await page.press('ArrowLeft');
-        console.log(await page.eval(() => !document.querySelector('.slash-menu')
+        console.log(await page.until(() => !document.querySelector('.slash-menu')
           && document.querySelector('.hydra-chat textarea').value === 'Keep this /dep'));
         await page.type('!');
-        console.log(await page.eval(() => document.querySelector('.hydra-chat textarea').value === 'Keep this! /dep'));
+        console.log(await page.until(() => document.querySelector('.hydra-chat textarea').value === 'Keep this! /dep'));
         await page.fill('.hydra-chat textarea', '');
       `,
         })
@@ -1011,8 +982,7 @@ for (const geometry of [
         const narrow = await browser({
           args: ['run'],
           script: `
-        await page.wait(100);
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const menu = document.querySelector('.slash-menu'), option = menu.querySelector('[role="option"]');
           const bounds = menu.getBoundingClientRect(), item = option.getBoundingClientRect();
           const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
@@ -1026,8 +996,7 @@ for (const geometry of [
           anchor.style.minHeight = '150px';
           anchor.style.maxHeight = '150px';
         });
-        await page.wait(100);
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const bounds = document.querySelector('.slash-menu').getBoundingClientRect();
           const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
           return Math.abs(bounds.bottom + 8 - anchor.top) < 2;
@@ -1043,8 +1012,7 @@ for (const geometry of [
           input.style.maxHeight = '50px';
           document.dispatchEvent(new Event('scroll'));
         });
-        await page.wait(100);
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const menu = document.querySelector('.slash-menu'), bounds = menu.getBoundingClientRect();
           const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
           const option = menu.querySelector('[role="option"]'), item = option.getBoundingClientRect();
@@ -1055,8 +1023,7 @@ for (const geometry of [
           document.querySelector('.hydra-chat textarea').style.top = '60px';
           document.dispatchEvent(new Event('scroll'));
         });
-        await page.wait(100);
-        console.log(await page.eval(() => {
+        console.log(await page.until(() => {
           const bounds = document.querySelector('.slash-menu').getBoundingClientRect();
           const anchor = document.querySelector('.hydra-chat textarea').getBoundingClientRect();
           return Math.abs(bounds.top - anchor.bottom - 8) < 2;
@@ -1080,7 +1047,7 @@ for (const geometry of [
       await page.fill('.hydra-chat textarea', '/review-cross');
       await page.wait('.slash-menu [role="option"]');
       await page.press('Tab');
-      console.log(await page.eval(() => {
+      console.log(await page.until(() => {
         const badge = document.querySelector('.draft-skill'), input = document.querySelector('.hydra-chat textarea');
         return badge.textContent.includes('/review-cross-platform-accessibility-and-release-readiness')
           && badge.querySelector('.project-label') && input.scrollWidth <= input.clientWidth + 1;
@@ -1177,7 +1144,7 @@ for (const geometry of [
             panel.style.flex = '0 0 ${sample.width}px';
           });
           await page.fill('.hydra-chat textarea', ${JSON.stringify(sample.text)});
-          await page.wait(100);
+          await page.until(() => document.querySelectorAll('.draft-token').length > 0);
           console.log(JSON.stringify(await page.eval(() => {
             const input = document.querySelector('.hydra-chat textarea');
             const mirror = document.querySelector('.draft-mirror');
