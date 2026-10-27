@@ -27,12 +27,14 @@ async function run({
   args,
   timeout = NETWORK_MS,
   env,
+  signal,
 }: {
   root: string
   command: string
   args: string[]
   timeout?: number
   env?: Record<string, string>
+  signal?: AbortSignal
 }): Promise<string> {
   try {
     const { stdout } = await exec(
@@ -41,6 +43,7 @@ async function run({
       {
         cwd: root,
         timeout,
+        signal,
         maxBuffer: 64 * 1024 * 1024,
         // A remote that wants a login fails instead of waiting on a prompt nobody sees.
         env: {
@@ -69,28 +72,34 @@ async function run({
 const git = ({
   root,
   args,
+  signal,
 }: {
   root: string
   args: string[]
+  signal?: AbortSignal
 }) => run({
   root,
   command: 'git',
   args,
+  signal,
 })
 
 // pnpm stops to ask before replacing node_modules unless it knows no one can answer.
 const pnpm = ({
   root,
   args,
+  signal,
 }: {
   root: string
   args: string[]
+  signal?: AbortSignal
 }) => run({
   root,
   command: 'pnpm',
   args,
   timeout: BUILD_MS,
   env: { CI: 'true' },
+  signal,
 })
 
 const remoteMain = async ({ root }: { root: string }) => (await git({
@@ -178,20 +187,23 @@ export async function refusals({ root }: { root: string }): Promise<string[]> {
 }
 
 export type UpgradeResult = Pick<UpgradeOperation, 'steps' | 'from' | 'to' | 'failed' | 'error' | 'reasons' | 'rolledBack'> & {
-  state: 'upgraded' | 'current' | 'failed' | 'refused'
+  state: 'upgraded' | 'current' | 'failed' | 'refused' | 'stopped'
 }
 
 let busy = false
 
-// Pulls main, installs and builds; a failed step puts the folder back on the commit it started from.
+// Pulls main, installs and builds; a failed or stopped step puts the folder back on the commit it started from.
 // The caller restarts the server, and only after this reports upgraded.
 // ponytail: the busy flag guards one process; a CLI and a server upgrading at once can still race.
 export async function runUpgrade({
   root = PNYX_ROOT,
   progress = () => {},
+  signal,
 }: {
   root?: string
   progress?({ steps }: { steps: UpgradeStep[] }): void
+  // Aborting stops the running step and goes back, as a failed step does.
+  signal?: AbortSignal
 } = {}): Promise<UpgradeResult> {
   if (busy) {
     return {
@@ -207,6 +219,7 @@ export async function runUpgrade({
     return await upgrade({
       root,
       progress,
+      signal,
     })
   } finally {
     busy = false
@@ -216,9 +229,11 @@ export async function runUpgrade({
 async function upgrade({
   root,
   progress,
+  signal,
 }: {
   root: string
   progress({ steps }: { steps: UpgradeStep[] }): void
+  signal?: AbortSignal
 }): Promise<UpgradeResult> {
   const steps: UpgradeStep[] = []
   const reasons = await refusals({ root })
@@ -237,6 +252,15 @@ async function upgrade({
       reasons,
       from,
       to: await remoteMain({ root }).catch(() => undefined),
+    }
+  }
+
+  if (signal?.aborted) {
+    return {
+      state: 'stopped',
+      steps,
+      from,
+      rolledBack: true,
     }
   }
 
@@ -259,10 +283,13 @@ async function upgrade({
     progress({ steps })
 
     try {
+      signal?.throwIfAborted()
       await work()
+      // A stop that lands as the step ends still goes back.
+      signal?.throwIfAborted()
       entry.state = 'done'
     } catch (error) {
-      entry.state = 'failed'
+      entry.state = signal?.aborted ? 'stopped' : 'failed'
       throw error
     } finally {
       entry.seconds = Math.round((Date.now() - started) / 1000)
@@ -281,6 +308,7 @@ async function upgrade({
             'origin',
             'main',
           ],
+          signal,
         })
         to = await git({
           root,
@@ -325,6 +353,7 @@ async function upgrade({
           'install',
           '--frozen-lockfile',
         ],
+        signal,
       }),
     })
     await step({
@@ -335,6 +364,7 @@ async function upgrade({
           'run',
           'build',
         ],
+        signal,
       }),
     })
 
@@ -346,7 +376,8 @@ async function upgrade({
     }
   } catch (error) {
     const failed = steps.at(-1)!.step
-    let detail = (error as Error).message
+    const stopped = signal?.aborted
+    let detail = stopped ? undefined : (error as Error).message
     let rolledBack = true
 
     try {
@@ -357,11 +388,14 @@ async function upgrade({
       })
     } catch (rollbackError) {
       rolledBack = false
-      detail += `\nGoing back failed too: ${(rollbackError as Error).message}`
+      detail = [
+        detail,
+        `Going back failed too: ${(rollbackError as Error).message}`,
+      ].filter(Boolean).join('\n')
     }
 
     return {
-      state: 'failed',
+      state: stopped ? 'stopped' : 'failed',
       steps,
       from,
       to,

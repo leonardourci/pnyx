@@ -41,15 +41,23 @@ export const STEP_WORDS: Record<UpgradeStepName, [string, string, string]> = {
 
 export interface UpgradeStep {
   step: UpgradeStepName
-  state: 'running' | 'done' | 'failed'
+  state: 'running' | 'done' | 'failed' | 'stopped'
   seconds: number
+}
+
+// A Hydra message sent while the upgrade ran; it reaches Hydra once the upgrade ends.
+export interface HeldMessage {
+  id: string
+  text: string
+  actor: string
+  at: string
 }
 
 // One /upgrade the owner sent to Hydra, from its place in the queue to the restarted server.
 export interface UpgradeOperation {
   // The Hydra message that asked for it.
   id: string
-  state: 'queued' | 'running' | 'restarting' | 'done' | 'current' | 'failed' | 'refused'
+  state: 'queued' | 'running' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
   // The Pnyx folder, with the home folder shortened to ~.
   folder: string
   queuedAt: string
@@ -58,13 +66,14 @@ export interface UpgradeOperation {
   steps: UpgradeStep[]
   from?: string
   to?: string
-  // The step that failed, and the last lines of its output.
+  // The step that failed or was stopped, and the last lines of its output.
   failed?: UpgradeStepName
   error?: string
-  // Whether a failed upgrade put the folder back on from; false leaves it partly upgraded.
+  // Whether a failed or stopped upgrade put the folder back on from; false leaves it partly upgraded.
   rolledBack?: boolean
   // Why a refused upgrade did not start.
   reasons?: string[]
+  held?: HeldMessage[]
 }
 
 export type UpgradeEvent = EventBase & {

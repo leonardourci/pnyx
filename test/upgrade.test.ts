@@ -139,6 +139,73 @@ test(
 )
 
 test(
+  'stopping a running build goes back to the previous commit and its build',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      // Writes, then hangs until stopped, so only a rebuild of the old commit leaves 'one' behind.
+      files: { 'build.sh': 'echo two > built.txt\nexec sleep 30\n' },
+      message: 'slow build',
+    })
+    const stopping = new AbortController()
+    const started = Date.now()
+
+    const result = await runUpgrade({
+      root: repo.install,
+      signal: stopping.signal,
+      progress: ({ steps }) => {
+        if (steps.at(-1)?.step === 'build' && steps.at(-1)?.state === 'running') {
+          setTimeout(
+            () => stopping.abort(),
+            300,
+          )
+        }
+      },
+    })
+
+    assert.equal(
+      result.state,
+      'stopped',
+    )
+    assert.deepEqual(
+      result.steps.map(step => `${step.step}:${step.state}`),
+      [
+        'pull:done',
+        'install:done',
+        'build:stopped',
+      ],
+    )
+    assert.equal(
+      result.rolledBack,
+      true,
+    )
+    assert.equal(
+      result.error,
+      undefined,
+    )
+    assert.ok(Date.now() - started < 10_000)
+    assert.equal(
+      repo.head(),
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'one',
+    )
+    assert.equal(
+      git({
+        cwd: repo.install,
+        args: [
+          'status',
+          '--porcelain',
+        ],
+      }),
+      '',
+    )
+  },
+)
+
+test(
   'a failed install goes back before anything is built',
   async () => {
     const from = repo.head()
