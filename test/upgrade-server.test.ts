@@ -274,6 +274,142 @@ test(
   },
 )
 
+const heard = ({
+  sdk,
+  text,
+}: {
+  sdk: ReturnType<typeof hydraSdk>
+  text: string
+}) => sdk.calls.some(call => call.raw.some(raw => raw.includes(text)))
+const stop = () => askHost({
+  hydraId: 'lab',
+  body: { action: 'stop' },
+})
+const buildRunning = () => upgrade()?.steps.some(step => step.step === 'build' && step.state === 'running') ?? false
+
+test(
+  'Stop goes back like a failed step, and a message sent during the upgrade reaches Hydra after it',
+  async () => {
+    const from = repo.head()
+    repo.publish({
+      files: { 'build.sh': 'echo two > built.txt\nexec sleep 30\n' },
+      message: 'slow build',
+    })
+    const sdk = hydraSdk()
+    server = await start({ sdk })
+    await send({
+      text: '/upgrade',
+      id: 'up',
+    })
+    await until({ check: buildRunning })
+
+    await send({
+      text: 'Sent during the upgrade',
+      id: 'during',
+    })
+    await until({ check: () => upgrade()?.held?.some(message => message.id === 'during') ?? false })
+
+    assert.equal(
+      heard({
+        sdk,
+        text: 'Sent during the upgrade',
+      }),
+      false,
+    )
+
+    assert.deepEqual(
+      await stop(),
+      { stopped: 'upgrade' },
+    )
+    await until({ check: () => upgrade()?.state === 'stopped' })
+
+    assert.equal(
+      upgrade()!.rolledBack,
+      true,
+    )
+    assert.equal(
+      repo.head(),
+      from,
+    )
+    assert.equal(
+      repo.built(),
+      'one',
+    )
+    assert.equal(
+      restarts,
+      0,
+    )
+
+    await until({
+      check: () => heard({
+        sdk,
+        text: 'Sent during the upgrade',
+      }),
+    })
+    assert.deepEqual(
+      upgrade()!.held,
+      [],
+    )
+  },
+)
+
+test(
+  'a message sent during an upgrade waits through the restart, which Stop cannot cut',
+  async () => {
+    repo.publish({
+      files: { 'build.sh': `sleep 1\n${building({ version: 'two' })}` },
+      message: 'two',
+    })
+    const sdk = hydraSdk()
+    server = await start({ sdk })
+    await send({
+      text: '/upgrade',
+      id: 'up',
+    })
+    await until({ check: buildRunning })
+    await send({
+      text: 'Sent during the upgrade',
+      id: 'during',
+    })
+    await until({ check: () => upgrade()?.state === 'restarting' })
+
+    assert.deepEqual(
+      await stop(),
+      { stopped: 'none: Pnyx is restarting after the upgrade and comes back in a few seconds' },
+    )
+    assert.equal(
+      heard({
+        sdk,
+        text: 'Sent during the upgrade',
+      }),
+      false,
+    )
+
+    await server.close()
+    const next = hydraSdk()
+    server = await start({ sdk: next })
+    await until({ check: () => upgrade()?.state === 'done' })
+    await until({
+      check: () => heard({
+        sdk: next,
+        text: 'Sent during the upgrade',
+      }),
+    })
+
+    assert.equal(
+      repo.built(),
+      'two',
+    )
+    assert.equal(
+      heard({
+        sdk,
+        text: 'Sent during the upgrade',
+      }),
+      false,
+    )
+  },
+)
+
 test(
   'a worker cannot run pnyx-axi upgrade',
   async () => {

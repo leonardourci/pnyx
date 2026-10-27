@@ -844,6 +844,11 @@ export function createHost({
     },
     closing: () => closing,
     restart,
+    deliver: ({ message }) => void host.hydra({
+      text: message.text,
+      actor: message.actor,
+      id: message.id,
+    }),
     at,
   })
 
@@ -3374,6 +3379,20 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
+      // Hydra waits for a running upgrade, so a message sent meanwhile queues behind it.
+      if (!release && upgrades.hold({
+        message: {
+          id,
+          text,
+          actor,
+          at: at(),
+        },
+      })) {
+        queued()
+
+        return Promise.resolve({ state: 'queued' })
+      }
+
       const queuedState = loadHydra({ hydraId }).state
       const queuedDispatch = effectiveDispatch({
         hydraId,
@@ -3916,12 +3935,22 @@ export function createHost({
 
       return { stopped: 'compaction' }
     },
-    // Stops only Hydra's running turn; workers keep going.
+    // Stops only Hydra's running turn, or the upgrade running in its place; workers keep going.
     stop: async () => {
       const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
 
       if (activeCompaction({ card })) {
         return host.compact({ card: HYDRA_CARD })
+      }
+
+      const upgrade = upgrades.stop()
+
+      if (upgrade === 'restarting') {
+        return { stopped: 'none: Pnyx is restarting after the upgrade and comes back in a few seconds' }
+      }
+
+      if (upgrade) {
+        return { stopped: 'upgrade' }
       }
 
       const entry = card?.agent?.host === 'pnyx' ? live.get(sessionId({ agent: card.agent })) : undefined
@@ -4924,6 +4953,8 @@ export function createHost({
           releaseCompact({ card: card.id })
         }
       }
+
+      upgrades.release()
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
