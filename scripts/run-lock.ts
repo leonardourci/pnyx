@@ -32,7 +32,7 @@ function alive({ pid }: { pid: number }): boolean {
 // started by one that already holds it (verify's test steps) shares it.
 export async function holdRunLock({
   name,
-  path = LOCK,
+  path = process.env.PNYX_RUN_LOCK_FILE ?? LOCK,
   waiting = ({ owner }) => console.log(`${name}: waiting for the full run already in progress (${owner})`),
 }: {
   name: string

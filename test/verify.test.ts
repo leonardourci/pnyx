@@ -107,6 +107,11 @@ function fixture({
       GIT_CONFIG_GLOBAL: gitConfig,
       GIT_CONFIG_NOSYSTEM: '1',
       TMPDIR: root,
+      // The machine's lock belongs to the real run this suite is part of.
+      PNYX_RUN_LOCK_FILE: join(
+        root,
+        'run.lock',
+      ),
       PNYX_HOME: join(
         root,
         'pnyx',
@@ -206,6 +211,7 @@ function fixture({
     'verify.ts',
     'marker.ts',
     'required-checks.ts',
+    'run-lock.ts',
   ]) {
     copyFileSync(
       resolve(
