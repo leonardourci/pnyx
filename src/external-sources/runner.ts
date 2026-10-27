@@ -177,9 +177,25 @@ export function createSourceRunner({
       }
     }
 
+    // The supervisor's last IPC message can still be unread when its exit is reaped; the channel
+    // disconnects only after delivering it, or when the server stops the listener.
+    let open = 2
+
+    const ended = () => {
+      open--
+
+      if (open === 0) {
+        settle()
+      }
+    }
+
     child.once(
       'exit',
-      settle,
+      ended,
+    )
+    child.once(
+      'disconnect',
+      ended,
     )
     child.once(
       'error',

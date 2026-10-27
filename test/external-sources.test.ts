@@ -364,6 +364,94 @@ test(
 )
 
 test(
+  'a result the supervisor sends just before exiting is captured even when it is read after the exit',
+  async () => {
+    await register()
+    const runner = createSourceRunner({
+      hydraId: 'lab',
+      changed() {},
+      tell: delivered,
+      // A busy server can reap the supervisor before reading its channel: the last message and the
+      // channel's end arrive after the exit.
+      spawnSource: ({ entry }) => {
+        const supervisor = fork(
+          entry,
+          [],
+          {
+            stdio: [
+              'ignore',
+              'ignore',
+              'ignore',
+              'ipc',
+            ],
+          },
+        )
+        const emit = supervisor.emit.bind(supervisor)
+        const channel: [string, unknown[]][] = []
+        let exited = false
+
+        // EventEmitter owns emit's positional signature.
+        // eslint-disable-next-line pnyx/object-params
+        supervisor.emit = (
+          event: string,
+          ...args: unknown[]
+        ) => {
+          if ((event === 'message' || event === 'disconnect') && !exited) {
+            channel.push([
+              event,
+              args,
+            ])
+
+            return true
+          }
+
+          if (event !== 'exit') {
+            return emit(
+              event,
+              ...args,
+            )
+          }
+
+          exited = true
+          const result = emit(
+            event,
+            ...args,
+          )
+
+          for (const [
+            held,
+            heldArgs,
+          ] of channel.splice(0)) {
+            emit(
+              held,
+              ...heldArgs,
+            )
+          }
+
+          return result
+        }
+
+        return supervisor
+      },
+    })
+    runners.push(runner)
+    runner.reconcile()
+    await until({
+      what: 'the supervisor result captured',
+      check: () => task().externalSources![0]!.results[0],
+    })
+    assert.equal(
+      task().externalSources![0]!.results[0]!.outcome,
+      'completed',
+    )
+    assert.equal(
+      task().externalSources![0]!.results[0]!.stdout,
+      'retained output',
+    )
+  },
+)
+
+test(
   'a synchronous supervisor launch failure becomes one retained actionable result',
   async () => {
     await register()
