@@ -44,8 +44,9 @@ jobs:
   test:
     name: Lint, build and tests
     needs: scope
-    # A skipped job reports success, so a docs-only change still passes this check.
-    if: ${{ !github.event.repository.private && needs.scope.outputs.tests != 'none' }}
+    # A skipped job reports success, so a docs-only change still passes this check; a failed
+    # scope job still runs the tests rather than passing without them.
+    if: ${{ !cancelled() && !github.event.repository.private && !(needs.scope.result == 'success' && needs.scope.outputs.tests == 'none') }}
     # Every run waits for the owner's approval in this environment.
     environment: ci
     runs-on: ubuntu-24.04
