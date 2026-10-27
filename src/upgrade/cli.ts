@@ -42,19 +42,28 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
     } : { upgrade: 'none: Pnyx is up to date' }
   }
 
+  // Hydra can only propose it (owner-only); a worker cannot restart the server under everyone.
+  if (process.env.PNYX_ACTOR?.startsWith('worker:')) {
+    throw new AxiError(
+      'Only the owner can upgrade Pnyx',
+      'OWNER_ONLY',
+      ['Ask the owner to run `pnyx-axi upgrade` or send /upgrade in Hydra\'s chat'],
+    )
+  }
+
   const result = await runUpgrade()
 
   if (result.state === 'refused') {
     throw new AxiError(
       `Upgrade not started: ${result.reasons!.join(' ')} Nothing was stashed or changed.`,
       'UPGRADE_REFUSED',
-      ['Commit or move the local changes and switch the Pnyx folder to main, then run `pnyx-axi upgrade` again'],
+      ['Resolve each reason listed, then run `pnyx-axi upgrade` again'],
     )
   }
 
   if (result.state === 'failed') {
     throw new AxiError(
-      `Upgrade failed while ${STEP_WORDS[result.failed!][1].toLowerCase()}; went back to the previous version.\n${result.error}`,
+      `Upgrade failed while ${STEP_WORDS[result.failed!][1].toLowerCase()}; ${result.rolledBack ? 'went back to the previous version' : 'going back to the previous version failed, so the folder may be partly upgraded'}.\n${result.error}`,
       'UPGRADE_FAILED',
       ['Fix the cause, then run `pnyx-axi upgrade` again'],
     )
