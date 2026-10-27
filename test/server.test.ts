@@ -14,7 +14,7 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { WebSocket } from 'ws'
 import { allowedRequest, startServer, type RunningServer, type ServerMessage } from '../src/server/server.ts'
 import { infoPath, localToken, readServer, socketPath } from '../src/server/state.ts'
-import { acquireLock, hydraDir, hydrasDir, loadHydra, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
+import { acquireLock, hydraDir, hydrasDir, loadHydra, readEvents, spoolDir, spoolWrite, withWriter } from '../src/store/hydra-store.ts'
 import { hydraConfig, hydraEvent, HYDRA_CARD } from '../src/core/hydra.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { indexStatus, searchPath } from '../src/oracle/index.ts'
@@ -123,24 +123,44 @@ const hookEvent = ({
   card: { title },
 })
 
+function waitDiagnostic({
+  hydraId,
+  lastMessages,
+}: {
+  hydraId: string
+  lastMessages?: unknown[]
+}) {
+  try {
+    return {
+      hydraId,
+      state: loadHydra({ hydraId }).state,
+      lastMessages: lastMessages ?? readEvents({ hydraId }).slice(-10),
+    }
+  } catch (error) {
+    return {
+      hydraId,
+      error: String(error),
+      lastMessages: lastMessages ?? [],
+    }
+  }
+}
+
 async function until<T>({
   check,
   what,
+  hydraId,
 }: {
-  check: () => T | undefined
+  check: () => T | undefined | Promise<T | undefined>
   what: string
+  hydraId: string
 }): Promise<T> {
   const deadline = Date.now() + TIMEOUT_MS
 
-  for (;;) {
-    const value = check()
+  while (Date.now() < deadline) {
+    const value = await check()
 
     if (value !== undefined) {
       return value
-    }
-
-    if (Date.now() > deadline) {
-      throw new Error(`timed out waiting for ${what}`)
     }
 
     await new Promise(r => setTimeout(
@@ -148,17 +168,22 @@ async function until<T>({
       20,
     ))
   }
+
+  throw new Error(`timed out waiting for ${what}: ${JSON.stringify(waitDiagnostic({ hydraId }))}`)
 }
 
-const seqIs = ({
-  seq,
-  hydraId = 'default',
+const eventRecorded = ({
+  hydraId,
+  matches,
+  what,
 }: {
-  seq: number
-  hydraId?: string
+  hydraId: string
+  matches({ event }: { event: import('../src/core/model.ts').HydraEvent }): boolean
+  what: string
 }) => until({
-  check: () => (loadHydra({ hydraId }).state.seq === seq ? true : undefined),
-  what: `seq ${seq}`,
+  hydraId,
+  check: () => readEvents({ hydraId }).find(event => matches({ event })),
+  what,
 })
 
 async function sendToSocket({
@@ -228,25 +253,25 @@ function inbox<T>() {
 type LatestMessages = Extract<ServerMessage, { type: 'latest' }>['messages']
 type LatestActions = Extract<ServerMessage, { type: 'latest' }>['actions']
 
-async function waitForMessage({
+async function waitForMessage<T>({
   next,
   hydraId,
   what,
   matches,
   ms = TIMEOUT_MS,
 }: {
-  next({ ms }: { ms: number }): Promise<ServerMessage>
+  next({ ms }: { ms: number }): Promise<T>
   hydraId: string
   what: string
-  matches({ message }: { message: ServerMessage }): boolean
+  matches({ message }: { message: T }): boolean
   ms?: number
-}): Promise<ServerMessage> {
+}): Promise<T> {
   const deadline = Date.now() + ms
-  const lastMessages: ServerMessage[] = []
+  const lastMessages: T[] = []
   let cause: unknown
 
   while (Date.now() < deadline) {
-    let message: ServerMessage
+    let message: T
 
     try {
       message = await next({
@@ -272,14 +297,58 @@ async function waitForMessage({
   }
 
   throw new Error(
-    `timed out waiting for ${what}: ${JSON.stringify({
+    `timed out waiting for ${what}: ${JSON.stringify(waitDiagnostic({
       hydraId,
-      state: loadHydra({ hydraId }).state,
       lastMessages,
-    })}`,
+    }))}`,
     { cause },
   )
 }
+
+test(
+  'polling timeout names the condition even when the expected Hydra never appears',
+  async t => {
+    let now = 0
+    t.mock.method(
+      Date,
+      'now',
+      () => now,
+    )
+    await assert.rejects(
+      until({
+        hydraId: 'missing-hydra',
+        what: 'the missing Hydra server files',
+        check: () => {
+          now = TIMEOUT_MS
+
+          return undefined
+        },
+      }),
+      error => {
+        assert.ok(error instanceof Error)
+        assert.match(
+          error.message,
+          /timed out waiting for the missing Hydra server files/,
+        )
+        const diagnostic = JSON.parse(error.message.split('server files: ')[1]!)
+        assert.equal(
+          diagnostic.hydraId,
+          'missing-hydra',
+        )
+        assert.equal(
+          diagnostic.state.seq,
+          0,
+        )
+        assert.deepEqual(
+          diagnostic.lastMessages,
+          [],
+        )
+
+        return true
+      },
+    )
+  },
+)
 
 test(
   'message waits keep one deadline under unrelated traffic and report their Hydra state',
@@ -444,23 +513,49 @@ async function tab({
     }),
     summaries: summaries.next,
     spend: spend.next,
+    waitForSpend: ({
+      what,
+      matches,
+    }: {
+      what: string
+      matches({ message }: { message: NonNullable<Extract<ServerMessage, { type: 'latest' }>['spend']> }): boolean
+    }) => waitForMessage({
+      next: spend.next,
+      hydraId,
+      what,
+      matches,
+    }),
+    waitForSummaries: ({
+      what,
+      matches,
+    }: {
+      what: string
+      matches({ message }: { message: Extract<ServerMessage, { type: 'hydras' }> }): boolean
+    }) => waitForMessage({
+      next: summaries.next,
+      hydraId,
+      what,
+      matches,
+    }),
     async latest({ card }: { card: string }) {
-      for (;;) {
-        const messages = await latest.next()
+      const messages = await waitForMessage({
+        next: latest.next,
+        hydraId,
+        what: `the latest message for ${card}`,
+        matches: ({ message }) => card in message,
+      })
 
-        if (card in messages) {
-          return messages[card]
-        }
-      }
+      return messages[card]
     },
     async action({ card }: { card: string }) {
-      for (;;) {
-        const pushed = await actions.next()
+      const pushed = await waitForMessage({
+        next: actions.next,
+        hydraId,
+        what: `the latest action for ${card}`,
+        matches: ({ message }) => card in message,
+      })
 
-        if (card in pushed) {
-          return pushed[card]
-        }
-      }
+      return pushed[card]
     },
     command({
       id,
@@ -480,13 +575,16 @@ async function tab({
     },
     // The receipt or error answering one request, past any pushes before it.
     async reply({ id }: { id: string }): Promise<Extract<ServerMessage, { type: 'receipt' | 'error' }>> {
-      for (;;) {
-        const message = await main.next()
+      const message = await waitForMessage({
+        next: main.next,
+        hydraId,
+        what: `the reply to ${id}`,
+        ms: CLI_TIMEOUT_MS,
+        matches: ({ message }) => (message.type === 'receipt' || message.type === 'error') && message.id === id,
+      })
+      assert.ok(message.type === 'receipt' || message.type === 'error')
 
-        if ((message.type === 'receipt' || message.type === 'error') && message.id === id) {
-          return message
-        }
-      }
+      return message
     },
     async idle() {
       await new Promise(r => setTimeout(
@@ -597,9 +695,10 @@ async function hydraWithCard({ hydraId = 'default' }: { hydraId?: string } = {})
       title: 'A',
     })),
   })
-  await seqIs({
-    seq: 1,
+  await eventRecorded({
     hydraId,
+    what: 'the card hook',
+    matches: ({ event }) => event.id === 'hook-1',
   })
 
   return loadHydra({ hydraId }).state.keys.a!
@@ -641,10 +740,12 @@ test(
       chunk => (out += chunk),
     )
     const url = await until({
+      hydraId: 'default',
       check: () => /^url: "(http:\/\/127\.0\.0\.1:\d+\/hydra\/default\/)"$/m.exec(out)?.[1],
       what: 'serve to start',
     })
     await until({
+      hydraId: 'default',
       check: () => (existsSync(infoPath({ hydraId: 'default' })) ? true : undefined),
       what: 'server.json',
     })
@@ -827,7 +928,11 @@ test(
       }),
     })
     server = await startServer({ hydraId: 'default' })
-    await seqIs({ seq: 1 })
+    await eventRecorded({
+      hydraId: 'default',
+      what: 'the first spooled hook',
+      matches: ({ event }) => event.id === 'hook-1',
+    })
     spoolWrite({
       hydraId: 'default',
       entry: hookEvent({
@@ -836,7 +941,11 @@ test(
         title: 'Spooled while it runs',
       }),
     })
-    await seqIs({ seq: 2 })
+    await eventRecorded({
+      hydraId: 'default',
+      what: 'the second spooled hook',
+      matches: ({ event }) => event.id === 'hook-2',
+    })
     const { state } = loadHydra({ hydraId: 'default' })
     assert.deepEqual(
       Object.keys(state.keys).sort(),
@@ -868,7 +977,11 @@ test(
         title: 'B',
       }))}\n`,
     })
-    await seqIs({ seq: 2 })
+    await eventRecorded({
+      hydraId: 'default',
+      what: 'the second socket hook before resuming',
+      matches: ({ event }) => event.id === 'hook-2',
+    })
 
     const behind = await tab({ query: '?after=1' })
     const caughtUp = await behind.next()
@@ -1116,9 +1229,10 @@ test(
       (await t.next()).type,
       'receipt',
     )
-    await seqIs({
-      seq: 2,
+    await eventRecorded({
       hydraId: 'work',
+      what: 'the requested card move',
+      matches: ({ event }) => event.type === 'card.moved' && event.cardId === cardId && event.data.after === 'done',
     })
     assert.equal(
       loadHydra({ hydraId: 'work' }).state.cards[cardId]!.column,
@@ -2622,13 +2736,10 @@ test(
       usageLine({ tokens: 70 }),
     )
 
-    for (;;) {
-      const updated = await t.spend()
-
-      if (updated[card]?.total === 70) {
-        break
-      }
-    }
+    await t.waitForSpend({
+      what: `token total 70 for ${card}`,
+      matches: ({ message }) => message[card]?.total === 70,
+    })
 
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.seq,
@@ -2703,19 +2814,27 @@ test(
       grown,
     )
     let counted = false
-    const spend = t.spend().then(spend => {
+    const spend = t.waitForSpend({
+      what: `token total ${(records + 1) * 3} for ${card}`,
+      matches: ({ message }) => message[card]?.total === (records + 1) * 3,
+    }).finally(() => {
       counted = true
-
-      return spend
     })
     const checks: boolean[] = []
+    const [tokenTotals] = await Promise.all([
+      spend,
+      until({
+        hydraId: 'default',
+        what: 'token counting to finish while server health remains available',
+        check: async () => {
+          checks.push(!!await readServer({ hydraId: 'default' }))
 
-    while (!counted) {
-      checks.push(!!await readServer({ hydraId: 'default' }))
-    }
-
+          return counted || undefined
+        },
+      }),
+    ])
     assert.equal(
-      (await spend)[card]?.total,
+      tokenTotals[card]?.total,
       (records + 1) * 3,
     )
     assert.ok(checks.length > 0 && checks.every(Boolean))
@@ -2943,13 +3062,17 @@ test(
       args: ['readable'],
     })
 
-    for (let n = 0; n < 2;) {
-      const m = await t.next()
+    const receipts = new Set<string>()
+    await t.waitForMessage({
+      what: 'the thread and Oracle receipts before shutdown',
+      matches: ({ message }) => {
+        if (message.type === 'receipt' && (message.id === 'thread-1' || message.id === 'oracle-1')) {
+          receipts.add(message.id)
+        }
 
-      if (m.type === 'receipt') {
-        n++
-      }
-    }
+        return receipts.size === 2
+      },
+    })
 
     // Changes that land just before the stop schedule more work: a log append, a spool
     // drain and a transcript write that the folder watchers see.
@@ -3060,17 +3183,22 @@ test(
       session?: string
       text?: string
     }) => {
-      for (;;) {
-        const message = await t.next()
-        const thread = message.type === 'thread' ? message.thread
-          : message.type === 'receipt' ? message.thread as import('../src/thread/read.ts').ThreadPage | undefined
-            : undefined
+      const threadFrom = ({ message }: { message: ServerMessage }) => message.type === 'thread' ? message.thread
+        : message.type === 'receipt' ? message.thread as import('../src/thread/read.ts').ThreadPage | undefined
+          : undefined
+      const message = await t.waitForMessage({
+        what: `thread session ${session ?? 'none'}${text ? ` containing ${text}` : ''}`,
+        matches: ({ message }) => {
+          const thread = threadFrom({ message })
 
-        if (thread?.session === session && thread
-        && (!text || thread.entries.some(entry => entry.text.includes(text)))) {
-          return thread
-        }
-      }
+          return Boolean(thread && thread.session === session
+            && (!text || thread.entries.some(entry => entry.text.includes(text))))
+        },
+      })
+      const thread = threadFrom({ message })
+      assert.ok(thread)
+
+      return thread
     }
 
     try {
@@ -3290,19 +3418,22 @@ test(
       })
       const changed = new Set<string>()
 
-      while (changed.size < 2) {
-        const message = await t.next()
+      await t.waitForMessage({
+        what: `both live thread replies, kept open: ${keepOpen}`,
+        matches: ({ message }) => {
+          if (message.type !== 'thread' || (message.thread.card !== task && message.thread.card !== HYDRA_CARD)) {
+            return false
+          }
 
-        if (message.type !== 'thread') {
-          continue
-        }
+          const index = message.thread.card === task ? 0 : 1
 
-        const index = message.thread.card === task ? 0 : 1
+          if (message.thread.entries.some(e => e.text === text({ index }))) {
+            changed.add(message.thread.card)
+          }
 
-        if (message.thread.entries.some(e => e.text === text({ index }))) {
-          changed.add(message.thread.card)
-        }
-      }
+          return changed.size === 2
+        },
+      })
 
       assert.deepEqual(
         [...changed].sort(),
@@ -3606,18 +3737,18 @@ test(
       ],
     })
 
-    for (;;) {
-      const update = await t.summaries()
-      const project = update.hydras.find(h => h.id === 'other')?.projects[0]
+    const update = await t.waitForSummaries({
+      what: 'the other Hydra project with one live task and one ask',
+      matches: ({ message }) => {
+        const project = message.hydras.find(h => h.id === 'other')?.projects[0]
 
-      if (project?.live === 1 && project.asks === 1) {
-        assert.equal(
-          update.hydraId,
-          'default',
-        )
-        break
-      }
-    }
+        return project?.live === 1 && project.asks === 1
+      },
+    })
+    assert.equal(
+      update.hydraId,
+      'default',
+    )
 
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.seq,
@@ -3686,9 +3817,10 @@ test(
         title: 'A',
       })),
     })
-    await seqIs({
-      seq: created + 1,
+    await eventRecorded({
       hydraId: 'work',
+      what: 'the hook on the work Hydra',
+      matches: ({ event }) => event.id === 'hook-1',
     })
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.seq,
@@ -3711,6 +3843,7 @@ test(
       ],
     })
     const late = await until({
+      hydraId: 'late',
       check: () => (existsSync(infoPath({ hydraId: 'late' })) ? true : undefined),
       what: 'the new Hydra to be served',
     })
@@ -3759,6 +3892,7 @@ test(
       ],
     })
     await until({
+      hydraId: 'late',
       check: () => existsSync(infoPath({ hydraId: 'late' })) ? true : undefined,
       what: 'the completed Hydra to be served without waiting for the periodic retry',
     })
@@ -4049,6 +4183,7 @@ test(
     // Any change to the Hydra folders, or the periodic retry, tries a skipped Hydra again.
     mkdirSync(hydraDir({ hydraId: 'another' }))
     await until({
+      hydraId: 'held',
       check: () => (existsSync(infoPath({ hydraId: 'held' })) ? true : undefined),
       what: 'the freed Hydra to be served',
     })
@@ -4090,6 +4225,7 @@ test(
       ],
     })
     await until({
+      hydraId: 'default',
       check: () => loadHydra({ hydraId: 'default' }).state.cards[id]?.hidden || undefined,
       what: 'idle Done expiry',
     })
@@ -4180,6 +4316,7 @@ test(
     })
 
     const checks = await until({
+      hydraId: 'default',
       check: () => loadHydra({ hydraId: 'default' }).state.cards[taskId]?.links.find(l => l.url === url)?.checks,
       what: 'the followed pull request\'s checks',
     })
