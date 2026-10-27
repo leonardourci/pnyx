@@ -66,3 +66,4 @@ The flows:
 - `steering.test.ts` covers steering a worker, the steering inbox and external sources.
 - `landing.test.ts` covers landing a branch or a pull request and project refresh.
 - `recovery.test.ts` covers restart and recovery.
+- `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.

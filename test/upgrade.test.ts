@@ -3,6 +3,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
+import { upgrade as upgradeCli } from '../src/upgrade/cli.ts'
 import { runUpgrade, upgradeAvailable } from '../src/upgrade/runner.ts'
 import { building, git, upgradeRepo } from './upgrade-fixture.ts'
 
@@ -374,5 +375,21 @@ test(
       await upgradeAvailable({ root: repo.install }),
       undefined,
     )
+  },
+)
+
+test(
+  'a worker cannot run pnyx-axi upgrade',
+  async () => {
+    process.env.PNYX_ACTOR = 'worker:ship'
+
+    try {
+      await assert.rejects(
+        upgradeCli([]),
+        { code: 'OWNER_ONLY' },
+      )
+    } finally {
+      delete process.env.PNYX_ACTOR
+    }
   },
 )
