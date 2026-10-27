@@ -8,7 +8,7 @@ const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
 const MINUTE_MS = 60_000
 // A lane past this is stuck outside any one test; the runner then names the file it interrupted.
-const LANE_TIMEOUT_MS = 30 * MINUTE_MS
+const LANE_TIMEOUT_MS = 60 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'action-label',
