@@ -153,24 +153,6 @@ const boundary = ({
     return true // The returned handler is the AXI argv adapter.
   }
 
-  if (filename.endsWith('/src/oracle/backend.ts')) {
-    const facade = owner({
-      node,
-      types: [
-        'TSInterfaceDeclaration',
-        'TSTypeAliasDeclaration',
-      ],
-    })
-
-    if ([
-      'Embedding',
-      'Ranking',
-      'LlamaCpp',
-    ].includes(facade?.id.name)) {
-      return true // Signatures of the optional node-llama-cpp API.
-    }
-  }
-
   if ([
     '/test/paseo.test.ts',
     '/test/start.test.ts',
@@ -193,11 +175,6 @@ const boundary = ({
   if (filename.endsWith('/test/catalog.test.ts') && node.type === 'TSMethodSignature'
     && node.key.name === 'after') {
     return true // The node:test context's cleanup hook.
-  }
-
-  if (filename.endsWith('/src/oracle/models.ts') && parent.type === 'Property'
-    && parent.key.name === 'transform') {
-    return true // node:stream's Transform implementation hook.
   }
 
   if (parent.type === 'CallExpression' && parent.arguments.includes(node)) {

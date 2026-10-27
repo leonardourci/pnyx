@@ -14,11 +14,11 @@ Pnyx is named after the hill in Athens where the citizens' assembly met to decid
 
 - **Pnyx**: this app, where every agent and its work is shown.
 - **Hydra**: an orchestrator, many heads and one body. Each Hydra has its own columns and tasks, and creating a Hydra creates them.
-- **Oracle**: the search field. Ask it in words or by meaning; it returns matching tasks, messages, settings and actions, never made-up answers.
+- **Oracle**: the search field. Search it by keyword; it returns matching tasks, messages, settings and actions, never made-up answers.
 
 Everything else uses its plain name: actions, Settings, History, Focus mode, Hydra's memory, columns, tasks, subtasks, workers, briefs, conversations and comments. Column names are the user's own. Do not invent other themed names.
 
-Run `pnyx-axi` for the Hydra summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push`, from `pnyx-axi firstmate sync --home <path>` and, after `pnyx-axi setup hooks`, from Claude Code and Codex sessions. Hook events wait in the spool until the next write ingests them. `pnyx-axi oracle "<words>"` finds past work across card titles, links, events, notes and session transcripts, by words and by meaning in any language (local models, downloaded on the first search; until then results are full-text). `pnyx-axi card <id>` shows a card's summary, decisions and context, harvested from what sessions, Firstmate and linked pull requests already recorded.
+Run `pnyx-axi` for the Hydra summary and `pnyx-axi --help` for commands. Pnyx is pre-v1: cards come from `pnyx-axi push`, from `pnyx-axi firstmate sync --home <path>` and, after `pnyx-axi setup hooks`, from Claude Code and Codex sessions. Hook events wait in the spool until the next write ingests them. `pnyx-axi oracle "<words>"` finds past work across card titles, links, events, notes and session transcripts by keyword, matching stems, synonyms and near spellings. `pnyx-axi card <id>` shows a card's summary, decisions and context, harvested from what sessions, Firstmate and linked pull requests already recorded.
 
 When a session waits on its own question, permission or plan prompt, `pnyx-axi card <id>` lists the request with its options and `pnyx-axi reply <id> --answer <request key> --json <answer>` answers it in that session's tmux pane (see `pnyx-axi reply --help`).
 

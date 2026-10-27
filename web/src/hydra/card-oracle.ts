@@ -1,11 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { HybridHit } from '../../../src/oracle/semantic.ts'
+import type { Hit } from '../../../src/oracle/index.ts'
 import type { Command } from './connection.ts'
 
 // Every search box ranks cards through the Hydra server's search, the same
-// full-text plus meaning ranking as `pnyx-axi oracle` and recorded history. Weak results
-// (the reranker found them unrelated, or a card found by meaning alone is not
-// a strong match) are left out.
+// full-text ranking as `pnyx-axi oracle` and recorded history.
 export const findCards = ({
   command,
   query,
@@ -24,7 +22,7 @@ export const findCards = ({
       workspace,
       ...(live ? ['hydra'] : []),
     ],
-  }).then(r => (r.hits as HybridHit[]).filter(h => !h.weak))
+  }).then(r => r.hits as Hit[])
 
 export function useFoundCards({
   command,
@@ -36,13 +34,13 @@ export function useFoundCards({
   query: string
   workspace: string
   revision: number
-}): HybridHit[] {
+}): Hit[] {
   const [
     found,
     setFound,
   ] = useState<{
     query: string
-    hits: HybridHit[]
+    hits: Hit[]
   } | null>(null)
   const q = query.trim()
   useEffect(

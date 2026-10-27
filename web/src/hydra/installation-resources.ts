@@ -4,7 +4,6 @@ import type { EffectiveDispatch } from '../../../src/dispatch/config.ts'
 import { createSettingsResource } from './settings-resource.ts'
 
 const dispatches = new Map<string, ReturnType<typeof createDispatch>>()
-const preferences = new Map<string, ReturnType<typeof createPreferences>>()
 
 function installationScope({ resource }: { resource: string }): string {
   const identity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content ?? ''
@@ -60,27 +59,6 @@ function createDispatch({ scope }: { scope: string }) {
   })
 }
 
-function createPreferences({ scope }: { scope: string }) {
-  return createSettingsResource<Record<string, string>, Record<string, string>>({
-    scope,
-    project: ({
-      state,
-      patch,
-    }) => ({
-      ...state,
-      ...patch,
-    }),
-    represented: ({
-      state,
-      patch,
-    }) => Object.entries(patch).every(([
-      key,
-      value,
-    ]) => state[key] === value),
-    read: ({ receipt }) => receipt.settings as Record<string, string>,
-  })
-}
-
 export function dispatchSettings() {
   const scope = installationScope({ resource: 'dispatch' })
   let resource = dispatches.get(scope)
@@ -96,34 +74,11 @@ export function dispatchSettings() {
   return resource
 }
 
-export function oracleSettings() {
-  const scope = installationScope({ resource: 'oracle-settings' })
-  let resource = preferences.get(scope)
-
-  if (!resource) {
-    resource = createPreferences({ scope })
-    preferences.set(
-      scope,
-      resource,
-    )
-  }
-
-  return resource
-}
-
 export function useInstallationPending() {
-  const dispatch = dispatchSettings(), oracle = oracleSettings()
-  const dispatchState = useSyncExternalStore(
+  const dispatch = dispatchSettings()
+
+  return useSyncExternalStore(
     dispatch.subscribe,
     dispatch.snapshot,
-  )
-  const oracleState = useSyncExternalStore(
-    oracle.subscribe,
-    oracle.snapshot,
-  )
-
-  return [
-    ...dispatchState.intents,
-    ...oracleState.intents,
-  ]
+  ).intents
 }

@@ -1,7 +1,10 @@
 name: Verify
 
+# pull_request_target runs this workflow and its checker from the base branch, so a pull
+# request cannot change the check that judges it. It reads the PR through the API only and
+# never checks out or runs PR code.
 on:
-  pull_request:
+  pull_request_target:
     types: [opened, edited, synchronize, reopened]
     branches: [main]
 

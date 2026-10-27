@@ -690,7 +690,7 @@ test(
 )
 
 test(
-  'standalone task labels still work after a project is attached',
+  'task create refuses a project that is not attached and records an attached one by path',
   async () => {
     const {
       folder,
@@ -703,18 +703,21 @@ test(
         folder,
       ],
     })
-    commands.task([
-      'create',
-      '--title',
-      'Labelled work',
-      '--key',
-      'labelled',
-      '--project',
-      'free-label',
-    ])
+    assert.throws(
+      () => commands.task([
+        'create',
+        '--title',
+        'Labelled work',
+        '--key',
+        'labelled',
+        '--project',
+        'free-label',
+      ]),
+      /project not attached: free-label/,
+    )
     assert.equal(
-      state().cards[state().keys.labelled!]!.project,
-      'free-label',
+      state().keys.labelled,
+      undefined,
     )
     commands.task([
       'create',

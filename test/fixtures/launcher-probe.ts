@@ -60,10 +60,6 @@ test(
       homes.length,
     )
     assert.equal(
-      process.env.PNYX_SEMANTIC_STUB,
-      '1',
-    )
-    assert.equal(
       process.env.PNYX_GH_AXI,
       'false',
     )

@@ -32,7 +32,8 @@ import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
-import { findProject, projectRows, taskProject } from '../projects/read.ts'
+import { findProject, projectRows, projectsFor, taskProject } from '../projects/read.ts'
+import { helpFlags } from './help.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
@@ -50,7 +51,6 @@ import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.t
 import { copyCommand } from '../copies/cli.ts'
 import { POOL_IDLE } from '../copies/copies.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { homedir } from 'node:os'
 import { basename, join } from 'node:path'
 import { hydraConfig, declareTask, declaredState, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
@@ -86,7 +86,7 @@ import {
   type OutcomeState,
 } from '../core/model.ts'
 import { emptyHydra, replay } from '../core/reducer.ts'
-import { askHost, readServer } from '../server/state.ts'
+import { askHost, readServer, socketPath } from '../server/state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
@@ -100,6 +100,7 @@ import { DEFAULT_HYDRA, hydraDir, hydraIds, loadHydra, readEvents, repairHydra, 
 const HISTORY_LIMIT = 20
 const HISTORY_MAX = 100
 const HOME_LIMIT = 50
+const TEXT_CUT = 1000
 // Hydra's own changes to tasks carry one short why; the owner's direct actions need none.
 const EXPLAINED: readonly EventType[] = [
   'card.moved',
@@ -124,6 +125,56 @@ export const WRITE: Options = {
   confirm: { type: 'string' },
 }
 
+// The running CLI command (`task create`) and its focused help, set by the CLI entry, so usage
+// errors can point at that subcommand. Commands run inside the server leave it empty.
+export const invocation: {
+  name?: string
+  help?: string
+} = {}
+
+export function helpHint(): string {
+  return invocation.name ? `Run \`pnyx-axi ${invocation.name} --help\`` : 'Run the command with --help'
+}
+
+// Translates a node:util parseArgs error. An unknown flag is named, with the valid flags inline.
+export function flagError({
+  error,
+  options,
+}: {
+  error: unknown
+  options: Options
+}): AxiError {
+  const message = (error as Error).message
+
+  if ((error as { code?: string }).code !== 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
+    return new AxiError(
+      message,
+      'VALIDATION_ERROR',
+      [helpHint()],
+    )
+  }
+
+  // The subcommand's documented flags plus the global ones it accepts.
+  const flags = invocation.help
+    ? [
+      ...new Set([
+        ...helpFlags({ help: invocation.help }),
+        ...[
+          'hydra',
+          'event-id',
+          'if-revision',
+        ].filter(name => name in options).map(name => `--${name}`),
+      ]),
+    ]
+    : Object.keys(options).map(name => `--${name}`)
+
+  return new AxiError(
+    `unknown flag ${/'([^']+)'/.exec(message)?.[1] ?? message}${invocation.name ? ` for \`${invocation.name}\`` : ''}`,
+    'VALIDATION_ERROR',
+    [`Valid flags: ${flags.filter(flag => flag !== '--help').join(', ')} (--help always allowed)`],
+  )
+}
+
 export function parse({
   args,
   options,
@@ -143,18 +194,17 @@ export function parse({
       strict: true,
     })
   } catch (error) {
-    throw new AxiError(
-      (error as Error).message,
-      'VALIDATION_ERROR',
-      ['Run the command with --help'],
-    )
+    throw flagError({
+      error,
+      options,
+    })
   }
 
   if (parsed.positionals.length > positionals) {
     throw new AxiError(
       `unexpected argument: ${parsed.positionals[positionals]}`,
       'VALIDATION_ERROR',
-      ['Run the command with --help'],
+      [helpHint()],
     )
   }
 
@@ -178,7 +228,7 @@ export function required({
     throw new AxiError(
       `missing ${what}`,
       'VALIDATION_ERROR',
-      ['Run the command with --help'],
+      [helpHint()],
     )
   }
 
@@ -638,23 +688,82 @@ function column({ value }: { value: string }): Column {
   )) as Column
 }
 
-function cardRow({ card }: { card: Card }) {
+// A long text cut for a default view, with its full length so the reader knows what --full adds.
+function clip({
+  text,
+  limit = TEXT_CUT,
+}: {
+  text: string
+  limit?: number
+}): string {
+  return text.length > limit ? `${text.slice(
+    0,
+    limit,
+  )}… (truncated, ${text.length} chars total)` : text
+}
+
+// Adds next steps to a write's receipt; a no-op receipt keeps none.
+function withHelp({
+  output,
+  help,
+}: {
+  output: Output
+  help: ({ output }: { output: Output }) => string[]
+}): Output {
+  return output.card ? {
+    ...output,
+    help: help({ output }),
+  } : output
+}
+
+// A task records an attached project by path; rows show its name, and every row has the field
+// so lists stay tabular.
+function projectName({
+  state,
+  project,
+}: {
+  state: HydraState
+  project?: string | null
+}): string {
+  return project ? projectsFor({ state }).find(p => p.path === project)?.name ?? project : 'none'
+}
+
+function cardRow({
+  state,
+  card,
+}: {
+  state: HydraState
+  card: Card
+}) {
   return {
     id: card.id,
     title: card.title,
-    ...(card.project ? { project: card.project } : {}),
+    project: projectName({
+      state,
+      project: card.project,
+    }),
     column: card.column,
-    attention: card.attention.map(a => a.kind).join(' ') || 'none',
   }
 }
 
-function cardDetail({ card }: { card: Card }): Output {
+function cardDetail({
+  state,
+  card,
+  full,
+}: {
+  state: HydraState
+  card: Card
+  full: boolean
+}): Output {
   const detail: Output = {
     id: card.id,
     key: card.key,
     title: card.title,
-    ...(card.project ? { project: card.project } : {}),
-    ...(card.brief !== undefined ? { brief: card.brief } : {}),
+    project: projectName({
+      state,
+      project: card.project,
+    }),
+    ...(card.brief !== undefined ? { brief: full ? card.brief : clip({ text: card.brief }) } : {}),
     workspace: card.workspace,
     column: card.column,
     tags: card.tags.length ? card.tags : 'none',
@@ -763,7 +872,10 @@ export async function home(): Promise<Output> {
   out.cards = sorted.slice(
     0,
     HOME_LIMIT,
-  ).map(card => cardRow({ card }))
+  ).map(card => cardRow({
+    state,
+    card,
+  }))
   out.help = [
     'Run `pnyx-axi card <id>` for details',
     'Run `pnyx-axi history` for recent events',
@@ -776,6 +888,64 @@ export async function home(): Promise<Output> {
 
   return out
 }
+
+const CONTEXT_TASKS = 5
+
+// The session-start hook's summary: the Hydra's open work for the attached project holding the
+// session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
+const context = guard({
+  handler: ({ args }) => {
+    const {
+      values,
+      hydraId,
+    } = parse({
+      args,
+      options: {
+        ...COMMON,
+        cwd: { type: 'string' },
+      },
+      positionals: 0,
+    })
+    const folder = canonical({ path: String(values.cwd ?? process.cwd()) })
+    const { state } = loadHydra({ hydraId })
+    const project = folder ? projectsFor({ state }).find(p => !p.detached
+      && (folder === p.path || folder.startsWith(`${p.path}/`))) : undefined
+
+    if (!project) {
+      return {}
+    }
+
+    const done = new Set(hydraConfig({ state }).columns.filter(c => c.role === 'done').map(c => c.id))
+    const open = Object.values(state.cards).filter(card => liveTask({ card })
+      && card.project === project.path && !done.has(card.column))
+      .sort((
+        a,
+        b,
+      ) => rankOf({ card: a }) - rankOf({ card: b }))
+    // The server's socket file, not a health request: the hook never waits on the network.
+    const server = existsSync(socketPath({ hydraId }))
+
+    return {
+      pnyx: `Hydra ${hydraId}, project ${project.name}, server ${server ? 'running' : 'not running'}`,
+      count: `${Math.min(
+        open.length,
+        CONTEXT_TASKS,
+      )} of ${open.length} open tasks`,
+      tasks: open.length ? open.slice(
+        0,
+        CONTEXT_TASKS,
+      ).map(card => ({
+        id: card.id,
+        title: card.title,
+        column: card.column,
+      })) : 'none: no open tasks for this project',
+      help: [
+        `Run \`pnyx-axi task list --hydra ${hydraId}\` for every task`,
+        `Run \`pnyx-axi card <id> --hydra ${hydraId}\` for one task`,
+      ],
+    }
+  },
+})
 
 const push = guard({
   handler: ({ args }) => {
@@ -885,6 +1055,33 @@ function untilTime({
   })
 }
 
+const TASK_FIELDS = [
+  'attention',
+  'parent',
+  'status',
+  'worker',
+  'hold',
+  'queue',
+] as const
+type TaskField = (typeof TASK_FIELDS)[number]
+
+// `task list --fields status,worker` adds those fields to the default id, title, project and column.
+function taskFields({ value }: { value?: string }): TaskField[] {
+  const fields = (value ?? '').split(',').map(field => field.trim())
+    .filter(Boolean)
+  const unknown = fields.filter(field => !TASK_FIELDS.includes(field as TaskField))
+
+  if (unknown.length) {
+    throw new AxiError(
+      `unknown field: ${unknown.join(', ')}`,
+      'VALIDATION_ERROR',
+      [`Use --fields with any of ${TASK_FIELDS.join(', ')}`],
+    )
+  }
+
+  return fields as TaskField[]
+}
+
 export const TASK_OPTIONS: Options = {
   ...WRITE,
   title: { type: 'string' },
@@ -907,6 +1104,7 @@ export const TASK_OPTIONS: Options = {
     multiple: true,
   },
   full: { type: 'boolean' },
+  fields: { type: 'string' },
   harness: { type: 'string' },
   prompt: { type: 'string' },
   'paseo-url': { type: 'string' },
@@ -1298,92 +1496,102 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const brief = taskBrief({ value: values.brief })
     const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
 
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.created',
-        card: key,
-      },
-      decide: ({ state }) => {
-        if (state.keys[key]) {
-          throw new HydraError({
-            message: `task key already exists: ${key}`,
-            code: 'CONFLICT',
-          })
-        }
+    return withHelp({
+      output: commit({
+        hydraId,
+        meta: m,
+        intent: {
+          type: 'task.created',
+          card: key,
+        },
+        decide: ({ state }) => {
+          if (state.keys[key]) {
+            throw new HydraError({
+              message: `task key already exists: ${key}`,
+              code: 'CONFLICT',
+            })
+          }
 
-        const project = values.project
-          ? taskProject({
+          const project = values.project
+            ? taskProject({
+              state,
+              ref: String(values.project),
+            }) : undefined
+          const parent = values.parent ? findCard({
             state,
-            ref: String(values.project),
+            ref: String(values.parent),
           }) : undefined
-        const parent = values.parent ? findCard({
-          state,
-          ref: String(values.parent),
-        }) : undefined
 
-        if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'subtasks have one level under a task',
-            code: 'VALIDATION_ERROR',
-          })
-        }
+          if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
+            throw new HydraError({
+              message: 'subtasks have one level under a task',
+              code: 'VALIDATION_ERROR',
+            })
+          }
 
-        const columns = hydraConfig({
-          state,
-          id: hydraId,
-        }).columns
-        const selected = values.column
-          ? columns.find(c => c.id === values.column || c.title === values.column
-            || c.role === values.column) : undefined
-
-        if (values.column && !selected) {
-          throw new HydraError({
-            message: 'unknown Hydra column',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const cardId = `task-${randomUUID()}`
-        const holdReason = m.reason?.trim() || title
-        const created: TaskCreated['data'] = {
-          key,
-          title,
-          ...(values.hold ? { hold: holdReason } : {}),
-          ...(project ? { project } : {}),
-          ...(brief !== undefined ? { brief } : {}),
-          ...(folder ? { folder } : {}),
-          ...(parent ? { parentId: parent.id } : {}),
-          ...(selected ? { column: selected.id } : {}),
-        }
-
-        // A build task, the default, records no kind.
-        if (kind === 'investigation') {
-          created.kind = kind
-        }
-
-        const ask = values.ask
-
-        if (ask !== undefined && String(ask).trim()) {
-          created.ask = ownerAsk({
+          const columns = hydraConfig({
             state,
-            text: String(ask),
-            message: values.message as string | undefined,
-            actor: m.actor,
-            at: m.at,
-          })
-        }
+            id: hydraId,
+          }).columns
+          const selected = values.column
+            ? columns.find(c => c.id === values.column || c.title === values.column
+              || c.role === values.column) : undefined
 
-        return hydraEvent({
-          state,
-          meta: m,
-          cardId,
-          change: {
-            type: 'task.created',
-            data: created,
-          },
-        })
+          if (values.column && !selected) {
+            throw new HydraError({
+              message: 'unknown Hydra column',
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          const cardId = `task-${randomUUID()}`
+          const holdReason = m.reason?.trim() || title
+          const created: TaskCreated['data'] = {
+            key,
+            title,
+            ...(values.hold ? { hold: holdReason } : {}),
+            ...(project ? { project } : {}),
+            ...(brief !== undefined ? { brief } : {}),
+            ...(folder ? { folder } : {}),
+            ...(parent ? { parentId: parent.id } : {}),
+            ...(selected ? { column: selected.id } : {}),
+          }
+
+          // A build task, the default, records no kind.
+          if (kind === 'investigation') {
+            created.kind = kind
+          }
+
+          const ask = values.ask
+
+          if (ask !== undefined && String(ask).trim()) {
+            created.ask = ownerAsk({
+              state,
+              text: String(ask),
+              message: values.message as string | undefined,
+              actor: m.actor,
+              at: m.at,
+            })
+          }
+
+          return hydraEvent({
+            state,
+            meta: m,
+            cardId,
+            change: {
+              type: 'task.created',
+              data: created,
+            },
+          })
+        },
+      }),
+      help: ({ output }) => {
+        const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
+
+        return [
+          `Run \`pnyx-axi task start ${id} --hydra ${hydraId}\` to start a worker`,
+          `Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`,
+        ]
       },
     })
   }
@@ -1430,26 +1638,42 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
     hideDone({ hydraId })
     const state = loadHydra({ hydraId }).state
 
+    const fields = taskFields({ value: values.fields as string | undefined })
     const tasks = Object.values(state.cards).filter(c => liveTask({ card: c }))
-      .map(c => ({
-        ...cardRow({ card: c }),
-        parent: c.parentId ?? '',
-        status: c.status?.state ?? 'paused',
-        worker: c.sessionIds?.[0] ?? '',
-        ...(c.hold ? { hold: c.hold.reason } : {}),
-        ...(c.queue ? {
-          queue: queuePosition({
+      .map(c => {
+        const extra: Record<TaskField, string> = {
+          attention: c.attention.map(a => a.kind).join(' ') || 'none',
+          parent: c.parentId ?? 'none',
+          status: c.status?.state ?? 'paused',
+          worker: c.sessionIds?.[0] ?? 'none',
+          hold: c.hold?.reason ?? 'none',
+          queue: c.queue ? String(queuePosition({
+            state,
+            card: c,
+          })) : 'none',
+        }
+
+        return {
+          ...cardRow({
             state,
             card: c,
           }),
-        } : {}),
-      }))
+          ...Object.fromEntries(fields.map(field => [
+            field,
+            extra[field],
+          ])),
+        }
+      })
 
     return tasks.length
       ? {
         hydraId,
+        count: tasks.length,
         tasks,
-        help: [`Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`],
+        help: [
+          `Run \`pnyx-axi task show <id> --hydra ${hydraId}\` for one task`,
+          ...fields.length ? [] : [`Run \`pnyx-axi task list --fields status,worker --hydra ${hydraId}\` for more fields (${TASK_FIELDS.join(', ')})`],
+        ],
       }
       : {
         hydraId,
@@ -1503,12 +1727,19 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
     return {
       task: {
-        ...cardRow({ card: task }),
+        ...cardRow({
+          state,
+          card: task,
+        }),
+        attention: task.attention.map(a => a.kind).join(' ') || 'none',
         key: task.key,
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
-        ask: task.ask?.length ? task.ask : 'none: no owner words recorded',
+        ask: task.ask?.length ? task.ask.map(ask => ({
+          ...ask,
+          text: clip({ text: ask.text }),
+        })) : 'none: no owner words recorded',
         spend,
-        brief: task.brief ?? 'none',
+        brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
@@ -1526,7 +1757,7 @@ function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
           state,
           card: task,
         }),
-        ...(task.queueNote ? { handoff: task.queueNote } : {}),
+        ...(task.queueNote ? { handoff: clip({ text: task.queueNote }) } : {}),
         next: task.sessionIds?.[0] ? workerQueue({
           state,
           session: task.sessionIds[0],
@@ -2283,13 +2514,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       card: '$board',
     },
     decide: ({ state }) => {
-      if (action === 'create' && state.configured) {
-        throw new HydraError({
-          message: `Hydra already exists: ${id}`,
-          code: 'CONFLICT',
-        })
-      }
-
       const current = hydraConfig({
         state,
         id,
@@ -2430,6 +2654,25 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         data.commandOwnsFolder = true
       } else if (owns === 'copy') {
         delete data.commandOwnsFolder
+      }
+
+      // Creating a Hydra that already exists as asked is a no-op; other settings need hydra set.
+      if (action === 'create' && state.configured) {
+        if (isDeepStrictEqual(
+          data,
+          hydraConfig({
+            state,
+            id,
+          }),
+        )) {
+          return { skipped: 'unchanged' }
+        }
+
+        throw new HydraError({
+          message: `Hydra already exists with other settings: ${id}`,
+          code: 'CONFLICT',
+          help: [`Run \`pnyx-axi hydra set --hydra ${id}\` with the settings to change`],
+        })
       }
 
       return hydraEvent({
@@ -2588,11 +2831,16 @@ function homeHydraId({ home }: { home: string }): string {
 }
 
 function firstmateHomes({ base }: { base?: string }): Output {
-  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE ?? join(
-    homedir(),
-    'projects',
-    'agentic-engineering-workflow',
-  )
+  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE
+
+  if (!root) {
+    throw new AxiError(
+      'missing --base',
+      'VALIDATION_ERROR',
+      ['Run `pnyx-axi hydra homes --base <folder holding the homes>`, or set FIRSTMATE_FACTORY_BASE'],
+    )
+  }
+
   let names: string[] = []
 
   try {
@@ -3636,13 +3884,13 @@ function cardNotes({
     const shown = full ? all : all.slice(
       0,
       NOTES_SHOWN,
-    ).map(n => (n.text.length > NOTE_CUT ? {
+    ).map(n => ({
       ...n,
-      text: `${n.text.slice(
-        0,
-        NOTE_CUT,
-      )}…`,
-    } : n))
+      text: clip({
+        text: n.text,
+        limit: NOTE_CUT,
+      }),
+    }))
 
     if (shown.length < all.length || shown.some((
       n,
@@ -3678,8 +3926,9 @@ const card = guard({
       },
       positionals: 1,
     })
+    const { state } = loadHydra({ hydraId })
     const found = findCard({
-      state: loadHydra({ hydraId }).state,
+      state,
       ref: required({
         value: positionals[0],
         what: 'card id',
@@ -3695,8 +3944,8 @@ const card = guard({
     })
     const help = [`Run \`pnyx-axi history --card ${found.id}\` for its events`]
 
-    if (cut) {
-      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for every note in full`)
+    if (cut || (!values.full && (found.brief ?? '').length > TEXT_CUT)) {
+      help.unshift(`Run \`pnyx-axi card ${found.id} --full\` for the brief and every note in full`)
     }
 
     if (!found.notes?.length) {
@@ -3713,7 +3962,11 @@ const card = guard({
     }
 
     return {
-      card: cardDetail({ card: found }),
+      card: cardDetail({
+        state,
+        card: found,
+        full: Boolean(values.full),
+      }),
       notes,
       help,
     }
@@ -4141,6 +4394,7 @@ const history = guard({
     }
 
     const out: Output = {
+      count: `${page.length} of ${matches.length} ${before === undefined ? 'total' : `before ${before}`}`,
       events: page.map(e => ({
         seq: e.seq,
         id: e.id,
@@ -4516,6 +4770,7 @@ export const commands = supervisedCommands({
     undo,
     repair,
     setup,
+    context,
   },
 })
 
@@ -4539,8 +4794,8 @@ commands:
   link <id> --url <url> [--state open]       Add, update or --remove a link
   outcome <id> done|failed|cancelled         Record the task outcome (--note, --clear)
   history [--card <id>] [--before <seq>]     Page through past events, newest first
+  context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
-  settings [set <key> <value>]               Oracle settings: semantic search, reranker and model
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
@@ -4568,7 +4823,7 @@ pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
-in --base (FIRSTMATE_FACTORY_BASE, default ~/projects/agentic-engineering-workflow) and each one's Hydra.
+in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
@@ -4632,7 +4887,8 @@ pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, do
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+--project names a project attached to the Hydra (see project list).
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
@@ -4640,7 +4896,10 @@ Held cards stay in Backlog, marked Talking. Start, build, queue and continue ref
 pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
-pnyx-axi task list | show <id> [--full]
+pnyx-axi task list [--fields <field,...>]
+Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
+pnyx-axi task show <id> [--full]
+Long fields are cut to 1,000 characters with their total length; --full shows the whole record.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
@@ -4764,6 +5023,10 @@ An observation older than the card's latest one from the same source is ignored.
 Shows the card and its notes in three sections, summary, decisions and context, newest first:
 ${NOTES_SHOWN} per section with text cut at ${NOTE_CUT} characters, or every note in full with --full.
 `,
+  context: `usage: pnyx-axi context [--cwd <folder>] [--hydra <name>]
+Prints the open tasks (up to ${CONTEXT_TASKS}) of the attached project holding the folder (default: the current one),
+with the Hydra and server state. Prints nothing outside every attached project. The session-start hook runs it.
+`,
   harvest: `usage: pnyx-axi harvest [--card <id>] [--hydra <name>]
 Collects notes that sources already recorded, with no model and nothing asked of agents: Claude Code
 compaction summaries, session titles and AskUserQuestion answers, Codex compaction summaries, and each
@@ -4805,8 +5068,8 @@ Existing files and unrelated links are never replaced. Legacy Pnyx skill links a
 --remove takes out this install's global links and legacy Pnyx links.
 Adds Pnyx's reporting hook to the user-level Claude Code settings.json or Codex hooks.json, keeping
 every other hook. Without --harness it sets up each harness whose config folder exists. Rerunning
-changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
-so they never add to the agent's context: no session-start Hydra summary is installed.
+changes nothing; --remove takes out only Pnyx's entries. The hooks always exit 0 and print nothing,
+except at session start in a folder inside an attached project, where they print that project's open tasks.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
 setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's

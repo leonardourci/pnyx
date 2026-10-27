@@ -461,6 +461,182 @@ test(
 )
 
 test(
+  'SessionStart prints the open tasks of the attached project holding the folder, and nothing elsewhere',
+  () => {
+    const {
+      root,
+      env,
+      run,
+      script,
+      spooled,
+    } = sandbox()
+    const project = join(
+      root,
+      'shop',
+    )
+    const nested = join(
+      project,
+      'src',
+    )
+    mkdirSync(
+      nested,
+      { recursive: true },
+    )
+    run({
+      args: [
+        'project',
+        'add',
+        project,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix the cart total',
+        '--project',
+        'shop',
+      ],
+    })
+    const start = ({
+      cwd,
+      extra = {},
+    }: {
+      cwd: string
+      extra?: Record<string, string>
+    }) => execFileSync(
+      '/bin/sh',
+      [
+        script,
+        'claude',
+        'SessionStart',
+        BIN,
+      ],
+      {
+        cwd,
+        input: '{}',
+        encoding: 'utf8',
+        env: {
+          ...env,
+          ...extra,
+        },
+      },
+    )
+
+    const summary = start({ cwd: nested })
+    assert.match(
+      summary,
+      /project shop/,
+    )
+    assert.match(
+      summary,
+      /Fix the cart total,queued/,
+    )
+    assert.equal(
+      start({ cwd: root }),
+      '',
+      'a folder outside every attached project gets no summary',
+    )
+    assert.equal(
+      start({
+        cwd: nested,
+        extra: { PNYX_TASK: 'task-1' },
+      }),
+      '',
+      'a worker session gets its context from Pnyx instead',
+    )
+    assert.equal(
+      spooled().length,
+      3,
+      'every start is still reported',
+    )
+
+    const other = join(
+      root,
+      'docs-site',
+    )
+    const sibling = join(
+      root,
+      'shop-old',
+    )
+    mkdirSync(other)
+    mkdirSync(sibling)
+    run({
+      args: [
+        'project',
+        'add',
+        other,
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Other project work',
+        '--project',
+        'docs-site',
+      ],
+    })
+    run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Shipped already',
+        '--project',
+        'shop',
+        '--column',
+        'done',
+      ],
+    })
+
+    for (const n of [
+      2,
+      3,
+      4,
+      5,
+      6,
+    ]) {
+      run({
+        args: [
+          'task',
+          'create',
+          '--title',
+          `Shop task ${n}`,
+          '--project',
+          'shop',
+        ],
+      })
+    }
+
+    const context = ({ cwd }: { cwd: string }) => run({
+      args: [
+        'context',
+        '--cwd',
+        cwd,
+      ],
+    })
+    const listed = context({ cwd: nested })
+    assert.match(
+      listed,
+      /count: 5 of 6 open tasks/,
+    )
+    assert.doesNotMatch(
+      listed,
+      /Other project work|Shipped already|Shop task 6/,
+      'another project\'s tasks, Done tasks and tasks past the first five stay out',
+    )
+    assert.equal(
+      context({ cwd: sibling }).trim(),
+      '',
+      'a folder whose name only starts with the project\'s is outside it',
+    )
+  },
+)
+
+test(
   'hook stays silent and exits 0 on bad arguments, bad input and unwritable storage',
   async () => {
     const {
@@ -1685,7 +1861,8 @@ test(
           home,
           'hooks',
           'pnyx-hook.sh',
-        )}' claude ${event}`,
+        )}' claude ${event}${event === 'SessionStart' ? ` '${BIN}'` : ''}`,
+        'only SessionStart passes the CLI that prints its summary',
       )
       assert.equal(
         ours.hooks[0].timeout,
@@ -2035,7 +2212,7 @@ test(
     for (const event of CODEX_EVENTS) {
       assert.match(
         hooks[event][0].hooks[0].command,
-        new RegExp(` codex ${event}$`),
+        new RegExp(` codex ${event}${event === 'SessionStart' ? ' \'[^\']+pnyx-axi\\.js\'' : ''}$`),
       )
       assert.equal(
         hooks[event][0].matcher,
