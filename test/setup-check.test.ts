@@ -44,6 +44,10 @@ function sandbox() {
       root,
       '.codex',
     ),
+    XDG_CONFIG_HOME: join(
+      root,
+      '.config',
+    ),
     // The machine's own quota-axi stays off PATH so the sandbox decides whether it is installed.
     PATH: [
       bin,
@@ -156,7 +160,7 @@ test(
 
     assert.equal(
       /^ {2}service,/m.test(fresh.out),
-      process.platform === 'darwin',
+      process.platform === 'darwin' || process.platform === 'linux',
     )
     assert.match(
       run({
@@ -316,12 +320,15 @@ test(
       )
     }
 
-    if (process.platform === 'darwin') {
+    if (process.platform === 'darwin' || process.platform === 'linux') {
       const home = process.env.PNYX_HOME
       process.env.PNYX_HOME = env.PNYX_HOME
-      const { path } = serviceFile({ userHome: root })
+      const { path } = serviceFile({
+        userHome: root,
+        configHome: env.XDG_CONFIG_HOME,
+      })
       process.env.PNYX_HOME = home
-      // launchd is never touched: an installed job is all the check reads.
+      // launchd and systemd are never touched: an installed job is all the check reads.
       mkdirSync(
         join(
           path,
@@ -363,7 +370,7 @@ test(
 
 test(
   'a confirmed setup service question runs without --hydra',
-  { skip: process.platform !== 'darwin' && 'the login service needs macOS' },
+  { skip: process.platform !== 'darwin' && process.platform !== 'linux' && 'the login service needs macOS or Linux' },
   () => {
     const { run } = sandbox()
     const proposal = run({

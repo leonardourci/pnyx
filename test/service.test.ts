@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
-import { setupService } from '../src/server/service.ts'
+import { serviceFile, setupService } from '../src/server/service.ts'
 
 test(
   'one login service runs the server of every Hydra, replaces the per-Hydra services of this home, survives exit and uninstalls through launchd',
@@ -183,9 +183,9 @@ test(
     assert.throws(
       () => setupService({
         ...options,
-        platform: 'linux',
+        platform: 'win32',
       }),
-      /requires macOS/,
+      /requires macOS launchd or Linux systemd/,
     )
     assert.throws(
       () => setupService({
@@ -544,6 +544,167 @@ test(
     assert.equal(
       setupService(options).service,
       'would install',
+    )
+  },
+)
+
+test(
+  'on Linux a systemd user unit carries the setup PATH and login folders, restarts after exit and uninstalls through systemctl --user',
+  () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-service-linux-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx 100% Hydra',
+    )
+    const configHome = join(
+      root,
+      'config',
+    )
+    const calls: string[][] = []
+    const options = {
+      port: 49125,
+      platform: 'linux' as const,
+      userHome: root,
+      searchPath: '/opt/tools/bin:/usr/bin',
+      environment: {
+        XDG_CONFIG_HOME: configHome,
+        CLAUDE_CONFIG_DIR: '/logins/claude',
+      },
+      run: ({ args }: { args: string[] }) => {
+        calls.push(args)
+
+        return ''
+      },
+    }
+    const ours = process.env.PNYX_HOME
+    process.env.PNYX_HOME = join(
+      root,
+      'theirs',
+    )
+    const theirs = setupService({
+      ...options,
+      preview: true,
+    })
+    process.env.PNYX_HOME = ours
+    const { label } = serviceFile({
+      userHome: root,
+      platform: 'linux',
+      configHome,
+    })
+    const unitName = `${label}.service`
+    const preview = setupService({
+      ...options,
+      preview: true,
+    })
+    assert.equal(
+      preview.path,
+      join(
+        configHome,
+        'systemd',
+        'user',
+        unitName,
+      ),
+    )
+    assert.equal(
+      existsSync(preview.path),
+      false,
+    )
+    assert.equal(
+      calls.length,
+      0,
+    )
+
+    for (const line of [
+      /^ExecStart=.* "serve" "--port" "49125"$/m,
+      /^Environment="PNYX_HOME=[^"]*pnyx 100%% Hydra"$/m,
+      /^Environment="PATH=\/opt\/tools\/bin:\/usr\/bin"$/m,
+      /^Environment="CLAUDE_CONFIG_DIR=\/logins\/claude"$/m,
+      /^Restart=always$/m,
+      /^WantedBy=default\.target$/m,
+    ]) {
+      assert.match(
+        preview.unit!,
+        line,
+      )
+    }
+
+    assert.doesNotMatch(
+      preview.unit!,
+      /CODEX_HOME/,
+    )
+
+    setupService(options)
+    assert.equal(
+      readFileSync(
+        preview.path,
+        'utf8',
+      ),
+      preview.unit,
+    )
+    assert.deepEqual(
+      calls,
+      [
+        [
+          '--user',
+          'daemon-reload',
+        ],
+        [
+          '--user',
+          'enable',
+          unitName,
+        ],
+        [
+          '--user',
+          'restart',
+          unitName,
+        ],
+      ],
+    )
+
+    // Rerunning reads its own unit back as this home's, so it replaces it in place rather than reporting a port conflict.
+    setupService(options)
+    assert.deepEqual(
+      calls.slice(3),
+      calls.slice(
+        0,
+        3,
+      ),
+    )
+    writeFileSync(
+      theirs.path,
+      theirs.unit!,
+    )
+    assert.throws(
+      () => setupService(options),
+      { code: 'PORT_IN_USE' },
+    )
+
+    calls.length = 0
+    setupService({
+      ...options,
+      remove: true,
+    })
+    assert.deepEqual(
+      calls,
+      [
+        [
+          '--user',
+          'disable',
+          '--now',
+          unitName,
+        ],
+        [
+          '--user',
+          'daemon-reload',
+        ],
+      ],
+    )
+    assert.equal(
+      existsSync(preview.path),
+      false,
     )
   },
 )

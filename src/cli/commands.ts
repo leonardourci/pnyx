@@ -4546,7 +4546,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
-  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the macOS login service
+  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -4808,7 +4808,8 @@ every other hook. Without --harness it sets up each harness whose config folder 
 changes nothing; --remove takes out only Pnyx's entries. The hooks print nothing and always exit 0,
 so they never add to the agent's context: no session-start Hydra summary is installed.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
-setup service installs one macOS login service running the server of every Hydra; it replaces the older one-per-Hydra services.
+setup service installs one login service running the server of every Hydra: a launchd job on macOS, a systemd user unit on Linux.
+It replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
 Firstmate's own files are not changed.

@@ -25,7 +25,7 @@ Pnyx is built on ideas we liked from [Paseo](https://github.com/getpaseo/paseo) 
 
 Needs Node 22.13 or newer and pnpm (the version pinned in `package.json`).
 
-To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The macOS login service and terminal integrations are optional; the foreground server does not need them.
+To run agents, install and sign in to [Claude Code](https://code.claude.com/docs/en/overview), [Codex](https://developers.openai.com/codex/cli/), or both. Configure the [dispatch rules](#starting-workers-and-hydra) for the harnesses and models you use. GitHub integration needs [GitHub CLI](https://cli.github.com/) (`gh auth login`) and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH; account quota ranking uses [quota-axi](https://github.com/kunchenguid/quota-axi). The login service (macOS or Linux) and terminal integrations are optional; the foreground server does not need them.
 
 ```sh
 git clone https://github.com/leonardourci/pnyx.git
@@ -104,7 +104,7 @@ Sharing a folder between Hydras requires an explicit confirmation naming the oth
 pnyx-axi serve
 ```
 
-One server runs every Hydra in the Pnyx data folder (`~/.pnyx`, or `PNYX_HOME`): one port, each Hydra at its own path, http://127.0.0.1:4747/hydra/<id>/, with http://127.0.0.1:4747 opening the default Hydra. Open the `url` it prints; `--port` picks another port, and if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. The Hydras list in the left panel switches between Hydras on the same server, and a Hydra created while the server runs is served as soon as its folder appears. A Hydra that fails to load is skipped and reported (in the `serve` output and at `/health`), and the others keep working. Each Hydra keeps its own hook socket, its linked Firstmate home and the agents Pnyx started for it, all inside that one process. `pnyx-axi` with no arguments shows the Hydra summary and the running server's address. Stop a foreground server with Ctrl+C or `pnyx-axi stop`, which stops the server of every Hydra. The login service uses the Node executable and Pnyx installation that ran setup, reaching Node through a link on `PATH` such as `/opt/homebrew/bin/node` when one points to it, so a Homebrew upgrade keeps the service starting; keep that installation in place and rerun setup after moving it or switching Node. Rerunning setup on a running service replaces it in place: it waits for launchd to finish stopping the old job before starting the new one. Each Hydra permits one server even when two starts race. A service-managed server restarts after `stop`; use `setup service --remove` to keep it stopped.
+One server runs every Hydra in the Pnyx data folder (`~/.pnyx`, or `PNYX_HOME`): one port, each Hydra at its own path, http://127.0.0.1:4747/hydra/<id>/, with http://127.0.0.1:4747 opening the default Hydra. Open the `url` it prints; `--port` picks another port, and if that port is taken, `serve` exits with `PORT_IN_USE` rather than picking another. The Hydras list in the left panel switches between Hydras on the same server, and a Hydra created while the server runs is served as soon as its folder appears. A Hydra that fails to load is skipped and reported (in the `serve` output and at `/health`), and the others keep working. Each Hydra keeps its own hook socket, its linked Firstmate home and the agents Pnyx started for it, all inside that one process. `pnyx-axi` with no arguments shows the Hydra summary and the running server's address. Stop a foreground server with Ctrl+C or `pnyx-axi stop`, which stops the server of every Hydra. The login service uses the Node executable and Pnyx installation that ran setup, reaching Node through a link on `PATH` such as `/opt/homebrew/bin/node` when one points to it, so a Homebrew upgrade keeps the service starting; keep that installation in place and rerun setup after moving it or switching Node. The service runs with the `PATH` setup ran with, and on Linux also with `CLAUDE_CONFIG_DIR` and `CODEX_HOME` when they are set, so rerun setup after installing Claude Code, Codex, gh-axi or quota-axi in a new folder. Rerunning setup on a running service replaces it in place: on macOS it waits for launchd to finish stopping the old job before starting the new one, and on Linux systemd restarts the unit with the new configuration. Each Hydra permits one server even when two starts race. A service-managed server restarts after `stop`; use `setup service --remove` to keep it stopped.
 
 The browser reconnects automatically with capped backoff and a heartbeat, resumes Hydra events and restores the open conversation subscription. Composers stay usable during an outage; submitting a message keeps its draft and sends it when the connection returns, using the same delivery key on retries. Hydra chat counts a message as sent once its saved event or receipt is confirmed, even while Hydra is still preparing its reply. An uncertain chat or agent-settings save shows a checking state and retries with the same operation ID through reconnects and reloads; a late confirmation clears it. A refused send returns to the composer with the time it failed above it. The pnyx name in the left panel shows an offline mark when the server cannot be reached. Session identities and attachments live in the event log and survive browser reloads and server restarts.
 
@@ -120,11 +120,13 @@ To keep it running in the background:
 
 ```sh
 mkdir -p ~/.pnyx
-pnyx-axi setup service                     # macOS: start now and at login, restart after exit
+pnyx-axi setup service                     # start now and at login, restart after exit
 pnyx-axi setup service --port 4748         # on another port
-pnyx-axi setup service --preview           # inspect the launchd configuration
+pnyx-axi setup service --preview           # inspect the launchd job or systemd unit
 pnyx-axi setup service --remove            # stop and uninstall the service
 ```
+
+On macOS the service is a launchd job in `~/Library/LaunchAgents`. On Linux it is a systemd user unit in `~/.config/systemd/user` (or `$XDG_CONFIG_HOME/systemd/user`), managed with `systemctl --user`; it runs while you are logged in, and `loginctl enable-linger` keeps it running after you log out.
 
 There is one login service for every Hydra. Setting it up replaces the one-per-Hydra services older versions installed for the same data folder.
 
@@ -342,7 +344,7 @@ To start a Hydra over, stop the server and delete its folder: `pnyx-axi stop && 
 Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`. Deleting `~/.pnyx` also deletes the task copies under each Hydra's folder, so settle them first:
 
 ```sh
-pnyx-axi setup service --remove  # macOS, if the login service was installed
+pnyx-axi setup service --remove  # if the login service was installed
 pnyx-axi stop
 pnyx-axi setup hooks --remove
 pnyx-axi setup skills --remove
