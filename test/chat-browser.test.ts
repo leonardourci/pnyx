@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs'
 import { browserFixture } from './browser-fixture.ts'
+import { hydraSdk } from './hydra-host-fixture.ts'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -163,10 +164,12 @@ test(
         writer.append({ event: report.event })
       },
     })
+    const query = hydraSdk().query
     let server = await startServer({
       hydraId: 'default',
       port: 0,
       homes: [],
+      query,
     })
 
     try {
@@ -356,6 +359,7 @@ test(
         hydraId: 'default',
         port,
         homes: [],
+        query,
       })
       appendFileSync(
         transcript,
