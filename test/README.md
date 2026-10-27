@@ -1,8 +1,8 @@
 # Tests
 
-- `test/*.test.ts`: unit tests, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
+- Every other `*.test.ts`, in `test/` or beside the code it covers: unit tests, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
 - `test/scenarios/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
-- `test/fixtures/`: synthetic inputs. `fixtures/agents/` holds the recorded agent sessions the fakes replay.
+- `test/fixtures/`: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
 Run the flows after a build:
 
@@ -20,7 +20,7 @@ For a small batch, pass explicit paths: `node scripts/verification/test.ts test/
 ## Writing a flow
 
 ```ts
-import { pnyx } from './pnyx.ts'       // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
+import { pnyx } from '../../src/test-harness/pnyx.ts' // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
 
 test('…', async () => {
   const s = await pnyx.scenario()       // a Hydra of its own, so flows never depend on each other
@@ -53,7 +53,7 @@ Rules:
 
 ## The fake agents
 
-`fake-agents.ts` replays real sessions: each message a fake Claude Code gets starts the recorded Agent SDK turn again, and the fake Codex app-server answers each request with its recorded result and notifications. Pnyx's own provider code reads that output, so a change in what the agents send shows up here.
+`src/test-harness/fake-agents.ts` replays real sessions: each message a fake Claude Code gets starts the recorded Agent SDK turn again, and the fake Codex app-server answers each request with its recorded result and notifications. Pnyx's own provider code reads that output, so a change in what the agents send shows up here.
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads.
 
