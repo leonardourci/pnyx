@@ -7,6 +7,7 @@ import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '../../../src/thread/read.ts'
 import { readSkillReference, skillReference } from '../../../src/thread/skill-reference.ts'
+import { UPGRADE_SUGGESTION } from '../../../src/upgrade/model.ts'
 import { SkillBadge } from '../components/ui/skill-badge.tsx'
 import { Label } from '../components/ui/label.tsx'
 import { SuggestionPicker } from '../components/ui/suggestion-picker.tsx'
@@ -766,6 +767,7 @@ export function Composer({
                 ) : undefined,
                 group: item.source,
                 excerpt: item.description,
+                icons: item.source === UPGRADE_SUGGESTION.source ? ['upgrade'] : undefined,
 
               }))}
               choose={({ item }) => choose({ command: skillReference({ item }) })}

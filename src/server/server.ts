@@ -56,7 +56,7 @@ import { reduce } from '../core/reducer.ts'
 import { traces, viewFor } from '../core/view.ts'
 import { hydraDir, hydraIds, hydrasDir, loadHydra, privateDir, withWriter, readEvents, readEventsFrom, spoolDir, spoolFiles, spoolWrite } from '../store/hydra-store.ts'
 import { RESTART_SIGNAL, relaunch } from '../upgrade/restart.ts'
-import type { UpgradeStatus } from '../upgrade/model.ts'
+import { UPGRADE_SUGGESTION, type UpgradeStatus } from '../upgrade/model.ts'
 import { PNYX_ROOT, upgradeAvailable } from '../upgrade/runner.ts'
 import { DEFAULT_PORT, hydraIdentity, claimServer, infoPath, localToken, readServer, socketPath, type ServerInfo } from './state.ts'
 import { createHydra, listHydras, renameHydra, type HydraSummary } from './hydras.ts'
@@ -2692,6 +2692,7 @@ async function mountOwnedHydra({
                 return {
                   ...catalog,
                   suggestions: [
+                    ...card.id === HYDRA_CARD ? [UPGRADE_SUGGESTION] : [],
                     ...catalog.suggestions,
                     ...native,
                   ],

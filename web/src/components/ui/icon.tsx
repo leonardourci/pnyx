@@ -2,18 +2,21 @@ import {
   IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowFork,
   IconArrowRight, IconArrowUpRight, IconBolt, IconBoltFilled, IconBook, IconBrandGit,
   IconBrandGithub, IconBulb, IconCalendar, IconCheck, IconChevronDown, IconChevronRight,
-  IconCircleCheck, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu, IconCube,
+  IconCircleArrowUp, IconCircleCheck, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu,
+  IconCube,
   IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye, IconEyeCheck, IconFileText,
   IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer, IconHourglass, IconLink,
   IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize, IconMessage,
   IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil, IconPencilCheck,
   IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled, IconPlug,
   IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag,
-  IconStar, IconTerminal2, IconTestPipe, IconUser, IconWorld, IconX,
+  IconStar, IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
 } from '@tabler/icons-react'
 
 const icons: Record<string, typeof IconRobot> = {
   search: IconSearch,
+  upgrade: IconCircleArrowUp,
+  fix: IconTool,
   close: IconX,
   settings: IconSettings,
   queued: IconClock,
