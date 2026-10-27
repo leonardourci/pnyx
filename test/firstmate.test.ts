@@ -16,7 +16,7 @@ import { latestActivity, openDecisions, parseStatusLine, statusNotes } from '../
 import { syncHome, watchHome, type SyncResult } from '../src/integrations/firstmate/sync.ts'
 import { roleColumn } from '../src/core/hydra.ts'
 import { stopAll, track } from '../src/test-harness/processes.ts'
-import { startServer } from '../src/server/server.ts'
+import { startServer } from '../src/app/server-daemon.ts'
 
 // Semantic search is on by default; these tests never start its worker or fetch models.
 process.env.PNYX_SEMANTIC = 'off'

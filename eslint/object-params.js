@@ -137,7 +137,7 @@ const boundary = ({
     return true // A named listener keeps its identity for removal.
   }
 
-  if (filename.endsWith('/src/server/server.ts') && node.type === 'FunctionDeclaration'
+  if (filename.endsWith('/src/app/server-cli.ts') && node.type === 'FunctionDeclaration'
     && [
       'serve',
       'stop',

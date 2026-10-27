@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
-import { startServer } from '../src/server/server.ts'
+import { startServer } from '../src/app/server-daemon.ts'
 import { withWriter } from '../src/app/writer.ts'
 
 process.env.PNYX_SEMANTIC = 'off'

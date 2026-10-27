@@ -8,7 +8,7 @@ import { test } from 'node:test'
 import { commands } from '../src/cli/commands.ts'
 import { decidePush } from '../src/core/decide.ts'
 import { hydraConfig, hydraEvent } from '../src/core/hydra.ts'
-import { startServer } from '../src/server/server.ts'
+import { startServer } from '../src/app/server-daemon.ts'
 import { withWriter } from '../src/app/writer.ts'
 
 const browser = browserFixture()
