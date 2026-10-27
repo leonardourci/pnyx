@@ -11,6 +11,7 @@ for (const outcome of [
   'saved',
   'refused',
   'reconnect',
+  'newer-draft',
 ]) {
   test(
     `task creation previews immediately and handles ${outcome} with its stable key`,
@@ -47,14 +48,17 @@ for (const outcome of [
               if (control.creates.length === 1) {
                 control.release = () => send.call(
                   this,
-                  outcome === 'refused' ? JSON.stringify({
-                    ...message,
-                    args: [
-                      ...message.args,
-                      '--parent',
-                      'missing-parent',
-                    ],
-                  }) : data,
+                  [
+                    'refused',
+                    'newer-draft',
+                  ].includes(outcome) ? JSON.stringify({
+                      ...message,
+                      args: [
+                        ...message.args,
+                        '--parent',
+                        'missing-parent',
+                      ],
+                    }) : data,
                 )
                 control.disconnect = () => this.close()
 
@@ -148,6 +152,13 @@ for (const outcome of [
         })
       }
 
+      if (outcome === 'newer-draft') {
+        await page.click({ selector: '[aria-label="New task in Queued"]' })
+        await page.type({ text: 'Newer task draft' })
+        await page.click({ selector: '[aria-label="Your ask"]' })
+        await page.type({ text: 'Keep this newer request' })
+      }
+
       await page.shows({
         what: 'release or reconnect the held attempt',
         arg: { outcome },
@@ -166,6 +177,24 @@ for (const outcome of [
           return true
         },
       })
+
+      if (outcome === 'newer-draft') {
+        await page.shows({
+          what: 'the older refusal preserves the newer task title and ask',
+          check: () =>
+            document.querySelector('.error-banner')
+            && (document.querySelector('.task-create [aria-label="Task title"]') as HTMLInputElement | null)?.value === 'Newer task draft'
+            && (document.querySelector('.task-create [aria-label="Your ask"]') as HTMLTextAreaElement | null)?.value === 'Keep this newer request'
+            && !document.querySelector('[data-task^="task:"]'),
+        })
+        assert.equal(
+          Object.values(s.state().cards).some(card => card.key === `task:${attempt}`),
+          false,
+        )
+        await page.close()
+
+        return
+      }
 
       if (outcome === 'refused') {
         await page.shows({
@@ -232,6 +261,19 @@ for (const outcome of [
         assert.equal(
           s.events().filter(event => event.id === attempt).length,
           1,
+        )
+        const persisted = Object.values(s.state().cards).find(card => card.key === `task:${attempt}`)
+        assert.equal(
+          persisted?.title,
+          outcome === 'saved' ? 'Instant task renamed' : 'Instant task',
+        )
+        const delivered = await page.shows({
+          what: 'dependent rename delivered after creation',
+          check: () => ({ renames: (window as unknown as { renames: number }).renames }),
+        })
+        assert.equal(
+          delivered.renames,
+          outcome === 'saved' ? 1 : 0,
         )
       }
 
