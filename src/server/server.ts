@@ -48,7 +48,7 @@ import { parseArgs, promisify } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { WebSocketServer } from 'ws'
 import { ingestSpool } from '../integrations/hooks/ingest.ts'
-import { commands as cliCommands } from '../cli/commands.ts'
+import { commands as cliCommands, flagError } from '../cli/commands.ts'
 import { integrationsCommand } from '../cli/integrations.ts'
 import { browserCommand } from './browser.ts'
 import { HydraError, type HydraEvent, type HydraState, type Card, type ReplyState, type ViewPreferences } from '../core/model.ts'
@@ -3736,28 +3736,27 @@ function serveStatic({
   })
 }
 
+const SERVE_OPTIONS = {
+  hydra: { type: 'string' },
+  port: { type: 'string' },
+  home: {
+    type: 'string',
+    multiple: true,
+  },
+} as const
+
 function serveFlags({ args }: { args: string[] }) {
   try {
-    const { values } = parseArgs({
+    return parseArgs({
       args,
-      options: {
-        hydra: { type: 'string' },
-        port: { type: 'string' },
-        home: {
-          type: 'string',
-          multiple: true,
-        },
-      },
+      options: SERVE_OPTIONS,
       strict: true,
-    })
-
-    return values
+    }).values
   } catch (error) {
-    throw new AxiError(
-      (error as Error).message,
-      'VALIDATION_ERROR',
-      ['Run the command with --help'],
-    )
+    throw flagError({
+      error,
+      options: SERVE_OPTIONS,
+    })
   }
 }
 

@@ -611,3 +611,91 @@ test(
     }))
   },
 )
+
+function failure({ run }: { run: () => unknown }): {
+  status: number
+  stdout: string
+} {
+  try {
+    run()
+  } catch (error) {
+    const {
+      status,
+      stdout,
+    } = error as {
+      status: number
+      stdout: string
+    }
+
+    return {
+      status,
+      stdout,
+    }
+  }
+
+  throw new Error('expected the command to fail')
+}
+
+test(
+  'subcommand help is focused, and an unknown flag lists that subcommand\'s flags',
+  () => {
+    const f = fixture()
+    const help = f.run({
+      args: [
+        'task',
+        'create',
+        '--help',
+      ],
+    })
+    assert.match(
+      help,
+      /^usage: pnyx-axi task create --title <title>/,
+    )
+    assert.doesNotMatch(
+      help,
+      /pnyx-axi task status/,
+      'other task subcommands stay out',
+    )
+
+    const unknown = failure({
+      run: () => f.run({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'x',
+          '--titel',
+          'y',
+        ],
+      }),
+    })
+    assert.equal(
+      unknown.status,
+      2,
+    )
+    assert.match(
+      unknown.stdout,
+      /unknown flag --titel for `task create`/,
+    )
+    assert.match(
+      unknown.stdout,
+      /Valid flags: --title, --project/,
+    )
+    assert.doesNotMatch(
+      unknown.stdout,
+      /positional argument/,
+      'the parser\'s own advice stays out',
+    )
+    assert.match(
+      failure({
+        run: () => f.run({
+          args: [
+            'task',
+            'lsit',
+          ],
+        }),
+      }).stdout,
+      /help\[1\]: Run `pnyx-axi task --help`/,
+    )
+  },
+)

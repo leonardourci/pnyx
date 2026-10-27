@@ -33,6 +33,7 @@ import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
 import { waitingReminders } from '../reminders/state.ts'
 import { findProject, projectRows, taskProject } from '../projects/read.ts'
+import { helpFlags } from './help.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
@@ -123,6 +124,56 @@ export const WRITE: Options = {
   confirm: { type: 'string' },
 }
 
+// The running CLI command (`task create`) and its focused help, set by the CLI entry, so usage
+// errors can point at that subcommand. Commands run inside the server leave it empty.
+export const invocation: {
+  name?: string
+  help?: string
+} = {}
+
+export function helpHint(): string {
+  return invocation.name ? `Run \`pnyx-axi ${invocation.name} --help\`` : 'Run the command with --help'
+}
+
+// Translates a node:util parseArgs error. An unknown flag is named, with the valid flags inline.
+export function flagError({
+  error,
+  options,
+}: {
+  error: unknown
+  options: Options
+}): AxiError {
+  const message = (error as Error).message
+
+  if ((error as { code?: string }).code !== 'ERR_PARSE_ARGS_UNKNOWN_OPTION') {
+    return new AxiError(
+      message,
+      'VALIDATION_ERROR',
+      [helpHint()],
+    )
+  }
+
+  // The subcommand's documented flags plus the global ones it accepts.
+  const flags = invocation.help
+    ? [
+      ...new Set([
+        ...helpFlags({ help: invocation.help }),
+        ...[
+          'hydra',
+          'event-id',
+          'if-revision',
+        ].filter(name => name in options).map(name => `--${name}`),
+      ]),
+    ]
+    : Object.keys(options).map(name => `--${name}`)
+
+  return new AxiError(
+    `unknown flag ${/'([^']+)'/.exec(message)?.[1] ?? message}${invocation.name ? ` for \`${invocation.name}\`` : ''}`,
+    'VALIDATION_ERROR',
+    [`Valid flags: ${flags.filter(flag => flag !== '--help').join(', ')} (--help always allowed)`],
+  )
+}
+
 export function parse({
   args,
   options,
@@ -142,18 +193,17 @@ export function parse({
       strict: true,
     })
   } catch (error) {
-    throw new AxiError(
-      (error as Error).message,
-      'VALIDATION_ERROR',
-      ['Run the command with --help'],
-    )
+    throw flagError({
+      error,
+      options,
+    })
   }
 
   if (parsed.positionals.length > positionals) {
     throw new AxiError(
       `unexpected argument: ${parsed.positionals[positionals]}`,
       'VALIDATION_ERROR',
-      ['Run the command with --help'],
+      [helpHint()],
     )
   }
 
@@ -177,7 +227,7 @@ export function required({
     throw new AxiError(
       `missing ${what}`,
       'VALIDATION_ERROR',
-      ['Run the command with --help'],
+      [helpHint()],
     )
   }
 
