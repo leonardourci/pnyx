@@ -6,6 +6,9 @@ import { createTestEnvironment } from './test-environment.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
+const MINUTE_MS = 60_000
+// A lane past this is stuck outside any one test; the runner then names the file it interrupted.
+const LANE_TIMEOUT_MS = 30 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'action-label',
@@ -67,16 +70,19 @@ const serial = ({ file }: { file: string }) => file.includes('test/scenarios/') 
 const lanes = [
   {
     name: 'pure',
+    testTimeout: MINUTE_MS,
     concurrency: PURE_CONCURRENCY,
     files: files.filter(file => PURE_TESTS.has(resolve(file))),
   },
   {
     name: 'process/Git',
+    testTimeout: 3 * MINUTE_MS,
     concurrency: HEAVY_CONCURRENCY,
     files: files.filter(file => !PURE_TESTS.has(resolve(file)) && !serial({ file })),
   },
   {
     name: 'scenarios/browser',
+    testTimeout: 5 * MINUTE_MS,
     concurrency: 1,
     files: files.filter(file => serial({ file })),
   },
@@ -100,12 +106,17 @@ try {
         ).href,
         '--test',
         `--test-concurrency=${lane.concurrency}`,
+        // A test past its lane's cap fails by name, and a handle it left open cannot keep its file
+        // running.
+        `--test-timeout=${lane.testTimeout}`,
+        '--test-force-exit',
         ...options,
         ...lane.files,
       ],
       {
         env: isolated.env,
         stdio: 'inherit',
+        timeout: LANE_TIMEOUT_MS,
       },
     )
 
