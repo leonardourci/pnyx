@@ -403,6 +403,10 @@ for (const geometry of [
         await page.press('/');
         await page.type('fixture-c');
         await page.wait('.slash-menu [role="option"]');
+        await page.until(() => {
+          const menu = document.querySelector('.slash-menu'), input = document.querySelector('.hydra-chat textarea');
+          return Math.abs(menu.getBoundingClientRect().bottom + 8 - input.getBoundingClientRect().top) < 2;
+        });
         console.log(JSON.stringify(await page.eval(() => {
           const option = document.querySelector('.slash-menu [role="option"]');
           const bounds = option?.getBoundingClientRect();
@@ -442,10 +446,23 @@ for (const geometry of [
         const interactions = await browser({
           args: ['run'],
           script: `
+        await page.eval(() => {
+          window.expectedOption = document.querySelector('.slash-menu [role="option"]');
+          document.addEventListener('mousedown', event => {
+            window.clickedOption = event.target.closest('[role="option"]');
+            window.trustedOptionPointer = event.isTrusted;
+          }, { once: true, capture: true });
+        });
         await page.click('.slash-menu [role="option"]');
+        await page.eval(() => {
+          if (!window.trustedOptionPointer || window.clickedOption !== window.expectedOption) {
+            throw new Error('The physical click missed the selected skill option');
+          }
+        });
         console.log(await page.until(() => {
           const input = document.querySelector('.hydra-chat textarea');
-          return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli') && input.selectionStart === input.value.length && document.activeElement === input;
+          return document.querySelector('.draft-skill')?.textContent.includes('/fixture-cli')
+            && input.selectionStart === input.value.length && document.activeElement === input;
         }));
         await page.fill('.hydra-chat textarea', '/fixture-TAIL');
         await page.eval(() => document.querySelector('.hydra-chat textarea').setSelectionRange(9, 9));

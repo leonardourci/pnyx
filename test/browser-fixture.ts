@@ -1,12 +1,10 @@
 /* eslint-disable pnyx/object-params -- Matches the chrome-devtools-axi page API used by these journeys. */
 import assert from 'node:assert/strict'
-import { writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { browserGroup } from './scenarios/browser.ts'
 
 type Page = Awaited<ReturnType<ReturnType<typeof browserGroup>['open']>>
 
-export function browserFixture({ artifacts }: { artifacts?: string } = {}) {
+export function browserFixture() {
   const group = browserGroup()
   let tab: Page | undefined
   let currentUrl: string | undefined
@@ -59,14 +57,7 @@ export function browserFixture({ artifacts }: { artifacts?: string } = {}) {
         },
       })
 
-      return page().evaluate({
-        expression: `(() => {
-      const element = document.querySelector(${JSON.stringify(selector)})
-      if (!element) throw new Error('Missing click target: ' + ${JSON.stringify(selector)})
-      element.scrollIntoView({ block: 'center' })
-      element.click()
-    })()`,
-      })
+      return page().click({ selector })
     },
     type: (text: string) => page().type({ text }),
     press: async (key: string) => {
@@ -168,29 +159,6 @@ export function browserFixture({ artifacts }: { artifacts?: string } = {}) {
             text: document.body.innerText.slice(-6000)
           })`,
           })
-
-          if (artifacts) {
-            await page().capture({
-              path: join(
-                artifacts,
-                'menu-timeout.png',
-              ),
-            })
-            writeFileSync(
-              join(
-                artifacts,
-                'menu-timeout.json',
-              ),
-              JSON.stringify(
-                {
-                  state,
-                  errors: page().errors(),
-                },
-                null,
-                2,
-              ),
-            )
-          }
 
           throw new Error(
             `${String(error)}\nPage state: ${state}`,
