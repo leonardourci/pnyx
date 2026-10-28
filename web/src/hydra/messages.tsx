@@ -6,6 +6,7 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
@@ -44,6 +45,21 @@ let highlights = 0
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
   renderKey?: string
+}
+
+// A message about a task opens with the task's chip, unless its words already mention that task.
+function MessageTask({ entry }: { entry: ChatEntry }) {
+  const mentioned = taskMentions({ text: entry.text }).some(mention => mention.id === entry.task)
+
+  if (!entry.task || mentioned) {
+    return null
+  }
+
+  return (
+    <span className="message-lead">
+      <TaskReference id={entry.task} />
+    </span>
+  )
 }
 
 const roleLabel = ({
@@ -839,12 +855,7 @@ export function Messages({
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
-              {entry.task && taskReferences && !inline?.has(entry.id) && (
-                <div className="message-task">
-                  <span className="message-task-label">About</span>
-                  <TaskReference id={entry.task} />
-                </div>
-              )}
+              {taskReferences && !inline?.has(entry.id) && <MessageTask entry={entry} />}
               {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
