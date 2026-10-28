@@ -4,7 +4,7 @@ import { HydraError } from '../core/model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '../core/decide.ts'
 import { helperGrant } from '../helper/route.ts'
-import { hostRequestUnlocked } from '../server/host.ts'
+import { hostRequestUnlocked } from './host.ts'
 
 export async function hostRequest({
   host,
