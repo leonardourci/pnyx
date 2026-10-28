@@ -53,6 +53,8 @@ export type HydraChange = EventBase & (
     data: {
       block: string
       reminders: string[]
+      flags?: string[]
+      wake?: boolean
     }
   }
   | {
@@ -372,6 +374,7 @@ export interface HydraState {
     seq: number
     block: string
     reminders: Record<string, string>
+    flags?: string[]
   }
   hydraMessages?: HydraMessage[]
   upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
