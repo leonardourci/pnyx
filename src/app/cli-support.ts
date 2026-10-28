@@ -15,7 +15,6 @@ import { withWriter, type Writer } from './writer.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '../memory/workers.ts'
 import { harvestTranscripts } from '../integrations/hooks/harvest.ts'
-import { summarize } from '../cli/commands.ts'
 import { landingWording } from '../tasks/delivery/cli.ts'
 
 export const HISTORY_LIMIT = 20
@@ -719,4 +718,10 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'card.noted':
       return `${event.data.kind} from ${event.data.source}`
   }
+}
+
+export function summarize({ event }: { event: HydraEvent }): string {
+  const text = summary({ event })
+
+  return event.reason ? `${text} (why: ${event.reason})` : text
 }

@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
-import { commands as cliCommands } from '../cli/commands.ts'
+import { commands as cliCommands } from './cli.ts'
 import { approval } from './confirmations.ts'
 import { project } from '../projects/cli.ts'
 import { dispatchCommands } from '../dispatch/cli.ts'

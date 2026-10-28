@@ -24,8 +24,8 @@ import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { commandText } from '../integrations/hooks/observe.ts'
 import { askWording, openAsks } from '../core/asks.ts'
 import { lifecycleMove } from '../core/lifecycle.ts'
-import { COMMON, guard, integer, parse, type Output } from '../app/cli-support.ts'
-import { commands, summarize } from './commands.ts'
+import { COMMON, guard, integer, parse, type Output, summarize } from '../app/cli-support.ts'
+import { commands } from '../app/cli.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',

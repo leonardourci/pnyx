@@ -1,6 +1,6 @@
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
-import { commands } from '../cli/commands.ts'
+import { commands } from './cli.ts'
 import { hydraIdentity } from './server-state.ts'
 import { hydraConfig } from '../core/hydra.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'

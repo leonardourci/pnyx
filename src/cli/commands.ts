@@ -1,7 +1,6 @@
 import { upgradeCommand } from '../upgrade/model.ts'
 import { columnRule, parseColumnRule } from '../core/columns.ts'
 import { lifecycleMoves } from '../core/lifecycle.ts'
-import { supervisedCommands } from '../helper/commands.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
@@ -51,9 +50,7 @@ import { loadHydra } from '../app/store.ts'
 import { readEvents } from '../app/event-log.ts'
 import { withWriter } from '../app/writer.ts'
 import { spoolFiles } from '../store/hydra-store.ts'
-import { repair } from '../app/repair-cli.ts'
-import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, TEXT_CUT, COMMON, WRITE, parse, required, integer, meta, explained, commit, guard, clip, summary, type Output, type Options } from '../app/cli-support.ts'
-import { task, history, undo } from '../app/cli.ts'
+import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, TEXT_CUT, COMMON, WRITE, parse, required, integer, meta, explained, commit, guard, clip, type Output, type Options, summarize } from '../app/cli-support.ts'
 
 function column({ value }: { value: string }): Column {
   return (value.startsWith('custom:') ? value : value.replace(
@@ -248,7 +245,7 @@ export const CONTEXT_TASKS = 5
 
 // The session-start hook's summary: the Hydra's open work for the attached project holding the
 // session's folder, kept short because it loads into every session there. Elsewhere it prints nothing.
-const context = guard({
+export const context = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -302,7 +299,7 @@ const context = guard({
   },
 })
 
-const push = guard({
+export const push = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -1412,7 +1409,7 @@ function columnCommand({ args }: { args: string[] }): Output {
   })
 }
 
-const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
+export const columnCommandHandler = guard({ handler: ({ args }) => columnCommand({ args }) })
 
 function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (args[0] === 'worker-notes') {
@@ -1924,9 +1921,9 @@ function memoryChange({
   }
 }
 
-const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
 
-const owner = guard({
+export const owner = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2133,7 +2130,7 @@ function cardNotes({
   }
 }
 
-const card = guard({
+export const card = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2197,7 +2194,7 @@ const card = guard({
 // Collects the notes sources already recorded: the cards' transcripts from where
 // the last read stopped, and each linked pull request's title and description.
 // ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
-const harvest = guard({
+export const harvest = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2274,7 +2271,7 @@ const harvest = guard({
   },
 })
 
-const move = guard({
+export const move = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2321,7 +2318,7 @@ const move = guard({
   },
 })
 
-const link = guard({
+export const link = guard({
   handler: ({ args }) => {
     const options: Options = {
       ...WRITE,
@@ -2382,7 +2379,7 @@ const link = guard({
   },
 })
 
-const outcome = guard({
+export const outcome = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2445,13 +2442,7 @@ const outcome = guard({
   },
 })
 
-export function summarize({ event }: { event: HydraEvent }): string {
-  const text = summary({ event })
-
-  return event.reason ? `${text} (why: ${event.reason})` : text
-}
-
-const setup = guard({
+export const setup = guard({
   handler: ({ args }) => {
     const options: Options = {
       ...WRITE,
@@ -2577,7 +2568,7 @@ const setup = guard({
   },
 })
 
-const view = guard({
+export const view = guard({
   handler: ({ args }) => {
     const [
       sub,
@@ -2650,7 +2641,7 @@ const view = guard({
   },
 })
 
-const layout = guard({
+export const layout = guard({
   handler: ({ args }) => {
     const {
       values,
@@ -2700,27 +2691,5 @@ const layout = guard({
         meta: m,
       }),
     })
-  },
-})
-
-export const commands = supervisedCommands({
-  commands: {
-    layout,
-    column: columnCommandHandler,
-    hydra: hydraCommandHandler,
-    owner,
-    task,
-    view,
-    push,
-    card,
-    harvest,
-    move,
-    link,
-    outcome,
-    history,
-    undo,
-    repair,
-    setup,
-    context,
   },
 })

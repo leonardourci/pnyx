@@ -9,7 +9,7 @@ import { configPath, effectiveDispatch, onTemplate, parseDispatch, readTemplate,
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type QuotaReading } from '../src/dispatch/select.ts'
 import { dispatchCommands } from '../src/dispatch/cli.ts'
 import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 
 const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
 

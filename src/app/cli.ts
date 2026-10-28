@@ -1,13 +1,15 @@
 import { AxiError } from 'axi-sdk-js'
-import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output } from './cli-support.ts'
+import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '../core/decide.ts'
 import { readEvents } from './event-log.ts'
 import { tagsTask, showsUpdate } from '../core/updates.ts'
-import { summarize } from '../cli/commands.ts'
 import { decideUndo } from './undo.ts'
+import { supervisedCommands } from '../helper/commands.ts'
+import { layout, columnCommandHandler, hydraCommandHandler, owner, view, push, card, harvest, move, link, outcome, setup, context } from '../cli/commands.ts'
+import { repair } from './repair-cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
 
@@ -169,5 +171,27 @@ export const undo = guard({
         }),
       },
     )
+  },
+})
+
+export const commands = supervisedCommands({
+  commands: {
+    layout,
+    column: columnCommandHandler,
+    hydra: hydraCommandHandler,
+    owner,
+    task,
+    view,
+    push,
+    card,
+    harvest,
+    move,
+    link,
+    outcome,
+    history,
+    undo,
+    repair,
+    setup,
+    context,
   },
 })

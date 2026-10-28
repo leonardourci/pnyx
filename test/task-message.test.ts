@@ -3,7 +3,7 @@ import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/cli/commands.ts'
+import { commands } from '../src/app/cli.ts'
 import { sendTaskMessage } from '../src/cli/task-message.ts'
 import { decidePush, decideReply } from '../src/core/decide.ts'
 import { loadHydra } from '../src/app/store.ts'
