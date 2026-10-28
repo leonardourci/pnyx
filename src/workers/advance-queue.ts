@@ -467,6 +467,7 @@ export async function advanceQueues({
   readLanding = pullRequestLanding,
   presence = checkAttachments,
   active = () => true,
+  state: initial,
 }: {
   hydraId: string
   now?: number
@@ -474,9 +475,9 @@ export async function advanceQueues({
   readLanding?: typeof pullRequestLanding
   presence?: typeof checkAttachments
   active?(): boolean
+  // The Hydra the server already holds; each queued session is read again from disk.
+  state: HydraState
 }): Promise<boolean> {
-  const initial = loadHydra({ hydraId }).state
-
   if (initial.config?.hydra.kind === 'firstmate' || !active()) {
     return false
   }

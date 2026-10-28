@@ -1150,6 +1150,7 @@ export async function mountOwnedHydra({
               queueNeedsRetry = await advanceQueues({
                 hydraId,
                 active: () => !closed,
+                state,
               })
             } catch (error) {
               queueNeedsRetry = true
@@ -1222,6 +1223,7 @@ export async function mountOwnedHydra({
         fireReminders({
           hydraId,
           at: new Date(reminderScheduler.now()).toISOString(),
+          state,
         })
         pump()
         const deadline = doneDeadline({ state })
@@ -1339,6 +1341,7 @@ export async function mountOwnedHydra({
   const sources = createSourceRunner({
     hydraId,
     changed: kick,
+    state: () => state,
   })
 
   const review = startReviewTimer({
@@ -1347,6 +1350,7 @@ export async function mountOwnedHydra({
     interval: reviewClock?.interval,
     wake: kick,
     busy: () => agents.queue().waiting.length > 0 || agents.queue().reading.length > 0,
+    state: () => state,
   })
 
   // The server has already checked Host and Origin.

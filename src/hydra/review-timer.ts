@@ -36,12 +36,49 @@ function running({ state }: { state: HydraState }): boolean {
     || Boolean(card?.attention.some(item => item.key === INTERRUPTED))
 }
 
+// Worked out the same way before taking the lock and under it.
+function timedReview({
+  memory,
+  state,
+  now,
+}: {
+  memory: string[]
+  state: HydraState
+  now: number
+}) {
+  const review = boardReview({
+    memory,
+    state,
+    now,
+    workerSeenAt: Object.fromEntries(Object.values(state.sessions ?? {}).map(session => [
+      session.id,
+      seenAt({ session }),
+    ])),
+  })
+  const flags = review.flags
+    .filter(flag => flag.kind !== 'memory behind' && flag.kind !== 'question reminder')
+    .map(flag => JSON.stringify([
+      flag.kind,
+      flag.task,
+      flag.detail,
+    ]))
+  const previousFlags = new Set(state.hydraReview?.flags ?? [])
+
+  return {
+    review,
+    flags,
+    previousFlags,
+    empty: !review.live && !flags.length && !previousFlags.size,
+  }
+}
+
 export function startReviewTimer({
   hydraId,
   wake,
   now = Date.now,
   interval = schedule,
   busy = () => false,
+  state: shared = () => loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   wake(): void
@@ -54,15 +91,22 @@ export function startReviewTimer({
     ms: number
   }): () => void
   busy?(): boolean
+  // The server passes the Hydra it already holds; other callers read it from disk.
+  state?(): HydraState
 }) {
   const started = now()
+  // An empty review records nothing, so the next one counts its period from here.
+  let emptyAt = 0
 
   const check = () => {
     try {
-      const state = loadHydra({ hydraId }).state
+      const state = shared()
       const minutes = state.config?.reviewMinutes ?? REVIEW_MS / MINUTE_MS
       const last = state.hydraReview?.at
-      const due = (last ? Date.parse(last) : started) + minutes * MINUTE_MS
+      const due = Math.max(
+        last ? Date.parse(last) : started,
+        emptyAt,
+      ) + minutes * MINUTE_MS
       const time = now()
 
       if (!minutes || time < due || !pnyxRunsHydra({ state }) || running({ state }) || busy()) {
@@ -73,6 +117,17 @@ export function startReviewTimer({
         state,
         now: new Date(time).toISOString(),
       })
+
+      if (timedReview({
+        memory,
+        state,
+        now: time,
+      }).empty) {
+        emptyAt = time
+
+        return
+      }
+
       const recorded = withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -87,27 +142,19 @@ export function startReviewTimer({
             return false
           }
 
-          const review = boardReview({
+          const {
+            review,
+            flags,
+            previousFlags,
+            empty,
+          } = timedReview({
             memory,
             state: current,
             now: time,
-            workerSeenAt: Object.fromEntries(Object.values(current.sessions ?? {}).map(session => [
-              session.id,
-              seenAt({ session }),
-            ])),
           })
-
-          const flags = review.flags
-            .filter(flag => flag.kind !== 'memory behind' && flag.kind !== 'question reminder')
-            .map(flag => JSON.stringify([
-              flag.kind,
-              flag.task,
-              flag.detail,
-            ]))
-          const previousFlags = new Set(current.hydraReview?.flags ?? [])
           const shouldWake = flags.some(flag => !previousFlags.has(flag))
 
-          if (!review.live && !flags.length && !previousFlags.size) {
+          if (empty) {
             return false
           }
 
