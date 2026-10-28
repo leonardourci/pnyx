@@ -48,7 +48,7 @@ const rows = [
     tests: 'full',
   },
   {
-    paths: ['src/cli/start.ts'],
+    paths: ['src/workers/start.ts'],
     reviews: REVIEW_CHECKLISTS,
     tests: 'full',
   },

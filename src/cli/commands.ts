@@ -14,11 +14,9 @@ import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
 import { checkBudget, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS } from '../memory/budgets.ts'
 import { randomUUID } from 'node:crypto'
-import { sendReply } from '../workers/reply.ts'
 import { liveTask, rankOf } from '../tasks/select.ts'
-import { findSession, selfSession } from '../workers/session-attachments.ts'
-import { setupHydra, startHydra, taskPrompt } from './start.ts'
-import { OVERRIDE_FIELDS, overrideOf, type Override } from '../workers/dispatch.ts'
+import { findSession } from '../workers/session-attachments.ts'
+import { setupHydra, startHydra } from '../workers/start.ts'
 import { basename } from 'node:path'
 import { hydraConfig, hydraEvent, HYDRA_CARD, hydraDelivery, reportActor } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
@@ -27,7 +25,7 @@ import { AxiError } from 'axi-sdk-js'
 import type { Meta } from '../app/command-meta.ts'
 import { decideView } from '../preferences/decisions.ts'
 import { findCard } from '../tasks/push-rules.ts'
-import { type HydraEvent, type HydraState } from '../app/model.ts'
+import { type HydraEvent } from '../app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { HydraError } from '../store/errors.ts'
 import type { Card } from '../tasks/model.ts'
@@ -44,6 +42,7 @@ import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, WRITE, parse, required, integer
 import { memoryList, memoryChange } from '../memory/cli.ts'
 import { firstmateHomes } from '../integrations/cli.ts'
 import { cardRow } from '../tasks/cli.ts'
+import { sessionRef } from '../workers/cli.ts'
 
 export async function home(): Promise<Output> {
   hideDone({ hydraId: DEFAULT_HYDRA })
@@ -117,141 +116,6 @@ export async function home(): Promise<Output> {
   }
 
   return out
-}
-
-export function startOverride({
-  values,
-}: {
-  values: Record<string, unknown>
-}): Override | undefined {
-  const { fast } = values
-
-  if (fast !== undefined && fast !== 'on' && fast !== 'off') {
-    throw new HydraError({
-      message: '--fast takes on or off',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const named = OVERRIDE_FIELDS.filter(name => name !== 'fast' && values[name] !== undefined)
-  const empty = named.find(name => !String(values[name]).trim())
-
-  if (empty) {
-    throw new HydraError({
-      message: `--${empty} needs a value`,
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  return overrideOf({
-    value: Object.fromEntries([
-      ...named.map(name => [
-        name,
-        values[name],
-      ]),
-      ...(fast === undefined ? [] : [
-        [
-          'fast',
-          fast === 'on',
-        ],
-      ]),
-    ]),
-  })
-}
-
-type Attachment = Extract<HydraEvent, { type: 'task.session' }>
-
-// Attachment is durable even when delivery fails.
-export async function afterAttach({
-  hydraId,
-  result,
-  attachment,
-  meta,
-}: {
-  hydraId: string
-  result: Output
-  attachment: Attachment
-  meta: Meta
-}): Promise<Output> {
-  if (!attachment.data.brief) {
-    return result
-  }
-
-  const state = loadHydra({ hydraId }).state
-  const home = state.config?.hydra.home
-
-  try {
-    const brief = await sendReply({
-      hydraId,
-      request: {
-        card: attachment.cardId,
-        text: taskPrompt({
-          hydraId,
-          card: state.cards[attachment.cardId]!,
-        }),
-        expectedSession: attachment.data.session,
-        homes: home ? [home] : [],
-        actor: meta.actor,
-        id: `brief:${attachment.id}`,
-      },
-    })
-
-    return {
-      ...result,
-      brief,
-    }
-  } catch (error) {
-    return {
-      ...result,
-      brief: {
-        state: 'failed',
-        detail: error instanceof Error ? error.message : String(error),
-      },
-      help: ['The attachment was recorded; inspect the task before retrying its brief with the same --event-id'],
-    }
-  }
-}
-
-export function sessionRef({
-  state,
-  ref,
-}: {
-  state: HydraState
-  ref: string
-}): string {
-  return ref === 'self'
-    ? selfSession({
-      state,
-      here: {
-        paseoTerminal: process.env.PASEO_TERMINAL_ID,
-        tmuxPane: process.env.TMUX_PANE,
-        herdrPane: process.env.HERDR_PANE_ID,
-      },
-    }).id
-    : ref
-}
-
-export function taskSessions({
-  hydraId,
-  ids,
-}: {
-  hydraId: string
-  ids: Set<string>
-}): Set<string> {
-  const sessions = new Set<string>()
-
-  for (const event of readEvents({ hydraId })) {
-    if (event.type === 'task.session' && (ids.has(event.data.before ?? '') || ids.has(event.data.after ?? ''))) {
-      sessions.add(event.data.session)
-    }
-
-    if (ids.has(event.cardId) && event.type === 'card.pushed' && event.data.agent) {
-      const agent = event.data.agent
-      sessions.add(`${agent.provider}:${agent.sessionId}${agent.agentId ? `/${agent.agentId}` : ''}`)
-    }
-  }
-
-  return sessions
 }
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {

@@ -22,7 +22,7 @@ import { projectDigest } from '../projects/context.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, readUsage } from '../workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, type Harness } from '../workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
-import { readFileSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { statSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '../workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '../workers/codex.ts'
@@ -40,7 +40,7 @@ import { declareTask } from '../tasks/declarations.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
 import { decisionsBlock } from '../tasks/decisions.ts'
 import { eventReasons, reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
-import { freeTask } from '../cli/start.ts'
+import { freeTask } from '../workers/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../memory/owner-memory.ts'
 import { prepareHydraFolder } from '../integrations/skills/install.ts'
@@ -63,6 +63,10 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '../store/storage.ts'
 import type { Host, Live } from './host-types.ts'
+import { SETTINGS, IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '../workers/host.ts'
+import { isFolder } from '../workers/folders.ts'
+import { providerName, storedModels, storeModels, catalogOffers } from '../workers/model-catalog.ts'
+import { field } from '../workers/http.ts'
 
 export type { QueryFn } from '../workers/claude.ts'
 
@@ -78,23 +82,6 @@ export interface HydraQueue {
   reading: QueuedUpdate[]
 }
 
-export const SETTINGS = [
-  'model',
-  'effort',
-  'mode',
-]
-// An idle session's process is closed after this long; its next message resumes it.
-const IDLE_MS = 10 * 60 * 1000
-// A wake waits this long so a worker's declaration and finished turn share one check turn.
-const WAKE_MS = 5000
-// A request left pending or a working worker quiet this long wakes Hydra again.
-const STALL_MS = 240_000
-// A worker inside one tool call, such as a long test run, is busy rather than quiet for up to this long.
-const BUSY_MS = 60 * 60 * 1000
-// A paused worker that named no end for its wait is checked on after this long.
-const PAUSE_MS = 4 * 60 * 60 * 1000
-// A stall still there after Hydra's turn wakes it again, each time after twice the last wait, up to this.
-const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
 // After a failed start Pnyx tries again after each of these waits, then every last one, until a start works.
 const RETRY_MS = [
   60_000,
@@ -102,62 +89,11 @@ const RETRY_MS = [
   300_000,
   600_000,
 ]
-// How much of a message Hydra's Not confirmed wake quotes.
-const UNCONFIRMED_QUOTE_CHARS = 80
-const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
-// A worker runs the worker reporting skill's own commands without asking; any other pnyx-axi command still asks.
-const WORKER_COMMANDS = [
-  'task show',
-  'task history',
-  'task status',
-  'task chat',
-  'task inbox read',
-  'task inbox ack',
-  'hydra send',
-  'link',
-].map(command => `pnyx-axi ${command}`)
-// The agent must not inherit the server's terminal, task or actor.
-const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
 // A stall, ended wait or unconfirmed reply the stall check found, as one reason line.
 type StallItem = WakeReason & {
   id: string
   card: string
-}
-
-// A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
-// The account a harness runs under: the one asked for, else the main one, else the first for that harness.
-const harnessAccount = ({
-  effective,
-  harness,
-  prefer,
-}: {
-  effective: ReturnType<typeof effectiveDispatch>
-  harness: Harness
-  prefer?: string
-}) => {
-  const ours = ({ name }: { name?: string }) =>
-    !!name && effective.accounts[name]?.provider === harness
-
-  return [
-    prefer,
-    effective.dispatch.main,
-  ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
-}
-
-// Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
-function sameChosenSettings({
-  current,
-  chosen,
-}: {
-  current: AgentSettings | undefined
-  chosen: AgentSettings
-}): boolean {
-  // ponytail: a choice the owner cleared keeps the running session until it idles out.
-  return Object.entries(chosen).every(([
-    key,
-    value,
-  ]) => current?.[key] === value)
 }
 
 // A wake offered again after its turn failed gets a fresh id, as each id starts one turn: wake:<through>.<try>.
@@ -364,14 +300,6 @@ function wakeCursor({
   return fallback
 }
 
-function isFolder({ path }: { path: string }): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
-}
-
 // id names the Hydra message or wake an item carries, so a turn knows what it answered.
 export function inbox() {
   const items: {
@@ -431,13 +359,6 @@ export function inbox() {
       }
     },
   }
-}
-
-function steeringAssignment({ card }: { card: Card }): string {
-  return JSON.stringify([
-    card.steeringGeneration ?? card.createdSeq,
-    steeringHeld({ card }),
-  ])
 }
 
 export function createHost({
@@ -4894,40 +4815,6 @@ export function createHost({
   return host
 }
 
-// A worker's cut turn is resumed once: not when that turn was itself a resume, nor twice for one cut.
-function findWorkerTurnToResume({
-  hydraId,
-  state,
-  agent,
-}: {
-  hydraId: string
-  state: HydraState
-  agent: AgentRef
-}): string | undefined {
-  const lastTurn = readEvents({ hydraId }).findLast(event => {
-    if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
-      return false
-    }
-
-    const matchesSession = event.data.agent?.sessionId === agent.sessionId
-      && event.data.agent.provider === agent.provider
-
-    return matchesSession
-  })
-
-  if (!lastTurn || lastTurn.id.startsWith('resume:')) {
-    return undefined
-  }
-
-  const resumeAttemptId = `resume:${lastTurn.seq}`
-
-  if (resumeAttemptId in state.eventIds) {
-    return undefined
-  }
-
-  return resumeAttemptId
-}
-
 function findHydraTurnToResume({
   hydraId,
   state,
@@ -5033,112 +4920,6 @@ function findHydraTurnToResume({
     wakeThrough: Number(wakeThroughSeq ?? 0),
     resumeMessage: `<pnyx-wake>A Pnyx server restart cut your last turn before you answered ${interruptedWork}. Run \`pnyx-axi hydra messages --after ${lastFinishedTurnSeq} --hydra ${hydraId}\` and \`pnyx-axi hydra check --after ${lastFinishedTurnSeq} --hydra ${hydraId}\`, then answer what is still open; tell the owner in one line that the restart cut your reply.\n${REPLY_RULES}</pnyx-wake>`,
   }
-}
-
-const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
-
-const modelsPath = () => join(
-  pnyxHome(),
-  'harness-models.json',
-)
-
-// "<harness>:<login folder>" -> the harness's model list, shared by every Hydra.
-function readModels(): Record<string, unknown> {
-  try {
-    const value = JSON.parse(readFileSync(
-      modelsPath(),
-      'utf8',
-    )) as unknown
-
-    return typeof value === 'object' && value !== null && !Array.isArray(value) ? value as Record<string, unknown> : {}
-  } catch {
-    return {}
-  }
-}
-
-function storedModels({ key }: { key: string }): ModelOption[] | undefined {
-  const value = readModels()[key]
-  const models = (Array.isArray(value) ? value as Partial<ModelOption>[] : [])
-    .filter((model): model is ModelOption => typeof model?.value === 'string' && typeof model.label === 'string')
-
-  return models.length > 0 ? models : undefined
-}
-
-// ponytail: read-modify-write without a lock, so two servers storing at once can drop one key; it is read again on the next start.
-function storeModels({
-  key,
-  models,
-}: {
-  key: string
-  models: ModelOption[]
-}): void {
-  const tmp = `${modelsPath()}.tmp-${process.pid}`
-
-  // The stored list only saves the next read; failing to write it never fails this one.
-  try {
-    writeFileSync(
-      tmp,
-      JSON.stringify({
-        ...readModels(),
-        [key]: models,
-      }),
-    )
-    renameSync(
-      tmp,
-      modelsPath(),
-    )
-  } catch {
-    rmSync(
-      tmp,
-      { force: true },
-    )
-  }
-}
-
-// A harness whose catalog cannot be read is left out, so its models are not checked.
-async function catalogOffers({
-  host,
-  harnesses,
-}: {
-  host: Host
-  harnesses: Harness[]
-}) {
-  const offers: Partial<Record<Harness, string[]>> = {}
-
-  await Promise.all([...new Set(harnesses)].map(harness => host.models({ harness })
-    .then(
-      models => {
-        offers[harness] = modelIds({ models })
-      },
-      () => {},
-    )))
-
-  return offers
-}
-
-const field = ({
-  body,
-  name,
-  optional = false,
-}: {
-  body: Record<string, unknown>
-  name: string
-  optional?: boolean
-}): string | undefined => {
-  const value = body[name]
-
-  if (value === undefined && optional) {
-    return undefined
-  }
-
-  if (typeof value !== 'string' || !value.trim() || value.length > 32000) {
-    throw new HydraError({
-      message: `${name} must be a string of 1 to 32000 characters`,
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  return value
 }
 
 export async function hostRequestUnlocked({
