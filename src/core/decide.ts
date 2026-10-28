@@ -12,6 +12,7 @@ import { hydraConfig, fallbackColumn, HYDRA_CARD } from './hydra.ts'
 import { base, type Meta } from '../app/command-meta.ts'
 import { decided } from '../app/decision.ts'
 import { invalid, asRecord, onlyKeys, text, optionalText } from '../app/command-validation.ts'
+import { projectLabel } from '../projects/labels.ts'
 
 export function findCard({
   state,
@@ -62,23 +63,6 @@ export function checkRevision({
       help: [card ? `Run \`pnyx-axi card ${card.id}\` and retry with the current revision` : 'Use --if-revision 0 for a new card'],
     })
   }
-}
-
-export function projectLabel({ value }: { value: unknown }): string | null {
-  if (value === null || value === '') {
-    return null
-  }
-
-  const label = text({
-    value,
-    what: 'project',
-  }).trim()
-
-  if (label.length > 100 || /[\r\n]/.test(label)) {
-    throw invalid({ message: 'project must be a single line of up to 100 characters' })
-  }
-
-  return label
 }
 
 function parseAttention({ value }: { value: unknown }): Attention[] {

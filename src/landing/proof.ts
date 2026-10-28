@@ -1,4 +1,5 @@
-import type { Card, TaskCopy } from '../core/model.ts'
+import type { TaskCopy } from '../projects/model.ts'
+import type { Card } from '../core/model.ts'
 import { git } from '../copies/git.ts'
 import { pullRequestLandingSync, type PullRequestLanding } from '../integrations/github/pull-request.ts'
 

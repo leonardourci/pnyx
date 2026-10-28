@@ -1,5 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { HydraProject } from '../../../src/core/model.ts'
+import type { HydraProject } from '../../../src/projects/model.ts'
 import type { Command } from '../app/connection.ts'
 import { argument } from './optimistic.ts'
 import { DEFAULT_LANDING, type LandingChoice } from './landing-fields.tsx'

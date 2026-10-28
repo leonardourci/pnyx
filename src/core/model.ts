@@ -3,6 +3,7 @@ import type { ExternalSource } from '../external-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 import type { SourceRef } from '../app/model.ts'
 import type { EventBase } from '../store/events.ts'
+import type { HydraProject, TaskCopy } from '../projects/model.ts'
 
 export const COLUMNS = [
   'queued',
@@ -673,36 +674,11 @@ export function ranChecks({ checks }: { checks?: string }): boolean {
   return passed + failed > 0
 }
 
-export interface HydraProject {
-  path: string
-  name: string
-  detached: boolean
-  landing?: Landing
-  merge?: Merger
-  startCommand?: {
-    name: string
-    command: string
-    bringsOwnFolder: boolean
-  }
-  // A shell command run in the project folder that makes a task's copy and prints its path.
-  copy?: string
-}
-
 // A task's own copy of its project: a git worktree Pnyx made, or the folder the
 // project's copy command printed. It is removed only once its work has landed.
 export interface TaskQueue {
   session: string
   rank: number
-}
-
-export interface TaskCopy {
-  path: string
-  project: string
-  via: 'worktree' | 'command'
-  branch?: string
-  base?: string
-  state: 'active' | 'flagged' | 'removed'
-  reason?: string
 }
 
 export interface HydraConfig {
