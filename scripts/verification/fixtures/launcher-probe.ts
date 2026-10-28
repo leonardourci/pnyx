@@ -83,3 +83,13 @@ test(
     )
   },
 )
+
+test(
+  'a launched file resolves # imports to source, not to the build',
+  () => {
+    assert.match(
+      import.meta.resolve('#app/model.ts'),
+      /\/src\/app\/model\.ts$/,
+    )
+  },
+)

@@ -101,6 +101,7 @@ try {
           './test-preload.ts',
           import.meta.url,
         ).href,
+        '--conditions=source',
         '--test',
         `--test-concurrency=${lane.concurrency}`,
         ...lane.nodeArgs,
