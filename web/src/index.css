@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-pad: calc((var(--chip-h) - 1.125em) / 2); --card-h: var(--chip-h); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-pad: calc((var(--chip-h) - 1.125em) / 2); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -397,15 +397,15 @@ h3 { font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { .jump, .chat-fade { animation: none; } }
 
-.composer { --composer-line: var(--chat-line); position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
+.composer { position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--composer-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
+.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
 
 .composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
@@ -425,11 +425,10 @@ h3 { font-weight: 600; }
 
 .draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
-.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2); }
+.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--chip-h) / 2); }
 
 .draft-card[data-loading] .card-label { color: var(--color-muted); }
 
-/* An image still uploading: a track along the card's bottom edge, filled as far as the upload has got. */
 .upload-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-line); }
 
 .upload-bar-done { display: block; height: 100%; background: var(--color-blue); transition: width .2s; }
@@ -933,11 +932,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 /* Floated, the chip leads the message's first line without becoming part of the text comments quote. */
-.message-lead { float: left; margin-right: .25em; font: var(--text-chat)/var(--chat-line) var(--font-chat); white-space: nowrap; }
+.message-lead { float: left; max-width: 100%; margin-right: .5em; font: var(--text-chat)/var(--chat-line) var(--font-chat); }
 
-.message-lead .task-reference-space:first-child { display: none; }
+.message-lead .task-reference-space { display: none; }
 
-.message-lead .draft-chip { margin-left: 0; }
+.message-lead .draft-chip { margin: 0; }
 
 /* A list, quote, code block or table can't flow beside the chip, so the chip takes its own line. */
 .message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
@@ -1269,7 +1268,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
+.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--chip-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
 
 .attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }
 
@@ -1298,12 +1297,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
 /* A chip is one --chip-h box around the text's own line box (1.125em in the chat font), so it fits inside the line. */
-.markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
+.message .markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
 
-.markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
+.message .markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
 
-/* Sent text moves a chip to the next line whole instead of breaking it. */
-.markdown .draft-chip { white-space: nowrap; }
+/* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
+.message :is(.markdown, .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: 1.125em; }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
