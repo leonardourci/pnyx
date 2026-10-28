@@ -939,6 +939,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .message-lead .draft-chip { margin-left: 0; }
 
+/* A list, quote, code block or table can't flow beside the chip, so the chip takes its own line. */
+.message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
+
 .task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 
 .task-create .textarea { height: 96px; }

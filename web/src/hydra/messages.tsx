@@ -6,7 +6,6 @@ import {
 } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
-import { taskMentions } from '#hydra/mentions.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { SavedLabelColor } from '#tasks/model.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
@@ -24,7 +23,7 @@ import {
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
 } from './caret.ts'
-import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
+import { clock, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageImages } from './attached-image.tsx'
@@ -47,19 +46,14 @@ export type ChatEntry = ThreadEntry & {
   renderKey?: string
 }
 
-// A message about a task opens with the task's chip, unless its words already mention that task.
 function MessageTask({ entry }: { entry: ChatEntry }) {
-  const mentioned = taskMentions({ text: entry.text }).some(mention => mention.id === entry.task)
+  const task = leadingTask({ entry })
 
-  if (!entry.task || mentioned) {
-    return null
-  }
-
-  return (
+  return task ? (
     <span className="message-lead">
-      <TaskReference id={entry.task} />
+      <TaskReference id={task} />
     </span>
-  )
+  ) : null
 }
 
 const roleLabel = ({

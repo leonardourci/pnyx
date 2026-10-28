@@ -3,6 +3,7 @@ import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraMessage, HydraStatus } from '#hydra/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '#hydra/hydra.ts'
 import { withoutInjected } from '#oracle/text.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 
 // A streamed start of Hydra's quiet reply hides too.
@@ -393,6 +394,17 @@ export function quoteInto({
     markdownQuote({ text: text.trim() }),
   ]
     .filter(Boolean).join('\n\n') + '\n\n'
+}
+
+// A message about a task opens with the task's chip, unless its words already mention that task.
+export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
+  if (!entry.task) {
+    return undefined
+  }
+
+  const mentioned = taskMentions({ text: entry.text }).some(mention => mention.id === entry.task)
+
+  return mentioned ? undefined : entry.task
 }
 
 export const ownMessage = ({ entry }: { entry: ThreadEntry }) =>
