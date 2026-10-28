@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { hydraName } from '../src/cli/commands.ts'
+import { hydraName } from './cli.ts'
 
 test(
   'a Hydra name keeps whole words near 40 characters, never splits a character and needs real text',

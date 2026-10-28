@@ -3,15 +3,15 @@ import { cpSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync 
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { sendTaskMessage } from '../src/workers/task-message.ts'
-import { decidePush } from '../src/tasks/push.ts'
-import { decideReply } from '../src/workers/reply-rules.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { readThread, type ThreadEntry } from '../src/hydra/transcripts-read.ts'
-import { paseoHistory } from '../src/integrations/paseo/history.ts'
-import { taskReceipt, withTaskReceipts } from '../src/hydra/transcripts-task.ts'
+import { commands } from '../app/cli.ts'
+import { sendTaskMessage } from '../workers/task-message.ts'
+import { decidePush } from '../tasks/push.ts'
+import { decideReply } from '../workers/reply-rules.ts'
+import { loadHydra } from '../app/store.ts'
+import { withWriter } from '../app/writer.ts'
+import { readThread, type ThreadEntry } from './transcripts-read.ts'
+import { paseoHistory } from '../integrations/paseo/history.ts'
+import { taskReceipt, withTaskReceipts } from './transcripts-task.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(
@@ -35,7 +35,7 @@ function fixture() {
   cpSync(
     join(
       import.meta.dirname,
-      '../src/integrations/firstmate/fixtures/firstmate-home',
+      '../integrations/firstmate/fixtures/firstmate-home',
     ),
     join(
       home,

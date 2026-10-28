@@ -7,7 +7,7 @@ import type { DispatchProposal } from './model.ts'
 import { withWriter } from '../app/writer.ts'
 import { withRegistryLock } from '../store/storage.ts'
 import { meta, type Output } from '../app/cli-support.ts'
-import { runsInBypass } from '../cli/hydra-session.ts'
+import { runsInBypass } from '../hydra/hydra-session.ts'
 import { configPath, effectiveDispatch, parseAccounts, parseDispatch, readConfig, writeConfig } from './dispatch-config.ts'
 
 function configuration({
