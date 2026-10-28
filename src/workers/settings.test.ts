@@ -6,8 +6,8 @@ import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { loadHydra } from '../app/store.ts'
-import { spoolWrite } from '../app/spool.ts'
+import { loadHydra } from '#app/store.ts'
+import { spoolWrite } from '#app/spool.ts'
 
 const BIN = join(
   import.meta.dirname,

@@ -1,13 +1,13 @@
-import type { HydraState, Decision } from '../app/model.ts'
+import type { HydraState, Decision } from '#app/model.ts'
 import type { Column } from './columns-model.ts'
 import { fallbackColumn } from './column-rules.ts'
-import { hydraConfig } from '../hydra/config.ts'
-import { invalid } from '../app/command-validation.ts'
-import { base, type Meta } from '../app/command-meta.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { invalid } from '#app/command-validation.ts'
+import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { columnCards, rankOf } from './select.ts'
-import { decided } from '../app/decision.ts'
-import type { ViewPreferences, ViewEvent } from '../preferences/model.ts'
+import { decided } from '#app/decision.ts'
+import type { ViewPreferences, ViewEvent } from '#preferences/model.ts'
 
 export function checkColumn({
   state,

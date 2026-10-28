@@ -1,8 +1,8 @@
-import type { HydraState, Decision } from '../app/model.ts'
-import type { RepliedEvent } from '../tasks/model.ts'
-import { base, type Meta } from '../app/command-meta.ts'
-import { findCard } from '../tasks/push-rules.ts'
-import { decided } from '../app/decision.ts'
+import type { HydraState, Decision } from '#app/model.ts'
+import type { RepliedEvent } from '#tasks/model.ts'
+import { base, type Meta } from '#app/command-meta.ts'
+import { findCard } from '#tasks/push-rules.ts'
+import { decided } from '#app/decision.ts'
 
 export function decideReply({
   state,

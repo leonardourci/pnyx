@@ -3,9 +3,9 @@ import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../app/cli.ts'
-import { project } from '../projects/cli.ts'
-import { loadHydra } from '../app/store.ts'
+import { commands } from '#app/cli.ts'
+import { project } from '#projects/cli.ts'
+import { loadHydra } from '#app/store.ts'
 import { matchingTasks, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from './mentions.ts'
 
 async function fixture() {

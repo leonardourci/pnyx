@@ -4,8 +4,8 @@ import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { readCatalog } from './transcripts-catalog.ts'
-import { emptyHydra, reduce } from '../app/reducer.ts'
-import { decidePush } from '../tasks/push.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
+import { decidePush } from '#tasks/push.ts'
 
 const write = ({
   path,
@@ -121,7 +121,7 @@ for (const provider of [
       const {
         setupSkills,
         prepareHydraFolder,
-      } = await import('../setup/skills.ts')
+      } = await import('#setup/skills.ts')
       setupSkills({
         userHome: home,
         claudeConfigDir: locations.claude,

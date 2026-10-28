@@ -3,7 +3,7 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { withWriter } from '../app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { search, updateIndex } from './index.ts'
 import { redact, transcriptMessages } from './text.ts'
 

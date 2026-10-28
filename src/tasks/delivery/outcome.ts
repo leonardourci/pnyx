@@ -1,9 +1,9 @@
-import type { HydraState, Decision } from '../../app/model.ts'
+import type { HydraState, Decision } from '#app/model.ts'
 import type { Outcome } from './model.ts'
-import { base, type Meta } from '../../app/command-meta.ts'
-import { findCard } from '../push-rules.ts'
-import { HydraError } from '../../store/errors.ts'
-import { decided } from '../../app/decision.ts'
+import { base, type Meta } from '#app/command-meta.ts'
+import { findCard } from '#tasks/push-rules.ts'
+import { HydraError } from '#store/errors.ts'
+import { decided } from '#app/decision.ts'
 
 // source: the adapter observing this outcome. An observed outcome changes or
 // clears only through the same source; a person may replace one hooks observed.

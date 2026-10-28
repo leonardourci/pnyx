@@ -1,9 +1,9 @@
 import { requireHydra } from './store.ts'
 import { hydraDir } from './home-migration.ts'
-import { privateDir, acquireLock, logPath, writeDurably } from '../store/storage.ts'
+import { privateDir, acquireLock, logPath, writeDurably } from '#store/storage.ts'
 import { readLog, type LogRead, type RepairMarker } from './event-log.ts'
 import { readFileSync } from 'node:fs'
-import { EVENT_VERSION } from '../store/events.ts'
+import { EVENT_VERSION } from '#store/events.ts'
 import { replay, emptyHydra } from './reducer.ts'
 import { writeSnapshot } from './snapshot.ts'
 

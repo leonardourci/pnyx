@@ -1,9 +1,9 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { HydraError } from '../store/errors.ts'
-import { pnyxHome } from '../store/storage.ts'
-import type { Harness } from '../integrations/hooks/observe.ts'
+import { HydraError } from '#store/errors.ts'
+import { pnyxHome } from '#store/storage.ts'
+import type { Harness } from '#integrations/hooks/observe.ts'
 
 const SCRIPT = 'pnyx-hook.sh'
 const SCRIPT_SOURCE = join(

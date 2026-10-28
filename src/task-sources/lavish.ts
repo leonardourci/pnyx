@@ -1,8 +1,8 @@
 import { readFileSync, realpathSync, statSync } from 'node:fs'
 import { dirname } from 'node:path'
-import type { Meta } from '../app/command-meta.ts'
-import type { SteeringClaim } from '../workers/model.ts'
-import type { Writer } from '../app/writer.ts'
+import type { Meta } from '#app/command-meta.ts'
+import type { SteeringClaim } from '#workers/model.ts'
+import type { Writer } from '#app/writer.ts'
 import type { ExternalSource } from './model.ts'
 import { lavishCanRearm } from './lavish-output.ts'
 import {

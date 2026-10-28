@@ -1,9 +1,9 @@
-import { appendNote } from '../integrations/hooks/harvest.ts'
-import { ownerActor } from '../app/actors.ts'
-import { liveTask } from '../tasks/select.ts'
-import { taggedParagraphs, taskMentions } from '../hydra/mentions.ts'
-import { redact } from '../oracle/text.ts'
-import type { Writer } from '../app/writer.ts'
+import { appendNote } from '#integrations/hooks/harvest.ts'
+import { ownerActor } from '#app/actors.ts'
+import { liveTask } from '#tasks/select.ts'
+import { taggedParagraphs, taskMentions } from '#hydra/mentions.ts'
+import { redact } from '#oracle/text.ts'
+import type { Writer } from '#app/writer.ts'
 
 // The card keeps the words the owner already read in chat, so no model is asked anything.
 export function copyTagged({

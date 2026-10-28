@@ -1,13 +1,13 @@
 import { OVERRIDE_FIELDS, overrideOf, type Override } from './dispatch.ts'
-import { HydraError } from '../store/errors.ts'
-import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { Output } from '../app/cli-support.ts'
-import type { Meta } from '../app/command-meta.ts'
-import { loadHydra } from '../app/store.ts'
+import { HydraError } from '#store/errors.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { Output } from '#app/cli-support.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { loadHydra } from '#app/store.ts'
 import { sendReply } from './reply.ts'
 import { taskPrompt } from './start.ts'
 import { selfSession } from './session-attachments.ts'
-import { readEvents } from '../app/event-log.ts'
+import { readEvents } from '#app/event-log.ts'
 
 export function startOverride({
   values,

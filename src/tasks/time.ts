@@ -1,4 +1,4 @@
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export function reminderTime({
   when,

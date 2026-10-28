@@ -1,6 +1,6 @@
 import { OUTCOME_STATES, type LandingRule, type OutcomeState } from './model.ts'
 import { AxiError } from 'axi-sdk-js'
-import { guard, WRITE, parse, meta, required, commit, type Options } from '../../app/cli-support.ts'
+import { guard, WRITE, parse, meta, required, commit, type Options } from '#app/cli-support.ts'
 import { parseLink, decideLink } from './links.ts'
 import { decideOutcome } from './outcome.ts'
 

@@ -1,5 +1,5 @@
 import { createPaseoClient, type PaseoClient } from '@getpaseo/client'
-import { HydraError } from '../../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export type Connect = ({ url }: { url: string }) => Promise<PaseoClient>
 

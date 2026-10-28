@@ -1,10 +1,10 @@
-import type { Decision, HydraState } from '../app/model.ts'
-import type { Meta } from '../app/command-meta.ts'
+import type { Decision, HydraState } from '#app/model.ts'
+import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { hydraEvent } from '../hydra/hydra.ts'
-import { HYDRA_CARD } from '../hydra/identity.ts'
-import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
-import { HydraError } from '../store/errors.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export function decideDependencies({
   state,

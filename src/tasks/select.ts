@@ -1,5 +1,5 @@
 import type { Card } from './model.ts'
-import type { HydraState } from '../app/model.ts'
+import type { HydraState } from '#app/model.ts'
 
 export function liveTask({ card }: { card: Card }): boolean {
   return card.hidden !== true && !card.automaticTask

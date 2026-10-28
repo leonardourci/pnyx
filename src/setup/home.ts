@@ -1,7 +1,7 @@
 import { homedir } from 'node:os'
 import { join, resolve } from 'node:path'
-import { HydraError } from '../store/errors.ts'
-import { canonical, pnyxHome } from '../store/paths.ts'
+import { HydraError } from '#store/errors.ts'
+import { canonical, pnyxHome } from '#store/paths.ts'
 
 export function requireSetupHome({ allowCustomHome }: { allowCustomHome: boolean }) {
   const home = canonical({ path: resolve(pnyxHome()) })

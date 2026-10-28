@@ -1,9 +1,9 @@
 import { effectiveDispatch, type Harness } from './dispatch-config.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
-import type { Card } from '../tasks/model.ts'
+import type { Card } from '#tasks/model.ts'
 import { steeringHeld } from './steering.ts'
-import type { HydraState } from '../app/model.ts'
-import { readEvents } from '../app/event-log.ts'
+import type { HydraState } from '#app/model.ts'
+import { readEvents } from '#app/event-log.ts'
 
 export const SETTINGS = [
   'model',

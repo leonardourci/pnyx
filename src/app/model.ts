@@ -1,16 +1,16 @@
-import { EVENT_VERSION, type EventBase } from '../store/events.ts'
-import type { ViewEvent, ViewPreferences } from '../preferences/model.ts'
-import type { HydraProject, TaskCopy } from '../projects/model.ts'
-import type { FirstmateRecord } from '../integrations/firstmate/model.ts'
-import type { ReportCall } from '../investigations/model.ts'
-import type { Column, HydraColumn } from '../tasks/columns-model.ts'
-import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '../tasks/model.ts'
-import type { LandingRule, LinkedEvent, OutcomeEvent } from '../tasks/delivery/model.ts'
-import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '../workers/model.ts'
-import type { HydraConfig, HydraMessage, HydraStatus, ChatEvent } from '../hydra/model.ts'
-import type { ProjectRefresh } from '../projects/refresh-types.ts'
-import type { HelperChange, HelperState } from '../routine-helper/state.ts'
-import type { ExternalSourceEvent } from '../task-sources/model.ts'
+import { EVENT_VERSION, type EventBase } from '#store/events.ts'
+import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
+import type { HydraProject, TaskCopy } from '#projects/model.ts'
+import type { FirstmateRecord } from '#integrations/firstmate/model.ts'
+import type { ReportCall } from '#investigations/model.ts'
+import type { Column, HydraColumn } from '#tasks/columns-model.ts'
+import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '#tasks/model.ts'
+import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
+import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
+import type { HydraConfig, HydraMessage, HydraStatus, ChatEvent } from '#hydra/model.ts'
+import type { ProjectRefresh } from '#projects/refresh-types.ts'
+import type { HelperChange, HelperState } from '#routine-helper/state.ts'
+import type { ExternalSourceEvent } from '#task-sources/model.ts'
 
 export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
@@ -275,8 +275,8 @@ export type HydraChange = EventBase & (
 )
 
 export type HydraEvent =
-  | import('../workers/compaction/model.ts').CompactionEvent
-  | import('../upgrade/model.ts').UpgradeEvent
+  | import('#workers/compaction/model.ts').CompactionEvent
+  | import('#upgrade/model.ts').UpgradeEvent
   | ExternalSourceEvent
   | SteeringEvent
   | PushedEvent
@@ -374,7 +374,7 @@ export interface HydraState {
     reminders: Record<string, string>
   }
   hydraMessages?: HydraMessage[]
-  upgrades?: import('../upgrade/model.ts').UpgradeOperation[]
+  upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
   // seq is the event that set it, so a recap can list what came after Hydra went down.
   hydraStatus?: HydraStatus & { seq: number }
   hydraMemory?: Record<string, {

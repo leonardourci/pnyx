@@ -1,4 +1,4 @@
-import type { HelperUsageTotal } from '../routine-helper/state.ts'
+import type { HelperUsageTotal } from '#routine-helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
 
 export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | {

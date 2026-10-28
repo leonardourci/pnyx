@@ -4,13 +4,13 @@ import { dateLearnings, learningText, type LearningChange, type Learning } from 
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
-import { hydraEvent } from '../hydra/hydra.ts'
-import { HydraError } from '../store/errors.ts'
-import type { Meta } from '../app/command-meta.ts'
-import { hydraIds } from '../app/home-migration.ts'
-import { loadHydra } from '../app/store.ts'
-import { withWriter } from '../app/writer.ts'
-import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '../store/storage.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { HydraError } from '#store/errors.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { hydraIds } from '#app/home-migration.ts'
+import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
+import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
 
 interface OwnerLog {
   memory: Memory

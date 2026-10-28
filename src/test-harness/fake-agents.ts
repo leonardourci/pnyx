@@ -9,8 +9,8 @@ import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 import { PassThrough } from 'node:stream'
 import type { ModelInfo, Options, PermissionResult, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk'
-import { transcriptPath, type QueryFn } from '../workers/claude.ts'
-import type { SpawnCodex } from '../workers/codex.ts'
+import { transcriptPath, type QueryFn } from '#workers/claude.ts'
+import type { SpawnCodex } from '#workers/codex.ts'
 
 const FIXTURES = join(
   import.meta.dirname,

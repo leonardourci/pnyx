@@ -7,15 +7,15 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { beforeEach, test } from 'node:test'
 import type { HydraEvent } from './model.ts'
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { repairHydra } from './repair.ts'
 import { withWriter } from './writer.ts'
-import { acquireLock } from '../store/storage.ts'
-import { STREAMS, assertGolden, readStream } from '../test-harness/streams.ts'
+import { acquireLock } from '#store/storage.ts'
+import { STREAMS, assertGolden, readStream } from '#test-harness/streams.ts'
 
 beforeEach(() => {
   process.env.PNYX_HOME = mkdtempSync(join(

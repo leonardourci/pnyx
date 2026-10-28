@@ -1,14 +1,14 @@
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState, Decision } from '../app/model.ts'
-import { base, type Meta } from '../app/command-meta.ts'
-import { text, asRecord, invalid, onlyKeys, optionalText } from '../app/command-validation.ts'
+import type { HydraState, Decision } from '#app/model.ts'
+import { base, type Meta } from '#app/command-meta.ts'
+import { text, asRecord, invalid, onlyKeys, optionalText } from '#app/command-validation.ts'
 import type { PushFields } from './model.ts'
-import { projectLabel } from '../projects/labels.ts'
+import { projectLabel } from '#projects/labels.ts'
 import { parseAutoTitle, parseAttention, findCard, pushedValue } from './push-rules.ts'
-import { parseAgent, mergeSettings, parseTerminal, parseSource } from '../workers/sessions.ts'
+import { parseAgent, mergeSettings, parseTerminal, parseSource } from '#workers/sessions.ts'
 import { wouldCycle, isStaleSource } from './events.ts'
-import { decided } from '../app/decision.ts'
+import { decided } from '#app/decision.ts'
 
 export function decidePush({
   state,

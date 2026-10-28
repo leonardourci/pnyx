@@ -1,6 +1,6 @@
-import type { HydraState } from '../app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import type { HydraConfig } from './model.ts'
-import { DEFAULT_COLUMNS } from '../tasks/column-defaults.ts'
+import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 
 // ponytail: a never-configured Hydra replays onto the defaults directly, so only its cards moved into Workers on it get placed by status; record a layout version if such logs ever matter.
 export function hydraConfig({

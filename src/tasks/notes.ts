@@ -1,10 +1,10 @@
 import { createHash } from 'node:crypto'
-import type { HydraState, Decision } from '../app/model.ts'
+import type { HydraState, Decision } from '#app/model.ts'
 import { NOTE_KINDS, type Note } from './model.ts'
-import { base, type Meta } from '../app/command-meta.ts'
+import { base, type Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { invalid, text } from '../app/command-validation.ts'
-import { decided } from '../app/decision.ts'
+import { invalid, text } from '#app/command-validation.ts'
+import { decided } from '#app/decision.ts'
 
 // The event id of a harvested note: the same card and source record always give
 // the same id, so a note is appended once however often its source is read.

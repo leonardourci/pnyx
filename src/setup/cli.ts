@@ -1,11 +1,11 @@
 import { AxiError } from 'axi-sdk-js'
-import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '../app/cli-support.ts'
+import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '#app/cli-support.ts'
 import { setupCheckOutput } from './check.ts'
 import { requireSetupHome } from './home.ts'
 import { setupSkills } from './skills.ts'
 import { setupService } from './service.ts'
-import { setupHydra } from '../workers/start.ts'
-import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
+import { setupHydra } from '#workers/start.ts'
+import { HARNESSES, type Harness } from '#integrations/hooks/observe.ts'
 import { detectedHarnesses, setupHooks } from './hooks.ts'
 
 export const setup = guard({

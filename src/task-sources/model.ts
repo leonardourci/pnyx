@@ -1,5 +1,5 @@
-import type { EventBase } from '../store/events.ts'
-import type { SteeringClaim } from '../workers/model.ts'
+import type { EventBase } from '#store/events.ts'
+import type { SteeringClaim } from '#workers/model.ts'
 
 export interface SourceCommand {
   executable: string

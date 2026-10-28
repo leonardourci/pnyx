@@ -1,9 +1,9 @@
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import type { Harness } from './dispatch-config.ts'
-import { pnyxHome } from '../store/storage.ts'
+import { pnyxHome } from '#store/storage.ts'
 import { modelIds, type ModelOption } from './provider.ts'
-import type { Host } from '../app/host-types.ts'
+import type { Host } from '#app/host-types.ts'
 
 export const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
 

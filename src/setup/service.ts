@@ -3,12 +3,12 @@ import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, delimiter, dirname, isAbsolute, join } from 'node:path'
-import { HydraError } from '../store/errors.ts'
-import { loadHydra } from '../app/store.ts'
-import { pnyxHome, privateDir } from '../store/storage.ts'
-import { canonical } from '../store/paths.ts'
-import { DEFAULT_PORT } from '../app/server-state.ts'
-import { SOURCE_CONDITIONS } from '../app/source-conditions.ts'
+import { HydraError } from '#store/errors.ts'
+import { loadHydra } from '#app/store.ts'
+import { pnyxHome, privateDir } from '#store/storage.ts'
+import { canonical } from '#store/paths.ts'
+import { DEFAULT_PORT } from '#app/server-state.ts'
+import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll(
   '&',

@@ -1,13 +1,13 @@
 import { LEGACY_IN_PROGRESS, LEGACY_COLUMNS, type HydraColumn, type Column } from './columns-model.ts'
 import type { TaskStatus, Card } from './model.ts'
-import type { HydraState, Decision } from '../app/model.ts'
+import type { HydraState, Decision } from '#app/model.ts'
 import { DEFAULT_COLUMNS, type Role, columnRule } from './column-defaults.ts'
 import { ownerGates } from './owner-gates.ts'
-import type { Meta } from '../app/command-meta.ts'
-import { hydraConfig } from '../hydra/config.ts'
-import { hydraEvent } from '../hydra/hydra.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { validateColumnRule } from './columns.ts'
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 // A task created in an older layout's Workers on it column still starts working.
 export const ROLE_STATUS: Partial<Record<NonNullable<HydraColumn['role']>, TaskStatus>> = {

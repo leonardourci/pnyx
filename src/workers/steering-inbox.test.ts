@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from '../app/model.ts'
-import { emptyHydra, replay } from '../app/reducer.ts'
-import { readStream } from '../test-harness/streams.ts'
+import type { HydraEvent } from '#app/model.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
+import { readStream } from '#test-harness/streams.ts'
 
 test(
   'legacy reply delivery history replays without inventing handled instructions',

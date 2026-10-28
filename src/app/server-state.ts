@@ -2,10 +2,10 @@ import { execFileSync } from 'node:child_process'
 import { createHash, randomBytes } from 'node:crypto'
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 import { hydraDir } from './home-migration.ts'
 import { withWriter } from './writer.ts'
-import { pnyxHome } from '../store/storage.ts'
+import { pnyxHome } from '#store/storage.ts'
 
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.

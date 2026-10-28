@@ -1,6 +1,6 @@
-import { requestId } from '../workers/answers.ts'
+import { requestId } from '#workers/answers.ts'
 import type { Card } from './model.ts'
-import { INTERRUPTED } from '../workers/session-attachments.ts'
+import { INTERRUPTED } from '#workers/session-attachments.ts'
 
 export function ownerGates({ card }: { card: Card }): string[] {
   return [

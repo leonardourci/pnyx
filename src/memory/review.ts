@@ -1,10 +1,10 @@
 import { learningDigest, staleLearnings } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
 import { ownerMemory } from './owner-memory.ts'
-import type { HydraState } from '../app/model.ts'
-import { projectsFor } from '../projects/read.ts'
+import type { HydraState } from '#app/model.ts'
+import { projectsFor } from '#projects/read.ts'
 import { readProjectMemory } from './project-memory.ts'
-import { projectIdentity } from '../projects/sources.ts'
+import { projectIdentity } from '#projects/sources.ts'
 
 export function memoryReview({
   state,

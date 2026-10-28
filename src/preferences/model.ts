@@ -1,5 +1,5 @@
-import type { EventBase } from '../store/events.ts'
-import type { Column } from '../tasks/columns-model.ts'
+import type { EventBase } from '#store/events.ts'
+import type { Column } from '#tasks/columns-model.ts'
 
 export interface ViewPreferences {
   focusMode: boolean
@@ -7,7 +7,7 @@ export interface ViewPreferences {
   defaultHydraWidth: number
   defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
-  keyboard: import('../preferences/keyboard.ts').KeyboardPreferences
+  keyboard: import('./keyboard.ts').KeyboardPreferences
   fontSize: number
   chatFontSize: number
   codeFontSize: number

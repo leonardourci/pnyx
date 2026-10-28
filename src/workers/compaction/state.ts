@@ -1,7 +1,7 @@
-import { sessionId } from '../session-attachments.ts'
+import { sessionId } from '#workers/session-attachments.ts'
 import { commentEpoch } from './comments.ts'
-import type { HydraEvent, HydraState } from '../../app/model.ts'
-import type { Card } from '../../tasks/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
 
 export const compactCommand = ({ text }: { text: string }) => /^\/compact(?:\s|$)/.test(text.trim())
 

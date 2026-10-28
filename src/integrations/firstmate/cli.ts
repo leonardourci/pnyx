@@ -1,5 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
-import { COMMON, guard, parse, type Options, type Output } from '../../app/cli-support.ts'
+import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { resolveHome } from './home.ts'
 import { syncHome, watchHome, type SyncResult } from './sync.ts'
 

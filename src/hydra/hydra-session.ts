@@ -1,12 +1,12 @@
-import { proposeOwnerCommand } from '../app/confirmations.ts'
+import { proposeOwnerCommand } from '#app/confirmations.ts'
 import { parseArgs } from 'node:util'
-import { DEFAULT_HYDRA } from '../app/home-migration.ts'
-import { loadHydra } from '../app/store.ts'
+import { DEFAULT_HYDRA } from '#app/home-migration.ts'
+import { loadHydra } from '#app/store.ts'
 import { AxiError } from 'axi-sdk-js'
 import { HYDRA_CARD } from './identity.ts'
 import { hydraBypasses } from './hydra.ts'
-import { HYDRA_ACTOR } from '../app/actors.ts'
-import { guard, WRITE } from '../app/cli-support.ts'
+import { HYDRA_ACTOR } from '#app/actors.ts'
+import { guard, WRITE } from '#app/cli-support.ts'
 
 type Command = ReturnType<typeof guard>
 const flag = ({

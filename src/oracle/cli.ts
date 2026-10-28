@@ -1,7 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
-import { findCard } from '../tasks/push-rules.ts'
-import { COMMON, guard, parse, type Options, type Output } from '../app/cli-support.ts'
-import { loadHydra } from '../app/store.ts'
+import { findCard } from '#tasks/push-rules.ts'
+import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
+import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, SNIPPETS, indexStatus, rebuildIndex, search, updateIndex, type Hit, type IndexResult, type Kind, type Match } from './index.ts'
 

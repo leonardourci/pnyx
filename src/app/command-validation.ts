@@ -1,4 +1,4 @@
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export function notUndoable({ message }: { message: string }): HydraError {
   return new HydraError({

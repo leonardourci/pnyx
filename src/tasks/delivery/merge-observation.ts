@@ -1,5 +1,5 @@
 import type { Link } from './model.ts'
-import type { MergeOutcome } from '../../integrations/github/merge-evidence.ts'
+import type { MergeOutcome } from '#integrations/github/merge-evidence.ts'
 
 export function mergeObservation({
   link,

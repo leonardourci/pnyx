@@ -1,5 +1,5 @@
 import { spawn } from 'node:child_process'
-import { HydraError } from '../../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export function runCommand({
   command,

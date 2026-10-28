@@ -1,7 +1,7 @@
-import { COMMON, integer, meta, parse, required, type Output } from '../app/cli-support.ts'
-import { loadHydra } from '../app/store.ts'
-import { withWriter } from '../app/writer.ts'
-import { steeringClaim } from '../workers/steering.ts'
+import { COMMON, integer, meta, parse, required, type Output } from '#app/cli-support.ts'
+import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
+import { steeringClaim } from '#workers/steering.ts'
 import { armLavish } from './lavish.ts'
 import {
   captureResult, commandIdentity, handleResult, invalidSource, registerSource,

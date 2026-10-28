@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra, reduce } from '../../app/reducer.ts'
-import { readStream } from '../../test-harness/streams.ts'
-import type { HydraEvent } from '../../app/model.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
+import { readStream } from '#test-harness/streams.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { needsCommentNote } from './comments.ts'
 
 test(

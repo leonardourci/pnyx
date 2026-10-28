@@ -1,9 +1,9 @@
 import { AxiError } from 'axi-sdk-js'
-import { guard, parse, WRITE, required, meta, commit } from '../app/cli-support.ts'
-import { loadHydra } from '../app/store.ts'
+import { guard, parse, WRITE, required, meta, commit } from '#app/cli-support.ts'
+import { loadHydra } from '#app/store.ts'
 import { viewFor, DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths } from './view.ts'
 import { decideView } from './decisions.ts'
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export const view = guard({
   handler: ({ args }) => {

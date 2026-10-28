@@ -1,11 +1,11 @@
-import type { HydraEvent } from '../app/model.ts'
-import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
+import type { HydraEvent } from '#app/model.ts'
+import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraColumn } from './columns-model.ts'
 import type { Ask, RepliedEvent } from './model.ts'
-import type { Link } from './delivery/model.ts'
-import type { PermissionRequest } from '../workers/model.ts'
-import { reportActor } from '../hydra/hydra.ts'
-import { taskMentions } from '../hydra/mentions.ts'
+import type { Link } from '#tasks/delivery/model.ts'
+import type { PermissionRequest } from '#workers/model.ts'
+import { reportActor } from '#hydra/hydra.ts'
+import { taskMentions } from '#hydra/mentions.ts'
 
 export interface TaskEvent {
   id: string

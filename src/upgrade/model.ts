@@ -1,5 +1,5 @@
-import type { EventBase } from '../store/events.ts'
-import type { Suggestion } from '../hydra/transcripts-catalog.ts'
+import type { EventBase } from '#store/events.ts'
+import type { Suggestion } from '#hydra/transcripts-catalog.ts'
 
 export const UPGRADE_COMMAND = '/upgrade'
 

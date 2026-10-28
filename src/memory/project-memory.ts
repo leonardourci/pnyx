@@ -1,16 +1,16 @@
-import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
+import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { readOwnerEntries } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { Meta } from '../app/command-meta.ts'
-import { HydraError } from '../store/errors.ts'
-import { withWriter } from '../app/writer.ts'
-import { privateDir, withRegistryLock } from '../store/storage.ts'
-import { pnyxHome } from '../store/paths.ts'
-import { projectIdentity, projectSources } from '../projects/sources.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { HydraError } from '#store/errors.ts'
+import { withWriter } from '#app/writer.ts'
+import { privateDir, withRegistryLock } from '#store/storage.ts'
+import { pnyxHome } from '#store/paths.ts'
+import { projectIdentity, projectSources } from '#projects/sources.ts'
 
 export const PROJECT_MEMORY_BUDGET = 10000
 export const PROJECT_MEMORY_NEARLY_FULL = 0.8

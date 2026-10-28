@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { recordedUsage } from '../integrations/hooks/usage.ts'
+import { recordedUsage } from '#integrations/hooks/usage.ts'
 import { appendFileSync, mkdtempSync, writeFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { emptyHydra } from '../app/reducer.ts'
-import type { HydraEvent } from '../app/model.ts'
+import { emptyHydra } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { spendFor, spendInputs, taskSpend } from './task-spend.ts'
 
 const at = '2026-10-22T12:00:00Z'
@@ -111,7 +111,7 @@ test(
     } = await import('node:fs')
     const { tmpdir } = await import('node:os')
     const { join } = await import('node:path')
-    const { emptyHydra } = await import('../app/reducer.ts')
+    const { emptyHydra } = await import('#app/reducer.ts')
     const { taskSpend } = await import('./task-spend.ts')
     const dir = mkdtempSync(join(
       tmpdir(),
@@ -122,7 +122,7 @@ test(
       'transcript.jsonl',
     )
     const state = emptyHydra()
-    const events: import('../app/model.ts').HydraEvent[] = [
+    const events: import('#app/model.ts').HydraEvent[] = [
       {
         v: 1,
         boardId: 'test',

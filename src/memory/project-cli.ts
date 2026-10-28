@@ -1,10 +1,10 @@
-import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
+import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { memoryConditions } from './conditions.ts'
 import { learningChange, staleLearnings } from './learnings.ts'
-import { explained, meta, parse, required, WRITE, type Output } from '../app/cli-support.ts'
-import { HydraError } from '../store/errors.ts'
-import { loadHydra } from '../app/store.ts'
-import { findProject } from '../projects/read.ts'
+import { explained, meta, parse, required, WRITE, type Output } from '#app/cli-support.ts'
+import { HydraError } from '#store/errors.ts'
+import { loadHydra } from '#app/store.ts'
+import { findProject } from '#projects/read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView, writeProjectMemory, type ProjectMemoryKey } from './project-memory.ts'
 
 export function projectMemoryCommand({ args }: { args: string[] }): Output {

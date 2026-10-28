@@ -1,12 +1,12 @@
-import { memoryReview } from '../memory/review.ts'
+import { memoryReview } from '#memory/review.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { hydraEvent, pnyxRunsHydra } from './hydra.ts'
-import { INTERRUPTED } from '../workers/session-attachments.ts'
-import type { HydraState } from '../app/model.ts'
-import { loadHydra } from '../app/store.ts'
-import { withWriter } from '../app/writer.ts'
+import { INTERRUPTED } from '#workers/session-attachments.ts'
+import type { HydraState } from '#app/model.ts'
+import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
 import { boardReview, MINUTE_MS } from './review.ts'
-import { seenAt } from '../workers/presence.ts'
+import { seenAt } from '#workers/presence.ts'
 
 export const REVIEW_MS = 30 * MINUTE_MS
 const REVIEW_POLL_MS = 15_000

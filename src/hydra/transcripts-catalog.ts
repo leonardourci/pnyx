@@ -3,8 +3,8 @@ import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
 import { parseDocument } from 'yaml'
-import type { HydraProject } from '../projects/model.ts'
-import type { Card } from '../tasks/model.ts'
+import type { HydraProject } from '#projects/model.ts'
+import type { Card } from '#tasks/model.ts'
 
 export interface Suggestion {
   command: string

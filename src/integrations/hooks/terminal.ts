@@ -1,10 +1,10 @@
 import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
-import type { Key } from '../../workers/controls.ts'
+import type { Key } from '#workers/controls.ts'
 import { HOOK } from './observe.ts'
-import { notificationState, type NotificationResult } from '../../workers/inbox-notice.ts'
-import type { Card } from '../../tasks/model.ts'
-import type { ReplyState } from '../../workers/model.ts'
-import type { TerminalRoute } from '../../workers/reply-route.ts'
+import { notificationState, type NotificationResult } from '#workers/inbox-notice.ts'
+import type { Card } from '#tasks/model.ts'
+import type { ReplyState } from '#workers/model.ts'
+import type { TerminalRoute } from '#workers/reply-route.ts'
 import type { KeyStep } from './answer.ts'
 
 const STEP_TIMEOUT_MS = 15_000

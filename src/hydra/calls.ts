@@ -1,4 +1,4 @@
-import { redact } from '../oracle/text.ts'
+import { redact } from '#oracle/text.ts'
 
 export const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
 

@@ -1,4 +1,4 @@
-import type { AgentConfig } from '../workers/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
 
 // id names the Hydra message or wake an item carries, so a turn knows what it answered.
 export function inbox() {

@@ -1,5 +1,5 @@
 import { homedir } from 'node:os'
-import type { HydraState } from '../app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import type { HeldMessage, UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 

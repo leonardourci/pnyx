@@ -1,7 +1,7 @@
 import { createServer as createSocketServer, type Server as SocketServer } from 'node:net'
 import { rmSync, chmodSync } from 'node:fs'
-import { socketPath } from '../../app/server-state.ts'
-import { MAX_BODY } from '../../app/server-transport.ts'
+import { socketPath } from '#app/server-state.ts'
+import { MAX_BODY } from '#app/server-transport.ts'
 
 // Hook events, one JSON object per line. Null when the socket cannot be bound
 // (a path too long for a Unix socket, say); hooks then spool and the watcher drains it.

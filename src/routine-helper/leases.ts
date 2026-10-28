@@ -2,10 +2,10 @@ import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError } from '../store/errors.ts'
-import { hydraDir } from '../app/home-migration.ts'
-import { loadHydra } from '../app/store.ts'
-import { acquireLock } from '../store/storage.ts'
+import { HydraError } from '#store/errors.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { loadHydra } from '#app/store.ts'
+import { acquireLock } from '#store/storage.ts'
 
 interface Lease {
   actor: string

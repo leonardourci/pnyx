@@ -5,10 +5,10 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { answerPrompt, answerText, checkAnswer, type Answer, type Prompt } from './answers.ts'
-import type { Card } from '../tasks/model.ts'
+import type { Card } from '#tasks/model.ts'
 import type { Attention } from './model.ts'
-import { KEY, answerKeys } from '../integrations/hooks/answer.ts'
-import { attend, observe, type HookEnvelope } from '../integrations/hooks/observe.ts'
+import { KEY, answerKeys } from '#integrations/hooks/answer.ts'
+import { attend, observe, type HookEnvelope } from '#integrations/hooks/observe.ts'
 
 const ROOT = join(
   import.meta.dirname,

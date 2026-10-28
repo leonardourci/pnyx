@@ -1,10 +1,10 @@
-import type { HydraEvent, HydraState } from '../app/model.ts'
-import { EVENT_VERSION } from '../store/events.ts'
-import { HydraError } from '../store/errors.ts'
-import type { Card } from '../tasks/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import { EVENT_VERSION } from '#store/events.ts'
+import { HydraError } from '#store/errors.ts'
+import type { Card } from '#tasks/model.ts'
 import type { PermissionRequest } from './model.ts'
 import { checkAnswer, type Prompt } from './answers.ts'
-import type { Meta } from '../app/command-meta.ts'
+import type { Meta } from '#app/command-meta.ts'
 
 export const PERMISSION_PREFIX = 'pnyx:permission:'
 

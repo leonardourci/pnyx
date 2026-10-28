@@ -1,7 +1,7 @@
-import { activeCompaction } from './compaction/state.ts'
-import { pausedDeclaration } from '../tasks/lifecycle.ts'
-import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { Card } from '../tasks/model.ts'
+import { activeCompaction } from '#workers/compaction/state.ts'
+import { pausedDeclaration } from '#tasks/lifecycle.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
 import type { SteeringClaim } from './model.ts'
 import { cardSessionId } from './session-attachments.ts'
 

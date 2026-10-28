@@ -1,10 +1,10 @@
 import { LINK_KINDS, LINK_STATES, type Link } from './model.ts'
-import { invalid } from '../../app/command-validation.ts'
-import type { HydraState, Decision } from '../../app/model.ts'
-import { base, type Meta } from '../../app/command-meta.ts'
-import { findCard } from '../push-rules.ts'
+import { invalid } from '#app/command-validation.ts'
+import type { HydraState, Decision } from '#app/model.ts'
+import { base, type Meta } from '#app/command-meta.ts'
+import { findCard } from '#tasks/push-rules.ts'
 import { isStaleLink } from './events.ts'
-import { decided } from '../../app/decision.ts'
+import { decided } from '#app/decision.ts'
 
 export function parseLink({ input }: {
   input: {

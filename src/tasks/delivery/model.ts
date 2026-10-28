@@ -1,6 +1,6 @@
-import type { HydraProject } from '../../projects/model.ts'
-import type { Card } from '../model.ts'
-import type { EventBase } from '../../store/events.ts'
+import type { HydraProject } from '#projects/model.ts'
+import type { Card } from '#tasks/model.ts'
+import type { EventBase } from '#store/events.ts'
 
 export const LINK_KINDS = [
   'github_pr',

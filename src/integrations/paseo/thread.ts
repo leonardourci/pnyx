@@ -1,9 +1,9 @@
-import { HOST_LABEL, replyRoute } from '../../workers/reply-route.ts'
-import { HydraError } from '../../store/errors.ts'
-import type { Card } from '../../tasks/model.ts'
+import { HOST_LABEL, replyRoute } from '#workers/reply-route.ts'
+import { HydraError } from '#store/errors.ts'
+import type { Card } from '#tasks/model.ts'
 import { localPaseoUrl } from './url.ts'
-import { cardSessionId } from '../../workers/session-attachments.ts'
-import { replyEntryId, splitEntry, type ThreadEntry, type ThreadPage } from '../../hydra/transcripts-read.ts'
+import { cardSessionId } from '#workers/session-attachments.ts'
+import { replyEntryId, splitEntry, type ThreadEntry, type ThreadPage } from '#hydra/transcripts-read.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 // An older page's cursor: p, then Paseo's own {epoch, seq} as base64url JSON.

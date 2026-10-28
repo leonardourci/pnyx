@@ -1,4 +1,4 @@
-import type { Landing, Merger } from '../tasks/delivery/model.ts'
+import type { Landing, Merger } from '#tasks/delivery/model.ts'
 
 export interface HydraProject {
   path: string

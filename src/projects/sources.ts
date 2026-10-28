@@ -2,7 +2,7 @@ import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
-import { canonical } from '../store/paths.ts'
+import { canonical } from '#store/paths.ts'
 
 const GIT_TIMEOUT_MS = 5000
 const GIT_MAX_BUFFER = 8 * 1024 * 1024

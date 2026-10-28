@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush } from '../tasks/push.ts'
+import { decidePush } from '#tasks/push.ts'
 import { permissionEvent } from './permission-rules.ts'
-import { emptyHydra, reduce, replay } from '../app/reducer.ts'
-import type { HydraEvent } from '../app/model.ts'
+import { emptyHydra, reduce, replay } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 import type { PermissionRequest } from './model.ts'
 
 const meta = {

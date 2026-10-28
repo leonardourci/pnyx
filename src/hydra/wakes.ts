@@ -1,14 +1,14 @@
-import type { HydraState } from '../app/model.ts'
-import { decisionsBlock } from '../tasks/decisions.ts'
+import type { HydraState } from '#app/model.ts'
+import { decisionsBlock } from '#tasks/decisions.ts'
 import { QUIET_REPLY, hydraDelivery, reportActor } from './hydra.ts'
 import type { HydraMessage } from './model.ts'
-import { ownerActor, HYDRA_ACTOR } from '../app/actors.ts'
+import { ownerActor, HYDRA_ACTOR } from '#app/actors.ts'
 import { taskMention } from './mentions.ts'
 import { clip } from './digest.ts'
-import type { AgentRef } from '../workers/model.ts'
-import { readEvents } from '../app/event-log.ts'
+import type { AgentRef } from '#workers/model.ts'
+import { readEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { sessionId } from '../workers/session-attachments.ts'
+import { sessionId } from '#workers/session-attachments.ts'
 
 // One change Hydra has not read yet: its event and the card it is about.
 export interface QueuedUpdate {

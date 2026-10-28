@@ -1,8 +1,8 @@
-import type { EventBase } from '../store/events.ts'
-import type { Outcome } from '../tasks/delivery/model.ts'
-import type { SourceRef } from '../app/model.ts'
-import type { TaskCopy } from '../projects/model.ts'
-import type { Column } from '../tasks/columns-model.ts'
+import type { EventBase } from '#store/events.ts'
+import type { Outcome } from '#tasks/delivery/model.ts'
+import type { SourceRef } from '#app/model.ts'
+import type { TaskCopy } from '#projects/model.ts'
+import type { Column } from '#tasks/columns-model.ts'
 
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.

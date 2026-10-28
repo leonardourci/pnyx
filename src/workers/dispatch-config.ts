@@ -2,11 +2,11 @@ import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from '
 import { homedir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { HydraState } from '../app/model.ts'
-import { HydraError } from '../store/errors.ts'
+import type { HydraState } from '#app/model.ts'
+import { HydraError } from '#store/errors.ts'
 import type { AgentConfig } from './model.ts'
-import { hydraDir } from '../app/home-migration.ts'
-import { pnyxHome } from '../store/storage.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { pnyxHome } from '#store/storage.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>

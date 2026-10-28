@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Decision, HydraEvent, HydraState } from '../app/model.ts'
+import type { Decision, HydraEvent, HydraState } from '#app/model.ts'
 import { decidePush } from './push.ts'
 import { joinedKey } from './push-rules.ts'
-import { decideSession } from '../workers/sessions.ts'
-import { emptyHydra, reduce } from '../app/reducer.ts'
+import { decideSession } from '#workers/sessions.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
 import { liveTask } from './select.ts'
 
 const at = '2026-10-14T12:00:00Z'

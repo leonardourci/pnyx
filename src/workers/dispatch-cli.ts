@@ -1,11 +1,11 @@
 import { saveOrPropose, resolveProposal } from './dispatch-proposals.ts'
 import { existsSync } from 'node:fs'
-import { TEMPLATE_NUDGE } from '../hydra/digest.ts'
+import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
-import { WRITE, guard, parse, required, meta, type Output } from '../app/cli-support.ts'
-import { runsInBypass } from '../hydra/hydra-session.ts'
-import { loadHydra, requireHydra } from '../app/store.ts'
-import { withRegistryLock } from '../store/storage.ts'
+import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-support.ts'
+import { runsInBypass } from '#hydra/hydra-session.ts'
+import { loadHydra, requireHydra } from '#app/store.ts'
+import { withRegistryLock } from '#store/storage.ts'
 import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {

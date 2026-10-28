@@ -1,4 +1,4 @@
-import { text, invalid } from '../app/command-validation.ts'
+import { text, invalid } from '#app/command-validation.ts'
 
 export function projectLabel({ value }: { value: unknown }): string | null {
   if (value === null || value === '') {

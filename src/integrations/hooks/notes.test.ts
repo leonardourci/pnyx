@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { codexThreadTitle, transcriptNotes } from './notes.ts'
-import { transcriptMessages } from '../../oracle/text.ts'
+import { transcriptMessages } from '#oracle/text.ts'
 
 const FIXTURES = join(
   import.meta.dirname,

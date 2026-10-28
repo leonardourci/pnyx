@@ -1,15 +1,15 @@
-import { loadHydra } from '../app/store.ts'
+import { loadHydra } from '#app/store.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { emptyHydra } from '../app/reducer.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { configPath, effectiveDispatch, onTemplate, parseDispatch, readTemplate, writeConfig, type EffectiveDispatch } from './dispatch-config.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type QuotaReading } from './dispatch.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
-import { fakeDispatch } from '../test-harness/dispatch-fixture.ts'
-import { commands } from '../app/cli.ts'
+import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
+import { commands } from '#app/cli.ts'
 
 const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
 

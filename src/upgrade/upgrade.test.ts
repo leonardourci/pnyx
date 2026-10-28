@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
 import { upgrade as upgradeCli } from './cli.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
-import { building, git, upgradeRepo } from '../test-harness/upgrade-fixture.ts'
+import { building, git, upgradeRepo } from '#test-harness/upgrade-fixture.ts'
 
 const root = mkdtempSync(join(
   tmpdir(),

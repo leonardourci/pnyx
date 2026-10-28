@@ -1,4 +1,4 @@
-import type { Card } from '../model.ts'
+import type { Card } from '#tasks/model.ts'
 import type { Link } from './model.ts'
 
 // Pnyx wakes a task's worker with news on its open pull request; a task whose worker ended, or that never had one, leaves it unwatched.

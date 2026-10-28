@@ -1,7 +1,7 @@
-import type { TaskCopy } from '../../projects/model.ts'
-import type { Card } from '../model.ts'
-import { git } from '../../projects/git.ts'
-import { pullRequestLandingSync, type PullRequestLanding } from '../../integrations/github/pull-request.ts'
+import type { TaskCopy } from '#projects/model.ts'
+import type { Card } from '#tasks/model.ts'
+import { git } from '#projects/git.ts'
+import { pullRequestLandingSync, type PullRequestLanding } from '#integrations/github/pull-request.ts'
 
 export interface LandingContext {
   refs: string[]

@@ -1,5 +1,5 @@
-import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { Card } from '../tasks/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
 
 export function sourceDeadline({ state }: { state: HydraState }): number | undefined {
   const deadlines = Object.values(state.cards).flatMap(card =>

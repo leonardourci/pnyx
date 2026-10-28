@@ -1,4 +1,4 @@
-import type { Card } from '../tasks/model.ts'
+import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField } from './model.ts'
 import { replyRoute } from './reply-route.ts'
 

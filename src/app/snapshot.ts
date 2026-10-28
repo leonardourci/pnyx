@@ -1,7 +1,7 @@
 import type { HydraState } from './model.ts'
-import { EVENT_VERSION } from '../store/events.ts'
+import { EVENT_VERSION } from '#store/events.ts'
 import { readFileSync, renameSync } from 'node:fs'
-import { snapshotPath, writeDurably } from '../store/storage.ts'
+import { snapshotPath, writeDurably } from '#store/storage.ts'
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
 const RULES = 15

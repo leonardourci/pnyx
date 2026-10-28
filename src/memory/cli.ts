@@ -1,11 +1,11 @@
 import { memorySize, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
-import { required, guard, parse, COMMON, WRITE, meta, type Output } from '../app/cli-support.ts'
+import { required, guard, parse, COMMON, WRITE, meta, type Output } from '#app/cli-support.ts'
 import { staleLearnings, learningChange } from './learnings.ts'
 import { memoryConditions } from './conditions.ts'
-import { HydraError } from '../store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 import { ownerMemory, ownerRevision, ownerArchive, saveOwnerMemory, moveOwnerLearning } from './owner-memory.ts'
-import { findProject } from '../projects/read.ts'
-import { loadHydra } from '../app/store.ts'
+import { findProject } from '#projects/read.ts'
+import { loadHydra } from '#app/store.ts'
 
 export function memoryList({
   memory,

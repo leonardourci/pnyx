@@ -1,7 +1,7 @@
-import type { AgentConfig } from '../workers/model.ts'
-import type { HydraColumn } from '../tasks/columns-model.ts'
-import type { AnswerMessage } from '../tasks/model.ts'
-import type { EventBase } from '../store/events.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import type { AnswerMessage } from '#tasks/model.ts'
+import type { EventBase } from '#store/events.ts'
 
 export interface HydraIdentity {
   agent?: AgentConfig

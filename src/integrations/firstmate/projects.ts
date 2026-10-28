@@ -1,6 +1,6 @@
 import { readdirSync, realpathSync, statSync } from 'node:fs'
 import { basename, join, resolve } from 'node:path'
-import type { HydraProject } from '../../projects/model.ts'
+import type { HydraProject } from '#projects/model.ts'
 
 export function firstmateProjects({
   home,

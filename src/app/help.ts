@@ -1,7 +1,7 @@
-import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '../setup/skill-names.ts'
-import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '../memory/budgets.ts'
-import { POOL_IDLE } from '../projects/copies.ts'
-import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '../tasks/cli.ts'
+import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '#setup/skill-names.ts'
+import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '#memory/budgets.ts'
+import { POOL_IDLE } from '#projects/copies.ts'
+import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '#tasks/cli.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'
 
 export const TOP_LEVEL_HELP = `usage: pnyx-axi [command] [args] [flags]
