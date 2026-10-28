@@ -4,12 +4,12 @@ import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { wakeReasons } from '../src/hydra/wake-reasons.ts'
-import { followPullRequests } from '../src/tasks/delivery/follow.ts'
-import { refreshProject } from '../src/projects/refresh.ts'
-import type { ProjectRefresh } from '../src/projects/refresh-types.ts'
-import { git, until } from '../src/test-harness/harness.ts'
-import { pnyx, type Scenario } from '../src/test-harness/pnyx.ts'
+import { wakeReasons } from '#hydra/wake-reasons.ts'
+import { followPullRequests } from '#tasks/delivery/follow.ts'
+import { refreshProject } from '#projects/refresh.ts'
+import type { ProjectRefresh } from '#projects/refresh-types.ts'
+import { git, until } from '#test-harness/harness.ts'
+import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 const change = ({
   copy,

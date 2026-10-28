@@ -2,11 +2,11 @@ import assert from 'node:assert/strict'
 import { rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { taskReadiness } from '../src/tasks/dependencies.ts'
-import { hydraDigest } from '../src/hydra/digest.ts'
-import { boardReview } from '../src/hydra/review.ts'
-import { openPage, until } from '../src/test-harness/harness.ts'
-import { pnyx } from '../src/test-harness/pnyx.ts'
+import { taskReadiness } from '#tasks/dependencies.ts'
+import { hydraDigest } from '#hydra/digest.ts'
+import { boardReview } from '#hydra/review.ts'
+import { openPage, until } from '#test-harness/harness.ts'
+import { pnyx } from '#test-harness/pnyx.ts'
 
 function followsProject({ prompt }: { prompt: string }): void {
   assert.match(

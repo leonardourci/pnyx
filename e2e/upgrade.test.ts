@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { WebSocket } from 'ws'
-import { HYDRA_CARD } from '../src/hydra/identity.ts'
-import { localToken } from '../src/app/server-state.ts'
-import type { UpgradeStatus } from '../src/upgrade/model.ts'
-import { building } from '../src/test-harness/upgrade-fixture.ts'
-import { openPage, until } from '../src/test-harness/harness.ts'
-import { pnyx, type Scenario } from '../src/test-harness/pnyx.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { localToken } from '#app/server-state.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
+import { building } from '#test-harness/upgrade-fixture.ts'
+import { openPage, until } from '#test-harness/harness.ts'
+import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 // The flows share one Pnyx folder, so each publishes what it needs on top of the last.
 const repo = pnyx.upgrade

@@ -3,11 +3,11 @@ import fs from 'node:fs'
 import { ServerResponse } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
 import { test } from 'node:test'
-import { HYDRA_CARD } from '../src/hydra/identity.ts'
-import { hydraEvent } from '../src/hydra/hydra.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { openPage, until } from '../src/test-harness/harness.ts'
-import { pnyx } from '../src/test-harness/pnyx.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { withWriter } from '#app/writer.ts'
+import { openPage, until } from '#test-harness/harness.ts'
+import { pnyx } from '#test-harness/pnyx.ts'
 
 test(
   'an owner message while Hydra is down tries the start again; once it works Hydra answers it, then recaps only what no turn took',
