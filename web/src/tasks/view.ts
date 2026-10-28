@@ -6,7 +6,7 @@ import { liveTask, rankOf } from '../../../src/tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '../../../src/tasks/retention-rules.ts'
 import { elapsedTime } from '../shared/time.ts'
 import { asksOwner } from '../../../src/tasks/lifecycle.ts'
-import { agentActivity } from '../hydra/view.ts'
+import { agentActivity } from '../workers/view.ts'
 import { openAsks } from '../../../src/tasks/questions.ts'
 
 // A column's icon and color come from its role; a custom column has its own icon.

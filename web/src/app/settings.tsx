@@ -11,7 +11,7 @@ import { KeyboardSettings } from '../preferences/keyboard-settings.tsx'
 import { columnsFor } from '../tasks/view.ts'
 import type { Command } from './connection.ts'
 import { resetWidths } from '../oracle/oracle-catalog.ts'
-import { AgentKinds } from '../hydra/agent-kinds.tsx'
+import { AgentKinds } from '../workers/agent-kinds.tsx'
 import { IntegrationSettings } from '../integrations/integrations.tsx'
 import { About } from './about.tsx'
 

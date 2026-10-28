@@ -25,7 +25,7 @@ const PURE_TESTS = new Set([
   'src/task-sources/lavish-output.test.ts',
   'scripts/verification/marker.test.ts',
   'src/memory/memory-budgets.test.ts',
-  'test/model-picker.test.ts',
+  'web/src/workers/model-picker.test.ts',
   'web/src/tasks/optimistic.test.ts',
   'src/tasks/owner-ask.test.ts',
   'src/workers/permissions.test.ts',

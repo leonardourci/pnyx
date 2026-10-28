@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { modelOptions } from '../web/src/hydra/model-options.ts'
+import { modelOptions } from './model-options.ts'
 
 const models = [
   {

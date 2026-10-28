@@ -3,11 +3,11 @@ import { useEffect, useRef } from 'react'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { AgentConfig } from '../../../src/workers/model.ts'
 import { harnessControls } from '../../../src/workers/controls.ts'
-import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
+import { ModelPicker, PickerField, useModels } from '../workers/agent-picker.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { hasIcon, Icon } from '../shared/ui/icon.tsx'
 import { Tooltip } from '../shared/ui/tooltip.tsx'
-import { modelOptions } from './model-options.ts'
+import { modelOptions } from '../workers/model-options.ts'
 import type { Command } from '../app/connection.ts'
 
 const HARNESSES = [
