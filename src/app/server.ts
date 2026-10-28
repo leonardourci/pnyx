@@ -1348,6 +1348,7 @@ export async function mountOwnedHydra({
     interval: reviewClock?.interval,
     wake: kick,
     busy: () => agents.queue().waiting.length > 0 || agents.queue().reading.length > 0,
+    state: () => state,
   })
 
   // The server has already checked Host and Origin.
