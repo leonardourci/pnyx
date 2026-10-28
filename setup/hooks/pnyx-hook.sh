@@ -95,7 +95,10 @@ fi
 # A worker gets its context from Pnyx itself; other sessions get the summary when the
 # folder belongs to an attached project. The harness's hook timeout bounds the call.
 if [ "$event" = SessionStart ] && [ -z "$task" ] && [ -f "$cli" ]; then
-  summary=$(PNYX_HOME=$home node "$cli" context --hydra "$hydra_name" --cwd "$PWD" 2>/dev/null) || summary=
+  # A CLI installed from source needs the source condition for its # imports.
+  conditions=
+  case $cli in *.ts) conditions=--conditions=source ;; esac
+  summary=$(PNYX_HOME=$home node $conditions "$cli" context --hydra "$hydra_name" --cwd "$PWD" 2>/dev/null) || summary=
   [ -z "$summary" ] || printf '%s\n' "$summary" >&3
 fi
 exit 0

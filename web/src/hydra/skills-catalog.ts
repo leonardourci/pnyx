@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Catalog } from '../../../src/thread/catalog.ts'
-import type { Command } from './connection.ts'
+import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import type { Command } from '#web-app/connection.ts'
 import { storageKey } from './outbox.ts'
 
 const catalogs = new Map<string, Catalog>()

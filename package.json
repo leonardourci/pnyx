@@ -12,17 +12,24 @@
   "bin": {
     "pnyx-axi": "./dist/cli/pnyx-axi.js"
   },
+  "imports": {
+    "#web-*": "./web/src/*",
+    "#*.ts": {
+      "source": "./src/*.ts",
+      "default": "./dist/*.js"
+    }
+  },
   "scripts": {
-    "build": "tsc -p tsconfig.build.json && node -e \"fs.chmodSync('dist/cli/pnyx-axi.js', 0o755)\" && vite build --config web/vite.config.ts",
+    "build": "tsc -p tsconfig.build.json && node -e \"fs.chmodSync('dist/cli/pnyx-axi.js', 0o755)\" && NODE_OPTIONS=--conditions=source vite build --configLoader native --config web/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",
     "lint": "pnpm run typecheck && eslint .",
-    "test": "pnpm run build && node scripts/test.ts unit scenarios",
-    "web:dev": "vite --config web/vite.config.ts",
+    "test": "pnpm run build && node scripts/verification/test.ts unit scenarios",
+    "web:dev": "NODE_OPTIONS=--conditions=source vite --configLoader native --config web/vite.config.ts",
     "dev": "PNYX_HOME=${PNYX_DEV_HOME:-$HOME/.pnyx-dev} pnpm run \"/^(dev:server|web:dev)$/\"",
-    "dev:server": "node --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
+    "dev:server": "node --conditions=source --watch src/cli/pnyx-axi.ts serve --hydra dev --port ${PNYX_DEV_PORT:-4319}",
     "lint:fix": "eslint --fix .",
-    "verify": "node scripts/verify.ts",
-    "refresh-agent-fixtures": "node scripts/refresh-agent-fixtures.ts"
+    "verify": "node scripts/verification/verify.ts",
+    "refresh-agent-fixtures": "node scripts/fixtures/refresh-agent-fixtures.ts"
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "0.3.285",

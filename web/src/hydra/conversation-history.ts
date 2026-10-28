@@ -1,4 +1,4 @@
-import type { ThreadPage } from '../../../src/thread/read.ts'
+import type { ThreadPage } from '#hydra/transcripts-read.ts'
 
 export async function loadEarlierMessages({
   past,

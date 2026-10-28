@@ -1,6 +1,7 @@
 import { promisify } from 'node:util'
 import { execFile, spawnSync } from 'node:child_process'
-import { failedChecks, pendingChecks, type LinkState, type SourceNote } from '../../core/model.ts'
+import type { SourceNote } from '#tasks/model.ts'
+import { failedChecks, pendingChecks, type LinkState } from '#tasks/delivery/model.ts'
 
 const VIEW_TIMEOUT_MS = 30_000
 const BODY_MAX = 8000

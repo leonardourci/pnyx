@@ -1,13 +1,14 @@
-import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { useEffect, useRef } from 'react'
-import type { AgentConfig, HydraState } from '../../../src/core/model.ts'
-import { harnessControls } from '../../../src/core/control.ts'
-import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
-import { Button } from '../components/ui/controls.tsx'
-import { hasIcon, Icon } from '../components/ui/icon.tsx'
-import { Tooltip } from '../components/ui/tooltip.tsx'
-import { modelOptions } from './model-options.ts'
-import type { Command } from './connection.ts'
+import type { HydraState } from '#app/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import { harnessControls } from '#workers/controls.ts'
+import { ModelPicker, PickerField, useModels } from '#web-workers/agent-picker.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
+import { Tooltip } from '#web-shared/ui/tooltip.tsx'
+import { modelOptions } from '#web-workers/model-options.ts'
+import type { Command } from '#web-app/connection.ts'
 
 const HARNESSES = [
   {

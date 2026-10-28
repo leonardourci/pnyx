@@ -1,25 +1,26 @@
 import { randomUUID } from 'node:crypto'
-import { watchPath, type PathWatch } from '../../runtime/watch.ts'
-import { background } from '../../runtime/background.ts'
+import { watchPath, type PathWatch } from '#app/watch.ts'
+import { background } from '#app/background.ts'
 import { join } from 'node:path'
 import { isDeepStrictEqual } from 'node:util'
-import { hydraConfig, declareTask, hydraEvent, migrateColumns, roleColumn } from '../../core/hydra.ts'
+import { migrateColumns, roleColumn } from '#tasks/column-rules.ts'
+import { declareTask } from '#tasks/declarations.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { parseStatusLine } from './status.ts'
-import {
-  decideLink,
-  decideMove,
-  decideNote,
-  decideOutcome,
-  decidePush,
-  noteId,
-  parseLink,
-  type Decision,
-  type Meta,
-} from '../../core/decide.ts'
-import type { Attention, COLUMNS, HydraState, Card, SourceRef } from '../../core/model.ts'
-import { drainSpool } from '../hooks/ingest.ts'
-import { withWriter, type Writer } from '../../store/hydra-store.ts'
-import { HOOK } from '../hooks/observe.ts'
+import type { Decision, HydraState, SourceRef } from '#app/model.ts'
+import type { Meta } from '#app/command-meta.ts'
+import { decideMove } from '#tasks/columns-decisions.ts'
+import { decideNote, noteId } from '#tasks/notes.ts'
+import { decidePush } from '#tasks/push.ts'
+import { decideLink, parseLink } from '#tasks/delivery/links.ts'
+import { decideOutcome } from '#tasks/delivery/outcome.ts'
+import type { COLUMNS } from '#tasks/columns-model.ts'
+import type { Card } from '#tasks/model.ts'
+import type { Attention } from '#workers/model.ts'
+import { drainSpool } from '#integrations/hooks/ingest.ts'
+import { withWriter, type Writer } from '#app/writer.ts'
+import { HOOK } from '#integrations/hooks/observe.ts'
 import {
   ADAPTER,
   HOME_OBJECT,

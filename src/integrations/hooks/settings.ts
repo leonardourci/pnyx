@@ -1,4 +1,4 @@
-import type { AgentRef, AgentSettings } from '../../core/model.ts'
+import type { AgentRef, AgentSettings } from '#workers/model.ts'
 
 // A setting found in a record; null clears one the harness no longer reports.
 export type FoundSettings = Record<string, string | null>

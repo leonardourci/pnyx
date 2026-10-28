@@ -1,4 +1,4 @@
-import { SHELL_WRAPPER, type CurrentAction, type ToolCall } from '../../../src/thread/calls.ts'
+import { SHELL_WRAPPER, type CurrentAction, type ToolCall } from '#hydra/calls.ts'
 import { pnyxSentence, pnyxWords, shellWords, UNKNOWN_COMMAND, type PnyxLookup, type Segment } from './pnyx-action.ts'
 
 export interface ActionLabel {

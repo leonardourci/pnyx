@@ -1,6 +1,6 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
-import type { HydraProject } from '../core/model.ts'
+import type { HydraProject } from './model.ts'
 
 export function canonicalProjectPath({ path }: { path: string }): string | undefined {
   try {

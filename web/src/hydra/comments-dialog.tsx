@@ -1,10 +1,10 @@
 import { useState } from 'react'
-import { Button } from '../components/ui/controls.tsx'
-import { Dialog } from '../components/ui/dialog.tsx'
-import { Icon } from '../components/ui/icon.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { Dialog } from '#web-shared/ui/dialog.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
-import { AttachmentCard } from '../components/ui/attachment-card.tsx'
+import { AttachmentCard } from './attachment-card.tsx'
 
 export function CommentsPill({
   count,

@@ -1,9 +1,12 @@
-import { noteId } from '../../core/decide.ts'
-import { EVENT_VERSION, type SessionEvent } from '../../core/model.ts'
-import { localPaseoUrl } from '../../core/paseo.ts'
-import { taskForMessage } from '../../core/tasks.ts'
-import { splitEntry, type ThreadEntry } from '../../thread/read.ts'
-import { loadHydra, readEvents, withWriter } from '../../store/hydra-store.ts'
+import { noteId } from '#tasks/notes.ts'
+import { EVENT_VERSION } from '#store/events.ts'
+import type { SessionEvent } from '#workers/model.ts'
+import { localPaseoUrl } from './url.ts'
+import { taskForMessage } from '#workers/session-attachments.ts'
+import { splitEntry, type ThreadEntry } from '#hydra/transcripts-read.ts'
+import { loadHydra } from '#app/store.ts'
+import { readEvents } from '#app/event-log.ts'
+import { withWriter } from '#app/writer.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 const PAGE_SIZE = 100

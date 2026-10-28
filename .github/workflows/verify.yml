@@ -25,9 +25,9 @@ jobs:
       - uses: actions/checkout@v4
         with:
           sparse-checkout: |
-            scripts/check-marker.ts
-            scripts/marker.ts
-            scripts/required-checks.ts
+            scripts/verification/check-marker.ts
+            scripts/verification/marker.ts
+            scripts/verification/required-checks.ts
           sparse-checkout-cone-mode: false
           persist-credentials: false
 
@@ -40,4 +40,4 @@ jobs:
           GITHUB_TOKEN: ${{ github.token }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
-        run: node scripts/check-marker.ts
+        run: node scripts/verification/check-marker.ts

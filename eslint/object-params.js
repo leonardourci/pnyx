@@ -137,7 +137,7 @@ const boundary = ({
     return true // A named listener keeps its identity for removal.
   }
 
-  if (filename.endsWith('/src/server/server.ts') && node.type === 'FunctionDeclaration'
+  if (filename.endsWith('/src/app/server-cli.ts') && node.type === 'FunctionDeclaration'
     && [
       'serve',
       'stop',
@@ -145,7 +145,7 @@ const boundary = ({
     return true // AXI command handlers receive argv.
   }
 
-  if (filename.endsWith('/src/cli/commands.ts') && parent.type === 'ReturnStatement'
+  if (filename.endsWith('/src/app/cli-support.ts') && parent.type === 'ReturnStatement'
     && owner({
       node,
       types: ['FunctionDeclaration'],
@@ -172,7 +172,7 @@ const boundary = ({
     return true // The fake implements the Agent SDK's query signatures.
   }
 
-  if (filename.endsWith('/test/catalog.test.ts') && node.type === 'TSMethodSignature'
+  if (filename.endsWith('/src/hydra/catalog.test.ts') && node.type === 'TSMethodSignature'
     && node.key.name === 'after') {
     return true // The node:test context's cleanup hook.
   }
@@ -223,7 +223,7 @@ const boundary = ({
       return true // Vite's proxy configuration hook.
     }
 
-    if (filename.endsWith('/src/core/keyboard.ts') && parent.key.name === 'getModifierState') {
+    if (filename.endsWith('/src/preferences/keyboard.ts') && parent.key.name === 'getModifierState') {
       return true // tinykeys consumes the KeyboardEvent method.
     }
 

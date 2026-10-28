@@ -5,17 +5,18 @@ import {
   type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent, type ComponentProps,
 } from 'react'
 import { flushSync } from 'react-dom'
-import type { ThreadEntry } from '../../../src/thread/read.ts'
-import type { HydraColumn, SavedLabelColor } from '../../../src/core/model.ts'
-import type { Catalog } from '../../../src/thread/catalog.ts'
-import { ChatTokensContext } from '../components/ui/chat-tokens.tsx'
-import { Button } from '../components/ui/controls.tsx'
-import { CopyButton } from '../components/ui/copy-button.tsx'
-import { ColumnChip } from '../components/ui/column-chip.tsx'
-import { MessageText } from '../components/ui/streaming.tsx'
-import { Icon } from '../components/ui/icon.tsx'
-import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
-import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
+import type { ThreadEntry } from '#hydra/transcripts-read.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import type { SavedLabelColor } from '#tasks/model.ts'
+import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import { ChatTokensContext } from './chat-token-text.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { CopyButton } from '#web-shared/ui/copy-button.tsx'
+import { ColumnChip } from '#web-tasks/column-chip.tsx'
+import { MessageText } from './streaming.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '#web-tasks/task-reference.tsx'
+import { isEditing, useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED, QUESTION_CONTROLS,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,
@@ -31,7 +32,8 @@ import {
   MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
-import { columnLook, receiptLabel } from './view.ts'
+import { receiptLabel } from '#web-app/view.ts'
+import { columnLook } from '#web-tasks/view.ts'
 import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6

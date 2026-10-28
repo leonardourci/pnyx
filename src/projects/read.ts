@@ -1,10 +1,14 @@
 import { canonicalProjectPath, sameProjectPath } from './identity.ts'
 import { statSync } from 'node:fs'
 import { basename } from 'node:path'
-import { HydraError, landingRule, type HydraProject, type HydraState } from '../core/model.ts'
-import { hydraConfig } from '../core/hydra.ts'
-import { hydraIds, loadHydra } from '../store/hydra-store.ts'
-import { firstmateProjects } from '../integrations/firstmate/projects.ts'
+import type { HydraState } from '#app/model.ts'
+import { HydraError } from '#store/errors.ts'
+import type { HydraProject } from './model.ts'
+import { landingRule } from '#tasks/delivery/model.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraIds } from '#app/home-migration.ts'
+import { loadHydra } from '#app/store.ts'
+import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 
 export function projectsFor({
   state,
