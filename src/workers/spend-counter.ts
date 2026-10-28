@@ -1,5 +1,5 @@
 import { isMainThread, parentPort, Worker } from 'node:worker_threads'
-import { spendFor, type SpendInputs, type TaskSpend } from './tasks.ts'
+import { spendFor, type SpendInputs, type TaskSpend } from './task-spend.ts'
 
 if (!isMainThread) {
   parentPort!.on(

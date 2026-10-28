@@ -2,7 +2,7 @@ import { matchesProject } from './identity.ts'
 import { COPY_TIMEOUT_MS, git } from './git.ts'
 import { landedWork } from '../tasks/delivery/proof.ts'
 
-import { workerQueue } from '../queue/state.ts'
+import { workerQueue } from '../workers/queue.ts'
 import { spawnSync } from 'node:child_process'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'

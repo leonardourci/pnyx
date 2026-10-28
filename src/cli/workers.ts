@@ -1,7 +1,7 @@
 import { memoryConditions } from '../memory/conditions.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
-import { queuePosition } from '../queue/state.ts'
+import { queuePosition } from '../workers/queue.ts'
 import { projectRows } from '../projects/read.ts'
 import { hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../memory/owner-memory.ts'
