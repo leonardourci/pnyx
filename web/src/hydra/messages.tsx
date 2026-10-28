@@ -839,6 +839,16 @@ export function Messages({
             )
           }
         }}
+        onDragStart={event => {
+          const editing = event.target instanceof Element && isEditing({ target: event.target })
+
+          if (!editing) {
+            copyMessageChips({
+              selection: window.getSelection(),
+              clipboard: event.dataTransfer,
+            })
+          }
+        }}
         onPaste={event => paste({ event })}
         // A composition can't be cancelled; over a selection it goes into the new comment's note.
         onCompositionStart={event => {

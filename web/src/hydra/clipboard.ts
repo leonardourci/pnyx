@@ -1,7 +1,6 @@
 import { taskMention } from '#hydra/mentions.ts'
 import { imagePaths } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
-import { DRAFT_TYPE } from './draft.ts'
 import { MESSAGE_DECORATIONS } from './message-selection.ts'
 
 // Each chip in a rendered message keeps the Markdown it came from, so a copy can bring the chip back.
@@ -146,7 +145,32 @@ export function imagesHtml({
     )
 }
 
-// A selection holding chips copies their Markdown under the composer's type; other apps read the chips' names.
+// A chip the selection starts or ends inside goes whole, so a selected title still copies its chip; a leading
+// chip takes its wrapper, which is what marks it as one.
+function wholeChips({ range }: { range: Range }) {
+  const chipAround = ({ node }: { node: Node }) => {
+    const chip = (node instanceof Element ? node : node.parentElement)?.closest(CHIPS)
+
+    return chip?.closest('.message-lead') ?? chip
+  }
+
+  const whole = range.cloneRange()
+  const first = chipAround({ node: range.startContainer })
+  const last = chipAround({ node: range.endContainer })
+
+  if (first) {
+    whole.setStartBefore(first)
+  }
+
+  if (last) {
+    whole.setEndAfter(last)
+  }
+
+  return whole
+}
+
+// A selection holding chips copies their references as plain text, as a sent message keeps them, so pasting
+// into a composer rebuilds the chips; rich-text apps also get the chips' names with their images.
 export function copyMessageChips({
   selection,
   clipboard,
@@ -154,24 +178,23 @@ export function copyMessageChips({
   selection: Selection | null
   clipboard: DataTransfer
 }) {
-  const range = selection?.rangeCount ? selection.getRangeAt(0) : undefined
+  const selected = selection?.rangeCount ? selection.getRangeAt(0) : undefined
 
-  if (!range || range.collapsed || !range.cloneContents().querySelector(CHIPS)) {
+  if (!selected || selected.collapsed) {
+    return false
+  }
+
+  const range = wholeChips({ range: selected })
+
+  if (!range.cloneContents().querySelector(CHIPS)) {
     return false
   }
 
   clipboard.setData(
-    DRAFT_TYPE,
-    selectedText({
-      range,
-      chip: chipMarkdown,
-    }),
-  )
-  clipboard.setData(
     'text/plain',
     selectedText({
       range,
-      chip: chipName,
+      chip: chipMarkdown,
     }),
   )
 
