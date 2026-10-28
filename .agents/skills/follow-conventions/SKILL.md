@@ -14,6 +14,11 @@ description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not a
 - Write conditions in their positive form. A `const skip = !known` flag feeding an inverted branch makes the reader flip it twice.
 - Delete dead branches: an arm an earlier guard handled, a check on an already narrowed value, a fallback no caller can reach.
 
+## Imports
+
+- Import a file in the same folder as `./file.ts`. Import every other file through the `package.json` aliases, even inside the same feature: `#tasks/model.ts` for `src/tasks/model.ts` and `#web-shared/ui/icon.tsx` for `web/src/shared/ui/icon.tsx`. ESLint rejects `../`.
+- Write the file's real extension in the import: `.ts` under `src/`, `.ts` or `.tsx` under `web/src/`.
+
 ## Names and values
 
 - Give a value with meaning (a timeout, a limit, a retry count, a cutoff) a named constant, declared after the imports, and share it between every site that uses it. Structural literals such as a `0` index need no name.
