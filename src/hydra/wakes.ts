@@ -41,6 +41,7 @@ export const wakeId = ({
 
 export const WAKE_ID = /^wake:(\d+)(?:\.\d+)?$/
 
+// A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
 export const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
 
 // The finished record of the turn that read a wake carries this id.

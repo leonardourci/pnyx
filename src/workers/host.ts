@@ -49,7 +49,6 @@ export const WORKER_COMMANDS = [
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
-// A wake's turn id names the last change it covers; its turn is recorded as `<id>:hosted`.
 // The account a harness runs under: the one asked for, else the main one, else the first for that harness.
 export const harnessAccount = ({
   effective,
