@@ -10,7 +10,7 @@ import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '../../../src/core/retention.
 import { KeyboardSettings } from '../preferences/keyboard-settings.tsx'
 import { columnsFor } from '../hydra/view.ts'
 import type { Command } from './connection.ts'
-import { resetWidths } from '../hydra/oracle-catalog.ts'
+import { resetWidths } from '../oracle/oracle-catalog.ts'
 import { AgentKinds } from '../hydra/agent-kinds.tsx'
 import { IntegrationSettings } from '../integrations/integrations.tsx'
 import { About } from './about.tsx'

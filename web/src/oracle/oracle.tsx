@@ -1,4 +1,4 @@
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { useHeadsDispatch } from '../hydra/heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { ViewPreferences } from '../../../src/preferences/model.ts'
@@ -15,8 +15,8 @@ import { focusElement, useKeyboard, useKeyAction, type ActionContext } from '../
 import type { Command } from '../app/connection.ts'
 import { hydraConfig, LOCKED_DELETE, lockedColumn } from '../../../src/core/hydra.ts'
 import { Projects } from '../projects/projects.tsx'
-import { AgentKinds } from './agent-kinds.tsx'
-import { columnsFor } from './view.ts'
+import { AgentKinds } from '../hydra/agent-kinds.tsx'
+import { columnsFor } from '../hydra/view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
 
 export function Oracle({
