@@ -77,10 +77,12 @@ export function copySkills({
   folder,
   names,
   owns = () => true,
+  missing,
 }: {
   folder: string
   names: readonly string[]
   owns?: ({ path }: { path: string }) => boolean
+  missing?: ({ path }: { path: string }) => void
 }): string[] {
   for (const name of names) {
     const path = join(
@@ -102,7 +104,27 @@ export function copySkills({
     }
   }
 
-  return names.map(name => {
+  const installed: string[] = []
+
+  for (const name of names) {
+    const source = skillSource({ name })
+    let content: string
+
+    try {
+      content = readFileSync(
+        source,
+        'utf8',
+      )
+    } catch (error) {
+      if (missing && error instanceof Error && 'code' in error && error.code === 'ENOENT') {
+        missing({ path: source })
+
+        continue
+      }
+
+      throw error
+    }
+
     const dir = join(
       folder,
       '.agents',
@@ -118,11 +140,12 @@ export function copySkills({
         dir,
         'SKILL.md',
       ),
-      readFileSync(skillSource({ name })),
+      content,
     )
+    installed.push(dir)
+  }
 
-    return dir
-  })
+  return installed
 }
 
 // The hosted Hydra's folder: its contract, which both harnesses load every turn, and the skills it loads on demand.
@@ -133,17 +156,37 @@ export function prepareHydraFolder({
   folder: string
   instructions?: string
 }) {
-  const contract = readFileSync(
-    skillSource({ name: ORCHESTRATE_SKILL }),
-    'utf8',
-  ).replace(
-    /^---\n[\s\S]*?\n---\n+/,
-    '',
-  )
   mkdirSync(
     folder,
     { recursive: true },
   )
+  removeLegacyHydraSkills({ folder })
+  const installed = copySkills({
+    folder,
+    names: HYDRA_SKILLS,
+    missing: ({ path }) => console.error(`pnyx-axi Hydra: missing shipped skill ${path}; continuing with available skills. Run /upgrade to repair the install.`),
+  })
+  const orchestrate = join(
+    folder,
+    '.agents',
+    'skills',
+    ORCHESTRATE_SKILL,
+  )
+  let contract = 'The shipped Pnyx orchestration skill is missing. Tell the owner to run /upgrade to repair the install before taking on work.'
+
+  if (installed.includes(orchestrate)) {
+    contract = readFileSync(
+      join(
+        orchestrate,
+        'SKILL.md',
+      ),
+      'utf8',
+    ).replace(
+      /^---\n[\s\S]*?\n---\n+/,
+      '',
+    )
+  }
+
   writeFileSync(
     join(
       folder,
@@ -158,11 +201,6 @@ export function prepareHydraFolder({
     ),
     '@AGENTS.md\n',
   )
-  removeLegacyHydraSkills({ folder })
-  copySkills({
-    folder,
-    names: HYDRA_SKILLS,
-  })
   const claude = join(
     folder,
     '.claude',
