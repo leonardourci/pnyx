@@ -3,13 +3,15 @@ import type { Suggestion } from '#hydra/transcripts-catalog.ts'
 
 export const UPGRADE_COMMAND = '/upgrade'
 
-// The Pnyx group of the Hydra chat's slash menu.
 export const UPGRADE_SUGGESTION: Suggestion = {
   command: UPGRADE_COMMAND,
   description: 'Upgrade Pnyx and restart its server. Workers keep going; any the restart pauses pick up again on their own.',
-  source: 'Pnyx',
+  source: 'Built-in',
   kind: 'command',
 }
+
+export const isUpgradeSuggestion = ({ item }: { item?: Suggestion }): boolean =>
+  item?.kind === 'command' && item.command === UPGRADE_COMMAND
 
 export const upgradeCommand = ({ text }: { text: string }) => text.trim() === UPGRADE_COMMAND
 

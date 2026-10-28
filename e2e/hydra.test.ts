@@ -717,7 +717,7 @@ test(
     assert.ok('catalog' in result)
     const catalog = result.catalog as Catalog
     assert.deepEqual(
-      catalog.suggestions.filter(item => item.builtin).map(item => [
+      catalog.suggestions.filter(item => item.source === 'Built-in').map(item => [
         item.command,
         item.source,
       ]),
@@ -728,6 +728,10 @@ test(
         ],
         [
           '/pnyx-set-up',
+          'Built-in',
+        ],
+        [
+          '/upgrade',
           'Built-in',
         ],
       ],
@@ -771,10 +775,11 @@ test(
     assert.ok('catalog' in switched)
     const switchedCatalog = switched.catalog as Catalog
     assert.deepEqual(
-      switchedCatalog.suggestions.filter(item => item.builtin).map(item => item.command),
+      switchedCatalog.suggestions.filter(item => item.source === 'Built-in').map(item => item.command),
       [
         '$inscribe',
         '$pnyx-set-up',
+        '/upgrade',
       ],
     )
   },

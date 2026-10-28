@@ -119,6 +119,10 @@ test(
           '$pnyx-set-up',
           'Built-in',
         ],
+        [
+          '/upgrade',
+          'Built-in',
+        ],
       ],
     )
     assert.equal(
@@ -133,6 +137,15 @@ test(
         provider: 'codex',
       }),
       `Read and follow the skill "inscribe" at ${JSON.stringify(skillSource({ name: 'inscribe' }))}.`,
+    )
+    const upgrade = catalog.suggestions.find(item => item.command === '/upgrade')
+    assert.ok(upgrade)
+    assert.equal(
+      resolveSkillReferences({
+        text: skillReference({ item: upgrade }),
+        provider: 'codex',
+      }),
+      '/upgrade',
     )
     const worker = withBuiltInSkills({
       card: 'worker',

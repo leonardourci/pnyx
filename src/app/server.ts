@@ -57,7 +57,7 @@ import { withWriter } from './writer.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
-import { UPGRADE_SUGGESTION, type UpgradeStatus } from '#upgrade/model.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
 import { createHydra, listHydras, renameHydra } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
@@ -1822,7 +1822,6 @@ export async function mountOwnedHydra({
                 return {
                   ...catalog,
                   suggestions: [
-                    ...card.id === HYDRA_CARD ? [UPGRADE_SUGGESTION] : [],
                     ...catalog.suggestions,
                     ...native,
                   ],
