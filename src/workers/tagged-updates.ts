@@ -1,7 +1,7 @@
 import { appendNote } from '../integrations/hooks/harvest.ts'
 import { ownerActor } from '../app/actors.ts'
 import { liveTask } from '../tasks/select.ts'
-import { taggedParagraphs, taskMentions } from '../mentions/mentions.ts'
+import { taggedParagraphs, taskMentions } from '../hydra/mentions.ts'
 import { redact } from '../oracle/text.ts'
 import type { Writer } from '../app/writer.ts'
 

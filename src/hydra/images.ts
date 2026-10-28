@@ -1,4 +1,4 @@
-import { FILE_BLOCK } from './files.ts'
+import { FILE_BLOCK } from './attachments.ts'
 
 // An image attached to a message travels as an `[image: <path>]` token where the owner placed it,
 // so every route carries it as text and hosted sessions also receive the file itself.

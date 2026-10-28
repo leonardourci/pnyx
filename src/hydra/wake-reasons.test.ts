@@ -7,7 +7,7 @@ import type { HydraEvent, HydraState } from '../app/model.ts'
 import type { Card, TaskStatus } from '../tasks/model.ts'
 import type { Link } from '../tasks/delivery/model.ts'
 import { emptyHydra, reduce } from '../app/reducer.ts'
-import { taskMention } from '../mentions/mentions.ts'
+import { taskMention } from './mentions.ts'
 import { wakeReasons, wakesHydra } from './wake-reasons.ts'
 
 const PR = 'https://github.com/o/r/pull/7'

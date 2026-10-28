@@ -1,4 +1,4 @@
-import { mentionContext } from '../mentions/mentions.ts'
+import { mentionContext } from '../hydra/mentions.ts'
 import { randomUUID } from 'node:crypto'
 import { findCard } from '../tasks/push-rules.ts'
 import { decideReply } from './reply-rules.ts'

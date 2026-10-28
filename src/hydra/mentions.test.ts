@@ -3,10 +3,10 @@ import { cpSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { project } from '../src/projects/cli.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { matchingTasks, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from '../src/mentions/mentions.ts'
+import { commands } from '../app/cli.ts'
+import { project } from '../projects/cli.ts'
+import { loadHydra } from '../app/store.ts'
+import { matchingTasks, mentionId, mentionQuery, taggedParagraphs, taskMention, taskMentions } from './mentions.ts'
 
 async function fixture() {
   const home = realpathSync(mkdtempSync(join(
@@ -52,7 +52,7 @@ async function fixture() {
   cpSync(
     join(
       import.meta.dirname,
-      '../src/integrations/firstmate/fixtures/firstmate-home',
+      '../integrations/firstmate/fixtures/firstmate-home',
     ),
     native,
     { recursive: true },

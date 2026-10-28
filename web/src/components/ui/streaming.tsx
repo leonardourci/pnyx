@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
-import { imageNames } from '../../../../src/attachments/images.ts'
+import { imageNames } from '../../../../src/hydra/images.ts'
 import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
 import {
   EDGE,

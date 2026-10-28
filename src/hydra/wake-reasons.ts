@@ -11,7 +11,7 @@ import type { HydraEvent, HydraState } from '../app/model.ts'
 import type { Card, PushedEvent, TaskStatus } from '../tasks/model.ts'
 import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from '../tasks/delivery/model.ts'
 import { columnCards } from '../tasks/select.ts'
-import { taskMention } from '../mentions/mentions.ts'
+import { taskMention } from './mentions.ts'
 
 // The fixed words a reason line names its fact with; the orchestrator skill and docs/pnyx-axi.md list them.
 export type WakeKind = 'declared' | 'asked' | 'report' | 'turn ended' | 'checks' | 'comments' | 'merged'

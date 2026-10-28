@@ -1,7 +1,7 @@
 import type { HydraProject } from '../../../src/projects/model.ts'
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
 import type { Card, SavedLabelColor } from '../../../src/tasks/model.ts'
-import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
+import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/hydra/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
@@ -30,7 +30,7 @@ import { useKeyAction, useKeyboard } from '../preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
-import { fileBlock } from '../../../src/attachments/files.ts'
+import { fileBlock } from '../../../src/hydra/attachments.ts'
 import { cardChip, CHIP_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
 
 function DraftCard({

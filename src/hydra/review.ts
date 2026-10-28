@@ -10,7 +10,7 @@ import { failedChecks, pendingChecks, ranChecks } from '../tasks/delivery/model.
 import { liveTask } from '../tasks/select.ts'
 import { cardSessionId } from '../workers/session-attachments.ts'
 import { mergeApproved, readyBacklog } from './wake-reasons.ts'
-import { taskMention } from '../mentions/mentions.ts'
+import { taskMention } from './mentions.ts'
 
 export const MINUTE_MS = 60_000
 export const QUESTION_REMINDER_MS = 4 * 60 * MINUTE_MS

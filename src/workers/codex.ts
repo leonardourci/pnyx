@@ -6,7 +6,7 @@ import { createInterface } from 'node:readline'
 import type { Question } from './model.ts'
 import { form } from '../integrations/hooks/observe.ts'
 import { pnyxHome } from '../store/paths.ts'
-import { attachedImages } from '../attachments/images.ts'
+import { attachedImages } from '../hydra/images.ts'
 import { compactCommand } from './compaction/state.ts'
 import type { AskPermission, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 

@@ -6,7 +6,7 @@ import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo
 import type { AgentSettings } from './model.ts'
 import { questions } from '../integrations/hooks/observe.ts'
 import type { ModelOption, Provider } from './provider.ts'
-import { attachedImages, imageType } from '../attachments/images.ts'
+import { attachedImages, imageType } from '../hydra/images.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { compactCommand } from './compaction/state.ts'
 

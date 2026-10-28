@@ -8,7 +8,7 @@ import { PERMISSION_PREFIX } from '../workers/permission-rules.ts'
 import { liveTask } from './select.ts'
 import { INTERRUPTED } from '../workers/session-attachments.ts'
 import { mergeApproved, quote } from '../hydra/wake-reasons.ts'
-import { taskMention } from '../mentions/mentions.ts'
+import { taskMention } from '../hydra/mentions.ts'
 
 // The fixed words a decision line names its item with; the orchestrator skill lists them.
 type DecisionKind = 'owner question' | 'worker question' | 'permission' | 'blocking prompt' | 'approved merge'

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { taskMention } from '../src/mentions/mentions.ts'
+import { taskMention } from '../src/hydra/mentions.ts'
 import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeImages, replaceDisplay } from '../web/src/hydra/draft.ts'
 
 const task = taskMention({

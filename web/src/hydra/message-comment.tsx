@@ -1,4 +1,4 @@
-import { imagePaths } from '../../../src/attachments/images.ts'
+import { imagePaths } from '../../../src/hydra/images.ts'
 import { AttachedImage } from '../components/ui/attached-image.tsx'
 import { Button, Textarea } from '../shared/ui/controls.tsx'
 import { Icon } from '../shared/ui/icon.tsx'

@@ -5,7 +5,7 @@ import type { Ask, RepliedEvent } from './model.ts'
 import type { Link } from './delivery/model.ts'
 import type { PermissionRequest } from '../workers/model.ts'
 import { reportActor } from '../hydra/hydra.ts'
-import { taskMentions } from '../mentions/mentions.ts'
+import { taskMentions } from '../hydra/mentions.ts'
 
 export interface TaskEvent {
   id: string

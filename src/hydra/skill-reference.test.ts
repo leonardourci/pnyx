@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fileBlock } from '../attachments/files.ts'
-import { reference } from '../mentions/mentions.ts'
+import { fileBlock } from './attachments.ts'
+import { reference } from './mentions.ts'
 import { readSkillReference, resolveSkillReferences, skillReference } from './transcripts-skill-reference.ts'
 
 const project = {

@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { decisionsBlock } from './decisions.ts'
 import type { HydraState } from '../app/model.ts'
 import type { Ask, Card } from './model.ts'
-import { taskMention } from '../mentions/mentions.ts'
+import { taskMention } from '../hydra/mentions.ts'
 
 const now = Date.parse('2026-10-23T12:00:00.000Z')
 

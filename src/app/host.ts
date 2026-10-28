@@ -1,7 +1,7 @@
 import { memoryConditions } from '../memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '../tasks/dependencies.ts'
-import { attachedImages } from '../attachments/images.ts'
+import { attachedImages } from '../hydra/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../workers/inbox.ts'
 import { activeCompaction, compactCommand } from '../workers/compaction/state.ts'
 import { recordCompaction } from '../workers/compaction/record.ts'
