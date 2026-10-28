@@ -34,7 +34,7 @@ import { embedImages, imagesHtml } from './clipboard.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { imageLine } from '#hydra/images.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, DRAFT_TYPE, hasPendingImage, plainDraft, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, DRAFT_TYPE, hasPendingImage, plainDraft, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapSelection, withoutPendingImages, type PlacedChip } from './draft.ts'
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -389,6 +389,21 @@ export function Composer({
       icons: [look.icon],
       tone: look.tone,
     }
+  }
+
+  // Chips let the pointer through to the textarea so a drag can start on one; a click on one still opens it.
+  const chipAt = ({
+    x,
+    y,
+  }: {
+    x: number
+    y: number
+  }) => {
+    const token = [...mirror.current?.querySelectorAll<HTMLElement>('.draft-token') ?? []]
+      .find(element => [...element.querySelector('.draft-chip')?.getClientRects() ?? []]
+        .some(rect => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom))
+
+    return token ? view.chips.find(chip => chip.from === Number(token.dataset.from)) : undefined
   }
 
   const openChip = ({ chip }: { chip: PlacedChip }) => {
@@ -967,32 +982,46 @@ export function Composer({
             }}
             onSelect={event => {
               const element = event.currentTarget
-              const {
-                selectionStart: start,
-                selectionEnd: end,
-              } = element
+              const backward = element.selectionDirection === 'backward'
+              const anchor = backward ? element.selectionEnd : element.selectionStart
+              const focus = backward ? element.selectionStart : element.selectionEnd
+              const snapped = snapSelection({
+                view,
+                anchor,
+                focus,
+                previous: caretLast.current,
+              })
 
-              if (start === end) {
-                const snapped = snapCaret({
-                  view,
-                  offset: start,
-                  backward: start < caretLast.current,
-                })
-
-                if (snapped !== start) {
-                  element.setSelectionRange(
-                    snapped,
-                    snapped,
-                  )
-                }
-
-                caretLast.current = snapped
+              if (snapped.anchor !== anchor || snapped.focus !== focus) {
+                element.setSelectionRange(
+                  Math.min(
+                    snapped.anchor,
+                    snapped.focus,
+                  ),
+                  Math.max(
+                    snapped.anchor,
+                    snapped.focus,
+                  ),
+                  snapped.focus < snapped.anchor ? 'backward' : 'forward',
+                )
               }
+
+              caretLast.current = snapped.focus
             }}
             onClick={event => {
+              const element = event.currentTarget
+              const clicked = element.selectionStart === element.selectionEnd ? chipAt({
+                x: event.clientX,
+                y: event.clientY,
+              }) : undefined
+
+              if (clicked) {
+                openChip({ chip: clicked })
+              }
+
               trackMention({
                 text: draft,
-                cursor: event.currentTarget.selectionStart,
+                cursor: element.selectionStart,
               })
             }}
             onBlur={() => setMention(null)}

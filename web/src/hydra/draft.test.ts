@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '#hydra/mentions.ts'
-import { copyDraft, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
+import { copyDraft, snapSelection, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -403,6 +403,51 @@ test(
         to: draftView({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}` }).display.length,
       })?.source,
       `see and ${image}`,
+    )
+  },
+)
+
+test(
+  'a selection steps over a chip in one move, and an end left inside a chip takes the whole chip',
+  () => {
+    const text = `${task} waits here`
+    const view = draftView({ text })
+    const chip = view.chips[0]!
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: view.display.length,
+        focus: chip.to - 1,
+        previous: chip.to,
+      }),
+      {
+        anchor: view.display.length,
+        focus: chip.from,
+      },
+    )
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: chip.from + 2,
+        focus: view.display.length,
+        previous: view.display.length - 1,
+      }),
+      {
+        anchor: chip.from,
+        focus: view.display.length,
+      },
+    )
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: chip.from + 2,
+        focus: chip.from + 2,
+        previous: chip.from + 1,
+      }),
+      {
+        anchor: chip.to,
+        focus: chip.to,
+      },
     )
   },
 )

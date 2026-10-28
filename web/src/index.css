@@ -411,7 +411,9 @@ h3 { font-weight: 600; }
 
 .draft-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--color-ink); }
 
-.draft-chip { pointer-events: auto; cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
+.draft-mirror :is(.card-x, .skill-remove) { pointer-events: auto; }
+
+.draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 

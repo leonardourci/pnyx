@@ -252,6 +252,42 @@ export function snapCaret({
   return chip ? backward ? chip.from : chip.to : offset
 }
 
+// A selection never ends inside a chip: its moving end jumps over a chip the way it was heading, and its
+// fixed end widens to take the whole chip.
+export function snapSelection({
+  view,
+  anchor,
+  focus,
+  previous,
+}: {
+  view: DraftView
+  anchor: number
+  focus: number
+  previous: number
+}) {
+  const moved = snapCaret({
+    view,
+    offset: focus,
+    backward: focus < previous,
+  })
+
+  if (anchor === focus) {
+    return {
+      anchor: moved,
+      focus: moved,
+    }
+  }
+
+  return {
+    anchor: snapCaret({
+      view,
+      offset: anchor,
+      backward: moved > anchor,
+    }),
+    focus: moved,
+  }
+}
+
 // A chip the range touches goes as a whole, so its Markdown is never left half edited.
 export function replaceDisplay({
   text,
