@@ -7,7 +7,7 @@ import {
   safeEnd,
   splitBlocks,
   type Block,
-} from '../web/src/components/ui/reveal.ts'
+} from '../web/src/shared/ui/reveal.ts'
 
 const md = new Marked({ gfm: true })
 const lex = ({ text }: { text: string }) => md.lexer(text)

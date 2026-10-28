@@ -1,6 +1,6 @@
 import type { CurrentAction } from '../../../src/thread/calls.ts'
-import { Icon } from '../components/ui/icon.tsx'
-import { LiveLabel } from '../components/ui/live-label.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
+import { LiveLabel } from '../shared/ui/live-label.tsx'
 import { currentLabel } from './action-label.ts'
 import { SentencePart } from './messages.tsx'
 import type { PnyxLookup, Segment } from './pnyx-action.ts'

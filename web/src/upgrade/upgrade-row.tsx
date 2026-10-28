@@ -1,7 +1,7 @@
 import { STEP_WORDS, type UpgradeOperation, type UpgradeStepName } from '../../../src/upgrade/model.ts'
 import { useElapsed } from '../compaction/compaction.tsx'
-import { Button } from '../components/ui/controls.tsx'
-import { Icon } from '../components/ui/icon.tsx'
+import { Button } from '../shared/ui/controls.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
 import { fixPrompt, stoppedWhile } from './fix-prompt.ts'
 
 const STEPS: UpgradeStepName[] = [

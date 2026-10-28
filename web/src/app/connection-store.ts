@@ -1,5 +1,5 @@
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/app/save-receipts.ts'
-import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from './outbox.ts'
+import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from '../hydra/outbox.ts'
 import { reminderTime } from '../../../src/reminders/time.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/app/reducer.ts'
@@ -12,12 +12,12 @@ import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import type { Command, Receipt } from './connection.ts'
 import { commandTimeout, reconnectDelay, retryable, withChanges } from './connection-protocol.ts'
-import { argument, optimisticState, currentRevision } from './optimistic.ts'
+import { argument, optimisticState, currentRevision } from '../hydra/optimistic.ts'
 import { commandArguments, editTargets, pendingHydra, type HydraResource } from './pending-state.ts'
-import { CommandFailure, createPendingResource } from './pending-intents.ts'
-import { DISPATCH_CHANGED } from './heads-dispatch.ts'
+import { CommandFailure, createPendingResource } from '../shared/pending-intents.ts'
+import { DISPATCH_CHANGED } from '../hydra/heads-dispatch.ts'
 import { shouldReload } from './view.ts'
-import { noteUpdate, staleUpdates } from './updates-cache.ts'
+import { noteUpdate, staleUpdates } from '../hydra/updates-cache.ts'
 
 const emptyQueue = (): HydraQueue => ({
   waiting: [],

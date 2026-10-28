@@ -4,11 +4,11 @@ import type { HydraState } from '../../../src/app/model.ts'
 import type { AgentConfig } from '../../../src/core/model.ts'
 import { harnessControls } from '../../../src/core/control.ts'
 import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
-import { Button } from '../components/ui/controls.tsx'
-import { hasIcon, Icon } from '../components/ui/icon.tsx'
-import { Tooltip } from '../components/ui/tooltip.tsx'
+import { Button } from '../shared/ui/controls.tsx'
+import { hasIcon, Icon } from '../shared/ui/icon.tsx'
+import { Tooltip } from '../shared/ui/tooltip.tsx'
 import { modelOptions } from './model-options.ts'
-import type { Command } from './connection.ts'
+import type { Command } from '../app/connection.ts'
 
 const HARNESSES = [
   {

@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Markdown } from './markdown.tsx'
+import { Markdown } from '../../components/ui/markdown.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 

@@ -1,6 +1,6 @@
 import type { MouseEvent, ReactNode } from 'react'
-import { Button } from './controls.tsx'
-import { Icon } from './icon.tsx'
+import { Button } from '../../shared/ui/controls.tsx'
+import { Icon } from '../../shared/ui/icon.tsx'
 
 export function AttachmentCard({
   slot,

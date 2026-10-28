@@ -1,4 +1,4 @@
-import type { PendingIntent } from '../../hydra/pending-intents.ts'
+import type { PendingIntent } from '../pending-intents.ts'
 
 export function PendingStatus({ intents }: { intents: PendingIntent<unknown>[] }) {
   const unknown = intents.some(intent => intent.stage === 'unknown')

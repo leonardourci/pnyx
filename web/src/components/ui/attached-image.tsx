@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine } from '../../../../src/attachments/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
-import { Dialog } from './dialog.tsx'
-import { Icon } from './icon.tsx'
+import { Dialog } from '../../shared/ui/dialog.tsx'
+import { Icon } from '../../shared/ui/icon.tsx'
 
 function attachmentSource({ path }: { path: string }) {
   const stored = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/attachments\/([^/]+)$/i.exec(path)

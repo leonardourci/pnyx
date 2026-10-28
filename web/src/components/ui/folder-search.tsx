@@ -1,6 +1,6 @@
 import { useId, useState } from 'react'
 import type { Folder } from '../../../../src/projects/folders.ts'
-import { Button, Input } from './controls.tsx'
+import { Button, Input } from '../../shared/ui/controls.tsx'
 
 export function FolderSearch({
   label,

@@ -1,4 +1,4 @@
-import { Icon } from '../components/ui/icon.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
 import type { ReactNode } from 'react'
 import type { UpgradeStatus } from '../../../src/upgrade/model.ts'
 import { UpgradeHint } from '../upgrade/upgrade-hint.tsx'

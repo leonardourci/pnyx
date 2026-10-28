@@ -1,4 +1,4 @@
-import { Disclosure, CollapsibleText } from '../components/ui/disclosure.tsx'
+import { Disclosure, CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { TaskReference } from '../components/ui/task-reference.tsx'
 import { UpdateEntry } from './update-rows.tsx'
 import type { TurnActions } from './conversation.ts'

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { createPendingResource, CommandFailure } from '../web/src/hydra/pending-intents.ts'
-import { commandArguments } from '../web/src/hydra/pending-state.ts'
+import { createPendingResource, CommandFailure } from '../web/src/shared/pending-intents.ts'
+import { commandArguments } from '../web/src/app/pending-state.ts'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../src/app/server-protocol.ts'
 import { HydraError } from '../src/core/model.ts'
 

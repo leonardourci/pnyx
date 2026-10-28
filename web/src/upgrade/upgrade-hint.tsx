@@ -1,9 +1,9 @@
 import { useState } from 'react'
 import type { UpgradeStatus } from '../../../src/upgrade/model.ts'
-import { Button } from '../components/ui/controls.tsx'
-import { Icon } from '../components/ui/icon.tsx'
-import { Popover } from '../components/ui/popover.tsx'
-import { Tooltip } from '../components/ui/tooltip.tsx'
+import { Button } from '../shared/ui/controls.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
+import { Popover } from '../shared/ui/popover.tsx'
+import { Tooltip } from '../shared/ui/tooltip.tsx'
 import { clock } from '../hydra/chat.ts'
 
 const checkedDay = ({ at }: { at: string }) => {

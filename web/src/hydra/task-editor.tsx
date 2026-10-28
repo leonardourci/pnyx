@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card } from '../../../src/core/model.ts'
-import { Button, Input, Textarea } from '../components/ui/controls.tsx'
-import type { Command } from './connection.ts'
+import { Button, Input, Textarea } from '../shared/ui/controls.tsx'
+import type { Command } from '../app/connection.ts'
 
 export interface TaskDraft {
   title: string

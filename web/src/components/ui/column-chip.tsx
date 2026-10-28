@@ -1,4 +1,4 @@
-import { Icon } from './icon.tsx'
+import { Icon } from '../../shared/ui/icon.tsx'
 
 export function ColumnChip({
   icon,

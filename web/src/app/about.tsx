@@ -1,4 +1,4 @@
-import { Disclosure } from '../components/ui/disclosure.tsx'
+import { Disclosure } from '../shared/ui/disclosure.tsx'
 
 export function About() {
   return (
