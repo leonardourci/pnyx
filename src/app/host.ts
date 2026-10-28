@@ -14,8 +14,10 @@ import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, stee
 import { steeringNotice } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
-import { helperAgent, helperEvent, helperReason, helperProgress } from '#routine-helper/route.ts'
+import { helperAgent, helperBatch, helperEvent, helperPermission, helperReason } from '#routine-helper/route.ts'
 import { activeHelperBatches, helperLeases, outcomeLines, wakeHandled } from '#routine-helper/state.ts'
+import { isHelper } from '#routine-helper/leases.ts'
+import { taskMention } from '#hydra/mentions.ts'
 import { pausedDeclaration } from '#tasks/lifecycle.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -162,6 +164,11 @@ export function createHost({
   let updates: QueuedUpdate[] = []
   // Each queued change's reason lines, worked out from the state it landed in.
   const wakeReasonsAt = new Map<number, string[]>()
+  // ponytail: helper work main's wake passed over stays queued here in memory; a restart leaves it to the task's state and the timed review.
+  const parked = new Set<number>()
+  // Parked updates each main wake delivers, by its through seq; they leave the queue once that turn finishes.
+  const wakeParked = new Map<number, number[]>()
+  let readingParked: number[] = []
   let readThrough = 0
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -1608,6 +1615,24 @@ export function createHost({
 
         if (activity !== entry.activity) {
           entry.activity = activity
+
+          if (card.id === HYDRA_CARD && activity !== 'working') {
+            mainTasks.clear()
+
+            if (activity === 'finished' && readingParked.length) {
+              const done = new Set(readingParked)
+              updates = updates.filter(update => !done.has(update.seq))
+
+              for (const seq of done) {
+                parked.delete(seq)
+              }
+
+              queued()
+            }
+
+            readingParked = []
+          }
+
           note({
             fn: ({ writer }) => {
               const handledThrough = wakesThrough({
@@ -1976,11 +2001,43 @@ export function createHost({
     }
   }
 
+  const helperFailed = ({ state }: { state: HydraState }) => Object.values(state.helper?.runs ?? {})
+    .some(batch => batch.error)
+
   const helperPending = () => {
     const state = loadHydra({ hydraId }).state
 
-    return outcomeLines({ state }).length > 0
-      || Object.values(state.helper?.runs ?? {}).some(batch => batch.error)
+    return outcomeLines({ state }).length > 0 || helperFailed({ state })
+  }
+
+  // A failed batch sends routine work to main until main has seen the failure.
+  const helperOpen = ({ state }: { state: HydraState }) => !!helperAgent({ state })
+    && !helperFailed({ state })
+
+  // Tasks main's running turn was woken for; the helper leaves them until that turn ends.
+  const mainTasks = new Set<string>()
+  // A wake's tasks join mainTasks only once its turn really starts.
+  const wakeTasks = new Map<string, string[]>()
+
+  const wakeMain = ({
+    id,
+    text,
+    tasks,
+  }: {
+    id: string
+    text: string
+    tasks: string[]
+  }) => {
+    wakeTasks.set(
+      id,
+      tasks,
+    )
+
+    return host.hydra({
+      id,
+      actor: 'pnyx',
+      text,
+    }).finally(() => wakeTasks.delete(id))
   }
 
   // One check turn at a time; a busy Hydra is woken when its turn finishes.
@@ -2165,8 +2222,155 @@ export function createHost({
     outcomesReady: armWake,
   })
 
+  const updatesText = ({
+    state,
+    after,
+    seqs,
+  }: {
+    state: HydraState
+    after: number
+    seqs: number[]
+  }) => {
+    const chosen = new Set(seqs)
+    const reports = (state.hydraMessages ?? [])
+      .filter(message => chosen.has(state.eventIds[message.id] ?? -1)
+      && reportActor({ actor: message.actor }))
+
+    return wakeText({
+      hydraId,
+      state,
+      now: Date.now(),
+      after,
+      reasons: [...new Set(seqs.flatMap(seq => wakeReasonsAt.get(seq) ?? []))],
+      reports,
+      check: reports.length < chosen.size,
+      pick: {
+        tasks: updates.filter(update => chosen.has(update.seq)).map(update => update.card),
+        asks: reports.flatMap(message => message.ask ?? []),
+      },
+    })
+  }
+
+  // Unread updates the helper may take; main keeps the tasks it handles now or has other updates for.
+  const routeUpdates = ({
+    state,
+    after,
+  }: {
+    state: HydraState
+    after: number
+  }) => {
+    const unread = updates.filter(update => (update.seq > after && update.seq <= wakeThrough)
+      || parked.has(update.seq))
+    const seqs = new Set(unread.map(update => update.seq))
+    const routed = new Map(seqs.size ? readEvents({ hydraId })
+      .filter(event => seqs.has(event.seq))
+      .flatMap(event => {
+        const task = helperEvent({
+          state,
+          event,
+        })
+
+        return task ? [
+          [
+            event.seq,
+            {
+              task,
+              question: event.type === 'hydra.message' && !!event.data.ask,
+            },
+          ],
+        ] as const : []
+      }) : [])
+    // Main keeps a task whose outcome or hand-back it has not acknowledged, so it can act on what the helper escalated.
+    const mainOnly = new Set([
+      ...mainTasks,
+      ...unread.filter(update => !routed.has(update.seq)).map(update => update.card),
+      ...(state.helper?.outcomes ?? []).filter(outcome => outcome.audience === 'owner'
+        && outcome.seq > (state.helper?.delivered ?? 0)).map(outcome => outcome.task),
+      ...Object.values(state.helper?.runs ?? {}).filter(batch => batch.error)
+        .flatMap(batch => batch.tasks),
+    ])
+    const items = [...routed]
+      .filter(([
+        , item,
+      ]) => !mainOnly.has(item.task))
+      .map(([
+        seq,
+        item,
+      ]) => ({
+        seq,
+        ...item,
+      }))
+
+    return {
+      items,
+      mainOnly,
+    }
+  }
+
+  // Runs before main's wake checks so the helper takes routine tasks even while main works.
+  const offerUpdates = async ({
+    state,
+    after,
+  }: {
+    state: HydraState
+    after: number
+  }) => {
+    if (!helperOpen({ state }) || helper.busy()) {
+      return
+    }
+
+    const batch = helperBatch({
+      items: routeUpdates({
+        state,
+        after,
+      }).items,
+      prompt: ({ seqs }) => updatesText({
+        state,
+        after,
+        seqs,
+      }),
+    })
+
+    if (!batch) {
+      return
+    }
+
+    const claimed = new Set(batch.seqs)
+
+    if (await helper.offer({
+      tasks: batch.tasks,
+      prompt: batch.text,
+      seqs: batch.seqs,
+    })) {
+      updates = updates.filter(update => !claimed.has(update.seq))
+
+      for (const seq of claimed) {
+        parked.delete(seq)
+      }
+
+      wakeThrough = Math.max(
+        0,
+        ...updates.map(update => update.seq),
+      )
+      queued()
+    }
+  }
+
   const fireWake = async () => {
     wakeTimer = undefined
+    const current = loadHydra({ hydraId }).state
+
+    if (closing || !pnyxRunsHydra({ state: current })) {
+      return
+    }
+
+    await offerUpdates({
+      state: current,
+      after: wakeCursor({
+        state: current,
+        fallback: wakeStart ?? 0,
+      }),
+    })
     const state = loadHydra({ hydraId }).state
     const session = state.config?.hydra.session
     const card = state.cards[HYDRA_CARD]
@@ -2176,14 +2380,23 @@ export function createHost({
     })
 
     // An interrupted Hydra waits for the owner; the next change after that wakes it.
-    if (closing || !pnyxRunsHydra({ state })
-      || (card?.sessionActivity ?? card?.activity) === 'interrupted'
+    if ((card?.sessionActivity ?? card?.activity) === 'interrupted'
       || card?.attention.some(a => a.key === INTERRUPTED)
       || queuedHydra.size || (session && live.get(session)?.activity === 'working')) {
       return
     }
 
-    if (wakeThrough <= after) {
+    const open = helperOpen({ state })
+    // Updates the helper can take wait for its next batch rather than riding along with main's.
+    const helperSeqs = new Set(open ? routeUpdates({
+      state,
+      after,
+    }).items.map(item => item.seq) : [])
+    // A parked update the helper can no longer take is main's, even below main's cursor.
+    const batch = updates.filter(update => !helperSeqs.has(update.seq)
+      && (parked.has(update.seq) || (update.seq > after && update.seq <= wakeThrough)))
+
+    if (!batch.length) {
       if (helperPending()) {
         return host.hydra({
           id: `helper-outcomes:${state.seq}`,
@@ -2195,23 +2408,36 @@ export function createHost({
       return
     }
 
-    const through = wakeThrough
+    const through = Math.max(
+      after,
+      ...batch.map(update => update.seq),
+    )
+    wakeParked.set(
+      through,
+      batch.filter(update => parked.has(update.seq)).map(update => update.seq),
+    )
+
+    for (const seq of helperSeqs) {
+      if (seq <= through) {
+        parked.add(seq)
+      }
+    }
+
+    // Progress is never queued, so main's reports are every unread message the helper does not hold.
     const held = new Set(activeHelperBatches({ state }).flatMap(batch => batch.seqs))
     const reports = (state.hydraMessages ?? []).filter(message => {
       const seq = state.eventIds[message.id]
 
-      const unread = seq !== undefined && seq > after && seq <= through
+      if (seq === undefined || !reportActor({ actor: message.actor })) {
+        return false
+      }
 
-      return unread && reportActor({ actor: message.actor })
-        && !state.helper?.handled.includes(seq) && !held.has(seq)
+      const unread = seq > after && seq <= through && !state.helper?.handled.includes(seq)
+
+      return batch.some(update => update.seq === seq)
+        || (unread && !held.has(seq) && !helperSeqs.has(seq) && !parked.has(seq))
     })
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
-    const otherChanges = updates.some(update => update.seq > after && update.seq <= through
-      && !reportSeqs.has(update.seq))
-    const reasons = [
-      ...new Set(updates.filter(update => update.seq > after && update.seq <= through)
-        .flatMap(update => wakeReasonsAt.get(update.seq) ?? [])),
-    ]
     const review = state.hydraReview
     let reviewText: string | undefined
 
@@ -2224,56 +2450,27 @@ export function createHost({
       state,
       now: Date.now(),
       after,
-      reasons,
+      reasons: [...new Set(batch.flatMap(update => wakeReasonsAt.get(update.seq) ?? []))],
       reports,
-      check: otherChanges || !reports.length,
+      check: batch.some(update => !reportSeqs.has(update.seq)) || !reports.length,
       review: reviewText,
     })
-    const batch = updates.filter(update => update.seq > after && update.seq <= through)
-    const events = readEvents({ hydraId })
-      .filter(event => batch.some(update => update.seq === event.seq))
-    const tasks = events.map(event => helperEvent({
-      state,
-      event,
-    }))
-    const routine = tasks.length > 0 && tasks.every(task => task !== undefined)
 
-    if (helperAgent({ state }) && routine && !helper.busy()
-      && await helper.offer({
-        tasks: tasks.filter(task => task !== undefined),
-        prompt: text,
-        seqs: batch.map(update => update.seq),
-      })) {
-      const claimed = new Set(batch.map(update => update.seq))
-      updates = updates.filter(update => !claimed.has(update.seq))
-      wakeThrough = Math.max(
-        0,
-        ...updates.map(update => update.seq),
-      )
-      queued()
-
-      return
-    }
-
-    if (routine && helperAgent({ state }) && helper.busy()) {
-      return
-    }
-
-    return host.hydra({
+    return wakeMain({
       id: wakeId({
         through,
         state,
       }),
-      actor: 'pnyx',
       text,
+      tasks: batch.map(update => update.card),
     })
   }
 
   const finishReading = () => {
-    const unread = updates.filter(update => update.seq > readThrough)
+    const unread = updates.filter(update => update.seq > readThrough || parked.has(update.seq))
 
     for (const seq of wakeReasonsAt.keys()) {
-      if (seq <= readThrough) {
+      if (seq <= readThrough && !parked.has(seq)) {
         wakeReasonsAt.delete(seq)
       }
     }
@@ -2532,14 +2729,15 @@ export function createHost({
     const hydraCard = state.cards[HYDRA_CARD]
     const session = state.config?.hydra.session
 
-    // A Hydra that cannot start holds stall alarms, which would otherwise be spent on starts that never reach it.
-    if (closing || state.hydraStatus?.state === 'down' || !hostedHydra({ state }) || queuedHydra.size
-      || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
-      || hydraCard?.attention.some(a => a.key === INTERRUPTED)
-      || (session && live.get(session)?.activity === 'working')) {
+    if (closing || !hostedHydra({ state })) {
       return
     }
 
+    // A Hydra that cannot start holds main's stall alarms, which would otherwise be spent on starts that never reach it.
+    const mainWaits = state.hydraStatus?.state === 'down' || queuedHydra.size > 0
+      || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
+      || hydraCard?.attention.some(a => a.key === INTERRUPTED)
+      || (session && live.get(session)?.activity === 'working')
     const now = Date.now()
     const stalls = Object.values(state.cards).flatMap(card => {
       if (card.id === HYDRA_CARD || !card.agent) {
@@ -2572,14 +2770,13 @@ export function createHost({
       now,
     }).filter(wait => !stalled.has(wait.id))
     const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
-    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
-    const [first] = [
+    const fired = [
+      ...stalls,
       ...waits,
       ...unconfirmed,
-      ...stalls,
     ]
 
-    if (!first) {
+    if (!fired.length) {
       return
     }
 
@@ -2593,27 +2790,10 @@ export function createHost({
       return `${stall.detail} (alarm ${count + 1})`
     }
 
-    const fired = [
-      ...stalls,
-      ...waits,
-      ...unconfirmed,
-    ]
-    const reasons = fired.map(item => sealed({
-      text: reasonLine({
-        state,
-        card: item.card,
-        kind: item.kind,
-        detail: alarm({ stall: item }),
-      }),
-    }))
-
-    const firstCount = stalled.get(first.id)?.count ?? 0
-    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
-
-    const delivered = () => {
+    const delivered = ({ items }: { items: StallItem[] }) => {
       const at = Date.now()
 
-      for (const item of fired) {
+      for (const item of items) {
         const count = stalled.get(item.id)?.count ?? 0
         stalled.set(
           item.id,
@@ -2629,36 +2809,87 @@ export function createHost({
       state,
       fallback: wakeStart ?? 0,
     })
-    const text = `<pnyx-wake>Why you are woken:\n${reasons.join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${decisionsText({
+    const stallText = ({
+      items,
+      helper: picked = false,
+    }: {
+      items: StallItem[]
+      helper?: boolean
+    }) => `<pnyx-wake>Why you are woken:\n${items.map(item => sealed({
+      text: reasonLine({
+        state,
+        card: item.card,
+        kind: item.kind,
+        detail: alarm({ stall: item }),
+      }),
+    })).join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, remind them in one line of reply text. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared.\n${decisionsText({
       state,
       now,
+      pick: picked ? {
+        tasks: items.map(item => item.card),
+        asks: [],
+      } : undefined,
     })}\n${REPLY_RULES}</pnyx-wake>`
-    const routine = fired.every(item => helperReason({
-      state,
-      task: item.card,
-      kind: item.kind,
-    }))
+    const mainOnly = new Set([
+      ...routeUpdates({
+        state,
+        after,
+      }).mainOnly,
+      ...fired.filter(item => !helperReason({
+        state,
+        task: item.card,
+        kind: item.kind,
+      })).map(item => item.card),
+    ])
+    const routine = fired.filter(item => !mainOnly.has(item.card))
+    const batch = helperOpen({ state }) && !helper.busy() ? helperBatch({
+      items: routine.map((
+        item,
+        index,
+      ) => ({
+        task: item.card,
+        seq: index,
+        question: false,
+      })),
+      prompt: ({ seqs }) => stallText({
+        items: seqs.map(index => routine[index]!),
+        helper: true,
+      }),
+    }) : undefined
+    const offered = batch?.seqs.map(index => routine[index]!) ?? []
 
-    if (helperAgent({ state }) && routine && helper.busy()) {
-      return
-    }
-
-    if (helperAgent({ state }) && routine && await helper.offer({
-      tasks: fired.map(item => item.card),
-      prompt: text,
+    if (batch && await helper.offer({
+      tasks: batch.tasks,
+      prompt: batch.text,
       seqs: [],
-      once: fired.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
+      once: offered.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
     })) {
-      delivered()
+      delivered({ items: offered })
+    }
 
+    // Alarms the helper can take stay undelivered, so they fire again for its next batch.
+    const rest = fired.filter(item => !offered.includes(item)
+      && (mainOnly.has(item.card) || !helperOpen({ state })))
+    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
+    const [first] = [
+      ...waits,
+      ...unconfirmed,
+      ...stalls,
+    ].filter(item => rest.includes(item))
+
+    if (mainWaits || !first) {
       return
     }
 
-    return host.hydra({
+    const firstCount = stalled.get(first.id)?.count ?? 0
+    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
+
+    await wakeMain({
       id: wakeTurnId,
-      actor: 'pnyx',
-      text,
-    }).then(delivered)
+      text: stallText({ items: rest }),
+      tasks: rest.map(item => item.card),
+    })
+    delivered({ items: rest })
   }
 
   // Each stall or wait fired so far: how many times, and when last.
@@ -3220,6 +3451,14 @@ export function createHost({
           const helperState = loadHydra({ hydraId }).state
           const helperLines = outcomeLines({ state: helperState })
           let helperText = ''
+          // Main holds the tasks whose outcomes or hand-backs it is given, as it holds a wake's tasks.
+          const presentedTasks = [
+            ...(helperState.helper?.outcomes ?? [])
+              .filter(outcome => outcome.audience === 'owner' && outcome.seq > (helperState.helper?.delivered ?? 0))
+              .map(outcome => outcome.task),
+            ...Object.values(helperState.helper?.runs ?? {}).filter(batch => batch.error)
+              .flatMap(batch => batch.tasks),
+          ]
 
           if (activeHelperBatches({ state: helperState }).length) {
             helperText = `\n<pnyx-wake>${sealed({ text: helperLeases({ state: helperState }).join('\n') })}</pnyx-wake>`
@@ -3236,9 +3475,23 @@ export function createHost({
           const pendingBatches = Object.values(helperState.helper?.runs ?? {})
             .filter(batch => batch.error)
 
-          for (const batch of pendingBatches) {
-            helperBatchesPresented.add(batch.id)
-            helperText += `\n<pnyx-wake>Helper hand-back: ${sealed({ text: batch.error ?? 'interrupted' })}. Check current task state before acting.\n${sealed({ text: batch.prompt })}</pnyx-wake>`
+          // Every failed batch reaches main as one notice naming its tasks, not one wake each.
+          if (pendingBatches.length) {
+            const tasks = [...new Set(pendingBatches.flatMap(batch => batch.tasks))]
+              .map(task => taskMention({
+                id: task,
+                title: helperState.cards[task]?.title ?? task,
+              }))
+            const errors = [...new Set(pendingBatches.map(batch => batch.error ?? 'interrupted'))]
+
+            for (const batch of pendingBatches) {
+              helperBatchesPresented.add(batch.id)
+            }
+
+            const handedBack = pendingBatches.length === 1 ? 'a batch' : `${pendingBatches.length} batches`
+            const notice = `The routine helper handed back ${handedBack} for ${tasks.join(', ')}: ${errors.join('; ')}`
+            const wakes = pendingBatches.map(batch => sealed({ text: batch.prompt })).join('\n')
+            helperText += `\n<pnyx-wake>${sealed({ text: notice })}. These tasks are yours now: check their current state before acting, because earlier actions may have completed. The wakes it was given:\n${wakes}</pnyx-wake>`
           }
 
           const inputText = recap ?? (memoryNote ? text.replace(
@@ -3246,6 +3499,14 @@ export function createHost({
             `${memoryNote}\n${REPLY_RULES}`,
           ) : text)
           entry.activity = 'working'
+
+          for (const task of [
+            ...wakeTasks.get(id) ?? [],
+            ...presentedTasks,
+          ]) {
+            mainTasks.add(task)
+          }
+
           entry.input.push({
             text: compactCommand({ text }) ? text : inputText + helperText,
             id,
@@ -3255,6 +3516,8 @@ export function createHost({
 
           if (wakeThroughSeq) {
             readThrough = Number(wakeThroughSeq)
+            readingParked = wakeParked.get(readThrough) ?? []
+            wakeParked.delete(readThrough)
             queued()
           }
 
@@ -3969,6 +4232,14 @@ export function createHost({
             })
           }
 
+          // A question or form is the worker asking; the helper leaves its answer to main or the owner.
+          if (isHelper({ actor }) && (!helperPermission({ request }) || answer !== undefined)) {
+            throw new HydraError({
+              message: 'This request asks a question; leave it to the main Hydra',
+              code: 'MAIN_ONLY',
+            })
+          }
+
           // Hydra runs pnyx-axi unasked, so it must not clear its own prompts with it.
           if (card.id === HYDRA_CARD && actor === HYDRA_ACTOR) {
             throw new HydraError({
@@ -4494,12 +4765,7 @@ export function createHost({
             events: [event],
           })
 
-          const progress = helperProgress({
-            state,
-            event,
-          })
-
-          if (reasons.length || progress) {
+          if (reasons.length) {
             host.wake({
               seq: event.seq,
               card: event.cardId,

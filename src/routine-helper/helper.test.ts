@@ -8,11 +8,12 @@ import { afterEach, beforeEach, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { askAnswer } from '#tasks/questions.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { HydraEvent } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { PermissionRequest } from '#workers/model.ts'
 import { taskLease } from './leases.ts'
-import { helperEvent, helperReason } from './route.ts'
+import { helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
+import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -71,18 +72,46 @@ afterEach(() => {
   )
 })
 
+const granted = ({
+  state,
+  tasks,
+}: {
+  state: HydraState
+  tasks: string[]
+}): HydraState => ({
+  ...state,
+  helper: {
+    runs: {
+      batch: {
+        id: 'batch',
+        tasks,
+        prompt: '',
+        seqs: [],
+      },
+    },
+    outcomes: [],
+    handled: [],
+    wakes: [],
+    delivered: 0,
+  },
+})
+
 test(
-  'fixed routing keeps results, PR actions, permissions, unknown tasks and owner decisions on main',
+  'fixed routing keeps results, PR actions, progress, unknown tasks and owner answers off the helper',
   () => {
     const s = state()
     const task = s.keys.work!
+    const other = s.keys.other!
     const report = {
       type: 'hydra.message',
       actor: `worker:${task}`,
-      cardId: HYDRA_CARD,
+      cardId: task,
       data: {
+        action: 'send',
+        hydra: 'hydra',
         task,
-        kind: 'progress',
+        ask: 'ask-1',
+        text: 'Which parser?',
       },
     } as HydraEvent
     assert.equal(
@@ -99,7 +128,34 @@ test(
           ...report,
           data: {
             ...report.data,
-            kind: undefined,
+            ask: undefined,
+            kind: 'progress',
+          },
+        } as HydraEvent,
+      }),
+      undefined,
+    )
+    assert.equal(
+      helperEvent({
+        state: s,
+        event: {
+          ...report,
+          data: {
+            ...report.data,
+            ask: undefined,
+          },
+        } as HydraEvent,
+      }),
+      undefined,
+    )
+    assert.equal(
+      helperEvent({
+        state: s,
+        event: {
+          ...report,
+          data: {
+            ...report.data,
+            task: 'missing',
           },
         } as HydraEvent,
       }),
@@ -131,6 +187,7 @@ test(
       'not confirmed',
       'turn ended',
       'asked',
+      'declared',
     ] as const) {
       assert.equal(
         helperReason({
@@ -143,17 +200,16 @@ test(
     }
 
     assert.equal(
-      helperEvent({
-        state: s,
-        event: {
-          ...report,
-          data: {
-            task: 'missing',
-            kind: 'progress',
-          },
-        } as HydraEvent,
+      helperGrant({
+        state: granted({
+          state: s,
+          tasks: [other],
+        }),
+        task: other,
+        actor: 'helper:batch',
+        action: 'answer',
       }),
-      undefined,
+      true,
     )
     commands.task([
       'ask',
@@ -174,11 +230,96 @@ test(
       }),
       undefined,
     )
+    // Waiting on the owner leaves the helper only the worker's nudges and plain permission prompts.
     assert.equal(
       helperReason({
         state: state(),
         task,
         kind: 'quiet',
+      }),
+      true,
+    )
+    assert.equal(
+      helperReason({
+        state: state(),
+        task,
+        kind: 'asked',
+      }),
+      false,
+    )
+
+    const prompted = ({ request }: { request: Partial<PermissionRequest> }) => {
+      const next = structuredClone(state())
+      next.cards[task]!.permissions = [
+        {
+          id: 'request-1',
+          tool: 'Bash',
+          status: 'pending',
+          ...request,
+        } as PermissionRequest,
+      ]
+
+      return next
+    }
+
+    assert.equal(
+      helperReason({
+        state: prompted({ request: {} }),
+        task,
+        kind: 'permission',
+      }),
+      true,
+    )
+    assert.equal(
+      helperReason({
+        state: prompted({
+          request: {
+            tool: 'AskUserQuestion',
+            questions: [{ question: 'Which parser?' }] as PermissionRequest['questions'],
+          },
+        }),
+        task,
+        kind: 'permission',
+      }),
+      false,
+    )
+    const owned = granted({
+      state: state(),
+      tasks: [task],
+    })
+    assert.equal(
+      helperGrant({
+        state: owned,
+        task,
+        actor: 'helper:batch',
+        action: 'reply',
+      }),
+      true,
+    )
+    assert.equal(
+      helperGrant({
+        state: owned,
+        task,
+        actor: 'helper:batch',
+        action: 'continue',
+      }),
+      true,
+    )
+    assert.equal(
+      helperGrant({
+        state: owned,
+        task,
+        actor: 'helper:batch',
+        action: 'permission',
+      }),
+      true,
+    )
+    assert.equal(
+      helperGrant({
+        state: owned,
+        task,
+        actor: 'helper:batch',
+        action: 'answer',
       }),
       false,
     )
@@ -561,6 +702,215 @@ test(
         tasks: ['work'],
       })[0]!.summary.length,
       600,
+    )
+  },
+)
+
+test(
+  'a burst becomes a capped batch: the oldest worker questions first, then the oldest other tasks, within the input budget',
+  () => {
+    const items = [
+      {
+        task: 'quiet-old',
+        seq: 1,
+        question: false,
+      },
+      {
+        task: 'asked-new',
+        seq: 9,
+        question: true,
+      },
+      {
+        task: 'quiet-new',
+        seq: 5,
+        question: false,
+      },
+      {
+        task: 'asked-old',
+        seq: 7,
+        question: true,
+      },
+      {
+        task: 'quiet-old',
+        seq: 2,
+        question: false,
+      },
+    ]
+    const length = ({ seqs }: { seqs: number[] }) => seqs.join(',')
+    assert.deepEqual(
+      helperBatch({
+        items,
+        prompt: length,
+      }),
+      {
+        tasks: [
+          'asked-old',
+          'asked-new',
+          'quiet-old',
+        ],
+        seqs: [
+          7,
+          9,
+          1,
+          2,
+        ],
+        text: '7,9,1,2',
+      },
+    )
+    // A task's later question outranks its own earlier quiet item.
+    assert.deepEqual(
+      helperBatch({
+        items: [
+          ...items,
+          {
+            task: 'quiet-old',
+            seq: 8,
+            question: true,
+          },
+        ],
+        prompt: length,
+      })?.tasks,
+      [
+        'asked-old',
+        'quiet-old',
+        'asked-new',
+      ],
+    )
+    assert.deepEqual(
+      helperBatch({
+        items,
+        prompt: ({ seqs }) => 'x'.repeat(seqs.length * 24_000),
+      })?.seqs,
+      [7],
+    )
+    assert.deepEqual(
+      helperBatch({
+        items,
+        prompt: () => 'x'.repeat(24_001),
+      })?.seqs,
+      [7],
+    )
+    // Thirty questions on one task stop at the budget; the rest wait for the next batch.
+    assert.deepEqual(
+      helperBatch({
+        items: Array.from(
+          { length: 30 },
+          (
+            _,
+            index,
+          ) => ({
+            task: 'asked',
+            seq: index + 1,
+            question: true,
+          }),
+        ),
+        prompt: ({ seqs }) => 'x'.repeat(seqs.length * 2_000),
+      })?.seqs,
+      [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+      ],
+    )
+    assert.equal(
+      helperBatch({
+        items: [],
+        prompt: () => '',
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'the helper starts a fresh conversation after 20 turns and carries its last outcomes into each prompt',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+
+    for (let turn = 0; turn <= 20; turn++) {
+      const run = await lab.run({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task,
+              audience: 'routine',
+              summary: `Nudged ${turn}.`,
+            },
+          ],
+        }),
+      })
+      await run.finished
+    }
+
+    assert.equal(
+      lab.opens[0]!.agent,
+      undefined,
+    )
+    assert.ok(lab.opens[1]!.agent)
+    assert.ok(lab.opens[19]!.agent)
+    assert.equal(
+      lab.opens[20]!.agent,
+      undefined,
+    )
+    assert.ok(lab.inputs[20]!.includes(`Your earlier outcomes on these tasks:
+- ${task} (routine): Nudged 17.
+- ${task} (routine): Nudged 18.
+- ${task} (routine): Nudged 19.
+`))
+  },
+)
+
+test(
+  'a task lease main holds for a moment delays the helper batch instead of failing it',
+  async t => {
+    const lab = helperLab()
+    const errors = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+    const release = taskLease({
+      hydraId: 'lab',
+      task,
+      actor: 'main',
+    })
+    const run = lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            audience: 'routine',
+            summary: 'Nudged.',
+          },
+        ],
+      }),
+    })
+    await until({
+      what: 'the helper to wait on main’s lease',
+      check: () => errors.mock.calls.some(call => (call.arguments[1] as { code?: string })?.code === 'TASK_LEASED'),
+    })
+    release()
+    await (await run).finished
+    assert.equal(
+      lab.handbacks.length,
+      0,
+    )
+    assert.deepEqual(
+      state().helper?.outcomes.map(outcome => outcome.summary),
+      ['Nudged.'],
     )
   },
 )
