@@ -4,7 +4,7 @@ import { INTERRUPTED } from '../workers/session-attachments.ts'
 import type { HydraState } from '../app/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
-import { boardReview, MINUTE_MS } from './board.ts'
+import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '../workers/presence.ts'
 
 export const REVIEW_MS = 30 * MINUTE_MS

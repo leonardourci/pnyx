@@ -34,7 +34,7 @@ const PURE_TESTS = new Set([
   'src/app/reducer.test.ts',
   'src/tasks/tasks.test.ts',
   'src/workers/usage-limits.test.ts',
-  'test/wake-reasons.test.ts',
+  'src/hydra/wake-reasons.test.ts',
 ].map(file => resolve(file)))
 
 const inputs = process.argv.slice(2)

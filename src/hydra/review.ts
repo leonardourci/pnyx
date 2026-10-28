@@ -8,7 +8,7 @@ import type { Card } from '../tasks/model.ts'
 import { failedChecks, pendingChecks, ranChecks } from '../tasks/delivery/model.ts'
 import { liveTask } from '../tasks/select.ts'
 import { cardSessionId } from '../workers/session-attachments.ts'
-import { mergeApproved, readyBacklog } from '../core/wake-reasons.ts'
+import { mergeApproved, readyBacklog } from './wake-reasons.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
 export const MINUTE_MS = 60_000

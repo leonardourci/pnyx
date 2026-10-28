@@ -39,7 +39,7 @@ import { permissionAnswer, permissionEvent } from '../workers/permission-rules.t
 import { declareTask } from '../tasks/declarations.ts'
 import { HYDRA_CARD, QUIET_REPLY, hostedHydra, hydraConfig, hydraDelivery, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../core/hydra.ts'
 import { decisionsBlock } from '../tasks/decisions.ts'
-import { eventReasons, reasonLine, wakeReasons, type WakeReason } from '../core/wake-reasons.ts'
+import { eventReasons, reasonLine, wakeReasons, type WakeReason } from '../hydra/wake-reasons.ts'
 import { freeTask } from '../workers/start.ts'
 import { clip, hydraDigest } from '../core/digest.ts'
 import { ownerMemory } from '../memory/owner-memory.ts'

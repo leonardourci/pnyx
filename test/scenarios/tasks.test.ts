@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { taskReadiness } from '../../src/tasks/dependencies.ts'
 import { hydraDigest } from '../../src/core/digest.ts'
-import { boardReview } from '../../src/review/board.ts'
+import { boardReview } from '../../src/hydra/review.ts'
 import { openPage, until } from '../../src/test-harness/harness.ts'
 import { pnyx } from '../../src/test-harness/pnyx.ts'
 

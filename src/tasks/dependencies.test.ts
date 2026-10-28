@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { taskReadiness } from './dependencies.ts'
-import { wakeReasons } from '../core/wake-reasons.ts'
+import { wakeReasons } from '../hydra/wake-reasons.ts'
 import { emptyHydra } from '../app/reducer.ts'
 import type { HydraEvent } from '../app/model.ts'
 import type { Card, TaskStatus } from './model.ts'
