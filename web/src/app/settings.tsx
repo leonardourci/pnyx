@@ -12,7 +12,7 @@ import { columnsFor } from '../hydra/view.ts'
 import type { Command } from './connection.ts'
 import { resetWidths } from '../hydra/oracle-catalog.ts'
 import { AgentKinds } from '../hydra/agent-kinds.tsx'
-import { IntegrationSettings } from '../hydra/integrations.tsx'
+import { IntegrationSettings } from '../integrations/integrations.tsx'
 import { About } from './about.tsx'
 
 export function Settings({

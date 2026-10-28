@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Button } from '../shared/ui/controls.tsx'
 import type { Command } from '../app/connection.ts'
-import { safeLink } from './view.ts'
+import { safeLink } from '../hydra/view.ts'
 
 type Integration = {
   name: string

@@ -21,8 +21,8 @@ import { sendReply } from './reply.ts'
 import { findSession, liveTask, rankOf, selfSession } from '../core/tasks.ts'
 import { setupHydra, startHydra, taskPrompt } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../dispatch/select.ts'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
-import { basename, join } from 'node:path'
+import { existsSync, readFileSync } from 'node:fs'
+import { basename } from 'node:path'
 import { hydraConfig, hydraEvent, HYDRA_CARD, LOCKED_DELETE, lockedColumn, hydraDelivery, reportActor, validateColumns } from '../core/hydra.ts'
 import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { isDeepStrictEqual } from 'node:util'
@@ -36,12 +36,9 @@ import { HydraError } from '../store/errors.ts'
 import { OUTCOME_STATES, type Card, type Column, type NotedEvent, type OutcomeState } from '../core/model.ts'
 import { askHost, readServer, socketPath } from '../app/server-state.ts'
 import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
-import { drainSpool } from '../integrations/hooks/ingest.ts'
-import { appendNote, harvestTranscripts } from '../integrations/hooks/harvest.ts'
 import { answerPrompt } from '../core/answer.ts'
 import { tagsTask } from '../core/updates.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
-import { pullRequestNote } from '../integrations/github/pull-request.ts'
 import { canonical } from '../store/paths.ts'
 import { DEFAULT_HYDRA, hydraDir, hydraIds } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
@@ -50,6 +47,7 @@ import { withWriter } from '../app/writer.ts'
 import { spoolFiles } from '../store/storage.ts'
 import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, TEXT_CUT, COMMON, WRITE, parse, required, integer, meta, explained, commit, guard, clip, type Output, type Options, summarize } from '../app/cli-support.ts'
 import { memoryList, memoryChange } from '../memory/cli.ts'
+import { firstmateHomes } from '../integrations/cli.ts'
 
 function column({ value }: { value: string }): Column {
   return (value.startsWith('custom:') ? value : value.replace(
@@ -1044,80 +1042,6 @@ function homeHydraId({ home }: { home: string }): string {
     ) || 'firstmate'
 }
 
-function firstmateHomes({ base }: { base?: string }): Output {
-  const root = base ?? process.env.FIRSTMATE_FACTORY_BASE
-
-  if (!root) {
-    throw new AxiError(
-      'missing --base',
-      'VALIDATION_ERROR',
-      ['Run `pnyx-axi hydra homes --base <folder holding the homes>`, or set FIRSTMATE_FACTORY_BASE'],
-    )
-  }
-
-  let names: string[] = []
-
-  try {
-    names = readdirSync(
-      root,
-      { withFileTypes: true },
-    ).filter(d => d.isDirectory())
-      .map(d => d.name)
-  } catch { /* No such folder: no homes. */ }
-
-  const homes = names.map(name => join(
-    root,
-    name,
-  )).filter(path =>
-    [
-      'state',
-      'config',
-    ].every(dir => existsSync(join(
-      path,
-      dir,
-    ))) && existsSync(join(
-      path,
-      'bin',
-      'fm-send.sh',
-    )))
-  let hydras: {
-    id: string
-    home?: string
-  }[] = []
-
-  try {
-    hydras = hydraIds().map(id => ({
-      id,
-      home: loadHydra({ hydraId: id }).state.config?.hydra.home,
-    }))
-  } catch { /* An unreadable Hydra links no home. */ }
-
-  if (!homes.length) {
-    return {
-      base: root,
-      homes: 'none: no Firstmate homes found',
-      help: ['Pass --base <folder holding the homes>'],
-    }
-  }
-
-  const rows = homes.map(home => {
-    const real = canonical({ path: home }) ?? home
-    const hydraId = hydras.find(b => b.home === real)?.id
-
-    return {
-      home: real,
-      hydraId: hydraId ?? 'none',
-      ...(hydraId ? {} : { create: `pnyx-axi hydra create --firstmate ${real}` }),
-    }
-  })
-
-  return {
-    base: root,
-    homes: rows,
-    help: ['Each home gets its own Hydra; run the create command of a home without one'],
-  }
-}
-
 function columnCommand({ args }: { args: string[] }): Output {
   const {
     values,
@@ -1971,86 +1895,6 @@ export const card = guard({
       notes,
       help,
     }
-  },
-})
-
-// Collects the notes sources already recorded: the cards' transcripts from where
-// the last read stopped, and each linked pull request's title and description.
-// ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
-export const harvest = guard({
-  handler: ({ args }) => {
-    const {
-      values,
-      hydraId,
-    } = parse({
-      args,
-      options: {
-        ...COMMON,
-        card: { type: 'string' },
-      },
-      positionals: 0,
-    })
-    const { state } = loadHydra({ hydraId })
-    const cards = values.card ? [
-      findCard({
-        state,
-        ref: values.card as string,
-      }),
-    ] : Object.values(state.cards)
-    // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
-    const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({
-      card: c.id,
-      url: l.url,
-      note: pullRequestNote({ url: l.url }),
-    })))
-
-    return withWriter({
-      hydraId,
-      fn: ({ writer }) => {
-        const spool = drainSpool({ writer })
-        const at = new Date().toISOString()
-        let notes = harvestTranscripts({
-          writer,
-          cardIds: cards.map(c => c.id),
-          at,
-        })
-
-        for (const pr of prs) {
-          if (pr.note) {
-            notes += appendNote({
-              writer,
-              cardId: pr.card,
-              note: pr.note,
-              at,
-            })
-          }
-        }
-
-        const unread = prs.filter(pr => !pr.note).map(pr => pr.url)
-        const out: Output = {
-          harvested: {
-            cards: cards.length,
-            notes: notes ? `${notes} new` : 'none: nothing new',
-            pullRequests: prs.length - unread.length,
-          },
-        }
-
-        if (unread.length) {
-          out.unread = unread
-        }
-
-        if (spool.ingested || spool.rejected) {
-          out.spool = spool
-        }
-
-        out.help = [
-          ...(unread.length ? ['gh-axi could not read those pull requests; check `gh-axi pr view <number> --repo <owner/repo>`'] : []),
-          values.card ? `Run \`pnyx-axi card ${cards[0]!.id}\` to see its notes` : "Run `pnyx-axi card <id>` to see a card's notes",
-        ]
-
-        return out
-      },
-    })
   },
 })
 

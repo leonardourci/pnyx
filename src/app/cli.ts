@@ -10,7 +10,8 @@ import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '../helper/commands.ts'
 import { layout, view } from '../preferences/cli.ts'
 import { owner } from '../memory/cli.ts'
-import { columnCommandHandler, hydraCommandHandler, push, card, harvest, move, link, outcome, setup, context } from '../cli/commands.ts'
+import { harvest } from '../integrations/cli.ts'
+import { columnCommandHandler, hydraCommandHandler, push, card, move, link, outcome, setup, context } from '../cli/commands.ts'
 import { repair } from './repair-cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })

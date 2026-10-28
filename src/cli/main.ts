@@ -14,7 +14,7 @@ import { focusedHelp } from './help.ts'
 import { version } from './version.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from './reply.ts'
 import { workerCommands } from './workers.ts'
-import { INTEGRATIONS_HELP, integrationsCommand } from './integrations.ts'
+import { INTEGRATIONS_HELP, integrationsCommand } from '../integrations/cli.ts'
 import { ownerOnly } from './hydra-session.ts'
 import { UPGRADE_HELP, upgrade } from '../upgrade/cli.ts'
 
