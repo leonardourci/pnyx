@@ -2392,9 +2392,9 @@ export function createHost({
       state,
       after,
     }).items.map(item => item.seq) : [])
-    // Parked work the helper can no longer take is main's, even below main's cursor.
-    const batch = updates.filter(update => !helperSeqs.has(update.seq) && (parked.has(update.seq)
-      ? !open : update.seq > after && update.seq <= wakeThrough))
+    // A parked update the helper can no longer take is main's, even below main's cursor.
+    const batch = updates.filter(update => !helperSeqs.has(update.seq)
+      && (parked.has(update.seq) || (update.seq > after && update.seq <= wakeThrough)))
 
     if (!batch.length) {
       if (helperPending()) {
