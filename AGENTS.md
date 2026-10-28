@@ -36,6 +36,7 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
 | `src/preferences/` | keyboard rules, view and layout preferences and their commands |
 | `src/memory/` | owner, project and Hydra memory, its budgets and commands |
+| `src/projects/` | attached projects, their identity and refresh, disposable copies and their Git helpers |
 | `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/` and feature-bound ones still in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
