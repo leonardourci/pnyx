@@ -7,7 +7,7 @@ import { rankOf, findSession } from '../core/tasks.ts'
 import { base, type Meta } from './command-meta.ts'
 import { notUndoable } from './command-validation.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
-import { viewFor, patchView, DEFAULT_VIEW } from '../core/view.ts'
+import { viewFor, patchView, DEFAULT_VIEW } from '../preferences/view.ts'
 import { decided } from './decision.ts'
 
 function currentValue({

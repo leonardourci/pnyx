@@ -8,7 +8,8 @@ import { readEvents } from './event-log.ts'
 import { tagsTask, showsUpdate } from '../core/updates.ts'
 import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '../helper/commands.ts'
-import { layout, columnCommandHandler, hydraCommandHandler, owner, view, push, card, harvest, move, link, outcome, setup, context } from '../cli/commands.ts'
+import { layout, view } from '../preferences/cli.ts'
+import { columnCommandHandler, hydraCommandHandler, owner, push, card, harvest, move, link, outcome, setup, context } from '../cli/commands.ts'
 import { repair } from './repair-cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })

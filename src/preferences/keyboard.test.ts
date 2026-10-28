@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { DEFAULT_KEYBOARD, keyboardError, resolveKey, type KeyContext, type KeyInput, type KeyboardPreferences } from '../src/core/keyboard.ts'
+import { DEFAULT_KEYBOARD, keyboardError, resolveKey, type KeyContext, type KeyInput, type KeyboardPreferences } from './keyboard.ts'
 
 const context: KeyContext = {
   scope: 'hydra',

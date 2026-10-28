@@ -21,7 +21,7 @@ const PURE_TESTS = new Set([
   'test/dependencies.test.ts',
   'src/cli/help.test.ts',
   'test/draft.test.ts',
-  'test/keyboard.test.ts',
+  'src/preferences/keyboard.test.ts',
   'test/lavish-output.test.ts',
   'scripts/verification/marker.test.ts',
   'test/memory-budgets.test.ts',

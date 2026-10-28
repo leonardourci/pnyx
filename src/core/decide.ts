@@ -3,9 +3,9 @@ import { createHash, randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraState, SourceRef, Decision } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { AUTO_TITLE_SOURCES, LINK_KINDS, LINK_STATES, NOTE_KINDS, type AgentRef, type AgentSettings, type Attention, type AutoTitle, type Card, type Column, type Link, type Note, FORM_FIELD_TYPES, type Outcome, type FormField, type PushFields, type Question, type RepliedEvent, type SessionEvent, type TerminalFacts, type ViewEvent, type ViewPreferences } from './model.ts'
+import type { ViewEvent, ViewPreferences } from '../preferences/model.ts'
+import { AUTO_TITLE_SOURCES, LINK_KINDS, LINK_STATES, NOTE_KINDS, type AgentRef, type AgentSettings, type Attention, type AutoTitle, type Card, type Column, type Link, type Note, FORM_FIELD_TYPES, type Outcome, type FormField, type PushFields, type Question, type RepliedEvent, type SessionEvent, type TerminalFacts } from './model.ts'
 import { TERMINAL_FIELDS } from './route.ts'
-import { patchView, viewFor } from './view.ts'
 import { isStaleLink, isStaleSource, wouldCycle } from './reducer.ts'
 import { columnCards, findSession, interactive, liveTask, rankOf } from './tasks.ts'
 import { hydraConfig, fallbackColumn, HYDRA_CARD } from './hydra.ts'
@@ -1287,60 +1287,6 @@ export function decideNote(
       data,
     },
   })
-}
-
-export function decideView({
-  state,
-  patch,
-  meta,
-}: {
-  state: HydraState
-  patch: unknown
-  meta: Meta
-}): Decision {
-  if (meta.id && meta.id in state.eventIds) {
-    return { skipped: 'duplicate' }
-  }
-
-  if (meta.ifRevision !== undefined && meta.ifRevision !== (state.viewRevision ?? 0)) {
-    throw new HydraError({
-      message: 'view preferences changed; reload and retry',
-      code: 'REVISION_CONFLICT',
-    })
-  }
-
-  const before = viewFor({ state }), after = patchView({
-    state,
-    input: patch,
-  })
-
-  if (isDeepStrictEqual(
-    before,
-    after,
-  )) {
-    return { skipped: 'unchanged' }
-  }
-
-  const placements = removedColumnPlacements({
-    state,
-    after,
-  })
-
-  return {
-    event: {
-      ...base({
-        state,
-        meta,
-        cardId: '$board',
-      }),
-      type: 'board.view',
-      data: {
-        before,
-        after,
-        ...(placements.length ? { placements } : {}),
-      },
-    },
-  }
 }
 
 // Cards in a deleted legacy view column move to the fallback column; Hydra columns stay.

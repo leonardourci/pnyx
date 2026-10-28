@@ -223,7 +223,7 @@ const boundary = ({
       return true // Vite's proxy configuration hook.
     }
 
-    if (filename.endsWith('/src/core/keyboard.ts') && parent.key.name === 'getModifierState') {
+    if (filename.endsWith('/src/preferences/keyboard.ts') && parent.key.name === 'getModifierState') {
       return true // tinykeys consumes the KeyboardEvent method.
     }
 

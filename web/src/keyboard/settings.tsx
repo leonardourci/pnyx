@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '../../../src/core/keyboard.ts'
+import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '../../../src/preferences/keyboard.ts'
 import { Button, Input, Switch, Textarea, useBusy } from '../shared/ui/controls.tsx'
 import { useKeyAction, useKeyboard } from './registry.tsx'
 

@@ -17,7 +17,6 @@ import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
-import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths, viewFor } from '../core/view.ts'
 import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
 import { moveOwnerLearning, ownerArchive, ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
 import { randomUUID } from 'node:crypto'
@@ -32,7 +31,8 @@ import type { HydraConfig, HydraIdentity } from '../core/model.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import type { Meta } from '../app/command-meta.ts'
-import { decideLink, decideMove, decideOutcome, decidePush, decideView, findCard, parseLink } from '../core/decide.ts'
+import { decideView } from '../preferences/decisions.ts'
+import { decideLink, decideMove, decideOutcome, decidePush, findCard, parseLink } from '../core/decide.ts'
 import { type HydraEvent, type HydraState } from '../app/model.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import { HydraError } from '../store/errors.ts'
@@ -2566,131 +2566,5 @@ export const setup = guard({
     out.help = help
 
     return out
-  },
-})
-
-export const view = guard({
-  handler: ({ args }) => {
-    const [
-      sub,
-      ...rest
-    ] = args
-    const {
-      values,
-      hydraId,
-    } = parse({
-      args: rest,
-      options: {
-        ...WRITE,
-        json: { type: 'string' },
-      },
-      positionals: 0,
-    })
-
-    if (sub === 'show') {
-      const { state } = loadHydra({ hydraId })
-
-      return {
-        view: viewFor({ state }),
-        revision: state.viewRevision ?? 0,
-      }
-    }
-
-    if (sub === 'schema') {
-      return {
-        defaults: DEFAULT_VIEW,
-        help: ['view set --json <patch> --if-revision <revision>'],
-      }
-    }
-
-    if (sub !== 'set') {
-      throw new AxiError(
-        'use view show, schema or set',
-        'VALIDATION_ERROR',
-      )
-    }
-
-    let patch: unknown
-
-    try {
-      patch = JSON.parse(required({
-        value: values.json as string,
-        what: '--json',
-      }))
-    } catch {
-      throw new AxiError(
-        '--json must contain a preference object',
-        'VALIDATION_ERROR',
-      )
-    }
-
-    const m = meta({ values })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'board.view',
-        card: '$board',
-      },
-      decide: ({ state: s }) => decideView({
-        state: s,
-        patch,
-        meta: m,
-      }),
-    })
-  },
-})
-
-export const layout = guard({
-  handler: ({ args }) => {
-    const {
-      values,
-      positionals,
-      hydraId,
-    } = parse({
-      args,
-      options: WRITE,
-      positionals: 1,
-    })
-
-    if (positionals[0] === 'show') {
-      const view = viewFor({ state: loadHydra({ hydraId }).state })
-
-      return {
-        widths: {
-          hydra: view.hydraWidth,
-          columns: view.columnWidths,
-        },
-        defaults: {
-          column: DEFAULT_WIDTHS.column,
-          hydra: view.defaultHydraWidth,
-          columns: view.defaultColumnWidths,
-        },
-      }
-    }
-
-    if (positionals[0] !== 'reset') {
-      throw new HydraError({
-        message: 'use layout show or reset',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const m = meta({ values })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'board.view',
-        card: '$board',
-      },
-      decide: ({ state }) => decideView({
-        state,
-        patch: resetLayoutWidths({ view: viewFor({ state }) }),
-        meta: m,
-      }),
-    })
   },
 })
