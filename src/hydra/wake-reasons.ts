@@ -279,7 +279,7 @@ function ordinaryReasons({
   }
 
   if (event.type === 'hydra.review') {
-    return pnyxRunsHydra({ state }) ? [{ kind: 'timed review' }] : []
+    return event.data.wake !== false && pnyxRunsHydra({ state }) ? [{ kind: 'timed review' }] : []
   }
 
   if (event.type === 'task.session' && event.data.before && !event.data.after && hostedHydra({ state })) {
