@@ -3,11 +3,11 @@ import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { ownerOnly } from '../src/cli/hydra-session.ts'
-import { dispatchCommands } from '../src/dispatch/cli.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { fakeDispatch } from '../src/test-harness/dispatch-fixture.ts'
+import { commands } from '../app/cli.ts'
+import { ownerOnly } from '../cli/hydra-session.ts'
+import { dispatchCommands } from './dispatch-cli.ts'
+import { loadHydra } from '../app/store.ts'
+import { fakeDispatch } from '../test-harness/dispatch-fixture.ts'
 
 function lab() {
   const root = mkdtempSync(join(

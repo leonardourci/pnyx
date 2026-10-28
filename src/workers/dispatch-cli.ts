@@ -1,4 +1,4 @@
-import { saveOrPropose, resolveProposal } from './proposals.ts'
+import { saveOrPropose, resolveProposal } from './dispatch-proposals.ts'
 import { existsSync } from 'node:fs'
 import { TEMPLATE_NUDGE } from '../core/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
@@ -6,7 +6,7 @@ import { WRITE, guard, parse, required, meta, type Output } from '../app/cli-sup
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { loadHydra, requireHydra } from '../app/store.ts'
 import { withRegistryLock } from '../store/storage.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './config.ts'
+import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateRules, writeConfig, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {
   ...WRITE,

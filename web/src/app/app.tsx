@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef, useLayoutEffect, useCallback, type CSSProperties } from 'react'
 import { useHydra } from './connection.ts'
-import { useInstallationPending } from '../hydra/installation-resources.ts'
+import { useInstallationPending } from '../workers/dispatch-resource.ts'
 import { useProjectsResource } from '../projects/project-resource.ts'
 import { storageKey } from '../hydra/outbox.ts'
 import { hydraViews, restoreView, readComments, savedComments, scrollers, type Restore } from './restore.ts'

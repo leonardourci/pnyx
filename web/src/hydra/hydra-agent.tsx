@@ -1,4 +1,4 @@
-import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, useHeadsDispatch } from '../workers/heads-dispatch.ts'
 import { useEffect, useRef } from 'react'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { AgentConfig } from '../../../src/core/model.ts'

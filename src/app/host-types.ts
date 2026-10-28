@@ -1,7 +1,7 @@
 import type { Card } from '../tasks/model.ts'
 import type { AgentConfig, AgentSettings } from '../core/model.ts'
 import type { ModelOption, HydraUsage, HostedSession } from '../server/provider.ts'
-import type { DispatchChoice } from '../dispatch/select.ts'
+import type { DispatchChoice } from '../workers/dispatch.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { inbox, type HydraQueue } from './host.ts'
 import type { CurrentAction } from '../thread/calls.ts'

@@ -15,7 +15,7 @@ import { commandTimeout, reconnectDelay, retryable, withChanges } from './connec
 import { argument, optimisticState, currentRevision } from '../tasks/optimistic.ts'
 import { commandArguments, editTargets, pendingHydra, type HydraResource } from './pending-state.ts'
 import { CommandFailure, createPendingResource } from '../shared/pending-intents.ts'
-import { DISPATCH_CHANGED } from '../hydra/heads-dispatch.ts'
+import { DISPATCH_CHANGED } from '../workers/heads-dispatch.ts'
 import { shouldReload } from './view.ts'
 import { noteUpdate, staleUpdates } from '../tasks/updates-cache.ts'
 

@@ -1,6 +1,6 @@
 import { supervisedCommands } from '../helper/commands.ts'
 import { approval } from '../app/confirmations.ts'
-import { dispatchCommands, DISPATCH_HELP } from '../dispatch/cli.ts'
+import { dispatchCommands, DISPATCH_HELP } from '../workers/dispatch-cli.ts'
 import { project, PROJECT_HELP } from '../projects/cli.ts'
 import { AxiError, runAxiCli, type AxiCliCommand } from 'axi-sdk-js'
 import { serve, stop } from '../app/server-cli.ts'

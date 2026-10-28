@@ -1,4 +1,4 @@
-import { useHeadsDispatch } from './heads-dispatch.ts'
+import { useHeadsDispatch } from '../workers/heads-dispatch.ts'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { Command } from '../app/connection.ts'
 

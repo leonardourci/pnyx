@@ -1,4 +1,4 @@
-import { dispatchSettings } from './installation-resources.ts'
+import { dispatchSettings } from './dispatch-resource.ts'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { AgentConfig } from '../../../src/core/model.ts'
 import type { Command } from '../app/connection.ts'

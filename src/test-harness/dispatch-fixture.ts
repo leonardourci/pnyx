@@ -1,6 +1,6 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configPath, writeConfig } from '../dispatch/config.ts'
+import { configPath, writeConfig } from '../workers/dispatch-config.ts'
 
 export function fakeDispatch({
   root,

@@ -6,7 +6,7 @@ import type { PlanWindow } from '../server/provider.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
 import { type StartOverride } from '../core/model.ts'
-import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './config.ts'
+import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './dispatch-config.ts'
 
 interface EffectiveQuota {
   status?: string

@@ -1,5 +1,5 @@
 import type { ComponentProps } from 'react'
-import { useHeadsDispatch } from '../hydra/heads-dispatch.ts'
+import { useHeadsDispatch } from '../workers/heads-dispatch.ts'
 import { Projects } from '../projects/projects.tsx'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { ViewPreferences } from '../../../src/preferences/model.ts'
