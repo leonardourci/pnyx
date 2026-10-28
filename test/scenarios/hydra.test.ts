@@ -1,4 +1,4 @@
-import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../../src/integrations/skills/names.ts'
+import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../../src/setup/skill-names.ts'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'

@@ -1,6 +1,6 @@
 import type { Learning } from './learnings.ts'
 import { HydraError } from '../store/errors.ts'
-import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
+import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
 
 // Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
 export const OWNER_MEMORY_BUDGET = 24000

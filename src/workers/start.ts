@@ -2,7 +2,7 @@ import {
   ORCHESTRATE_SKILL,
   REPORT_PROGRESS_SKILL,
   HYDRA_SKILLS,
-} from '../integrations/skills/names.ts'
+} from '../setup/skill-names.ts'
 import { matchesProject } from '../projects/identity.ts'
 import { requireReady } from '../tasks/dependencies.ts'
 import { requireUnheld } from '../tasks/holds.ts'
@@ -38,7 +38,7 @@ import { sessionId } from './session-attachments.ts'
 import { runCommand } from '../integrations/command/run.ts'
 import { taskFolder } from '../projects/copies.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
-import { copySkills, removeLegacyHydraSkills } from '../integrations/skills/install.ts'
+import { copySkills, removeLegacyHydraSkills } from '../setup/skills.ts'
 import { fmNote } from '../integrations/firstmate/reply.ts'
 import { createPaseoAgent, startAgent, type Harness } from '../integrations/paseo/launch.ts'
 import type { Connect } from '../integrations/paseo/client.ts'

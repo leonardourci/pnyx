@@ -121,7 +121,7 @@ for (const provider of [
       const {
         setupSkills,
         prepareHydraFolder,
-      } = await import('../integrations/skills/install.ts')
+      } = await import('../setup/skills.ts')
       setupSkills({
         userHome: home,
         claudeConfigDir: locations.claude,

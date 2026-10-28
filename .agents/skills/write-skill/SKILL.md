@@ -25,6 +25,6 @@ Skills follow the [Agent Skills](https://agentskills.io) format: a folder holdin
 
 ## Registration
 
-- [ ] For a shipped skill, add its name to `src/integrations/skills/names.ts`, in `GLOBAL_SKILLS` for every agent or `HYDRA_SKILLS` for Hydra's own, so setup installs it, and to the `skills/` row of the layout table in `AGENTS.md`.
+- [ ] For a shipped skill, add its name to `src/setup/skill-names.ts`, in `GLOBAL_SKILLS` for every agent or `HYDRA_SKILLS` for Hydra's own, so setup installs it, and to the `skills/` row of the layout table in `AGENTS.md`.
 - [ ] For a contributor skill that is a required step, link it where the step is described (`AGENTS.md`, `CONTRIBUTING.md` or `docs/development.md`).
 - [ ] Re-check the hard rules before committing: `name` matches the folder, the description fits, and the file reads as plain Markdown.

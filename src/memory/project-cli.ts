@@ -1,4 +1,4 @@
-import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
+import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
 import { memoryConditions } from './conditions.ts'
 import { learningChange, staleLearnings } from './learnings.ts'
 import { explained, meta, parse, required, WRITE, type Output } from '../app/cli-support.ts'

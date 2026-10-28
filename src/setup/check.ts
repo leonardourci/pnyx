@@ -1,14 +1,14 @@
-import { SET_UP_SKILL } from '../integrations/skills/names.ts'
+import { SET_UP_SKILL } from './skill-names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '../hydra/digest.ts'
 import type { HydraState } from '../app/model.ts'
 import { configPath, effectiveDispatch, loginFolder, onTemplate, parseAccounts, readConfig, type Harness } from '../workers/dispatch-config.ts'
-import { detectedHarnesses, hookStatus, setupHooks } from '../integrations/hooks/install.ts'
-import { skillStatus } from '../integrations/skills/install.ts'
+import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
+import { skillStatus } from './skills.ts'
 import { projectMemoryView } from '../memory/project-memory.ts'
 import { projectsFor } from '../projects/read.ts'
-import { serviceFile } from '../server/service.ts'
+import { serviceFile } from './service.ts'
 import { loadHydra } from '../app/store.ts'
 
 export interface SetupItem {

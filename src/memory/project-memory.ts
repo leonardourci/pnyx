@@ -1,4 +1,4 @@
-import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
+import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
 import { readOwnerEntries } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'

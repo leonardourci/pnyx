@@ -1,14 +1,13 @@
 import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathSync, renameSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { HydraError } from '../../store/errors.ts'
-import { pnyxHome } from '../../store/storage.ts'
-import type { Harness } from './observe.ts'
+import { HydraError } from '../store/errors.ts'
+import { pnyxHome } from '../store/storage.ts'
+import type { Harness } from '../integrations/hooks/observe.ts'
 
 const SCRIPT = 'pnyx-hook.sh'
 const SCRIPT_SOURCE = join(
   import.meta.dirname,
-  '..',
   '..',
   '..',
   'setup',
@@ -91,7 +90,6 @@ export function configPath({ harness }: { harness: Harness }): string {
 // The CLI the session-start hook runs for its summary; setup rewrites it on every run.
 const CLI_ENTRY = join(
   import.meta.dirname,
-  '..',
   '..',
   'cli',
   import.meta.url.endsWith('.ts') ? 'pnyx-axi.ts' : 'pnyx-axi.js',

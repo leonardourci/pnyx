@@ -1,4 +1,4 @@
-import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
+import { INSCRIBE_SKILL } from '../setup/skill-names.ts'
 import { memoryConditions } from '../memory/conditions.ts'
 import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'

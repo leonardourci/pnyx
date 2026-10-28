@@ -4,14 +4,14 @@ import {
   CLI_SKILL,
   HYDRA_SKILLS,
   GLOBAL_SKILLS,
-} from './names.ts'
+} from './skill-names.ts'
 import {
   existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync,
   rmSync, symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, join, resolve } from 'node:path'
-import { HydraError } from '../../store/errors.ts'
+import { HydraError } from '../store/errors.ts'
 
 const LEGACY_SKILLS = [
   'pnyx-hydra',
@@ -25,7 +25,6 @@ const LEGACY_SKILLS = [
 ] as const
 const SOURCE = join(
   import.meta.dirname,
-  '..',
   '..',
   '..',
   'skills',

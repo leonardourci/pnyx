@@ -1,12 +1,12 @@
-import { requireSetupHome } from '../setup/home.ts'
-import { setupCheckOutput } from '../setup/check.ts'
-import { setupService } from '../server/service.ts'
-import { setupSkills } from '../integrations/skills/install.ts'
-import { setupHydra } from '../workers/start.ts'
 import { AxiError } from 'axi-sdk-js'
-import { detectedHarnesses, setupHooks } from '../integrations/hooks/install.ts'
+import { guard, WRITE, parse, integer, required, meta, type Options, type Output } from '../app/cli-support.ts'
+import { setupCheckOutput } from './check.ts'
+import { requireSetupHome } from './home.ts'
+import { setupSkills } from './skills.ts'
+import { setupService } from './service.ts'
+import { setupHydra } from '../workers/start.ts'
 import { HARNESSES, type Harness } from '../integrations/hooks/observe.ts'
-import { WRITE, parse, required, integer, meta, guard, type Output, type Options } from '../app/cli-support.ts'
+import { detectedHarnesses, setupHooks } from './hooks.ts'
 
 export const setup = guard({
   handler: ({ args }) => {

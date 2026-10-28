@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
-import { setupService } from '../src/server/service.ts'
+import { setupService } from './service.ts'
 
 test(
   'one login service runs the server of every Hydra, replaces the per-Hydra services of this home, survives exit and uninstalls through launchd',

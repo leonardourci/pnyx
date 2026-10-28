@@ -1,7 +1,7 @@
 import { spawn } from 'node:child_process'
 import { openSync } from 'node:fs'
 import { join } from 'node:path'
-import { serviceFile } from '../server/service.ts'
+import { serviceFile } from '../setup/service.ts'
 import { pnyxHome } from '../store/storage.ts'
 
 // Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
