@@ -12,7 +12,8 @@ import { layout, view } from '../preferences/cli.ts'
 import { owner } from '../memory/cli.ts'
 import { harvest } from '../integrations/cli.ts'
 import { link, outcome } from '../tasks/delivery/cli.ts'
-import { columnCommandHandler, hydraCommandHandler, push, card, move, setup, context } from '../cli/commands.ts'
+import { columnCommandHandler, push, card, move, context } from '../tasks/cli.ts'
+import { hydraCommandHandler, setup } from '../cli/commands.ts'
 import { repair } from './repair-cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })
