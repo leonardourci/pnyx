@@ -152,7 +152,7 @@ export function helperEvent({
   })) ? task : undefined
 }
 
-// Worker questions go first because their workers wait on the answer.
+// Worker questions go first because their workers wait on the answer; an event past the input cap waits for the next batch.
 export function helperBatch({
   items,
   prompt,
@@ -162,67 +162,48 @@ export function helperBatch({
     seq: number
     question: boolean
   }[]
-  prompt({ tasks }: { tasks: string[] }): string
+  prompt({ seqs }: { seqs: number[] }): string
 }): {
   tasks: string[]
+  seqs: number[]
   text: string
 } | undefined {
-  const first = new Map<string, {
-    seq: number
-    question: boolean
-  }>()
-
-  for (const item of items) {
-    const known = first.get(item.task)
-    const better = !known || (item.question && !known.question)
-      || (item.question === known.question && item.seq < known.seq)
-
-    if (better) {
-      first.set(
-        item.task,
-        {
-          seq: item.seq,
-          question: item.question,
-        },
-      )
-    }
-  }
-
-  const order = [...first].sort((
-    [
-      , a,
-    ],
-    [
-      , b,
-    ],
+  const sorted = [...items].sort((
+    a,
+    b,
   ) => Number(b.question) - Number(a.question) || a.seq - b.seq)
-    .map(([task]) => task)
-  let batch: {
-    tasks: string[]
-    text: string
-  } | undefined
-
-  for (const task of order.slice(
+  const order = [...new Set(sorted.map(item => item.task))].slice(
     0,
     HELPER_TASKS,
-  )) {
-    const tasks = [
-      ...batch?.tasks ?? [],
-      task,
-    ]
-    const text = prompt({ tasks })
+  )
+  const chosen: number[] = []
+  let text = ''
 
-    if (batch && text.length > HELPER_INPUT_CHARS) {
+  for (const item of order.flatMap(task => sorted.filter(item => item.task === task))) {
+    const next = prompt({
+      seqs: [
+        ...chosen,
+        item.seq,
+      ],
+    })
+
+    if (chosen.length && next.length > HELPER_INPUT_CHARS) {
       break
     }
 
-    batch = {
-      tasks,
-      text,
-    }
+    chosen.push(item.seq)
+    text = next
   }
 
-  return batch
+  if (!chosen.length) {
+    return undefined
+  }
+
+  return {
+    tasks: [...new Set(sorted.filter(item => chosen.includes(item.seq)).map(item => item.task))],
+    seqs: chosen,
+    text,
+  }
 }
 
 export function helperGrant({

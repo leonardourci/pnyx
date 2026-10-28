@@ -164,6 +164,8 @@ export function createHost({
   let updates: QueuedUpdate[] = []
   // Each queued change's reason lines, worked out from the state it landed in.
   const wakeReasonsAt = new Map<number, string[]>()
+  // ponytail: helper work main's wake passed over stays queued here in memory; a restart leaves it to the task's state and the timed review.
+  const parked = new Set<number>()
   let readThrough = 0
 
   const write = <T>({ fn }: { fn: ({ writer }: { writer: Writer }) => T }): T => {
@@ -2229,21 +2231,18 @@ export function createHost({
     })
   }
 
-  // Runs before main's wake checks so the helper takes routine tasks even while main works.
-  const offerUpdates = async ({
+  // Unread updates the helper may take; main keeps the tasks it handles now or has other updates for.
+  const routeUpdates = ({
     state,
     after,
   }: {
     state: HydraState
     after: number
   }) => {
-    if (!helperOpen({ state }) || helper.busy()) {
-      return
-    }
-
-    const unread = updates.filter(update => update.seq > after && update.seq <= wakeThrough)
+    const unread = updates.filter(update => (update.seq > after && update.seq <= wakeThrough)
+      || parked.has(update.seq))
     const seqs = new Set(unread.map(update => update.seq))
-    const routed = new Map(readEvents({ hydraId })
+    const routed = new Map(seqs.size ? readEvents({ hydraId })
       .filter(event => seqs.has(event.seq))
       .flatMap(event => {
         const task = helperEvent({
@@ -2260,7 +2259,7 @@ export function createHost({
             },
           ],
         ] as const : []
-      }))
+      }) : [])
     const mainOnly = new Set([
       ...mainTasks,
       ...unread.filter(update => !routed.has(update.seq)).map(update => update.card),
@@ -2276,12 +2275,34 @@ export function createHost({
         seq,
         ...item,
       }))
-    const batch = helperBatch({
+
+    return {
       items,
-      prompt: ({ tasks }) => updatesText({
+      mainOnly,
+    }
+  }
+
+  // Runs before main's wake checks so the helper takes routine tasks even while main works.
+  const offerUpdates = async ({
+    state,
+    after,
+  }: {
+    state: HydraState
+    after: number
+  }) => {
+    if (!helperOpen({ state }) || helper.busy()) {
+      return
+    }
+
+    const batch = helperBatch({
+      items: routeUpdates({
         state,
         after,
-        seqs: items.filter(item => tasks.includes(item.task)).map(item => item.seq),
+      }).items,
+      prompt: ({ seqs }) => updatesText({
+        state,
+        after,
+        seqs,
       }),
     })
 
@@ -2289,15 +2310,19 @@ export function createHost({
       return
     }
 
-    const claimed = new Set(items.filter(item => batch.tasks.includes(item.task))
-      .map(item => item.seq))
+    const claimed = new Set(batch.seqs)
 
     if (await helper.offer({
       tasks: batch.tasks,
       prompt: batch.text,
-      seqs: [...claimed],
+      seqs: batch.seqs,
     })) {
       updates = updates.filter(update => !claimed.has(update.seq))
+
+      for (const seq of claimed) {
+        parked.delete(seq)
+      }
+
       wakeThrough = Math.max(
         0,
         ...updates.map(update => update.seq),
@@ -2336,7 +2361,15 @@ export function createHost({
       return
     }
 
-    if (wakeThrough <= after) {
+    // Updates the helper can take wait for its next batch rather than riding along with main's.
+    const helperSeqs = new Set(helperOpen({ state }) ? routeUpdates({
+      state,
+      after,
+    }).items.map(item => item.seq) : [])
+    const batch = updates.filter(update => update.seq > after && update.seq <= wakeThrough
+      && !helperSeqs.has(update.seq) && !parked.has(update.seq))
+
+    if (!batch.length) {
       if (helperPending()) {
         return host.hydra({
           id: `helper-outcomes:${state.seq}`,
@@ -2348,23 +2381,24 @@ export function createHost({
       return
     }
 
-    const through = wakeThrough
+    const through = Math.max(...batch.map(update => update.seq))
+
+    for (const seq of helperSeqs) {
+      if (seq <= through) {
+        parked.add(seq)
+      }
+    }
+
+    // Progress is never queued, so main's reports are every unread message the helper does not hold.
     const held = new Set(activeHelperBatches({ state }).flatMap(batch => batch.seqs))
     const reports = (state.hydraMessages ?? []).filter(message => {
       const seq = state.eventIds[message.id]
 
-      const unread = seq !== undefined && seq > after && seq <= through
-
-      return unread && reportActor({ actor: message.actor })
-        && !state.helper?.handled.includes(seq) && !held.has(seq)
+      return seq !== undefined && seq > after && seq <= through
+        && reportActor({ actor: message.actor }) && !state.helper?.handled.includes(seq)
+        && !held.has(seq) && !helperSeqs.has(seq) && !parked.has(seq)
     })
     const reportSeqs = new Set(reports.map(message => state.eventIds[message.id]))
-    const otherChanges = updates.some(update => update.seq > after && update.seq <= through
-      && !reportSeqs.has(update.seq))
-    const reasons = [
-      ...new Set(updates.filter(update => update.seq > after && update.seq <= through)
-        .flatMap(update => wakeReasonsAt.get(update.seq) ?? [])),
-    ]
     const review = state.hydraReview
     let reviewText: string | undefined
 
@@ -2377,25 +2411,11 @@ export function createHost({
       state,
       now: Date.now(),
       after,
-      reasons,
+      reasons: [...new Set(batch.flatMap(update => wakeReasonsAt.get(update.seq) ?? []))],
       reports,
-      check: otherChanges || !reports.length,
+      check: batch.some(update => !reportSeqs.has(update.seq)) || !reports.length,
       review: reviewText,
     })
-    const batch = updates.filter(update => update.seq > after && update.seq <= through)
-    const events = readEvents({ hydraId })
-      .filter(event => batch.some(update => update.seq === event.seq))
-    const tasks = events.map(event => helperEvent({
-      state,
-      event,
-    }))
-    const routine = tasks.length > 0
-      && tasks.every(task => task !== undefined && !mainTasks.has(task))
-
-    // What the helper could not take yet waits for its next batch.
-    if (routine && helperOpen({ state }) && helper.busy()) {
-      return
-    }
 
     return wakeMain({
       id: wakeId({
@@ -2408,10 +2428,10 @@ export function createHost({
   }
 
   const finishReading = () => {
-    const unread = updates.filter(update => update.seq > readThrough)
+    const unread = updates.filter(update => update.seq > readThrough || parked.has(update.seq))
 
     for (const seq of wakeReasonsAt.keys()) {
-      if (seq <= readThrough) {
+      if (seq <= readThrough && !parked.has(seq)) {
         wakeReasonsAt.delete(seq)
       }
     }
@@ -2762,7 +2782,10 @@ export function createHost({
       now,
     })}\n${REPLY_RULES}</pnyx-wake>`
     const mainOnly = new Set([
-      ...mainTasks,
+      ...routeUpdates({
+        state,
+        after,
+      }).mainOnly,
       ...fired.filter(item => !helperReason({
         state,
         task: item.card,
@@ -2779,11 +2802,9 @@ export function createHost({
         seq: index,
         question: false,
       })),
-      prompt: ({ tasks }) => stallText({
-        items: routine.filter(item => tasks.includes(item.card)),
-      }),
+      prompt: ({ seqs }) => stallText({ items: seqs.map(index => routine[index]!) }),
     }) : undefined
-    const offered = routine.filter(item => batch?.tasks.includes(item.card))
+    const offered = batch?.seqs.map(index => routine[index]!) ?? []
 
     if (batch && await helper.offer({
       tasks: batch.tasks,
@@ -2794,7 +2815,9 @@ export function createHost({
       delivered({ items: offered })
     }
 
-    const rest = fired.filter(item => !offered.includes(item))
+    // Alarms the helper can take stay undelivered, so they fire again for its next batch.
+    const rest = fired.filter(item => !offered.includes(item)
+      && (mainOnly.has(item.card) || !helperOpen({ state })))
     // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
     const [first] = [
       ...waits,
@@ -2802,9 +2825,7 @@ export function createHost({
       ...stalls,
     ].filter(item => rest.includes(item))
 
-    // What the helper could not take yet waits for its next batch.
-    if (mainWaits || !first || (helperOpen({ state }) && helper.busy()
-      && rest.every(item => !mainOnly.has(item.card)))) {
+    if (mainWaits || !first) {
       return
     }
 
@@ -3378,6 +3399,14 @@ export function createHost({
           const helperState = loadHydra({ hydraId }).state
           const helperLines = outcomeLines({ state: helperState })
           let helperText = ''
+          // Main holds the tasks whose outcomes or hand-backs it is given, as it holds a wake's tasks.
+          const presentedTasks = [
+            ...(helperState.helper?.outcomes ?? [])
+              .filter(outcome => outcome.audience === 'owner' && outcome.seq > (helperState.helper?.delivered ?? 0))
+              .map(outcome => outcome.task),
+            ...Object.values(helperState.helper?.runs ?? {}).filter(batch => batch.error)
+              .flatMap(batch => batch.tasks),
+          ]
 
           if (activeHelperBatches({ state: helperState }).length) {
             helperText = `\n<pnyx-wake>${sealed({ text: helperLeases({ state: helperState }).join('\n') })}</pnyx-wake>`
@@ -3419,7 +3448,10 @@ export function createHost({
           ) : text)
           entry.activity = 'working'
 
-          for (const task of wakeTasks.get(id) ?? []) {
+          for (const task of [
+            ...wakeTasks.get(id) ?? [],
+            ...presentedTasks,
+          ]) {
             mainTasks.add(task)
           }
 

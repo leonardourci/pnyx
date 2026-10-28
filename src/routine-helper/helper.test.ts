@@ -736,16 +736,26 @@ test(
         question: false,
       },
     ]
+    const length = ({ seqs }: { seqs: number[] }) => seqs.join(',')
     assert.deepEqual(
       helperBatch({
         items,
-        prompt: ({ tasks }) => tasks.join(','),
-      })?.tasks,
-      [
-        'asked-old',
-        'asked-new',
-        'quiet-old',
-      ],
+        prompt: length,
+      }),
+      {
+        tasks: [
+          'asked-old',
+          'asked-new',
+          'quiet-old',
+        ],
+        seqs: [
+          7,
+          9,
+          1,
+          2,
+        ],
+        text: '7,9,1,2',
+      },
     )
     // A task's later question outranks its own earlier quiet item.
     assert.deepEqual(
@@ -758,7 +768,7 @@ test(
             question: true,
           },
         ],
-        prompt: ({ tasks }) => tasks.join(','),
+        prompt: length,
       })?.tasks,
       [
         'asked-old',
@@ -769,16 +779,47 @@ test(
     assert.deepEqual(
       helperBatch({
         items,
-        prompt: ({ tasks }) => 'x'.repeat(tasks.length * 24_000),
-      })?.tasks,
-      ['asked-old'],
+        prompt: ({ seqs }) => 'x'.repeat(seqs.length * 24_000),
+      })?.seqs,
+      [7],
     )
     assert.deepEqual(
       helperBatch({
         items,
         prompt: () => 'x'.repeat(24_001),
-      })?.tasks,
-      ['asked-old'],
+      })?.seqs,
+      [7],
+    )
+    // Thirty questions on one task stop at the budget; the rest wait for the next batch.
+    assert.deepEqual(
+      helperBatch({
+        items: Array.from(
+          { length: 30 },
+          (
+            _,
+            index,
+          ) => ({
+            task: 'asked',
+            seq: index + 1,
+            question: true,
+          }),
+        ),
+        prompt: ({ seqs }) => 'x'.repeat(seqs.length * 2_000),
+      })?.seqs,
+      [
+        1,
+        2,
+        3,
+        4,
+        5,
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        12,
+      ],
     )
     assert.equal(
       helperBatch({
