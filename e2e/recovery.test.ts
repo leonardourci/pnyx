@@ -6,6 +6,7 @@ import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
+import { declareTask } from '#tasks/declarations.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { snapshotPath } from '#store/storage.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
@@ -106,7 +107,7 @@ test(
         'Work',
       ],
     })
-    await s.chat({ text: 'Keep routine progress quiet.' })
+    await s.chat({ text: 'Keep routine work quiet.' })
     await until({
       what: 'main to finish',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
@@ -180,22 +181,14 @@ test(
     withWriter({
       hydraId: s.hydraId,
       fn: ({ writer }) => {
-        const decision = hydraEvent({
+        const decision = declareTask({
           state: writer.state,
-          cardId: HYDRA_CARD,
+          ref: task.id,
+          status: 'blocked',
+          note: 'Blocked behind a busy writer.',
           meta: {
             at: new Date().toISOString(),
-            actor: `worker:${task.id}`,
-          },
-          change: {
-            type: 'hydra.message',
-            data: {
-              action: 'send',
-              hydra: 'hydra',
-              task: task.id,
-              kind: 'progress',
-              text: 'Progress through a busy writer.',
-            },
+            actor: 'cli',
           },
         })
         assert.ok('event' in decision)
@@ -225,8 +218,8 @@ test(
       finishes[0]!.data.batch,
       grants[0]!.data.id,
     )
-    const progress = s.events().find(event => event.type === 'hydra.message' && event.data.text === 'Progress through a busy writer.')!
-    assert.ok(grants[0]!.data.seqs.includes(progress.seq))
+    const declared = s.events().find(event => event.type === 'task.declared' && event.data.note === 'Blocked behind a busy writer.')!
+    assert.ok(grants[0]!.data.seqs.includes(declared.seq))
     assert.ok(errors.mock.calls.some(call => call.arguments.join(' ').includes('snapshot replace failed')))
     assert.equal(
       (await fetch(`http://127.0.0.1:${pnyx.port()}/health`)).status,
