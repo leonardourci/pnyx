@@ -1,4 +1,4 @@
-import type { Card } from '../../../src/tasks/model.ts'
+import type { Card } from '#tasks/model.ts'
 
 const HARNESSES: Record<string, string> = {
   'claude-code': 'Claude Code',

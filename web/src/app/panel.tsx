@@ -1,7 +1,7 @@
-import { Icon } from '../shared/ui/icon.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import type { ReactNode } from 'react'
-import type { UpgradeStatus } from '../../../src/upgrade/model.ts'
-import { UpgradeHint } from '../upgrade/upgrade-hint.tsx'
+import type { UpgradeStatus } from '#upgrade/model.ts'
+import { UpgradeHint } from '#web-upgrade/upgrade-hint.tsx'
 
 export function Panel({
   shown,

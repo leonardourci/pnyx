@@ -1,6 +1,6 @@
-import type { HydraState } from '../../../src/app/model.ts'
-import type { Card } from '../../../src/tasks/model.ts'
-import { taskReadiness } from '../../../src/tasks/dependencies.ts'
+import type { HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
+import { taskReadiness } from '#tasks/dependencies.ts'
 import { TaskReference } from './task-reference.tsx'
 
 export function Prerequisites({

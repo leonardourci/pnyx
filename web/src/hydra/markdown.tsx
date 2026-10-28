@@ -1,13 +1,13 @@
-import { TaskReference } from '../tasks/task-reference.tsx'
-import { decodeValue, mentionId } from '../../../src/hydra/mentions.ts'
+import { TaskReference } from '#web-tasks/task-reference.tsx'
+import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { IMAGE, imageNames } from '../../../src/hydra/images.ts'
+import { IMAGE, imageNames } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
-import { ColumnChip } from '../tasks/column-chip.tsx'
+import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
-import { readSkillReference } from '../../../src/hydra/transcripts-skill-reference.ts'
+import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(

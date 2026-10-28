@@ -1,10 +1,10 @@
 import { useEffect, useSyncExternalStore } from 'react'
-import type { HydraProject } from '../../../src/projects/model.ts'
-import type { Command } from '../app/connection.ts'
-import { argument } from '../tasks/optimistic.ts'
-import { DEFAULT_LANDING, type LandingChoice } from '../tasks/delivery/delivery-fields.tsx'
-import { createSettingsResource } from '../shared/settings-resource.ts'
-import { CommandFailure } from '../shared/pending-intents.ts'
+import type { HydraProject } from '#projects/model.ts'
+import type { Command } from '#web-app/connection.ts'
+import { argument } from '#web-tasks/optimistic.ts'
+import { DEFAULT_LANDING, type LandingChoice } from '#web-tasks/delivery/delivery-fields.tsx'
+import { createSettingsResource } from '#web-shared/settings-resource.ts'
+import { CommandFailure } from '#web-shared/pending-intents.ts'
 
 export interface ProjectRow {
   name: string

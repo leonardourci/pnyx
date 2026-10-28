@@ -1,5 +1,5 @@
-import type { Card } from '../../../src/tasks/model.ts'
-import { TooltipPanel, TooltipSection } from '../shared/ui/tooltip.tsx'
+import type { Card } from '#tasks/model.ts'
+import { TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
 import { harnessName } from './view.ts'
 
 export function AgentDetails({ card }: { card: Card }) {

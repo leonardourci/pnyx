@@ -1,9 +1,9 @@
-import { COMMENT_NOTE } from '../../../src/workers/compaction/comments.ts'
-import { HYDRA_ACTOR } from '../../../src/app/actors.ts'
-import type { HydraMessage, HydraStatus } from '../../../src/hydra/model.ts'
-import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/hydra/hydra.ts'
-import { withoutInjected } from '../../../src/oracle/text.ts'
-import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
+import { COMMENT_NOTE } from '#workers/compaction/comments.ts'
+import { HYDRA_ACTOR } from '#app/actors.ts'
+import type { HydraMessage, HydraStatus } from '#hydra/model.ts'
+import { hydraDelivery, QUIET_REPLY, reportActor } from '#hydra/hydra.ts'
+import { withoutInjected } from '#oracle/text.ts'
+import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 
 // A streamed start of Hydra's quiet reply hides too.
 const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
@@ -258,7 +258,7 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   } : entry)
 }
 
-export { COMMENT_NOTE } from '../../../src/workers/compaction/comments.ts'
+export { COMMENT_NOTE } from '#workers/compaction/comments.ts'
 
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`)

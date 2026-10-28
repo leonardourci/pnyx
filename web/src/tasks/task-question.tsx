@@ -1,12 +1,12 @@
-import type { Card } from '../../../src/tasks/model.ts'
-import { answerPrompt } from '../../../src/workers/answers.ts'
-import { CollapsibleText } from '../shared/ui/disclosure.tsx'
-import { Button } from '../shared/ui/controls.tsx'
-import { InlinePermissions } from '../workers/permissions.tsx'
+import type { Card } from '#tasks/model.ts'
+import { answerPrompt } from '#workers/answers.ts'
+import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import { AskPanel } from './ask.tsx'
-import { openAsks } from '../../../src/tasks/questions.ts'
-import type { Command } from '../app/connection.ts'
+import { openAsks } from '#tasks/questions.ts'
+import type { Command } from '#web-app/connection.ts'
 
 export const hasTaskQuestion = ({
   card,

@@ -1,9 +1,9 @@
 import type { RefObject } from 'react'
-import { openDecisions, type OpenDecision } from '../../../src/tasks/decisions.ts'
-import type { HydraState } from '../../../src/app/model.ts'
-import { Button } from '../shared/ui/controls.tsx'
-import { conversationMessages, latestAgentMessage, placeMessageCaret } from '../hydra/caret.ts'
-import { Popover } from '../shared/ui/popover.tsx'
+import { openDecisions, type OpenDecision } from '#tasks/decisions.ts'
+import type { HydraState } from '#app/model.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { conversationMessages, latestAgentMessage, placeMessageCaret } from '#web-hydra/caret.ts'
+import { Popover } from '#web-shared/ui/popover.tsx'
 
 export function WaitingDecisions({
   state,

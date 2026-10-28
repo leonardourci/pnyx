@@ -1,6 +1,6 @@
 import { useHeadsDispatch } from './heads-dispatch.ts'
-import type { HydraState } from '../../../src/app/model.ts'
-import type { Command } from '../app/connection.ts'
+import type { HydraState } from '#app/model.ts'
+import type { Command } from '#web-app/connection.ts'
 
 export function AgentKinds({ command }: {
   state: HydraState

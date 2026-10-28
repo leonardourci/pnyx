@@ -1,13 +1,13 @@
-import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
-import type { HydraState } from '../../../src/app/model.ts'
-import { hydraConfig } from '../../../src/hydra/config.ts'
-import type { Card } from '../../../src/tasks/model.ts'
-import { liveTask, rankOf } from '../../../src/tasks/select.ts'
-import { cardDoneDeadline, HOUR_MS } from '../../../src/tasks/retention-rules.ts'
-import { elapsedTime } from '../shared/time.ts'
-import { asksOwner } from '../../../src/tasks/lifecycle.ts'
-import { agentActivity } from '../workers/view.ts'
-import { openAsks } from '../../../src/tasks/questions.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import type { HydraState } from '#app/model.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import type { Card } from '#tasks/model.ts'
+import { liveTask, rankOf } from '#tasks/select.ts'
+import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
+import { elapsedTime } from '#web-shared/time.ts'
+import { asksOwner } from '#tasks/lifecycle.ts'
+import { agentActivity } from '#web-workers/view.ts'
+import { openAsks } from '#tasks/questions.ts'
 
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({

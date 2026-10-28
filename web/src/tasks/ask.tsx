@@ -1,10 +1,10 @@
-import { ChoiceOption } from '../shared/ui/choice-option.tsx'
+import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { useState } from 'react'
-import type { Ask, Card } from '../../../src/tasks/model.ts'
-import { askWording } from '../../../src/tasks/questions.ts'
-import { Button, Textarea } from '../shared/ui/controls.tsx'
-import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
-import type { Command } from '../app/connection.ts'
+import type { Ask, Card } from '#tasks/model.ts'
+import { askWording } from '#tasks/questions.ts'
+import { Button, Textarea } from '#web-shared/ui/controls.tsx'
+import { CollapsibleText, Disclosure } from '#web-shared/ui/disclosure.tsx'
+import type { Command } from '#web-app/connection.ts'
 
 const RECEIPT: Record<string, string> = {
   delivered: 'Answer sent to the worker.',

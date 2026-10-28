@@ -1,5 +1,5 @@
 import type { HTMLAttributes } from 'react'
-import { Icon } from '../shared/ui/icon.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 
 // A div with the button role rather than a <button>, so the card can still be dragged by its title.
 export function CardTitle({

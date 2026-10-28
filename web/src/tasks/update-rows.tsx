@@ -1,10 +1,10 @@
 import type { MouseEvent, ReactNode } from 'react'
-import { Button } from '../shared/ui/controls.tsx'
-import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
-import { Icon } from '../shared/ui/icon.tsx'
-import { Tooltip } from '../shared/ui/tooltip.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { CollapsibleText, Disclosure } from '#web-shared/ui/disclosure.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { LINK_ICONS, LinkChip } from './card-links.tsx'
-import type { TaskUpdate, UpdateKind } from '../../../src/tasks/updates.ts'
+import type { TaskUpdate, UpdateKind } from '#tasks/updates.ts'
 import type { UpdateGroup } from './task-updates.ts'
 
 const KINDS: Record<UpdateKind, {

@@ -1,8 +1,8 @@
-import { Icon } from '../shared/ui/icon.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { useEffect, useState } from 'react'
-import type { HydraSummary } from '../../../src/app/server-hydras.ts'
-import { Button } from '../shared/ui/controls.tsx'
-import { InlineTitle } from '../shared/ui/inline-title.tsx'
+import type { HydraSummary } from '#app/server-hydras.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { InlineTitle } from '#web-shared/ui/inline-title.tsx'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
 

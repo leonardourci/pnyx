@@ -1,7 +1,7 @@
-import { readSkillReference } from '../../../src/hydra/transcripts-skill-reference.ts'
-import { IMAGE, imageNames } from '../../../src/hydra/images.ts'
-import { FILE_BLOCK } from '../../../src/hydra/attachments.ts'
-import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/hydra/mentions.ts'
+import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
+import { IMAGE, imageNames } from '#hydra/images.ts'
+import { FILE_BLOCK } from '#hydra/attachments.ts'
+import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#hydra/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind

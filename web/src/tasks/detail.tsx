@@ -1,9 +1,9 @@
 import { Prerequisites } from './prerequisites.tsx'
 import { TaskUpdates } from './task-updates.tsx'
-import type { HydraState } from '../../../src/app/model.ts'
-import type { Card } from '../../../src/tasks/model.ts'
+import type { HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
 import { columnsFor } from './view.ts'
-import type { Command } from '../app/connection.ts'
+import type { Command } from '#web-app/connection.ts'
 
 export function Detail({
   card,

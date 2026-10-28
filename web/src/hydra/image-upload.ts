@@ -1,4 +1,4 @@
-import { MAX_IMAGE_BYTES, imageExtension } from '../../../src/hydra/images.ts'
+import { MAX_IMAGE_BYTES, imageExtension } from '#hydra/images.ts'
 
 // Office apps put a picture of copied text next to the text itself; the text wins.
 export const pastedImages = ({ clipboardData }: { clipboardData: DataTransfer }) =>

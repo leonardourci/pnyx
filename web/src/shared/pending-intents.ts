@@ -1,4 +1,4 @@
-import { HydraError } from '../../../src/store/errors.ts'
+import { HydraError } from '#store/errors.ts'
 
 export type IntentStage = 'pending' | 'sending' | 'accepted' | 'confirmed' | 'refused' | 'unknown'
 

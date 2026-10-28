@@ -1,10 +1,10 @@
-import type { HydraMessage } from '../../../src/hydra/model.ts'
-import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
+import type { HydraMessage } from '#hydra/model.ts'
+import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { recordEntries, splitEntry } from '../../../src/hydra/transcripts-read.ts'
-import { hydraDelivery } from '../../../src/hydra/hydra.ts'
-import { transcriptMessages } from '../../../src/oracle/text.ts'
+import { recordEntries, splitEntry } from '#hydra/transcripts-read.ts'
+import { hydraDelivery } from '#hydra/hydra.ts'
+import { transcriptMessages } from '#oracle/text.ts'
 import { hydraMessages, joinMessageParts, keepStreamedKeys } from './chat.ts'
 
 test(

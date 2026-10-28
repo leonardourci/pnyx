@@ -1,4 +1,4 @@
-import type { Link } from '../../../src/tasks/delivery/model.ts'
+import type { Link } from '#tasks/delivery/model.ts'
 
 export function safeLink({ link }: { link: Link }): string | undefined {
   try {

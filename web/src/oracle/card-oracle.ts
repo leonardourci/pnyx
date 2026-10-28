@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
-import type { Hit } from '../../../src/oracle/index.ts'
-import type { Command } from '../app/connection.ts'
+import type { Hit } from '#oracle/index.ts'
+import type { Command } from '#web-app/connection.ts'
 
 // Every search box ranks cards through the Hydra server's search, the same
 // full-text ranking as `pnyx-axi oracle` and recorded history.

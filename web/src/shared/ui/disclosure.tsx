@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Markdown } from '../../hydra/markdown.tsx'
+import { Markdown } from '#web-hydra/markdown.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 

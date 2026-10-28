@@ -1,4 +1,4 @@
-import { STEP_WORDS, type UpgradeOperation } from '../../../src/upgrade/model.ts'
+import { STEP_WORDS, type UpgradeOperation } from '#upgrade/model.ts'
 
 const short = ({ commit }: { commit?: string }) => commit?.slice(
   0,

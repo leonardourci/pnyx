@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { clampViewSize } from '../../../../src/preferences/view.ts'
+import { clampViewSize } from '#preferences/view.ts'
 
 export function Resize({
   label,

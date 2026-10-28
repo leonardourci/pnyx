@@ -1,8 +1,8 @@
 import { mergeThreadPages } from './conversation-history.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from '../../../src/app/model.ts'
-import { recordEntries, type ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
+import type { HydraEvent } from '#app/model.ts'
+import { recordEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
 import { hydraConversation } from './conversation.ts'
 
 const at = ({ minute }: { minute: number }) => `2026-10-22T10:${String(minute).padStart(
@@ -265,7 +265,7 @@ test(
         )).toISOString(),
       }),
     )
-    const page = ({ items }: { items: ThreadEntry[] }): import('../../../src/hydra/transcripts-read.ts').ThreadPage => ({
+    const page = ({ items }: { items: ThreadEntry[] }): import('#hydra/transcripts-read.ts').ThreadPage => ({
       card: '$hydra',
       session: 'fixture:one',
       entries: items,

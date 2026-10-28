@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { failedChecks, type Link } from '../../../src/tasks/delivery/model.ts'
-import { Button } from '../shared/ui/controls.tsx'
-import { Icon } from '../shared/ui/icon.tsx'
-import { Tooltip, LINK_TOOLTIP_DELAY } from '../shared/ui/tooltip.tsx'
+import { failedChecks, type Link } from '#tasks/delivery/model.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import { Tooltip, LINK_TOOLTIP_DELAY } from '#web-shared/ui/tooltip.tsx'
 
 const CLOSED_LINKS = 2
 const OPEN_LINKS = 3

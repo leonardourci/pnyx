@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra } from '../../../src/app/reducer.ts'
+import { emptyHydra } from '#app/reducer.ts'
 import { cardState } from './view.ts'
-import { cardFacts, placeCard } from '../../../src/tasks/columns.ts'
-import { DEFAULT_COLUMNS } from '../../../src/tasks/column-defaults.ts'
-import { INTERRUPTED } from '../../../src/workers/session-attachments.ts'
-import type { CardFact, HydraColumn } from '../../../src/tasks/columns-model.ts'
-import type { Card, TaskStatus } from '../../../src/tasks/model.ts'
+import { cardFacts, placeCard } from '#tasks/columns.ts'
+import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
+import { INTERRUPTED } from '#workers/session-attachments.ts'
+import type { CardFact, HydraColumn } from '#tasks/columns-model.ts'
+import type { Card, TaskStatus } from '#tasks/model.ts'
 
 const placement = ({ card }: { card: Card }) => placeCard({
   card: cardFacts({

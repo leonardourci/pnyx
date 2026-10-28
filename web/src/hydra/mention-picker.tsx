@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import { SuggestionPicker, type PickerItem } from '../shared/ui/suggestion-picker.tsx'
+import { SuggestionPicker, type PickerItem } from '#web-shared/ui/suggestion-picker.tsx'
 import type { ChipKind } from './draft.ts'
 
 export interface MentionItem extends PickerItem {

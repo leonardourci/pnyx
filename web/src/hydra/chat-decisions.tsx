@@ -1,11 +1,11 @@
-import type { Ask, Card } from '../../../src/tasks/model.ts'
-import { askWording } from '../../../src/tasks/questions.ts'
-import { TaskReference } from '../tasks/task-reference.tsx'
-import { Disclosure, CollapsibleText } from '../shared/ui/disclosure.tsx'
-import { Button } from '../shared/ui/controls.tsx'
-import { AskPanel } from '../tasks/ask.tsx'
+import type { Ask, Card } from '#tasks/model.ts'
+import { askWording } from '#tasks/questions.ts'
+import { TaskReference } from '#web-tasks/task-reference.tsx'
+import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { AskPanel } from '#web-tasks/ask.tsx'
 import { clock } from './chat.ts'
-import type { Command } from '../app/connection.ts'
+import type { Command } from '#web-app/connection.ts'
 
 export interface ChatDecision {
   id: string

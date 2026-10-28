@@ -1,9 +1,9 @@
-import { Icon } from '../shared/ui/icon.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { useId, useRef, useState } from 'react'
-import type { Card } from '../../../src/tasks/model.ts'
-import { Button, Input } from '../shared/ui/controls.tsx'
-import type { Command } from '../app/connection.ts'
-import { CommandFailure } from '../shared/pending-intents.ts'
+import type { Card } from '#tasks/model.ts'
+import { Button, Input } from '#web-shared/ui/controls.tsx'
+import type { Command } from '#web-app/connection.ts'
+import { CommandFailure } from '#web-shared/pending-intents.ts'
 
 export function ReminderLabel({ card }: { card: Card }) {
   if (!card.reminder || card.reminder.dueAt) {

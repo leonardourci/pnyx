@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
-import type { HydraState } from '../../../src/app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import { AddProject, ProjectSharing } from './add-project.tsx'
-import { Button, Input, Switch, Textarea } from '../shared/ui/controls.tsx'
-import type { Command } from '../app/connection.ts'
+import { Button, Input, Switch, Textarea } from '#web-shared/ui/controls.tsx'
+import type { Command } from '#web-app/connection.ts'
 import { useProjectsResource, type ProjectRow } from './project-resource.ts'
-import { PendingStatus } from '../shared/ui/pending-status.tsx'
-import { LandingFields, landingArgs, type LandingChoice } from '../tasks/delivery/delivery-fields.tsx'
+import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
+import { LandingFields, landingArgs, type LandingChoice } from '#web-tasks/delivery/delivery-fields.tsx'
 
 type Confirmation = {
   token: string

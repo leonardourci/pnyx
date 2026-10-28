@@ -1,13 +1,13 @@
-import { ChoiceOption } from '../shared/ui/choice-option.tsx'
-import { CollapsibleText } from '../shared/ui/disclosure.tsx'
+import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
+import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { useState } from 'react'
-import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/workers/answers.ts'
-import type { Card } from '../../../src/tasks/model.ts'
-import type { Attention, FormField, Question } from '../../../src/workers/model.ts'
-import { Button, Input } from '../shared/ui/controls.tsx'
-import { markdownText } from '../hydra/markdown.tsx'
-import { Icon } from '../shared/ui/icon.tsx'
-import type { Command } from '../app/connection.ts'
+import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '#workers/answers.ts'
+import type { Card } from '#tasks/model.ts'
+import type { Attention, FormField, Question } from '#workers/model.ts'
+import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { markdownText } from '#web-hydra/markdown.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import type { Command } from '#web-app/connection.ts'
 
 type Send = ({
   request,

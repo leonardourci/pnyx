@@ -1,9 +1,9 @@
-import type { HydraState } from '../../../src/app/model.ts'
-import type { Card } from '../../../src/tasks/model.ts'
-import type { AgentConfig } from '../../../src/workers/model.ts'
-import { hydraConfig } from '../../../src/hydra/config.ts'
-import { columnCards, rankOf } from '../../../src/tasks/select.ts'
-import { patchView } from '../../../src/preferences/view.ts'
+import type { HydraState } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { columnCards, rankOf } from '#tasks/select.ts'
+import { patchView } from '#preferences/view.ts'
 
 export interface Edit {
   name: string

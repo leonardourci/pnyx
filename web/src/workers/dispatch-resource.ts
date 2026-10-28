@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
-import type { AgentConfig } from '../../../src/workers/model.ts'
-import type { EffectiveDispatch } from '../../../src/workers/dispatch-config.ts'
-import { createSettingsResource } from '../shared/settings-resource.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
+import { createSettingsResource } from '#web-shared/settings-resource.ts'
 
 const dispatches = new Map<string, ReturnType<typeof createDispatch>>()
 

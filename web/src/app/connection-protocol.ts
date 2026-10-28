@@ -1,4 +1,4 @@
-import { CLONE_TIMEOUT_MS } from '../../../src/projects/limits.ts'
+import { CLONE_TIMEOUT_MS } from '#projects/limits.ts'
 
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(

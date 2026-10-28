@@ -1,6 +1,6 @@
-import type { Card } from '../../../src/tasks/model.ts'
-import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateColumns, type UpdateDecision } from '../../../src/tasks/updates.ts'
-import { mentionId, TASK_MENTION } from '../../../src/hydra/mentions.ts'
+import type { Card } from '#tasks/model.ts'
+import { relevantUpdate, type TaskEvent, type TaskUpdate, type UpdateColumns, type UpdateDecision } from '#tasks/updates.ts'
+import { mentionId, TASK_MENTION } from '#hydra/mentions.ts'
 
 const OWN_CHIP = new RegExp(`^${TASK_MENTION.source}\\s*`)
 

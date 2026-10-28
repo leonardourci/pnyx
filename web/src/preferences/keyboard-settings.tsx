@@ -1,6 +1,6 @@
 import { useState } from 'react'
-import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '../../../src/preferences/keyboard.ts'
-import { Button, Input, Switch, Textarea, useBusy } from '../shared/ui/controls.tsx'
+import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
+import { Button, Input, Switch, Textarea, useBusy } from '#web-shared/ui/controls.tsx'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
 
 export function KeyboardSettings({

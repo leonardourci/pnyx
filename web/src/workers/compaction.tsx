@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react'
-import type { CompactInput, Compaction } from '../../../src/workers/compaction/model.ts'
-import { Button } from '../shared/ui/controls.tsx'
-import { Disclosure } from '../shared/ui/disclosure.tsx'
-import { Icon } from '../shared/ui/icon.tsx'
-import { Tooltip } from '../shared/ui/tooltip.tsx'
+import type { CompactInput, Compaction } from '#workers/compaction/model.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { Disclosure } from '#web-shared/ui/disclosure.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
+import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 
 // m:ss since startedAt, ticking while running.
 export function useElapsed({

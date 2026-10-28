@@ -1,4 +1,4 @@
-import { sendableComment, type ChatComment } from '../hydra/chat.ts'
+import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 
 // Keep each tab's view across reloads and newly served builds.
 export type Restore = {

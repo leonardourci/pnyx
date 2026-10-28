@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { ToolCall } from '../../../src/hydra/calls.ts'
+import type { ToolCall } from '#hydra/calls.ts'
 import { actionLabel, currentLabel, shellOf } from './action-label.ts'
 import type { PnyxLookup } from './pnyx-action.ts'
-import { withChanges } from '../app/connection.ts'
+import { withChanges } from '#web-app/connection.ts'
 
 const lookup: PnyxLookup = {
   task: ({ ref }) => ref === 'login' ? {

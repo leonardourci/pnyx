@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { HydraEvent } from '../../../src/app/model.ts'
-import type { Card } from '../../../src/tasks/model.ts'
-import type { Command } from '../app/connection.ts'
+import type { HydraEvent } from '#app/model.ts'
+import type { Card } from '#tasks/model.ts'
+import type { Command } from '#web-app/connection.ts'
 import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from './updates-cache.ts'
-import { type TaskEvent, type TaskUpdate } from '../../../src/tasks/updates.ts'
+import { type TaskEvent, type TaskUpdate } from '#tasks/updates.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 
 test(

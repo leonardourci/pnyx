@@ -1,9 +1,9 @@
 import { createContext, Fragment, useContext } from 'react'
-import type { SavedLabelColor } from '../../../src/tasks/model.ts'
-import type { Suggestion } from '../../../src/hydra/transcripts-catalog.ts'
+import type { SavedLabelColor } from '#tasks/model.ts'
+import type { Suggestion } from '#hydra/transcripts-catalog.ts'
 import type { PreparedChatTokens } from './chat-tokens.ts'
 import { SkillBadge } from './skill-badge.tsx'
-import type { SkillReference } from '../../../src/hydra/transcripts-skill-reference.ts'
+import type { SkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SPACE } from './draft.ts'
 
 export const ChatTokensContext = createContext<{

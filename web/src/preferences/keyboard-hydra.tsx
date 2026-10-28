@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import type { HydraState } from '../../../src/app/model.ts'
-import type { Command } from '../app/connection.ts'
-import { placeMessageCaret, conversationMessages, latestAgentMessage } from '../hydra/caret.ts'
+import type { HydraState } from '#app/model.ts'
+import type { Command } from '#web-app/connection.ts'
+import { placeMessageCaret, conversationMessages, latestAgentMessage } from '#web-hydra/caret.ts'
 import { focusElement, type ActionContext } from './keyboard-registry.tsx'
 import { navigate, restoreAnchor, type HydraAnchor, type ColumnCards } from './keyboard-navigation.ts'
 

@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
-import { imageNames } from '../../../src/hydra/images.ts'
+import { imageNames } from '#hydra/images.ts'
 import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
 import {
   EDGE,
@@ -12,7 +12,7 @@ import {
   splitBlocks,
   type Arrival,
   type Block,
-} from '../shared/ui/reveal.ts'
+} from '#web-shared/ui/reveal.ts'
 
 type MarkdownProps = ComponentProps<typeof Markdown>
 
