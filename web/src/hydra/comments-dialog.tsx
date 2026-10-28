@@ -4,7 +4,7 @@ import { Dialog } from '../shared/ui/dialog.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
 import { groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
-import { AttachmentCard } from '../components/ui/attachment-card.tsx'
+import { AttachmentCard } from './attachment-card.tsx'
 
 export function CommentsPill({
   count,

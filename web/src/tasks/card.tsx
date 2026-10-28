@@ -21,7 +21,7 @@ import { Resize } from '../shared/ui/resize.tsx'
 
 import { Tooltip } from '../shared/ui/tooltip.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
-import { WorkingDots } from '../components/ui/streaming.tsx'
+import { WorkingDots } from '../hydra/streaming.tsx'
 import { askWording, openAsks } from '../../../src/tasks/questions.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Marked } from 'marked'
-import { knownCommands, prepareChatTokens } from '../web/src/hydra/chat-tokens.ts'
+import { knownCommands, prepareChatTokens } from './chat-tokens.ts'
 
 const suggestions = [
   {

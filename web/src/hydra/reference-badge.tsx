@@ -1,6 +1,6 @@
 import { Fragment, type ComponentProps, type ReactNode } from 'react'
-import { CHIP_JOIN, ICON_SPACE, WORD_JOINER } from '../../hydra/draft.ts'
-import { Icon } from '../../shared/ui/icon.tsx'
+import { CHIP_JOIN, ICON_SPACE, WORD_JOINER } from './draft.ts'
+import { Icon } from '../shared/ui/icon.tsx'
 
 export function ReferenceBadge({
   icons,

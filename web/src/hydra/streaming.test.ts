@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { claudeProvider, type QueryFn } from '../src/workers/claude.ts'
-import { liveReplies } from '../src/workers/streaming.ts'
-import type { ThreadPage } from '../src/hydra/transcripts-read.ts'
+import { claudeProvider, type QueryFn } from '../../../src/workers/claude.ts'
+import { liveReplies } from '../../../src/workers/streaming.ts'
+import type { ThreadPage } from '../../../src/hydra/transcripts-read.ts'
 
 test(
   'Claude forwards text before the result under one id per block, excluding thinking and nested agent output',

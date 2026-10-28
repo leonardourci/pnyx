@@ -1,10 +1,10 @@
-import { CHIP_JOIN, ICON_SPACE, skillProjectLabel } from '../../hydra/draft.ts'
-import type { SavedLabelColor } from '../../../../src/tasks/model.ts'
-import type { SkillReference } from '../../../../src/hydra/transcripts-skill-reference.ts'
-import { UPGRADE_COMMAND } from '../../../../src/upgrade/model.ts'
-import { Button } from '../../shared/ui/controls.tsx'
-import { Icon } from '../../shared/ui/icon.tsx'
-import { Label } from '../../shared/ui/label.tsx'
+import { CHIP_JOIN, ICON_SPACE, skillProjectLabel } from './draft.ts'
+import type { SavedLabelColor } from '../../../src/tasks/model.ts'
+import type { SkillReference } from '../../../src/hydra/transcripts-skill-reference.ts'
+import { UPGRADE_COMMAND } from '../../../src/upgrade/model.ts'
+import { Button } from '../shared/ui/controls.tsx'
+import { Icon } from '../shared/ui/icon.tsx'
+import { Label } from '../shared/ui/label.tsx'
 
 export function SkillBadge({
   skill,

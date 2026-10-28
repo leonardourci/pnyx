@@ -1,6 +1,6 @@
 import { createContext, useContext, type ReactNode } from 'react'
 import { InlineButton } from '../shared/ui/controls.tsx'
-import { ReferenceBadge } from '../components/ui/reference-badge.tsx'
+import { ReferenceBadge } from '../hydra/reference-badge.tsx'
 import { CHIP_SPACE } from '../hydra/draft.ts'
 import { Tooltip } from '../shared/ui/tooltip.tsx'
 
