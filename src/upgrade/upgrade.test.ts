@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, beforeEach, test } from 'node:test'
-import { upgrade as upgradeCli } from '../src/upgrade/cli.ts'
-import { runUpgrade, upgradeAvailable } from '../src/upgrade/runner.ts'
-import { building, git, upgradeRepo } from '../src/test-harness/upgrade-fixture.ts'
+import { upgrade as upgradeCli } from './cli.ts'
+import { runUpgrade, upgradeAvailable } from './runner.ts'
+import { building, git, upgradeRepo } from '../test-harness/upgrade-fixture.ts'
 
 const root = mkdtempSync(join(
   tmpdir(),
