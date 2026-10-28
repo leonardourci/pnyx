@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { loadHydra } from '#app/store.ts'
@@ -8,11 +9,14 @@ import { reminderDeadline } from './reminders.ts'
 export function fireReminders({
   hydraId,
   at = new Date().toISOString(),
+  state = loadHydra({ hydraId }).state,
 }: {
   hydraId: string
   at?: string
+  // The server passes the Hydra it already holds; the writer below reads it again under the lock.
+  state?: HydraState
 }): number {
-  const deadline = reminderDeadline({ state: loadHydra({ hydraId }).state })
+  const deadline = reminderDeadline({ state })
 
   if (deadline === undefined || deadline > Date.parse(at)) {
     return 0

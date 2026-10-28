@@ -1150,6 +1150,7 @@ export async function mountOwnedHydra({
               queueNeedsRetry = await advanceQueues({
                 hydraId,
                 active: () => !closed,
+                state,
               })
             } catch (error) {
               queueNeedsRetry = true
@@ -1222,6 +1223,7 @@ export async function mountOwnedHydra({
         fireReminders({
           hydraId,
           at: new Date(reminderScheduler.now()).toISOString(),
+          state,
         })
         pump()
         const deadline = doneDeadline({ state })
