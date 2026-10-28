@@ -34,7 +34,7 @@ function fixture() {
   cpSync(
     join(
       import.meta.dirname,
-      'fixtures/firstmate-home',
+      '../src/integrations/firstmate/fixtures/firstmate-home',
     ),
     join(
       home,

@@ -216,7 +216,7 @@ if (process.argv.includes('reply')) {
     cpSync(
       join(
         import.meta.dirname,
-        'fixtures/firstmate-home',
+        '../src/integrations/firstmate/fixtures/firstmate-home',
       ),
       nativePath,
       { recursive: true },

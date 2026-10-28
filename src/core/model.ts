@@ -4,6 +4,7 @@ import type { TaskSpend } from '../spend/tasks.ts'
 import type { SourceRef } from '../app/model.ts'
 import type { EventBase } from '../store/events.ts'
 import type { HydraProject, TaskCopy } from '../projects/model.ts'
+import type { FirstmateRecord } from '../integrations/firstmate/model.ts'
 
 export const COLUMNS = [
   'queued',
@@ -512,17 +513,6 @@ export interface TaskDeclaration {
   raw?: string
   waitingFor?: string[]
   restores?: string
-}
-export interface FirstmateRecord {
-  home: string
-  task: string
-  backlog?: Record<string, unknown>
-  meta: Record<string, string>
-  status: string
-  present?: {
-    meta: boolean
-    status: boolean
-  }
 }
 export interface HydraIdentity {
   agent?: AgentConfig
