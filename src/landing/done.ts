@@ -1,4 +1,4 @@
-import { reportReviewGaps } from '../investigation/inventory.ts'
+import { reportReviewGaps } from '../investigations/inventory.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
 import { type Card } from '../core/model.ts'

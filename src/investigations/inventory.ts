@@ -1,6 +1,7 @@
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { type Card, type ReportCall } from '../core/model.ts'
+import type { ReportCall } from './model.ts'
+import { type Card } from '../core/model.ts'
 
 export function reportCalls({
   state,

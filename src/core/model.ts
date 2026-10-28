@@ -5,6 +5,7 @@ import type { SourceRef } from '../app/model.ts'
 import type { EventBase } from '../store/events.ts'
 import type { HydraProject, TaskCopy } from '../projects/model.ts'
 import type { FirstmateRecord } from '../integrations/firstmate/model.ts'
+import type { TaskReport } from '../investigations/model.ts'
 
 export const COLUMNS = [
   'queued',
@@ -357,25 +358,6 @@ export const TASK_KINDS = [
   'investigation',
 ] as const
 export type TaskKind = (typeof TASK_KINDS)[number]
-
-export interface ReportCall {
-  task: string
-  ask: string
-}
-
-// The text stays in the log, on the task.report event this names.
-export interface TaskReport {
-  id: string
-  at: string
-  actor: string
-  chars: number
-  review?: {
-    id: string
-    at: string
-    actor: string
-    calls: ReportCall[]
-  }
-}
 
 export interface TaskReminder {
   id: string

@@ -1,4 +1,4 @@
-import { reportReviewGaps } from '../investigation/inventory.ts'
+import { reportReviewGaps } from '../investigations/inventory.ts'
 import { openAsks } from './asks.ts'
 import { ownerGates } from './gates.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'

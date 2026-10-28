@@ -1,5 +1,5 @@
 import { openAsks } from './asks.ts'
-import { requireReportReview } from '../investigation/inventory.ts'
+import { requireReportReview } from '../investigations/inventory.ts'
 import { ownerGates } from './gates.ts'
 import { columnRule, validateColumnRule } from './columns.ts'
 import type { HydraState, HydraChange, Decision } from '../app/model.ts'

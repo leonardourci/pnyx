@@ -2,7 +2,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { HydraState, HydraEvent, Decision } from './model.ts'
 import type { Meta } from './command-meta.ts'
 import { hydraConfig } from '../core/hydra.ts'
-import { requireReportReview } from '../investigation/inventory.ts'
+import { requireReportReview } from '../investigations/inventory.ts'
 import { checkRevision, strip } from '../core/decide.ts'
 import { reduce } from './reducer.ts'
 

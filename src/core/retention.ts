@@ -1,5 +1,5 @@
 import { openAsks } from './asks.ts'
-import { reportReviewGaps } from '../investigation/inventory.ts'
+import { reportReviewGaps } from '../investigations/inventory.ts'
 import type { HydraState } from '../app/model.ts'
 import type { Card } from './model.ts'
 

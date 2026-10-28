@@ -1,4 +1,4 @@
-import { reportReviewGaps } from '../investigation/inventory.ts'
+import { reportReviewGaps } from '../investigations/inventory.ts'
 import { hydraEvent } from '../core/hydra.ts'
 import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
 import { loadHydra } from '../app/store.ts'
