@@ -155,7 +155,7 @@ test(
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
       (...args: Parameters<typeof fs.renameSync>) => {
         if (!blocked && String(args[1]).endsWith('/snapshot.json')
-          && new Error().stack?.includes('/helper/runner.ts') && Object.keys(s.state().helper?.runs ?? {}).length > 0) {
+          && new Error().stack?.includes('/routine-helper/runner.ts') && Object.keys(s.state().helper?.runs ?? {}).length > 0) {
           blocked = true
           throw Object.assign(
             new Error('snapshot replace failed'),

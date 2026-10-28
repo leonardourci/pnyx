@@ -1,4 +1,4 @@
-import { supervisedCommands } from '../helper/commands.ts'
+import { supervisedCommands } from '../routine-helper/commands.ts'
 import { approval } from '../app/confirmations.ts'
 import { dispatchCommands, DISPATCH_HELP } from '../workers/dispatch-cli.ts'
 import { project, PROJECT_HELP } from '../projects/cli.ts'

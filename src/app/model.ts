@@ -9,7 +9,7 @@ import type { LandingRule, LinkedEvent, OutcomeEvent } from '../tasks/delivery/m
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '../workers/model.ts'
 import { type HydraConfig, type HydraMessage, type HydraStatus, type ChatEvent } from '../core/model.ts'
 import type { ProjectRefresh } from '../projects/refresh-types.ts'
-import type { HelperChange, HelperState } from '../helper/state.ts'
+import type { HelperChange, HelperState } from '../routine-helper/state.ts'
 import type { ExternalSourceEvent } from '../task-sources/model.ts'
 
 export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }

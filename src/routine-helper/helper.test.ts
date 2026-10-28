@@ -5,16 +5,16 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { afterEach, beforeEach, test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { askAnswer } from '../src/tasks/questions.ts'
-import { hydraConfig, HYDRA_CARD } from '../src/core/hydra.ts'
-import type { HydraEvent } from '../src/app/model.ts'
-import { taskLease } from '../src/helper/leases.ts'
-import { helperEvent, helperReason } from '../src/helper/route.ts'
-import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from '../src/helper/runner.ts'
-import type { Provider } from '../src/workers/provider.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { readEvents } from '../src/app/event-log.ts'
+import { commands } from '../app/cli.ts'
+import { askAnswer } from '../tasks/questions.ts'
+import { hydraConfig, HYDRA_CARD } from '../core/hydra.ts'
+import type { HydraEvent } from '../app/model.ts'
+import { taskLease } from './leases.ts'
+import { helperEvent, helperReason } from './route.ts'
+import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
+import type { Provider } from '../workers/provider.ts'
+import { loadHydra } from '../app/store.ts'
+import { readEvents } from '../app/event-log.ts'
 
 let root = ''
 let restore: NodeJS.ProcessEnv
@@ -502,7 +502,7 @@ test(
   () => {
     const fixtures = JSON.parse(readFileSync(
       new URL(
-        './fixtures/helper/malformed.json',
+        './fixtures/malformed.json',
         import.meta.url,
       ),
       'utf8',
