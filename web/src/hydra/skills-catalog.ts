@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { Command } from '#web-app/connection.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { withBuiltInSkills } from '#hydra/built-in-skills.ts'
 import { storageKey } from './outbox.ts'
 
 const catalogs = new Map<string, Catalog>()
@@ -91,12 +93,14 @@ export function useSkillsCatalog({
   command,
   connected,
   open,
+  provider,
 }: {
   identity: string
   card: string
   command: Command
   connected: boolean
   open: boolean
+  provider?: string
 }): Catalog | null {
   const scope = storageKey({ key: `skills:${identity}` })
   const [
@@ -160,5 +164,13 @@ export function useSkillsCatalog({
     ],
   )
 
-  return catalog
+  if (!catalog && card !== HYDRA_CARD) {
+    return null
+  }
+
+  return withBuiltInSkills({
+    catalog: catalog ?? { suggestions: [] },
+    card,
+    provider,
+  })
 }
