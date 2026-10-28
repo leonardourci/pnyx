@@ -360,7 +360,21 @@ h3 { font-weight: 600; }
 
 .card-state > :not(.agent-activity), .agent-activity > .working-dots { flex-shrink: 0; }
 
-.action-text { display: block; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.action-text { display: flex; align-items: center; gap: 4px; min-width: 0; overflow: hidden; }
+
+.action-words { flex: 0 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.action-reference { flex: 1 1 38%; min-width: min(4.5em, 100%); max-width: 55%; }
+
+.action-reference .button.task-reference { display: inline-flex; align-items: center; width: 100%; min-width: 0; }
+
+.action-reference .task-reference .reference { display: inline-flex; align-items: center; min-width: 0; max-width: 100%; margin: 0; padding-block: 0; }
+
+.action-reference .task-reference-space { display: none; }
+
+.action-reference .chip-icon { flex-shrink: 0; }
+
+.action-reference .task-reference-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 
 .live-label { display: inline-grid; grid-template-columns: minmax(0, 1fr); align-items: center; min-width: 0; max-width: 100%; overflow: hidden; transition: width 240ms cubic-bezier(.2, .8, .2, 1); }
@@ -1406,14 +1420,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 @media (prefers-reduced-motion: reduce) { .card, .card-menu { transition: none; } }
 
 .message-task-label { color: var(--color-muted); font-size: var(--text-meta); }
-.button.task-reference { display: inline; max-width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; vertical-align: baseline; }
+.button.task-reference { display: inline; max-width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: inherit; overflow-wrap: anywhere; vertical-align: baseline; }
 .button.task-reference:hover { background: transparent; }
 .task-reference[aria-disabled=true] { opacity: .45; cursor: default; }
 
 
 
 .message-task > .tooltip-anchor { min-width: 0; }
-.markdown .tooltip-anchor:has(> .task-reference) { display: inline; }
+.tooltip-anchor:has(> .task-reference) { display: inline; }
 
 .disclosure-chevron { transition: transform 140ms ease; }
 .card-title-row { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }

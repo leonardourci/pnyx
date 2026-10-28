@@ -24,7 +24,11 @@ const ShownLabel = ({ value }: { value: Shown }) => (
       {value.sentence.map((
         part,
         index,
-      ) => <SentencePart key={index} part={part} />)}
+      ) => {
+        const className = typeof part === 'string' ? 'action-words' : 'action-reference'
+
+        return <span key={index} className={className}><SentencePart part={part} /></span>
+      })}
     </span>
   </>
 )
