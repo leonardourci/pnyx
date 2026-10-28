@@ -3,7 +3,7 @@ import { isHelper, taskLease } from '#routine-helper/leases.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { helperGrant } from '#routine-helper/route.ts'
+import { helperGrant, type HelperAction } from '#routine-helper/route.ts'
 import { isAbsolute } from 'node:path'
 import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
@@ -13,6 +13,13 @@ import { modelIds } from '#workers/provider.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
 import { SETTINGS } from '#workers/host.ts'
+
+// The host actions a helper may request, by the named helper action each one is.
+const HELPER_ACTIONS: Record<string, HelperAction> = {
+  send: 'reply',
+  continue: 'continue',
+  permission: 'permission',
+}
 
 export async function hostRequestUnlocked({
   host,
@@ -369,7 +376,7 @@ export async function hostRequest({
   const helper = isHelper({ actor })
   const action = request.action
 
-  if (helper && action !== 'send' && action !== 'continue') {
+  if (helper && !(String(action) in HELPER_ACTIONS)) {
     throw new HydraError({
       message: 'This action belongs to the main Hydra',
       code: 'MAIN_ONLY',
@@ -396,6 +403,7 @@ export async function hostRequest({
       state,
       task: card.id,
       actor,
+      action: HELPER_ACTIONS[String(action)],
     })) {
       throw new HydraError({
         message: 'This task now belongs to the main Hydra',

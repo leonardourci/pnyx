@@ -1,4 +1,3 @@
-import { helperProgress } from '#routine-helper/route.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -955,21 +954,7 @@ export async function mountOwnedHydra({
           event,
         })
       } else if (event.type === 'hydra.message' && event.data.kind === 'progress') {
-        const task = helperProgress({
-          state,
-          event,
-        })
-
-        if (task) {
-          agents.wake({
-            seq: event.seq,
-            card: task,
-            reasons: [],
-            event,
-          })
-        } else {
-          agents.unread({ seq: event.seq })
-        }
+        agents.unread({ seq: event.seq })
       }
     }
 

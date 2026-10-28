@@ -7,7 +7,7 @@ import { reportActor } from '#hydra/hydra.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { loadHydra } from '#app/store.ts'
-import { helperGrant } from './route.ts'
+import { helperGrant, type HelperAction } from './route.ts'
 import { isHelper, taskLease } from './leases.ts'
 
 const TASK_READS = [
@@ -20,6 +20,7 @@ const TASK_READS = [
 const TASK_WRITES = [
   'continue',
   'answer',
+  'permission',
 ]
 const READS: Record<string, string[]> = {
   hydra: [
@@ -145,6 +146,7 @@ export function commandLease({
       state,
       task: card.id,
       actor,
+      action: name === 'reply' ? 'reply' : action as HelperAction,
     })) {
       denied()
     }

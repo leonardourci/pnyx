@@ -11,7 +11,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { taskLease } from './leases.ts'
-import { helperEvent, helperReason } from './route.ts'
+import { HELPER_INPUT_CHARS, helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
@@ -72,7 +72,7 @@ afterEach(() => {
 })
 
 test(
-  'fixed routing keeps results, PR actions, permissions, unknown tasks and owner decisions on main',
+  'fixed routing keeps results, PR actions, progress, unknown tasks and owner answers off the helper',
   () => {
     const s = state()
     const task = s.keys.work!
@@ -82,7 +82,7 @@ test(
       cardId: HYDRA_CARD,
       data: {
         task,
-        kind: 'progress',
+        ask: 'ask-1',
       },
     } as HydraEvent
     assert.equal(
@@ -92,19 +92,25 @@ test(
       }),
       task,
     )
-    assert.equal(
-      helperEvent({
-        state: s,
-        event: {
-          ...report,
-          data: {
-            ...report.data,
-            kind: undefined,
-          },
-        } as HydraEvent,
-      }),
-      undefined,
-    )
+
+    for (const data of [
+      {
+        task,
+        kind: 'progress',
+      },
+      { task },
+    ]) {
+      assert.equal(
+        helperEvent({
+          state: s,
+          event: {
+            ...report,
+            data,
+          } as HydraEvent,
+        }),
+        undefined,
+      )
+    }
 
     for (const kind of [
       'checks',
@@ -149,7 +155,7 @@ test(
           ...report,
           data: {
             task: 'missing',
-            kind: 'progress',
+            ask: 'ask-1',
           },
         } as HydraEvent,
       }),
@@ -174,14 +180,89 @@ test(
       }),
       undefined,
     )
-    assert.equal(
-      helperReason({
-        state: state(),
-        task,
-        kind: 'quiet',
-      }),
-      false,
-    )
+
+    // A task waiting on the owner keeps its worker nudges and permission prompts for the helper, never its questions.
+    for (const [
+      kind,
+      routed,
+    ] of [
+        [
+          'quiet',
+          true,
+        ],
+        [
+          'permission',
+          true,
+        ],
+        [
+          'asked',
+          false,
+        ],
+        [
+          'checks',
+          false,
+        ],
+      ] as const) {
+      assert.equal(
+        helperReason({
+          state: state(),
+          task,
+          kind,
+        }),
+        routed,
+      )
+    }
+
+    const granted = {
+      ...state(),
+      helper: {
+        runs: {
+          batch: {
+            id: 'batch',
+            tasks: [task],
+            prompt: '',
+            seqs: [],
+          },
+        },
+        outcomes: [],
+        handled: [],
+        wakes: [],
+        delivered: 0,
+      },
+    }
+
+    for (const [
+      action,
+      allowed,
+    ] of [
+        [
+          'reply',
+          true,
+        ],
+        [
+          'continue',
+          true,
+        ],
+        [
+          'permission',
+          true,
+        ],
+        [
+          'answer',
+          false,
+        ],
+      ] as const) {
+      assert.equal(
+        helperGrant({
+          state: granted,
+          task,
+          actor: 'helper:batch',
+          action,
+        }),
+        allowed,
+      )
+    }
+
     const ask = state().cards[task]!.asks![0]!
     assert.throws(
       () => askAnswer({
@@ -561,6 +642,64 @@ test(
         tasks: ['work'],
       })[0]!.summary.length,
       600,
+    )
+  },
+)
+
+test(
+  'a burst becomes a capped batch: the oldest worker questions first, then the oldest other tasks, within the input budget',
+  () => {
+    const items = [
+      {
+        task: 'quiet-old',
+        seq: 1,
+        question: false,
+      },
+      {
+        task: 'asked-new',
+        seq: 9,
+        question: true,
+      },
+      {
+        task: 'quiet-new',
+        seq: 5,
+        question: false,
+      },
+      {
+        task: 'asked-old',
+        seq: 7,
+        question: true,
+      },
+      {
+        task: 'quiet-old',
+        seq: 2,
+        question: false,
+      },
+    ]
+    assert.deepEqual(
+      helperBatch({
+        items,
+        prompt: ({ tasks }) => tasks.join(','),
+      })?.tasks,
+      [
+        'asked-old',
+        'asked-new',
+        'quiet-old',
+      ],
+    )
+    assert.deepEqual(
+      helperBatch({
+        items,
+        prompt: ({ tasks }) => 'x'.repeat(tasks.length * HELPER_INPUT_CHARS),
+      })?.tasks,
+      ['asked-old'],
+    )
+    assert.equal(
+      helperBatch({
+        items: [],
+        prompt: () => '',
+      }),
+      undefined,
     )
   },
 )
