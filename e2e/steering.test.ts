@@ -4,12 +4,12 @@ import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { Card } from '../../src/tasks/model.ts'
-import { emptyHydra, replay } from '../../src/app/reducer.ts'
-import { hydraDir } from '../../src/app/home-migration.ts'
-import { steeringNotice } from '../../src/workers/inbox-notice.ts'
-import { openPage, until } from '../../src/test-harness/harness.ts'
-import { pnyx } from '../../src/test-harness/pnyx.ts'
+import type { Card } from '../src/tasks/model.ts'
+import { emptyHydra, replay } from '../src/app/reducer.ts'
+import { hydraDir } from '../src/app/home-migration.ts'
+import { steeringNotice } from '../src/workers/inbox-notice.ts'
+import { openPage, until } from '../src/test-harness/harness.ts'
+import { pnyx } from '../src/test-harness/pnyx.ts'
 
 const pending = ({ card }: { card: Card }) => {
   const messages = card.steering ?? []
@@ -533,7 +533,7 @@ test(
     copyFileSync(
       join(
         import.meta.dirname,
-        '../../src/task-sources/fixtures/source.mjs',
+        '../src/task-sources/fixtures/source.mjs',
       ),
       script,
     )

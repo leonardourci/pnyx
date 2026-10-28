@@ -1,13 +1,13 @@
-import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../../src/setup/skill-names.ts'
+import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '../src/setup/skill-names.ts'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { HYDRA_CARD } from '../../src/hydra/identity.ts'
-import { taskMention } from '../../src/hydra/mentions.ts'
-import type { ThreadPage } from '../../src/hydra/transcripts-read.ts'
-import { openPage, until } from '../../src/test-harness/harness.ts'
-import { pnyx, type Scenario } from '../../src/test-harness/pnyx.ts'
+import { HYDRA_CARD } from '../src/hydra/identity.ts'
+import { taskMention } from '../src/hydra/mentions.ts'
+import type { ThreadPage } from '../src/hydra/transcripts-read.ts'
+import { openPage, until } from '../src/test-harness/harness.ts'
+import { pnyx, type Scenario } from '../src/test-harness/pnyx.ts'
 
 const finished = async ({
   s,

@@ -2,9 +2,9 @@ import assert from 'node:assert/strict'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { openDecisions } from '../../src/tasks/decisions.ts'
-import { openPage, until } from '../../src/test-harness/harness.ts'
-import { pnyx } from '../../src/test-harness/pnyx.ts'
+import { openDecisions } from '../src/tasks/decisions.ts'
+import { openPage, until } from '../src/test-harness/harness.ts'
+import { pnyx } from '../src/test-harness/pnyx.ts'
 
 test(
   'a worker’s permission request waits on its task in Needs you until Hydra or the owner decides it once, the worker gets that decision and its answers, a Codex worker’s turn permissions grant only what it asked, and a restart expires what was left waiting',

@@ -10,10 +10,7 @@ const ROOTS = [
   'eslint',
   'e2e',
 ]
-export const FLOW_FOLDERS = [
-  'test/scenarios/',
-  'e2e/',
-]
+export const FLOW_FOLDERS = ['e2e/']
 
 // Flows share one server in one process; everything else runs file by file.
 export function isFlow({ file }: { file: string }): boolean {

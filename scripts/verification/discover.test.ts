@@ -51,15 +51,15 @@ test(
   'a named file is a flow by its folder, however the path is written',
   () => {
     assert.equal(
-      isFlow({ file: 'test/scenarios/tasks.test.ts' }),
+      isFlow({ file: 'e2e/tasks.test.ts' }),
       true,
     )
     assert.equal(
-      isFlow({ file: `${process.cwd()}/test/scenarios/tasks.test.ts` }),
+      isFlow({ file: `${process.cwd()}/e2e/tasks.test.ts` }),
       true,
     )
     assert.equal(
-      isFlow({ file: './test/scenarios/tasks.test.ts' }),
+      isFlow({ file: './e2e/tasks.test.ts' }),
       true,
     )
     assert.equal(
