@@ -3,7 +3,8 @@ import type { HydraEvent, HydraState, Decision } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
 import { cardLanding, type Link } from '#tasks/delivery/model.ts'
-import type { Question } from '#workers/model.ts'
+import type { Question, PermissionRequest, Attention, Reply } from '#workers/model.ts'
+import { requestId } from '#workers/answers.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -906,4 +907,72 @@ export function decideAskClosure({
       },
     },
   })
+}
+
+export function answerDelivery({
+  card,
+  question,
+}: {
+  card: Card
+  question: string
+}) {
+  return card.replies?.findLast(reply => reply.answers === question)
+}
+
+export function cardQuestion({ card }: { card: Card }): {
+  text: string
+  permission?: PermissionRequest
+  attention?: Attention
+  ask?: Ask
+  delivery?: Reply
+} | undefined {
+  const permission = card.permissions?.find(request => request.status === 'pending')
+  const attention = card.attention.find(request => request.blocking && !request.answered)
+
+  if (permission) {
+    const questions = permission.questions?.map(question => question.question).join(' ')
+    let text = permission.tool
+
+    if (attention?.text) {
+      text = attention.text
+    }
+
+    if (questions) {
+      text = questions
+    }
+
+    return {
+      text,
+      permission,
+    }
+  }
+
+  if (attention?.text) {
+    return {
+      text: attention.text,
+      attention,
+      delivery: answerDelivery({
+        card,
+        question: requestId({ request: attention }),
+      }),
+    }
+  }
+
+  const ask = openAsks({
+    card,
+    audience: 'owner',
+  })[0]
+
+  if (ask) {
+    return {
+      text: askWording({ ask }).question,
+      ask,
+      delivery: answerDelivery({
+        card,
+        question: ask.id,
+      }),
+    }
+  }
+
+  return undefined
 }
