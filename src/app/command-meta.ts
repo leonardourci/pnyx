@@ -28,7 +28,7 @@ export function base({
     v: EVENT_VERSION,
     seq,
     id: meta.id ?? freeId({
-      state,
+      used: state.eventIds,
       seq,
     }),
     at: meta.at,
