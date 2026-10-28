@@ -15,15 +15,17 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { Attention } from '../src/core/model.ts'
-import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
-import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
-import { readEvents } from '../src/app/event-log.ts'
-import { spoolWrite } from '../src/app/spool.ts'
-import { spoolFiles } from '../src/store/storage.ts'
+import type { Attention } from '../../core/model.ts'
+import { ingestSpool } from './ingest.ts'
+import { PR_COMMANDS, attend, observe, type HookEnvelope } from './observe.ts'
+import { readEvents } from '../../app/event-log.ts'
+import { spoolWrite } from '../../app/spool.ts'
+import { spoolFiles } from '../../store/storage.ts'
 
 const ROOT = join(
   import.meta.dirname,
+  '..',
+  '..',
   '..',
 )
 const BIN = join(
@@ -39,10 +41,8 @@ const SCRIPT = join(
   'pnyx-hook.sh',
 )
 const FIXTURES = join(
-  ROOT,
-  'test',
+  import.meta.dirname,
   'fixtures',
-  'hooks',
 )
 
 const fixture = ({ name }: { name: string }) => readFileSync(

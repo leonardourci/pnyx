@@ -1,8 +1,8 @@
 // The route a reply takes into a hook session's terminal.
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { Card } from '../src/core/model.ts'
-import { replyRoute, terminalFacts } from '../src/core/route.ts'
+import type { Card } from '../../core/model.ts'
+import { replyRoute, terminalFacts } from '../../core/route.ts'
 
 const TTY = '/dev/ttys042'
 

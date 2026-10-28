@@ -3,11 +3,15 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { codexThreadTitle, transcriptNotes } from '../src/integrations/hooks/notes.ts'
-import { transcriptMessages } from '../src/oracle/text.ts'
+import { codexThreadTitle, transcriptNotes } from './notes.ts'
+import { transcriptMessages } from '../../oracle/text.ts'
 
 const FIXTURES = join(
   import.meta.dirname,
+  '..',
+  '..',
+  '..',
+  'test',
   'fixtures',
 )
 const CLAUDE = join(
