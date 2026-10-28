@@ -5,7 +5,6 @@ import { CHIP_SOURCE, MESSAGE_DECORATIONS } from './message-selection.ts'
 
 // A task message's leading chip comes from its task id, not its text, so it is rebuilt from the chip.
 const CHIPS = `[${CHIP_SOURCE}], .message-lead [data-task-ref]`
-const LEFT_OUT = `${MESSAGE_DECORATIONS}, .message-images`
 const ROOM = /[\u2003\u2005\u2060]/g
 
 // innerText keeps the breaks between blocks but needs layout, so the copy is read off screen.
@@ -19,7 +18,16 @@ function selectedText({
   const host = document.createElement('div')
   host.style.cssText = 'position: fixed; left: -10000px; top: 0; white-space: pre-wrap'
   host.append(range.cloneContents())
-  host.querySelectorAll(LEFT_OUT).forEach(element => element.remove())
+  host.querySelectorAll(MESSAGE_DECORATIONS).forEach(element => element.remove())
+
+  // An image under the text copies as its token only when the copy leaves out its chip in the sentence.
+  const inSentence = new Set([...host.querySelectorAll(`[${CHIP_SOURCE}]:not(.message-image)`)]
+    .map(chip => chip.getAttribute(CHIP_SOURCE)))
+  host.querySelectorAll(`.message-image[${CHIP_SOURCE}]`).forEach(image => {
+    if (inSentence.has(image.getAttribute(CHIP_SOURCE))) {
+      image.remove()
+    }
+  })
   host.querySelectorAll(CHIPS).forEach(element => element.replaceWith(chip({ element })))
 
   // The leading chip goes where it shows: at the start of the message's first paragraph.

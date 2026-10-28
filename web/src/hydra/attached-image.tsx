@@ -6,6 +6,7 @@ import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
+import { CHIP_SOURCE } from './message-selection.ts'
 
 function attachmentSource({ path }: { path: string }) {
   const stored = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/attachments\/([^/]+)$/i.exec(path)
@@ -63,7 +64,7 @@ function MessageImage({
   }
 
   return (
-    <figure className="message-image">
+    <figure className="message-image" {...{ [CHIP_SOURCE]: imageLine({ path }) }}>
       <Button className="message-image-open" title="Show image" onClick={() => setOpen(true)}>
         <img src={src} alt={name} onError={() => setFailed(true)} />
       </Button>
