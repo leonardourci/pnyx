@@ -19,14 +19,14 @@ import { activeHelperBatches, helperLeases, outcomeLines, wakeHandled } from '..
 import { pausedDeclaration } from '../tasks/lifecycle.ts'
 import { setupCheck, setupDigest } from '../setup/check.ts'
 import { projectDigest } from '../projects/context.ts'
-import { accountEnvironment, chooseCandidate, chosenSettings, ruleCandidates, validateChoice, overrideOf, hostedOverride, readQuota, readUsage } from '../workers/dispatch.ts'
+import { accountEnvironment, chooseCandidate, readUsage } from '../workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, type Harness } from '../workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
-import { isAbsolute, join } from 'node:path'
+import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '../workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '../workers/codex.ts'
-import { mergeWindows, modelIds, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision } from '../workers/provider.ts'
+import { mergeWindows, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision } from '../workers/provider.ts'
 import { liveReplies } from '../workers/streaming.ts'
 import { copyTagged } from '../workers/tagged-updates.ts'
 import { seenAt, terminalPresence, type Presence } from '../workers/presence.ts'
@@ -37,7 +37,7 @@ import { explained } from './cli-support.ts'
 import { permissionAnswer, permissionEvent } from '../workers/permission-rules.ts'
 import { declareTask } from '../tasks/declarations.ts'
 import { HYDRA_CARD } from '../hydra/identity.ts'
-import { QUIET_REPLY, hostedHydra, hydraEvent, hydraMode, pnyxRunsHydra, reportActor } from '../hydra/hydra.ts'
+import { QUIET_REPLY, hostedHydra, hydraEvent, pnyxRunsHydra, reportActor } from '../hydra/hydra.ts'
 import { hydraConfig } from '../hydra/config.ts'
 import { eventReasons, reasonLine, wakeReasons } from '../hydra/wake-reasons.ts'
 import { freeTask } from '../workers/start.ts'
@@ -54,7 +54,7 @@ import { HydraError } from '../store/errors.ts'
 import type { Card } from '../tasks/model.ts'
 import type { AgentRef, AgentSession, AgentSettings, Attention, PermissionRequest } from '../workers/model.ts'
 import type { HydraMessage } from '../hydra/model.ts'
-import { findOption, harnessControls } from '../workers/controls.ts'
+import { harnessControls } from '../workers/controls.ts'
 import { liveTask } from '../tasks/select.ts'
 import { INTERRUPTED, sessionId } from '../workers/session-attachments.ts'
 import { hydraDir } from './home-migration.ts'
@@ -63,10 +63,9 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '../store/storage.ts'
 import type { Host, Live } from './host-types.ts'
-import { SETTINGS, IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '../workers/host.ts'
+import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '../workers/host.ts'
 import { isFolder } from '../workers/folders.ts'
 import { providerName, storedModels, storeModels, catalogOffers } from '../workers/model-catalog.ts'
-import { field } from '../workers/http.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, decisionsText, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '../hydra/wakes.ts'
 import type { StallItem } from '../hydra/stalls.ts'
 import { inbox } from '../hydra/update-queue.ts'
@@ -4533,347 +4532,4 @@ export function createHost({
   }
 
   return host
-}
-
-export async function hostRequestUnlocked({
-  host,
-  body: raw,
-}: {
-  host: Host
-  body: unknown
-}): Promise<Record<string, unknown>> {
-  const body = (typeof raw === 'object' && raw !== null && !Array.isArray(raw) ? raw : {}) as Record<string, unknown>
-  const actor = field({
-    body,
-    name: 'actor',
-    optional: true,
-  }) ?? 'cli'
-
-  switch (body.action) {
-    case 'compact':
-      return host.compact({
-        card: field({
-          body,
-          name: 'card',
-        })!,
-        sendNow: field({
-          body,
-          name: 'sendNow',
-          optional: true,
-        }),
-      })
-    case 'hydra':
-      return host.hydra({
-        text: field({
-          body,
-          name: 'text',
-        })!,
-        id: field({
-          body,
-          name: 'id',
-        })!,
-        actor,
-      })
-
-    case 'stop':
-      return host.stop()
-
-    case 'usage':
-      return host.usage()
-
-    case 'start': {
-      const folder = field({
-        body,
-        name: 'folder',
-        optional: true,
-      })
-
-      if (folder !== undefined && !isAbsolute(folder)) {
-        throw new HydraError({
-          message: 'folder must be an absolute path',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const task = field({
-        body,
-        name: 'task',
-      })!
-      const current = loadHydra({ hydraId: host.hydraId }).state
-      const project = findCard({
-        state: current,
-        ref: task,
-      }).project
-      const config = effectiveDispatch({
-        hydraId: host.hydraId,
-        state: current,
-      })
-      const rule = field({
-        body,
-        name: 'rule',
-        optional: true,
-      })
-      const harness = field({
-        body,
-        name: 'harness',
-        optional: true,
-      })
-      const override = overrideOf({ value: body.override })
-      const named = (ruleCandidates({
-        dispatch: config.dispatch,
-        rule,
-      }) ?? []).filter(c => c.model)
-      const dispatch = body.dispatch
-        ? validateChoice({
-          value: body.dispatch,
-          config,
-          project,
-        })
-        : chooseCandidate({
-          config,
-          project,
-          rule,
-          harness,
-          override,
-          offers: await catalogOffers({
-            host,
-            harnesses: harness === 'claude' || harness === 'codex' ? [harness] : override?.model ? [
-              'claude',
-              'codex',
-            ] : named.map(c => c.harness),
-          }),
-        })
-
-      hostedOverride({
-        harness: dispatch.provider,
-        override: dispatch.override,
-      })
-
-      if (dispatch.ownerOverride) {
-        const settings = chosenSettings({ choice: dispatch })
-
-        if (settings.model) {
-          const models = modelIds({ models: await host.models({ harness: dispatch.provider }) })
-          const model = dispatch.provider === 'claude' ? settings.model.replace(
-            /\[1m\]$/,
-            '',
-          ) : settings.model
-
-          if (!models.includes(model)) {
-            throw new HydraError({
-              message: `${dispatch.provider}/${settings.model}: not offered`,
-              code: 'VALIDATION_ERROR',
-            })
-          }
-        }
-
-        if (readQuota({
-          account: {
-            provider: dispatch.provider,
-            folder: dispatch.folder,
-          },
-        }).auth === 'signed-out') {
-          throw new HydraError({
-            message: `account ${dispatch.account} is signed out`,
-            code: 'ACCOUNT_SIGNED_OUT',
-          })
-        }
-      }
-
-      // A setting changed after the start would reach only the next turn.
-      const settings: Record<string, string> = {
-        ...chosenSettings({ choice: dispatch }),
-        provider: providerName({ harness: dispatch.provider }),
-      }
-      const inherited = hydraMode({ state: current })
-
-      // A rule without a mode inherits Hydra's; never plan, which would stall a worker.
-      if (!settings.mode && inherited && inherited !== 'plan'
-        && findOption({
-          provider: settings.provider,
-          setting: 'mode',
-          value: inherited,
-          hosted: true,
-        })) {
-        settings.mode = inherited
-      }
-
-      return host.start({
-        dispatch,
-        task,
-        prompt: field({
-          body,
-          name: 'prompt',
-        })!,
-        folder,
-        settings,
-        replacement: field({
-          body,
-          name: 'replacement',
-          optional: true,
-        }),
-        id: field({
-          body,
-          name: 'id',
-        })!,
-        actor,
-        reason: field({
-          body,
-          name: 'reason',
-          optional: true,
-        }),
-      })
-    }
-
-    case 'models': {
-      const harness = field({
-        body,
-        name: 'harness',
-      })
-
-      if (harness !== 'claude' && harness !== 'codex') {
-        throw new HydraError({
-          message: 'models expects claude or codex',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      return { models: await host.models({ harness }) }
-    }
-
-    case 'permission': {
-      const choice = field({
-        body,
-        name: 'choice',
-      })
-
-      if (choice !== 'allow' && choice !== 'deny') {
-        throw new HydraError({
-          message: 'choice must be allow or deny',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      return host.permission({
-        task: field({
-          body,
-          name: 'task',
-        })!,
-        request: field({
-          body,
-          name: 'request',
-        })!,
-        choice,
-        ...(body.answer !== undefined ? { answer: body.answer } : {}),
-        actor,
-        reason: field({
-          body,
-          name: 'reason',
-          optional: true,
-        }),
-        details: field({
-          body,
-          name: 'details',
-          optional: true,
-        }),
-      })
-    }
-    case 'continue':
-      return host.continue({
-        task: field({
-          body,
-          name: 'task',
-        })!,
-        id: field({
-          body,
-          name: 'id',
-        })!,
-        actor,
-        reason: field({
-          body,
-          name: 'reason',
-          optional: true,
-        }),
-        check: body.check === true,
-      })
-
-    case 'send': {
-      const steering = field({
-        body,
-        name: 'steering',
-        optional: true,
-      })
-      let text = ''
-
-      if (!steering) {
-        text = field({
-          body,
-          name: 'text',
-        })!
-      }
-
-      const result = host.send({
-        inputId: field({
-          body,
-          name: 'inputId',
-          optional: true,
-        }),
-        steering,
-        attempt: field({
-          body,
-          name: 'attempt',
-          optional: true,
-        }),
-        direct: body.direct === true,
-        card: field({
-          body,
-          name: 'card',
-        })!,
-        text,
-        actor,
-      })
-
-      return {
-        sent: !result?.deferred,
-        deferred: result?.deferred ?? false,
-        queued: result?.queued ?? false,
-      }
-    }
-    case 'set': {
-      const setting = field({
-        body,
-        name: 'setting',
-      })!
-      const value = field({
-        body,
-        name: 'value',
-      })!
-
-      if (!SETTINGS.includes(setting)) {
-        throw new HydraError({
-          message: `${setting} cannot be ${value}`,
-          code: 'VALIDATION_ERROR',
-          help: [`Settings: ${SETTINGS.join(', ')}`],
-        })
-      }
-
-      await host.set({
-        card: field({
-          body,
-          name: 'card',
-        })!,
-        setting,
-        value,
-        actor,
-      })
-
-      return { set: true }
-    }
-
-    default:
-      throw new HydraError({
-        message: 'action must be hydra, start, models, continue, send, set or permission',
-        code: 'VALIDATION_ERROR',
-      })
-  }
 }
