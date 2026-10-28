@@ -14,7 +14,7 @@ import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, stee
 import { steeringNotice } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
-import { helperAgent, helperBatch, helperEvent, helperReason } from '#routine-helper/route.ts'
+import { helperAgent, helperBatch, helperEvent, helperPermission, helperReason } from '#routine-helper/route.ts'
 import { activeHelperBatches, helperLeases, outcomeLines, wakeHandled } from '#routine-helper/state.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
@@ -1998,6 +1998,29 @@ export function createHost({
 
   // Tasks main's running turn was woken for; the helper leaves them until that turn ends.
   const mainTasks = new Set<string>()
+  // A wake's tasks join mainTasks only once its turn really starts.
+  const wakeTasks = new Map<string, string[]>()
+
+  const wakeMain = ({
+    id,
+    text,
+    tasks,
+  }: {
+    id: string
+    text: string
+    tasks: string[]
+  }) => {
+    wakeTasks.set(
+      id,
+      tasks,
+    )
+
+    return host.hydra({
+      id,
+      actor: 'pnyx',
+      text,
+    }).finally(() => wakeTasks.delete(id))
+  }
 
   // One check turn at a time; a busy Hydra is woken when its turn finishes.
   const armWake = () => {
@@ -2206,7 +2229,7 @@ export function createHost({
     })
   }
 
-  // The helper takes the oldest routine tasks among the unread updates, whatever main is doing, except tasks main has updates for or handles.
+  // Runs before main's wake checks so the helper takes routine tasks even while main works.
   const offerUpdates = async ({
     state,
     after,
@@ -2374,17 +2397,13 @@ export function createHost({
       return
     }
 
-    for (const update of batch) {
-      mainTasks.add(update.card)
-    }
-
-    return host.hydra({
+    return wakeMain({
       id: wakeId({
         through,
         state,
       }),
-      actor: 'pnyx',
       text,
+      tasks: batch.map(update => update.card),
     })
   }
 
@@ -2754,10 +2773,10 @@ export function createHost({
     const batch = helperOpen({ state }) && !helper.busy() ? helperBatch({
       items: routine.map((
         item,
-        seq,
+        index,
       ) => ({
         task: item.card,
-        seq,
+        seq: index,
         question: false,
       })),
       prompt: ({ tasks }) => stallText({
@@ -2792,15 +2811,12 @@ export function createHost({
     const firstCount = stalled.get(first.id)?.count ?? 0
     const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
 
-    for (const item of rest) {
-      mainTasks.add(item.card)
-    }
-
-    return host.hydra({
+    await wakeMain({
       id: wakeTurnId,
-      actor: 'pnyx',
       text: stallText({ items: rest }),
-    }).then(() => delivered({ items: rest }))
+      tasks: rest.map(item => item.card),
+    })
+    delivered({ items: rest })
   }
 
   // Each stall or wait fired so far: how many times, and when last.
@@ -3391,7 +3407,10 @@ export function createHost({
               helperBatchesPresented.add(batch.id)
             }
 
-            helperText += `\n<pnyx-wake>${sealed({ text: `The routine helper handed back ${pendingBatches.length === 1 ? 'a batch' : `${pendingBatches.length} batches`} for ${tasks.join(', ')}: ${errors.join('; ')}` })}. These tasks are yours now: check their current state before acting, because earlier actions may have completed.</pnyx-wake>`
+            const handedBack = pendingBatches.length === 1 ? 'a batch' : `${pendingBatches.length} batches`
+            const notice = `The routine helper handed back ${handedBack} for ${tasks.join(', ')}: ${errors.join('; ')}`
+            const wakes = pendingBatches.map(batch => sealed({ text: batch.prompt })).join('\n')
+            helperText += `\n<pnyx-wake>${sealed({ text: notice })}. These tasks are yours now: check their current state before acting, because earlier actions may have completed. The wakes it was given:\n${wakes}</pnyx-wake>`
           }
 
           const inputText = recap ?? (memoryNote ? text.replace(
@@ -3399,6 +3418,11 @@ export function createHost({
             `${memoryNote}\n${REPLY_RULES}`,
           ) : text)
           entry.activity = 'working'
+
+          for (const task of wakeTasks.get(id) ?? []) {
+            mainTasks.add(task)
+          }
+
           entry.input.push({
             text: compactCommand({ text }) ? text : inputText + helperText,
             id,
@@ -4123,7 +4147,7 @@ export function createHost({
           }
 
           // A question or form is the worker asking; the helper leaves its answer to main or the owner.
-          if (isHelper({ actor }) && (request.questions || request.form || answer !== undefined)) {
+          if (isHelper({ actor }) && (!helperPermission({ request }) || answer !== undefined)) {
             throw new HydraError({
               message: 'This request asks a question; leave it to the main Hydra',
               code: 'MAIN_ONLY',
