@@ -56,7 +56,7 @@ Each Hydra has one orchestrator identity. Changing that identity preserves tasks
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
---review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews run only while work is live.
+--review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
 --done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
@@ -138,6 +138,7 @@ A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its w
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
+Ready owner-merge questions include the PR title, link, latest worker report or status note, and check counts.
 pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
 Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]

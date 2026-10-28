@@ -218,7 +218,10 @@ export function boardReview({
         flags.push({
           kind: 'question reminder',
           task: card.id,
-          detail: `${ask.id}: ${wording}`,
+          detail: [
+            `${ask.id}: ${wording}`,
+            ask.url,
+          ].filter(Boolean).join(' '),
           reminder,
         })
       }

@@ -234,6 +234,7 @@ export async function followPullRequests({
       && (outcome?.outcome === 'merged' || link.mergeAttempt.detail === outcome?.detail))
     const known = link.state === observedState && link.checks === status.checks.summary
       && link.comments === status.comments && link.draft === status.draft
+      && (status.title === undefined || link.title === status.title)
       && sameOutcome
 
     if (known) {
@@ -260,6 +261,10 @@ export async function followPullRequests({
           comments: status.comments,
           draft: status.draft,
           checkedAt: at,
+        }
+
+        if (status.title !== undefined) {
+          observedLink.title = status.title
         }
 
         if (outcome) {

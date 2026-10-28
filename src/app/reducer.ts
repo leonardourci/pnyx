@@ -196,6 +196,7 @@ export function applyHydra({
       seq: event.seq,
       block: event.data.block,
       reminders,
+      flags: event.data.flags,
     }
 
     return true

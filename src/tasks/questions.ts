@@ -762,6 +762,8 @@ export function reconcileAsks({
     change: {
       type: 'task.asked',
       data: mergeQuestion({
+        state,
+        card,
         link,
         id: `ask-${state.seq + 1}`,
       }),
@@ -776,13 +778,43 @@ export function reconcileAsks({
 }
 
 function mergeQuestion({
+  state,
+  card,
   link,
   id,
 }: {
+  state: HydraState
+  card: Card
   link: Link
   id: string
 }): Extract<HydraEvent, { type: 'task.asked' }>['data'] {
   const number = link.url.split('/').at(-1)
+  const report = state.hydraMessages?.findLast(message => message.task === card.id
+    && reportActor({ actor: message.actor }) && !message.ask)
+  let note = card.statusLog?.findLast(status => reportActor({ actor: status.actor }))
+
+  if (!note && card.status && reportActor({ actor: card.status.actor })) {
+    note = card.status
+  }
+
+  let workerText = note?.note
+  let workerLabel = 'Worker status note'
+
+  if (report && (!note || Date.parse(report.at) >= Date.parse(note.at))) {
+    workerText = report.text
+    workerLabel = 'Worker report'
+  }
+
+  const context = [
+    ownerContext({ text: link.title ?? card.title }),
+    link.url,
+  ]
+
+  if (workerText?.trim()) {
+    context.push(`${workerLabel}: ${ownerContext({ text: workerText })}`)
+  }
+
+  context.push(`Checks: ${link.checks ?? 'not read yet'}`)
 
   return {
     id,
@@ -790,12 +822,19 @@ function mergeQuestion({
     kind: 'merge',
     url: link.url,
     question: `Review and merge PR #${number}?`,
-    context: `${link.url}\nChecks: ${link.checks ?? 'not read yet'}`,
+    context: context.join('\n'),
     options: [
       { label: 'Merge' },
       { label: 'Hold' },
     ],
   }
+}
+
+function ownerContext({ text }: { text: string }): string {
+  return text.replace(
+    /\b(?:(?:task-|worker:|session:)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|ask-\d+|evt_\d+(?:_\d+)?)\b/gi,
+    '[internal reference]',
+  )
 }
 
 export function decideAskClosure({
