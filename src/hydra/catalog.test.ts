@@ -3,9 +3,9 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { readCatalog } from '../src/thread/catalog.ts'
-import { emptyHydra, reduce } from '../src/app/reducer.ts'
-import { decidePush } from '../src/tasks/push.ts'
+import { readCatalog } from './transcripts-catalog.ts'
+import { emptyHydra, reduce } from '../app/reducer.ts'
+import { decidePush } from '../tasks/push.ts'
 
 const write = ({
   path,
@@ -121,7 +121,7 @@ for (const provider of [
       const {
         setupSkills,
         prepareHydraFolder,
-      } = await import('../src/integrations/skills/install.ts')
+      } = await import('../integrations/skills/install.ts')
       setupSkills({
         userHome: home,
         claudeConfigDir: locations.claude,

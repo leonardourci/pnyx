@@ -10,7 +10,7 @@ import { transcriptMessages } from '../oracle/text.ts'
 import { loadHydra } from '../app/store.ts'
 import { readEvents } from '../app/event-log.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
-import { threadPath } from '../thread/read.ts'
+import { threadPath } from '../hydra/transcripts-read.ts'
 
 // A resend's reply id is the original's with this and its try number.
 const RETRY_MARK = '~retry'

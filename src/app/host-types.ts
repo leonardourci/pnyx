@@ -5,8 +5,8 @@ import type { DispatchChoice } from '../workers/dispatch.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { inbox } from '../hydra/update-queue.ts'
 import type { HydraQueue } from '../hydra/wakes.ts'
-import type { CurrentAction } from '../thread/calls.ts'
-import type { ThreadPage } from '../thread/read.ts'
+import type { CurrentAction } from '../hydra/calls.ts'
+import type { ThreadPage } from '../hydra/transcripts-read.ts'
 import { liveReplies } from '../workers/streaming.ts'
 
 export interface Host {

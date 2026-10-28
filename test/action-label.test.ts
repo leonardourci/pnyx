@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { ToolCall } from '../src/thread/calls.ts'
+import type { ToolCall } from '../src/hydra/calls.ts'
 import { actionLabel, currentLabel, shellOf } from '../web/src/hydra/action-label.ts'
 import type { PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
 import { withChanges } from '../web/src/app/connection.ts'

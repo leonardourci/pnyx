@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { fileBlock } from '../src/attachments/files.ts'
-import { reference } from '../src/mentions/mentions.ts'
-import { readSkillReference, resolveSkillReferences, skillReference } from '../src/thread/skill-reference.ts'
+import { fileBlock } from '../attachments/files.ts'
+import { reference } from '../mentions/mentions.ts'
+import { readSkillReference, resolveSkillReferences, skillReference } from './transcripts-skill-reference.ts'
 
 const project = {
   command: '$deploy',

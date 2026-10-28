@@ -38,7 +38,7 @@ import { taskSpend } from '../workers/task-spend.ts'
 import { readEvents } from './event-log.ts'
 import { taskReadiness } from '../tasks/dependencies.ts'
 import { askRows, askCommand } from '../tasks/asks.ts'
-import { readThread } from '../thread/read.ts'
+import { readThread } from '../hydra/transcripts-read.ts'
 import { refuseEarlyDone } from '../tasks/delivery/done.ts'
 import { MAX_DONE_HOURS } from '../tasks/retention-rules.ts'
 

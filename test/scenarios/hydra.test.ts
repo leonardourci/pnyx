@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '../../src/hydra/identity.ts'
 import { taskMention } from '../../src/mentions/mentions.ts'
-import type { ThreadPage } from '../../src/thread/read.ts'
+import type { ThreadPage } from '../../src/hydra/transcripts-read.ts'
 import { openPage, until } from '../../src/test-harness/harness.ts'
 import { pnyx, type Scenario } from '../../src/test-harness/pnyx.ts'
 

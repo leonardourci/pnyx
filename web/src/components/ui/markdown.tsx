@@ -7,7 +7,7 @@ import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '../../tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-tokens.tsx'
 import { prepareChatTokens } from '../../hydra/chat-tokens.ts'
-import { readSkillReference } from '../../../../src/thread/skill-reference.ts'
+import { readSkillReference } from '../../../../src/hydra/transcripts-skill-reference.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(

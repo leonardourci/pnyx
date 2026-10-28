@@ -1,4 +1,4 @@
-import type { CurrentAction } from '../../../src/thread/calls.ts'
+import type { CurrentAction } from '../../../src/hydra/calls.ts'
 import { Icon } from '../shared/ui/icon.tsx'
 import { LiveLabel } from '../shared/ui/live-label.tsx'
 import { currentLabel } from './action-label.ts'

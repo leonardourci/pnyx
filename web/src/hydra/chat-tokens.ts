@@ -1,4 +1,4 @@
-import type { Suggestion } from '../../../src/thread/catalog.ts'
+import type { Suggestion } from '../../../src/hydra/transcripts-catalog.ts'
 import { UPGRADE_SUGGESTION } from '../../../src/upgrade/model.ts'
 
 export function knownCommands({

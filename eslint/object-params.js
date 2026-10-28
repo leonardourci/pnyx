@@ -172,7 +172,7 @@ const boundary = ({
     return true // The fake implements the Agent SDK's query signatures.
   }
 
-  if (filename.endsWith('/test/catalog.test.ts') && node.type === 'TSMethodSignature'
+  if (filename.endsWith('/src/hydra/catalog.test.ts') && node.type === 'TSMethodSignature'
     && node.key.name === 'after') {
     return true // The node:test context's cleanup hook.
   }

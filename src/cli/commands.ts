@@ -1,6 +1,6 @@
 import { upgradeCommand } from '../upgrade/model.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
-import { resolveSkillReferences } from '../thread/skill-reference.ts'
+import { resolveSkillReferences } from '../hydra/transcripts-skill-reference.ts'
 import { effectiveDispatch } from '../workers/dispatch-config.ts'
 import { requireSetupHome } from '../setup/home.ts'
 import { setupCheckOutput } from '../setup/check.ts'

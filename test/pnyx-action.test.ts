@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { ThreadEntry } from '../src/thread/read.ts'
+import type { ThreadEntry } from '../src/hydra/transcripts-read.ts'
 import { pnyxCalls, pnyxWords, shellCommand, type PnyxLookup } from '../web/src/hydra/pnyx-action.ts'
 
 const lookup: PnyxLookup = {

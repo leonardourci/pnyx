@@ -1,4 +1,4 @@
-import { readThread } from '../thread/read.ts'
+import { readThread } from '../hydra/transcripts-read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
 import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'

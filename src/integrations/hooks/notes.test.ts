@@ -10,8 +10,7 @@ const FIXTURES = join(
   import.meta.dirname,
   '..',
   '..',
-  '..',
-  'test',
+  'hydra',
   'fixtures',
 )
 const CLAUDE = join(

@@ -1,8 +1,8 @@
 import type { HydraState } from '../../../src/app/model.ts'
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
 import { hydraConfig } from '../../../src/hydra/config.ts'
-import type { ThreadEntry } from '../../../src/thread/read.ts'
-import { commandOf, firstLine, obj } from '../../../src/thread/calls.ts'
+import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
+import { commandOf, firstLine, obj } from '../../../src/hydra/calls.ts'
 
 // A sentence about a Pnyx command, with the tasks and columns it touched kept apart so they show as chips.
 export type Segment = string | {

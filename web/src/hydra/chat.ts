@@ -3,7 +3,7 @@ import { HYDRA_ACTOR } from '../../../src/app/actors.ts'
 import type { HydraMessage, HydraStatus } from '../../../src/hydra/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/hydra/hydra.ts'
 import { withoutInjected } from '../../../src/oracle/text.ts'
-import type { ThreadEntry } from '../../../src/thread/read.ts'
+import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
 
 // A streamed start of Hydra's quiet reply hides too.
 const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')

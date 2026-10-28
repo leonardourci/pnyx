@@ -22,8 +22,7 @@ after(() => rmSync(
 const TRANSCRIPT = join(
   import.meta.dirname,
   '..',
-  '..',
-  'test',
+  'hydra',
   'fixtures',
   'transcripts',
   'claude-session.jsonl',
@@ -31,8 +30,7 @@ const TRANSCRIPT = join(
 const CODEX = join(
   import.meta.dirname,
   '..',
-  '..',
-  'test',
+  'hydra',
   'fixtures',
   'transcripts',
   'codex-session.jsonl',

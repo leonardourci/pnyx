@@ -5,10 +5,10 @@ import {
   type ClipboardEvent as PasteEvent, type KeyboardEvent as KeyEvent, type ComponentProps,
 } from 'react'
 import { flushSync } from 'react-dom'
-import type { ThreadEntry } from '../../../src/thread/read.ts'
+import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
 import type { SavedLabelColor } from '../../../src/tasks/model.ts'
-import type { Catalog } from '../../../src/thread/catalog.ts'
+import type { Catalog } from '../../../src/hydra/transcripts-catalog.ts'
 import { ChatTokensContext } from '../components/ui/chat-tokens.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { CopyButton } from '../shared/ui/copy-button.tsx'

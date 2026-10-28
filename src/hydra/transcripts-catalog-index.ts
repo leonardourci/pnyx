@@ -1,10 +1,10 @@
 import { watchFile, unwatchFile } from 'node:fs'
 import { watchPath, type PathWatch } from '../app/watch.ts'
 import { background } from '../app/background.ts'
-import { HYDRA_CARD } from '../hydra/identity.ts'
+import { HYDRA_CARD } from './identity.ts'
 import type { HydraProject } from '../projects/model.ts'
 import type { Card } from '../tasks/model.ts'
-import { readCatalog, type Catalog, type CatalogLocations } from './catalog.ts'
+import { readCatalog, type Catalog, type CatalogLocations } from './transcripts-catalog.ts'
 
 const STAT_INTERVAL_MS = 1000
 const REFRESH_DELAY_MS = 25

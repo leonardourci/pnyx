@@ -9,9 +9,9 @@ import { decidePush } from '../src/tasks/push.ts'
 import { decideReply } from '../src/workers/reply-rules.ts'
 import { loadHydra } from '../src/app/store.ts'
 import { withWriter } from '../src/app/writer.ts'
-import { readThread, type ThreadEntry } from '../src/thread/read.ts'
+import { readThread, type ThreadEntry } from '../src/hydra/transcripts-read.ts'
 import { paseoHistory } from '../src/integrations/paseo/history.ts'
-import { taskReceipt, withTaskReceipts } from '../src/thread/task.ts'
+import { taskReceipt, withTaskReceipts } from '../src/hydra/transcripts-task.ts'
 
 function fixture() {
   const home = realpathSync(mkdtempSync(join(

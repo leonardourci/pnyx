@@ -245,7 +245,7 @@ function selection({ defaultRef }: { defaultRef: string }) {
 
 // These exercise installation, generated contracts, catalog text and worker conventions.
 const SKILL_TESTS = [
-  'test/catalog.test.ts',
+  'src/hydra/catalog.test.ts',
   'test/scenarios/hydra.test.ts',
   'test/scenarios/tasks.test.ts',
 ]

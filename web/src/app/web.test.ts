@@ -17,7 +17,7 @@ import { patchView, viewFor } from '../../../src/preferences/view.ts'
 import { columnsFor } from '../tasks/view.ts'
 import { loadHydra } from '../../../src/app/store.ts'
 import { withWriter } from '../../../src/app/writer.ts'
-import { latestMessage, readThread, recordEntries } from '../../../src/thread/read.ts'
+import { latestMessage, readThread, recordEntries } from '../../../src/hydra/transcripts-read.ts'
 
 const meta = {
   at: '2026-10-13T10:00:00Z',
@@ -443,7 +443,7 @@ test(
   () => {
     const fixture = ({ name }: { name: string }) => join(
       import.meta.dirname,
-      '../../../test/fixtures/transcripts',
+      '../../../src/hydra/fixtures/transcripts',
       name,
     )
     const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!

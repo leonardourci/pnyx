@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { Card } from '../../../src/tasks/model.ts'
-import type { ThreadEntry } from '../../../src/thread/read.ts'
+import type { ThreadEntry } from '../../../src/hydra/transcripts-read.ts'
 import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { briefNotes, relativeTime, type BriefNote } from '../tasks/brief.ts'
 import type { Command } from '../app/connection.ts'

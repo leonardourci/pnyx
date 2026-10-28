@@ -20,8 +20,7 @@ const BIN = join(
 const FIXTURES = join(
   import.meta.dirname,
   '..',
-  '..',
-  'test',
+  'hydra',
   'fixtures',
 )
 const transcript = ({ name }: { name: string }) => join(

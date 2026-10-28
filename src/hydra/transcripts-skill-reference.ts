@@ -1,6 +1,6 @@
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { decodeValue, reference, REFERENCE } from '../mentions/mentions.ts'
-import type { Suggestion } from './catalog.ts'
+import type { Suggestion } from './transcripts-catalog.ts'
 
 export interface SkillReference {
   name: string

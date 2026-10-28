@@ -1,6 +1,6 @@
 import { HydraError } from '../../store/errors.ts'
-import { THREAD_CURSOR, type ThreadPage } from '../../thread/read.ts'
-import { withTaskReceipts } from '../../thread/task.ts'
+import { THREAD_CURSOR, type ThreadPage } from '../../hydra/transcripts-read.ts'
+import { withTaskReceipts } from '../../hydra/transcripts-task.ts'
 import { PASEO_CURSOR, type PaseoConversation } from './thread.ts'
 
 export const PASEO_HISTORY_CURSOR = /^q[A-Za-z0-9_-]{1,550}$/

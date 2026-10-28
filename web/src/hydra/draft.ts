@@ -1,4 +1,4 @@
-import { readSkillReference } from '../../../src/thread/skill-reference.ts'
+import { readSkillReference } from '../../../src/hydra/transcripts-skill-reference.ts'
 import { IMAGE, imageNames } from '../../../src/attachments/images.ts'
 import { FILE_BLOCK } from '../../../src/attachments/files.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '../../../src/mentions/mentions.ts'

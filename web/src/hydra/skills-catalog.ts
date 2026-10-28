@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Catalog } from '../../../src/thread/catalog.ts'
+import type { Catalog } from '../../../src/hydra/transcripts-catalog.ts'
 import type { Command } from '../app/connection.ts'
 import { storageKey } from './outbox.ts'
 

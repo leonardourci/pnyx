@@ -1,4 +1,4 @@
-import { splitEntry, type ThreadEntry, type ThreadPage } from '../thread/read.ts'
+import { splitEntry, type ThreadEntry, type ThreadPage } from '../hydra/transcripts-read.ts'
 import { redact } from '../oracle/text.ts'
 import type { HostedText } from './provider.ts'
 
