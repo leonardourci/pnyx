@@ -15,7 +15,7 @@ import { ColumnChip } from '../components/ui/column-chip.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
 import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
-import { isEditing, useKeyAction, useKeyboard } from '../keyboard/registry.tsx'
+import { isEditing, useKeyAction, useKeyboard } from '../preferences/keyboard-registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED, QUESTION_CONTROLS,
   caretBounds, placeMessageCaret, focusComposer, latestAgentMessage, revealCaret,

@@ -1,7 +1,7 @@
 import { AgentDetails } from './agent-details.tsx'
 import { answerPrompt } from '../../../src/core/answer.ts'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
-import { useKeyAction } from '../keyboard/registry.tsx'
+import { useKeyAction } from '../preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'
 import type { ViewPreferences } from '../../../src/preferences/model.ts'
 import type { Card as CardData, SavedLabelColor } from '../../../src/core/model.ts'
