@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
 import { hydraDir } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
-import { acquireLock } from '../store/hydra-store.ts'
+import { acquireLock } from '../store/storage.ts'
 
 interface Lease {
   actor: string

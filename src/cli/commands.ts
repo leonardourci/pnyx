@@ -49,7 +49,7 @@ import { DEFAULT_HYDRA, hydraDir, hydraIds } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { readEvents } from '../app/event-log.ts'
 import { withWriter } from '../app/writer.ts'
-import { spoolFiles } from '../store/hydra-store.ts'
+import { spoolFiles } from '../store/storage.ts'
 import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, TEXT_CUT, COMMON, WRITE, parse, required, integer, meta, explained, commit, guard, clip, type Output, type Options, summarize } from '../app/cli-support.ts'
 
 function column({ value }: { value: string }): Column {

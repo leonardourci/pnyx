@@ -13,7 +13,7 @@ import { drainSpool } from '../hooks/ingest.ts'
 import type { Output } from '../../app/cli-support.ts'
 import { canonical } from '../../store/paths.ts'
 import { withWriter } from '../../app/writer.ts'
-import { pnyxHome } from '../../store/hydra-store.ts'
+import { pnyxHome } from '../../store/storage.ts'
 import { openPaseo, type Connect } from './client.ts'
 
 export const HARNESSES = {

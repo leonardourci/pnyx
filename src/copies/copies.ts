@@ -18,7 +18,7 @@ import { canonical } from '../store/paths.ts'
 import { hydraDir, hydraIds } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS

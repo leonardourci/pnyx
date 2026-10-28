@@ -9,7 +9,7 @@ import { commit, guard, meta, parse, required, WRITE, type Output } from '../app
 import { hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../core/model.ts'
 import { loadHydra } from '../app/store.ts'
-import { withRegistryLock } from '../store/hydra-store.ts'
+import { withRegistryLock } from '../store/storage.ts'
 import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
 import { parseLanding, parseMerger } from '../landing/rule.ts'
 

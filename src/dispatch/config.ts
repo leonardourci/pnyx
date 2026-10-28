@@ -5,7 +5,7 @@ import { randomUUID } from 'node:crypto'
 import type { HydraState } from '../app/model.ts'
 import { HydraError, type AgentConfig } from '../core/model.ts'
 import { hydraDir } from '../app/home-migration.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>

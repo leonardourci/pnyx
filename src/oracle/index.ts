@@ -11,7 +11,7 @@ import { hydraDir } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { readEventsFrom } from '../app/event-log.ts'
 import { withWriter } from '../app/writer.ts'
-import { privateDir } from '../store/hydra-store.ts'
+import { privateDir } from '../store/storage.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 

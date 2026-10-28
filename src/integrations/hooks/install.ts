@@ -2,7 +2,7 @@ import { chmodSync, copyFileSync, existsSync, mkdirSync, readFileSync, realpathS
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { HydraError } from '../../core/model.ts'
-import { pnyxHome } from '../../store/hydra-store.ts'
+import { pnyxHome } from '../../store/storage.ts'
 import type { Harness } from './observe.ts'
 
 const SCRIPT = 'pnyx-hook.sh'

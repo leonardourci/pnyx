@@ -10,7 +10,7 @@ import type { Meta } from '../app/command-meta.ts'
 import { hydraIds } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
-import { pnyxHome, privateDir, withRegistryLock, writeDurably } from './hydra-store.ts'
+import { pnyxHome, privateDir, withRegistryLock, writeDurably } from './storage.ts'
 
 interface OwnerLog {
   memory: Memory

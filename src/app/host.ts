@@ -53,7 +53,7 @@ import { hydraDir } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 
 export type { QueryFn } from '../server/claude.ts'

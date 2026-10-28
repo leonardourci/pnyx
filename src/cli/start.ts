@@ -39,7 +39,7 @@ import { canonical } from '../store/paths.ts'
 import { askHost } from '../app/server-state.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 import type { Output } from '../app/cli-support.ts'
 
 export const VIAS = [

@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { HydraError } from '../core/model.ts'
 import { hydraDir } from './home-migration.ts'
 import { withWriter } from './writer.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.

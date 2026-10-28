@@ -20,7 +20,7 @@ import { ingestSpool } from '../src/integrations/hooks/ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 import { readEvents } from '../src/app/event-log.ts'
 import { spoolWrite } from '../src/app/spool.ts'
-import { spoolFiles } from '../src/store/hydra-store.ts'
+import { spoolFiles } from '../src/store/storage.ts'
 
 const ROOT = join(
   import.meta.dirname,

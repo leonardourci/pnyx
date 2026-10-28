@@ -14,7 +14,7 @@ import { loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { repairHydra } from './repair.ts'
 import { withWriter } from './writer.ts'
-import { acquireLock } from '../store/hydra-store.ts'
+import { acquireLock } from '../store/storage.ts'
 import { STREAMS, assertGolden, readStream } from '../test-harness/streams.ts'
 
 beforeEach(() => {

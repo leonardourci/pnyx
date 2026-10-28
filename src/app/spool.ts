@@ -1,4 +1,4 @@
-import { spoolDir, privateDir } from '../store/hydra-store.ts'
+import { spoolDir, privateDir } from '../store/storage.ts'
 import { hydraDir } from './home-migration.ts'
 import { join } from 'node:path'
 import { writeFileSync, renameSync } from 'node:fs'

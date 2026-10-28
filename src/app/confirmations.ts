@@ -8,7 +8,7 @@ import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import type { HydraState } from './model.ts'
 import { HydraError } from '../core/model.ts'
 import { withWriter } from './writer.ts'
-import { pnyxHome } from '../store/hydra-store.ts'
+import { pnyxHome } from '../store/storage.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(

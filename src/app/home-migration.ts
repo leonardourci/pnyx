@@ -1,7 +1,7 @@
 import { HydraError } from '../core/model.ts'
 import { basename, dirname, join } from 'node:path'
 import { readdirSync, mkdirSync, existsSync, renameSync, rmdirSync, readFileSync, symlinkSync } from 'node:fs'
-import { acquireLock } from '../store/hydra-store.ts'
+import { acquireLock } from '../store/storage.ts'
 import { spawnSync } from 'node:child_process'
 import { pnyxHome } from '../store/paths.ts'
 

@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import type { Meta } from '../app/command-meta.ts'
 import { HydraError } from '../core/model.ts'
 import { withWriter } from '../app/writer.ts'
-import { privateDir, withRegistryLock } from '../store/hydra-store.ts'
+import { privateDir, withRegistryLock } from '../store/storage.ts'
 import { pnyxHome } from '../store/paths.ts'
 import { projectIdentity, projectSources } from './sources.ts'
 

@@ -5,7 +5,7 @@ import { readSnapshot } from './snapshot.ts'
 import { readLog, type LogRead } from './event-log.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { existsSync } from 'node:fs'
-import { logPath } from '../store/hydra-store.ts'
+import { logPath } from '../store/storage.ts'
 
 export interface HydraSnapshot {
   dir: string
