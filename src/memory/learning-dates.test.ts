@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { dateLearnings, expiredLearning, staleLearnings } from '../src/memory/learnings.ts'
+import { dateLearnings, expiredLearning, staleLearnings } from './learnings.ts'
 
 test(
   'editing a document dates only new or changed learning lines',

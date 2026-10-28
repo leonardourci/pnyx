@@ -1,4 +1,4 @@
-import { memoryReview } from './memory.ts'
+import { memoryReview } from '../memory/review.ts'
 import { HYDRA_CARD, hydraEvent, pnyxRunsHydra } from '../core/hydra.ts'
 import { INTERRUPTED } from '../core/tasks.ts'
 import type { HydraState } from '../app/model.ts'
