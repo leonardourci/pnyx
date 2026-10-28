@@ -1,4 +1,4 @@
-import type { ReplyRoute } from '../workers/reply-route.ts'
+import type { ReplyRoute } from './reply-route.ts'
 
 export const KEYS = [
   'shift-tab',

@@ -6,7 +6,7 @@ import type { Card } from './model.ts'
 import { failedChecks, pendingChecks, ranChecks } from './delivery/model.ts'
 import { cardSessionId, assignDefined } from '../workers/session-attachments.ts'
 import { hydraConfig, HYDRA_CARD } from '../core/hydra.ts'
-import { permissionAttention } from '../core/permissions.ts'
+import { permissionAttention } from '../workers/permission-rules.ts'
 import { fallbackColumn } from './column-rules.ts'
 import { columnRule } from './column-defaults.ts'
 

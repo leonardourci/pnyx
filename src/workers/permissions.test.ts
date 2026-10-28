@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush } from '../src/tasks/push.ts'
-import { permissionEvent } from '../src/core/permissions.ts'
-import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
-import type { HydraEvent } from '../src/app/model.ts'
-import type { PermissionRequest } from '../src/workers/model.ts'
+import { decidePush } from '../tasks/push.ts'
+import { permissionEvent } from './permission-rules.ts'
+import { emptyHydra, reduce, replay } from '../app/reducer.ts'
+import type { HydraEvent } from '../app/model.ts'
+import type { PermissionRequest } from './model.ts'
 
 const meta = {
   at: '2026-10-15T12:00:00Z',

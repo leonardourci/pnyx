@@ -1,5 +1,5 @@
 // Isolates a native send from the servers event loop; all writes use the CLI command.
-import { followUpSteering } from '../task-inbox/follow-up.ts'
+import { followUpSteering } from './inbox-follow-up.ts'
 import { AxiError } from 'axi-sdk-js'
 import { agent, reply } from './reply.ts'
 

@@ -3,14 +3,14 @@ import { HYDRA_CARD } from '../core/hydra.ts'
 import type { HydraState } from '../app/model.ts'
 import { EVENT_VERSION } from '../store/events.ts'
 import type { Card } from '../tasks/model.ts'
-import type { SteeringMessage, SteeringRecovery } from '../workers/model.ts'
+import type { SteeringMessage, SteeringRecovery } from './model.ts'
 import { liveTask } from '../tasks/select.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
-import type { NotificationResult } from './notice.ts'
-import { pendingSteering, sameClaim, steeringClaim } from './state.ts'
-import { notifySteering } from './delivery.ts'
+import type { NotificationResult } from './inbox-notice.ts'
+import { pendingSteering, sameClaim, steeringClaim } from './steering.ts'
+import { notifySteering } from './inbox-delivery.ts'
 
 export const STEERING_GRACE_MS = 90_000
 export const STEERING_RING_LIMIT = 3

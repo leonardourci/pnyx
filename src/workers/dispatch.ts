@@ -1,7 +1,7 @@
 import { execFile, execFileSync } from 'node:child_process'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
-import { harnessControls } from '../core/control.ts'
+import { harnessControls } from './controls.ts'
 import type { PlanWindow } from './provider.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'

@@ -1,5 +1,5 @@
 import { HOOK } from '../integrations/hooks/observe.ts'
-import { replyRoute } from '../workers/reply-route.ts'
+import { replyRoute } from './reply-route.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { terminalNotice, typeInto } from '../integrations/hooks/terminal.ts'
 import type { Connect } from '../integrations/paseo/client.ts'
@@ -8,8 +8,8 @@ import { askHost } from '../app/server-state.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
 import { recordSteeringAttempt } from './inbox.ts'
-import { steeringNotice, type NotificationResult } from './notice.ts'
-import { sameClaim, steeringClaim, steeringHeld } from './state.ts'
+import { steeringNotice, type NotificationResult } from './inbox-notice.ts'
+import { sameClaim, steeringClaim, steeringHeld } from './steering.ts'
 
 export async function notifySteering({
   hydraId,

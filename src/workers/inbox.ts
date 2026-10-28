@@ -6,10 +6,10 @@ import type { HydraState } from '../app/model.ts'
 import { EVENT_VERSION } from '../store/events.ts'
 import { HydraError } from '../store/errors.ts'
 import type { Card } from '../tasks/model.ts'
-import type { SteeringAck, SteeringAttempt, SteeringClaim, SteeringMessage } from '../workers/model.ts'
+import type { SteeringAck, SteeringAttempt, SteeringClaim, SteeringMessage } from './model.ts'
 import { liveTask } from '../tasks/select.ts'
 import type { Writer } from '../app/writer.ts'
-import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './state.ts'
+import { pendingSteering, sameClaim, steeringClaim, steeringWorkerIdentity } from './steering.ts'
 
 function invalid({ message }: { message: string }): never {
   throw new HydraError({

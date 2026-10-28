@@ -28,7 +28,7 @@ const PURE_TESTS = new Set([
   'test/model-picker.test.ts',
   'web/src/tasks/optimistic.test.ts',
   'src/tasks/owner-ask.test.ts',
-  'test/permissions.test.ts',
+  'src/workers/permissions.test.ts',
   'test/pnyx-action.test.ts',
   'src/workers/presence.test.ts',
   'src/app/reducer.test.ts',
