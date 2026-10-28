@@ -4,7 +4,7 @@ import { CollapsibleText, Disclosure } from '../shared/ui/disclosure.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
 import { Tooltip } from '../shared/ui/tooltip.tsx'
 import { LINK_ICONS, LinkChip } from './card-links.tsx'
-import type { TaskUpdate, UpdateKind } from '../../../src/core/updates.ts'
+import type { TaskUpdate, UpdateKind } from '../../../src/tasks/updates.ts'
 import type { UpdateGroup } from './task-updates.ts'
 
 const KINDS: Record<UpdateKind, {

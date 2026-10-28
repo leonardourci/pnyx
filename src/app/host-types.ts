@@ -1,4 +1,5 @@
-import type { Card, AgentConfig, AgentSettings } from '../core/model.ts'
+import type { Card } from '../tasks/model.ts'
+import type { AgentConfig, AgentSettings } from '../core/model.ts'
 import type { ModelOption, HydraUsage, HostedSession } from '../server/provider.ts'
 import type { DispatchChoice } from '../dispatch/select.ts'
 import type { HydraState, HydraEvent } from './model.ts'

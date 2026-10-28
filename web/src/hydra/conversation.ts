@@ -4,7 +4,7 @@ import type { HydraMessage } from '../../../src/core/model.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { QUIET_REPLY } from '../../../src/core/hydra.ts'
 import { hydraMessages, ownMessage, type TurnTiming } from './chat.ts'
-import { relevantUpdate, type TaskUpdate } from '../../../src/core/updates.ts'
+import { relevantUpdate, type TaskUpdate } from '../../../src/tasks/updates.ts'
 
 export interface TaskActions {
   task: string

@@ -1,5 +1,5 @@
 import { refreshConfirmedProject } from '../projects/refresh-confirmed.ts'
-import { declareTask } from '../core/hydra.ts'
+import { declareTask } from '../tasks/declarations.ts'
 import type { Link } from '../core/model.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
 

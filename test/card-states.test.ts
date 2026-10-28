@@ -6,7 +6,7 @@ import { cardFacts, placeCard } from '../src/tasks/columns.ts'
 import { DEFAULT_COLUMNS } from '../src/tasks/column-defaults.ts'
 import { INTERRUPTED } from '../src/core/tasks.ts'
 import type { CardFact, HydraColumn } from '../src/tasks/columns-model.ts'
-import type { Card, TaskStatus } from '../src/core/model.ts'
+import type { Card, TaskStatus } from '../src/tasks/model.ts'
 
 const placement = ({ card }: { card: Card }) => placeCard({
   card: cardFacts({

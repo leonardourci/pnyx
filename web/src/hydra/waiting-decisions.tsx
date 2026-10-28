@@ -1,5 +1,5 @@
 import type { RefObject } from 'react'
-import { openDecisions, type OpenDecision } from '../../../src/core/decisions.ts'
+import { openDecisions, type OpenDecision } from '../../../src/tasks/decisions.ts'
 import type { HydraState } from '../../../src/app/model.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { conversationMessages, latestAgentMessage, placeMessageCaret } from './caret.ts'

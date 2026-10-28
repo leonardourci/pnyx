@@ -2,7 +2,7 @@ import type { Host } from './host-types.ts'
 import { isHelper, taskLease } from '../helper/leases.ts'
 import { HydraError } from '../store/errors.ts'
 import { loadHydra } from './store.ts'
-import { findCard } from '../core/decide.ts'
+import { findCard } from '../tasks/push-rules.ts'
 import { helperGrant } from '../helper/route.ts'
 import { hostRequestUnlocked } from './host.ts'
 

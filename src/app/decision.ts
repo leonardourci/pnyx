@@ -3,7 +3,7 @@ import type { HydraState, HydraEvent, Decision } from './model.ts'
 import type { Meta } from './command-meta.ts'
 import { hydraConfig } from '../core/hydra.ts'
 import { requireReportReview } from '../investigations/inventory.ts'
-import { checkRevision, strip } from '../core/decide.ts'
+import { checkRevision, strip } from '../tasks/push-rules.ts'
 import { reduce } from './reducer.ts'
 
 export function decided({

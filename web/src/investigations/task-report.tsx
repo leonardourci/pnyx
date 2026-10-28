@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { Card } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
 import { CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { relativeTime } from '../hydra/brief.ts'
 import type { Command } from '../app/connection.ts'

@@ -1,4 +1,4 @@
-import type { SavedLabelColor } from '../core/model.ts'
+import type { SavedLabelColor } from '../tasks/model.ts'
 
 export const EVENT_VERSION = 1 as const
 

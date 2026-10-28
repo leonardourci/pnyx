@@ -1,9 +1,10 @@
 import { reportReviewGaps } from '../investigations/inventory.ts'
-import { openAsks } from './asks.ts'
-import { ownerGates } from './gates.ts'
+import { openAsks } from './questions.ts'
+import { ownerGates } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { cardLanding, type Card } from './model.ts'
+import type { Card } from './model.ts'
+import { cardLanding } from '../core/model.ts'
 
 export function applyDependencies({
   state,

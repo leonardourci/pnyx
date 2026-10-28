@@ -1,5 +1,6 @@
 import { useState } from 'react'
-import type { Attention, Card, PermissionRequest } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
+import type { Attention, PermissionRequest } from '../../../src/core/model.ts'
 import { permissionDetails } from '../../../src/core/permissions.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { Disclosure } from '../shared/ui/disclosure.tsx'

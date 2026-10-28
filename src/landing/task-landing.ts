@@ -1,6 +1,6 @@
 import { commit, required, type Output } from '../app/cli-support.ts'
 import type { Meta } from '../app/command-meta.ts'
-import { findCard } from '../core/decide.ts'
+import { findCard } from '../tasks/push-rules.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'

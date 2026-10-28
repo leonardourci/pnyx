@@ -1,5 +1,5 @@
 import type { HydraState } from '../../../src/app/model.ts'
-import { liveTask } from '../../../src/core/tasks.ts'
+import { liveTask } from '../../../src/tasks/select.ts'
 
 export const hydraTitle = ({ name }: { name: string }) => name || 'Untitled'
 

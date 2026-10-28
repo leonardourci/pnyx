@@ -1,12 +1,13 @@
 import { sameProjectPath } from '../projects/identity.ts'
-import { requireUnheld } from '../core/holds.ts'
+import { requireUnheld } from '../tasks/holds.ts'
 import type { Decision, HydraState } from '../app/model.ts'
 import type { Meta } from '../app/command-meta.ts'
-import { findCard } from '../core/decide.ts'
+import { findCard } from '../tasks/push-rules.ts'
 import { roleColumn } from '../tasks/column-rules.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../store/errors.ts'
-import { findSession, liveTask } from '../core/tasks.ts'
+import { liveTask } from '../tasks/select.ts'
+import { findSession } from '../core/tasks.ts'
 import { queueWorker, workerQueue } from './state.ts'
 
 export function decideQueue({

@@ -1,5 +1,5 @@
 import type { HydraEvent } from '../../../src/app/model.ts'
-import { showsUpdate, tagsTask, type TaskEvent } from '../../../src/core/updates.ts'
+import { showsUpdate, tagsTask, type TaskEvent } from '../../../src/tasks/updates.ts'
 import type { Command } from '../app/connection.ts'
 
 const PAGE_SIZE = 50

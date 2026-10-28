@@ -1,4 +1,4 @@
-import { SESSION_TITLE, type Note, type SourceNote } from '../../core/model.ts'
+import { SESSION_TITLE, type Note, type SourceNote } from '../../tasks/model.ts'
 
 const COMPACT_PREAMBLE = /^This session is being continued from a previous conversation[^\n]*\n+(?:Summary:\s*\n)?/
 

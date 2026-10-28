@@ -4,10 +4,11 @@ import { decideUndo } from '../src/app/undo.ts'
 import type { Decision, HydraEvent, HydraState } from '../src/app/model.ts'
 import type { Meta } from '../src/app/command-meta.ts'
 import { decideMove } from '../src/tasks/columns-decisions.ts'
-import { decideLink, decideOutcome, decidePush, parseLink } from '../src/core/decide.ts'
+import { decidePush } from '../src/tasks/push.ts'
+import { decideLink, decideOutcome, parseLink } from '../src/core/decide.ts'
 import { HydraError } from '../src/store/errors.ts'
 import { emptyHydra, reduce } from '../src/app/reducer.ts'
-import { columnCards } from '../src/core/tasks.ts'
+import { columnCards } from '../src/tasks/select.ts'
 
 const meta: Meta = {
   at: '2026-10-13T12:00:00Z',

@@ -9,7 +9,7 @@ import { readInitialEvent } from './event-log.ts'
 import { withRegistryLock } from '../store/storage.ts'
 import { projectsFor } from '../projects/read.ts'
 import { firstmateProjects } from '../integrations/firstmate/projects.ts'
-import { liveTask } from '../core/tasks.ts'
+import { liveTask } from '../tasks/select.ts'
 
 export interface HydraProjectSummary {
   name: string

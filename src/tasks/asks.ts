@@ -1,10 +1,10 @@
 import { readFileSync } from 'node:fs'
 import { HYDRA_ACTOR } from '../app/actors.ts'
 import { HydraError } from '../store/errors.ts'
-import { type Ask, type AskAudience, type Card } from '../core/model.ts'
+import type { Ask, AskAudience, Card } from './model.ts'
 import type { Meta } from '../app/command-meta.ts'
-import { findCard } from '../core/decide.ts'
-import { askAnswer, askReport, askWording, decideAsk, decideAskClosure, decideEscalation } from '../core/asks.ts'
+import { findCard } from './push-rules.ts'
+import { askAnswer, askReport, askWording, decideAsk, decideAskClosure, decideEscalation } from './questions.ts'
 import { hydraConfig, hydraDelivery, hydraEvent, reportActor } from '../core/hydra.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { loadHydra } from '../app/store.ts'
@@ -12,7 +12,7 @@ import { withWriter } from '../app/writer.ts'
 import { askHost, readServer } from '../app/server-state.ts'
 import { browserCommand } from '../app/server-browser.ts'
 import { commit, explained, required, type Output } from '../app/cli-support.ts'
-import { sendReply } from './reply.ts'
+import { sendReply } from '../cli/reply.ts'
 
 type Values = Record<string, string | boolean | string[] | undefined>
 

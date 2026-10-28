@@ -1,4 +1,5 @@
-import type { Card, TerminalFacts } from './model.ts'
+import type { Card } from '../tasks/model.ts'
+import type { TerminalFacts } from './model.ts'
 import { localPaseoUrl } from '../integrations/paseo/url.ts'
 
 const SAFE = /^[A-Za-z0-9_.:%,@+=][A-Za-z0-9_./:%,@+=-]{0,255}$/

@@ -1,7 +1,8 @@
 import type { HydraEvent, HydraState } from '../app/model.ts'
 import { EVENT_VERSION } from '../store/events.ts'
 import { HydraError } from '../store/errors.ts'
-import { type Card, type PermissionRequest } from './model.ts'
+import type { Card } from '../tasks/model.ts'
+import { type PermissionRequest } from './model.ts'
 import { checkAnswer, type Prompt } from './answer.ts'
 import type { Meta } from '../app/command-meta.ts'
 

@@ -1,5 +1,5 @@
 import { createContext, Fragment, useContext } from 'react'
-import type { SavedLabelColor } from '../../../../src/core/model.ts'
+import type { SavedLabelColor } from '../../../../src/tasks/model.ts'
 import type { Suggestion } from '../../../../src/thread/catalog.ts'
 import type { PreparedChatTokens } from '../../hydra/chat-tokens.ts'
 import { SkillBadge } from './skill-badge.tsx'

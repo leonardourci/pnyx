@@ -1,7 +1,7 @@
 import { fork } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from '../cli/reply.ts'
-import { type Card } from '../core/model.ts'
+import type { Card } from '../tasks/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
 import { enqueueSteering, recordSteeringAttempt } from '../task-inbox/inbox.ts'

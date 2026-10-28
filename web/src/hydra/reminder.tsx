@@ -1,6 +1,6 @@
 import { Icon } from '../shared/ui/icon.tsx'
 import { useId, useRef, useState } from 'react'
-import type { Card } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
 import { Button, Input } from '../shared/ui/controls.tsx'
 import type { Command } from '../app/connection.ts'
 import { CommandFailure } from '../shared/pending-intents.ts'

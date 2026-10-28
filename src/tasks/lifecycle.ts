@@ -1,9 +1,9 @@
-import { ownerGates } from './gates.ts'
+import { ownerGates } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { Column } from '../tasks/columns-model.ts'
+import type { Column } from './columns-model.ts'
 import type { Card, TaskStatus } from './model.ts'
-import { HYDRA_CARD, hydraConfig } from './hydra.ts'
-import { cardFacts, placeCard } from '../tasks/columns.ts'
+import { HYDRA_CARD, hydraConfig } from '../core/hydra.ts'
+import { cardFacts, placeCard } from './columns.ts'
 
 type Stage = 'queued' | 'in_progress' | 'needs_you' | 'parked' | 'done'
 

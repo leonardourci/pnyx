@@ -1,5 +1,5 @@
 import { Tooltip } from './tooltip.tsx'
-import type { SavedLabelColor } from '../../../../src/core/model.ts'
+import type { SavedLabelColor } from '../../../../src/tasks/model.ts'
 
 export function Label({
   label,

@@ -1,11 +1,12 @@
 import type { HydraState } from '../../../src/app/model.ts'
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
-import type { Card, Link } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
+import type { Link } from '../../../src/core/model.ts'
 import { cardDoneDeadline, HOUR_MS } from '../../../src/core/retention.ts'
-import { liveTask, rankOf } from '../../../src/core/tasks.ts'
+import { liveTask, rankOf } from '../../../src/tasks/select.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
-import { asksOwner } from '../../../src/core/lifecycle.ts'
-import { openAsks } from '../../../src/core/asks.ts'
+import { asksOwner } from '../../../src/tasks/lifecycle.ts'
+import { openAsks } from '../../../src/tasks/questions.ts'
 import { elapsedTime } from '../shared/time.ts'
 
 const HARNESSES: Record<string, string> = {

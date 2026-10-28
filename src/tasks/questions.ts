@@ -1,10 +1,11 @@
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import type { HydraEvent, HydraState, Decision } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { type AnswerMessage, type Ask, type AskAudience, type Card, type Link, type Question, cardLanding } from './model.ts'
+import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
+import { type Link, type Question, cardLanding } from '../core/model.ts'
 import type { Meta } from '../app/command-meta.ts'
-import { findCard } from './decide.ts'
-import { HYDRA_CARD, hydraEvent, reportActor } from './hydra.ts'
+import { findCard } from './push-rules.ts'
+import { HYDRA_CARD, hydraEvent, reportActor } from '../core/hydra.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500

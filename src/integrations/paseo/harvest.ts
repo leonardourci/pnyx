@@ -1,4 +1,4 @@
-import { noteId } from '../../core/decide.ts'
+import { noteId } from '../../tasks/notes.ts'
 import { EVENT_VERSION } from '../../store/events.ts'
 import { type SessionEvent } from '../../core/model.ts'
 import { localPaseoUrl } from './url.ts'

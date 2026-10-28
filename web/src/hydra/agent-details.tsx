@@ -1,4 +1,4 @@
-import type { Card } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
 import { TooltipPanel, TooltipSection } from '../shared/ui/tooltip.tsx'
 import { harnessName } from './view.ts'
 

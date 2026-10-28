@@ -1,4 +1,4 @@
-import type { Card } from '../core/model.ts'
+import type { Card } from '../tasks/model.ts'
 import type { ThreadEntry, ThreadPage } from './read.ts'
 
 export function taskUpdates({ card }: { card: Card }): ThreadEntry[] {

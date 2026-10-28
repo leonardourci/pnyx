@@ -13,7 +13,7 @@ import { loadHydra } from '../src/app/store.ts'
 import { withWriter } from '../src/app/writer.ts'
 import { startServer } from '../src/app/server-daemon.ts'
 import { localToken } from '../src/app/server-state.ts'
-import { decidePush } from '../src/core/decide.ts'
+import { decidePush } from '../src/tasks/push.ts'
 import { hydraEvent } from '../src/core/hydra.ts'
 
 // The hook writes the pid file in one call, so an empty read means the worker has not started yet.

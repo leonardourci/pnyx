@@ -1,6 +1,7 @@
 import type { HydraEvent, HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { type AgentRef, type AgentSession, type Card, type TerminalFacts, type SessionEvent } from './model.ts'
+import type { Card } from '../tasks/model.ts'
+import { type AgentRef, type AgentSession, type TerminalFacts, type SessionEvent } from './model.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.
@@ -12,29 +13,6 @@ export function sessionId({ agent }: { agent: AgentRef }): string {
 
 export function interactive({ session }: { session: AgentSession }): boolean {
   return Boolean(session.terminal?.tty || session.agent.paseoAgentId || session.agent.host)
-}
-
-export function liveTask({ card }: { card: Card }): boolean {
-  return card.hidden !== true && !card.automaticTask
-}
-
-export function rankOf({ card }: { card: Card }): number {
-  return card.rank ?? card.createdSeq
-}
-
-export function columnCards({
-  state,
-  column,
-}: {
-  state: HydraState
-  column: string
-}): Card[] {
-  return Object.values(state.cards)
-    .filter(c => liveTask({ card: c }) && c.column === column)
-    .sort((
-      a,
-      b,
-    ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
 export function cardSessionId({ card }: { card: Card }): string | undefined {

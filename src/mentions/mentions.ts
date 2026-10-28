@@ -1,7 +1,7 @@
 import type { HydraState } from '../app/model.ts'
-import type { Card } from '../core/model.ts'
+import type { Card } from '../tasks/model.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
-import { liveTask } from '../core/tasks.ts'
+import { liveTask } from '../tasks/select.ts'
 import { paragraphs } from '../oracle/text.ts'
 
 export interface TaskMention {

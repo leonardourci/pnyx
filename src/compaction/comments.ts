@@ -1,5 +1,5 @@
 import { sessionId } from '../core/tasks.ts'
-import type { Card } from '../core/model.ts'
+import type { Card } from '../tasks/model.ts'
 
 export const COMMENT_NOTE = '> Internal note: no reply needed: numbered comments refer to passages in your earlier reply. Short quotes include their paragraph for context. Address the comments together with the message below.'
 

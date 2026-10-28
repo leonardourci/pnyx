@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { hydraEvent } from '../core/hydra.ts'
 import { emptyHydra, reduce, replay } from '../app/reducer.ts'
 import { doneDeadline } from '../core/retention.ts'
-import { openDecisions } from '../core/decisions.ts'
+import { openDecisions } from '../tasks/decisions.ts'
 import type { HydraChange, HydraEvent } from '../app/model.ts'
 import { reportReviewGaps } from './inventory.ts'
 

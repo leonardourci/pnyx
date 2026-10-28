@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { Card } from '../../../src/core/model.ts'
+import type { Card } from '../../../src/tasks/model.ts'
 import { Button, Input, Textarea } from '../shared/ui/controls.tsx'
 import type { Command } from '../app/connection.ts'
 

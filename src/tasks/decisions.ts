@@ -1,10 +1,12 @@
-import { askWording, openAsks } from './asks.ts'
-import { HYDRA_CARD } from './hydra.ts'
+import { askWording, openAsks } from './questions.ts'
+import { HYDRA_CARD } from '../core/hydra.ts'
 import type { HydraState } from '../app/model.ts'
-import { failedChecks, pendingChecks, type Attention, type Card, type Link } from './model.ts'
-import { PERMISSION_PREFIX } from './permissions.ts'
-import { INTERRUPTED, liveTask } from './tasks.ts'
-import { mergeApproved, quote } from './wake-reasons.ts'
+import type { Card } from './model.ts'
+import { failedChecks, pendingChecks, type Attention, type Link } from '../core/model.ts'
+import { PERMISSION_PREFIX } from '../core/permissions.ts'
+import { liveTask } from './select.ts'
+import { INTERRUPTED } from '../core/tasks.ts'
+import { mergeApproved, quote } from '../core/wake-reasons.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
 // The fixed words a decision line names its item with; the orchestrator skill lists them.

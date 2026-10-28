@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { openDecisions } from '../../src/core/decisions.ts'
+import { openDecisions } from '../../src/tasks/decisions.ts'
 import { openPage, until } from '../../src/test-harness/harness.ts'
 import { pnyx } from '../../src/test-harness/pnyx.ts'
 

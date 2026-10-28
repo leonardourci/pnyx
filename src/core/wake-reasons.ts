@@ -1,12 +1,13 @@
-import { taskReadiness } from './dependencies.ts'
-import { mergeApproval } from './asks.ts'
+import { taskReadiness } from '../tasks/dependencies.ts'
+import { mergeApproval } from '../tasks/questions.ts'
 import { clip } from './digest.ts'
 import { roleColumn } from '../tasks/column-rules.ts'
 import { agentActor, HYDRA_CARD, hostedHydra, hydraConfig, pnyxRunsHydra, reportActor, unwatchedPullRequests } from './hydra.ts'
 import { HYDRA_ACTOR } from '../app/actors.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
-import { cardLanding, failedChecks, pendingChecks, ranChecks, type Card, type Link, type PushedEvent, type TaskStatus } from './model.ts'
-import { columnCards } from './tasks.ts'
+import type { Card, PushedEvent, TaskStatus } from '../tasks/model.ts'
+import { cardLanding, failedChecks, pendingChecks, ranChecks, type Link } from './model.ts'
+import { columnCards } from '../tasks/select.ts'
 import { taskMention } from '../mentions/mentions.ts'
 
 // The fixed words a reason line names its fact with; the orchestrator skill and docs/pnyx-axi.md list them.

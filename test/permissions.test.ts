@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decidePush } from '../src/core/decide.ts'
+import { decidePush } from '../src/tasks/push.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
 import type { HydraEvent } from '../src/app/model.ts'
