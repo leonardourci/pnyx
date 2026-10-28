@@ -19,7 +19,7 @@ Agents use the harness and provider you configure, so their prompts and tool res
 Remove the hooks first, since they point at the script in `~/.pnyx/hooks/`. Deleting `~/.pnyx` also deletes the task copies under each Hydra's folder, so settle them first:
 
 ```sh
-pnyx-axi setup service --remove  # macOS, if the login service was installed
+pnyx-axi setup service --remove  # if the login service was installed
 pnyx-axi stop
 pnyx-axi setup hooks --remove
 pnyx-axi setup skills --remove
