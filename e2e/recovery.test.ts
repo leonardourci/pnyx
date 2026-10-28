@@ -8,14 +8,12 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { snapshotPath } from '#store/storage.ts'
-import { openPage, until } from '#test-harness/harness.ts'
+import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
 // A history like a Hydra used for weeks, where every needless load parses and copies megabytes.
 const HISTORY_TASKS = 120
 const HISTORY_BRIEF = 'Long-running work. '.repeat(1200)
-// How long the server must go without loading the Hydra to count as idle.
-const QUIET_MS = 1000
 
 test(
   'an owner message while Hydra is down tries the start again; once it works Hydra answers it, then recaps only what no turn took',
@@ -360,6 +358,7 @@ test(
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
+    t.after(() => page.close())
     await page.shows({
       what: 'the whole history',
       check: ({ state }) => state.keys[`history-${HISTORY_TASKS - 1}`],
@@ -384,7 +383,8 @@ test(
     )
     syncBuiltinESMExports()
     t.after(() => {
-      t.mock.restoreAll(); syncBuiltinESMExports()
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
     })
 
     const settled = () => until({
@@ -409,8 +409,7 @@ test(
       check: ({ state }) => state.keys.next,
     })
     await settled()
-    // The change was loaded, so the count above saw the server's work.
+    // The server loaded the new task, so the mock sees its loads and the quiet wait above was real.
     assert.ok(loads > idle)
-    page.close()
   },
 )

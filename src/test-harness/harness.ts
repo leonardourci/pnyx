@@ -32,6 +32,8 @@ const BIN = join(
 // Waits end as soon as their condition holds; the bound only has to outlast a loaded machine.
 const TIMEOUT_MS = 30_000
 const POLL_MS = 20
+// Idle means no such work for this long, several turns of the 500 ms polling a crowded server falls back to.
+export const QUIET_MS = 2500
 // How often the server reads a followed pull request; the real minute would outlast the waits.
 const FOLLOW_MS = 100
 
