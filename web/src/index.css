@@ -427,6 +427,13 @@ h3 { font-weight: 600; }
 
 .draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2); }
 
+.draft-card[data-loading] .card-label { color: var(--color-muted); }
+
+/* An image still uploading: a track along the card's bottom edge, filled as far as the upload has got. */
+.upload-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-line); }
+
+.upload-bar-done { display: block; height: 100%; background: var(--color-blue); transition: width .2s; }
+
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
 .mention-icon { display: inline-flex; color: var(--column-color, currentColor); }

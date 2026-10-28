@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { taskMention } from '#hydra/mentions.ts'
-import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeImages, replaceDisplay } from './draft.ts'
+import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -188,6 +188,94 @@ test(
         at: 'ok 👍',
       }).text,
       `ok 👍 ${image} 👍 go`,
+    )
+  },
+)
+
+test(
+  'an image keeps its place while it uploads and the owner keeps typing, then becomes the stored image there',
+  () => {
+    const shown = ({ text }: { text: string }) => draftView({ text }).display
+    const path = pendingImage({ id: 'p1' })
+    const placed = placeImages({
+      text: 'here is what I see',
+      lines: [`[image: ${path}]`],
+    })
+    const typed = `${placed.text}and tell me`
+    assert.equal(
+      draftView({ text: typed }).chips[0]!.name,
+      'Loading image 1',
+    )
+    assert.ok(hasPendingImage({ text: typed }))
+
+    const settled = settleImage({
+      text: typed,
+      caret: shown({ text: typed }).length,
+      path,
+      line: image,
+    })
+    assert.deepEqual(
+      settled,
+      {
+        text: `here is what I see ${image} and tell me`,
+        caret: shown({ text: `here is what I see ${image} and tell me` }).length,
+      },
+    )
+    assert.equal(
+      draftView({ text: settled.text }).chips[0]!.name,
+      'Image 1',
+    )
+    assert.equal(
+      hasPendingImage({ text: settled.text }),
+      false,
+    )
+    assert.equal(
+      settleImage({
+        text: typed,
+        caret: 4,
+        path,
+        line: image,
+      })?.caret,
+      4,
+    )
+  },
+)
+
+test(
+  'a failed upload removes its placeholder and keeps what the owner typed; a removed placeholder drops the image',
+  () => {
+    const path = pendingImage({ id: 'p1' })
+    const typed = `here is what I see [image: ${path}] and tell me`
+    const failed = settleImage({
+      text: typed,
+      caret: draftView({ text: typed }).display.length,
+      path,
+    })
+    assert.deepEqual(
+      failed,
+      {
+        text: 'here is what I see and tell me',
+        caret: 'here is what I see and tell me'.length,
+      },
+    )
+    assert.equal(
+      settleImage({
+        text: 'here is what I see and tell me',
+        caret: 0,
+        path,
+        line: image,
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a draft restored after a reload loses the placeholders of uploads that never finished',
+  () => {
+    assert.equal(
+      withoutPendingImages({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${other} too` }),
+      `see and ${other} too`,
     )
   },
 )

@@ -28,32 +28,47 @@ import { clock, commentReply, sendableComment, type ChatComment } from './chat.t
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
-import { pastedImages, uploadImages } from './image-upload.ts'
+import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { imageLine } from '#hydra/images.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, type PlacedChip } from './draft.ts'
+
+function UploadBar({ fraction }: { fraction: number }) {
+  return (
+    <span className="upload-bar">
+      <span className="upload-bar-done" style={{ width: `${fraction * 100}%` }} />
+    </span>
+  )
+}
 
 function DraftCard({
   chip,
+  progress = 0,
   open,
   remove,
 }: {
   chip: PlacedChip
+  progress?: number
   open(): void
   remove(): void
 }) {
   const image = chip.kind === 'image'
+  const loading = image && isPendingImage({ path: chip.value })
+  const shown = image && !loading
+  const slot = shown ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
+  const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (
-    <span className="draft-chip draft-card" data-kind={chip.kind}>
+    <span className="draft-chip draft-card" data-kind={chip.kind} data-loading={loading || undefined}>
       {chip.label}
       <AttachmentCard
         keepsInputFocus
-        slot={image ? <ImageThumb path={chip.value} /> : <Icon name="file" size={13} />}
-        label={chip.name}
-        title={image ? 'Show image' : chip.name}
+        slot={slot}
+        label={label}
+        title={shown ? 'Show image' : chip.name}
         tone={chip.attached ? undefined : 'reference'}
-        open={image ? open : undefined}
+        open={shown ? open : undefined}
         remove={remove}
         removeLabel={`Remove ${chip.name}`}
       />
@@ -146,6 +161,11 @@ export function Composer({
     viewing,
     setViewing,
   ] = useState<PlacedChip | null>(null)
+  // How far each image still uploading has got, by its placeholder's path.
+  const [
+    uploads,
+    setUploads,
+  ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
   const display = view.display
   const mentionList = `mentions-${card}`
@@ -410,6 +430,7 @@ export function Composer({
     firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
+  const imagesLoading = hasPendingImage({ text: outgoing })
   const commented = sendable.length
   const [
     listing,
@@ -494,24 +515,84 @@ export function Composer({
     return edit.text
   }
 
-  const attach = async ({ files }: { files: File[] }) => {
+  const settle = ({
+    path,
+    line,
+  }: {
+    path: string
+    line?: string
+  }) => {
+    const settled = settleImage({
+      text: current.current.draft,
+      caret: input.current?.selectionEnd ?? caretLast.current,
+      path,
+      line,
+    })
+
+    if (settled) {
+      write(settled)
+    }
+  }
+
+  const upload = async ({
+    file,
+    path,
+  }: {
+    file: File
+    path: string
+  }) => {
+    const track = ({ fraction }: { fraction: number }) => setUploads(shown => ({
+      ...shown,
+      [path]: fraction,
+    }))
+
+    track({ fraction: 0 })
+
+    try {
+      settle({
+        path,
+        line: await uploadImage({
+          file,
+          progress: track,
+        }),
+      })
+    } catch (error) {
+      settle({ path })
+      notify({ text: error instanceof Error ? error.message : 'Could not add the image.' })
+    } finally {
+      setUploads(shown => Object.fromEntries(Object.entries(shown).filter(([key]) => key !== path)))
+    }
+  }
+
+  // Each image takes its place at the caret at once, so typing goes on while it uploads.
+  const attach = ({ files }: { files: File[] }) => {
     const {
-      lines,
+      images,
       failures,
-    } = await uploadImages({ files })
+    } = checkImages({ files })
 
     if (failures.length) {
       notify({ text: failures.join(' ') })
     }
 
-    if (lines.length) {
-      write(placeImages({
-        text: current.current.draft,
-        caret: input.current?.selectionEnd,
-        lines,
-      }))
-      input.current?.focus()
+    if (!images.length) {
+      return
     }
+
+    const paths = images.map(() => pendingImage({ id: crypto.randomUUID() }))
+    write(placeImages({
+      text: current.current.draft,
+      caret: input.current?.selectionEnd,
+      lines: paths.map(path => imageLine({ path })),
+    }))
+    input.current?.focus()
+    images.forEach((
+      file,
+      n,
+    ) => void upload({
+      file,
+      path: paths[n]!,
+    }))
   }
 
   const removeCard = ({ chip }: { chip: PlacedChip }) => {
@@ -526,6 +607,12 @@ export function Composer({
     const text = restore && attempt.current ? attempt.current.text : outgoing
 
     if (sending || !text.trim()) {
+      return
+    }
+
+    if (hasPendingImage({ text })) {
+      notify({ text: 'Images are still loading. Send once they are in.' })
+
       return
     }
 
@@ -712,7 +799,7 @@ export function Composer({
         }}
         onDrop={event => {
           if (event.dataTransfer.files.length) {
-            event.preventDefault(); void attach({ files: [...event.dataTransfer.files] })
+            event.preventDefault(); attach({ files: [...event.dataTransfer.files] })
           }
         }}
       >
@@ -840,7 +927,7 @@ export function Composer({
               const files = pastedImages({ clipboardData: event.clipboardData })
 
               if (files.length) {
-                event.preventDefault(); void attach({ files })
+                event.preventDefault(); attach({ files })
               }
             }}
             onChange={e => {
@@ -996,6 +1083,7 @@ export function Composer({
                   token = (
                     <DraftCard
                       chip={chip}
+                      progress={uploads[chip.value]}
                       open={() => openChip({ chip })}
                       remove={() => removeCard({ chip })}
                     />
@@ -1080,7 +1168,7 @@ export function Composer({
               event.target.value = ''
 
               if (images.length) {
-                void attach({ files: images })
+                attach({ files: images })
               }
 
               if (!selected.length) {
@@ -1159,7 +1247,7 @@ export function Composer({
             className="composer-send"
             aria-label="Send reply"
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-            disabled={sending || !outgoing.trim()}
+            disabled={sending || !outgoing.trim() || imagesLoading}
           >
             <Icon name="send" size={14} />
           </Button>

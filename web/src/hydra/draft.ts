@@ -1,10 +1,20 @@
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
-import { IMAGE, imageNames } from '#hydra/images.ts'
+import { IMAGE, imageNames, imagePaths } from '#hydra/images.ts'
 import { FILE_BLOCK } from '#hydra/attachments.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#hydra/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
+
+// An image still uploading holds its place in the draft as an image token for a path no file has.
+const PENDING_IMAGE = '/pending-image/'
+
+export const pendingImage = ({ id }: { id: string }) => `${PENDING_IMAGE}${id}`
+
+export const isPendingImage = ({ path }: { path: string }) => path.startsWith(PENDING_IMAGE)
+
+export const hasPendingImage = ({ text }: { text: string }) =>
+  imagePaths({ text }).some(path => isPendingImage({ path }))
 
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
@@ -103,7 +113,8 @@ function draftChips({ text }: { text: string }): DraftChip[] {
 
   for (const match of text.matchAll(IMAGE)) {
     if (!inside({ at: match.index })) {
-      const name = names.get(match[1]!) ?? 'Image'
+      const named = names.get(match[1]!) ?? 'Image'
+      const name = isPendingImage({ path: match[1]! }) ? `Loading ${named.toLowerCase()}` : named
       chips.push({
         kind: 'image',
         attached: true,
@@ -393,6 +404,62 @@ export function removeChip({
     to,
     insert: '',
   })
+}
+
+// The upload's answer takes its placeholder's place, or removes it when the upload failed. Text typed
+// meanwhile and the caret stay where they were; undefined means the owner already removed the placeholder.
+export function settleImage({
+  text,
+  caret,
+  path,
+  line,
+}: {
+  text: string
+  caret: number
+  path: string
+  line?: string
+}) {
+  const view = draftView({ text })
+  const chip = view.chips.find(placed => placed.kind === 'image' && placed.value === path)
+
+  if (!chip) {
+    return undefined
+  }
+
+  const settled = line ? {
+    text: text.slice(
+      0,
+      chip.start,
+    ) + line + text.slice(chip.end),
+    caret: chip.from,
+  } : removeChip({
+    text,
+    chip,
+  })
+  const removed = view.display.length - draftView({ text: settled.text }).display.length
+
+  return {
+    text: settled.text,
+    caret: caret <= settled.caret ? caret : Math.max(
+      settled.caret,
+      caret - removed,
+    ),
+  }
+}
+
+// A placeholder saved with a draft lost its upload when the page closed.
+export function withoutPendingImages({ text }: { text: string }) {
+  let rest = text
+
+  for (const path of imagePaths({ text }).filter(path => isPendingImage({ path }))) {
+    rest = settleImage({
+      text: rest,
+      caret: 0,
+      path,
+    })?.text ?? rest
+  }
+
+  return rest
 }
 
 // The newlines that make a block its own paragraph, after the ones already there.

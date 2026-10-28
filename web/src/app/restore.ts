@@ -1,4 +1,5 @@
 import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
+import { withoutPendingImages } from '#web-hydra/draft.ts'
 
 // Keep each tab's view across reloads and newly served builds.
 export type Restore = {
@@ -34,7 +35,18 @@ export function readComments({ value }: { value: string | null }): Record<string
 
 export function restoreView({ key }: { key: string }): Restore {
   try {
-    return JSON.parse(sessionStorage.getItem(key) ?? '{}') as Restore
+    const restored = JSON.parse(sessionStorage.getItem(key) ?? '{}') as Restore
+
+    return {
+      ...restored,
+      drafts: restored.drafts && Object.fromEntries(Object.entries(restored.drafts).map(([
+        card,
+        text,
+      ]) => [
+        card,
+        withoutPendingImages({ text }),
+      ])),
+    }
   } catch {
     return {}
   }
