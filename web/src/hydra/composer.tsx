@@ -409,7 +409,7 @@ export function Composer({
   const openChip = ({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
       openTask({ id: chip.value })
-    } else if (chip.kind === 'image') {
+    } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
       setViewing(chip)
     }
   }
