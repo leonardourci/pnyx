@@ -609,11 +609,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card.subtask { margin-left: 12px; border-left-color: var(--color-gold-line); }
 
 
-.hydra-page { --identity-width: 360px; display: flex; gap: 14px; flex: 1; min-height: 0; min-width: 0; }
+.hydra-page { display: flex; gap: 14px; flex: 1; min-height: 0; min-width: 0; }
 
 .hydra-main { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; gap: 13px; }
 
-.hydra-chat { width: var(--identity-width); flex: 0 0 var(--identity-width); min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); overflow: hidden; }
+.hydra-chat { flex: 0 0 auto; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--color-line); border-radius: 9px; background: var(--color-surface); overflow: hidden; }
 
 .hydra-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; padding: 11px 14px; border-bottom: 1px solid var(--color-line); flex-shrink: 0; }
 
