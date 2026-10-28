@@ -4,7 +4,7 @@ import { HOOK } from './observe.ts'
 import { notificationState, type NotificationResult } from '../../task-inbox/notice.ts'
 import type { Card } from '../../tasks/model.ts'
 import type { ReplyState } from '../../workers/model.ts'
-import type { TerminalRoute } from '../../core/route.ts'
+import type { TerminalRoute } from '../../workers/reply-route.ts'
 import type { KeyStep } from './answer.ts'
 
 const STEP_TIMEOUT_MS = 15_000

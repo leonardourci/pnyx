@@ -1,6 +1,6 @@
 import { fork } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { sendReply } from '../cli/reply.ts'
+import { sendReply } from '../workers/reply.ts'
 import type { Card } from '../tasks/model.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'

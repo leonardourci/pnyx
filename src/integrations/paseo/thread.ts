@@ -1,4 +1,4 @@
-import { HOST_LABEL, replyRoute } from '../../core/route.ts'
+import { HOST_LABEL, replyRoute } from '../../workers/reply-route.ts'
 import { HydraError } from '../../store/errors.ts'
 import type { Card } from '../../tasks/model.ts'
 import { localPaseoUrl } from './url.ts'

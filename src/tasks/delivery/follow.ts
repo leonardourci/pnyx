@@ -1,7 +1,7 @@
 import { refreshTarget } from '../../projects/refresh-confirmed.ts'
 import { confirmedMerge } from './confirmed.ts'
 import { mergeObservation } from './merge-observation.ts'
-import { sendReply } from '../../cli/reply.ts'
+import { sendReply } from '../../workers/reply.ts'
 import { decideLink } from './links.ts'
 import { HYDRA_CARD } from '../../core/hydra.ts'
 import type { HydraState } from '../../app/model.ts'

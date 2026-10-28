@@ -1,7 +1,7 @@
 import { basename } from 'node:path'
-import { MAX_OPTIONS } from '../../core/answer.ts'
+import { MAX_OPTIONS } from '../../workers/answers.ts'
 import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../workers/model.ts'
-import { terminalFacts } from '../../core/route.ts'
+import { terminalFacts } from '../../workers/reply-route.ts'
 import { hookSettings } from './settings.ts'
 
 export const HARNESSES = [

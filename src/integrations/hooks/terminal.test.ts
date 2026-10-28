@@ -2,7 +2,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Card } from '../../tasks/model.ts'
-import { replyRoute, terminalFacts } from '../../core/route.ts'
+import { replyRoute, terminalFacts } from '../../workers/reply-route.ts'
 
 const TTY = '/dev/ttys042'
 

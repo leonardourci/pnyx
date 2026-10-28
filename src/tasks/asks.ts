@@ -12,7 +12,7 @@ import { withWriter } from '../app/writer.ts'
 import { askHost, readServer } from '../app/server-state.ts'
 import { browserCommand } from '../app/server-browser.ts'
 import { commit, explained, required, type Output } from '../app/cli-support.ts'
-import { sendReply } from '../cli/reply.ts'
+import { sendReply } from '../workers/reply.ts'
 
 type Values = Record<string, string | boolean | string[] | undefined>
 

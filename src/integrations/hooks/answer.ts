@@ -1,4 +1,4 @@
-import type { Answer } from '../../core/answer.ts'
+import type { Answer } from '../../workers/answers.ts'
 import type { Attention } from '../../workers/model.ts'
 import { SETTLE_MS, settle } from './terminal.ts'
 

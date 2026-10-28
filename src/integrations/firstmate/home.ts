@@ -5,7 +5,7 @@ import { HydraError } from '../../store/errors.ts'
 import type { FirstmateRecord } from './model.ts'
 import type { SourceNote } from '../../tasks/model.ts'
 import { canonical } from '../../store/paths.ts'
-import { TERMINAL_FIELDS } from '../../core/route.ts'
+import { TERMINAL_FIELDS } from '../../workers/reply-route.ts'
 import { latestActivity, latestLine, openDecisions, statusNotes, type OpenDecision } from './status.ts'
 
 export const ADAPTER = 'firstmate'

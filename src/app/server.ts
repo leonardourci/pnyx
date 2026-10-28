@@ -8,7 +8,7 @@ import { spendCounter } from '../spend/worker.ts'
 import { advanceQueues } from '../queue/advance.ts'
 import { QUEUE_POLL_MS } from '../queue/state.ts'
 import { steeringToFollow } from '../task-inbox/follow-up.ts'
-import { followUpReplies, repliesToFollow } from '../cli/reply-retry.ts'
+import { followUpReplies, repliesToFollow } from '../workers/reply-retry.ts'
 import { candidates, effectiveDispatch } from '../workers/dispatch-config.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './save-receipts.ts'
 import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '../attachments/images.ts'
@@ -29,7 +29,7 @@ import { wakeReasons } from '../core/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '../integrations/paseo/history.ts'
 import { findCard } from '../tasks/push-rules.ts'
 import { search as oracleSearch, updateIndex } from '../oracle/index.ts'
-import { replyRoute } from '../core/route.ts'
+import { replyRoute } from '../workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '../integrations/paseo/thread.ts'
 import { watchHomes } from '../integrations/firstmate/cli.ts'
 import { resolveHome } from '../integrations/firstmate/home.ts'
@@ -99,8 +99,8 @@ const WORKER_GRACE_MS = 5000
 const REPLY_WORKER = join(
   import.meta.dirname,
   '..',
-  'cli',
-  import.meta.url.endsWith('.ts') ? 'reply-worker.ts' : 'reply-worker.js',
+  'workers',
+  import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
 )
 const REPLY_WORKER_TIMEOUT_MS = 130_000
 

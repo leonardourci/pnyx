@@ -1,5 +1,5 @@
 import type { Card } from '../../../src/tasks/model.ts'
-import { answerPrompt } from '../../../src/core/answer.ts'
+import { answerPrompt } from '../../../src/workers/answers.ts'
 import { CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { InlinePermissions } from '../hydra/permissions.tsx'

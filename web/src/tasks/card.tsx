@@ -1,5 +1,5 @@
 import { AgentDetails } from '../hydra/agent-details.tsx'
-import { answerPrompt } from '../../../src/core/answer.ts'
+import { answerPrompt } from '../../../src/workers/answers.ts'
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react'
 import { useKeyAction } from '../preferences/keyboard-registry.tsx'
 import { ReminderEditor, ReminderLabel, type ReminderDraft } from './reminder.tsx'

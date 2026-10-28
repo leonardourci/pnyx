@@ -6,15 +6,15 @@ import { test } from 'node:test'
 import { setTimeout as sleep } from 'node:timers/promises'
 import { once } from 'node:events'
 import { WebSocket } from 'ws'
-import { commands } from '../src/app/cli.ts'
-import { enqueueSteering } from '../src/task-inbox/inbox.ts'
-import { STEERING_GRACE_MS } from '../src/task-inbox/follow-up.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { startServer } from '../src/app/server-daemon.ts'
-import { localToken } from '../src/app/server-state.ts'
-import { decidePush } from '../src/tasks/push.ts'
-import { hydraEvent } from '../src/core/hydra.ts'
+import { commands } from '../app/cli.ts'
+import { enqueueSteering } from '../task-inbox/inbox.ts'
+import { STEERING_GRACE_MS } from '../task-inbox/follow-up.ts'
+import { loadHydra } from '../app/store.ts'
+import { withWriter } from '../app/writer.ts'
+import { startServer } from '../app/server-daemon.ts'
+import { localToken } from '../app/server-state.ts'
+import { decidePush } from '../tasks/push.ts'
+import { hydraEvent } from '../core/hydra.ts'
 
 // The hook writes the pid file in one call, so an empty read means the worker has not started yet.
 async function heldPid({ pidFile }: { pidFile: string }) {
@@ -216,7 +216,7 @@ if (process.argv.includes('reply')) {
     cpSync(
       join(
         import.meta.dirname,
-        '../src/integrations/firstmate/fixtures/firstmate-home',
+        '../integrations/firstmate/fixtures/firstmate-home',
       ),
       nativePath,
       { recursive: true },

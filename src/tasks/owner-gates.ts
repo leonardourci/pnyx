@@ -1,4 +1,4 @@
-import { requestId } from '../core/answer.ts'
+import { requestId } from '../workers/answers.ts'
 import type { Card } from './model.ts'
 import { INTERRUPTED } from '../workers/session-attachments.ts'
 

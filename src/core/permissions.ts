@@ -3,7 +3,7 @@ import { EVENT_VERSION } from '../store/events.ts'
 import { HydraError } from '../store/errors.ts'
 import type { Card } from '../tasks/model.ts'
 import type { PermissionRequest } from '../workers/model.ts'
-import { checkAnswer, type Prompt } from './answer.ts'
+import { checkAnswer, type Prompt } from '../workers/answers.ts'
 import type { Meta } from '../app/command-meta.ts'
 
 export const PERMISSION_PREFIX = 'pnyx:permission:'

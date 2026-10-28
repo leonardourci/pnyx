@@ -1,5 +1,5 @@
 import { notificationState, type NotificationResult } from '../../task-inbox/notice.ts'
-import type { ReplyRoute } from '../../core/route.ts'
+import type { ReplyRoute } from '../../workers/reply-route.ts'
 import type { Delivery } from '../hooks/terminal.ts'
 import { openPaseo, type Connect } from './client.ts'
 

@@ -24,7 +24,7 @@ import { decideView } from '../preferences/decisions.ts'
 import { lockedColumn, LOCKED_DELETE, validateColumns } from './column-rules.ts'
 import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
-import { answerPrompt } from '../core/answer.ts'
+import { answerPrompt } from '../workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
 
 function column({ value }: { value: string }): Column {

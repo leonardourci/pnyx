@@ -19,7 +19,7 @@ import { applyHelper } from '../helper/state.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from '../workers/session-attachments.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '../tasks/events.ts'
 import { isStaleLink } from '../tasks/delivery/events.ts'
-import { requestId } from '../core/answer.ts'
+import { requestId } from '../workers/answers.ts'
 import { refreshDone } from '../tasks/retention-rules.ts'
 
 export function applyHydra({

@@ -1,5 +1,5 @@
 import { HOOK } from '../integrations/hooks/observe.ts'
-import { replyRoute } from '../core/route.ts'
+import { replyRoute } from '../workers/reply-route.ts'
 import { drainSpool } from '../integrations/hooks/ingest.ts'
 import { terminalNotice, typeInto } from '../integrations/hooks/terminal.ts'
 import type { Connect } from '../integrations/paseo/client.ts'

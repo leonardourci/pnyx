@@ -1,7 +1,7 @@
 import { ChoiceOption } from '../shared/ui/choice-option.tsx'
 import { CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { useState } from 'react'
-import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/core/answer.ts'
+import { answerPrompt, requestId, type Choice, type QuestionAnswer } from '../../../src/workers/answers.ts'
 import type { Card } from '../../../src/tasks/model.ts'
 import type { Attention, FormField, Question } from '../../../src/workers/model.ts'
 import { Button, Input } from '../shared/ui/controls.tsx'
