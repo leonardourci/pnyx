@@ -547,6 +547,185 @@ test(
 )
 
 test(
+  'merge questions explain held verification and stale failures using the latest worker context',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'merge-context-app' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix composer',
+        '--key',
+        'composer',
+        '--project',
+        app,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'composer',
+      ],
+    })
+    const composer = s.task({ key: 'composer' })
+    const worker = s.as({ agent: await s.agent({ cwd: composer.copy!.path }) })
+    await worker.run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'composer',
+        '--kind',
+        'progress',
+        '--text',
+        'Still implementing the composer fix.',
+      ],
+    })
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'composer',
+        'paused',
+        '--note',
+        `Fixes invisible composer text. The pnpm verify marker is held until owner review; its failure is expected. See ${composer.id}, ask-123, evt_456, worker:11111111-1111-1111-1111-111111111111 and session:22222222-2222-2222-2222-222222222222.`,
+        '--hold',
+      ],
+    })
+    const heldUrl = s.pullRequest({
+      number: 148,
+      title: 'Keep composer text visible',
+      checks: '0 passed, 2 failed, 2 total',
+    })
+    await worker.run({
+      args: [
+        'link',
+        'composer',
+        '--url',
+        heldUrl,
+      ],
+    })
+    const held = await until({
+      what: 'the merge question with held verification',
+      check: () => s.task({ key: 'composer' }).asks?.find(ask => ask.kind === 'merge'),
+    })
+    assert.equal(
+      held.question,
+      'Review and merge PR #148?',
+    )
+    assert.ok(held.context)
+    assert.ok(held.context.includes(heldUrl))
+    assert.match(
+      held.context,
+      /Keep composer text visible/,
+    )
+    assert.match(
+      held.context,
+      /Worker status note: Fixes invisible composer text/,
+    )
+    assert.match(
+      held.context,
+      /marker is held until owner review; its failure is expected/,
+    )
+    assert.match(
+      held.context,
+      /Checks: 0 passed, 2 failed, 2 total/,
+    )
+    assert.ok(!held.context.includes(composer.id))
+    assert.doesNotMatch(
+      held.context,
+      /ask-123|evt_456|worker:|session:|Still implementing/,
+    )
+
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix skill picker',
+        '--key',
+        'skills',
+        '--project',
+        app,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'skills',
+      ],
+    })
+    const skills = s.task({ key: 'skills' })
+    const skillsWorker = s.as({ agent: await s.agent({ cwd: skills.copy!.path }) })
+    await skillsWorker.run({
+      args: [
+        'task',
+        'status',
+        'skills',
+        'working',
+        '--note',
+        'Investigating two failing checks.',
+      ],
+    })
+    await skillsWorker.run({
+      args: [
+        'hydra',
+        'send',
+        '--task',
+        'skills',
+        '--kind',
+        'progress',
+        '--text',
+        'Moves upgrade into Built-in. The two failed checks are stale runs; verification passed on the current head.',
+      ],
+    })
+    const staleUrl = s.pullRequest({
+      number: 240,
+      title: 'Show upgrade among built-in skills',
+      checks: '3 passed, 2 failed, 5 total',
+    })
+    await skillsWorker.run({
+      args: [
+        'link',
+        'skills',
+        '--url',
+        staleUrl,
+      ],
+    })
+    const stale = await until({
+      what: 'the merge question with stale check results',
+      check: () => s.task({ key: 'skills' }).asks?.find(ask => ask.kind === 'merge'),
+    })
+    assert.ok(stale.context)
+    assert.ok(stale.context.includes(staleUrl))
+    assert.match(
+      stale.context,
+      /Show upgrade among built-in skills/,
+    )
+    assert.match(
+      stale.context,
+      /Worker report: Moves upgrade into Built-in/,
+    )
+    assert.match(
+      stale.context,
+      /two failed checks are stale runs; verification passed on the current head/,
+    )
+    assert.match(
+      stale.context,
+      /Checks: 3 passed, 2 failed, 5 total/,
+    )
+    assert.doesNotMatch(
+      stale.context,
+      /Investigating two failing checks/,
+    )
+  },
+)
+
+test(
   'an owner approval on an already-green pull request wakes Hydra to merge it and records Done',
   async () => {
     const s = await pnyx.scenario()
@@ -575,6 +754,7 @@ test(
     })
     const url = s.pullRequest({
       number: 147,
+      title: 'Ship the green change',
       checks: '1 passed, 0 failed, 1 total',
     })
     await s.owner({
@@ -589,6 +769,10 @@ test(
       what: 'the ready merge question',
       check: () => s.task({ key: 'green' }).asks?.find(a => a.kind === 'merge'),
     })
+    assert.equal(
+      ask.context,
+      `Ship the green change\n${url}\nChecks: 1 passed, 0 failed, 1 total`,
+    )
     assert.equal(
       s.task({ key: 'green' }).column,
       s.column({ role: 'needs_you' }),
