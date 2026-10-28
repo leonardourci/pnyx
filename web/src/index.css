@@ -1296,7 +1296,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .attachment-card.reference { border-style: dashed; background: transparent; }
 
-.message .attachment-card { margin: 0 1px; }
+/* A card in a message selects with the text around it, like the other chips. */
+.message .attachment-card { margin: 0 1px; user-select: auto; }
 
 .message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
