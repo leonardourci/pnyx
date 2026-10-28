@@ -25,15 +25,32 @@ function selectedText({
   host.append(range.cloneContents())
   host.querySelectorAll(LEFT_OUT).forEach(element => element.remove())
   host.querySelectorAll(CHIPS).forEach(element => element.replaceWith(chip({ element })))
-  host.querySelectorAll('.message-lead').forEach(lead => lead.replaceWith(
-    ...lead.childNodes,
-    ' ',
-  ))
+
+  // The leading chip goes where it shows: at the start of the message's first paragraph.
+  for (const lead of host.querySelectorAll('.message-lead')) {
+    const paragraph = lead.nextElementSibling?.matches('.markdown')
+      ? lead.nextElementSibling.querySelector(':scope > .message-block:first-child > p:first-child')
+      : null
+
+    if (paragraph) {
+      paragraph.prepend(
+        ...lead.childNodes,
+        ' ',
+      )
+      lead.remove()
+    } else {
+      lead.replaceWith(...lead.childNodes)
+    }
+  }
+
   document.body.append(host)
   const text = host.innerText
   host.remove()
 
-  return text
+  return text.replace(
+    /^\n+|\n+$/g,
+    '',
+  )
 }
 
 const chipName = ({ element }: { element: Element }) => (element.textContent ?? '').replace(
