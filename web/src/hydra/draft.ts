@@ -462,6 +462,71 @@ export function withoutPendingImages({ text }: { text: string }) {
   return rest
 }
 
+// Copied chips travel as their Markdown under a type only Pnyx reads, so pasting rebuilds them.
+export const DRAFT_TYPE = 'application/x-pnyx-draft'
+
+// Pasted into another app, a chip reads as its name; an attached file keeps its contents.
+function plainDraft({ text }: { text: string }) {
+  let plain = '', cursor = 0
+
+  for (const chip of draftChips({ text })) {
+    const attachedFile = chip.kind === 'file' && chip.attached
+    const reference = chip.attached || chip.kind === 'skill' ? chip.name : `@${chip.name}`
+    plain += text.slice(
+      cursor,
+      chip.start,
+    ) + (attachedFile ? text.slice(
+      chip.start,
+      chip.end,
+    ) : reference)
+    cursor = chip.end
+  }
+
+  return plain + text.slice(cursor)
+}
+
+// A selection that touches a chip copies the whole chip; undefined means it holds none and copies as text.
+export function copyDraft({
+  text,
+  from,
+  to,
+}: {
+  text: string
+  from: number
+  to: number
+}) {
+  const view = draftView({ text })
+  const touched = view.chips.filter(chip => from < chip.to && to > chip.from)
+
+  if (!touched.length) {
+    return undefined
+  }
+
+  const source = withoutPendingImages({
+    text: text.slice(
+      sourceOffset({
+        view,
+        offset: Math.min(
+          from,
+          ...touched.map(chip => chip.from),
+        ),
+      }),
+      sourceOffset({
+        view,
+        offset: Math.max(
+          to,
+          ...touched.map(chip => chip.to),
+        ),
+      }),
+    ),
+  })
+
+  return {
+    source,
+    plain: plainDraft({ text: source }),
+  }
+}
+
 // The newlines that make a block its own paragraph, after the ones already there.
 const paragraphBreak = ({ newlines }: { newlines: string }) => '\n'.repeat(2 - newlines.length)
 

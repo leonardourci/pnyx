@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { reference, taskMention } from '#hydra/mentions.ts'
-import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
+import { copyDraft, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -336,6 +336,73 @@ test(
         line: image,
       })?.text,
       `${mention} see ${image}`,
+    )
+  },
+)
+
+test(
+  'copied chips come back as chips when pasted, and read as their names in other apps',
+  () => {
+    const skill = reference({
+      kind: 'skill',
+      label: '/review-code',
+      value: JSON.stringify({ name: 'review-code' }),
+    })
+    const text = `Can you run ${skill} on ${task} here ${image} please`
+    const shown = draftView({ text }).display
+    const copied = copyDraft({
+      text,
+      from: shown.indexOf('run'),
+      to: shown.indexOf('please'),
+    })!
+    assert.equal(
+      copied.source,
+      `run ${skill} on ${task} here ${image} `,
+    )
+    assert.equal(
+      copied.plain,
+      'run /review-code on @Fix [login] here Image 1 ',
+    )
+    const pasted = replaceDisplay({
+      text: 'Again: ',
+      from: 'Again: '.length,
+      to: 'Again: '.length,
+      insert: copied.source,
+    })
+    assert.deepEqual(
+      draftView({ text: pasted.text }).chips.map(chip => chip.kind),
+      [
+        'skill',
+        'task',
+        'image',
+      ],
+    )
+
+    const skillChip = draftView({ text }).chips[0]!
+    const taskChip = draftView({ text }).chips[1]!
+    assert.equal(
+      copyDraft({
+        text,
+        from: skillChip.from + 3,
+        to: taskChip.to - 3,
+      })?.source,
+      `${skill} on ${task}`,
+    )
+    assert.equal(
+      copyDraft({
+        text,
+        from: 0,
+        to: 'Can you'.length,
+      }),
+      undefined,
+    )
+    assert.equal(
+      copyDraft({
+        text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}`,
+        from: 0,
+        to: draftView({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}` }).display.length,
+      })?.source,
+      `see and ${image}`,
     )
   },
 )

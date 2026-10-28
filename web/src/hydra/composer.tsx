@@ -6,7 +6,7 @@ import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ClipboardEvent, type ReactNode } from 'react'
 import { flushSync } from 'react-dom'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
@@ -33,7 +33,7 @@ import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { imageLine } from '#hydra/images.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, DRAFT_TYPE, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -626,6 +626,31 @@ export function Composer({
     }
   }
 
+  // A selection with chips goes on the clipboard as its Markdown too; one without copies as plain text.
+  const copyChips = ({ event }: { event: ClipboardEvent<HTMLTextAreaElement> }) => {
+    const copied = copyDraft({
+      text: draft,
+      from: event.currentTarget.selectionStart,
+      to: event.currentTarget.selectionEnd,
+    })
+
+    if (!copied) {
+      return false
+    }
+
+    event.preventDefault()
+    event.clipboardData.setData(
+      DRAFT_TYPE,
+      copied.source,
+    )
+    event.clipboardData.setData(
+      'text/plain',
+      copied.plain,
+    )
+
+    return true
+  }
+
   const removeCard = ({ chip }: { chip: PlacedChip }) => {
     write(removeChip({
       text: draft,
@@ -954,10 +979,30 @@ export function Composer({
               })
             }}
             onBlur={() => setMention(null)}
+            onCopy={event => copyChips({ event })}
+            onCut={event => {
+              if (copyChips({ event })) {
+                write(replaceDisplay({
+                  text: draft,
+                  from: event.currentTarget.selectionStart,
+                  to: event.currentTarget.selectionEnd,
+                  insert: '',
+                }))
+              }
+            }}
             onPaste={event => {
+              const copied = event.clipboardData.getData(DRAFT_TYPE)
               const files = pastedImages({ clipboardData: event.clipboardData })
 
-              if (files.length) {
+              if (copied) {
+                event.preventDefault()
+                write(replaceDisplay({
+                  text: draft,
+                  from: event.currentTarget.selectionStart,
+                  to: event.currentTarget.selectionEnd,
+                  insert: copied,
+                }))
+              } else if (files.length) {
                 event.preventDefault(); attach({ files })
               }
             }}
