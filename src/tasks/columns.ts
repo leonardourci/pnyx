@@ -1,82 +1,13 @@
-import { ownerGates } from './gates.ts'
+import { ownerGates } from '../core/gates.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { CARD_FACTS, failedChecks, pendingChecks, ranChecks, type Card, type CardFact, type ColumnCondition, type ColumnRule, type HydraColumn } from './model.ts'
-import { cardSessionId } from './tasks.ts'
-
-const NO_OWNER: ColumnCondition[] = [
-  '!owner-question',
-  '!reminder-due',
-]
-const UNFINISHED: ColumnCondition[] = [
-  ...NO_OWNER,
-  '!done',
-]
-const ACTIVE: ColumnCondition[] = [
-  ...UNFINISHED,
-  '!held',
-  '!queued',
-]
-
-const DEFAULT_COLUMN_RULES: Record<string, ColumnRule> = {
-  queued: [
-    [
-      ...NO_OWNER,
-      'held',
-    ],
-    [
-      ...UNFINISHED,
-      'queued',
-    ],
-    [
-      ...ACTIVE,
-      'worker:none',
-    ],
-  ],
-  in_progress: [
-    [
-      ...ACTIVE,
-      'worker:working',
-    ],
-    [
-      ...ACTIVE,
-      'worker:checks',
-    ],
-    [
-      ...ACTIVE,
-      'worker:blocked',
-    ],
-    [
-      ...ACTIVE,
-      'worker:hydra',
-    ],
-  ],
-  needs_you: [
-    ['owner-question'],
-    ['reminder-due'],
-  ],
-  parked: [
-    [
-      ...ACTIVE,
-      'worker:paused',
-    ],
-    [
-      ...ACTIVE,
-      'worker:ended',
-    ],
-  ],
-  done: [
-    [
-      ...NO_OWNER,
-      '!held',
-      'done',
-    ],
-  ],
-}
-
-export function columnRule({ column }: { column: HydraColumn }): ColumnRule {
-  return column.rule ?? DEFAULT_COLUMN_RULES[column.role ?? ''] ?? []
-}
+import { CARD_FACTS, LEGACY_IN_PROGRESS, type CardFact, type ColumnCondition, type ColumnRule, type HydraColumn } from './columns-model.ts'
+import { failedChecks, pendingChecks, ranChecks, type Card } from '../core/model.ts'
+import { cardSessionId, assignDefined } from '../core/tasks.ts'
+import { hydraConfig, HYDRA_CARD } from '../core/hydra.ts'
+import { permissionAttention } from '../core/permissions.ts'
+import { fallbackColumn } from './column-rules.ts'
+import { columnRule } from './column-defaults.ts'
 
 export function cardFacts({
   card,
@@ -227,4 +158,75 @@ export function describeColumnRule({ column }: { column: HydraColumn }): string 
   const rule = columnRule({ column })
 
   return rule.length ? rule.map(row => row.join(' AND ')).join(' OR ') : 'manual only'
+}
+
+export function refreshTasks({
+  state,
+  ids,
+}: {
+  state: HydraState
+  ids?: (string | null | undefined)[]
+}): void {
+  const columns = hydraConfig({ state }).columns
+  const cards = ids
+    ? [...new Set(ids)].flatMap(id => (id && state.cards[id] ? [state.cards[id]] : []))
+    : Object.values(state.cards)
+
+  for (const card of cards) {
+    permissionAttention({ card })
+
+    if (card.automaticTask || card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
+      card.hidden = true
+    }
+
+    if (card.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId !== '@home')
+      || (state.configured && !card.hidden && card.id !== HYDRA_CARD)) {
+      card.tracking = 'declared'
+    }
+
+    // Legacy Firstmate home cards were grouping parents, not work.
+    if ((state.configured || card.tracking) && card.parentId && state.cards[card.parentId]?.sourceRefs.some(r => r.adapter === 'firstmate' && r.objectId === '@home')) {
+      delete card.parentId
+    }
+
+    // Workers on it keeps its cards until the Hydra moves onto the default columns, which places them by status.
+    if (!columns.some(c => c.id === card.column) && card.column !== LEGACY_IN_PROGRESS) {
+      card.column = fallbackColumn({ columns })
+    }
+  }
+
+  const hydra = state.cards[HYDRA_CARD]
+  const ref = state.config?.hydra.session
+  const session = ref ? state.sessions?.[ref] : undefined
+
+  if (hydra) {
+    if (session && hydra.launch?.via === 'command' && session.launch?.via === 'hooks') {
+      session.launch = {
+        ...hydra.launch,
+        harness: session.agent.provider,
+      }
+    }
+
+    hydra.sessionIds = session ? [session.id] : []
+    assignDefined({
+      target: hydra,
+      values: {
+        agent: session && { ...session.agent },
+        terminal: session?.terminal && { ...session.terminal },
+        ...(session?.agent.host === 'pnyx' ? {
+          settings: session.settings && { ...session.settings },
+          activity: session.activity,
+          sessionActivity: session.sessionActivity ?? session.activity,
+          workingSince: session.workingSince,
+        } : {}),
+      },
+    })
+    hydra.attention = session?.agent.host === 'pnyx'
+      ? [
+        ...hydra.attention.filter(a => !a.key.startsWith('hook:')),
+        ...session.attention,
+      ]
+      : session ? [...session.attention] : []
+    hydra.hidden = true
+  }
 }

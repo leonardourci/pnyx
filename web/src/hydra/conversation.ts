@@ -1,5 +1,6 @@
 import type { HydraEvent } from '../../../src/app/model.ts'
-import type { HydraColumn, HydraMessage } from '../../../src/core/model.ts'
+import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
+import type { HydraMessage } from '../../../src/core/model.ts'
 import type { ThreadEntry, ThreadPage } from '../../../src/thread/read.ts'
 import { QUIET_REPLY } from '../../../src/core/hydra.ts'
 import { hydraMessages, ownMessage, type TurnTiming } from './chat.ts'

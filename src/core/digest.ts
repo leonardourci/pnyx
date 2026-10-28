@@ -1,6 +1,6 @@
 import { helperLeases } from '../helper/state.ts'
 import { taskReadiness } from './dependencies.ts'
-import { describeColumnRule } from './columns.ts'
+import { describeColumnRule } from '../tasks/columns.ts'
 import { learningConditions, learningDigest, type LearningConditions } from '../memory/learnings.ts'
 import { queuePosition, workerQueue } from '../queue/state.ts'
 import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from './hydra.ts'

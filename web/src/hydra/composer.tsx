@@ -1,5 +1,6 @@
 import type { HydraProject } from '../../../src/projects/model.ts'
-import type { Card, HydraColumn, SavedLabelColor } from '../../../src/core/model.ts'
+import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
+import type { Card, SavedLabelColor } from '../../../src/core/model.ts'
 import { matchingTasks, mentionQuery, reference, taskMention } from '../../../src/mentions/mentions.ts'
 import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'

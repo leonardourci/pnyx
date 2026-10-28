@@ -1,6 +1,8 @@
 import type { HydraState, SourceRef } from '../app/model.ts'
-import { AUTO_TITLE_SOURCES, LEGACY_IN_PROGRESS, type AutoTitle, type Card, type Column, type Link } from './model.ts'
-import { fallbackColumn, hydraConfig, roleColumn } from './hydra.ts'
+import { LEGACY_IN_PROGRESS, type Column } from '../tasks/columns-model.ts'
+import { AUTO_TITLE_SOURCES, type AutoTitle, type Card, type Link } from './model.ts'
+import { fallbackColumn, roleColumn } from '../tasks/column-rules.ts'
+import { hydraConfig } from './hydra.ts'
 
 // Keeps the best auto title seen: a better source replaces a worse one, a later
 // session title or folder replaces an earlier one, and the first prompt stays. It

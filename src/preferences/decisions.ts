@@ -3,7 +3,7 @@ import type { HydraState, Decision } from '../app/model.ts'
 import { base, type Meta } from '../app/command-meta.ts'
 import { HydraError } from '../store/errors.ts'
 import { viewFor, patchView } from './view.ts'
-import { removedColumnPlacements } from '../core/decide.ts'
+import { removedColumnPlacements } from '../tasks/columns-decisions.ts'
 
 export function decideView({
   state,
