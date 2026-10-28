@@ -30,10 +30,11 @@ import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
 import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
+import { embedImages, imagesHtml } from './clipboard.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { imageLine } from '#hydra/images.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, DRAFT_TYPE, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, DRAFT_TYPE, hasPendingImage, plainDraft, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -647,6 +648,22 @@ export function Composer({
       'text/plain',
       copied.plain,
     )
+
+    const embedded = embedImages()
+    const marked = plainDraft({
+      text: copied.source,
+      image: embedded.image,
+    })
+
+    if (embedded.images.length) {
+      event.clipboardData.setData(
+        'text/html',
+        imagesHtml({
+          text: marked,
+          images: embedded.images,
+        }),
+      )
+    }
 
     return true
   }

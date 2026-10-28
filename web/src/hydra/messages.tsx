@@ -27,7 +27,7 @@ import { clock, duration, leadingTask, orderedComments, ownMessage, sendableComm
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageImages } from './attached-image.tsx'
-import { copyMessageChips } from './message-copy.ts'
+import { copyMessageChips } from './clipboard.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {

@@ -1,4 +1,6 @@
 import { taskMention } from '#hydra/mentions.ts'
+import { imagePaths } from '#hydra/images.ts'
+import { shownImageData } from './attached-image.tsx'
 import { DRAFT_TYPE } from './draft.ts'
 import { MESSAGE_DECORATIONS } from './message-selection.ts'
 
@@ -49,6 +51,84 @@ const chipMarkdown = ({ element }: { element: Element }) => element.getAttribute
     title: chipName({ element: element.querySelector('.task-reference-title') ?? element }),
   })
 
+// An embedded image is a private-use mark while the copy is plain text, so escaping can't touch it.
+const IMAGE_MARK = /\uE000(\d+)\uE001/g
+
+const escapeHtml = ({ text }: { text: string }) => text.replace(
+  /&/g,
+  '&amp;',
+).replace(
+  /</g,
+  '&lt;',
+)
+  .replace(
+    />/g,
+    '&gt;',
+  )
+  .replace(
+    /"/g,
+    '&quot;',
+  )
+
+// Each attached image the page has already loaded becomes a mark for imagesHtml; the rest keep their names.
+export function embedImages() {
+  const images: {
+    data: string
+    name: string
+  }[] = []
+
+  const image = ({
+    path,
+    name,
+  }: {
+    path: string
+    name: string
+  }) => {
+    const data = shownImageData({ path })
+
+    if (!data) {
+      return name
+    }
+
+    images.push({
+      data,
+      name,
+    })
+
+    return `\uE000${images.length - 1}\uE001`
+  }
+
+  return {
+    images,
+    image,
+  }
+}
+
+// Copied text with its image marks, as HTML that other apps paste with the pictures in place.
+export function imagesHtml({
+  text,
+  images,
+}: {
+  text: string
+  images: ReturnType<typeof embedImages>['images']
+}) {
+  return escapeHtml({ text }).replace(
+    /\n/g,
+    '<br>',
+  )
+    .replace(
+      IMAGE_MARK,
+      (
+        _mark,
+        index: string,
+      ) => {
+        const image = images[Number(index)]!
+
+        return `<img src="${image.data}" alt="${escapeHtml({ text: image.name })}">`
+      },
+    )
+}
+
 // A selection holding chips copies their Markdown under the composer's type; other apps read the chips' names.
 export function copyMessageChips({
   selection,
@@ -77,6 +157,29 @@ export function copyMessageChips({
       chip: chipName,
     }),
   )
+
+  const embedded = embedImages()
+  const marked = selectedText({
+    range,
+    chip: ({ element }) => {
+      const path = imagePaths({ text: element.getAttribute(CHIP_SOURCE) ?? '' })[0]
+
+      return path ? embedded.image({
+        path,
+        name: chipName({ element }),
+      }) : chipName({ element })
+    },
+  })
+
+  if (embedded.images.length) {
+    clipboard.setData(
+      'text/html',
+      imagesHtml({
+        text: marked,
+        images: embedded.images,
+      }),
+    )
+  }
 
   return true
 }

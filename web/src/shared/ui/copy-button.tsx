@@ -9,13 +9,12 @@ const RESULTS = {
 
 export function CopyButton({
   label,
-  text,
   className = '',
+  ...copied
 }: {
   label: string
-  text(): string
   className?: string
-}) {
+} & ({ text(): string } | { write(): Promise<void> })) {
   const [
     result,
     setResult,
@@ -48,7 +47,8 @@ export function CopyButton({
       onClick={event => {
         // Inside a summary, a click would also fold the row.
         event.preventDefault()
-        void navigator.clipboard.writeText(text()).then(
+        const writing = 'write' in copied ? copied.write() : navigator.clipboard.writeText(copied.text())
+        void writing.then(
           () => setResult('copied'),
           () => setResult('failed'),
         )

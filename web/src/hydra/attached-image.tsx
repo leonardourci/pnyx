@@ -4,6 +4,7 @@ import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
+import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
 function attachmentSource({ path }: { path: string }) {
@@ -90,6 +91,56 @@ export function MessageImages({ text }: { text: string }) {
   )
 }
 
+// Every clipboard takes PNG, so another format is redrawn as PNG; an animated GIF keeps its first frame.
+async function asPng({ blob }: { blob: Blob }) {
+  if (blob.type === 'image/png') {
+    return blob
+  }
+
+  const bitmap = await createImageBitmap(blob)
+  const canvas = new OffscreenCanvas(
+    bitmap.width,
+    bitmap.height,
+  )
+  canvas.getContext('2d')?.drawImage(
+    bitmap,
+    0,
+    0,
+  )
+
+  return canvas.convertToBlob({ type: 'image/png' })
+}
+
+// Safari only accepts a clipboard item made during the click, so the image arrives as a promise inside it.
+const copyImage = ({ src }: { src: string }) => navigator.clipboard.write([
+  new ClipboardItem({
+    'image/png': fetch(src).then(response => response.blob())
+      .then(blob => asPng({ blob })),
+  }),
+])
+
+// An image already on the page, as PNG data a copied selection can embed; nothing loads it for the copy.
+export function shownImageData({ path }: { path: string }) {
+  const src = attachmentSource({ path })
+  const shown = [...document.images].find(image => image.getAttribute('src') === src && image.complete
+    && image.naturalWidth > 0)
+
+  if (!shown) {
+    return undefined
+  }
+
+  const canvas = document.createElement('canvas')
+  canvas.width = shown.naturalWidth
+  canvas.height = shown.naturalHeight
+  canvas.getContext('2d')?.drawImage(
+    shown,
+    0,
+    0,
+  )
+
+  return canvas.toDataURL('image/png')
+}
+
 // The viewer is portaled out so the conversation's caret host never edits it.
 export function ImageViewer({
   path,
@@ -103,7 +154,12 @@ export function ImageViewer({
   const src = attachmentSource({ path })
 
   return createPortal(
-    <Dialog title={label} className="image-viewer" close={close}>
+    <Dialog
+      title={label}
+      className="image-viewer"
+      actions={src && <CopyButton label="Copy image" write={() => copyImage({ src })} />}
+      close={close}
+    >
       {src ? <img src={src} alt={label} /> : <p className="muted">{imageLine({ path })}</p>}
     </Dialog>,
     document.body,
