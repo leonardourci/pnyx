@@ -18,9 +18,10 @@ const TTY = '/dev/ttys042'
 const fixture = ({ name }: { name: string }) => JSON.parse(readFileSync(
   join(
     ROOT,
-    'test',
-    'fixtures',
+    'src',
+    'integrations',
     'hooks',
+    'fixtures',
     `${name}.json`,
   ),
   'utf8',

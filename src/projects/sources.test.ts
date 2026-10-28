@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { normalizedRemote } from '../projects/sources.ts'
+import { normalizedRemote } from './sources.ts'
 
 test(
   'remote identities share across transport and keep unrelated projects, including local paths that differ by .git, separate',
