@@ -6,7 +6,8 @@ import { cardLanding, type Link } from './delivery/model.ts'
 import type { Question } from '../workers/model.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { HYDRA_CARD, hydraEvent, reportActor } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
+import { hydraEvent, reportActor } from '../hydra/hydra.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500

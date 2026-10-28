@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type { Meta } from '../app/command-meta.ts'
 import { findCard } from '../tasks/push-rules.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import type { HydraState } from '../app/model.ts'
 import { EVENT_VERSION } from '../store/events.ts'
 import { HydraError } from '../store/errors.ts'

@@ -1,5 +1,5 @@
 import { askWording, openAsks } from './questions.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import type { HydraState } from '../app/model.ts'
 import type { Card } from './model.ts'
 import { failedChecks, pendingChecks, type Link } from './delivery/model.ts'

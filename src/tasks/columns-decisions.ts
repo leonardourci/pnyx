@@ -1,7 +1,7 @@
 import type { HydraState, Decision } from '../app/model.ts'
 import type { Column } from './columns-model.ts'
 import { fallbackColumn } from './column-rules.ts'
-import { hydraConfig } from '../core/hydra.ts'
+import { hydraConfig } from '../hydra/config.ts'
 import { invalid } from '../app/command-validation.ts'
 import { base, type Meta } from '../app/command-meta.ts'
 import { findCard } from './push-rules.ts'

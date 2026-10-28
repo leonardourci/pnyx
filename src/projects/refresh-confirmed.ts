@@ -1,5 +1,5 @@
 import { matchesProject, sameProjectPath } from './identity.ts'
-import { hydraEvent } from '../core/hydra.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
 import type { HydraState } from '../app/model.ts'
 import type { Card } from '../tasks/model.ts'
 import type { Link } from '../tasks/delivery/model.ts'

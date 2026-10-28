@@ -1,7 +1,7 @@
 import { COMMENT_NOTE } from '../../../src/workers/compaction/comments.ts'
 import { HYDRA_ACTOR } from '../../../src/app/actors.ts'
-import { type HydraMessage, type HydraStatus } from '../../../src/core/model.ts'
-import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/core/hydra.ts'
+import type { HydraMessage, HydraStatus } from '../../../src/hydra/model.ts'
+import { hydraDelivery, QUIET_REPLY, reportActor } from '../../../src/hydra/hydra.ts'
 import { withoutInjected } from '../../../src/oracle/text.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 

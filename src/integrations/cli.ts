@@ -1,7 +1,7 @@
 import { REPORT_PROGRESS_SKILL, CLI_SKILL, HYDRA_SKILLS } from './skills/names.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
-import { hydraConfig } from '../core/hydra.ts'
+import { hydraConfig } from '../hydra/config.ts'
 import { hookStatus } from './hooks/install.ts'
 import { skillSource, skillStatus } from './skills/install.ts'
 import { paseoStatus } from './paseo/launch.ts'

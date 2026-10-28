@@ -1,6 +1,6 @@
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
 import type { HydraState } from '../../../src/app/model.ts'
-import { hydraConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/hydra/config.ts'
 import type { Card } from '../../../src/tasks/model.ts'
 import { liveTask, rankOf } from '../../../src/tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '../../../src/tasks/retention-rules.ts'

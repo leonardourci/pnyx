@@ -4,7 +4,7 @@ import { dateLearnings, learningText, type LearningChange, type Learning } from 
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
-import { hydraEvent } from '../core/hydra.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
 import { HydraError } from '../store/errors.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { hydraIds } from '../app/home-migration.ts'

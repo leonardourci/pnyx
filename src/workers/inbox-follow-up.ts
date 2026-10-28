@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import type { HydraState } from '../app/model.ts'
 import { EVENT_VERSION } from '../store/events.ts'
 import type { Card } from '../tasks/model.ts'

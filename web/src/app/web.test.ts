@@ -1,4 +1,5 @@
-import { HYDRA_CARD, hydraEvent } from '../../../src/core/hydra.ts'
+import { HYDRA_CARD } from '../../../src/hydra/identity.ts'
+import { hydraEvent } from '../../../src/hydra/hydra.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'

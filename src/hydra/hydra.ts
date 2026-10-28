@@ -1,36 +1,12 @@
-import { openAsks } from '../tasks/questions.ts'
-import { requireReportReview } from '../investigations/inventory.ts'
 import type { HydraState, HydraChange, Decision } from '../app/model.ts'
+import type { Meta } from '../app/command-meta.ts'
+import { requireReportReview } from '../investigations/inventory.ts'
+import { openAsks } from '../tasks/questions.ts'
 import { HydraError } from '../store/errors.ts'
 import { EVENT_VERSION } from '../store/events.ts'
-import { type HydraConfig, type HydraMessage } from './model.ts'
-import type { Meta } from '../app/command-meta.ts'
-import { DEFAULT_COLUMNS } from '../tasks/column-defaults.ts'
-
-export const HYDRA_CARD = '$hydra'
-
-// ponytail: a never-configured Hydra replays onto the defaults directly, so only its cards moved into Workers on it get placed by status; record a layout version if such logs ever matter.
-export function hydraConfig({
-  state,
-  id = 'default',
-}: {
-  state: HydraState
-  id?: string
-}): HydraConfig {
-  return state.config ?? {
-    id,
-    name: id,
-    hydra: {
-      id: 'hydra',
-      kind: 'agent',
-      name: 'Hydra',
-    },
-    columns: [
-      ...structuredClone(DEFAULT_COLUMNS),
-      ...(state.view?.customColumns ?? []),
-    ],
-  }
-}
+import type { HydraMessage } from './model.ts'
+import { hydraConfig } from './config.ts'
+import { HYDRA_CARD } from './identity.ts'
 
 export function hydraEvent({
   state,

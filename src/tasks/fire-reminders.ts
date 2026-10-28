@@ -1,5 +1,6 @@
 import { randomUUID } from 'node:crypto'
-import { hydraConfig, hydraEvent } from '../core/hydra.ts'
+import { hydraConfig } from '../hydra/config.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter, type Writer } from '../app/writer.ts'
 import { reminderDeadline } from './reminders.ts'

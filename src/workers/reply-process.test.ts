@@ -14,7 +14,7 @@ import { withWriter } from '../app/writer.ts'
 import { startServer } from '../app/server-daemon.ts'
 import { localToken } from '../app/server-state.ts'
 import { decidePush } from '../tasks/push.ts'
-import { hydraEvent } from '../core/hydra.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
 
 // The hook writes the pid file in one call, so an empty read means the worker has not started yet.
 async function heldPid({ pidFile }: { pidFile: string }) {

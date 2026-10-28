@@ -1,6 +1,6 @@
 import type { HydraState } from '../../../src/app/model.ts'
 import type { HydraColumn } from '../../../src/tasks/columns-model.ts'
-import { hydraConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/hydra/config.ts'
 import type { ThreadEntry } from '../../../src/thread/read.ts'
 import { commandOf, firstLine, obj } from '../../../src/thread/calls.ts'
 

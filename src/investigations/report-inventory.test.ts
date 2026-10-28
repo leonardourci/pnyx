@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { hydraEvent } from '../core/hydra.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
 import { emptyHydra, reduce, replay } from '../app/reducer.ts'
 import { doneDeadline } from '../tasks/retention-rules.ts'
 import { openDecisions } from '../tasks/decisions.ts'

@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
+import { hydraEvent } from '../hydra/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import { HydraError } from '../store/errors.ts'
 import type { DispatchProposal } from './model.ts'
 import { withWriter } from '../app/writer.ts'

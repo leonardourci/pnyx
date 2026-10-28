@@ -1,7 +1,7 @@
-import type { EventBase } from '../store/events.ts'
+import type { AgentConfig } from '../workers/model.ts'
 import type { HydraColumn } from '../tasks/columns-model.ts'
 import type { AnswerMessage } from '../tasks/model.ts'
-import type { AgentConfig } from '../workers/model.ts'
+import type { EventBase } from '../store/events.ts'
 
 export interface HydraIdentity {
   agent?: AgentConfig
@@ -26,6 +26,7 @@ export interface HydraConfig {
   doneAfterHours?: number
   reviewMinutes?: number
 }
+
 export interface HydraMessage {
   id: string
   task?: string
@@ -45,6 +46,7 @@ export interface HydraMessage {
   actor: string
   hydra: string
 }
+
 // Whether Pnyx can start the Hydra it runs: down from a failed start until a start works again.
 export interface HydraStatus {
   state: 'down' | 'up'

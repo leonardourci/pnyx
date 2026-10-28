@@ -1,6 +1,6 @@
 import { compactCommand } from './compaction/state.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import { notificationReceipt } from './inbox-notice.ts'
 import { steeringHeld } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'

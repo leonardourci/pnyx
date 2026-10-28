@@ -1,18 +1,20 @@
-import { helperLeases } from '../routine-helper/state.ts'
-import { taskReadiness } from '../tasks/dependencies.ts'
-import { describeColumnRule } from '../tasks/columns.ts'
-import { learningConditions, learningDigest, type LearningConditions } from '../memory/learnings.ts'
-import { queuePosition, workerQueue } from '../workers/queue.ts'
-import { declaredState } from '../tasks/declarations.ts'
-import { unwatchedPullRequests } from '../tasks/delivery/following.ts'
-import { HYDRA_CARD, hydraConfig } from './hydra.ts'
-import { liveTask, rankOf } from '../tasks/select.ts'
-import { askWording, openAsks } from '../tasks/questions.ts'
 import type { HydraState } from '../app/model.ts'
 import type { Card } from '../tasks/model.ts'
-import { OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, usage, type Memory } from '../memory/budgets.ts'
+import { declaredState } from '../tasks/declarations.ts'
+import { unwatchedPullRequests } from '../tasks/delivery/following.ts'
+import { taskReadiness } from '../tasks/dependencies.ts'
+import { openAsks, askWording } from '../tasks/questions.ts'
+import { queuePosition, workerQueue } from '../workers/queue.ts'
+import { learningConditions, learningDigest, type LearningConditions } from '../memory/learnings.ts'
+import { OWNER_DOCUMENTS, usage, OWNER_MEMORY_BUDGET, HYDRA_MEMORY_BUDGET, type Memory } from '../memory/budgets.ts'
+import { hydraConfig } from './config.ts'
+import { HYDRA_CARD } from './identity.ts'
+import { liveTask, rankOf } from '../tasks/select.ts'
+import { describeColumnRule } from '../tasks/columns.ts'
+import { helperLeases } from '../routine-helper/state.ts'
 
 export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init --shared` copies them into the Pnyx home to edit'
+
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40
 

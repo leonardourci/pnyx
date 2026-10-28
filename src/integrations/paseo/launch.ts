@@ -1,7 +1,7 @@
 import { requireReady } from '../../tasks/dependencies.ts'
 import { requireUnheld } from '../../tasks/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '../../workers/dispatch.ts'
-import { hydraEvent } from '../../core/hydra.ts'
+import { hydraEvent } from '../../hydra/hydra.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import type { Meta } from '../../app/command-meta.ts'

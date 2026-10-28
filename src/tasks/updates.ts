@@ -4,7 +4,7 @@ import type { HydraColumn } from './columns-model.ts'
 import type { Ask, RepliedEvent } from './model.ts'
 import type { Link } from './delivery/model.ts'
 import type { PermissionRequest } from '../workers/model.ts'
-import { reportActor } from '../core/hydra.ts'
+import { reportActor } from '../hydra/hydra.ts'
 import { taskMentions } from '../mentions/mentions.ts'
 
 export interface TaskEvent {

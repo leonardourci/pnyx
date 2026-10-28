@@ -1,7 +1,7 @@
 import { watchFile, unwatchFile } from 'node:fs'
 import { watchPath, type PathWatch } from '../app/watch.ts'
 import { background } from '../app/background.ts'
-import { HYDRA_CARD } from '../core/hydra.ts'
+import { HYDRA_CARD } from '../hydra/identity.ts'
 import type { HydraProject } from '../projects/model.ts'
 import type { Card } from '../tasks/model.ts'
 import { readCatalog, type Catalog, type CatalogLocations } from './catalog.ts'

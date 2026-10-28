@@ -1,5 +1,6 @@
 import { memoryReview } from '../memory/review.ts'
-import { HYDRA_CARD, hydraEvent, pnyxRunsHydra } from '../core/hydra.ts'
+import { HYDRA_CARD } from './identity.ts'
+import { hydraEvent, pnyxRunsHydra } from './hydra.ts'
 import { INTERRUPTED } from '../workers/session-attachments.ts'
 import type { HydraState } from '../app/model.ts'
 import { loadHydra } from '../app/store.ts'

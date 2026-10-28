@@ -1,7 +1,7 @@
 import type { HydraState } from '../../../src/app/model.ts'
 import type { Card } from '../../../src/tasks/model.ts'
 import type { AgentConfig } from '../../../src/workers/model.ts'
-import { hydraConfig } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/hydra/config.ts'
 import { columnCards, rankOf } from '../../../src/tasks/select.ts'
 import { patchView } from '../../../src/preferences/view.ts'
 

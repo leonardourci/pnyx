@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import type { HydraState } from '../../../src/app/model.ts'
-import { hydraConfig, HYDRA_CARD } from '../../../src/core/hydra.ts'
+import { hydraConfig } from '../../../src/hydra/config.ts'
+import { HYDRA_CARD } from '../../../src/hydra/identity.ts'
 import { cardState } from './view.ts'
 
 export function taskReferences({

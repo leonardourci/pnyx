@@ -1,6 +1,6 @@
 import { saveOrPropose, resolveProposal } from './dispatch-proposals.ts'
 import { existsSync } from 'node:fs'
-import { TEMPLATE_NUDGE } from '../core/digest.ts'
+import { TEMPLATE_NUDGE } from '../hydra/digest.ts'
 import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '../app/cli-support.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'

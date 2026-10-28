@@ -1,7 +1,7 @@
 import { SET_UP_SKILL } from '../integrations/skills/names.ts'
 import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
-import { TEMPLATE_NUDGE } from '../core/digest.ts'
+import { TEMPLATE_NUDGE } from '../hydra/digest.ts'
 import type { HydraState } from '../app/model.ts'
 import { configPath, effectiveDispatch, loginFolder, onTemplate, parseAccounts, readConfig, type Harness } from '../workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from '../integrations/hooks/install.ts'

@@ -1,7 +1,7 @@
 import { AUTO_TITLE_SOURCES, type Card, type AutoTitle } from './model.ts'
 import type { SourceRef, HydraState } from '../app/model.ts'
 import { LEGACY_IN_PROGRESS, type Column } from './columns-model.ts'
-import { hydraConfig } from '../core/hydra.ts'
+import { hydraConfig } from '../hydra/config.ts'
 import { roleColumn, fallbackColumn } from './column-rules.ts'
 
 // Keeps the best auto title seen: a better source replaces a worse one, a later

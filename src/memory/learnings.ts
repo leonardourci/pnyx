@@ -1,7 +1,7 @@
 import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { hydraConfig } from '../core/hydra.ts'
+import { hydraConfig } from '../hydra/config.ts'
 
 export interface Learning {
   text: string
