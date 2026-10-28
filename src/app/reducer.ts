@@ -822,6 +822,7 @@ function apply({
       const taskMessage = event.data.taskMessage || previous?.route
       const resumes = event.data.resumes ?? previous?.resumes
       const reply = {
+        decision: event.data.decision ?? previous?.decision,
         id: event.data.reply,
         state: event.data.state,
         ...(resumes !== undefined ? { resumes } : {}),
