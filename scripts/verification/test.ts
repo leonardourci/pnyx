@@ -8,6 +8,7 @@ import { installedFixture } from './installed-fixture.ts'
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
 const MINUTE_MS = 60_000
+const FLOW_TIMEOUT_MS = 5 * MINUTE_MS
 const INSTALLED_FLOW = 'e2e/own-install.test.ts'
 // A lane past this is stuck outside any one test; the runner then names the file it interrupted.
 const LANE_TIMEOUT_MS = 60 * MINUTE_MS
@@ -79,7 +80,7 @@ const lanes = [
   },
   {
     name: 'flows',
-    testTimeout: 5 * MINUTE_MS,
+    testTimeout: FLOW_TIMEOUT_MS,
     concurrency: 1,
     // One process, so every flow shares the one server its group starts.
     nodeArgs: ['--test-isolation=none'],
@@ -87,7 +88,7 @@ const lanes = [
   },
   {
     name: 'installed flows',
-    testTimeout: 5 * MINUTE_MS,
+    testTimeout: FLOW_TIMEOUT_MS,
     concurrency: 1,
     nodeArgs: [],
     files: files.filter(file => resolve(file) === resolve(INSTALLED_FLOW)),

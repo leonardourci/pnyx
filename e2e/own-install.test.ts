@@ -5,6 +5,7 @@ import { before, test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { git, openPage, scenarioGroup, until } from '#test-harness/harness.ts'
 
+const HYDRA_RETRY_DELAY_MS = 600_000
 const install = process.env.PNYX_TEST_INSTALL
 assert.ok(
   install,
@@ -83,7 +84,7 @@ before(() => {
 
 const pnyx = scenarioGroup({
   upgradeRoot: install,
-  retryDelays: [600_000],
+  retryDelays: [HYDRA_RETRY_DELAY_MS],
 })
 
 test(
