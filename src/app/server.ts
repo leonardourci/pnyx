@@ -1339,6 +1339,7 @@ export async function mountOwnedHydra({
   const sources = createSourceRunner({
     hydraId,
     changed: kick,
+    state: () => state,
   })
 
   const review = startReviewTimer({

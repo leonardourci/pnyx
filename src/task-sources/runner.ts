@@ -2,13 +2,15 @@ import { fork } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from '#workers/reply.ts'
 import type { Card } from '#tasks/model.ts'
+import type { HydraState } from '#app/model.ts'
+import type { SteeringMessage } from '#workers/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { sameClaim, steeringClaim } from '#workers/steering.ts'
 import type { ChildResult } from './child.ts'
 import { bufferCapture, bufferedCaptures, commitCapture } from './capture.ts'
-import type { ExternalSource } from './model.ts'
+import type { ExternalSource, SourceResult } from './model.ts'
 import { appendSource, captureResult, resultText, sourceById } from './sources.ts'
 import { sourceHeld } from './state.ts'
 
@@ -22,6 +24,11 @@ interface RunningSource {
 }
 
 const CAPTURE_RETRY_MS = 1000
+const STEP_DETAILS = {
+  interrupted: 'Previous server lost the listener; verify the external job before registering again',
+  expired: 'Registration expired',
+  stale: 'The registered worker assignment ended',
+} as const
 
 function startSourceChild({ entry }: { entry: URL }) {
   return fork(
@@ -44,12 +51,15 @@ export function createSourceRunner({
   spawnSource = startSourceChild,
   commit = commitCapture,
   tell = sendReply,
+  state: shared,
 }: {
   hydraId: string
   changed(): void
   spawnSource?: typeof startSourceChild
   commit?: typeof commitCapture
   tell?: typeof sendReply
+  // The Hydra the server already holds.
+  state(): HydraState
 }) {
   const server = randomUUID()
   const running = new Map<string, RunningSource>()
@@ -220,6 +230,7 @@ export function createSourceRunner({
 
   const flushCaptures = () => {
     const pending = new Set<string>()
+    let committed = false
 
     for (const buffered of bufferedCaptures({ hydraId })) {
       try {
@@ -228,6 +239,7 @@ export function createSourceRunner({
           path: buffered.path,
           capture: buffered.capture,
         })
+        committed = true
       } catch (error) {
         pending.add(buffered.capture.run)
         console.error(`pnyx-axi source capture: ${(error as Error).message}`)
@@ -236,124 +248,278 @@ export function createSourceRunner({
 
     capturePending = pending.size > 0
 
-    return pending
+    return {
+      pending,
+      committed,
+    }
   }
 
-  const prepare = ({ pending }: { pending: Set<string> }) => withWriter({
-    hydraId,
-    fn: ({ writer }) => {
-      const launches: {
-        card: Card
-        source: ExternalSource
-      }[] = []
+  const endReason = ({
+    card,
+    source,
+  }: {
+    card: Card
+    source: ExternalSource
+  }) => {
+    if (Date.parse(source.expiresAt) <= Date.now()) {
+      return 'expired'
+    }
 
-      for (const original of Object.values(writer.state.cards)) {
-        for (const registered of original.externalSources ?? []) {
-          const card = writer.state.cards[original.id]!
-          const source = sourceById({
-            card,
-            id: registered.id,
-          })
-          const jobKey = key({
-            card: card.id,
-            source: source.id,
-          })
-          const job = running.get(jobKey)
-          const currentOwner = sameClaim({
-            current: steeringClaim({ card }),
-            claim: source.owner,
-          })
-          const expired = Date.parse(source.expiresAt) <= Date.now()
-          const inactiveTask = card.hidden || card.expired || card.status?.state === 'done'
+    const currentOwner = sameClaim({
+      current: steeringClaim({ card }),
+      claim: source.owner,
+    })
+    const inactiveTask = card.hidden || card.expired || card.status?.state === 'done'
 
-          if (job && (source.run?.id !== job.run || !currentOwner || inactiveTask || expired)) {
-            job.stop()
-          }
+    return currentOwner && !inactiveTask ? undefined : 'stale'
+  }
 
-          if (source.run && pending.has(source.run.id)) {
-            continue
-          }
+  // What a pass owes a registered source, decided the same way before taking the lock and under it.
+  const sourceStep = ({
+    card,
+    source,
+    pending,
+  }: {
+    card: Card
+    source: ExternalSource
+    pending: Set<string>
+  }) => {
+    if (source.run && pending.has(source.run.id)) {
+      return undefined
+    }
 
-          const missingListener = source.run?.server !== server || !job
+    const job = running.get(key({
+      card: card.id,
+      source: source.id,
+    }))
 
-          if (source.state === 'running' && missingListener && !pending.has(source.run!.id)) {
-            captureResult({
-              writer,
-              card,
-              source,
-              run: source.run!.id,
-              outcome: 'interrupted',
-              detail: 'Previous server lost the listener; verify the external job before registering again',
-              meta: metadata(),
-            })
-            continue
-          }
+    const missingListener = source.run?.server !== server || !job
 
-          if (source.state !== 'registered' && source.state !== 'running') {
-            continue
-          }
+    if (source.state === 'running' && missingListener) {
+      return 'interrupted'
+    }
 
-          if (!currentOwner || inactiveTask || expired) {
-            captureResult({
-              writer,
-              card,
-              source,
-              run: source.run?.id ?? randomUUID(),
-              outcome: expired ? 'expired' : 'stale',
-              detail: expired ? 'Registration expired' : 'The registered worker assignment ended',
-              meta: metadata(),
-            })
-            continue
-          }
+    if (source.state !== 'registered' && source.state !== 'running') {
+      return undefined
+    }
 
-          if (source.state !== 'registered' || sourceHeld({ card }) || job) {
-            continue
-          }
+    const reason = endReason({
+      card,
+      source,
+    })
 
-          const predecessor = source.lavish?.after
+    if (reason) {
+      return reason
+    }
 
-          if (predecessor) {
-            const previousSource = card.externalSources?.find(
-              source => source.id === predecessor.source,
-            )
-            const previousResult = previousSource?.results.find(
-              result => result.sequence === predecessor.sequence,
-            )
+    if (source.state !== 'registered' || sourceHeld({ card }) || job) {
+      return undefined
+    }
 
-            if (!previousResult?.handled) {
-              continue
-            }
-          }
+    const predecessor = source.lavish?.after
 
-          appendSource({
-            writer,
-            card,
-            meta: metadata(),
-            change: {
-              type: 'task.source.started',
-              data: {
-                source: source.id,
-                run: {
-                  id: randomUUID(),
-                  server,
-                  at: new Date().toISOString(),
-                },
-              },
-            },
-          })
-          launches.push({
-            card: writer.state.cards[card.id]!,
-            source: sourceById({
-              card: writer.state.cards[card.id]!,
-              id: source.id,
-            }),
-          })
+    if (predecessor) {
+      const previousSource = card.externalSources?.find(
+        source => source.id === predecessor.source,
+      )
+      const previousResult = previousSource?.results.find(
+        result => result.sequence === predecessor.sequence,
+      )
+
+      if (!previousResult?.handled) {
+        return undefined
+      }
+    }
+
+    return 'start'
+  }
+
+  const prepare = ({ pending }: { pending: Set<string> }) => {
+    const state = shared()
+
+    // Stopping a listener writes nothing, so it runs before taking the lock.
+    for (const card of Object.values(state.cards)) {
+      for (const source of card.externalSources ?? []) {
+        const job = running.get(key({
+          card: card.id,
+          source: source.id,
+        }))
+
+        if (job && (source.run?.id !== job.run || endReason({
+          card,
+          source,
+        }))) {
+          job.stop()
         }
       }
+    }
 
-      return launches
-    },
-  })
+    const owed = Object.values(state.cards).some(card => (card.externalSources ?? [])
+      .some(source => sourceStep({
+        card,
+        source,
+        pending,
+      })))
+
+    if (!owed) {
+      return {
+        locked: false,
+        launches: [],
+      }
+    }
+
+    const launches = withWriter({
+      hydraId,
+      fn: ({ writer }) => {
+        const launches: {
+          card: Card
+          source: ExternalSource
+        }[] = []
+
+        for (const original of Object.values(writer.state.cards)) {
+          for (const registered of original.externalSources ?? []) {
+            const card = writer.state.cards[original.id]!
+            const source = sourceById({
+              card,
+              id: registered.id,
+            })
+            const step = sourceStep({
+              card,
+              source,
+              pending,
+            })
+
+            if (!step) {
+              continue
+            }
+
+            if (step !== 'start') {
+              captureResult({
+                writer,
+                card,
+                source,
+                run: source.run?.id ?? randomUUID(),
+                outcome: step,
+                detail: STEP_DETAILS[step],
+                meta: metadata(),
+              })
+              continue
+            }
+
+            appendSource({
+              writer,
+              card,
+              meta: metadata(),
+              change: {
+                type: 'task.source.started',
+                data: {
+                  source: source.id,
+                  run: {
+                    id: randomUUID(),
+                    server,
+                    at: new Date().toISOString(),
+                  },
+                },
+              },
+            })
+            launches.push({
+              card: writer.state.cards[card.id]!,
+              source: sourceById({
+                card: writer.state.cards[card.id]!,
+                id: source.id,
+              }),
+            })
+          }
+        }
+
+        return launches
+      },
+    })
+
+    return {
+      locked: true,
+      launches,
+    }
+  }
+
+  const alertNeeded = ({
+    card,
+    source,
+    result,
+  }: {
+    card: Card
+    source: ExternalSource
+    result: SourceResult
+  }) => {
+    const stale = !sameClaim({
+      current: steeringClaim({ card }),
+      claim: source.owner,
+    })
+    const existing = card.steering?.find(message => message.id === result.message)
+    const workerFinished = card.sessionActivity === 'finished' || card.sessionActivity === 'ended'
+    const handlingOwed = Boolean(existing?.ack && workerFinished)
+
+    const failed = result.outcome !== 'completed'
+
+    return failed || sourceHeld({ card }) || stale || handlingOwed
+      || Boolean(card.hidden)
+  }
+
+  // The worker claim a result's queued message still has to reach, if any.
+  const undeliveredClaim = ({
+    card,
+    message,
+  }: {
+    card: Card
+    message: SteeringMessage
+  }) => {
+    const claim = steeringClaim({ card })
+
+    if (!claim || sourceHeld({ card }) || message.ack) {
+      return undefined
+    }
+
+    const tried = message.attempts.some(attempt => sameClaim({
+      current: attempt.claim,
+      claim,
+    }))
+
+    return tried ? undefined : claim
+  }
+
+  // Decided before taking the lock, so a result already announced and delivered takes none.
+  const announcementOwed = ({
+    card,
+    source,
+    result,
+  }: {
+    card: Card
+    source: ExternalSource
+    result: SourceResult
+  }) => {
+    if (!result.alerted && alertNeeded({
+      card,
+      source,
+      result,
+    })) {
+      return true
+    }
+
+    if (card.hidden) {
+      return false
+    }
+
+    const message = card.steering?.find(message => message.id === result.message)
+
+    if (!message) {
+      return true
+    }
+
+    return undeliveredClaim({
+      card,
+      message,
+    }) !== undefined
+  }
 
   const announce = ({
     cardId,
@@ -378,17 +544,11 @@ export function createSourceRunner({
           return
         }
 
-        const held = sourceHeld({ card })
-        const stale = !sameClaim({
-          current: steeringClaim({ card }),
-          claim: source.owner,
-        })
-        const existing = card.steering?.find(message => message.id === result.message)
-        const workerFinished = card.sessionActivity === 'finished' || card.sessionActivity === 'ended'
-        const handlingOwed = Boolean(existing?.ack && workerFinished)
-        const alertNeeded = result.outcome !== 'completed' || held || stale || handlingOwed || card.hidden
-
-        if (!result.alerted && alertNeeded) {
+        if (!result.alerted && alertNeeded({
+          card,
+          source,
+          result,
+        })) {
           const detail = `External source ${id}, result ${sequence}: ${result.outcome}. ${result.detail}`
             + ' Read the result; it remains owed until its worker acknowledges and handles it.'
           appendSource({
@@ -423,13 +583,12 @@ export function createSourceRunner({
         })
         const messages = writer.state.cards[cardId]!.steering!
         const message = messages.find(message => message.id === result.message)!
+        const claim = undeliveredClaim({
+          card,
+          message,
+        })
 
-        const claim = steeringClaim({ card })
-
-        if (!claim || held || message.ack || message.attempts.some(attempt => sameClaim({
-          current: attempt.claim,
-          claim,
-        }))) {
+        if (!claim) {
           return
         }
 
@@ -528,9 +687,10 @@ export function createSourceRunner({
   }
 
   const reconcile = async () => {
-    const pending = flushCaptures()
+    const flushed = flushCaptures()
+    const prepared = prepare({ pending: flushed.pending })
 
-    for (const launchSource of prepare({ pending })) {
+    for (const launchSource of prepared.launches) {
       if (!closed) {
         try {
           launch(launchSource)
@@ -559,13 +719,23 @@ export function createSourceRunner({
       }
     }
 
-    const state = loadHydra({ hydraId }).state
+    const wrote = flushed.committed || prepared.locked
+    // What this pass wrote is not in the shared state yet, so its results come from disk.
+    const state = wrote ? loadHydra({ hydraId }).state : shared()
 
     for (const card of Object.values(state.cards)) {
       for (const source of card.externalSources ?? []) {
         for (const result of source.results.filter(result => !result.handled)) {
           if (closed) {
             return
+          }
+
+          if (!announcementOwed({
+            card,
+            source,
+            result,
+          })) {
+            continue
           }
 
           try {

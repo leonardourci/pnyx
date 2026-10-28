@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
-import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import fs, { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -8,7 +8,7 @@ import type { Card } from '#tasks/model.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
-import { openPage, until } from '#test-harness/harness.ts'
+import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
 const pending = ({ card }: { card: Card }) => {
@@ -614,6 +614,26 @@ test(
         return supervisor
       },
     )
+    const lock = join(
+      hydraDir({ hydraId: s.hydraId }),
+      'writer.lock',
+    )
+    const open = fs.openSync
+    let locks = 0
+    let lockedAt = Date.now()
+    t.mock.method(
+      fs,
+      'openSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
+      (...args: Parameters<typeof fs.openSync>) => {
+        if (args[0] === lock) {
+          locks++
+          lockedAt = Date.now()
+        }
+
+        return open(...args)
+      },
+    )
     syncBuiltinESMExports()
     t.after(() => {
       t.mock.restoreAll()
@@ -662,6 +682,13 @@ test(
       what: 'the worker told of the result',
       check: () => s.received({ cwd: folder }).some(text => text.includes(result.message)),
     })
+    // The server wrote the start, the result and the delivery under the lock, so the spy sees it.
+    assert.ok(locks > 0)
+    // Announced and delivered, the result owes nothing until its worker handles it.
+    await until({
+      what: 'the server to stop taking the lock while the result waits',
+      check: () => Date.now() - lockedAt >= QUIET_MS,
+    })
     const claim = claimFlags({ card: s.task({ key: 'work' }) })
     const handled = [
       'task',
@@ -708,5 +735,87 @@ test(
         1,
       ],
     )
+  },
+)
+
+test(
+  'an external source still running when its task is done is closed as stale and alerted on the task',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'stale' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'work',
+        '--title',
+        'Watch a long job',
+        '--folder',
+        folder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'work',
+      ],
+    })
+    const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+    await until({
+      what: 'the opening turn to finish',
+      check: () => s.task({ key: 'work' }).sessionActivity === 'finished',
+    })
+    const job = s.folder({ name: 'long-job' })
+    await worker.run({
+      args: [
+        'task',
+        'source',
+        'register',
+        'work',
+        'job',
+        '--executable',
+        process.execPath,
+        '--argv',
+        JSON.stringify([
+          '-e',
+          'setInterval(() => {}, 1000)',
+        ]),
+        '--cwd',
+        job,
+      ],
+    })
+    const source = () => s.task({ key: 'work' }).externalSources!.find(item => item.id === 'job')!
+    await until({
+      what: 'the source to start',
+      check: () => source().state === 'running',
+    })
+    await worker.run({
+      args: [
+        'task',
+        'status',
+        'work',
+        'done',
+      ],
+    })
+    const result = await until({
+      what: 'the running source closed with a result',
+      check: () => source().results[0],
+    })
+    assert.deepEqual(
+      [
+        result.outcome,
+        result.detail,
+      ],
+      [
+        'stale',
+        'The registered worker assignment ended',
+      ],
+    )
+    await until({
+      what: 'the stale result alerted on the task',
+      check: () => s.events().some(event => event.type === 'task.source.alerted' && event.data.sequence === result.sequence),
+    })
   },
 )
