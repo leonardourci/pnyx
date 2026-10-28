@@ -4,7 +4,7 @@ import { uptime } from 'node:os'
 import type { HydraState } from '../../app/model.ts'
 import type { AgentSession } from '../../core/model.ts'
 import { liveTask } from '../../core/tasks.ts'
-import { localPaseoUrl } from '../../core/paseo.ts'
+import { localPaseoUrl } from '../paseo/url.ts'
 import { openPaseo, type Connect } from '../paseo/client.ts'
 
 export type Presence = {

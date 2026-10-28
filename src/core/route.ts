@@ -1,5 +1,5 @@
 import type { Card, TerminalFacts } from './model.ts'
-import { localPaseoUrl } from './paseo.ts'
+import { localPaseoUrl } from '../integrations/paseo/url.ts'
 
 const SAFE = /^[A-Za-z0-9_.:%,@+=][A-Za-z0-9_./:%,@+=-]{0,255}$/
 const PATH = /^\/[A-Za-z0-9_./:%,@+=-]{1,1023}$/

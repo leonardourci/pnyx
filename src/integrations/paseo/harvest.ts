@@ -1,7 +1,7 @@
 import { noteId } from '../../core/decide.ts'
 import { EVENT_VERSION } from '../../store/events.ts'
 import { type SessionEvent } from '../../core/model.ts'
-import { localPaseoUrl } from '../../core/paseo.ts'
+import { localPaseoUrl } from './url.ts'
 import { taskForMessage } from '../../core/tasks.ts'
 import { splitEntry, type ThreadEntry } from '../../thread/read.ts'
 import { loadHydra } from '../../app/store.ts'
