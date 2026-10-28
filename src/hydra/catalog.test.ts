@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
-import { test } from 'node:test'
+import { test, type TestContext } from 'node:test'
 import { readCatalog } from './transcripts-catalog.ts'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -37,7 +37,7 @@ function setup({
   t,
   provider = 'claude',
 }: {
-  t: { after(fn: () => void): void }
+  t: TestContext
   provider?: string
 }) {
   const home = mkdtempSync(join(
@@ -107,7 +107,7 @@ for (const provider of [
   'codex',
 ]) {
   test(
-    `${provider} hides every Pnyx skill and preserves the remaining skill order`,
+    `${provider} separates built-in Hydra skills from user skills and hides internal instructions`,
     async t => {
       const {
         home,
@@ -143,25 +143,211 @@ for (const provider of [
       })
       const prefix = provider === 'codex' ? '$' : '/'
 
-      for (const id of [
-        card.id,
-        '$hydra',
-      ]) {
-        const result = await readCatalog({
-          card: {
-            ...card,
-            id,
-          },
-          locations,
-        })
-        assert.deepEqual(
-          result.suggestions.map(item => item.command),
-          [
-            `${prefix}aaa`,
-            `${prefix}zzz`,
-          ],
-        )
-      }
+      const result = await readCatalog({
+        card: {
+          ...card,
+          id: '$hydra',
+        },
+        locations,
+      })
+      assert.deepEqual(
+        result.suggestions.map(item => item.command),
+        [
+          `${prefix}inscribe`,
+          `${prefix}pnyx-set-up`,
+          '/upgrade',
+          `${prefix}aaa`,
+          `${prefix}zzz`,
+        ],
+      )
+      const session = await readCatalog({
+        card,
+        locations,
+      })
+      assert.deepEqual(
+        session.suggestions.map(item => item.command),
+        [
+          `${prefix}aaa`,
+          `${prefix}inscribe`,
+          `${prefix}pnyx-set-up`,
+          `${prefix}zzz`,
+        ],
+      )
     },
   )
 }
+
+test(
+  'a fresh Hydra offers built-ins without projects or a session folder',
+  async t => {
+    const {
+      card,
+      locations,
+    } = setup({ t })
+    const result = await readCatalog({
+      card: {
+        ...card,
+        id: '$hydra',
+        agent: undefined,
+      },
+      locations,
+    })
+    assert.deepEqual(
+      result.suggestions.map(item => [
+        item.command,
+        item.source,
+        item.builtin,
+      ]),
+      [
+        [
+          '/inscribe',
+          'Built-in',
+          true,
+        ],
+        [
+          '/pnyx-set-up',
+          'Built-in',
+          true,
+        ],
+        [
+          '/upgrade',
+          'Built-in',
+          undefined,
+        ],
+      ],
+    )
+    assert.ok(result.unavailable)
+  },
+)
+
+test(
+  'built-ins preserve same-name global and project skills and namespaced plugins',
+  async t => {
+    const {
+      card,
+      cwd,
+      home,
+      locations,
+    } = setup({ t })
+    const project = join(
+      home,
+      'attached',
+    )
+    write({
+      path: join(
+        home,
+        '.claude/skills/inscribe/SKILL.md',
+      ),
+      text: skill({ name: 'inscribe' }),
+    })
+    write({
+      path: join(
+        project,
+        '.agents/skills/inscribe/SKILL.md',
+      ),
+      text: skill({ name: 'inscribe' }),
+    })
+    write({
+      path: join(
+        cwd,
+        '.agents/skills/inscribe/SKILL.md',
+      ),
+      text: skill({
+        name: 'inscribe',
+        description: 'Owner local skill',
+      }),
+    })
+    const plugin = join(
+      home,
+      'plugin',
+    )
+    write({
+      path: join(
+        plugin,
+        'skills/inscribe/SKILL.md',
+      ),
+      text: skill({ name: 'inscribe' }),
+    })
+    write({
+      path: join(
+        locations.claude,
+        'settings.json',
+      ),
+      text: JSON.stringify({ enabledPlugins: { 'sample@fixtures': true } }),
+    })
+    write({
+      path: join(
+        locations.claude,
+        'plugins/installed_plugins.json',
+      ),
+      text: JSON.stringify({
+        plugins: {
+          'sample@fixtures': [
+            {
+              scope: 'user',
+              installPath: plugin,
+            },
+          ],
+        },
+      }),
+    })
+    const result = await readCatalog({
+      card: {
+        ...card,
+        id: '$hydra',
+      },
+      projects: [
+        {
+          name: 'Attached',
+          path: project,
+          detached: false,
+        },
+      ],
+      locations,
+    })
+    assert.deepEqual(
+      result.suggestions.map(item => [
+        item.command,
+        item.source,
+      ]),
+      [
+        [
+          '/inscribe',
+          'Built-in',
+        ],
+        [
+          '/pnyx-set-up',
+          'Built-in',
+        ],
+        [
+          '/upgrade',
+          'Built-in',
+        ],
+        [
+          '/inscribe',
+          'Global · .claude',
+        ],
+        [
+          '/sample:inscribe',
+          'Plugin sample',
+        ],
+        [
+          '/inscribe',
+          'Project · Attached',
+        ],
+        [
+          '/inscribe',
+          'Session skills',
+        ],
+      ],
+    )
+    const selected = result.suggestions.find(item => item.project === 'Attached')
+    assert.equal(
+      selected?.file,
+      join(
+        project,
+        '.agents/skills/inscribe/SKILL.md',
+      ),
+    )
+  },
+)

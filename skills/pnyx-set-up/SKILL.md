@@ -1,7 +1,7 @@
 ---
 name: pnyx-set-up
 description: Use when you are Hydra and your digest shows "Setup needed", or the owner asks what Pnyx still needs to be set up.
-user-invocable: false
+user-invocable: true
 metadata:
   internal: true
 ---

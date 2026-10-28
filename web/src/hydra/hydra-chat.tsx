@@ -138,6 +138,7 @@ export function HydraChat({
       receiving === 'claude-code' ? 'claude' : receiving,
     ]),
     card: HYDRA_CARD,
+    provider: receiving,
     command,
     connected,
     open: catalogOpen,

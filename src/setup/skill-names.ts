@@ -3,7 +3,7 @@ export const ARRANGE_COLUMNS_SKILL = 'pnyx-arrange-columns'
 export const MANAGE_WORKERS_SKILL = 'pnyx-manage-workers'
 export const FIRSTMATE_AS_HYDRA_SKILL = 'pnyx-firstmate-as-hydra'
 export const SET_UP_SKILL = 'pnyx-set-up'
-export const INSCRIBE_SKILL = 'pnyx-inscribe'
+export const INSCRIBE_SKILL = 'inscribe'
 export const REPORT_PROGRESS_SKILL = 'pnyx-report-progress'
 export const CLI_SKILL = 'pnyx-cli'
 

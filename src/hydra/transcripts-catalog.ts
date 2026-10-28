@@ -5,9 +5,13 @@ import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:pat
 import { parseDocument } from 'yaml'
 import type { HydraProject } from '#projects/model.ts'
 import type { Card } from '#tasks/model.ts'
+import { HYDRA_CARD } from './identity.ts'
+import { BUILT_IN_SKILLS, withBuiltInSkills } from './built-in-skills.ts'
+import { skillSource } from '#setup/skills.ts'
 
 export interface Suggestion {
   command: string
+  builtin?: boolean
   description: string
   source: string
   kind?: 'skill' | 'command'
@@ -224,7 +228,7 @@ async function projectFolders({ cwd }: { cwd: string }): Promise<string[]> {
   return [cwd]
 }
 
-export async function readCatalog({
+async function readLocalCatalog({
   card,
   projects = [],
   observe,
@@ -380,6 +384,23 @@ export async function readCatalog({
       }
 
       const name = validName({ value: meta.name ?? entry })
+      const localHydraSkill = card.id === HYDRA_CARD && folders.some(folder =>
+        root === join(
+          folder,
+          '.agents/skills',
+        ) || root === join(
+          folder,
+          '.claude/skills',
+        ))
+
+      if (name && localHydraSkill && BUILT_IN_SKILLS.some(item => item.name === name)) {
+        const installed = await reader.text({ path })
+        const shipped = await reader.text({ path: skillSource({ name }) })
+
+        if (installed !== undefined && installed === shipped) {
+          continue
+        }
+      }
 
       if (name) {
         add({
@@ -791,4 +812,20 @@ export async function readCatalog({
     })),
     note: reader.partial ? 'Some local catalog files could not be read or exceeded the discovery limit.' : undefined,
   }
+}
+
+export async function readCatalog({
+  card,
+  ...options
+}: Parameters<typeof readLocalCatalog>[0]): Promise<Catalog> {
+  const catalog = await readLocalCatalog({
+    card,
+    ...options,
+  })
+
+  return withBuiltInSkills({
+    catalog,
+    card: card.id,
+    provider: card.agent?.provider,
+  })
 }

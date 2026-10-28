@@ -8,7 +8,7 @@ description: Create or change an agent skill in Pnyx, either a contributor skill
 Skills follow the [Agent Skills](https://agentskills.io) format: a folder holding a `SKILL.md` with YAML frontmatter and Markdown instructions. Pnyx has two kinds:
 
 - **Contributor skills** live in `.agents/skills/<name>/` and guide work on this repository. Claude Code finds them through `.claude/skills`, a committed link to `../.agents/skills`, so a new one needs no extra link.
-- **Shipped skills** live in `skills/<name>/`, are installed by Pnyx's setup and read by agents using Pnyx. Their names start with `pnyx-`, and tests read them, so `pnpm verify` runs those tests when they change.
+- **Shipped skills** live in `skills/<name>/`, are installed by Pnyx's setup and read by agents using Pnyx. Their names start with `pnyx-` except the owner-facing `inscribe`, and tests read them, so `pnpm verify` runs those tests when they change.
 
 ## Naming and frontmatter
 

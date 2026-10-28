@@ -1,3 +1,6 @@
+import { skillReference } from '#hydra/transcripts-skill-reference.ts'
+import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import { skillSource } from '#setup/skills.ts'
 import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync } from 'node:fs'
@@ -696,5 +699,88 @@ test(
       held.release()
       page.close()
     }
+  },
+)
+
+test(
+  'a Hydra with no projects offers built-ins before a session and delivers the selected shipped skill',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const result = await page.command({
+      name: 'catalog',
+      args: [HYDRA_CARD],
+    })
+    assert.ok('catalog' in result)
+    const catalog = result.catalog as Catalog
+    assert.deepEqual(
+      catalog.suggestions.filter(item => item.source === 'Built-in').map(item => [
+        item.command,
+        item.source,
+      ]),
+      [
+        [
+          '/inscribe',
+          'Built-in',
+        ],
+        [
+          '/pnyx-set-up',
+          'Built-in',
+        ],
+        [
+          '/upgrade',
+          'Built-in',
+        ],
+      ],
+    )
+    assert.equal(
+      s.state().projects,
+      undefined,
+    )
+    const selected = catalog.suggestions.find(item => item.command === '/inscribe')
+    assert.ok(selected)
+    await s.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        skillReference({ item: selected }),
+      ],
+    })
+    const agent = await s.agent({ hydra: true })
+    await until({
+      what: 'the selected built-in skill to reach Hydra',
+      check: () => s.received({ cwd: agent.cwd }).some(text => text.includes(
+        `Read and follow the skill "inscribe" at ${JSON.stringify(skillSource({ name: 'inscribe' }))}.`,
+      )),
+    })
+    assert.equal(
+      existsSync(join(
+        agent.cwd,
+        '.agents/skills/inscribe/SKILL.md',
+      )),
+      true,
+    )
+    await page.command({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    const switched = await page.command({
+      name: 'catalog',
+      args: [HYDRA_CARD],
+    })
+    assert.ok('catalog' in switched)
+    const switchedCatalog = switched.catalog as Catalog
+    assert.deepEqual(
+      switchedCatalog.suggestions.filter(item => item.source === 'Built-in').map(item => item.command),
+      [
+        '$inscribe',
+        '$pnyx-set-up',
+        '/upgrade',
+      ],
+    )
   },
 )

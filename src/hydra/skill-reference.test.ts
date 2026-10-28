@@ -1,8 +1,11 @@
+import { resolveSkillReferences } from './skill-invocation.ts'
+import { skillSource } from '#setup/skills.ts'
+import { withBuiltInSkills } from './built-in-skills.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { fileBlock } from './attachments.ts'
 import { reference } from './mentions.ts'
-import { readSkillReference, resolveSkillReferences, skillReference } from './transcripts-skill-reference.ts'
+import { readSkillReference, skillReference } from './transcripts-skill-reference.ts'
 
 const project = {
   command: '$deploy',
@@ -87,6 +90,70 @@ test(
         provider: 'codex',
       }),
       attachment,
+    )
+  },
+)
+
+test(
+  'a failed catalog still offers built-ins that resolve to the shipped skill',
+  () => {
+    const catalog = withBuiltInSkills({
+      card: '$hydra',
+      provider: 'codex',
+      catalog: {
+        suggestions: [],
+        unavailable: 'Commands unavailable. Close and reopen to retry.',
+      },
+    })
+    assert.deepEqual(
+      catalog.suggestions.map(item => [
+        item.command,
+        item.source,
+      ]),
+      [
+        [
+          '$inscribe',
+          'Built-in',
+        ],
+        [
+          '$pnyx-set-up',
+          'Built-in',
+        ],
+        [
+          '/upgrade',
+          'Built-in',
+        ],
+      ],
+    )
+    assert.equal(
+      catalog.unavailable,
+      'Commands unavailable. Close and reopen to retry.',
+    )
+    const selected = catalog.suggestions.find(item => item.command === '$inscribe')
+    assert.ok(selected)
+    assert.equal(
+      resolveSkillReferences({
+        text: skillReference({ item: selected }),
+        provider: 'codex',
+      }),
+      `Read and follow the skill "inscribe" at ${JSON.stringify(skillSource({ name: 'inscribe' }))}.`,
+    )
+    const upgrade = catalog.suggestions.find(item => item.command === '/upgrade')
+    assert.ok(upgrade)
+    assert.equal(
+      resolveSkillReferences({
+        text: skillReference({ item: upgrade }),
+        provider: 'codex',
+      }),
+      '/upgrade',
+    )
+    const worker = withBuiltInSkills({
+      card: 'worker',
+      catalog: { suggestions: [] },
+    })
+    assert.deepEqual(
+      worker.suggestions,
+      [],
     )
   },
 )

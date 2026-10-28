@@ -1,7 +1,7 @@
 ---
-name: pnyx-inscribe
-description: Use when you are Hydra and the owner says /pnyx-inscribe or asks you to save what you learned, before a context reset or compaction, or when the digest says a memory is nearly full. Routes each fact to owner, project or Hydra memory and curates them; use with a project to save project context.
-user-invocable: false
+name: inscribe
+description: Use when you are Hydra and the owner says /inscribe or asks you to save what you learned, before a context reset or compaction, or when the digest says a memory is nearly full. Routes each fact to owner, project or Hydra memory and curates them; use with a project to save project context.
+user-invocable: true
 metadata:
   internal: true
 ---
@@ -16,7 +16,7 @@ Keep saved context brief and up to date, and edit or remove entries when things 
 
 Owner and Hydra memory are printed in full when a session opens and after compaction. Later wakes carry only a short memory-changed note. Project memory loads only on demand and for workers assigned to that project, so every line must earn its place.
 
-When invoked with a project (`/pnyx-inscribe <project>`), resolve it with `pnyx-axi project list --hydra <hydra>` and read `pnyx-axi project memory list --project <name|path> --hydra <hydra>`. Route facts, conventions and owner preferences specific to that project into its shared memory. All its documents share a 10000-character budget across Hydras; a nearly-full digest asks you to curate it. General owner preferences and learnings go to owner memory.
+When invoked with a project (`/inscribe <project>`), resolve it with `pnyx-axi project list --hydra <hydra>` and read `pnyx-axi project memory list --project <name|path> --hydra <hydra>`. Route facts, conventions and owner preferences specific to that project into its shared memory. All its documents share a 10000-character budget across Hydras; a nearly-full digest asks you to curate it. General owner preferences and learnings go to owner memory.
 
 - `profile`: build/test/lint commands, PR rules, key skills and when to use them, main conventions. Refresh missing or out-of-date profiles from the default-branch sources listed by Pnyx, reading only changed files. Save with the listed `--sources <fingerprint>` so a source change cannot be acknowledged accidentally.
 - `preferences`: the owner's preferences for this project. Keep them until the owner changes them; a profile refresh does not replace them.

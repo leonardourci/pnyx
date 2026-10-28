@@ -1186,46 +1186,50 @@ export function setupHydra({
     real,
     HOME_SKILL,
   )
-  removeLegacyHydraSkills({
-    folder: real,
-    owns: ({ path }) => {
-      const ignored = spawnSync(
-        'git',
-        [
-          '-C',
-          real,
-          'check-ignore',
-          '-v',
-          '-z',
-          '--stdin',
-        ],
-        {
-          input: `${relative(
-            real,
-            join(
-              path,
-              'SKILL.md',
-            ),
-          )}\0`,
-          encoding: 'utf8',
-        },
-      )
-      const [
-        source, ,
-        pattern,
-      ] = ignored.stdout?.split('\0') ?? []
 
-      // Pnyx records each copied skill in info/exclude; tracked and owner skills stay untouched.
-      return ignored.status === 0 && !!source?.endsWith('/info/exclude')
+  const owns = ({ path }: { path: string }) => {
+    const ignored = spawnSync(
+      'git',
+      [
+        '-C',
+        real,
+        'check-ignore',
+        '-v',
+        '-z',
+        '--stdin',
+      ],
+      {
+        input: `${relative(
+          real,
+          join(
+            path,
+            'SKILL.md',
+          ),
+        )}\0`,
+        encoding: 'utf8',
+      },
+    )
+    const [
+      source, ,
+      pattern,
+    ] = ignored.stdout?.split('\0') ?? []
+
+    // Pnyx records each copied skill in info/exclude; tracked and owner skills stay untouched.
+    return ignored.status === 0 && !!source?.endsWith('/info/exclude')
         && pattern === `/${relative(
           real,
           path,
         )}/`
-    },
+  }
+
+  removeLegacyHydraSkills({
+    folder: real,
+    owns,
   })
   const excluded = copySkills({
     folder: real,
     names: HYDRA_SKILLS,
+    owns,
   })
     .map(folder => exclude({
       home: real,

@@ -1,5 +1,5 @@
 import type { Suggestion } from '#hydra/transcripts-catalog.ts'
-import { UPGRADE_SUGGESTION } from '#upgrade/model.ts'
+import { isUpgradeSuggestion } from '#upgrade/model.ts'
 
 export function knownCommands({
   text,
@@ -20,7 +20,7 @@ export function knownCommands({
     .flatMap(match => {
       const candidates = suggestions.filter(item => item.command === match[0] && !item.file)
       const item = candidates.length === 1 ? candidates[0] : undefined
-      const startOnly = item?.source === 'Agent commands' || item?.source === UPGRADE_SUGGESTION.source
+      const startOnly = item?.source === 'Agent commands' || isUpgradeSuggestion({ item })
         || item?.command.startsWith('/prompts:')
 
       if (startOnly && text.slice(
