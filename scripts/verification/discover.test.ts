@@ -63,7 +63,7 @@ test(
       true,
     )
     assert.equal(
-      isFlow({ file: 'test/reducer.test.ts' }),
+      isFlow({ file: 'src/app/reducer.test.ts' }),
       false,
     )
   },

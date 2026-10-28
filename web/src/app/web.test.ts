@@ -1,19 +1,19 @@
-import { HYDRA_CARD, hydraEvent } from '../src/core/hydra.ts'
+import { HYDRA_CARD, hydraEvent } from '../../../src/core/hydra.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, closeSync, mkdtempSync, openSync, readFileSync, writeFileSync, writeSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { decideUndo } from '../src/app/undo.ts'
-import type { Decision, HydraEvent, HydraState } from '../src/app/model.ts'
-import { decideMove, decidePush, decideReply, decideView } from '../src/core/decide.ts'
-import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
-import { COLUMNS } from '../src/core/model.ts'
-import { patchView, viewFor } from '../src/core/view.ts'
-import { columnsFor } from '../web/src/hydra/view.ts'
-import { loadHydra } from '../src/app/store.ts'
-import { withWriter } from '../src/app/writer.ts'
-import { latestMessage, readThread, recordEntries } from '../src/thread/read.ts'
+import { decideUndo } from '../../../src/app/undo.ts'
+import type { Decision, HydraEvent, HydraState } from '../../../src/app/model.ts'
+import { decideMove, decidePush, decideReply, decideView } from '../../../src/core/decide.ts'
+import { emptyHydra, reduce, replay } from '../../../src/app/reducer.ts'
+import { COLUMNS } from '../../../src/core/model.ts'
+import { patchView, viewFor } from '../../../src/core/view.ts'
+import { columnsFor } from '../hydra/view.ts'
+import { loadHydra } from '../../../src/app/store.ts'
+import { withWriter } from '../../../src/app/writer.ts'
+import { latestMessage, readThread, recordEntries } from '../../../src/thread/read.ts'
 
 const meta = {
   at: '2026-10-13T10:00:00Z',
@@ -439,7 +439,7 @@ test(
   () => {
     const fixture = ({ name }: { name: string }) => join(
       import.meta.dirname,
-      'fixtures/transcripts',
+      '../../../test/fixtures/transcripts',
       name,
     )
     const claude = latestMessage({ path: fixture({ name: 'claude-session.jsonl' }) }).message!

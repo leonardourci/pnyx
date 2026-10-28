@@ -3,8 +3,8 @@ import { mkdtempSync, realpathSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { readEvents } from '../src/app/event-log.ts'
+import { commands } from './cli.ts'
+import { readEvents } from './event-log.ts'
 
 test(
   'a repeated hydra create is a no-op, other settings conflict, and task create needs an attached project',

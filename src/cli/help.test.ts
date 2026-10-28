@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { focusedHelp, helpFlags } from '../src/cli/help.ts'
+import { focusedHelp, helpFlags } from './help.ts'
 
 const HELP = `usage: pnyx-axi task list [--fields <names>]
   Lists the open tasks.
