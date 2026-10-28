@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { decisionsBlock } from '../src/tasks/decisions.ts'
-import type { HydraState } from '../src/app/model.ts'
-import type { Ask, Card } from '../src/tasks/model.ts'
-import { taskMention } from '../src/mentions/mentions.ts'
+import { decisionsBlock } from './decisions.ts'
+import type { HydraState } from '../app/model.ts'
+import type { Ask, Card } from './model.ts'
+import { taskMention } from '../mentions/mentions.ts'
 
 const now = Date.parse('2026-10-23T12:00:00.000Z')
 

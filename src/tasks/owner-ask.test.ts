@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { ownerAsk, taskInstructions } from '../src/tasks/intent.ts'
-import { emptyHydra, replay } from '../src/app/reducer.ts'
-import type { HydraEvent } from '../src/app/model.ts'
+import { ownerAsk, taskInstructions } from './intent.ts'
+import { emptyHydra, replay } from '../app/reducer.ts'
+import type { HydraEvent } from '../app/model.ts'
 
 const at = '2026-10-01T00:00:00Z'
 const create: HydraEvent = {

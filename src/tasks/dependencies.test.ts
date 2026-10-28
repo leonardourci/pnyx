@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { taskReadiness } from '../src/tasks/dependencies.ts'
-import { wakeReasons } from '../src/core/wake-reasons.ts'
-import { emptyHydra } from '../src/app/reducer.ts'
-import type { HydraEvent } from '../src/app/model.ts'
-import type { Card, TaskStatus } from '../src/tasks/model.ts'
+import { taskReadiness } from './dependencies.ts'
+import { wakeReasons } from '../core/wake-reasons.ts'
+import { emptyHydra } from '../app/reducer.ts'
+import type { HydraEvent } from '../app/model.ts'
+import type { Card, TaskStatus } from './model.ts'
 
 const AT = '2026-10-23T10:00:00.000Z'
 const task = ({
