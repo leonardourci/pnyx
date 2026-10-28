@@ -20,7 +20,7 @@ const LEGACY_SKILLS = [
   'pnyx-hydra-firstmate',
   'pnyx-setup',
   'pnyx-worker',
-  'inscribe',
+  'pnyx-inscribe',
   'pnyx',
 ] as const
 const SOURCE = join(
@@ -76,10 +76,32 @@ export function removeLegacyHydraSkills({
 export function copySkills({
   folder,
   names,
+  owns = () => true,
 }: {
   folder: string
   names: readonly string[]
+  owns?: ({ path }: { path: string }) => boolean
 }): string[] {
+  for (const name of names) {
+    const path = join(
+      folder,
+      '.agents',
+      'skills',
+      name,
+    )
+
+    if (lstatSync(
+      path,
+      { throwIfNoEntry: false },
+    ) && !owns({ path })) {
+      throw new HydraError({
+        code: 'SKILL_CONFLICT',
+        message: `cannot replace existing skill at ${path}`,
+        help: ['Move the existing skill aside, then rerun `pnyx-axi setup hydra`'],
+      })
+    }
+  }
+
   return names.map(name => {
     const dir = join(
       folder,
