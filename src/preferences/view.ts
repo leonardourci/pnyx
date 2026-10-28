@@ -5,8 +5,8 @@ import { COLUMNS } from '#tasks/columns-model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
 export const DEFAULT_WIDTHS = {
-  column: 290,
-  hydra: 360,
+  column: 380,
+  hydra: 480,
 } as const
 export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 
