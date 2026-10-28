@@ -6,7 +6,7 @@ import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-suppo
 import { runsInBypass } from '#hydra/hydra-session.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { candidates, configPath, effectiveDispatch, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateAccounts, templateRules, writeConfig, type Candidate, type Harness } from './dispatch-config.ts'
+import { candidates, configPath, effectiveDispatch, HYDRA_RULE, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateAccounts, templateRules, writeConfig, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -79,7 +79,8 @@ function ruleCommand({ args }: { args: string[] }): Output {
     }
   }
 
-  const shared = Boolean(values.shared)
+  const editsHydraRule = (action === 'set' || action === 'remove') && positionals[1] === HYDRA_RULE
+  const shared = Boolean(values.shared) || editsHydraRule
   const path = configPath({
     hydraId,
     shared,
@@ -417,7 +418,7 @@ pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name> [--shared]
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>] [--shared]
 rule init takes login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set, otherwise the template.
-Existing files are preserved. Empty sections inherit the shared file. Single-candidate flags replace a rule's candidate list. rule migrate preserves old agents as rules without changing the event log.`,
+Existing files are preserved. Empty sections inherit the shared file. The hydra rule, Hydra's own pinned agent, is Pnyx-wide: set and remove always write it to the shared file, where it wins over any Hydra's copy. Single-candidate flags replace a rule's candidate list. rule migrate preserves old agents as rules without changing the event log.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--shared]
 pnyx-axi account propose set|remove <same arguments>
