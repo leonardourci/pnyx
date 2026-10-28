@@ -18,32 +18,37 @@ pnpm run web:dev # Vite dev server for the Hydra
 
 Functions take one destructured object parameter; no-argument functions and signatures owned by external APIs keep their contracts.
 
-Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and fixtures from `test/fixtures/` or a `fixtures/` folder beside the code.
+Tests use Node's built-in test runner and run TypeScript directly through Node's type stripping, so source must stay erasable TypeScript (no enums or namespaces). Tests never touch the real `~/.pnyx`, a real Firstmate home, Paseo, Herdr, tmux or any real terminal: use a temporary `PNYX_HOME`, a random port and fixtures from a `fixtures/` folder beside the code.
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder. The root README introduces Pnyx; usage and setup references live in `docs/`; the only per-folder README is `test/README.md`, for the test harness. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|
-| `src/cli/` | the `pnyx-axi` entry and the commands that have not moved into `src/app/` or a feature folder yet |
+| `src/cli/` | the `pnyx-axi` entry, its help and version |
 | `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host |
-| `src/core/` | feature event types and Hydra rules not yet in their feature folder |
-| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError`, plus retention until its feature moves |
-| `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
-| `src/server/` | the agents the server runs and the login service |
-| `src/thread/` | the transcript and reply thread reader |
-| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery. Their commands live in `src/integrations/cli.ts` |
-| `src/preferences/` | keyboard rules, view and layout preferences and their commands |
+| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError` |
+| `src/tasks/` | tasks, cards and columns, questions, holds and dependencies, reminders and retention; delivery (links, outcomes, landing and merges) in `src/tasks/delivery/` |
+| `src/workers/` | dispatch, launch and sessions, the Claude and Codex providers, replies, steering, permissions, the queue and spend; compaction in `src/workers/compaction/` |
+| `src/hydra/` | Hydra's identity and configuration, wakes, stalls and review, its session and commands, transcripts and the catalog, mentions and attachments |
 | `src/memory/` | owner, project and Hydra memory, its budgets and commands |
 | `src/projects/` | attached projects, their identity and refresh, disposable copies and their Git helpers |
-| `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/` and feature-bound ones still in `web/src/components/ui/` |
+| `src/preferences/` | keyboard rules, view and layout preferences and their commands |
+| `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
+| `src/investigations/` | investigation reports and their review inventory |
+| `src/task-sources/` | the process and review results that workers claim |
+| `src/routine-helper/` | the routine helper: its state, leases, runner and commands |
+| `src/setup/` | setup checks, the hook and skill installers, skill names and the login service |
+| `src/upgrade/` | `/upgrade` and `pnyx-axi upgrade`: the queue, runner and restart |
+| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery. Their commands live in `src/integrations/cli.ts` |
+| `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/`, and one folder per feature beside them |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: the flow runner, fake agents and their recorded sessions, and fake tools |
 | `scripts/verification/` | the isolated test launcher and `pnpm verify` |
 | `scripts/fixtures/` | `pnpm refresh-agent-fixtures`, which records the agent sessions the fakes replay |
-| `test/` | tests not yet beside their code; synthetic inputs in `test/fixtures/` |
+| `e2e/` | the flows: user journeys across features through the real CLI, server and saved files, sharing one server |
 | `docs/media/` | the README's demo GIF |
 
 Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links to it. Before PR readiness, run `pnpm verify` to select the required checks and reviews for the changed files. Follow the required checklists in order: `review-code`, `audit-tests`, then `deslop`. These are checklists for humans and agents alike. Tick only the required PR checkboxes after completing them, and describe what you fixed in the PR description. `write-front-end` also applies to changes under `web/`.

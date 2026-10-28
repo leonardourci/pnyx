@@ -1,5 +1,5 @@
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
-// `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See test/README.md.
+// `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
 import assert from 'node:assert/strict'
 import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'

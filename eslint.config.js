@@ -17,7 +17,6 @@ export default tseslint.config(
   {
     files: [
       'src/**',
-      'test/**',
       'scripts/**',
       'eslint/**',
       'e2e/**',

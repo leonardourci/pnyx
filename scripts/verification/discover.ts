@@ -3,7 +3,6 @@ import { join, relative, resolve } from 'node:path'
 
 // Tests sit beside the code they cover, so the launcher looks through every source root.
 const ROOTS = [
-  'test',
   'src',
   'web/src',
   'scripts',

@@ -5,7 +5,7 @@ description: Audit Pnyx tests for the real behavior a change promises, missing r
 
 # Audit tests
 
-Tests are the regression net: when a behavior breaks, or changes without anyone meaning it to, a test should go red before a user notices. This audit checks that every core behavior in scope has a test that pins it. Use the changed behavior as the scope unless a wider area was requested; when the requester names the behaviors they consider core, start from that list. Read `test/README.md` for the test harness.
+Tests are the regression net: when a behavior breaks, or changes without anyone meaning it to, a test should go red before a user notices. This audit checks that every core behavior in scope has a test that pins it. Use the changed behavior as the scope unless a wider area was requested; when the requester names the behaviors they consider core, start from that list. Read `docs/testing.md` for the test harness.
 
 - [ ] Inventory behavior as “when X happens, Y results”. Include success, refusal, invalid or empty input, failure, recovery and restart when relevant. For Pnyx, cover permissions, event persistence and replay, worker lifecycle and reply delivery where touched. If a behavior can't be phrased that way yet, keep narrowing until it can.
 - [ ] Map each behavior to a test and its observable assertion: CLI output and exit status, persisted events and rebuilt state, server responses, delivered replies or the state the page renders from. A behavior with no test is the top finding. A test that names the behavior but asserts something else is the same gap.

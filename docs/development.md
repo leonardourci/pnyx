@@ -17,7 +17,7 @@ pnpm test
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
-See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity, and limits process concurrency. See the [test harness](../test/README.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots.
+See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity, and limits process concurrency. See [Testing](testing.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots.
 
 ## Run a development server
 

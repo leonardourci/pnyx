@@ -1,8 +1,8 @@
 # Tests
 
-- Every other `*.test.ts`, in `test/` or beside the code it covers, is a unit test, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
-- `test/scenarios/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
-- `test/fixtures/`: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
+- A `*.test.ts` beside the code it covers is a unit test, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
+- `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
+- `fixtures/` beside the code: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
 Run the flows after a build:
 
@@ -11,16 +11,16 @@ pnpm build
 node scripts/verification/test.ts scenarios
 ```
 
-`pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port and model settings from the calling shell are discarded. Nothing else is inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time and process and Git files two at a time, each file in its own process. The flows in `test/scenarios/` run one at a time in a single process, so they share one server. Each test fails by name after its lane's cap, and only one full run at a time holds the machine-wide lock.
+`pnpm test` and `pnpm verify` use the same isolated launcher. Each test file has its own temporary HOME, PNYX_HOME and harness directories, disabled external integrations and a guarded executable PATH. Actor, Hydra, task, port and model settings from the calling shell are discarded. Nothing else is inherited; PATH contains the guard scripts, the running Node installation and system tools. Checked pure files run four at a time and process and Git files two at a time, each file in its own process. The flows in `e2e/` run one at a time in a single process, so they share one server. Each test fails by name after its lane's cap, and only one full run at a time holds the machine-wide lock.
 
 For a small batch, pass explicit paths: `node scripts/verification/test.ts src/tasks/reminders.test.ts`.
 
-`pnpm verify` picks what to run from the files the branch changes (see [Development](../docs/development.md)).
+`pnpm verify` picks what to run from the files the branch changes (see [Development](development.md)).
 
 ## Writing a flow
 
 ```ts
-import { pnyx } from '../../src/test-harness/pnyx.ts' // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
+import { pnyx } from '../src/test-harness/pnyx.ts' // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
 
 test('…', async () => {
   const s = await pnyx.scenario()       // a Hydra of its own, so flows never depend on each other

@@ -12,7 +12,7 @@ paths:
 - Build UI from the primitives in `web/src/shared/ui/`. When one is missing, add it there and extend it; do not inline a one-off control.
 - Never use native-styled controls (`<select>`, `<input type="checkbox">` and friends as the browser draws them) or a third-party styled kit such as DaisyUI. Pnyx has one look in every browser.
 - Colors and fonts come from the theme tokens in `web/src/index.css`. No raw hex values or ad hoc font stacks in components.
-- Reuse before building. Search `web/src/shared/ui/`, `web/src/components/ui/` and `web/src/hydra/` for a component, hook or formatter that already does the job; build a new one only when nothing composes into it.
+- Reuse before building. Search `web/src/shared/ui/` and the feature folders under `web/src/` for a component, hook or formatter that already does the job; build a new one only when nothing composes into it.
 - Keep components small: one job each, composed from primitives. A screen reads as a list of named pieces, not one block of JSX. A piece used by one file sits above the exported component in that file; a generic piece several features use moves to `web/src/shared/ui/`.
 - Put derived values (labels, classes, formatted text) and compound conditions in named constants above the `return`, not inline in the JSX.
 - Read Hydra state from the connection store over the one WebSocket. Don't keep a second copy of it in component state.
