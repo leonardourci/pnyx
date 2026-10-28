@@ -714,10 +714,7 @@ test(
         what: 'main to finish the unrelated report',
         check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
-      assert.ok(!hydra.received[1]!.includes('<pnyx-report'.concat(
-        ' from="worker:',
-        work,
-      )))
+      assert.ok(!hydra.received[1]!.includes(`task="${work}"`))
       seedTurn.release()
       await until({
         what: 'the helper to take the questions',
