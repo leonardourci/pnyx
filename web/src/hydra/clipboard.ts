@@ -1,10 +1,7 @@
 import { taskMention } from '#hydra/mentions.ts'
 import { imagePaths } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
-import { MESSAGE_DECORATIONS } from './message-selection.ts'
-
-// Each chip in a rendered message keeps the Markdown it came from, so a copy can bring the chip back.
-export const CHIP_SOURCE = 'data-chip-source'
+import { CHIP_SOURCE, MESSAGE_DECORATIONS } from './message-selection.ts'
 
 // A task message's leading chip comes from its task id, not its text, so it is rebuilt from the chip.
 const CHIPS = `[${CHIP_SOURCE}], .message-lead [data-task-ref]`

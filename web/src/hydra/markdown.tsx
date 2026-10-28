@@ -8,7 +8,7 @@ import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
-import { CHIP_SOURCE } from './clipboard.ts'
+import { CHIP_SOURCE } from './message-selection.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
