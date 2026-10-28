@@ -8,6 +8,7 @@ import { loadHydra } from '../app/store.ts'
 import { pnyxHome, privateDir } from '../store/storage.ts'
 import { canonical } from '../store/paths.ts'
 import { DEFAULT_PORT } from '../app/server-state.ts'
+import { SOURCE_CONDITIONS } from '../app/source-conditions.ts'
 
 const xml = ({ text }: { text: string }) => text.replaceAll(
   '&',
@@ -225,6 +226,7 @@ export function setupService({
       node,
       searchPath,
     }),
+    ...SOURCE_CONDITIONS,
     cli,
     'serve',
     '--port',
