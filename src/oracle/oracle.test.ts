@@ -3,9 +3,9 @@ import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { withWriter } from '../src/app/writer.ts'
-import { search, updateIndex } from '../src/oracle/index.ts'
-import { redact, transcriptMessages } from '../src/oracle/text.ts'
+import { withWriter } from '../app/writer.ts'
+import { search, updateIndex } from './index.ts'
+import { redact, transcriptMessages } from './text.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -21,12 +21,18 @@ after(() => rmSync(
 
 const TRANSCRIPT = join(
   import.meta.dirname,
+  '..',
+  '..',
+  'test',
   'fixtures',
   'transcripts',
   'claude-session.jsonl',
 )
 const CODEX = join(
   import.meta.dirname,
+  '..',
+  '..',
+  'test',
   'fixtures',
   'transcripts',
   'codex-session.jsonl',
