@@ -3,6 +3,7 @@ import { join } from 'node:path'
 
 export interface FakePullRequest {
   number: number
+  title?: string
   state?: 'open' | 'merged' | 'closed'
   draft?: boolean
   checks?: string

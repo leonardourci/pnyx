@@ -302,6 +302,7 @@ export interface PullRequestChecks {
 }
 
 export interface PullRequestStatus {
+  title?: string
   state: LinkState
   draft: boolean
   checks: PullRequestChecks
@@ -373,6 +374,10 @@ export async function pullRequestStatus(
   }
 
   return {
+    title: field({
+      out: stdout,
+      key: 'title',
+    }),
     state,
     draft: field({
       out: stdout,

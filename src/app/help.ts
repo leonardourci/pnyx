@@ -138,6 +138,7 @@ A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its w
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),
 or, for an investigation, before its report is stored and its decision inventory reviewed. The owner can override build landing by moving the card to Done; report review is always required.
+Ready owner-merge questions include the PR title, link, latest worker report or status note, and check counts.
 pnyx-axi task report-review <id> --report <report-id> (--none | --call <task>/<ask>...)
 Attests that the whole report was reviewed. Each call names an owner question on separate work, linked with task ask --from-report <origin-task>. Completion, hiding and promotion require a current inventory.
 pnyx-axi task report <id> [--file <path>]
