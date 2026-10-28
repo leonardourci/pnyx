@@ -1,5 +1,5 @@
 import { INSCRIBE_SKILL } from '../integrations/skills/names.ts'
-import { readOwnerEntries } from '../store/owner-memory-log.ts'
+import { readOwnerEntries } from '../memory/owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'

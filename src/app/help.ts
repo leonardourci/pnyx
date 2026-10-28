@@ -1,5 +1,5 @@
 import { ORCHESTRATE_SKILL, REPORT_PROGRESS_SKILL, CLI_SKILL } from '../integrations/skills/names.ts'
-import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '../core/digest.ts'
+import { HYDRA_MEMORY_BUDGET, OWNER_MEMORY_BUDGET } from '../memory/budgets.ts'
 import { POOL_IDLE } from '../copies/copies.ts'
 import { NOTES_SHOWN, NOTE_CUT, CONTEXT_TASKS } from '../cli/commands.ts'
 import { HISTORY_LIMIT, HISTORY_MAX } from './cli-support.ts'

@@ -1,16 +1,16 @@
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
 import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from '../projects/memory.ts'
-import { dateLearnings, learningText, type LearningChange, type Learning } from '../memory/learnings.ts'
+import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
-import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
+import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
 import { hydraEvent } from '../core/hydra.ts'
-import { HydraError } from './errors.ts'
+import { HydraError } from '../store/errors.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { hydraIds } from '../app/home-migration.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
-import { pnyxHome, privateDir, withRegistryLock, writeDurably } from './storage.ts'
+import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '../store/storage.ts'
 
 interface OwnerLog {
   memory: Memory

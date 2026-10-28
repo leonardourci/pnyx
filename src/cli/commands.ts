@@ -5,20 +5,17 @@ import { checkWorkerNotes, workerNotesNotice } from '../memory/workers.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { requireSetupHome } from '../setup/home.ts'
-import { memoryConditions } from '../memory/conditions.ts'
-import { learningChange, staleLearnings } from '../memory/learnings.ts'
 import { setupCheckOutput } from '../setup/check.ts'
 import { mentionContext, REFERENCE, referenceLabel } from '../mentions/mentions.ts'
 import { IMAGE, imageNames } from '../attachments/images.ts'
 import { FILE_BLOCK } from '../attachments/files.ts'
 import { reminderTime } from '../reminders/time.ts'
-import { findProject, projectRows, projectsFor } from '../projects/read.ts'
+import { projectRows, projectsFor } from '../projects/read.ts'
 import { MAX_DONE_HOURS } from '../core/retention.ts'
 import { hideDone } from '../store/retention.ts'
 import { setupService } from '../server/service.ts'
 import { setupSkills } from '../integrations/skills/install.ts'
-import { checkBudget, HYDRA_MEMORY_BUDGET, memorySize, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from '../core/digest.ts'
-import { moveOwnerLearning, ownerArchive, ownerMemory, ownerRevision, saveOwnerMemory } from '../store/owner-memory.ts'
+import { checkBudget, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS } from '../memory/budgets.ts'
 import { randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { findSession, liveTask, rankOf, selfSession } from '../core/tasks.ts'
@@ -52,6 +49,7 @@ import { readEvents } from '../app/event-log.ts'
 import { withWriter } from '../app/writer.ts'
 import { spoolFiles } from '../store/storage.ts'
 import { HISTORY_LIMIT, HISTORY_MAX, HOME_LIMIT, TEXT_CUT, COMMON, WRITE, parse, required, integer, meta, explained, commit, guard, clip, type Output, type Options, summarize } from '../app/cli-support.ts'
+import { memoryList, memoryChange } from '../memory/cli.ts'
 
 function column({ value }: { value: string }): Column {
   return (value.startsWith('custom:') ? value : value.replace(
@@ -1842,223 +1840,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   })) : result)
 }
 
-function memoryList({
-  memory,
-  budget,
-  empty,
-}: {
-  memory: Memory
-  budget: number
-  empty: string
-}): Output {
-  const entries = Object.entries(memory).map(([
-    key,
-    entry,
-  ]) => {
-    const row: Output = {
-      key,
-      ...entry,
-    }
-
-    if (entry.lines) {
-      row.stale = staleLearnings({
-        lines: entry.lines,
-        conditions: memoryConditions(),
-        now: new Date().toISOString(),
-      })
-    }
-
-    return row
-  })
-
-  return {
-    memory: entries.length ? entries : empty,
-    used: `${memorySize({ memory })} of ${budget} characters`,
-  }
-}
-
-function memoryChange({
-  action,
-  values,
-  usage,
-}: {
-  action: string
-  values: Record<string, string | boolean | undefined>
-  usage: string
-}): {
-  key: string
-  after: string | null
-} {
-  const key = required({
-    value: values.key as string | undefined,
-    what: '--key',
-  })
-
-  if (!/^[a-z0-9][a-z0-9-]{0,79}$/.test(key) || ![
-    'set',
-    'forget',
-  ].includes(action)) {
-    throw new HydraError({
-      message: `${usage}; keys use lowercase letters, digits and dashes`,
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  const after = action === 'forget' ? null : required({
-    value: values.text as string | undefined,
-    what: '--text',
-  }).trim()
-
-  if (after !== null && !after) {
-    throw new HydraError({
-      message: 'memory text must not be empty',
-      code: 'VALIDATION_ERROR',
-    })
-  }
-
-  return {
-    key,
-    after,
-  }
-}
-
 export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
-
-export const owner = guard({
-  handler: ({ args }) => {
-    const {
-      values,
-      positionals,
-      hydraId,
-    } = parse({
-      args,
-      // Owner memory has no events or cards, so it takes only the write flags it honours.
-      options: {
-        ...COMMON,
-        actor: WRITE.actor!,
-        reason: WRITE.reason!,
-        'if-revision': WRITE['if-revision']!,
-        key: { type: 'string' },
-        text: { type: 'string' },
-        project: { type: 'string' },
-        kind: { type: 'string' },
-        until: { type: 'string' },
-        used: { type: 'string' },
-      },
-      positionals: 2,
-    })
-    const usage = 'use owner memory list|set|forget|confirm|move|save|archive'
-
-    if (positionals[0] !== 'memory') {
-      throw new HydraError({
-        message: usage,
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const action = positionals[1] ?? 'list'
-    const learning = learningChange({
-      action,
-      kind: values.kind as string | undefined,
-      until: values.until as string | undefined,
-      used: values.used as string | undefined,
-      text: values.text as string | undefined,
-    })
-
-    if (action === 'list') {
-      return {
-        ...memoryList({
-          memory: ownerMemory(),
-          budget: OWNER_MEMORY_BUDGET,
-          empty: 'none: no owner memory yet',
-        }),
-        revision: ownerRevision(),
-        archived: ownerArchive(),
-      }
-    }
-
-    if (action === 'save' || action === 'archive') {
-      const entry = saveOwnerMemory({
-        key: 'learnings',
-        after: null,
-        learning,
-        meta: meta({ values }),
-      })
-
-      return {
-        memory: 'learnings',
-        state: action === 'save' ? 'saved' : 'archived',
-        revision: entry?.seq,
-      }
-    }
-
-    if (action === 'move') {
-      const project = findProject({
-        state: loadHydra({ hydraId }).state,
-        ref: required({
-          value: values.project as string | undefined,
-          what: '--project <name|path>',
-        }),
-        attached: true,
-      })
-
-      return moveOwnerLearning({
-        path: project.path,
-        hydraId,
-        text: required({
-          value: values.text as string | undefined,
-          what: '--text <existing learning line>',
-        }),
-        meta: meta({ values }),
-      })
-    }
-
-    if (action === 'confirm') {
-      const memory = ownerMemory()
-      const line = required({
-        value: values.text as string | undefined,
-        what: '--text <existing learning line>',
-      })
-      const entry = saveOwnerMemory({
-        key: 'learnings',
-        after: memory.learnings?.text ?? null,
-        confirmed: line,
-        meta: meta({ values }),
-      })
-
-      return {
-        memory: 'learnings',
-        state: 'confirmed',
-        revision: entry?.seq,
-      }
-    }
-
-    const {
-      key,
-      after,
-    } = memoryChange({
-      action,
-      values,
-      usage,
-    })
-    const entry = saveOwnerMemory({
-      key,
-      after,
-      learning,
-      meta: meta({ values }),
-    })
-
-    return entry ? {
-      memory: key,
-      state: after === null ? 'forgotten' : 'saved',
-      revision: entry.seq,
-      used: `${memorySize({ memory: ownerMemory() })} of ${OWNER_MEMORY_BUDGET} characters`,
-    } : {
-      memory: key,
-      skipped: 'unchanged',
-    }
-  },
-})
 
 export const NOTES_SHOWN = 3
 export const NOTE_CUT = 280

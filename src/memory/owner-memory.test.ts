@@ -3,8 +3,8 @@ import { appendFileSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
-import { commands } from '../src/app/cli.ts'
-import { ownerMemory } from '../src/store/owner-memory.ts'
+import { commands } from '../app/cli.ts'
+import { ownerMemory } from './owner-memory.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
