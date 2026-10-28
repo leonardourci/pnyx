@@ -193,7 +193,7 @@ test(
 )
 
 test(
-  'an image keeps its place while it uploads and the owner keeps typing, then becomes the stored image there',
+  'an image keeps its place while it uploads and the owner keeps typing; send waits until it becomes the stored image there',
   () => {
     const shown = ({ text }: { text: string }) => draftView({ text }).display
     const path = pendingImage({ id: 'p1' })
@@ -403,48 +403,6 @@ test(
         to: draftView({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}` }).display.length,
       })?.source,
       `see and ${image}`,
-    )
-  },
-)
-
-test(
-  'send waits for the upload: a draft whose image is still loading cannot go until the image is in',
-  () => {
-    const path = pendingImage({ id: 'p1' })
-    const pasted = placeImages({
-      text: 'It breaks here',
-      lines: [`[image: ${path}]`],
-    })
-    const typed = `${pasted.text}and here`
-    assert.ok(hasPendingImage({ text: typed }))
-
-    const stored = settleImage({
-      text: typed,
-      caret: 0,
-      path,
-      line: image,
-    })!
-    assert.equal(
-      hasPendingImage({ text: stored.text }),
-      false,
-    )
-    assert.equal(
-      stored.text,
-      `It breaks here ${image} and here`,
-    )
-
-    const failed = settleImage({
-      text: typed,
-      caret: 0,
-      path,
-    })!
-    assert.equal(
-      hasPendingImage({ text: failed.text }),
-      false,
-    )
-    assert.equal(
-      failed.text,
-      'It breaks here and here',
     )
   },
 )
