@@ -33,7 +33,7 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | the agents the server runs and the login service |
 | `src/thread/` | the transcript and reply thread reader |
-| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
+| `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery. Their commands live in `src/integrations/cli.ts` |
 | `src/preferences/` | keyboard rules, view and layout preferences and their commands |
 | `src/memory/` | owner, project and Hydra memory, its budgets and commands |
 | `src/projects/` | attached projects, their identity and refresh, disposable copies and their Git helpers |
