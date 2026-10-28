@@ -4,7 +4,7 @@ import { matchesProject } from './identity.ts'
 import { staleLearnings, learningDigest } from '../memory/learnings.ts'
 import type { HydraState } from '../app/model.ts'
 import { projectsFor } from './read.ts'
-import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from './memory.ts'
+import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView } from '../memory/project-memory.ts'
 
 const WORKER_DOCUMENT_LIMIT = 400
 

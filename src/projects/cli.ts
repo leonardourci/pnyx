@@ -1,6 +1,6 @@
 import { sameProjectPath } from './identity.ts'
-import { PROJECT_MEMORY_BUDGET } from './memory.ts'
-import { projectMemoryCommand } from './memory-cli.ts'
+import { PROJECT_MEMORY_BUDGET } from '../memory/project-memory.ts'
+import { projectMemoryCommand } from '../memory/project-cli.ts'
 import { CLONE_TIMEOUT_MS } from './limits.ts'
 import { execFile } from 'node:child_process'
 import { isAbsolute, resolve } from 'node:path'

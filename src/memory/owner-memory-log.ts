@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { LearningChange } from './learnings.ts'
-import type { ProjectMemoryEvent } from '../projects/memory.ts'
+import type { ProjectMemoryEvent } from './project-memory.ts'
 import { pnyxHome } from '../store/paths.ts'
 
 // One replacement or removal of an owner memory key; the log is only appended, so every old version stays.

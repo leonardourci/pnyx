@@ -1,5 +1,5 @@
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
-import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from '../projects/memory.ts'
+import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'

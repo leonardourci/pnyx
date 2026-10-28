@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { checkBudget, OWNER_MEMORY_BUDGET } from './budgets.ts'
-import { checkProjectMemoryBudget, PROJECT_MEMORY_BUDGET } from '../projects/memory.ts'
+import { checkProjectMemoryBudget, PROJECT_MEMORY_BUDGET } from './project-memory.ts'
 
 test(
   'an overfull owner memory can shrink while still over budget, but cannot grow',

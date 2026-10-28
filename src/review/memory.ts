@@ -3,7 +3,7 @@ import { memoryConditions } from '../memory/conditions.ts'
 import { ownerMemory } from '../memory/owner-memory.ts'
 import type { HydraState } from '../app/model.ts'
 import { projectsFor } from '../projects/read.ts'
-import { readProjectMemory } from '../projects/memory.ts'
+import { readProjectMemory } from '../memory/project-memory.ts'
 import { projectIdentity } from '../projects/sources.ts'
 
 export function memoryReview({
