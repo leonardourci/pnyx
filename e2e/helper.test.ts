@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { commands } from '#app/cli.ts'
+import { hydraDir } from '#app/home-migration.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
@@ -641,64 +645,266 @@ test(
 )
 
 test(
-  'many questions on one task split across batches within the input budget',
+  'many open questions on one task keep the helper’s prompt within its budget',
   async () => {
-    const s = await helperHydra({ keys: ['work'] })
+    const s = await helperHydra({
+      keys: [
+        'seed',
+        'work',
+      ],
+    })
+    const seed = s.task({ key: 'seed' }).id
     const work = s.task({ key: 'work' }).id
     await s.chat({ text: 'Start watching.' })
     await until({
       what: 'main to finish its first turn',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
-    const first = pnyx.claude.plan({
+    const seedTurn = pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: routine({ tasks: [seed] }),
+      hold: true,
+    })
+    const workTurn = pnyx.claude.plan({
       text: HELPER_PROMPT,
       reply: routine({ tasks: [work] }),
       hold: true,
     })
-    pnyx.claude.plan({
+
+    try {
+      declare({
+        s,
+        keys: ['seed'],
+      })
+      await until({
+        what: 'the helper to hold the seed batch',
+        check: () => grants({ s }).length === 1,
+      })
+
+      for (let index = 0; index < 120; index++) {
+        await commands.task([
+          'ask',
+          'work',
+          '--question',
+          `Question ${index}: ${'Which parser owns dates? '.repeat(11)}`,
+          '--actor',
+          `worker:${work}`,
+          '--hydra',
+          s.hydraId,
+        ])
+      }
+
+      seedTurn.release()
+      await until({
+        what: 'the helper to take the questions',
+        check: () => grants({ s }).length === 2,
+      })
+      const batch = grants({ s })[1]!
+      assert.ok(batch.prompt.length <= 24_000)
+      assert.match(
+        batch.prompt,
+        /Open decisions \(120\):/,
+      )
+      assert.match(
+        batch.prompt,
+        /- 110 more left out of this batch/,
+      )
+      assert.ok(batch.seqs.length < 120)
+      await s.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'off',
+        ],
+      })
+    } finally {
+      seedTurn.release()
+      workTurn.release()
+    }
+
+    await until({
+      what: 'main to take the questions the helper left',
+      check: () => finishes({ s }).length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
+        && (s.state().helper?.handled.length ?? 0) > 0,
+    })
+  },
+)
+
+test(
+  'turning the helper off hands its waiting overflow to main',
+  async () => {
+    const keys = [
+      'one',
+      'two',
+      'three',
+      'four',
+      'five',
+      'report',
+    ]
+    const s = await helperHydra({ keys })
+    const tasks = keys.map(key => s.task({ key }).id)
+    await s.chat({ text: 'Start watching.' })
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'main to finish its first turn',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const first = pnyx.claude.plan({
       text: HELPER_PROMPT,
-      reply: routine({ tasks: [work] }),
+      reply: routine({
+        tasks: tasks.slice(
+          0,
+          3,
+        ),
+      }),
+      hold: true,
     })
 
     try {
       inOneWrite({
         s,
-        steps: Array.from(
-          { length: 20 },
-          (
-            _,
-            index,
-          ) => says({
+        steps: [
+          ...keys.slice(
+            0,
+            5,
+          ).map(key => declared({ key })),
+          says({
             s,
-            key: 'work',
-            text: `Question ${index + 1}: ${'Which parser owns dates? '.repeat(60)}`,
-            ask: `ask-${index + 1}`,
+            key: 'report',
+            text: 'The parser is done.',
           }),
-        ),
+        ],
       })
       await until({
-        what: 'the first batch',
-        check: () => grants({ s }).length === 1,
+        what: 'main to finish the report',
+        check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
-      first.release()
-      await until({
-        what: 'both batches to finish',
-        check: () => finishes({ s }).length === 2,
+      assert.ok(!hydra.received[1]!.includes('declared: blocked'))
+      await s.owner({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'off',
+        ],
       })
     } finally {
       first.release()
     }
 
-    const [
-      one,
-      two,
-    ] = grants({ s })
-    assert.ok(one!.prompt.length <= 24_000)
-    assert.ok(two!.prompt.length <= 24_000)
+    await until({
+      what: 'main to take the overflow',
+      check: () => hydra.received.length === 3 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+
+    for (const task of tasks.slice(
+      3,
+      5,
+    )) {
+      assert.ok(hydra.received[2]!.includes(`pnyx-task:${task}) declared: blocked`))
+    }
+
+    await s.chat({ text: 'Anything new?' })
+    await until({
+      what: 'main to answer the owner',
+      check: () => hydra.received.length === 4 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    assert.ok(!hydra.received[3]!.includes('<pnyx-wake>'))
     assert.equal(
-      one!.seqs.length + two!.seqs.length,
-      20,
+      grants({ s }).length,
+      1,
     )
+  },
+)
+
+test(
+  'a task whose owner outcome main has not relayed stays main’s, so main can act on it',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    const work = s.task({ key: 'work' }).id
+    await s.chat({ text: 'Start watching.' })
+    const hydra = await s.agent({ hydra: true })
+    await until({
+      what: 'main to finish its first turn',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const first = pnyx.claude.plan({
+      text: HELPER_PROMPT,
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: work,
+            audience: 'owner',
+            summary: 'Ask the owner which parser to use.',
+          },
+        ],
+      }),
+      hold: true,
+    })
+    const relay = pnyx.claude.plan({
+      text: MAIN_WAKE,
+      hold: true,
+    })
+
+    try {
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'the helper to hold the first batch',
+        check: () => grants({ s }).length === 1,
+      })
+      inOneWrite({
+        s,
+        steps: [
+          says({
+            s,
+            key: 'work',
+            text: 'Should dates move to the new parser?',
+            ask: 'ask-dates',
+          }),
+        ],
+      })
+      first.release()
+      await until({
+        what: 'main to relay the outcome with the task’s new change',
+        check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'working',
+      })
+      assert.match(
+        hydra.received[1]!,
+        /Helper outcomes to relay/,
+      )
+      assert.ok(hydra.received[1]!.includes('Should dates move to the new parser?'))
+      await until({
+        what: 'the helper to release its lease',
+        check: () => !existsSync(join(
+          hydraDir({ hydraId: s.hydraId }),
+          `helper-lease-${encodeURIComponent(work)}.json`,
+        )),
+      })
+      await s.as({ agent: hydra }).run({
+        args: [
+          'task',
+          'ask',
+          'work',
+          '--to',
+          'owner',
+          '--question',
+          'Which parser should the worker use?',
+          '--reason',
+          'The helper escalated this choice.',
+        ],
+      })
+      assert.equal(
+        grants({ s }).length,
+        1,
+      )
+    } finally {
+      first.release()
+      relay.release()
+    }
   },
 )
 
