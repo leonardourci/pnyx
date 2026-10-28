@@ -36,7 +36,7 @@ import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { resolveSkillReferences } from './transcripts-skill-reference.ts'
+import { resolveSkillReferences } from './skill-invocation.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
 
 export async function home(): Promise<Output> {

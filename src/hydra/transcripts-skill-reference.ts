@@ -1,5 +1,4 @@
-import { FILE_BLOCK } from './attachments.ts'
-import { decodeValue, reference, REFERENCE } from './mentions.ts'
+import { reference } from './mentions.ts'
 import type { Suggestion } from './transcripts-catalog.ts'
 
 export interface SkillReference {
@@ -8,6 +7,7 @@ export interface SkillReference {
   file?: string
   project?: string
   projectPath?: string
+  builtin?: boolean
 }
 
 export function readSkillReference({ value }: { value: string }): SkillReference | undefined {
@@ -43,6 +43,12 @@ export function readSkillReference({ value }: { value: string }): SkillReference
       return typeof value === 'string' ? value : undefined
     }
 
+    const builtin = 'builtin' in skill ? skill.builtin : undefined
+
+    if (builtin !== undefined && builtin !== true) {
+      return
+    }
+
     const file = text({ key: 'file' })
 
     if (file && (!file.startsWith('/') || !file.endsWith('/SKILL.md'))) {
@@ -51,6 +57,7 @@ export function readSkillReference({ value }: { value: string }): SkillReference
 
     return {
       name: skill.name,
+      builtin,
       file,
       project: text({ key: 'project' }),
       projectPath: text({ key: 'projectPath' }),
@@ -72,54 +79,11 @@ export function skillReference({ item }: { item: Suggestion }): string {
     label: `${item.project ? `${item.project} ` : ''}/${name}`,
     value: JSON.stringify({
       name,
+      builtin: item.builtin,
       command: item.kind === 'command' ? item.command : undefined,
       file: item.file,
       project: item.project,
       projectPath: item.projectPath,
     }),
   })
-}
-
-export function resolveSkillReferences({
-  text,
-  provider,
-}: {
-  text: string
-  provider?: string
-}): string {
-  const attachments = [...text.matchAll(FILE_BLOCK)].map(match => ({
-    start: match.index,
-    end: match.index + match[0].length,
-  }))
-
-  return text.replace(
-    new RegExp(
-      REFERENCE.source,
-      'g',
-    ),
-    (
-      match,
-      _label: string,
-      kind: string,
-      encoded: string,
-      offset: number,
-    ) => {
-      if (kind !== 'skill' || attachments.some(block => block.start <= offset && offset < block.end)) {
-        return match
-      }
-
-      const value = decodeValue({ value: encoded })
-      const skill = value && readSkillReference({ value })
-
-      if (!skill) {
-        return match
-      }
-
-      if (skill.file) {
-        return `Read and follow the skill ${JSON.stringify(skill.name)} at ${JSON.stringify(skill.file)}.`
-      }
-
-      return skill.command ?? `${provider === 'codex' ? '$' : '/'}${skill.name}`
-    },
-  )
 }
