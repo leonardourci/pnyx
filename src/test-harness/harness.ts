@@ -5,7 +5,6 @@ import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { pathToFileURL } from 'node:url'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -257,9 +256,11 @@ export async function openPage({
 // for every flow, since it sets process.env. Nothing outside its temporary folder is read or written.
 export function scenarioGroup({
   retryDelays,
+  upgradeRoot,
 }: {
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
+  upgradeRoot?: string
 } = {}) {
   const root = realpathSync(mkdtempSync(join(
     tmpdir(),
@@ -341,31 +342,15 @@ export function scenarioGroup({
   let server: RunningServer | undefined
   let scenarios = 0
 
-  const start = async ({
-    port,
-    installRoot,
-  }: {
-    port?: number
-    installRoot?: string
-  }) => {
-    let serve = startServer
-
-    if (installRoot) {
-      const installed: typeof import('#app/server-daemon.ts') = await import(pathToFileURL(join(
-        installRoot,
-        'dist/app/server-daemon.js',
-      )).href)
-      serve = installed.startServer
-    }
-
-    server = await serve({
+  const start = async ({ port }: { port?: number }) => {
+    server = await startServer({
       port,
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
       retryDelays,
       followDelay: FOLLOW_MS,
-      upgradeRoot: installRoot ?? upgrade.install,
+      upgradeRoot: upgradeRoot ?? upgrade.install,
       restart: () => restarts++,
     })
   }
@@ -391,20 +376,11 @@ export function scenarioGroup({
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.
-    restart: async ({
-      whileStopped,
-      installRoot,
-    }: {
-      whileStopped?(): void | Promise<void>
-      installRoot?: string
-    } = {}) => {
+    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
       const { port } = server!
       await server!.close()
       await whileStopped?.()
-      await start({
-        port,
-        installRoot,
-      })
+      await start({ port })
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
     scenario: async () => {

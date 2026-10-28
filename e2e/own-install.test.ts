@@ -1,87 +1,60 @@
 import assert from 'node:assert/strict'
-import { cpSync, existsSync, readFileSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, readFileSync, realpathSync, renameSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { test } from 'node:test'
+import { before, test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { git, openPage, until } from '#test-harness/harness.ts'
-import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
+import { git, openPage, scenarioGroup, until } from '#test-harness/harness.ts'
 
-async function installedProject({ s }: { s: Scenario }) {
-  const path = await s.project({ name: 'application' })
-  const source = join(
+const install = process.env.PNYX_TEST_INSTALL
+assert.ok(
+  install,
+  'Run this flow through scripts/verification/test.ts with its disposable install',
+)
+assert.equal(
+  realpathSync(join(
     import.meta.dirname,
     '..',
-  )
-  cpSync(
-    join(
-      source,
-      'dist',
-    ),
-    join(
-      path,
-      'dist',
-    ),
-    { recursive: true },
-  )
-  cpSync(
-    join(
-      source,
-      'skills',
-    ),
-    join(
-      path,
-      'skills',
-    ),
-    { recursive: true },
-  )
-  cpSync(
-    join(
-      source,
-      'setup',
-    ),
-    join(
-      path,
-      'setup',
-    ),
-    { recursive: true },
-  )
-  symlinkSync(
-    join(
-      source,
-      'node_modules',
-    ),
-    join(
-      path,
-      'node_modules',
-    ),
-    'dir',
-  )
+  )),
+  realpathSync(install),
+)
+
+before(() => {
+  git({
+    cwd: install,
+    args: [
+      'init',
+      '-q',
+      '--bare',
+      '-b',
+      'main',
+      `${install}.git`,
+    ],
+  })
+  git({
+    cwd: install,
+    args: [
+      'init',
+      '-q',
+      '-b',
+      'main',
+    ],
+  })
   writeFileSync(
     join(
-      path,
-      'package.json',
-    ),
-    JSON.stringify({
-      type: 'module',
-      imports: { '#*.ts': './dist/*.js' },
-    }),
-  )
-  writeFileSync(
-    join(
-      path,
+      install,
       '.gitignore',
     ),
-    'dist/\nnode_modules\n',
+    '*\n!skills/\n!skills/**\n!.gitignore\n',
   )
   git({
-    cwd: path,
+    cwd: install,
     args: [
       'add',
       '.',
     ],
   })
   git({
-    cwd: path,
+    cwd: install,
     args: [
       'commit',
       '-qm',
@@ -89,23 +62,35 @@ async function installedProject({ s }: { s: Scenario }) {
     ],
   })
   git({
-    cwd: path,
+    cwd: install,
+    args: [
+      'remote',
+      'add',
+      'origin',
+      `${install}.git`,
+    ],
+  })
+  git({
+    cwd: install,
     args: [
       'push',
-      '-q',
+      '-qu',
       'origin',
       'main',
     ],
   })
+})
 
-  return path
-}
+const pnyx = scenarioGroup({
+  upgradeRoot: install,
+  retryDelays: [600_000],
+})
 
 test(
   'a merged skill rename leaves the running install untouched and Hydra responding',
   async () => {
     const s = await pnyx.scenario()
-    const path = await installedProject({ s })
+    const path = install
     const alias = join(
       s.folder({ name: 'links' }),
       'application',
@@ -182,7 +167,7 @@ test(
     })
 
     try {
-      await pnyx.restart({ installRoot: alias })
+      await pnyx.restart()
       await s.chat({ text: 'Before the merge' })
       await s.owner({
         args: [
@@ -305,12 +290,16 @@ for (const {
     `a missing shipped ${name} skill is reported and Hydra still starts`,
     async t => {
       const s = await pnyx.scenario()
-      const path = await installedProject({ s })
+      const path = install
       const missing = join(
         path,
         'skills',
         name,
         'SKILL.md',
+      )
+      const original = readFileSync(
+        missing,
+        'utf8',
       )
       unlinkSync(missing)
       const errors = t.mock.method(
@@ -319,7 +308,7 @@ for (const {
       )
 
       try {
-        await pnyx.restart({ installRoot: path })
+        await pnyx.restart()
         const agent = await s.chat({ text: 'Start without a shipped skill' })
         assert.ok(errors.mock.calls.some(call => String(call.arguments[0]).includes(missing)))
         assert.match(
@@ -367,6 +356,10 @@ for (const {
         )
         await s.chat({ text: 'Continue without that skill' })
       } finally {
+        writeFileSync(
+          missing,
+          original,
+        )
         await pnyx.restart()
       }
     },
