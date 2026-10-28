@@ -23,7 +23,7 @@ import {
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
 } from './caret.ts'
-import { clock, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
+import { clock, copiedText, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageImages } from './attached-image.tsx'
@@ -154,6 +154,7 @@ export function Messages({
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
+  const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
   const turns = timings ?? turnTimings({
     entries,
     working,
@@ -976,11 +977,20 @@ export function Messages({
                   >{clock({ at: entry.at })}
                   </time>
                 )}
-                <CopyButton label="Copy message" text={() => entry.text} />
+                <CopyButton
+                  label="Copy message"
+                  text={() => copiedText({
+                    text: entry.text,
+                    task: leadingTask({ entry }),
+                    title: taskTitle({ id: leadingTask({ entry }) }),
+                  })}
+                />
               </div>
             )}
             {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
-            {turns.has(entry.id) && <TurnFooter turn={turns.get(entry.id)!} />}
+            {turns.has(entry.id) && (
+              <TurnFooter turn={turns.get(entry.id)!} taskTitle={taskTitle} />
+            )}
           </Fragment>
         ))}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
@@ -1017,7 +1027,13 @@ export function Messages({
   )
 }
 
-function TurnFooter({ turn }: { turn: TurnTiming }) {
+function TurnFooter({
+  turn,
+  taskTitle,
+}: {
+  turn: TurnTiming
+  taskTitle({ id }: { id?: string }): string | undefined
+}) {
   const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
   const started = clock({
     at: turn.start,
@@ -1026,7 +1042,16 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
 
   return (
     <div className="turn-foot" contentEditable={false}>
-      {turn.reply && <CopyButton label="Copy reply" text={() => turn.reply} />}
+      {turn.reply && (
+        <CopyButton
+          label="Copy reply"
+          text={() => copiedText({
+            text: turn.reply,
+            task: turn.task,
+            title: taskTitle({ id: turn.task }),
+          })}
+        />
+      )}
       {turn.latest
         ? <time dateTime={turn.end} title={`Worked for ${took} · started ${started}`}>{clock({ at: turn.end })}</time>
         : (

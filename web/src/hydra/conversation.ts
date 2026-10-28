@@ -3,7 +3,7 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { HydraMessage } from '#hydra/model.ts'
 import type { ThreadEntry, ThreadPage } from '#hydra/transcripts-read.ts'
 import { QUIET_REPLY } from '#hydra/hydra.ts'
-import { hydraMessages, ownMessage, type TurnTiming } from './chat.ts'
+import { hydraMessages, leadingTask, ownMessage, type TurnTiming } from './chat.ts'
 import { relevantUpdate, type TaskUpdate } from '#tasks/updates.ts'
 
 export interface TaskActions {
@@ -121,6 +121,7 @@ export function hydraConversation({
             start: turn.input.at,
             end: last.at,
             reply: last.text,
+            task: leadingTask({ entry: last }),
             latest: false,
           },
         )

@@ -3,7 +3,7 @@ import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraMessage, HydraStatus } from '#hydra/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '#hydra/hydra.ts'
 import { withoutInjected } from '#oracle/text.ts'
-import { taskMentions } from '#hydra/mentions.ts'
+import { taskMention, taskMentions } from '#hydra/mentions.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 
 // A streamed start of Hydra's quiet reply hides too.
@@ -414,8 +414,24 @@ export interface TurnTiming {
   start: string
   end: string
   reply: string
+  // The task the reply opens with when its words don't mention it.
+  task?: string
   latest: boolean
 }
+
+// A copied message keeps the task chip it opens with, as the reference a draft turns back into the chip.
+export const copiedText = ({
+  text,
+  task,
+  title,
+}: {
+  text: string
+  task?: string
+  title?: string
+}) => task ? `${taskMention({
+  id: task,
+  title: title ?? 'Task',
+})} ${text}` : text
 
 // A turn runs from the owner's message to its last entry; task updates belong to no turn.
 export function turnTimings({
