@@ -7,6 +7,8 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
+import { taskMention } from './mentions.ts'
+import { hydraConfig } from './config.ts'
 
 export const REVIEW_MS = 30 * MINUTE_MS
 const REVIEW_POLL_MS = 15_000
@@ -95,12 +97,50 @@ export function startReviewTimer({
             ])),
           })
 
-          if (!review.live) {
+          const flags = review.flags
+            .filter(flag => flag.kind !== 'memory behind' && flag.kind !== 'question reminder')
+            .map(flag => JSON.stringify([
+              flag.kind,
+              flag.task,
+              flag.detail,
+            ]))
+          const previousFlags = new Set(current.hydraReview?.flags ?? [])
+          const shouldWake = flags.some(flag => !previousFlags.has(flag))
+
+          if (!review.live && !flags.length && !previousFlags.size) {
             return false
           }
 
+          for (const flag of review.flags.filter(flag => flag.kind === 'question reminder')) {
+            const card = current.cards[flag.task]
+            const reminder = hydraEvent({
+              state: writer.state,
+              meta: {
+                at: new Date(time).toISOString(),
+                actor: 'pnyx',
+              },
+              cardId: card.id,
+              change: {
+                type: 'hydra.message',
+                data: {
+                  action: 'send',
+                  hydra: hydraConfig({ state: current }).hydra.id,
+                  task: card.id,
+                  text: `Reminder: ${taskMention({
+                    id: card.id,
+                    title: card.title,
+                  })} still needs your answer. ${flag.detail}`,
+                },
+              },
+            })
+
+            if ('event' in reminder) {
+              writer.append({ event: reminder.event })
+            }
+          }
+
           const decision = hydraEvent({
-            state: current,
+            state: writer.state,
             meta: {
               at: new Date(time).toISOString(),
               actor: 'pnyx',
@@ -111,6 +151,8 @@ export function startReviewTimer({
               data: {
                 block: review.block,
                 reminders: review.reminders,
+                flags,
+                wake: shouldWake,
               },
             },
           })
@@ -121,7 +163,7 @@ export function startReviewTimer({
 
           writer.append({ event: decision.event })
 
-          return true
+          return shouldWake
         },
       })
 
