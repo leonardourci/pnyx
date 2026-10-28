@@ -1073,6 +1073,76 @@ test(
 )
 
 test(
+  'a Hydra pin is Pnyx-wide: it wins over another Hydra\'s copy and starts new Hydras',
+  () => {
+    lab()
+    commands.hydra([
+      'create',
+      'other',
+    ])
+    writeConfig({
+      path: configPath({ hydraId: 'other' }),
+      value: {
+        rules: {
+          hydra: {
+            when: 'Hydra',
+            candidates: [
+              {
+                harness: 'codex',
+                model: 'gpt-6-luna',
+              },
+            ],
+          },
+        },
+      },
+    })
+    dispatchCommands.rule([
+      'set',
+      'hydra',
+      '--harness',
+      'claude',
+      '--model',
+      'claude-opus-5-5',
+      '--effort',
+      'high',
+      '--mode',
+      'plan',
+      '--fast',
+      'on',
+      '--hydra',
+      'lab',
+    ])
+    commands.hydra([
+      'create',
+      'fresh',
+    ])
+    const pin = {
+      harness: 'claude',
+      model: 'claude-opus-5-5',
+      effort: 'high',
+      mode: 'plan',
+      fast: true,
+    }
+
+    for (const hydraId of [
+      'lab',
+      'other',
+      'fresh',
+    ]) {
+      const effective = effectiveDispatch({
+        hydraId,
+        state: loadHydra({ hydraId }).state,
+      })
+      assert.deepEqual(
+        effective.dispatch.rules.hydra?.candidates,
+        [pin],
+        hydraId,
+      )
+    }
+  },
+)
+
+test(
   'rule init leaves existing shared files byte-identical',
   () => {
     lab()

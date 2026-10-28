@@ -8,6 +8,9 @@ import type { AgentConfig } from './model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { pnyxHome } from '#store/storage.ts'
 
+// Hydra's own pinned agent is owner-level: it lives in the shared file and wins over any Hydra's copy.
+export const HYDRA_RULE = 'hydra'
+
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>
 export interface Rule {
@@ -492,6 +495,15 @@ export function effectiveDispatch({
         dispatch,
         { [key]: chosen },
       )
+    }
+  }
+
+  const pinned = shared.rules?.[HYDRA_RULE]
+
+  if (pinned) {
+    dispatch.rules = {
+      ...dispatch.rules,
+      [HYDRA_RULE]: pinned,
     }
   }
 

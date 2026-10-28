@@ -534,15 +534,6 @@ test(
   'mid-turn owner chat steers Codex immediately while worker reports wait as one visible batch',
   async () => {
     const s = await pnyx.scenario()
-    await s.owner({
-      args: [
-        'rule',
-        'set',
-        'hydra',
-        '--harness',
-        'codex',
-      ],
-    })
     const folder = s.folder({ name: 'worker' })
     await s.owner({
       args: [
@@ -567,6 +558,10 @@ test(
     const page = await openPage({
       port: pnyx.port(),
       hydraId: s.hydraId,
+    })
+    await page.command({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
     })
     const held = pnyx.codex.plan({
       text: 'Take a long look',
