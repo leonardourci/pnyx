@@ -6,8 +6,16 @@ import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { snapshotPath } from '#store/storage.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
+
+// A history like a Hydra used for weeks, where every needless load parses and copies megabytes.
+const HISTORY_TASKS = 120
+const HISTORY_BRIEF = 'Long-running work. '.repeat(1200)
+// How long the server must go without loading the Hydra to count as idle.
+const QUIET_MS = 1000
 
 test(
   'an owner message while Hydra is down tries the start again; once it works Hydra answers it, then recaps only what no turn took',
@@ -316,5 +324,93 @@ test(
     } finally {
       held.release()
     }
+  },
+)
+
+test(
+  'a server over a long Hydra history stops loading it once nothing changes, and still follows the next change',
+  async t => {
+    const s = await pnyx.scenario()
+    withWriter({
+      hydraId: s.hydraId,
+      fn: ({ writer }) => {
+        for (let n = 0; n < HISTORY_TASKS; n++) {
+          const created = hydraEvent({
+            state: writer.state,
+            cardId: `task-history-${n}`,
+            meta: {
+              at: new Date().toISOString(),
+              actor: 'web',
+            },
+            change: {
+              type: 'task.created',
+              data: {
+                key: `history-${n}`,
+                title: `History ${n}`,
+                brief: HISTORY_BRIEF,
+              },
+            },
+          })
+          assert.ok('event' in created)
+          writer.append({ event: created.event })
+        }
+      },
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    await page.shows({
+      what: 'the whole history',
+      check: ({ state }) => state.keys[`history-${HISTORY_TASKS - 1}`],
+    })
+    // Every Hydra load reads its snapshot, so the reads count the server's work on this Hydra.
+    const snapshot = snapshotPath({ dir: hydraDir({ hydraId: s.hydraId }) })
+    let loads = 0
+    let loadedAt = Date.now()
+    const read = fs.readFileSync
+    t.mock.method(
+      fs,
+      'readFileSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.readFileSync's signature.
+      (...args: Parameters<typeof fs.readFileSync>) => {
+        if (args[0] === snapshot) {
+          loads++
+          loadedAt = Date.now()
+        }
+
+        return read(...args)
+      },
+    )
+    syncBuiltinESMExports()
+    t.after(() => {
+      t.mock.restoreAll(); syncBuiltinESMExports()
+    })
+
+    const settled = () => until({
+      what: 'the server to stop loading the unchanged Hydra',
+      check: () => Date.now() - loadedAt >= QUIET_MS,
+    })
+
+    await settled()
+    const idle = loads
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'next',
+        '--title',
+        'Next',
+      ],
+    })
+    await page.shows({
+      what: 'the next task',
+      check: ({ state }) => state.keys.next,
+    })
+    await settled()
+    // The change was loaded, so the count above saw the server's work.
+    assert.ok(loads > idle)
+    page.close()
   },
 )
