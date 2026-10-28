@@ -27,6 +27,7 @@ import { clock, duration, leadingTask, orderedComments, ownMessage, sendableComm
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { MessageImages } from './attached-image.tsx'
+import { copyMessageChips } from './message-copy.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
@@ -810,9 +811,28 @@ export function Messages({
         spellCheck={false}
         data-gramm="false"
         onKeyDown={event => caretKey({ event })}
+        onCopy={event => {
+          const editing = event.target instanceof Element && isEditing({ target: event.target })
+
+          if (!editing && copyMessageChips({
+            selection: window.getSelection(),
+            clipboard: event.clipboardData,
+          })) {
+            event.preventDefault()
+          }
+        }}
         onCut={event => {
-          if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
-            event.preventDefault(); event.clipboardData.setData(
+          if (event.target instanceof Element && isEditing({ target: event.target })) {
+            return
+          }
+
+          event.preventDefault()
+
+          if (!copyMessageChips({
+            selection: window.getSelection(),
+            clipboard: event.clipboardData,
+          })) {
+            event.clipboardData.setData(
               'text/plain',
               window.getSelection()?.toString() ?? '',
             )

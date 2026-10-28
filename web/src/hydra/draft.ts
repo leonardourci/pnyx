@@ -465,13 +465,14 @@ export function withoutPendingImages({ text }: { text: string }) {
 // Copied chips travel as their Markdown under a type only Pnyx reads, so pasting rebuilds them.
 export const DRAFT_TYPE = 'application/x-pnyx-draft'
 
-// Pasted into another app, a chip reads as its name; an attached file keeps its contents.
+// Pasted into another app, a chip reads as it shows; an attached file keeps its contents.
 function plainDraft({ text }: { text: string }) {
   let plain = '', cursor = 0
 
   for (const chip of draftChips({ text })) {
     const attachedFile = chip.kind === 'file' && chip.attached
-    const reference = chip.attached || chip.kind === 'skill' ? chip.name : `@${chip.name}`
+    const shownBare = chip.attached || chip.kind === 'skill' || REFERENCE_ROOM[chip.kind] !== undefined
+    const reference = shownBare ? chip.name : `@${chip.name}`
     plain += text.slice(
       cursor,
       chip.start,

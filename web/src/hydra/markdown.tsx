@@ -2,12 +2,13 @@ import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { IMAGE, imageNames } from '#hydra/images.ts'
+import { IMAGE, imageLine, imageNames } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
+import { CHIP_SOURCE } from './message-copy.ts'
 
 export const markdown = new Marked({ gfm: true })
 const decodeEntities = ({ text }: { text: string }) => text.replace(
@@ -76,6 +77,16 @@ type TaskLink = {
   images?: Map<string, string>
 }
 
+function Sourced({
+  markdown,
+  children,
+}: {
+  markdown: string
+  children: ReactNode
+}) {
+  return <span {...{ [CHIP_SOURCE]: markdown }}>{children}</span>
+}
+
 const withImages = ({
   text,
   images,
@@ -86,11 +97,12 @@ const withImages = ({
   part,
   n,
 ) => n % 2 ? (
-  <ImageChip
-    key={n}
-    path={part}
-    label={images?.get(part) ?? 'Image'}
-  />
+  <Sourced key={n} markdown={imageLine({ path: part })}>
+    <ImageChip
+      path={part}
+      label={images?.get(part) ?? 'Image'}
+    />
+  </Sourced>
 ) : <ChatTokenText key={n} text={part} />)
 
 const inline = ({
@@ -125,7 +137,7 @@ const inline = ({
         const skill = skillValue ? readSkillReference({ value: skillValue }) : undefined
 
         if (skill) {
-          return <SkillToken key={i} skill={skill} />
+          return <Sourced key={i} markdown={token.raw}><SkillToken skill={skill} /></Sourced>
         }
 
         const pointer = token.type === 'link' ? /^pnyx-(project|column|image|file):([\w%~.-]+)$/.exec(token.href) : null
@@ -137,12 +149,13 @@ const inline = ({
 
         if (pointer?.[1] === 'image' && value !== undefined) {
           return (
-            <ImageChip
-              key={i}
-              path={value}
-              label={label}
-              reference
-            />
+            <Sourced key={i} markdown={token.raw}>
+              <ImageChip
+                path={value}
+                label={label}
+                reference
+              />
+            </Sourced>
           )
         }
 
@@ -153,26 +166,32 @@ const inline = ({
           }
 
           return (
-            <ColumnChip
-              key={i}
-              {...look}
-              label={label}
-            />
+            <Sourced key={i} markdown={token.raw}>
+              <ColumnChip
+                {...look}
+                label={label}
+              />
+            </Sourced>
           )
         }
 
         if (pointer) {
-          return <span key={i} className="chip reference-chip" contentEditable={false}>{children}</span>
+          return (
+            <Sourced key={i} markdown={token.raw}>
+              <span className="chip reference-chip" contentEditable={false}>{children}</span>
+            </Sourced>
+          )
         }
 
         if (task) {
           return (
-            <TaskReference
-              key={i}
-              id={task}
-              openTask={openTask}
-            >{children}
-            </TaskReference>
+            <Sourced key={i} markdown={token.raw}>
+              <TaskReference
+                id={task}
+                openTask={openTask}
+              >{children}
+              </TaskReference>
+            </Sourced>
           )
         }
 

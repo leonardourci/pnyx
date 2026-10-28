@@ -361,7 +361,7 @@ test(
     )
     assert.equal(
       copied.plain,
-      'run /review-code on @Fix [login] here Image 1 ',
+      'run /review-code on Fix [login] here Image 1 ',
     )
     const pasted = replaceDisplay({
       text: 'Again: ',
