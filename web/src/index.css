@@ -1406,14 +1406,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 @media (prefers-reduced-motion: reduce) { .card, .card-menu { transition: none; } }
 
 .message-task-label { color: var(--color-muted); font-size: var(--text-meta); }
-.button.task-reference { display: inline; max-width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: normal; overflow-wrap: anywhere; vertical-align: baseline; }
+.button.task-reference { display: inline; max-width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: inherit; overflow-wrap: anywhere; vertical-align: baseline; }
 .button.task-reference:hover { background: transparent; }
 .task-reference[aria-disabled=true] { opacity: .45; cursor: default; }
 
 
 
 .message-task > .tooltip-anchor { min-width: 0; }
-.markdown .tooltip-anchor:has(> .task-reference) { display: inline; }
+.tooltip-anchor:has(> .task-reference) { display: inline; }
 
 .disclosure-chevron { transition: transform 140ms ease; }
 .card-title-row { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
