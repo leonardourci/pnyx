@@ -1280,6 +1280,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card-slot > img { display: block; width: 100%; height: 100%; object-fit: cover; }
 
+.card-slot > img[data-loading] { display: none; }
+
 .card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .75em; }
 
 .attachment-card > .card-x { width: 1.375em; flex-shrink: 0; border-left: 1px solid var(--color-line); color: var(--color-muted); }

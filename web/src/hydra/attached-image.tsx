@@ -110,22 +110,34 @@ export function ImageViewer({
   )
 }
 
+// The icon holds the slot until the thumbnail has arrived, so a slow download never leaves it blank.
 export function ImageThumb({ path }: { path: string }) {
   const [
     failed,
     setFailed,
   ] = useState(false)
+  const [
+    loaded,
+    setLoaded,
+  ] = useState(false)
   const src = attachmentSource({ path })
 
-  return src && !failed
-    ? (
+  if (!src || failed) {
+    return <Icon name="image" size={13} />
+  }
+
+  return (
+    <>
+      {!loaded && <Icon name="image" size={13} />}
       <img
         src={src}
         alt=""
+        data-loading={!loaded || undefined}
+        onLoad={() => setLoaded(true)}
         onError={() => setFailed(true)}
       />
-    )
-    : <Icon name="image" size={13} />
+    </>
+  )
 }
 
 export function ImageChip({
