@@ -26,14 +26,15 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 
 | Folder | Holds |
 |---|---|
-| `src/cli/` | the `pnyx-axi` entry and its commands |
-| `src/core/` | event schema, Hydra rules and the pure reducer |
-| `src/store/` | `events.jsonl`, `snapshot.json`, the writer lock and the hook spool |
+| `src/cli/` | the `pnyx-axi` entry and the commands not yet in their feature folder |
+| `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host |
+| `src/core/` | feature event types and Hydra rules not yet in their feature folder |
+| `src/store/` | generic storage: private folders, durable writes, the writer lock and spool files |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
-| `src/server/` | the local daemon, its WebSocket and the agents it runs |
+| `src/server/` | the agents the server runs and the login service |
 | `src/thread/` | the transcript and reply thread reader |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
-| `web/` | the React + Vite + Tailwind Hydra; its own UI primitives in `web/src/components/ui/` |
+| `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/` and feature-bound ones still in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
 | `src/test-harness/` | the shared test harness: the flow runner, fake agents and their recorded sessions, and fake tools |
