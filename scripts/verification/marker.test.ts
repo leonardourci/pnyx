@@ -1,4 +1,4 @@
-import { CLI_SKILL } from '../../src/setup/skill-names.ts'
+import { CLI_SKILL } from '#setup/skill-names.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
 import {
