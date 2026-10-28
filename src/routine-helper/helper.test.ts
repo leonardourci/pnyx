@@ -12,7 +12,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { taskLease } from './leases.ts'
 import { HELPER_INPUT_CHARS, helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
-import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
+import { createRoutineHelper, HELPER_INSTRUCTIONS, HELPER_TURNS, outcomeSchema, parseOutcomes } from './runner.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -700,6 +700,50 @@ test(
         prompt: () => '',
       }),
       undefined,
+    )
+  },
+)
+
+test(
+  'the helper starts a fresh conversation after its turn limit and carries its earlier outcomes into each prompt',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+
+    for (let turn = 0; turn <= HELPER_TURNS; turn++) {
+      const run = await lab.run({
+        text: JSON.stringify({
+          outcomes: [
+            {
+              task,
+              audience: 'routine',
+              summary: `Nudged ${turn}.`,
+            },
+          ],
+        }),
+      })
+      await run.finished
+    }
+
+    assert.deepEqual(
+      lab.opens.map(open => open.agent === undefined),
+      [
+        true,
+        ...Array.from(
+          { length: HELPER_TURNS - 1 },
+          () => false,
+        ),
+        true,
+      ],
+    )
+    assert.match(
+      lab.inputs.at(-1)!,
+      new RegExp(`Your earlier outcomes on these tasks:\\n(- ${task} \\(routine\\): Nudged \\d+\\.\\n){3}`),
+    )
+    assert.match(
+      lab.inputs.at(-1)!,
+      new RegExp(`Nudged ${HELPER_TURNS - 1}\\.`),
     )
   },
 )
