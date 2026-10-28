@@ -7,6 +7,7 @@ import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { isUpgradeSuggestion } from '#upgrade/model.ts'
@@ -32,7 +33,7 @@ import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
 import { imageLine } from '#hydra/images.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, type PlacedChip } from './draft.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, hasPendingImage, isPendingImage, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapCaret, withoutPendingImages, type PlacedChip } from './draft.ts'
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -55,8 +56,8 @@ function DraftCard({
 }) {
   const image = chip.kind === 'image'
   const loading = image && isPendingImage({ path: chip.value })
-  const shown = image && !loading
-  const slot = shown ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
+  const stored = image && !loading
+  const slot = stored ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
   const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (
@@ -66,9 +67,9 @@ function DraftCard({
         keepsInputFocus
         slot={slot}
         label={label}
-        title={shown ? 'Show image' : chip.name}
+        title={stored ? 'Show image' : chip.name}
         tone={chip.attached ? undefined : 'reference'}
-        open={shown ? open : undefined}
+        open={stored ? open : undefined}
         remove={remove}
         removeLabel={`Remove ${chip.name}`}
       />
@@ -176,7 +177,7 @@ export function Composer({
 
   const query = (mention?.query ?? '').trim().toLocaleLowerCase()
   const matches: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached
+    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
       && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
@@ -515,6 +516,23 @@ export function Composer({
     return edit.text
   }
 
+  // A placeholder lives only while this composer's upload runs, so a restored one goes and leaving stops them.
+  const uploading = useRef(new AbortController())
+  useEffect(
+    () => {
+      const controller = new AbortController()
+      uploading.current = controller
+      const restored = current.current.draft
+
+      if (hasPendingImage({ text: restored })) {
+        setDraft({ text: withoutPendingImages({ text: restored }) })
+      }
+
+      return () => controller.abort()
+    },
+    [],
+  )
+
   const settle = ({
     path,
     line,
@@ -522,6 +540,10 @@ export function Composer({
     path: string
     line?: string
   }) => {
+    if (uploading.current.signal.aborted) {
+      return
+    }
+
     const settled = settleImage({
       text: current.current.draft,
       caret: input.current?.selectionEnd ?? caretLast.current,
@@ -529,8 +551,9 @@ export function Composer({
       line,
     })
 
+    // Written before the next keystroke or upload reads the draft and caret.
     if (settled) {
-      write(settled)
+      flushSync(() => write(settled))
     }
   }
 
@@ -541,8 +564,9 @@ export function Composer({
     file: File
     path: string
   }) => {
-    const track = ({ fraction }: { fraction: number }) => setUploads(shown => ({
-      ...shown,
+    const { signal } = uploading.current
+    const track = ({ fraction }: { fraction: number }) => setUploads(progress => ({
+      ...progress,
       [path]: fraction,
     }))
 
@@ -554,13 +578,19 @@ export function Composer({
         line: await uploadImage({
           file,
           progress: track,
+          signal,
         }),
       })
     } catch (error) {
+      if (signal.aborted) {
+        return
+      }
+
       settle({ path })
       notify({ text: error instanceof Error ? error.message : 'Could not add the image.' })
     } finally {
-      setUploads(shown => Object.fromEntries(Object.entries(shown).filter(([key]) => key !== path)))
+      setUploads(progress => Object.fromEntries(Object.entries(progress)
+        .filter(([key]) => key !== path)))
     }
   }
 
@@ -579,20 +609,21 @@ export function Composer({
       return
     }
 
-    const paths = images.map(() => pendingImage({ id: crypto.randomUUID() }))
+    const placed = images.map(file => ({
+      file,
+      path: pendingImage({ id: crypto.randomUUID() }),
+    }))
     write(placeImages({
       text: current.current.draft,
       caret: input.current?.selectionEnd,
-      lines: paths.map(path => imageLine({ path })),
+      lines: placed.map(({ path }) => imageLine({ path })),
     }))
     input.current?.focus()
-    images.forEach((
-      file,
-      n,
-    ) => void upload({
-      file,
-      path: paths[n]!,
-    }))
+
+    // Each upload settles its own placeholder and reports its own failure.
+    for (const image of placed) {
+      void upload(image)
+    }
   }
 
   const removeCard = ({ chip }: { chip: PlacedChip }) => {

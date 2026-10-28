@@ -420,7 +420,7 @@ export function settleImage({
   line?: string
 }) {
   const view = draftView({ text })
-  const chip = view.chips.find(placed => placed.kind === 'image' && placed.value === path)
+  const chip = view.chips.find(placed => placed.kind === 'image' && placed.attached && placed.value === path)
 
   if (!chip) {
     return undefined

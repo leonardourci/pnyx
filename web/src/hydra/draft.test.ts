@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { taskMention } from '#hydra/mentions.ts'
+import { reference, taskMention } from '#hydra/mentions.ts'
 import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
 
 const task = taskMention({
@@ -276,6 +276,66 @@ test(
     assert.equal(
       withoutPendingImages({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${other} too` }),
       `see and ${other} too`,
+    )
+  },
+)
+
+test(
+  'two images uploading together keep their numbers and places whichever answers first',
+  () => {
+    const first = pendingImage({ id: 'p1' }), second = pendingImage({ id: 'p2' })
+    const text = `before [image: ${first}] middle [image: ${second}] after`
+    assert.deepEqual(
+      draftView({ text }).chips.map(chip => chip.name),
+      [
+        'Loading image 1',
+        'Loading image 2',
+      ],
+    )
+    const later = settleImage({
+      text,
+      caret: 0,
+      path: second,
+      line: other,
+    })!
+    const both = settleImage({
+      text: later.text,
+      caret: 0,
+      path: first,
+      line: image,
+    })!
+    assert.equal(
+      both.text,
+      `before ${image} middle ${other} after`,
+    )
+    assert.deepEqual(
+      draftView({ text: both.text }).chips.map(chip => chip.name),
+      [
+        'Image 1',
+        'Image 2',
+      ],
+    )
+  },
+)
+
+test(
+  'a mention of an image still loading is not taken for its placeholder',
+  () => {
+    const path = pendingImage({ id: 'p1' })
+    const mention = reference({
+      kind: 'image',
+      value: path,
+      label: 'Loading image 1',
+    })
+    const text = `${mention} see [image: ${path}]`
+    assert.equal(
+      settleImage({
+        text,
+        caret: 0,
+        path,
+        line: image,
+      })?.text,
+      `${mention} see ${image}`,
     )
   },
 )

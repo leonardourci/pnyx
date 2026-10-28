@@ -23,9 +23,11 @@ export function checkImages({ files }: { files: File[] }) {
 export function uploadImage({
   file,
   progress,
+  signal,
 }: {
   file: File
   progress?({ fraction }: { fraction: number }): void
+  signal?: AbortSignal
 }) {
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content ?? ''
   const failed = `Could not add ${file.name || 'an image'}.`
@@ -74,9 +76,21 @@ export function uploadImage({
         }
       },
     )
-    request.addEventListener(
+
+    for (const ended of [
       'error',
-      () => reject(new Error(failed)),
+      'abort',
+      'timeout',
+    ]) {
+      request.addEventListener(
+        ended,
+        () => reject(new Error(failed)),
+      )
+    }
+
+    signal?.addEventListener(
+      'abort',
+      () => request.abort(),
     )
     request.send(file)
   })
