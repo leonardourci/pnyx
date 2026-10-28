@@ -1,6 +1,6 @@
 import type { ComponentProps } from 'react'
 import { useHeadsDispatch } from '../hydra/heads-dispatch.ts'
-import { Projects } from '../hydra/projects.tsx'
+import { Projects } from '../projects/projects.tsx'
 import type { HydraState } from '../../../src/app/model.ts'
 import type { ViewPreferences } from '../../../src/preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '../../../src/preferences/view.ts'

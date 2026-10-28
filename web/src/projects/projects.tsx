@@ -5,7 +5,7 @@ import { Button, Input, Switch, Textarea } from '../shared/ui/controls.tsx'
 import type { Command } from '../app/connection.ts'
 import { useProjectsResource, type ProjectRow } from './project-resource.ts'
 import { PendingStatus } from '../shared/ui/pending-status.tsx'
-import { LandingFields, landingArgs, type LandingChoice } from './landing-fields.tsx'
+import { LandingFields, landingArgs, type LandingChoice } from '../hydra/landing-fields.tsx'
 
 type Confirmation = {
   token: string

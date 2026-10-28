@@ -1,8 +1,8 @@
 import { useEffect, useSyncExternalStore } from 'react'
 import type { HydraProject } from '../../../src/projects/model.ts'
 import type { Command } from '../app/connection.ts'
-import { argument } from './optimistic.ts'
-import { DEFAULT_LANDING, type LandingChoice } from './landing-fields.tsx'
+import { argument } from '../hydra/optimistic.ts'
+import { DEFAULT_LANDING, type LandingChoice } from '../hydra/landing-fields.tsx'
 import { createSettingsResource } from '../shared/settings-resource.ts'
 import { CommandFailure } from '../shared/pending-intents.ts'
 
