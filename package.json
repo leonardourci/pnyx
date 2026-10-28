@@ -12,6 +12,13 @@
   "bin": {
     "pnyx-axi": "./dist/cli/pnyx-axi.js"
   },
+  "imports": {
+    "#web-*": "./web/src/*",
+    "#*.ts": {
+      "source": "./src/*.ts",
+      "default": "./dist/*.js"
+    }
+  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json && node -e \"fs.chmodSync('dist/cli/pnyx-axi.js', 0o755)\" && vite build --config web/vite.config.ts",
     "typecheck": "tsc --noEmit && tsc --noEmit -p web",

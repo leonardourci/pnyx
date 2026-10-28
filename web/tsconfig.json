@@ -16,7 +16,10 @@
       "node",
       "vite/client"
     ],
-    "allowImportingTsExtensions": true
+    "allowImportingTsExtensions": true,
+    "customConditions": [
+      "source"
+    ]
   },
   "include": [
     "."

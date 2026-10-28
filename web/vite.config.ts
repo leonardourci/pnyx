@@ -1,6 +1,6 @@
 import tailwindcss from '@tailwindcss/vite'
 import react from '@vitejs/plugin-react'
-import { defineConfig, type Plugin } from 'vite'
+import { defaultClientConditions, defineConfig, type Plugin } from 'vite'
 import { hydraIdentity, localToken } from '../src/app/server-state.ts'
 
 // `pnpm dev` runs `pnyx-axi serve --hydra dev` on this port; the dev server forwards the Hydra's WebSocket to it.
@@ -45,6 +45,12 @@ export default defineConfig({
     tailwindcss(),
     devToken,
   ],
+  resolve: {
+    conditions: [
+      ...defaultClientConditions,
+      'source',
+    ],
+  },
   build: {
     outDir: '../dist/web',
     emptyOutDir: true,

@@ -9,7 +9,8 @@
     "erasableSyntaxOnly": true,
     "verbatimModuleSyntax": true,
     "rewriteRelativeImportExtensions": true,
-    "types": ["node"]
+    "types": ["node"],
+    "customConditions": ["source"]
   },
   "include": ["src", "scripts", "eslint", "e2e"]
 }
