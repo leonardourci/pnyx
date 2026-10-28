@@ -12,10 +12,10 @@ import type { Catalog } from '../../../src/thread/catalog.ts'
 import { ChatTokensContext } from '../components/ui/chat-tokens.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { CopyButton } from '../shared/ui/copy-button.tsx'
-import { ColumnChip } from '../components/ui/column-chip.tsx'
+import { ColumnChip } from '../tasks/column-chip.tsx'
 import { MessageText } from '../components/ui/streaming.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
-import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../components/ui/task-reference.tsx'
+import { TaskReference, TaskReferencesProvider, type TaskReferenceData } from '../tasks/task-reference.tsx'
 import { isEditing, useKeyAction, useKeyboard } from '../preferences/keyboard-registry.tsx'
 import {
   CARET_CSS, CARET_HOST, CARET_KEY, CARET_SUPPORTED, QUESTION_CONTROLS,
@@ -33,7 +33,7 @@ import {
   type CommentPassage,
 } from './message-selection.ts'
 import { receiptLabel } from '../app/view.ts'
-import { columnLook } from './view.ts'
+import { columnLook } from '../tasks/view.ts'
 import { pnyxCalls, shellCommand, type PnyxCall, type PnyxLookup } from './pnyx-action.ts'
 
 const PILL_GAP = 6

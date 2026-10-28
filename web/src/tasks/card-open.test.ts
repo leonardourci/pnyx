@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { afterSteadyLayout } from '../web/src/hydra/scroll-task.ts'
+import { afterSteadyLayout } from './scroll-task.ts'
 
 test(
   'alignment waits until the clicked card stops moving while the card it replaced shrinks',

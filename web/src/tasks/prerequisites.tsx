@@ -1,7 +1,7 @@
 import type { HydraState } from '../../../src/app/model.ts'
 import type { Card } from '../../../src/tasks/model.ts'
 import { taskReadiness } from '../../../src/tasks/dependencies.ts'
-import { TaskReference } from '../components/ui/task-reference.tsx'
+import { TaskReference } from './task-reference.tsx'
 
 export function Prerequisites({
   card,

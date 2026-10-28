@@ -12,12 +12,12 @@ import type { LatestMessage, ThreadPage } from '../../../src/thread/read.ts'
 import type { CurrentAction } from '../../../src/thread/calls.ts'
 import type { Command, Receipt } from './connection.ts'
 import { commandTimeout, reconnectDelay, retryable, withChanges } from './connection-protocol.ts'
-import { argument, optimisticState, currentRevision } from '../hydra/optimistic.ts'
+import { argument, optimisticState, currentRevision } from '../tasks/optimistic.ts'
 import { commandArguments, editTargets, pendingHydra, type HydraResource } from './pending-state.ts'
 import { CommandFailure, createPendingResource } from '../shared/pending-intents.ts'
 import { DISPATCH_CHANGED } from '../hydra/heads-dispatch.ts'
 import { shouldReload } from './view.ts'
-import { noteUpdate, staleUpdates } from '../hydra/updates-cache.ts'
+import { noteUpdate, staleUpdates } from '../tasks/updates-cache.ts'
 
 const emptyQueue = (): HydraQueue => ({
   waiting: [],

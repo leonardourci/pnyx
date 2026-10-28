@@ -1,6 +1,6 @@
 import { commandBytes, MAX_MESSAGE_BYTES } from '../../../src/app/server-protocol.ts'
 import type { HydraState } from '../../../src/app/model.ts'
-import { argument, optimisticState, type Edit } from '../hydra/optimistic.ts'
+import { argument, optimisticState, type Edit } from '../tasks/optimistic.ts'
 import { CommandFailure, createPendingResource } from '../shared/pending-intents.ts'
 
 function createHydraResource({

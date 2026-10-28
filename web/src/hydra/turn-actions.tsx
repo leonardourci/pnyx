@@ -1,6 +1,6 @@
 import { Disclosure, CollapsibleText } from '../shared/ui/disclosure.tsx'
-import { TaskReference } from '../components/ui/task-reference.tsx'
-import { UpdateEntry } from './update-rows.tsx'
+import { TaskReference } from '../tasks/task-reference.tsx'
+import { UpdateEntry } from '../tasks/update-rows.tsx'
 import type { TurnActions } from './conversation.ts'
 
 export function TurnActionsFold({ fold }: { fold: TurnActions }) {

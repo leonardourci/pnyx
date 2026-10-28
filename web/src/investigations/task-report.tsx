@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import type { Card } from '../../../src/tasks/model.ts'
 import { CollapsibleText } from '../shared/ui/disclosure.tsx'
-import { relativeTime } from '../hydra/brief.ts'
+import { relativeTime } from '../tasks/brief.ts'
 import type { Command } from '../app/connection.ts'
 
 // A task's stored investigation report, read when its card opens.

@@ -1,9 +1,9 @@
 import type { Ask, Card } from '../../../src/tasks/model.ts'
 import { askWording } from '../../../src/tasks/questions.ts'
-import { TaskReference } from '../components/ui/task-reference.tsx'
+import { TaskReference } from '../tasks/task-reference.tsx'
 import { Disclosure, CollapsibleText } from '../shared/ui/disclosure.tsx'
 import { Button } from '../shared/ui/controls.tsx'
-import { AskPanel } from './ask.tsx'
+import { AskPanel } from '../tasks/ask.tsx'
 import { clock } from './chat.ts'
 import type { Command } from '../app/connection.ts'
 

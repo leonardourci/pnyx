@@ -17,7 +17,7 @@ import { LOCKED_DELETE, lockedColumn } from '../../../src/tasks/column-rules.ts'
 import { hydraConfig } from '../../../src/core/hydra.ts'
 import { Projects } from '../projects/projects.tsx'
 import { AgentKinds } from '../hydra/agent-kinds.tsx'
-import { columnsFor } from '../hydra/view.ts'
+import { columnsFor } from '../tasks/view.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
 
 export function Oracle({

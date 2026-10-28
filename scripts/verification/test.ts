@@ -12,8 +12,8 @@ const LANE_TIMEOUT_MS = 60 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'test/action-label.test.ts',
-  'test/card-open.test.ts',
-  'test/card-states.test.ts',
+  'web/src/tasks/card-open.test.ts',
+  'web/src/tasks/card-states.test.ts',
   'test/chat.test.ts',
   'test/conversation.test.ts',
   'src/tasks/decide.test.ts',
@@ -26,7 +26,7 @@ const PURE_TESTS = new Set([
   'scripts/verification/marker.test.ts',
   'src/memory/memory-budgets.test.ts',
   'test/model-picker.test.ts',
-  'test/optimistic.test.ts',
+  'web/src/tasks/optimistic.test.ts',
   'src/tasks/owner-ask.test.ts',
   'test/permissions.test.ts',
   'test/pnyx-action.test.ts',

@@ -1,8 +1,8 @@
 import { createContext, useContext, type ReactNode } from 'react'
-import { InlineButton } from '../../shared/ui/controls.tsx'
-import { ReferenceBadge } from './reference-badge.tsx'
-import { CHIP_SPACE } from '../../hydra/draft.ts'
-import { Tooltip } from '../../shared/ui/tooltip.tsx'
+import { InlineButton } from '../shared/ui/controls.tsx'
+import { ReferenceBadge } from '../components/ui/reference-badge.tsx'
+import { CHIP_SPACE } from '../hydra/draft.ts'
+import { Tooltip } from '../shared/ui/tooltip.tsx'
 
 const stateIcons: Record<string, string> = {
   working: 'in_progress',

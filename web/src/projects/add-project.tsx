@@ -6,10 +6,10 @@ import type { FolderListing } from '../../../src/projects/folders.ts'
 import { Button, Input } from '../shared/ui/controls.tsx'
 import { FolderSearch } from './folder-search.tsx'
 import { CommandFailure } from '../shared/pending-intents.ts'
-import { argument } from '../hydra/optimistic.ts'
+import { argument } from '../tasks/optimistic.ts'
 import type { Command } from '../app/connection.ts'
 import { hydraTitle } from '../app/view.ts'
-import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from '../hydra/landing-fields.tsx'
+import { DEFAULT_LANDING, LandingFields, landingArgs, type LandingChoice } from '../tasks/delivery/delivery-fields.tsx'
 
 type Confirmation = {
   token: string
