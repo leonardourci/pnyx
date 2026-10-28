@@ -20,7 +20,7 @@ For a small batch, pass explicit paths: `node scripts/verification/test.ts src/t
 ## Writing a flow
 
 ```ts
-import { pnyx } from '../src/test-harness/pnyx.ts' // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
+import { pnyx } from '#test-harness/pnyx.ts' // the one Pnyx every flow shares: temp PNYX_HOME, random port, fake agents
 
 test('…', async () => {
   const s = await pnyx.scenario()       // a Hydra of its own, so flows never depend on each other

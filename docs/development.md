@@ -17,6 +17,8 @@ pnpm test
 
 Run `pnpm lint:fix` to apply formatting. Objects, destructuring patterns, type literals, arrays, parameter lists and call arguments with more than one item use one item per line. A single item may stay inline. `pnpm run lint` checks the same rules without fixing them.
 
+Imports across folders use the `package.json` aliases: `#<folder>/<file>.ts` resolves to `src/` and `#web-<folder>/<file>` to `web/src/`. Built code resolves `#…` to `dist/`, so anything that runs TypeScript from `src/` passes `--conditions=source`, or its `#` imports load the built files. The test launcher, `pnpm dev:server` and the Vite scripts pass it. A child the server starts with `execFile` and a login service installed from source take it from `SOURCE_CONDITIONS` in `src/app/source-conditions.ts`. The session-start hook adds it when its CLI is a `.ts` file.
+
 See [AGENTS.md](../AGENTS.md) for the layout and design rules. `pnpm run lint` and `pnpm test` give deterministic verification. The test launcher isolates each file with temporary data and harness folders, discards inherited agent identity, and limits process concurrency. See [Testing](testing.md) for isolation details and focused test commands. `pnpm run web:dev` serves the Hydra through Vite. The test suite has no browser tests: check a page change in the local preview and show it in the pull request's screenshots.
 
 ## Run a development server
