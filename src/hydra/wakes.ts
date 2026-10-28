@@ -48,8 +48,8 @@ export const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
 export const WAKE_HANDLED = /^wake:(\d+):handled$/
 
 export const REPLY_RULES = [
-  'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, or a failure or blocker cannot be cleared. A decision needed goes on a question card; never restate it in chat.',
-  'A result reply stands alone: say the outcome and what happens next, nothing in between (no running checks, retries or re-runs). Never repeat what waits on the owner; the Waiting on you bar shows it. Say in one sentence when you decide something small under a standing preference.',
+  'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, or a failure or blocker cannot be cleared. A decision needed goes on a question card; do not restate it in chat, only add what the card lacks.',
+  'A result reply stands alone: say the outcome and what happens next, nothing in between (no running checks, and no retries or re-runs that are under way or passed). Never repeat what waits on the owner; the Waiting on you bar shows it. Say in one sentence when you decide something small under a standing preference.',
   'Answer worker questions already settled by standing preferences. On the second or plainly recurring snag, add one line to the project worker-notes and tell the owner in one sentence.',
 ].join('\n')
 
