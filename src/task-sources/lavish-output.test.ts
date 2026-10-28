@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { lavishSession } from '../src/external-sources/lavish-output.ts'
+import { lavishSession } from './lavish-output.ts'
 
 test(
   'only leading Lavish session fields classify a final round; all payload stays outside the classifier',

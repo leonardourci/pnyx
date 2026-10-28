@@ -533,7 +533,7 @@ test(
     copyFileSync(
       join(
         import.meta.dirname,
-        '../fixtures/external-sources/source.mjs',
+        '../../src/task-sources/fixtures/source.mjs',
       ),
       script,
     )

@@ -1,5 +1,5 @@
 import type { ProjectRefresh } from '../projects/refresh-types.ts'
-import type { ExternalSource } from '../external-sources/model.ts'
+import type { ExternalSource } from '../task-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 import type { SourceRef } from '../app/model.ts'
 import type { EventBase } from '../store/events.ts'

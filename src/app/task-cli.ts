@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
 import { WRITE, parse, meta, required, commit, explained, withHelp, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
-import { sourceCommand } from '../external-sources/cli.ts'
+import { sourceCommand } from '../task-sources/cli.ts'
 import { inboxCommand } from '../task-inbox/cli.ts'
 import { reportReviewCommand, reportCommand, buildCommand } from '../investigations/cli.ts'
 import { taskLandingCommand } from '../landing/task-landing.ts'

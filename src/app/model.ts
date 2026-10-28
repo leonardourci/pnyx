@@ -6,7 +6,7 @@ import type { ReportCall } from '../investigations/model.ts'
 import { type TaskQueue, type Column, type HydraConfig, type HydraColumn, type OwnerAsk, type TaskKind, type AnswerMessage, type LandingRule, type HydraMessage, type TaskDeclaration, type Ask, type AgentLaunch, type HydraStatus, type DispatchProposal, type AgentConfig, type SteeringEvent, type PushedEvent, type MovedEvent, type LinkedEvent, type OutcomeEvent, type RepliedEvent, type NotedEvent, type SessionEvent, type ChatEvent, type PermissionEvent, type SavedLabelColor, type Card, type AgentSession } from '../core/model.ts'
 import type { ProjectRefresh } from '../projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '../helper/state.ts'
-import type { ExternalSourceEvent } from '../external-sources/model.ts'
+import type { ExternalSourceEvent } from '../task-sources/model.ts'
 
 export type Decision = { event: HydraEvent } | { skipped: 'unchanged' | 'stale' | 'duplicate' }
 
