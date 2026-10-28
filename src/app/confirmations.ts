@@ -10,6 +10,7 @@ import type { HydraState } from './model.ts'
 import { HydraError } from '../store/errors.ts'
 import { withWriter } from './writer.ts'
 import { pnyxHome } from '../store/storage.ts'
+import { SOURCE_CONDITIONS } from './source-conditions.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -277,6 +278,7 @@ export const approval = guard({
       const { stdout } = await exec(
         process.execPath,
         [
+          ...SOURCE_CONDITIONS,
           ENTRY,
           target.name,
           ...target.args,

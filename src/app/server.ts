@@ -64,6 +64,7 @@ import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '../workers/codex.ts'
 import { commands, RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
+import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { readBytes, readBody, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '../integrations/hooks/socket.ts'
 
@@ -1013,6 +1014,7 @@ export async function mountOwnedHydra({
     const child = execFile(
       process.execPath,
       [
+        ...SOURCE_CONDITIONS,
         REPLY_WORKER,
         ...args,
       ],
