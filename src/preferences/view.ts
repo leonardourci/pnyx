@@ -9,6 +9,11 @@ export const DEFAULT_WIDTHS = {
   hydra: 480,
 } as const
 export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
+// Views saved before the defaults widened carry these as stored defaults; they count as unset.
+const LEGACY_DEFAULT_WIDTHS = {
+  column: 290,
+  hydra: 360,
+} as const
 
 export const DEFAULT_VIEW: ViewPreferences = {
   theme: 'system',
@@ -155,7 +160,9 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
         .filter(([id]) => KEY_ACTIONS.some(action => action.id === id))),
     },
     defaultHydraWidth: persistedSize({
-      value: view.defaultHydraWidth,
+      value: view.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra
+        ? undefined
+        : view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
@@ -166,7 +173,10 @@ export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> 
           DEFAULT_COLUMN_WIDTH,
         ])),
       ...Object.fromEntries(Object.entries(persistedMap({
-        values: view.defaultColumnWidths,
+        values: Object.fromEntries(Object.entries(view.defaultColumnWidths ?? {})
+          .filter(([
+            , width,
+          ]) => width !== LEGACY_DEFAULT_WIDTHS.column)),
         ...VIEW_SIZE_LIMITS.columnWidth,
       })).filter(([id]) => columnIds.has(id))),
     },
