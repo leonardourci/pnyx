@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
-import { setupService } from './service.ts'
+import { serviceFile, setupService } from './service.ts'
 
 test(
   'one login service runs the server of every Hydra, replaces the per-Hydra services of this home, survives exit and uninstalls through launchd',
@@ -183,9 +183,9 @@ test(
     assert.throws(
       () => setupService({
         ...options,
-        platform: 'linux',
+        platform: 'win32',
       }),
-      /requires macOS/,
+      /requires macOS launchd or Linux systemd/,
     )
     assert.throws(
       () => setupService({
@@ -544,6 +544,362 @@ test(
     assert.equal(
       setupService(options).service,
       'would install',
+    )
+  },
+)
+
+test(
+  'on Linux a systemd user unit carries the setup PATH and login folders, restarts after exit and uninstalls through systemctl --user',
+  () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-service-linux-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx 100% Hydra',
+    )
+    const configHome = join(
+      root,
+      'config',
+    )
+    const calls: string[][] = []
+    const options = {
+      node: '/opt/node $HOME % bin/node',
+      port: 49125,
+      platform: 'linux' as const,
+      userHome: root,
+      searchPath: '/opt/tools/bin:/usr/bin',
+      environment: {
+        XDG_CONFIG_HOME: configHome,
+        CLAUDE_CONFIG_DIR: '/logins/claude',
+      },
+      run: ({ args }: { args: string[] }) => {
+        calls.push(args)
+
+        return ''
+      },
+    }
+    const ours = process.env.PNYX_HOME
+    process.env.PNYX_HOME = join(
+      root,
+      'theirs',
+    )
+    const theirs = setupService({
+      ...options,
+      preview: true,
+    })
+    process.env.PNYX_HOME = ours
+    const { label } = serviceFile({
+      userHome: root,
+      platform: 'linux',
+      configHome,
+    })
+    const unitName = `${label}.service`
+    const preview = setupService({
+      ...options,
+      preview: true,
+    })
+    assert.equal(
+      preview.path,
+      join(
+        configHome,
+        'systemd',
+        'user',
+        unitName,
+      ),
+    )
+    assert.equal(
+      existsSync(preview.path),
+      false,
+    )
+    assert.equal(
+      calls.length,
+      0,
+    )
+
+    assert.ok(preview.unit)
+    assert.match(
+      preview.unit,
+      /^ExecStart="\/opt\/node \$\$HOME %% bin\/node" "--conditions=source" .* "serve" "--port" "49125"$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^Environment="PNYX_HOME=[^"]*pnyx 100%% Hydra"$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^Environment="PATH=\/opt\/tools\/bin:\/usr\/bin"$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^Environment="CLAUDE_CONFIG_DIR=\/logins\/claude"$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^WorkingDirectory=.*pnyx 100%% Hydra$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^StandardOutput=append:.*pnyx 100%% Hydra\/service\.log$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^StandardError=append:.*pnyx 100%% Hydra\/service\.log$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^Restart=always$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^RestartSec=5$/m,
+    )
+    assert.match(
+      preview.unit,
+      /^WantedBy=default\.target$/m,
+    )
+
+    assert.doesNotMatch(
+      preview.unit,
+      /CODEX_HOME/,
+    )
+
+    setupService(options)
+    assert.equal(
+      readFileSync(
+        preview.path,
+        'utf8',
+      ),
+      preview.unit,
+    )
+    assert.deepEqual(
+      calls,
+      [
+        [
+          '--user',
+          'daemon-reload',
+        ],
+        [
+          '--user',
+          'enable',
+          unitName,
+        ],
+        [
+          '--user',
+          'restart',
+          unitName,
+        ],
+      ],
+    )
+
+    setupService({
+      ...options,
+      port: 49126,
+    })
+    assert.match(
+      readFileSync(
+        preview.path,
+        'utf8',
+      ),
+      /"--port" "49126"$/m,
+    )
+    assert.deepEqual(
+      calls.slice(3),
+      [
+        [
+          '--user',
+          'daemon-reload',
+        ],
+        [
+          '--user',
+          'enable',
+          unitName,
+        ],
+        [
+          '--user',
+          'restart',
+          unitName,
+        ],
+      ],
+    )
+    assert.ok(theirs.unit)
+    writeFileSync(
+      theirs.path,
+      theirs.unit,
+    )
+    assert.throws(
+      () => setupService(options),
+      { code: 'PORT_IN_USE' },
+    )
+
+    calls.length = 0
+    setupService({
+      ...options,
+      remove: true,
+    })
+    assert.deepEqual(
+      calls,
+      [
+        [
+          '--user',
+          'disable',
+          '--now',
+          unitName,
+        ],
+        [
+          '--user',
+          'daemon-reload',
+        ],
+      ],
+    )
+    assert.equal(
+      existsSync(preview.path),
+      false,
+    )
+  },
+)
+
+test(
+  'Linux service refuses multiline values before writing a unit or calling systemctl',
+  () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-service-lines-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+    const options = {
+      platform: 'linux' as const,
+      userHome: root,
+      environment: { CLAUDE_CONFIG_DIR: '/logins/claude\nRestart=no' },
+      run: () => assert.fail('invalid settings must not call systemctl'),
+    }
+    const { path } = serviceFile({
+      userHome: root,
+      platform: 'linux',
+      configHome: 'relative',
+    })
+    assert.throws(
+      () => setupService(options),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.equal(
+      existsSync(path),
+      false,
+    )
+  },
+)
+
+test(
+  'Linux service uses the user config fallback and preserves failures until setup succeeds',
+  () => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-service-errors-',
+    ))
+    process.env.PNYX_HOME = join(
+      root,
+      'pnyx',
+    )
+    const options = {
+      platform: 'linux' as const,
+      userHome: root,
+      environment: {
+        XDG_CONFIG_HOME: 'relative',
+        CODEX_HOME: '/logins/codex "100%" \\ home',
+      },
+      run: () => {
+        throw new Error('Failed to connect to bus')
+      },
+    }
+    const preview = setupService({
+      ...options,
+      preview: true,
+    })
+    assert.ok(preview.unit)
+    assert.equal(
+      preview.path,
+      join(
+        root,
+        '.config',
+        'systemd',
+        'user',
+        `${serviceFile({ platform: 'linux' }).label}.service`,
+      ),
+    )
+    assert.equal(
+      setupService({
+        ...options,
+        environment: {},
+        preview: true,
+      }).path,
+      preview.path,
+    )
+    assert.match(
+      preview.unit,
+      /^Environment="CODEX_HOME=\/logins\/codex \\"100%%\\" \\\\ home"$/m,
+    )
+    assert.throws(
+      () => setupService(options),
+      {
+        code: 'SERVICE_ERROR',
+        message: 'systemd could not start the Pnyx server: Failed to connect to bus',
+        help: [
+          `Run \`systemctl --user status ${serviceFile({ platform: 'linux' }).label}.service\` to inspect it`,
+          `Read ${join(
+            root,
+            'pnyx',
+            'service.log',
+          )}`,
+        ],
+      },
+    )
+    assert.equal(
+      readFileSync(
+        preview.path,
+        'utf8',
+      ),
+      preview.unit,
+    )
+    assert.throws(
+      () => setupService({
+        ...options,
+        remove: true,
+      }),
+      { code: 'SERVICE_ERROR' },
+    )
+    assert.equal(
+      existsSync(preview.path),
+      true,
+    )
+    assert.equal(
+      setupService({
+        ...options,
+        run: () => '',
+      }).service,
+      'installed',
+    )
+    assert.equal(
+      setupService({
+        ...options,
+        run: () => '',
+        remove: true,
+      }).service,
+      'removed',
+    )
+    assert.equal(
+      existsSync(preview.path),
+      false,
+    )
+    assert.equal(
+      setupService({
+        ...options,
+        remove: true,
+      }).service,
+      'removed',
     )
   },
 )

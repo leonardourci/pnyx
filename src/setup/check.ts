@@ -162,8 +162,8 @@ export function setupCheck({
     })
   }
 
-  // ponytail: an installed job counts as running, since launchd keeps it alive; read launchctl if that proves too loose.
-  if (process.platform === 'darwin' && !existsSync(serviceFile().path)) {
+  // ponytail: an installed job counts as running, since launchd or systemd keeps it alive; ask them if that proves too loose.
+  if ((process.platform === 'darwin' || process.platform === 'linux') && !existsSync(serviceFile().path)) {
     items.push({
       name: 'service',
       missing: 'no login service, so Hydras stop when this server stops',
