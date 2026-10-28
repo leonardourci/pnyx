@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
 function attachmentSource({ path }: { path: string }) {
@@ -38,6 +39,39 @@ export function AttachedImage({ path }: { path: string }) {
   )
 }
 
+// An image that no longer loads leaves only its chip in the sentence.
+function MessageImage({
+  path,
+  name,
+}: {
+  path: string
+  name: string
+}) {
+  const [
+    failed,
+    setFailed,
+  ] = useState(false)
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const src = attachmentSource({ path })
+
+  if (failed || !src) {
+    return null
+  }
+
+  return (
+    <figure className="message-image">
+      <Button className="message-image-open" title="Show image" onClick={() => setOpen(true)}>
+        <img src={src} alt={name} onError={() => setFailed(true)} />
+      </Button>
+      <figcaption>{name}</figcaption>
+      {open && <ImageViewer path={path} label={name} close={() => setOpen(false)} />}
+    </figure>
+  )
+}
+
 // The chip keeps the image's place in the sentence; the image itself shows under the text, named like its chip.
 export function MessageImages({ text }: { text: string }) {
   const stored = [...imageNames({ text })].filter(([path]) => attachmentSource({ path }))
@@ -47,16 +81,11 @@ export function MessageImages({ text }: { text: string }) {
   }
 
   return (
-    <div className="message-images">
+    <div className="message-images" contentEditable={false}>
       {stored.map(([
         path,
         name,
-      ]) => (
-        <figure key={path} className="message-image">
-          <AttachedImage path={path} />
-          <figcaption>{name}</figcaption>
-        </figure>
-      ))}
+      ]) => <MessageImage key={path} path={path} name={name} />)}
     </div>
   )
 }
