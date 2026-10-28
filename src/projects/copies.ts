@@ -1,6 +1,6 @@
 import { matchesProject } from './identity.ts'
 import { COPY_TIMEOUT_MS, git } from './git.ts'
-import { landedWork } from '../landing/proof.ts'
+import { landedWork } from '../tasks/delivery/proof.ts'
 
 import { workerQueue } from '../queue/state.ts'
 import { spawnSync } from 'node:child_process'

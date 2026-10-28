@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { failedChecks, type Link } from '../../../src/core/model.ts'
+import { failedChecks, type Link } from '../../../src/tasks/delivery/model.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
 import { Tooltip, LINK_TOOLTIP_DELAY } from '../shared/ui/tooltip.tsx'

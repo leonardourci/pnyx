@@ -11,7 +11,7 @@ import { HydraError } from '../store/errors.ts'
 import { loadHydra } from '../app/store.ts'
 import { withRegistryLock } from '../store/storage.ts'
 import { findProject, projectFolder, projectName, projectRows, sharingHydras } from './read.ts'
-import { parseLanding, parseMerger } from '../landing/rule.ts'
+import { parseLanding, parseMerger } from '../tasks/delivery/rule.ts'
 
 const clone = promisify(execFile)
 

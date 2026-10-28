@@ -1,4 +1,5 @@
-import type { Question, LandingRule, AgentRef, AgentLaunch, TaskQueue, AgentSettings, TerminalFacts, Attention, PermissionRequest, Link, Outcome, Reply, SteeringMessage, ReplyState } from '../core/model.ts'
+import type { LandingRule, Link, Outcome } from './delivery/model.ts'
+import type { Question, AgentRef, AgentLaunch, TaskQueue, AgentSettings, TerminalFacts, Attention, PermissionRequest, Reply, SteeringMessage, ReplyState } from '../core/model.ts'
 import type { ProjectRefresh } from '../projects/refresh-types.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 import type { TaskReport } from '../investigations/model.ts'

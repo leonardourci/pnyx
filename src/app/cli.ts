@@ -11,7 +11,8 @@ import { supervisedCommands } from '../helper/commands.ts'
 import { layout, view } from '../preferences/cli.ts'
 import { owner } from '../memory/cli.ts'
 import { harvest } from '../integrations/cli.ts'
-import { columnCommandHandler, hydraCommandHandler, push, card, move, link, outcome, setup, context } from '../cli/commands.ts'
+import { link, outcome } from '../tasks/delivery/cli.ts'
+import { columnCommandHandler, hydraCommandHandler, push, card, move, setup, context } from '../cli/commands.ts'
 import { repair } from './repair-cli.ts'
 
 export const task = guard({ handler: ({ args }) => taskCommand({ args }) })

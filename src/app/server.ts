@@ -1,6 +1,6 @@
 import { helperProgress } from '../helper/route.ts'
 import { startReviewTimer } from '../review/timer.ts'
-import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '../landing/follow.ts'
+import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '../tasks/delivery/follow.ts'
 import { createSourceRunner } from '../task-sources/runner.ts'
 import { sourceDeadline } from '../task-sources/state.ts'
 import { spendInputs, type TaskSpend } from '../spend/tasks.ts'

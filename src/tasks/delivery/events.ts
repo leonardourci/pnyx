@@ -1,4 +1,4 @@
-import { type Link } from './model.ts'
+import type { Link } from './model.ts'
 
 export function isStaleLink({
   current,

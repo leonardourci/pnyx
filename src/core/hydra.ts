@@ -3,8 +3,7 @@ import { requireReportReview } from '../investigations/inventory.ts'
 import type { HydraState, HydraChange, Decision } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
 import { EVENT_VERSION } from '../store/events.ts'
-import type { Card } from '../tasks/model.ts'
-import { type HydraConfig, type HydraMessage, type Link } from './model.ts'
+import { type HydraConfig, type HydraMessage } from './model.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { DEFAULT_COLUMNS } from '../tasks/column-defaults.ts'
 
@@ -163,13 +162,4 @@ export function hydraBypasses({ state }: { state: HydraState }): boolean {
   const codexNever = mode === 'never' && state.cards[HYDRA_CARD]?.agent?.provider === 'codex'
 
   return mode === 'bypassPermissions' || codexNever
-}
-
-// Pnyx wakes a task's worker with news on its open pull request; a task whose worker ended, or that never had one, leaves it unwatched.
-export function unwatchedPullRequests({ card }: { card: Card }): Link[] {
-  if (card.sessionIds?.length && !card.stoppedAt) {
-    return []
-  }
-
-  return card.links.filter(l => l.kind === 'github_pr' && l.state !== 'merged' && l.state !== 'closed')
 }

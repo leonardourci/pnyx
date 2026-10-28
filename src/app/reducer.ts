@@ -18,7 +18,7 @@ import { applyAsk } from '../tasks/questions.ts'
 import { applyHelper } from '../helper/state.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from '../core/tasks.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '../tasks/events.ts'
-import { isStaleLink } from '../core/reducer.ts'
+import { isStaleLink } from '../tasks/delivery/events.ts'
 import { requestId } from '../core/answer.ts'
 import { refreshDone } from '../core/retention.ts'
 

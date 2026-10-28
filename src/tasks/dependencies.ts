@@ -4,7 +4,7 @@ import { ownerGates } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
 import type { Card } from './model.ts'
-import { cardLanding } from '../core/model.ts'
+import { cardLanding } from './delivery/model.ts'
 
 export function applyDependencies({
   state,
