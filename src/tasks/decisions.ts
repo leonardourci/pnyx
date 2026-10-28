@@ -161,12 +161,21 @@ const age = ({
 }
 
 // Every wake carries this; "none" says the list is complete.
+// How many decision lines a helper prompt shows; the rest is counted, so the input cap holds however many wait.
+const PICKED_DECISIONS = 10
+
 export function decisionsBlock({
   state,
   now,
+  pick,
 }: {
   state: HydraState
   now: number
+  // The helper's batch: its tasks' decisions, the questions it was given first.
+  pick?: {
+    tasks: string[]
+    asks: string[]
+  }
 }): string {
   const items = openDecisions({ state })
 
@@ -174,9 +183,20 @@ export function decisionsBlock({
     return 'Open decisions: none'
   }
 
+  const shown = pick ? items.filter(item => pick.tasks.includes(item.card.id))
+    .sort((
+      a,
+      b,
+    ) => Number(pick.asks.includes(b.id)) - Number(pick.asks.includes(a.id)))
+    .slice(
+      0,
+      PICKED_DECISIONS,
+    ) : items
+  const omitted = items.length - shown.length
+
   return [
     `Open decisions (${items.length}):`,
-    ...items.map(item => {
+    ...shown.map(item => {
       const waited = item.at ? `, ${age({
         at: item.at,
         now,
@@ -187,5 +207,6 @@ export function decisionsBlock({
         title: item.card.title,
       })} ${item.kind}${waited}: ${item.detail}`
     }),
+    ...omitted ? [`- ${omitted} more left out of this batch; \`hydra check\` lists them`] : [],
   ].join('\n')
 }

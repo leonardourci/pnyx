@@ -62,13 +62,16 @@ export const sealed = ({ text }: { text: string }) => text.replace(
 export const decisionsText = ({
   state,
   now,
+  pick,
 }: {
   state: HydraState
   now: number
+  pick?: Parameters<typeof decisionsBlock>[0]['pick']
 }) => sealed({
   text: decisionsBlock({
     state,
     now,
+    pick,
   }),
 })
 
@@ -85,6 +88,7 @@ export function wakeText({
   reports,
   check,
   review,
+  pick,
 }: {
   hydraId: string
   state: HydraState
@@ -94,6 +98,7 @@ export function wakeText({
   reports: HydraMessage[]
   check: boolean
   review?: string
+  pick?: Parameters<typeof decisionsText>[0]['pick']
 }): string {
   const lines: string[] = []
 
@@ -124,6 +129,7 @@ export function wakeText({
   lines.push(decisionsText({
     state,
     now,
+    pick,
   }))
   lines.push(QUIET_RULE)
   lines.push(REPLY_RULES)
