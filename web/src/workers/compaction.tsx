@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import type { CompactInput, Compaction } from '../../../src/compaction/model.ts'
+import type { CompactInput, Compaction } from '../../../src/workers/compaction/model.ts'
 import { Button } from '../shared/ui/controls.tsx'
 import { Disclosure } from '../shared/ui/disclosure.tsx'
 import { Icon } from '../shared/ui/icon.tsx'

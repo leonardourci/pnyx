@@ -275,7 +275,7 @@ export type HydraChange = EventBase & (
 )
 
 export type HydraEvent =
-  | import('../compaction/model.ts').CompactionEvent
+  | import('../workers/compaction/model.ts').CompactionEvent
   | import('../upgrade/model.ts').UpgradeEvent
   | ExternalSourceEvent
   | SteeringEvent

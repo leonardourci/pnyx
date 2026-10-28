@@ -1,5 +1,5 @@
-import { activeCompaction } from '../../../src/compaction/state.ts'
-import { CompactionQueue, CompactionRow } from '../compaction/compaction.tsx'
+import { activeCompaction } from '../../../src/workers/compaction/state.ts'
+import { CompactionQueue, CompactionRow } from '../workers/compaction.tsx'
 import { UPGRADE_COMMAND } from '../../../src/upgrade/model.ts'
 import { UpgradeRow } from '../upgrade/upgrade-row.tsx'
 import { Tooltip, TooltipPanel, TooltipSection } from '../shared/ui/tooltip.tsx'

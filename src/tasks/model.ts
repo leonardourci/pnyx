@@ -128,7 +128,7 @@ export interface TaskHold {
 }
 
 export interface Card {
-  compaction?: import('../compaction/model.ts').CompactionState
+  compaction?: import('../workers/compaction/model.ts').CompactionState
   projectRefresh?: Record<string, ProjectRefresh>
   prerequisites?: string[]
   hold?: TaskHold

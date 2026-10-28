@@ -8,7 +8,7 @@ import { questions } from '../integrations/hooks/observe.ts'
 import type { ModelOption, Provider } from './provider.ts'
 import { attachedImages, imageType } from '../attachments/images.ts'
 import { pnyxHome } from '../store/paths.ts'
-import { compactCommand } from '../compaction/state.ts'
+import { compactCommand } from './compaction/state.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>

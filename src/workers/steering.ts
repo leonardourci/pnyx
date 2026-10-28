@@ -1,4 +1,4 @@
-import { activeCompaction } from '../compaction/state.ts'
+import { activeCompaction } from './compaction/state.ts'
 import { pausedDeclaration } from '../tasks/lifecycle.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
 import type { Card } from '../tasks/model.ts'

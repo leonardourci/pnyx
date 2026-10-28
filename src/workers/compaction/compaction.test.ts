@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra, reduce } from '../src/app/reducer.ts'
-import { readStream } from '../src/test-harness/streams.ts'
-import type { HydraEvent } from '../src/app/model.ts'
-import { needsCommentNote } from '../src/compaction/comments.ts'
+import { emptyHydra, reduce } from '../../app/reducer.ts'
+import { readStream } from '../../test-harness/streams.ts'
+import type { HydraEvent } from '../../app/model.ts'
+import { needsCommentNote } from './comments.ts'
 
 test(
   'compaction replay preserves outcomes and rejects stale comment-teaching epochs',

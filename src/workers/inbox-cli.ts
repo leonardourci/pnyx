@@ -1,4 +1,4 @@
-import { commentInput } from '../compaction/comments.ts'
+import { commentInput } from './compaction/comments.ts'
 import { pendingSteering, steeringClaim } from './steering.ts'
 import { readFileSync } from 'node:fs'
 import { integer, meta, parse, required, COMMON, type Output } from '../app/cli-support.ts'

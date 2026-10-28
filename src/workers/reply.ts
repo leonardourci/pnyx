@@ -1,4 +1,4 @@
-import { compactCommand } from '../compaction/state.ts'
+import { compactCommand } from './compaction/state.ts'
 import { resolveSkillReferences } from '../thread/skill-reference.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'
 import { notificationReceipt } from './inbox-notice.ts'

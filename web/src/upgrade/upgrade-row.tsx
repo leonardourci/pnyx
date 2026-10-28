@@ -1,5 +1,5 @@
 import { STEP_WORDS, type UpgradeOperation, type UpgradeStepName } from '../../../src/upgrade/model.ts'
-import { useElapsed } from '../compaction/compaction.tsx'
+import { useElapsed } from '../workers/compaction.tsx'
 import { Button } from '../shared/ui/controls.tsx'
 import { Icon } from '../shared/ui/icon.tsx'
 import { fixPrompt, stoppedWhile } from './fix-prompt.ts'
