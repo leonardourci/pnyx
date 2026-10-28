@@ -5,6 +5,7 @@ import { execFileSync, spawn } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { after, before } from 'node:test'
 import { WebSocket } from 'ws'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -15,6 +16,7 @@ import { localToken } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
@@ -167,12 +169,15 @@ export async function openPage({
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
+  const upgrades: UpgradeStatus[] = []
   ws.on(
     'message',
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'hydraQueue') {
+      if (message.type === 'upgrade') {
+        upgrades.push(message.upgrade)
+      } else if (message.type === 'hydraQueue') {
         queues.push(message.queue)
       } else if (message.type === 'snapshot') {
         state = message.state
@@ -206,6 +211,7 @@ export async function openPage({
 
   return {
     queues,
+    upgrades,
     shows: <T>({
       what,
       check,
@@ -335,15 +341,31 @@ export function scenarioGroup({
   let server: RunningServer | undefined
   let scenarios = 0
 
-  const start = async ({ port }: { port?: number }) => {
-    server = await startServer({
+  const start = async ({
+    port,
+    installRoot,
+  }: {
+    port?: number
+    installRoot?: string
+  }) => {
+    let serve = startServer
+
+    if (installRoot) {
+      const installed: typeof import('#app/server-daemon.ts') = await import(pathToFileURL(join(
+        installRoot,
+        'dist/app/server-daemon.js',
+      )).href)
+      serve = installed.startServer
+    }
+
+    server = await serve({
       port,
       query: claude.query,
       spawnCodex: codex.spawnCodex,
       wakeDelay: 50,
       retryDelays,
       followDelay: FOLLOW_MS,
-      upgradeRoot: upgrade.install,
+      upgradeRoot: installRoot ?? upgrade.install,
       restart: () => restarts++,
     })
   }
@@ -369,11 +391,20 @@ export function scenarioGroup({
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.
-    restart: async ({ whileStopped }: { whileStopped?(): void | Promise<void> } = {}) => {
+    restart: async ({
+      whileStopped,
+      installRoot,
+    }: {
+      whileStopped?(): void | Promise<void>
+      installRoot?: string
+    } = {}) => {
       const { port } = server!
       await server!.close()
       await whileStopped?.()
-      await start({ port })
+      await start({
+        port,
+        installRoot,
+      })
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
     scenario: async () => {
