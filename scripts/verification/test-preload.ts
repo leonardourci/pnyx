@@ -2,10 +2,11 @@ import { createTestEnvironment } from './test-environment.ts'
 
 const isolated = createTestEnvironment()
 
-// These are Node's private test transport, set by the runner after launch isolation.
+// Preserve Node's private test transport and the disposable install path from the isolated launcher.
 for (const key of [
   'NODE_TEST_CONTEXT',
   'NODE_TEST_WORKER_ID',
+  'PNYX_TEST_INSTALL',
 ]) {
   if (process.env[key] !== undefined) {
     isolated.env[key] = process.env[key]

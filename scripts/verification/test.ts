@@ -1,12 +1,15 @@
 import { spawnSync } from 'node:child_process'
-import { resolve } from 'node:path'
+import { join, resolve } from 'node:path'
 import { discover, isFlow } from './discover.ts'
 import { holdRunLock } from './run-lock.ts'
 import { createTestEnvironment } from './test-environment.ts'
+import { installedFixture } from './installed-fixture.ts'
 
 const PURE_CONCURRENCY = 4
 const HEAVY_CONCURRENCY = 2
 const MINUTE_MS = 60_000
+const FLOW_TIMEOUT_MS = 5 * MINUTE_MS
+const INSTALLED_FLOW = 'e2e/own-install.test.ts'
 // A lane past this is stuck outside any one test; the runner then names the file it interrupted.
 const LANE_TIMEOUT_MS = 60 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
@@ -77,11 +80,18 @@ const lanes = [
   },
   {
     name: 'flows',
-    testTimeout: 5 * MINUTE_MS,
+    testTimeout: FLOW_TIMEOUT_MS,
     concurrency: 1,
     // One process, so every flow shares the one server its group starts.
     nodeArgs: ['--test-isolation=none'],
-    files: files.filter(file => isFlow({ file })),
+    files: files.filter(file => isFlow({ file }) && resolve(file) !== resolve(INSTALLED_FLOW)),
+  },
+  {
+    name: 'installed flows',
+    testTimeout: FLOW_TIMEOUT_MS,
+    concurrency: 1,
+    nodeArgs: [],
+    files: files.filter(file => resolve(file) === resolve(INSTALLED_FLOW)),
   },
 ]
 const isolated = createTestEnvironment()
@@ -93,6 +103,23 @@ try {
     }
 
     console.log(`tests: ${lane.name}, ${lane.files.length} files, concurrency ${lane.concurrency}`)
+    let testFiles = lane.files
+    const env = { ...isolated.env }
+
+    if (lane.name === 'installed flows') {
+      const install = installedFixture({
+        root: env.TMPDIR!,
+        file: INSTALLED_FLOW,
+      })
+      env.PNYX_TEST_INSTALL = install
+      testFiles = [
+        join(
+          install,
+          INSTALLED_FLOW,
+        ),
+      ]
+    }
+
     const result = spawnSync(
       process.execPath,
       [
@@ -110,10 +137,10 @@ try {
         `--test-timeout=${lane.testTimeout}`,
         '--test-force-exit',
         ...options,
-        ...lane.files,
+        ...testFiles,
       ],
       {
-        env: isolated.env,
+        env,
         stdio: 'inherit',
         timeout: LANE_TIMEOUT_MS,
       },

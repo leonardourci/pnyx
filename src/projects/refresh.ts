@@ -5,6 +5,7 @@ import { randomUUID } from 'node:crypto'
 import { basename, dirname, join } from 'node:path'
 import { promisify } from 'node:util'
 import type { ProjectRefresh } from './refresh-types.ts'
+import { PNYX_ROOT } from '#upgrade/runner.ts'
 
 const runFile = promisify(execFile)
 const GIT_TIMEOUT_MS = 30_000
@@ -469,6 +470,13 @@ export async function refreshProject({
 
     if (root !== result.path) {
       result.reason = 'registered project is not the repository root; attach its root before refreshing'
+
+      return
+    }
+
+    if (root === await realpath(PNYX_ROOT)) {
+      result.state = 'needs-attention'
+      result.reason = 'this checkout is the running Pnyx install; use /upgrade to pull, build and restart together'
 
       return
     }

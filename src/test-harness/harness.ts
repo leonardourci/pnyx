@@ -15,6 +15,7 @@ import { localToken } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
+import type { UpgradeStatus } from '#upgrade/model.ts'
 import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
@@ -167,12 +168,15 @@ export async function openPage({
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
+  const upgrades: UpgradeStatus[] = []
   ws.on(
     'message',
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'hydraQueue') {
+      if (message.type === 'upgrade') {
+        upgrades.push(message.upgrade)
+      } else if (message.type === 'hydraQueue') {
         queues.push(message.queue)
       } else if (message.type === 'snapshot') {
         state = message.state
@@ -206,6 +210,7 @@ export async function openPage({
 
   return {
     queues,
+    upgrades,
     shows: <T>({
       what,
       check,
@@ -251,9 +256,11 @@ export async function openPage({
 // for every flow, since it sets process.env. Nothing outside its temporary folder is read or written.
 export function scenarioGroup({
   retryDelays,
+  upgradeRoot,
 }: {
   // How long a failed Hydra start waits before each retry.
   retryDelays?: number[]
+  upgradeRoot?: string
 } = {}) {
   const root = realpathSync(mkdtempSync(join(
     tmpdir(),
@@ -343,7 +350,7 @@ export function scenarioGroup({
       wakeDelay: 50,
       retryDelays,
       followDelay: FOLLOW_MS,
-      upgradeRoot: upgrade.install,
+      upgradeRoot: upgradeRoot ?? upgrade.install,
       restart: () => restarts++,
     })
   }
