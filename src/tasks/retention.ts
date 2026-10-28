@@ -1,6 +1,6 @@
 import { reportReviewGaps } from '../investigations/inventory.ts'
 import { hydraEvent } from '../core/hydra.ts'
-import { cardDoneDeadline, doneDeadline } from '../core/retention.ts'
+import { cardDoneDeadline, doneDeadline } from './retention-rules.ts'
 import { loadHydra } from '../app/store.ts'
 import { withWriter } from '../app/writer.ts'
 

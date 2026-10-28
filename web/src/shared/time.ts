@@ -1,4 +1,4 @@
-import { HOUR_MS } from '../../../src/core/retention.ts'
+import { HOUR_MS } from '../../../src/tasks/retention-rules.ts'
 
 export function elapsedTime({
   at,

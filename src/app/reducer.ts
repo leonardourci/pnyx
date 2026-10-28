@@ -12,7 +12,7 @@ import { applyExternalSource } from '../task-sources/state.ts'
 import { applySteering } from '../task-inbox/state.ts'
 import { applyDependencies } from '../tasks/dependencies.ts'
 import { applyQueue } from '../queue/state.ts'
-import { applyReminder } from '../reminders/state.ts'
+import { applyReminder } from '../tasks/reminders.ts'
 import { applyPermission } from '../core/permissions.ts'
 import { applyAsk } from '../tasks/questions.ts'
 import { applyHelper } from '../helper/state.ts'
@@ -20,7 +20,7 @@ import { applyAttachment, cardSessionId, observeSession, sessionId } from '../co
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '../tasks/events.ts'
 import { isStaleLink } from '../tasks/delivery/events.ts'
 import { requestId } from '../core/answer.ts'
-import { refreshDone } from '../core/retention.ts'
+import { refreshDone } from '../tasks/retention-rules.ts'
 
 export function applyHydra({
   state,

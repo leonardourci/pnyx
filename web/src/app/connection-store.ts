@@ -1,6 +1,6 @@
 import { saveEventId, savedReceipt, type SaveCommand } from '../../../src/app/save-receipts.ts'
 import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from '../hydra/outbox.ts'
-import { reminderTime } from '../../../src/reminders/time.ts'
+import { reminderTime } from '../../../src/tasks/time.ts'
 import { HYDRA_CARD, hydraConfig } from '../../../src/core/hydra.ts'
 import { emptyHydra, reduce } from '../../../src/app/reducer.ts'
 import type { HydraState } from '../../../src/app/model.ts'
