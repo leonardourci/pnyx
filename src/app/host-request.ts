@@ -14,7 +14,7 @@ import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
 import { SETTINGS } from '#workers/host.ts'
 
-// The host actions a helper may request, by the named helper action each one is.
+// The host names the helper's reply action 'send'.
 const HELPER_ACTIONS: Record<string, HelperAction> = {
   send: 'reply',
   continue: 'continue',
@@ -376,7 +376,10 @@ export async function hostRequest({
   const helper = isHelper({ actor })
   const action = request.action
 
-  if (helper && !(String(action) in HELPER_ACTIONS)) {
+  if (helper && !Object.hasOwn(
+    HELPER_ACTIONS,
+    String(action),
+  )) {
     throw new HydraError({
       message: 'This action belongs to the main Hydra',
       code: 'MAIN_ONLY',

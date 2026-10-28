@@ -3,10 +3,10 @@ import { openAsks } from '#tasks/questions.ts'
 import { openDecisions } from '#tasks/decisions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { reportActor } from '#hydra/hydra.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import type { WakeKind } from '#hydra/wake-reasons.ts'
+import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
+import type { PermissionRequest } from '#workers/model.ts'
 
 const NUDGES: WakeKind[] = [
   'turn ended',
@@ -20,6 +20,7 @@ const SCOPE_KINDS: Record<HelperScope, WakeKind[]> = {
   routine: [
     ...NUDGES,
     'asked',
+    'declared',
   ],
   owner: [
     ...NUDGES,
@@ -45,7 +46,7 @@ const SCOPE_ACTIONS: Record<HelperScope, HelperAction[]> = {
 export const HELPER_TASKS = 3
 export const HELPER_INPUT_CHARS = 24_000
 
-export type HelperScope = 'routine' | 'owner'
+type HelperScope = 'routine' | 'owner'
 export type HelperAction = 'reply' | 'continue' | 'answer' | 'permission'
 
 export function helperAgent({
@@ -73,7 +74,7 @@ export function helperAgent({
   }
 }
 
-// Routine work, a task waiting on the owner, or none for a task that is main's alone.
+// A task waiting on the owner gets the narrower owner scope; held and automatic tasks get none.
 export function helperScope({
   state,
   task,
@@ -107,9 +108,15 @@ export function helperReason({
     state,
     task,
   })
+  const prompts = kind === 'permission' ? state.cards[task]?.permissions ?? [] : []
 
   return !!scope && SCOPE_KINDS[scope].includes(kind)
+    && prompts.every(request => request.status !== 'pending' || helperPermission({ request }))
 }
+
+// A permission prompt that asks a question or shows a form is the worker asking, which only main or the owner answers.
+export const helperPermission = ({ request }: { request: PermissionRequest }) => !request.questions
+  && !request.form
 
 export function helperEvent({
   state,
@@ -124,37 +131,28 @@ export function helperEvent({
     return undefined
   }
 
-  const scope = helperScope({
-    state,
-    task,
-  })
-
-  if (event.type === 'task.permission') {
-    return scope && event.data.status === 'pending' ? task : undefined
-  }
-
-  if (scope !== 'routine') {
+  if (event.type === 'task.declared' && event.data.state !== 'blocked' && event.data.state !== 'needs_you') {
     return undefined
   }
 
-  if (event.type === 'hydra.message') {
-    if (reportActor({ actor: event.actor }) && event.data.ask) {
-      return task
-    }
-  } else if (event.type === 'task.declared') {
-    if (event.data.state === 'blocked' || event.data.state === 'needs_you') {
-      return task
-    }
-  } else if (event.type === 'card.pushed') {
-    if (!state.cards[task]?.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
-      return task
-    }
+  if (event.type === 'card.pushed'
+    && state.cards[task]?.links.some(link => link.kind === 'github_pr' && link.state === 'open')) {
+    return undefined
   }
 
-  return undefined
+  const kinds = eventReasons({
+    state,
+    event,
+  }).map(reason => reason.kind)
+
+  return kinds.length && kinds.every(kind => helperReason({
+    state,
+    task,
+    kind,
+  })) ? task : undefined
 }
 
-// The batch to offer: the oldest worker questions first, then the oldest other tasks, within the task and input caps.
+// Worker questions go first because their workers wait on the answer.
 export function helperBatch({
   items,
   prompt,
@@ -176,10 +174,10 @@ export function helperBatch({
 
   for (const item of items) {
     const known = first.get(item.task)
+    const better = !known || (item.question && !known.question)
+      || (item.question === known.question && item.seq < known.seq)
 
-    const older = item.question === known?.question && item.seq < known.seq
-
-    if (!known || (item.question && !known.question) || older) {
+    if (better) {
       first.set(
         item.task,
         {
