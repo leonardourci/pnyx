@@ -186,7 +186,7 @@ Owner memory is Pnyx-wide: every Hydra's full digest prints it. It holds the own
 
 ### Worker instructions and memory curation
 
-Hydra reports results in plain words with full links, what waits on you and what happens next. Routine progress stays on the cards. Owner messages always call for an answer; if a hosted Hydra ends one with `NO_REPLY`, Pnyx asks once for a standalone reply.
+Hydra reports results in plain words with full links and what happens next, in one message per result. Routine progress, checks still running and re-runs stay on the cards, questions stay on their question cards, and the Waiting on you bar shows what waits on you. Owner messages always call for an answer; if a hosted Hydra ends one with `NO_REPLY`, Pnyx asks once for a standalone reply.
 
 Standing worker instructions reach every new worker header, after its fixed scope and authority lines: Hydra-wide notes first, then project notes, both verbatim and deferring to those fixed rules. Read them with `hydra memory list` or `project show <name>`. Save the whole document with `pnyx-axi hydra worker-notes set --text "<instructions>" --reason "<why>" --hydra <id>` or `pnyx-axi project worker-notes set --project <name> --text "<instructions>" --reason "<why>" --hydra <id>`; `forget` clears it. Each document is limited to 1500 characters within its memory layer's budget. Every edit is recorded and posts a line as Pnyx in the editing Hydra's chat. When workers repeatedly stop on something your standing preferences settle, Hydra answers the worker and adds a short rule here so future workers have it too.
 
