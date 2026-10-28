@@ -5,6 +5,10 @@ import stylistic from '@stylistic/eslint-plugin'
 import globals from 'globals'
 import tseslint from 'typescript-eslint'
 
+// A specifier into another folder: one that climbs with ../ or descends with ./<folder>/.
+const OTHER_FOLDER = /^(\.\.\/|\.\/.*\/)/
+const USE_ALIASES = 'Import a file in another folder through the package.json aliases: #<folder>/<file>.ts for src/, #web-<folder>/<file> for web/src/.'
+
 export default tseslint.config(
   {
     ignores: [
@@ -251,6 +255,38 @@ export default tseslint.config(
           condition: 'parens-new-line',
           logical: 'parens-new-line',
           prop: 'parens-new-line',
+        },
+      ],
+    },
+  },
+  {
+    files: [
+      'src/**',
+      'web/src/**',
+      'e2e/**',
+      'scripts/**',
+    ],
+    rules: {
+      'no-restricted-imports': [
+        'error',
+        {
+          patterns: [
+            {
+              regex: OTHER_FOLDER.source,
+              message: USE_ALIASES,
+            },
+          ],
+        },
+      ],
+      'no-restricted-syntax': [
+        'error',
+        {
+          selector: `ImportExpression[source.value=${OTHER_FOLDER}]`,
+          message: USE_ALIASES,
+        },
+        {
+          selector: `TSImportType[argument.literal.value=${OTHER_FOLDER}]`,
+          message: USE_ALIASES,
         },
       ],
     },
