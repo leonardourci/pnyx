@@ -341,7 +341,7 @@ test(
 )
 
 test(
-  'copied chips come back as chips when pasted, and read as their names in other apps',
+  'copied chips travel as their Markdown and come back as chips when pasted',
   () => {
     const skill = reference({
       kind: 'skill',
@@ -356,18 +356,13 @@ test(
       to: shown.indexOf('please'),
     })!
     assert.equal(
-      copied.source,
+      copied,
       `run ${skill} on ${task} here ${image} `,
     )
-    assert.equal(
-      copied.plain,
-      'run /review-code on Fix [login] here Image 1 ',
-    )
-    const pasted = replaceDisplay({
+    const pasted = editDraft({
       text: 'Again: ',
-      from: 'Again: '.length,
-      to: 'Again: '.length,
-      insert: copied.source,
+      next: `Again: ${copied}`,
+      caret: `Again: ${copied}`.length,
     })
     assert.deepEqual(
       draftView({ text: pasted.text }).chips.map(chip => chip.kind),
@@ -385,7 +380,7 @@ test(
         text,
         from: skillChip.from + 3,
         to: taskChip.to - 3,
-      })?.source,
+      }),
       `${skill} on ${task}`,
     )
     assert.equal(
@@ -401,7 +396,7 @@ test(
         text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}`,
         from: 0,
         to: draftView({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}` }).display.length,
-      })?.source,
+      }),
       `see and ${image}`,
     )
   },

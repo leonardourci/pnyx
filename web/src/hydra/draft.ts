@@ -498,17 +498,14 @@ export function withoutPendingImages({ text }: { text: string }) {
   return rest
 }
 
-// Copied chips travel as their Markdown under a type only Pnyx reads, so pasting rebuilds them.
-export const DRAFT_TYPE = 'application/x-pnyx-draft'
-
-// Pasted into another app, a chip reads as it shows and an attached file keeps its contents; `image` can
-// stand an attached image in for its name.
-export function plainDraft({
+// For a rich-text app a chip reads as it shows and an attached file keeps its contents; `image` stands an
+// attached image in for its name.
+export function shownDraft({
   text,
-  image = ({ name }) => name,
+  image,
 }: {
   text: string
-  image?({
+  image({
     path,
     name,
   }: {
@@ -516,7 +513,7 @@ export function plainDraft({
     name: string
   }): string
 }) {
-  let plain = '', cursor = 0
+  let drawn = '', cursor = 0
 
   for (const chip of draftChips({ text })) {
     const attachedFile = chip.kind === 'file' && chip.attached
@@ -527,7 +524,7 @@ export function plainDraft({
       path: chip.value,
       name: chip.name,
     }) : reference
-    plain += text.slice(
+    drawn += text.slice(
       cursor,
       chip.start,
     ) + (attachedFile ? text.slice(
@@ -537,10 +534,11 @@ export function plainDraft({
     cursor = chip.end
   }
 
-  return plain + text.slice(cursor)
+  return drawn + text.slice(cursor)
 }
 
-// A selection that touches a chip copies the whole chip; undefined means it holds none and copies as text.
+// A selection that touches a chip copies the whole chip as its Markdown; undefined means it holds none and
+// copies as it shows.
 export function copyDraft({
   text,
   from,
@@ -557,7 +555,7 @@ export function copyDraft({
     return undefined
   }
 
-  const source = withoutPendingImages({
+  return withoutPendingImages({
     text: text.slice(
       sourceOffset({
         view,
@@ -575,11 +573,6 @@ export function copyDraft({
       }),
     ),
   })
-
-  return {
-    source,
-    plain: plainDraft({ text: source }),
-  }
 }
 
 // The newlines that make a block its own paragraph, after the ones already there.
