@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import type { AgentSession } from '../src/core/model.ts'
-import { terminalPresence } from '../src/integrations/presence/check.ts'
+import type { AgentSession } from './model.ts'
+import { terminalPresence } from './presence.ts'
 
 const session: AgentSession = {
   id: 'claude-code:worker',

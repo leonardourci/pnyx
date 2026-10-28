@@ -4,7 +4,7 @@ import { decidePush } from '../src/tasks/push.ts'
 import { permissionEvent } from '../src/core/permissions.ts'
 import { emptyHydra, reduce, replay } from '../src/app/reducer.ts'
 import type { HydraEvent } from '../src/app/model.ts'
-import type { PermissionRequest } from '../src/core/model.ts'
+import type { PermissionRequest } from '../src/workers/model.ts'
 
 const meta = {
   at: '2026-10-15T12:00:00Z',

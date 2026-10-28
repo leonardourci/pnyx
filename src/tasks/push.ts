@@ -6,7 +6,7 @@ import { text, asRecord, invalid, onlyKeys, optionalText } from '../app/command-
 import type { PushFields } from './model.ts'
 import { projectLabel } from '../projects/labels.ts'
 import { parseAutoTitle, parseAttention, findCard, pushedValue } from './push-rules.ts'
-import { parseAgent, mergeSettings, parseTerminal, parseSource } from '../core/decide.ts'
+import { parseAgent, mergeSettings, parseTerminal, parseSource } from '../workers/sessions.ts'
 import { wouldCycle, isStaleSource } from './events.ts'
 import { decided } from '../app/decision.ts'
 

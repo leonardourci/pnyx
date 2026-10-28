@@ -2,7 +2,7 @@ import { HOST_LABEL, replyRoute } from '../../core/route.ts'
 import { HydraError } from '../../store/errors.ts'
 import type { Card } from '../../tasks/model.ts'
 import { localPaseoUrl } from './url.ts'
-import { cardSessionId } from '../../core/tasks.ts'
+import { cardSessionId } from '../../workers/session-attachments.ts'
 import { replyEntryId, splitEntry, type ThreadEntry, type ThreadPage } from '../../thread/read.ts'
 import { openPaseo, type Connect } from './client.ts'
 

@@ -1,6 +1,6 @@
 import { basename } from 'node:path'
 import { MAX_OPTIONS } from '../../core/answer.ts'
-import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../core/model.ts'
+import { FORM_FIELD_TYPES, type Attention, type FormField, type Question } from '../../workers/model.ts'
 import { terminalFacts } from '../../core/route.ts'
 import { hookSettings } from './settings.ts'
 

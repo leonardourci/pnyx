@@ -1,4 +1,4 @@
-import type { ModelOption } from '../../../src/server/provider.ts'
+import type { ModelOption } from '../../../src/workers/provider.ts'
 
 export function modelOptions({
   models,

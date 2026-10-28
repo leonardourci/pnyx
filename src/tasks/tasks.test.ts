@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { Decision, HydraEvent, HydraState } from '../app/model.ts'
 import { decidePush } from './push.ts'
 import { joinedKey } from './push-rules.ts'
-import { decideSession } from '../core/decide.ts'
+import { decideSession } from '../workers/sessions.ts'
 import { emptyHydra, reduce } from '../app/reducer.ts'
 import { liveTask } from './select.ts'
 

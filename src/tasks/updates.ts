@@ -3,7 +3,7 @@ import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import type { HydraColumn } from './columns-model.ts'
 import type { Ask, RepliedEvent } from './model.ts'
 import type { Link } from './delivery/model.ts'
-import type { PermissionRequest } from '../core/model.ts'
+import type { PermissionRequest } from '../workers/model.ts'
 import { reportActor } from '../core/hydra.ts'
 import { taskMentions } from '../mentions/mentions.ts'
 

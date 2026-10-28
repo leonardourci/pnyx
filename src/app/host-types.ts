@@ -1,12 +1,12 @@
 import type { Card } from '../tasks/model.ts'
-import type { AgentConfig, AgentSettings } from '../core/model.ts'
-import type { ModelOption, HydraUsage, HostedSession } from '../server/provider.ts'
+import type { AgentConfig, AgentSettings } from '../workers/model.ts'
+import type { ModelOption, HydraUsage, HostedSession } from '../workers/provider.ts'
 import type { DispatchChoice } from '../workers/dispatch.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { inbox, type HydraQueue } from './host.ts'
 import type { CurrentAction } from '../thread/calls.ts'
 import type { ThreadPage } from '../thread/read.ts'
-import { liveReplies } from '../server/streaming.ts'
+import { liveReplies } from '../workers/streaming.ts'
 
 export interface Host {
   hydraId: string

@@ -1,11 +1,11 @@
 import { execFileSync } from 'node:child_process'
 import { statSync } from 'node:fs'
 import { uptime } from 'node:os'
-import type { HydraState } from '../../app/model.ts'
-import type { AgentSession } from '../../core/model.ts'
-import { liveTask } from '../../tasks/select.ts'
-import { localPaseoUrl } from '../paseo/url.ts'
-import { openPaseo, type Connect } from '../paseo/client.ts'
+import type { HydraState } from '../app/model.ts'
+import type { AgentSession } from './model.ts'
+import { liveTask } from '../tasks/select.ts'
+import { localPaseoUrl } from '../integrations/paseo/url.ts'
+import { openPaseo, type Connect } from '../integrations/paseo/client.ts'
 
 export type Presence = {
   state: 'present' | 'gone' | 'unknown'

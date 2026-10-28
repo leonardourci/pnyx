@@ -1,6 +1,6 @@
 import { dispatchSettings } from './dispatch-resource.ts'
 import { useEffect, useSyncExternalStore } from 'react'
-import type { AgentConfig } from '../../../src/core/model.ts'
+import type { AgentConfig } from '../../../src/workers/model.ts'
 import type { Command } from '../app/connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'

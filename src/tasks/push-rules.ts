@@ -1,6 +1,6 @@
 import type { HydraState } from '../app/model.ts'
 import { AUTO_TITLE_SOURCES, type Card, type AutoTitle } from './model.ts'
-import { FORM_FIELD_TYPES, type Attention, type FormField, type Question, type TerminalFacts } from '../core/model.ts'
+import { FORM_FIELD_TYPES, type Attention, type FormField, type Question, type TerminalFacts } from '../workers/model.ts'
 import { HydraError } from '../store/errors.ts'
 import { invalid, asRecord, onlyKeys, optionalText, text } from '../app/command-validation.ts'
 import { HYDRA_CARD } from '../core/hydra.ts'

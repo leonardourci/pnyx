@@ -1,6 +1,6 @@
 import { spawnSync } from 'node:child_process'
 import { join } from 'node:path'
-import type { ReplyState } from '../../core/model.ts'
+import type { ReplyState } from '../../workers/model.ts'
 
 const SEND_TIMEOUT_MS = 120_000
 const DETAIL_MAX = 300

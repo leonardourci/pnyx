@@ -30,10 +30,10 @@ const PURE_TESTS = new Set([
   'src/tasks/owner-ask.test.ts',
   'test/permissions.test.ts',
   'test/pnyx-action.test.ts',
-  'test/presence.test.ts',
+  'src/workers/presence.test.ts',
   'src/app/reducer.test.ts',
   'src/tasks/tasks.test.ts',
-  'test/usage-limits.test.ts',
+  'src/workers/usage-limits.test.ts',
   'test/wake-reasons.test.ts',
 ].map(file => resolve(file)))
 

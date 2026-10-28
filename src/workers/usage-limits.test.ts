@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { claudeLimit } from '../src/server/claude.ts'
-import { codexLimits } from '../src/server/codex.ts'
+import { claudeLimit } from './claude.ts'
+import { codexLimits } from './codex.ts'
 
 test(
   'the agents’ own rate limit reports become labelled plan windows',

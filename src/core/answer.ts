@@ -1,5 +1,5 @@
 import type { Card } from '../tasks/model.ts'
-import type { Attention, FormField } from './model.ts'
+import type { Attention, FormField } from '../workers/model.ts'
 import { replyRoute } from './route.ts'
 
 // One question's answer: the 1-based numbers of the options picked, or free text

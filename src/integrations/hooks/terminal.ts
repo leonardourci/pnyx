@@ -3,7 +3,7 @@ import type { Key } from '../../core/control.ts'
 import { HOOK } from './observe.ts'
 import { notificationState, type NotificationResult } from '../../task-inbox/notice.ts'
 import type { Card } from '../../tasks/model.ts'
-import type { ReplyState } from '../../core/model.ts'
+import type { ReplyState } from '../../workers/model.ts'
 import type { TerminalRoute } from '../../core/route.ts'
 import type { KeyStep } from './answer.ts'
 

@@ -3,7 +3,7 @@ import { openAsks } from '../tasks/questions.ts'
 import { openDecisions } from '../tasks/decisions.ts'
 import { HYDRA_CARD, hydraConfig, reportActor } from '../core/hydra.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { AgentConfig } from '../core/model.ts'
+import type { AgentConfig } from '../workers/model.ts'
 import type { WakeKind } from '../core/wake-reasons.ts'
 
 const ROUTINE_KINDS: WakeKind[] = [

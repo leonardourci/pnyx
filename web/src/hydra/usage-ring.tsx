@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { Tooltip, TooltipPanel, TooltipSection } from '../shared/ui/tooltip.tsx'
-import type { HydraUsage } from '../../../src/server/provider.ts'
+import type { HydraUsage } from '../../../src/workers/provider.ts'
 import type { Command } from '../app/connection.ts'
 
 const REFRESH_MS = 60_000

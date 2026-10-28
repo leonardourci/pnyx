@@ -1,5 +1,5 @@
 import type { Answer } from '../../core/answer.ts'
-import type { Attention } from '../../core/model.ts'
+import type { Attention } from '../../workers/model.ts'
 import { SETTLE_MS, settle } from './terminal.ts'
 
 export const KEY = {

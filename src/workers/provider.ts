@@ -1,5 +1,5 @@
 import type { HelperUsageTotal } from '../helper/state.ts'
-import type { AgentRef, AgentSettings, PermissionRequest } from '../core/model.ts'
+import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
 
 export type PermissionDecision = ({ behavior: 'allow' } & Pick<PermissionRequest, 'answers' | 'values'>) | {
   behavior: 'deny'

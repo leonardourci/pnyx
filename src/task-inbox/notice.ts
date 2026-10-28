@@ -1,4 +1,4 @@
-import type { ReplyState } from '../core/model.ts'
+import type { ReplyState } from '../workers/model.ts'
 
 export interface NotificationResult {
   result: 'delivered' | 'unknown' | 'failed' | 'deferred' | 'gone'

@@ -15,7 +15,7 @@ import {
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import type { Attention } from '../../core/model.ts'
+import type { Attention } from '../../workers/model.ts'
 import { ingestSpool } from './ingest.ts'
 import { PR_COMMANDS, attend, observe, type HookEnvelope } from './observe.ts'
 import { readEvents } from '../../app/event-log.ts'

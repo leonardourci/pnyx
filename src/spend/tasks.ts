@@ -1,7 +1,7 @@
 import { isAbsolute } from 'node:path'
 import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '../integrations/hooks/usage.ts'
 import type { HydraEvent, HydraState } from '../app/model.ts'
-import type { AgentRef } from '../core/model.ts'
+import type { AgentRef } from '../workers/model.ts'
 import { readTranscript } from '../oracle/index.ts'
 
 export interface TaskSpend {

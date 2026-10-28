@@ -6,7 +6,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { answerPrompt, answerText, checkAnswer, type Answer, type Prompt } from '../src/core/answer.ts'
 import type { Card } from '../src/tasks/model.ts'
-import type { Attention } from '../src/core/model.ts'
+import type { Attention } from '../src/workers/model.ts'
 import { KEY, answerKeys } from '../src/integrations/hooks/answer.ts'
 import { attend, observe, type HookEnvelope } from '../src/integrations/hooks/observe.ts'
 

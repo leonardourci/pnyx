@@ -16,7 +16,7 @@ import { checkBudget, HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS } from '../memory/bud
 import { randomUUID } from 'node:crypto'
 import { sendReply } from './reply.ts'
 import { liveTask, rankOf } from '../tasks/select.ts'
-import { findSession, selfSession } from '../core/tasks.ts'
+import { findSession, selfSession } from '../workers/session-attachments.ts'
 import { setupHydra, startHydra, taskPrompt } from './start.ts'
 import { OVERRIDE_FIELDS, overrideOf, type Override } from '../workers/dispatch.ts'
 import { basename } from 'node:path'

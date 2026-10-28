@@ -7,7 +7,7 @@ import { roleColumn } from '../tasks/column-rules.ts'
 import { hydraConfig, hydraEvent } from '../core/hydra.ts'
 import { HydraError } from '../store/errors.ts'
 import { liveTask } from '../tasks/select.ts'
-import { findSession } from '../core/tasks.ts'
+import { findSession } from '../workers/session-attachments.ts'
 import { queueWorker, workerQueue } from './state.ts'
 
 export function decideQueue({

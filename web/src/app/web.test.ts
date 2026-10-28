@@ -9,7 +9,7 @@ import type { Decision, HydraEvent, HydraState } from '../../../src/app/model.ts
 import { decideView } from '../../../src/preferences/decisions.ts'
 import { decideMove } from '../../../src/tasks/columns-decisions.ts'
 import { decidePush } from '../../../src/tasks/push.ts'
-import { decideReply } from '../../../src/core/decide.ts'
+import { decideReply } from '../../../src/workers/reply-rules.ts'
 import { emptyHydra, reduce, replay } from '../../../src/app/reducer.ts'
 import { COLUMNS } from '../../../src/tasks/columns-model.ts'
 import { patchView, viewFor } from '../../../src/preferences/view.ts'

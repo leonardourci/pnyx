@@ -1,14 +1,12 @@
-import { taskInstructions } from '../tasks/intent.ts'
-import type { HydraState, SourceRef, Decision } from '../app/model.ts'
-import { HydraError } from '../store/errors.ts'
-import type { RepliedEvent } from '../tasks/model.ts'
-import { type AgentRef, type AgentSettings, type SessionEvent, type TerminalFacts } from './model.ts'
-import { TERMINAL_FIELDS } from './route.ts'
-import { findSession, interactive } from './tasks.ts'
+import type { SourceRef, HydraState, Decision } from '../app/model.ts'
+import { asRecord, invalid, onlyKeys, text, optionalText } from '../app/command-validation.ts'
+import type { AgentRef, AgentSettings, TerminalFacts, SessionEvent } from './model.ts'
+import { TERMINAL_FIELDS } from '../core/route.ts'
 import { base, type Meta } from '../app/command-meta.ts'
-import { decided } from '../app/decision.ts'
-import { invalid, asRecord, onlyKeys, text, optionalText } from '../app/command-validation.ts'
+import { findSession, interactive } from './session-attachments.ts'
 import { findCard, checkRevision } from '../tasks/push-rules.ts'
+import { HydraError } from '../store/errors.ts'
+import { taskInstructions } from '../tasks/intent.ts'
 
 export function parseSource({ value: rawValue }: { value: unknown }): SourceRef {
   const value = asRecord({ value: rawValue })
@@ -302,35 +300,4 @@ export function decideSession({
       data,
     },
   }
-}
-
-export function decideReply({
-  state,
-  ref,
-  data,
-  meta,
-}: {
-  state: HydraState
-  ref: string
-  data: RepliedEvent['data']
-  meta: Meta
-}): Decision {
-  const card = findCard({
-    state,
-    ref,
-  })
-
-  return decided({
-    state,
-    meta,
-    event: {
-      ...base({
-        state,
-        meta,
-        cardId: card.id,
-      }),
-      type: 'card.replied',
-      data,
-    },
-  })
 }

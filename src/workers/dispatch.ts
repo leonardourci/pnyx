@@ -2,10 +2,10 @@ import { execFile, execFileSync } from 'node:child_process'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from '../core/control.ts'
-import type { PlanWindow } from '../server/provider.ts'
+import type { PlanWindow } from './provider.ts'
 import type { HydraState } from '../app/model.ts'
 import { HydraError } from '../store/errors.ts'
-import { type StartOverride } from '../core/model.ts'
+import type { StartOverride } from './model.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './dispatch-config.ts'
 
 interface EffectiveQuota {
