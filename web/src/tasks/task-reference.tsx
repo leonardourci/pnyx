@@ -83,7 +83,7 @@ export function TaskReference({
         aria-label={reference ? `Open task ${reference.title}; ${state}` : undefined}
         onClick={() => open?.({ id })}
       >
-        {CHIP_SPACE}
+        <span className="task-reference-space">{CHIP_SPACE}</span>
         <ReferenceBadge
           icons={[
             'task-card',
@@ -91,9 +91,9 @@ export function TaskReference({
           ]}
           className={`column-${reference?.column ?? 'custom'}`}
           data-kind="task"
-        >{label}
+        ><span className="task-reference-title">{label}</span>
         </ReferenceBadge>
-        {CHIP_SPACE}
+        <span className="task-reference-space">{CHIP_SPACE}</span>
       </InlineButton>
     </Tooltip>
   )
