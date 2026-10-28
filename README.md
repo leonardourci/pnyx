@@ -35,7 +35,7 @@ The global install links this clone; keep it in place. To upgrade, run `pnyx-axi
 
 GitHub integration needs [GitHub CLI](https://cli.github.com/), `gh auth login`, and [gh-axi](https://github.com/kunchenguid/gh-axi) on PATH.
 
-[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the macOS login service are optional setup steps described in the [reference](docs/pnyx-axi.md#install).
+[quota-axi](https://github.com/kunchenguid/quota-axi) ranks dispatch candidates by account quota. Hooks, global skills and the login service are optional setup steps described in the [reference](docs/pnyx-axi.md#install).
 
 ## Quick start
 
@@ -153,7 +153,7 @@ The main commands are below. `pnyx-axi --help` lists every command, and the [pny
 | `pnyx-axi oracle "<words>"` | Search titles, links, events and transcripts with the Oracle. |
 | `pnyx-axi history` | Page through past events, newest first. |
 | `pnyx-axi rule`, `pnyx-axi account list\|set\|remove` | Edit dispatch rules and worker login folders. |
-| `pnyx-axi setup check\|skills\|hooks\|service` | List missing setup, or install global skills, reporting hooks or the macOS login service. |
+| `pnyx-axi setup check\|skills\|hooks\|service` | List missing setup, or install global skills, reporting hooks or the login service. |
 | `pnyx-axi integrations` | Show which integrations are ready and how to set each up. |
 | `pnyx-axi undo <event-id>` | Append the reverse of a manual edit, move, link or outcome. |
 | `pnyx-axi repair` | Set aside a torn log tail and rebuild the snapshot. |
