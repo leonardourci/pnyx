@@ -29,11 +29,14 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `src/cli/` | the `pnyx-axi` entry and the commands that have not moved into `src/app/` or a feature folder yet |
 | `src/app/` | the app shell that composes the features: event log, snapshots and the writer, the closed event unions and the pure reducer, the CLI registry, and the server and host |
 | `src/core/` | feature event types and Hydra rules not yet in their feature folder |
-| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError`, plus owner memory and retention until their features move |
+| `src/store/` | storage primitives: private folders, durable writes, the writer lock, spool files, the event envelope, event ids and `HydraError`, plus retention until its feature moves |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/server/` | the agents the server runs and the login service |
 | `src/thread/` | the transcript and reply thread reader |
 | `src/integrations/<name>/` | one source per folder (`hooks`, `firstmate`, `github`, `paseo`, `command`); each keeps both its reading side and its reply delivery |
+| `src/preferences/` | keyboard rules, view and layout preferences and their commands |
+| `src/memory/` | owner, project and Hydra memory, its budgets and commands |
+| `src/projects/` | attached projects, their identity and refresh, disposable copies and their Git helpers |
 | `web/` | the React + Vite + Tailwind Hydra: its page shell in `web/src/app/`, shared UI primitives in `web/src/shared/ui/` and feature-bound ones still in `web/src/components/ui/` |
 | `setup/` | hook templates per harness |
 | `skills/` | the agent skills shipped with the CLI: `pnyx-cli`, `pnyx-report-progress`, and Hydra's `pnyx-orchestrate` contract with its detail skills (`pnyx-manage-workers`, `pnyx-arrange-columns`, `pnyx-firstmate-as-hydra`, `pnyx-inscribe`, `pnyx-set-up`) |
