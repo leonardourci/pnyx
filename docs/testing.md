@@ -4,7 +4,7 @@
 - `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
 - `fixtures/` beside the code: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
-Run the flows after a build:
+Run the flows after a build (`scenarios` is the launcher's name for the `e2e/` lane):
 
 ```sh
 pnpm build

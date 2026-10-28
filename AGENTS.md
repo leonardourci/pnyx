@@ -37,7 +37,7 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `src/preferences/` | keyboard rules, view and layout preferences and their commands |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/investigations/` | investigation reports and their review inventory |
-| `src/task-sources/` | the process and review results that workers claim |
+| `src/task-sources/` | task sources, called external sources in the CLI, events and docs: the process and review results that workers claim |
 | `src/routine-helper/` | the routine helper: its state, leases, runner and commands |
 | `src/setup/` | setup checks, the hook and skill installers, skill names and the login service |
 | `src/upgrade/` | `/upgrade` and `pnyx-axi upgrade`: the queue, runner and restart |

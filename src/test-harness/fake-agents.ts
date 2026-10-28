@@ -1,5 +1,5 @@
 // Fake Claude Code and Codex that replay the real sessions recorded in src/test-harness/recordings/
-// (`pnpm refresh-agent-fixtures`), so scenarios run Pnyx's own provider code over real agent output.
+// (`pnpm refresh-agent-fixtures`), so flows run Pnyx's own provider code over real agent output.
 import assert from 'node:assert/strict'
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
