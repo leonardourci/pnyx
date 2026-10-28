@@ -26,6 +26,7 @@ import {
 import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
+import { MessageImages } from './attached-image.tsx'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
@@ -926,6 +927,7 @@ export function Messages({
                   ? <PnyxCallRow call={calls.get(entry.id)!} />
                   : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               ))}
+              {entry.kind === 'message' && !inline?.has(entry.id) && <MessageImages text={entry.text} />}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([

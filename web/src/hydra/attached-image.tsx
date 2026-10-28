@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ATTACHMENT_NAME, imageLine } from '#hydra/images.ts'
+import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -35,6 +35,29 @@ export function AttachedImage({ path }: { path: string }) {
     >
       <img src={src} alt="Attached image" onError={() => setFailed(true)} />
     </a>
+  )
+}
+
+// The chip keeps the image's place in the sentence; the image itself shows under the text, named like its chip.
+export function MessageImages({ text }: { text: string }) {
+  const stored = [...imageNames({ text })].filter(([path]) => attachmentSource({ path }))
+
+  if (!stored.length) {
+    return null
+  }
+
+  return (
+    <div className="message-images">
+      {stored.map(([
+        path,
+        name,
+      ]) => (
+        <figure key={path} className="message-image">
+          <AttachedImage path={path} />
+          <figcaption>{name}</figcaption>
+        </figure>
+      ))}
+    </div>
   )
 }
 

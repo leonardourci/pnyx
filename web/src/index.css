@@ -1242,6 +1242,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .attached-image { display: inline-block; max-width: 100%; }
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
 
+.message-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--block-gap); font-size: var(--text-chat); }
+
+.message-image { display: grid; gap: 4px; justify-items: start; min-width: 0; margin: 0; }
+
+.message-image .attached-image img { height: 96px; width: auto; }
+
+.message-image figcaption { color: var(--color-muted); font-size: var(--text-meta); line-height: 1; }
+
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
 .attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
