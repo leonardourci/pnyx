@@ -4,7 +4,7 @@ import type { Decision, HydraState } from '../app/model.ts'
 import type { Meta } from '../app/command-meta.ts'
 import { findCard } from '../core/decide.ts'
 import { hydraConfig, hydraEvent, roleColumn } from '../core/hydra.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { findSession, liveTask } from '../core/tasks.ts'
 import { queueWorker, workerQueue } from './state.ts'
 

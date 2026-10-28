@@ -7,7 +7,8 @@ import type { Meta } from '../app/command-meta.ts'
 import { findCard } from '../core/decide.ts'
 import { hydraEvent, reportActor } from '../core/hydra.ts'
 import type { HydraState } from '../app/model.ts'
-import { HydraError, TASK_KINDS, type Card, type TaskKind, type ReportCall } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
+import { TASK_KINDS, type Card, type TaskKind, type ReportCall } from '../core/model.ts'
 import { readEvents } from '../app/event-log.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.

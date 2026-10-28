@@ -3,7 +3,7 @@ import type { Meta } from '../app/command-meta.ts'
 import { findCard } from './decide.ts'
 import { hydraEvent, HYDRA_CARD } from './hydra.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
-import { HydraError } from './model.ts'
+import { HydraError } from '../store/errors.ts'
 
 export function decideDependencies({
   state,

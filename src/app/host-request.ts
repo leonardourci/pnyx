@@ -1,6 +1,6 @@
 import type { Host } from './host-types.ts'
 import { isHelper, taskLease } from '../helper/leases.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '../core/decide.ts'
 import { helperGrant } from '../helper/route.ts'

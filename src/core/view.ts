@@ -1,5 +1,6 @@
 import type { HydraState } from '../app/model.ts'
-import { HydraError, COLUMNS, type ViewPreferences } from './model.ts'
+import { HydraError } from '../store/errors.ts'
+import { COLUMNS, type ViewPreferences } from './model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
 
 export const DEFAULT_WIDTHS = {

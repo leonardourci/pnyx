@@ -1,5 +1,5 @@
 import type { HydraState, HydraEvent } from './model.ts'
-import { EVENT_VERSION } from '../core/model.ts'
+import { EVENT_VERSION } from '../store/events.ts'
 import { freeId } from '../core/decide.ts'
 
 export interface Meta {

@@ -5,7 +5,7 @@ import type { Meta } from '../app/command-meta.ts'
 import { findCard } from '../core/decide.ts'
 import { runsInBypass } from '../cli/hydra-session.ts'
 import { HYDRA_ACTOR } from '../app/actors.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { loadHydra } from '../app/store.ts'
 import { checkCopy, settleCopy } from './copies.ts'
 

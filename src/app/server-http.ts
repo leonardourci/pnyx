@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join, normalize, extname } from 'node:path'
 import { MAX_BODY, WEB_ROOT, MIME } from './server-transport.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { hydraIdentity } from './server-state.ts'
 
 export function readBytes({

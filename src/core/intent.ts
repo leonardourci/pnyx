@@ -1,6 +1,7 @@
 import { ownerActor } from '../app/actors.ts'
 import type { HydraState } from '../app/model.ts'
-import { HydraError, type Card, type OwnerAsk } from './model.ts'
+import { HydraError } from '../store/errors.ts'
+import { type Card, type OwnerAsk } from './model.ts'
 
 export function ownerAsk({
   state,

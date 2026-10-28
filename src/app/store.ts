@@ -1,5 +1,5 @@
 import type { HydraState } from './model.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { readSnapshot } from './snapshot.ts'
 import { readLog, type LogRead } from './event-log.ts'

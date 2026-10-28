@@ -2,8 +2,7 @@ import type { ProjectRefresh } from '../projects/refresh-types.ts'
 import type { ExternalSource } from '../external-sources/model.ts'
 import type { TaskSpend } from '../spend/tasks.ts'
 import type { SourceRef } from '../app/model.ts'
-
-export const EVENT_VERSION = 1 as const
+import type { EventBase } from '../store/events.ts'
 
 export const COLUMNS = [
   'queued',
@@ -490,26 +489,6 @@ export interface PushFields {
   attention?: Attention[]
 }
 
-export interface EventBase {
-  labelColors?: SavedLabelColor[]
-  v: typeof EVENT_VERSION
-  seq: number
-  id: string
-  at: string
-  actor: string
-  cardId: string
-  reason?: string
-  details?: string
-  undoes?: string
-  boardId?: string
-  taskId?: string
-  subtaskId?: string
-  agentId?: string
-  sessionId?: string
-  commandId?: string
-  messageId?: string
-}
-
 export const TASK_STATES = [
   'working',
   'needs_you',
@@ -973,22 +952,4 @@ export type LabelColor = (typeof LABEL_COLORS)[number]
 export interface SavedLabelColor {
   label: string
   color: LabelColor
-}
-
-export class HydraError extends Error {
-  code: string
-  help: string[]
-  constructor({
-    message,
-    code,
-    help = [],
-  }: {
-    message: string
-    code: string
-    help?: string[]
-  }) {
-    super(message)
-    this.code = code
-    this.help = help
-  }
 }

@@ -1,6 +1,7 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraEvent, HydraState, Decision } from './model.ts'
-import { HydraError, type Card, type PushFields } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
+import { type Card, type PushFields } from '../core/model.ts'
 import { pushedValue, checkRevision, findCard, decideSession, removedColumnPlacements, checkColumn } from '../core/decide.ts'
 import { rankOf, findSession } from '../core/tasks.ts'
 import { base, type Meta } from './command-meta.ts'

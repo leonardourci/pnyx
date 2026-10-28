@@ -3,7 +3,8 @@ import { findCard } from './decide.ts'
 import { hydraEvent, HYDRA_CARD } from './hydra.ts'
 import { HYDRA_ACTOR, ownerActor } from '../app/actors.ts'
 import type { HydraState } from '../app/model.ts'
-import { HydraError, type Card } from './model.ts'
+import { HydraError } from '../store/errors.ts'
+import { type Card } from './model.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {

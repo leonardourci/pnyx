@@ -1,5 +1,6 @@
 import type { HydraState, HydraEvent } from './model.ts'
-import { HydraError, LABEL_COLORS } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
+import { LABEL_COLORS } from '../core/model.ts'
 import { hydraDir } from './home-migration.ts'
 import { requireHydra, loadTail } from './store.ts'
 import { privateDir, acquireLock, writeDurably, logPath } from '../store/storage.ts'

@@ -4,7 +4,7 @@ import { decideUndo } from '../src/app/undo.ts'
 import type { Decision, HydraEvent, HydraState } from '../src/app/model.ts'
 import type { Meta } from '../src/app/command-meta.ts'
 import { decideLink, decideMove, decideOutcome, decidePush, parseLink } from '../src/core/decide.ts'
-import { HydraError } from '../src/core/model.ts'
+import { HydraError } from '../src/store/errors.ts'
 import { emptyHydra, reduce } from '../src/app/reducer.ts'
 import { columnCards } from '../src/core/tasks.ts'
 

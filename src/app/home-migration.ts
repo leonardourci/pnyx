@@ -1,4 +1,4 @@
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { basename, dirname, join } from 'node:path'
 import { readdirSync, mkdirSync, existsSync, renameSync, rmdirSync, readFileSync, symlinkSync } from 'node:fs'
 import { acquireLock } from '../store/storage.ts'

@@ -1,6 +1,6 @@
 import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'

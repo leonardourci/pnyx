@@ -8,7 +8,8 @@ import { HYDRA_CARD, declaredState, hydraConfig, unwatchedPullRequests } from '.
 import { liveTask, rankOf } from './tasks.ts'
 import { askWording, openAsks } from './asks.ts'
 import type { HydraState } from '../app/model.ts'
-import { HydraError, type Card } from './model.ts'
+import { HydraError } from '../store/errors.ts'
+import { type Card } from './model.ts'
 
 // Owner memory is Pnyx-wide: the owner's preferences and general learnings, printed in every Hydra's digest.
 export const OWNER_MEMORY_BUDGET = 24000

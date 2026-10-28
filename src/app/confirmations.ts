@@ -6,7 +6,7 @@ import { WRITE, guard, meta, parse, required, type Output } from './cli-support.
 import { effectiveDispatch } from '../dispatch/config.ts'
 import { hydraEvent, HYDRA_CARD } from '../core/hydra.ts'
 import type { HydraState } from './model.ts'
-import { HydraError } from '../core/model.ts'
+import { HydraError } from '../store/errors.ts'
 import { withWriter } from './writer.ts'
 import { pnyxHome } from '../store/storage.ts'
 
