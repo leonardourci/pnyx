@@ -1,3 +1,4 @@
+import { withBuiltInSkills } from '#hydra/built-in-skills.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { Marked } from 'marked'
@@ -205,6 +206,93 @@ test(
     assert.deepEqual(
       links,
       ['https://example.com/guide'],
+    )
+  },
+)
+
+test(
+  'Built-in groups Pnyx commands while preserving inline skill invocation and harness commands',
+  () => {
+    const catalog = withBuiltInSkills({
+      card: '$hydra',
+      catalog: {
+        suggestions: [
+          {
+            command: '/upgrade',
+            source: 'Pnyx',
+            description: 'Cached upgrade',
+            kind: 'command',
+          },
+          {
+            command: '/compact',
+            source: 'Agent commands',
+            description: 'Compact',
+            kind: 'command',
+          },
+        ],
+      },
+    })
+    assert.deepEqual(
+      catalog.suggestions.map(item => [
+        item.command,
+        item.source,
+      ]),
+      [
+        [
+          '/inscribe',
+          'Built-in',
+        ],
+        [
+          '/pnyx-set-up',
+          'Built-in',
+        ],
+        [
+          '/upgrade',
+          'Built-in',
+        ],
+        [
+          '/compact',
+          'Agent commands',
+        ],
+      ],
+    )
+    assert.deepEqual(
+      knownCommands({
+        text: '/upgrade then /inscribe and /pnyx-set-up and /upgrade',
+        suggestions: catalog.suggestions,
+      }).map(match => match.item.command),
+      [
+        '/upgrade',
+        '/inscribe',
+        '/pnyx-set-up',
+      ],
+    )
+    assert.deepEqual(
+      knownCommands({
+        text: 'Please /upgrade then /inscribe',
+        suggestions: catalog.suggestions,
+      }).map(match => match.item.command),
+      ['/inscribe'],
+    )
+  },
+)
+
+test(
+  'an unrelated worker skill named upgrade still authorizes inline invocation',
+  () => {
+    assert.equal(
+      knownCommands({
+        text: 'Please /upgrade safely',
+        suggestions: [
+          {
+            command: '/upgrade',
+            kind: 'skill',
+            source: 'Session skills',
+            description: 'Owner upgrade skill',
+          },
+        ],
+      }).length,
+      1,
     )
   },
 )

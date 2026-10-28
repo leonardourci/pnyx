@@ -9,7 +9,7 @@ import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
-import { UPGRADE_SUGGESTION } from '#upgrade/model.ts'
+import { isUpgradeSuggestion } from '#upgrade/model.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
@@ -771,7 +771,7 @@ export function Composer({
                 ) : undefined,
                 group: item.source,
                 excerpt: item.description,
-                icons: item.source === UPGRADE_SUGGESTION.source ? ['upgrade'] : undefined,
+                icons: isUpgradeSuggestion({ item }) ? ['upgrade'] : undefined,
 
               }))}
               choose={({ item }) => choose({ command: skillReference({ item }) })}
