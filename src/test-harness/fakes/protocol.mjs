@@ -93,7 +93,7 @@ if (pr.readbackFailed) {
 if (args[0] === 'pr' && args[1] === 'view') {
   console.log(`pull_request:
   number: ${number}
-  title: "Pull request ${number}"
+  title: ${JSON.stringify(pr.title ?? `Pull request ${number}`)}
   state: ${pr.state}
   draft: ${pr.draft ? 'yes' : 'no'}
   checks: ${JSON.stringify(pr.checks)}
