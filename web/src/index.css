@@ -931,8 +931,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-/* Floated, the chip leads the message's first line without becoming part of the text comments quote. */
-.message-lead { float: left; max-width: 100%; margin-right: .5em; font: var(--text-chat)/var(--chat-line) var(--font-chat); }
+/* Floated beside the text, which comments quote, and layered over its positioned blocks so it keeps its clicks. */
+.message-lead { position: relative; z-index: 1; float: left; max-width: 100%; margin-right: .5em; font: var(--text-chat)/var(--chat-line) var(--font-chat); }
 
 .message-lead .task-reference-space { display: none; }
 
