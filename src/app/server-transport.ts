@@ -10,7 +10,7 @@ import type { TaskSpend } from '../workers/task-spend.ts'
 import type { CurrentAction } from '../thread/calls.ts'
 import type { HydraSummary } from './server-hydras.ts'
 import type { UpgradeStatus } from '../upgrade/model.ts'
-import type { HydraQueue } from './host.ts'
+import type { HydraQueue } from '../hydra/wakes.ts'
 import type { ClientMessage } from './server-http.ts'
 
 export const commands = {
