@@ -645,17 +645,19 @@ test(
 )
 
 test(
-  'many open questions on one task keep the helper’s prompt within its budget',
+  'many open questions on one task keep the helper’s prompt within its budget, and those it left reach main with its owner outcome',
   async () => {
     const s = await helperHydra({
       keys: [
         'seed',
         'work',
+        'report',
       ],
     })
     const seed = s.task({ key: 'seed' }).id
     const work = s.task({ key: 'work' }).id
     await s.chat({ text: 'Start watching.' })
+    const hydra = await s.agent({ hydra: true })
     await until({
       what: 'main to finish its first turn',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
@@ -667,7 +669,15 @@ test(
     })
     const workTurn = pnyx.claude.plan({
       text: HELPER_PROMPT,
-      reply: routine({ tasks: [work] }),
+      reply: JSON.stringify({
+        outcomes: [
+          {
+            task: work,
+            audience: 'owner',
+            summary: 'Ask the owner which parser to use.',
+          },
+        ],
+      }),
       hold: true,
     })
 
@@ -694,6 +704,20 @@ test(
         ])
       }
 
+      // An unrelated report wakes main past the questions, which wait parked for the helper.
+      workerSays({
+        s,
+        key: 'report',
+        text: 'The parser is done.',
+      })
+      await until({
+        what: 'main to finish the unrelated report',
+        check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      assert.ok(!hydra.received[1]!.includes('<pnyx-report'.concat(
+        ' from="worker:',
+        work,
+      )))
       seedTurn.release()
       await until({
         what: 'the helper to take the questions',
@@ -710,24 +734,28 @@ test(
         /- 110 more left out of this batch/,
       )
       assert.ok(batch.seqs.length < 120)
-      await s.owner({
-        args: [
-          'hydra',
-          'set',
-          '--helper',
-          'off',
-        ],
+      workTurn.release()
+      await until({
+        what: 'main to relay the outcome with every question the helper left',
+        check: () => hydra.received.length === 3 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
+      const relay = hydra.received[2]!
+      assert.match(
+        relay,
+        /Helper outcomes to relay/,
+      )
+      assert.equal(
+        relay.split(`task="${work}"`).length - 1,
+        120 - batch.seqs.length,
+      )
+      assert.equal(
+        grants({ s }).length,
+        2,
+      )
     } finally {
       seedTurn.release()
       workTurn.release()
     }
-
-    await until({
-      what: 'main to take the questions the helper left',
-      check: () => finishes({ s }).length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
-        && (s.state().helper?.handled.length ?? 0) > 0,
-    })
   },
 )
 
