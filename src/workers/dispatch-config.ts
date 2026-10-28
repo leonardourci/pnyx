@@ -87,6 +87,20 @@ export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   }
 }
 
+export function templateAccounts(): Accounts {
+  const template = parseAccounts({ value: readTemplate({ accounts: true }) })
+
+  for (const account of Object.values(template.accounts)) {
+    const folder = process.env[loginVariable({ provider: account.provider })]
+
+    if (folder) {
+      account.folder = folder
+    }
+  }
+
+  return template
+}
+
 export function onTemplate({
   hydraId,
   state,
