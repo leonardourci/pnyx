@@ -25,7 +25,7 @@ function AuthorCredit({ author }: { author: string }) {
 export function IdentityCredits() {
   return (
     <>
-      <p>Hydra, column and composer icons from game-icons.net, shown as theme-colored masks:</p>
+      <p>Hydra, column and composer icons from game-icons.net, drawn in the theme’s colors:</p>
       {AUTHORS.map(author => <AuthorCredit key={author} author={author} />)}
     </>
   )
