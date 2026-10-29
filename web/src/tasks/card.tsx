@@ -36,8 +36,8 @@ import type { CurrentAction } from '#hydra/calls.ts'
 const OPEN_SHARE = 0.5
 
 const STATE_SOURCE = {
-  note: "Worker's note",
-  progress: 'Worker progress report',
+  note: "Worker's status note",
+  progress: "Worker's progress report",
 }
 
 // With questions open, Intent and Current state sit below them; this row jumps there.
@@ -271,7 +271,7 @@ export function HydraCard({
   const tint = labelColors?.find(entry => entry.label === card.project)
     ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const said = currentState({ card })
-  const stateSource = said ? STATE_SOURCE[said.source] : 'Agent update'
+  const stateSource = said ? STATE_SOURCE[said.source] : "Agent's last message"
   const factual = said ? {
     role: 'assistant' as const,
     text: said.text,
@@ -637,7 +637,7 @@ export function HydraCard({
         {(!selected || reminding) && (
           <div className="card-rest">
             {view.lastMessageOnCards && !selected && (
-              factual ? <LastMessage message={factual} /> : <p className="last-message">No agent update yet.</p>
+              factual ? <LastMessage message={factual} /> : <p className="last-message">No current state yet.</p>
             )}
             {reminding && (
               <ReminderEditor
