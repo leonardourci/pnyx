@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent }
 import type { HydraProjectSummary, HydraSummary } from '#app/server-hydras.ts'
 import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
+import { carries, draggableItem, dropPoint } from '#web-shared/ui/drag.ts'
 import { ContextMenu, DeleteItem, menuPoint, opensMenu } from '#web-shared/ui/menu.tsx'
 import { HydraLabel, HydraNameEditor, type HydraIdentity } from '#web-hydra/hydra-title.tsx'
 import type { Command } from './connection.ts'
@@ -27,6 +28,34 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
   name: hydra.name,
   icon: hydra.icon ?? HYDRA_MARK,
 })
+
+// Order keys sit between their neighbors', so a move writes one event to the moved Hydra only.
+const ORDER_GAP = 1000
+
+const positionAt = ({
+  hydras,
+  id,
+  index,
+}: {
+  hydras: HydraSummary[]
+  id: string
+  index: number
+}) => {
+  const others = hydras.filter(h => h.id !== id)
+  const before = others[index - 1], after = others[index]
+
+  if (before && after) {
+    return (before.order + after.order) / 2
+  }
+
+  if (before) {
+    return before.order + ORDER_GAP
+  }
+
+  return after ? after.order - ORDER_GAP : Date.now()
+}
+
+const HYDRA_DRAG = 'application/pnyx-hydra'
 
 const otherNames = ({
   hydras,
@@ -91,6 +120,13 @@ export function Hydras({
     menu,
     setMenu,
   ] = useState<MenuTarget | null>(null)
+  const [
+    drop,
+    setDrop,
+  ] = useState<{
+    over: string
+    below: boolean
+  } | null>(null)
   const closeMenu = useCallback(
     () => setMenu(null),
     [],
@@ -187,6 +223,31 @@ export function Hydras({
     })
   }
 
+  const move = async ({
+    id,
+    index,
+  }: {
+    id: string
+    index: number
+  }) => {
+    try {
+      await command({
+        name: 'hydras',
+        args: [
+          'move',
+          id,
+          String(positionAt({
+            hydras,
+            id,
+            index,
+          })),
+        ],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const copyPath = async ({ path }: { path: string }) => {
     try {
       await navigator.clipboard.writeText(path)
@@ -221,12 +282,64 @@ export function Hydras({
         ><Icon name="plus" />
         </Button>
       </div>
-      <div className="hydras-tree">
+      <div
+        className="hydras-tree"
+        onDragOver={event => {
+          if (!carries({
+            event,
+            type: HYDRA_DRAG,
+          })) {
+            return
+          }
+
+          event.preventDefault()
+          const point = dropPoint({
+            event,
+            type: HYDRA_DRAG,
+            item: 'data-hydra',
+          })
+          setDrop(point.over ? {
+            over: point.over,
+            below: point.below,
+          } : null)
+        }}
+        onDrop={event => {
+          const point = dropPoint({
+            event,
+            type: HYDRA_DRAG,
+            item: 'data-hydra',
+          })
+          setDrop(null)
+
+          if (!point.dragged || !point.over || point.over === point.dragged) {
+            return
+          }
+
+          event.preventDefault()
+          const others = hydras.filter(h => h.id !== point.dragged)
+          const target = others.findIndex(h => h.id === point.over)
+          move({
+            id: point.dragged,
+            index: point.below ? target + 1 : target,
+          })
+        }}
+        onDragEnd={() => setDrop(null)}
+      >
         {hydras.map(h => {
           const active = h.id === current, isOpen = expanded[h.id] ?? active
+          const dropClass = drop?.over === h.id ? ` drop-${drop.below ? 'after' : 'before'}` : ''
 
           return (
-            <div key={h.id} className="hydra-branch">
+            <div
+              key={h.id}
+              data-hydra={h.id}
+              className={`hydra-branch${dropClass}`}
+              {...draggableItem({
+                type: HYDRA_DRAG,
+                id: h.id,
+                enabled: connected && editing !== h.id,
+              })}
+            >
               <div className="hydra-row">
                 <Button
                   aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${hydraTitle(h)}`}
