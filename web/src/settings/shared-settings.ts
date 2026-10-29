@@ -1,5 +1,5 @@
 import { useSyncExternalStore } from 'react'
-import type { Settings } from '#settings/model.ts'
+import type { SettingKey, Settings } from '#settings/model.ts'
 import { patchSettings } from '#settings/settings.ts'
 import type { Command } from '#web-app/connection.ts'
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
@@ -39,10 +39,15 @@ function createShared({ scope }: { scope: string }) {
     represented: ({
       state,
       patch,
-    }) => JSON.stringify(applied({
-      settings: state.settings,
-      patch,
-    })) === JSON.stringify(state.settings),
+    }) => {
+      const after = applied({
+        settings: state.settings,
+        patch,
+      })
+
+      return Object.keys(patch).every(key => JSON.stringify(after[key as SettingKey])
+        === JSON.stringify(state.settings[key as SettingKey]))
+    },
     read: ({ receipt }) => receipt.settings ? {
       settings: receipt.settings as Settings,
       revision: receipt.revision as number,
