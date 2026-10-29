@@ -14,7 +14,6 @@ const differs = ({
   initial: unknown
 }) => JSON.stringify(value) !== JSON.stringify(initial)
 
-// The Hydra settings Settings shows beside the view.
 const HYDRA_KEYS = [
   'doneAfterHours',
   'reviewMinutes',

@@ -325,7 +325,6 @@ export function DonePreview({ hours }: { hours: DoneAfterHours }) {
   )
 }
 
-// Three hours of review ticks at the chosen cadence.
 const TIMELINE_MINUTES = 180
 const MAX_TICKS = 60
 
