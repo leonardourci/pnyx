@@ -23,15 +23,9 @@ const LINE_PX = 1.5
 const ICON_BOX = 512
 // Tabler draws in a 24-unit box.
 const TABLER_BOX = 24
-// The Fast toggle shows on and off by its color, so both draw the same figure. Codex's modes share Claude's figures.
-const IDENTITY_ALIASES: Record<string, string> = {
-  'fast-on': 'fast',
-  'mode-on-request': 'mode-default',
-  'mode-never': 'mode-bypassPermissions',
-}
 
 export const identityGlyph = ({ name }: { name: string }) => {
-  const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
+  const icon = identityIcon({ id: name })
   const file = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
   const path = file?.match(PATH_DATA)?.[1]
 
