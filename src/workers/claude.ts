@@ -442,7 +442,8 @@ export function claudeProvider({
 
             if (message.type === 'system' && message.subtype === 'status') {
               if (message.status === 'compacting') {
-                compaction = {
+                // Claude Code repeats this status every 30 seconds under a new uuid; it is one compaction until its result.
+                compaction ??= {
                   id: message.uuid ?? randomUUID(),
                   trigger: manualCompact ? 'manual' : 'auto',
                 }
@@ -692,6 +693,7 @@ export function claudeProvider({
               active = false
               interrupted = false
               manualCompact = false
+              compaction = undefined
               yield 'finished'
             }
           }
