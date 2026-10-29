@@ -315,7 +315,7 @@ function NowCell({
   return (
     <span className="dispatch-now">
       <Tooltip content={starts.reason}>
-        <span className="dispatch-starts"><Icon name="check" size={14} />{starts.account}</span>
+        <span className="dispatch-starts"><Icon name="check" size={14} /><span>{starts.account}</span></span>
       </Tooltip>
     </span>
   )
