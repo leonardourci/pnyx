@@ -246,6 +246,20 @@ test(
       assert.deepEqual(
         matchingTasks({
           cards,
+          query: 'feature chat',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'fea chat',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
           query: 'THE.CHAT',
         }).map(({ card }) => card.id),
         ['owner'],

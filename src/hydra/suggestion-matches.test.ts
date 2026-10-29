@@ -271,3 +271,115 @@ test(
     )
   },
 )
+
+test(
+  'spaced fuzzy words match in any order and highlight every matched word',
+  () => {
+    const name = 'Update the chat comment feature prompt'
+    const reversed = suggestionMatch({
+      name,
+      query: 'feature chat',
+    })
+    const shortened = suggestionMatch({
+      name,
+      query: 'fea chat',
+    })
+    assert.equal(
+      reversed?.ranges.map(({
+        from,
+        to,
+      }) => name.slice(
+        from,
+        to,
+      )).join(''),
+      'chatfeature',
+    )
+    assert.equal(
+      shortened?.ranges.map(({
+        from,
+        to,
+      }) => name.slice(
+        from,
+        to,
+      )).join(''),
+      'chatfea',
+    )
+    assert.equal(
+      suggestionMatch({
+        name,
+        query: 'featurechat',
+      }),
+      undefined,
+    )
+    assert.equal(
+      suggestionMatch({
+        name,
+        query: 'feature zzzz',
+      }),
+      undefined,
+    )
+    assert.equal(
+      suggestionMatch({
+        name,
+        query: 'FEA,  CHAT',
+      })?.gaps,
+      0,
+    )
+  },
+)
+
+test(
+  'spaced words retain prefix, tightness, word-start ranking and stable ties',
+  () => {
+    const items = [
+      'x feature chat',
+      'x fxeature chat',
+      'featurechat',
+      'y feature chat',
+      'xfeaturechat',
+    ]
+    assert.deepEqual(
+      matchingSuggestions({
+        items,
+        query: 'feature chat',
+        name: ({ item }) => item,
+      }),
+      [
+        'featurechat',
+        'x feature chat',
+        'y feature chat',
+        'xfeaturechat',
+        'x fxeature chat',
+      ],
+    )
+    const overlap = suggestionMatch({
+      name: 'chat',
+      query: 'chat cha',
+    })
+    assert.equal(
+      overlap?.wordStarts,
+      2,
+    )
+    assert.deepEqual(
+      overlap?.ranges,
+      [
+        {
+          from: 0,
+          to: 1,
+        },
+        {
+          from: 1,
+          to: 2,
+        },
+        {
+          from: 2,
+          to: 3,
+        },
+        {
+          from: 3,
+          to: 4,
+        },
+      ],
+    )
+  },
+)

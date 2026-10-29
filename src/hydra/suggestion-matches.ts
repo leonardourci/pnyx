@@ -55,26 +55,13 @@ function letters({ text }: { text: string }): Letter[] {
   return result
 }
 
-export function suggestionMatch({
-  name,
-  query,
+function matchLetters({
+  source,
+  search,
 }: {
-  name: string
-  query: string
+  source: Letter[]
+  search: Letter[]
 }): SuggestionMatch | undefined {
-  const search = letters({ text: query })
-
-  if (!search.length) {
-    return {
-      ranges: [],
-      prefix: true,
-      gaps: 0,
-      wordStarts: 0,
-    }
-  }
-
-  const source = letters({ text: name })
-
   if (search.length > source.length) {
     return undefined
   }
@@ -167,6 +154,83 @@ export function suggestionMatch({
     prefix: false,
     gaps: fewestGaps,
     wordStarts: best.wordStarts,
+  }
+}
+
+export function suggestionMatch({
+  name,
+  query,
+}: {
+  name: string
+  query: string
+}): SuggestionMatch | undefined {
+  const words = query.split(/\s+/u).map(text => letters({ text }))
+    .filter(word => word.length)
+
+  if (!words.length) {
+    return {
+      ranges: [],
+      prefix: true,
+      gaps: 0,
+      wordStarts: 0,
+    }
+  }
+
+  const source = letters({ text: name })
+  const search = words.flat()
+  const prefix = search.every((
+    letter,
+    index,
+  ) => letter.value === source[index]?.value)
+
+  if (prefix) {
+    return matchLetters({
+      source,
+      search,
+    })
+  }
+
+  const matches: SuggestionMatch[] = []
+
+  for (const word of words) {
+    const match = matchLetters({
+      source,
+      search: word,
+    })
+
+    if (!match) {
+      return undefined
+    }
+
+    matches.push(match)
+  }
+
+  const distinct = new Map(matches.flatMap(match => match.ranges).map(range => [
+    range.from,
+    range,
+  ]))
+  const ranges = [...distinct.values()].sort((
+    a,
+    b,
+  ) => a.from - b.from)
+
+  return {
+    ranges,
+    prefix: false,
+    gaps: matches.reduce(
+      (
+        total,
+        match,
+      ) => total + match.gaps,
+      0,
+    ),
+    wordStarts: matches.reduce(
+      (
+        total,
+        match,
+      ) => total + match.wordStarts,
+      0,
+    ),
   }
 }
 
