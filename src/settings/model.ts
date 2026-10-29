@@ -32,6 +32,10 @@ export interface Settings extends SharedView {
   doneAfterHours: DoneAfterHours
   reviewMinutes: number
   helper: HelperSetting
+  // The Oracle opens with the filters it last had instead of only the current Hydra's.
+  oracleRememberFilters: boolean
+  // The Hydra list's order as Hydra ids; the Hydra list decides where ids it does not name go.
+  hydraOrder: string[]
 }
 
 export const SETTING_KEYS = [
@@ -39,6 +43,8 @@ export const SETTING_KEYS = [
   'doneAfterHours',
   'reviewMinutes',
   'helper',
+  'oracleRememberFilters',
+  'hydraOrder',
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]

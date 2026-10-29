@@ -574,6 +574,62 @@ test(
 )
 
 test(
+  'the Oracle filter choice and the Hydra order are shared settings, checked before they save',
+  async () => {
+    home()
+    await commands.settings([
+      'set',
+      '--json',
+      JSON.stringify({
+        oracleRememberFilters: true,
+        hydraOrder: [
+          'zeus',
+          'athena',
+        ],
+      }),
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      '{"hydraOrder":["athena","zeus","hera"]}',
+    ])
+    const saved = await settings()
+    assert.equal(
+      saved.settings.oracleRememberFilters,
+      true,
+    )
+    assert.deepEqual(
+      saved.settings.hydraOrder,
+      [
+        'athena',
+        'zeus',
+        'hera',
+      ],
+    )
+    await assert.rejects(
+      async () => commands.settings([
+        'set',
+        '--json',
+        '{"hydraOrder":["zeus","zeus"]}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await assert.rejects(
+      async () => commands.settings([
+        'set',
+        '--json',
+        '{"oracleRememberFilters":"yes"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.equal(
+      (await settings()).revision,
+      saved.revision,
+    )
+  },
+)
+
+test(
   'a save after a torn last line is kept',
   async () => {
     home()

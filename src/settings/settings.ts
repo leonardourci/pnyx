@@ -14,7 +14,11 @@ export const DEFAULT_SETTINGS: Settings = {
   doneAfterHours: DEFAULT_DONE_HOURS,
   reviewMinutes: DEFAULT_REVIEW_MINUTES,
   helper: 'auto',
+  oracleRememberFilters: false,
+  hydraOrder: [],
 }
+
+const HYDRA_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i
 
 export function pickView({ view }: { view: SharedView }): SharedView {
   return structuredClone(Object.fromEntries(SHARED_VIEW_KEYS.map(key => [
@@ -172,6 +176,24 @@ export function patchSettings({
 
   if ('helper' in patch) {
     next.helper = helperSetting({ value: patch.helper })
+  }
+
+  if ('oracleRememberFilters' in patch) {
+    if (typeof patch.oracleRememberFilters !== 'boolean') {
+      return invalid({ detail: 'oracleRememberFilters takes true or false' })
+    }
+
+    next.oracleRememberFilters = patch.oracleRememberFilters
+  }
+
+  if ('hydraOrder' in patch) {
+    const order = patch.hydraOrder
+
+    if (!Array.isArray(order) || order.some(id => typeof id !== 'string' || !HYDRA_ID.test(id)) || new Set(order).size !== order.length) {
+      return invalid({ detail: 'hydraOrder takes a list of Hydra ids, each once' })
+    }
+
+    next.hydraOrder = [...order] as string[]
   }
 
   return next
