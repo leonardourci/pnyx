@@ -615,7 +615,12 @@ export function checkDispatch({
     }
   }
 
-  if (fields.default !== undefined) {
+  if (fields.default === undefined) {
+    error({
+      segments: ['default'],
+      problem: 'needs a default candidate list',
+    })
+  } else {
     checkCandidates({
       value: fields.default,
       segments: ['default'],

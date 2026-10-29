@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -457,6 +457,59 @@ test(
       show().document.rules.build?.when,
       'Second wording',
     )
+  },
+)
+
+test(
+  'deleting every rule saves an empty rules object later reads keep, and the default list cannot be removed',
+  () => {
+    const { file } = lab()
+    rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch: {
+              rules: {
+                mechanical: null,
+                build: null,
+                investigate: null,
+              },
+            },
+          },
+        }),
+      ],
+    })
+    assert.deepEqual(
+      show().document.rules,
+      {},
+    )
+    rmSync(configPath())
+    assert.deepEqual(
+      effectiveDispatch().dispatch.rules,
+      {},
+    )
+    assert.deepEqual(
+      dispatchFile().rules,
+      {},
+    )
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--file',
+          file({
+            value: {
+              version: 1,
+              patch: { default: null },
+            },
+          }),
+        ],
+      }),
+      paths: ['/default'],
+    })
   },
 )
 
