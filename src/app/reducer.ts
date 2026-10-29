@@ -155,6 +155,10 @@ export function applyHydra({
     if (card) {
       if (event.type === 'task.brief') {
         card.brief = event.data.after
+
+        if (event.data.intent) {
+          card.intent = event.data.intent
+        }
       } else if (event.type === 'task.retention') {
         if (event.data.after === null) {
           delete card.doneAfterHours

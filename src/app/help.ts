@@ -125,7 +125,8 @@ pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
 pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
-pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
+pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
+--intent rewrites the card's Intent when the goal itself changes; the log keeps the earlier ones.
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.

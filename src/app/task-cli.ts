@@ -1054,24 +1054,30 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
         }
 
         if (action === 'brief') {
-          const after = taskBrief({ value: values.brief })
+          const brief = taskBrief({ value: values.brief })
+          const intent = taskIntent({ value: values.intent })
 
-          if (after === undefined) {
+          if (brief === undefined && intent === undefined) {
             throw new HydraError({
-              message: 'pass --brief <text> (empty text clears it)',
+              message: 'pass --brief <text> (empty text clears it) or --intent <text>',
               code: 'VALIDATION_ERROR',
             })
           }
 
-          return after === (task.brief ?? '') ? { skipped: 'unchanged' } : hydraEvent({
+          const before = task.brief ?? ''
+          const after = brief ?? before
+          const rewritten = intent !== undefined && intent !== task.intent
+
+          return after === before && !rewritten ? { skipped: 'unchanged' } : hydraEvent({
             state,
             meta: m,
             cardId: task.id,
             change: {
               type: 'task.brief',
               data: {
-                before: task.brief ?? '',
+                before,
                 after,
+                ...(rewritten ? { intent } : {}),
               },
             },
           })

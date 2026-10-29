@@ -8,6 +8,7 @@ import type { Meta } from './command-meta.ts'
 import { HYDRA_ACTOR } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { declaredState } from '#tasks/declarations.ts'
+import { briefChange } from '#tasks/updates.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { columnRule } from '#tasks/column-defaults.ts'
 import { readEvents } from './event-log.ts'
@@ -673,7 +674,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.released': return `Released on owner message ${event.data.message.id}`
     case 'task.owner-ask':
     case 'task.intent': return 'Owner ask added'
-    case 'task.brief': return 'Task brief updated'
+    case 'task.brief': return briefChange({ data: event.data })
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`
     case 'task.visibility': return event.data.after ? 'Task hidden from Hydra' : 'Task returned to Hydra'
     case 'hydra.helper-started': return 'Routine helper started'

@@ -179,6 +179,8 @@ export type HydraChange = EventBase & (
     data: {
       before: string
       after: string
+      // Hydra's rewrite of the card's Intent when the goal itself changed; older ones stay in the log.
+      intent?: string
     }
   }
   | {
