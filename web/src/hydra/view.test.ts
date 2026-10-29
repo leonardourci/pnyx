@@ -66,6 +66,16 @@ test(
 )
 
 test(
+  'slash queries match spaced words in reverse order',
+  () => {
+    assert.deepEqual(
+      suggestions({ text: '/chat review' }),
+      ['$review-the-chat'],
+    )
+  },
+)
+
+test(
   'slash queries end at newlines, mention triggers and inserted chip boundaries',
   () => {
     assert.equal(
