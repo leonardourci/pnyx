@@ -38,7 +38,7 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeProviders
+  native?: Pick<NativeProviders, 'providers'>
   // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry and followed pull requests wait between reads; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
@@ -756,7 +756,7 @@ async function mountHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeProviders
+  native?: Pick<NativeProviders, 'providers'>
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number

@@ -174,7 +174,7 @@ export async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeProviders
+  native?: Pick<NativeProviders, 'providers'>
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
