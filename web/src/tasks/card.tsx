@@ -16,13 +16,13 @@ import { taskUpdates } from '#hydra/transcripts-task.ts'
 import type { Command } from '#web-app/connection.ts'
 import { projectTitle } from '#web-projects/view.ts'
 import { cardState } from './view.ts'
+import { cardQuestion } from '#tasks/questions.ts'
 import { harnessName } from '#web-workers/view.ts'
 import { Resize } from '#web-shared/ui/resize.tsx'
 
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { WorkingDots } from '#web-hydra/streaming.tsx'
-import { askWording, openAsks } from '#tasks/questions.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
@@ -218,19 +218,21 @@ export function HydraCard({
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   const created = card.createdAt || card.statusLog?.[0]?.at
-  const request = card.permissions?.find(request => request.status === 'pending')
-  const attention = card.attention.find(request => request.blocking && !request.answered)
+  const question = cardQuestion({ card })
+  const request = question?.permission
+  const attention = question?.attention
+  const asked = question?.ask
   const canAnswer = attention && answerPrompt({
     card,
     request: attention,
   })
-  const asked = openAsks({
-    card,
-    audience: 'owner',
-  })[0]
-  const question = request?.questions?.map(question => question.question).join(' ')
-    || attention?.text || (asked && askWording({ ask: asked }).question)
-    || (card.status?.state === 'needs_you' ? card.status.note : '')
+  const delivery = question?.delivery
+  const answerSaved = delivery && delivery.state !== 'delivered'
+  const questionLabel = answerSaved ? 'Answer saved' : 'Question'
+  const answerLabel = answerSaved ? 'Review answer' : 'Answer'
+  const deliveryText = delivery?.state === 'failed'
+    ? 'Delivery failed. Open the task to send the answer again.'
+    : 'Waiting to reach the worker.'
 
   const labels = (card.project || card.tags.length > 0) && (
     <div className="card-labels">
@@ -464,8 +466,9 @@ export function HydraCard({
         )}
         {!selected && question && (
           <div className="card-question" aria-label="Task question">
-            <strong className="eyebrow">Question</strong>
-            <CollapsibleText text={question} />
+            <strong className="eyebrow">{questionLabel}</strong>
+            <CollapsibleText text={question.text} />
+            {answerSaved && <p className="muted small">{deliveryText}</p>}
             <Button
               variant="primary"
               onClick={async () => {
@@ -479,7 +482,7 @@ export function HydraCard({
 
                 answer({ card })
               }}
-            >Answer
+            >{answerLabel}
             </Button>
           </div>
         )}

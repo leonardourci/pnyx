@@ -4,7 +4,7 @@ import { readFileSync, renameSync } from 'node:fs'
 import { snapshotPath, writeDurably } from '#store/storage.ts'
 
 // Bumped when the reducer derives cards differently, so an older cache is replayed.
-const RULES = 15
+const RULES = 16
 
 interface Snapshot {
   v: typeof EVENT_VERSION
