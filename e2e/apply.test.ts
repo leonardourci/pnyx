@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { test } from 'node:test'
 import { openPage } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
@@ -138,5 +140,82 @@ test(
       new RegExp(build),
     )
     restored.close()
+  },
+)
+
+test(
+  'rule apply previews a patch read from stdin, and a refused patch changes nothing',
+  async () => {
+    const s = await pnyx.scenario()
+    const shown = await s.owner({
+      args: [
+        'rule',
+        'show',
+      ],
+    })
+    assert.match(
+      shown,
+      /^revision: \d+$/m,
+    )
+    assert.match(
+      await s.owner({
+        args: [
+          'rule',
+          'apply',
+          '--check',
+          '--file',
+          '-',
+        ],
+        input: JSON.stringify({
+          version: 1,
+          patch: { rules: { build: { candidates: [{ harness: 'claude' }] } } },
+        }),
+      }),
+      /applied: false/,
+    )
+    const file = join(
+      s.folder({ name: 'patches' }),
+      'bad.json',
+    )
+    writeFileSync(
+      file,
+      JSON.stringify({
+        version: 1,
+        patch: {
+          rules: {
+            build: {
+              candidates: [
+                {
+                  harness: 'claude',
+                  effort: 'ultra',
+                },
+              ],
+            },
+          },
+          main: 'claude:gone',
+        },
+      }),
+    )
+    const refused = await s.ownerRefusal({
+      args: [
+        'rule',
+        'apply',
+        '--file',
+        file,
+      ],
+    })
+    assert.equal(
+      refused.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      await s.owner({
+        args: [
+          'rule',
+          'show',
+        ],
+      }),
+      shown,
+    )
   },
 )
