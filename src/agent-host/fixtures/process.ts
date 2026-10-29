@@ -68,12 +68,16 @@ try {
         submit?: boolean
         count?: number
         textBytes?: number
+        at?: string
       }
 
       try {
         const state = request.nativeId ? states.get(request.nativeId) : undefined
 
-        if (request.kind === 'stats') {
+        if (request.kind === 'completion-time' && state) {
+          state.completedAt = request.at
+          process.send?.({ id: request.id })
+        } else if (request.kind === 'stats') {
           process.send?.({
             id: request.id,
             states: [...states.values()].map(state => ({

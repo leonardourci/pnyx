@@ -21,6 +21,7 @@ type State = {
   context?(): string
   answers: number
   valueMatched?: boolean
+  completedAt?: string
 }
 export const states = new Map<string, State>()
 export const fixtureProvider = (): Provider => ({
@@ -206,6 +207,21 @@ export const fixtureProvider = (): Provider => ({
 
           state.gate?.resolve(); wake()
         },
+      },
+    })
+
+    const run = session.run
+    session.run = ({
+      observe,
+      ...options
+    }) => run({
+      ...options,
+      observe: ({ event }) => {
+        if (typeof event === 'object' && event.type === 'turn-ended' && state.completedAt) {
+          event.outcome.at = state.completedAt
+        }
+
+        return observe?.({ event })
       },
     })
 

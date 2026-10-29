@@ -145,8 +145,9 @@ export async function fixtureHost({
     submit,
     count,
     textBytes,
+    at,
   }: {
-    kind: 'stats' | 'event' | 'ask' | 'release' | 'stop' | 'burst'
+    kind: 'stats' | 'event' | 'ask' | 'release' | 'stop' | 'burst' | 'completion-time'
     nativeId?: string
     event?: NativeEvent
     nextEvent?: NativeEvent
@@ -154,6 +155,7 @@ export async function fixtureHost({
     submit?: boolean
     count?: number
     textBytes?: number
+    at?: string
   }): Promise<unknown> => {
     const id = randomUUID()
     const response = deferred<unknown>()
@@ -177,6 +179,7 @@ export async function fixtureHost({
         submit,
         count,
         textBytes,
+        at,
       })
 
       return await response.promise

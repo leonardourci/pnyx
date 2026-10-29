@@ -177,6 +177,27 @@ if (tracing) {
   }
 }
 
+let heldCompletions = 0
+
+if (process.env.PNYX_FIXTURE_HOLD_HELPER_COMPLETION === '1') {
+  for (const adapter of Object.values(native.providers)) {
+    const open = adapter.open
+
+    adapter.open = async ({ ...options }) => {
+      const session = await open(options)
+
+      if (options.env.PNYX_ACTOR?.startsWith('helper:')) {
+        session.applied = async () => {
+          heldCompletions++
+          await new Promise<void>(() => {})
+        }
+      }
+
+      return session
+    }
+  }
+}
+
 const forbidden = () => {
   throw new Error('Fixture application cannot launch native providers')
 }
@@ -231,6 +252,7 @@ process.on(
       process.send?.({
         id: request.id,
         measurements,
+        heldCompletions,
       })
 
       return

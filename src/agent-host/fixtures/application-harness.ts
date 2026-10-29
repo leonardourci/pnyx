@@ -127,10 +127,12 @@ export async function fixtureApplication({
     holdInputs = false,
     holdCompletionAcks = false,
     traceOpens = false,
+    holdHelperCompletion = false,
   }: {
     holdInputs?: boolean | 'wake'
     holdCompletionAcks?: boolean
     traceOpens?: boolean
+    holdHelperCompletion?: boolean
   } = {}) => {
     const child = fork(
       join(
@@ -149,6 +151,7 @@ export async function fixtureApplication({
         execArgv: built ? [] : ['--conditions=source'],
         env: {
           ...env,
+          PNYX_FIXTURE_HOLD_HELPER_COMPLETION: holdHelperCompletion ? '1' : '0',
           PNYX_FIXTURE_TRACE_OPENS: String(traceOpens),
           PNYX_FIXTURE_HOLD_INPUTS: String(holdInputs),
           PNYX_FIXTURE_HOLD_COMPLETION_ACKS: String(holdCompletionAcks),

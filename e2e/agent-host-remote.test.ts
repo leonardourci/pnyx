@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
+import { randomUUID } from 'node:crypto'
+import type { HostClient } from '#agent-host/client.ts'
 import { nativeProviders } from '#app/native-provider.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
@@ -401,6 +403,7 @@ for (const harness of [
   for (const result of [
     'text',
     'structured',
+    'committed',
     'malformed',
     'late',
     'host-crash',
@@ -533,19 +536,9 @@ for (const harness of [
 
         if (result === 'late') {
           await host.control({
-            kind: 'event',
+            kind: 'completion-time',
             nativeId: helper.id,
-            event: {
-              type: 'turn-ended',
-              outcome: {
-                turn,
-                inputIds: [batch.id],
-                status: 'completed',
-                at: new Date(Date.parse(batch.startedAt!) + 120_001).toISOString(),
-                assistant: [],
-                structured: outcomes,
-              },
-            },
+            at: new Date(Date.parse(batch.startedAt!) + 120_001).toISOString(),
           })
         }
 
@@ -587,7 +580,18 @@ for (const harness of [
         }
 
         const failed = result === 'malformed' || result === 'late'
-        const second = await app.start()
+        let second = await app.start({ holdHelperCompletion: result === 'committed' })
+
+        if (result === 'committed') {
+          await until({ check: async () => (await second.control({ kind: 'metrics' }) as { heldCompletions: number }).heldCompletions > 0 })
+          assert.equal(
+            app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
+            1,
+          )
+          second.child.kill('SIGKILL')
+          await second.exited
+          second = await app.start()
+        }
 
         if (result === 'host-crash-uncertain') {
           await until({ check: () => app.errors().includes('helper retained ownership requires reconciliation') })
@@ -698,6 +702,100 @@ for (const harness of [
             'Lease still released',
           ],
         })
+
+        if (result === 'committed') {
+          const client = await host.connect()
+          const call = ({ operation }: { operation: Parameters<HostClient['call']>[0]['operation'] }) =>
+            client.call({
+              id: randomUUID(),
+              operation,
+            })
+          const claim = await call({
+            operation: {
+              kind: 'attach',
+              scope: { kind: 'host' },
+              expectedRevision: client.ready.hostControllerRevision,
+            },
+          })
+          assert.equal(
+            claim.kind,
+            'attached',
+          )
+
+          if (claim.kind !== 'attached') {
+            throw new Error('Missing maintenance controller')
+          }
+
+          const draining = await call({
+            operation: {
+              kind: 'drain',
+              controller: claim.control.generation,
+            },
+          })
+          assert.equal(
+            draining.kind,
+            'maintenance',
+          )
+
+          if (draining.kind !== 'maintenance') {
+            throw new Error('Missing drain barrier')
+          }
+
+          for (const native of await host.stats()) {
+            if (native.closed) {
+              continue
+            }
+
+            await host.control({
+              kind: 'event',
+              nativeId: native.id,
+              event: {
+                type: 'result',
+                turn: native.turn!,
+                inputIds: native.input.map(input => input.id),
+                status: 'completed',
+                final: 'NO_REPLY',
+                queued: 0,
+              },
+            })
+          }
+
+          await until({
+            check: async () => {
+              const status = await call({ operation: { kind: 'status' } })
+
+              return status.kind === 'maintenance' && status.status.blockers.length === 0
+            },
+          })
+          await until({
+            check: async () => {
+              const result = await call({
+                operation: {
+                  kind: 'shutdown',
+                  controller: claim.control.generation,
+                  drain: draining.status.drain!,
+                  when: 'quiescent',
+                },
+              })
+
+              return result.kind === 'shutdown'
+            },
+          })
+          await host.exited
+          const replacement = await fixtureHost({
+            t,
+            directory: app.root,
+          })
+          const next = await replacement.connect()
+          assert.equal(
+            next.ready.predecessor,
+            client.ready.instance,
+          )
+          assert.equal(
+            next.ready.sessions.length,
+            0,
+          )
+        }
       },
     )
   }
