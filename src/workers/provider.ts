@@ -1,3 +1,4 @@
+import type { NativePolicy, NativePolicyReceipt } from './native-policy.ts'
 import type { HelperUsageTotal } from '#routine-helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
 
@@ -173,6 +174,7 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
+  policy?: NativePolicyReceipt
   id: string
   path?: string
   run({
@@ -257,7 +259,9 @@ export interface Provider {
     outputSchema,
     allow,
     context,
+    policy,
   }: {
+    policy?: NativePolicy
     cwd: string
     instructions?: string
     outputSchema?: Record<string, unknown>

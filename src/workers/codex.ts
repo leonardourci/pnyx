@@ -1,3 +1,5 @@
+import { fenceSetting, policyReceipt, validatePolicy } from './native-policy.ts'
+import { policyArguments, policyConfiguration, POLICY_PROFILE } from './native-policy-files.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -12,9 +14,11 @@ import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTo
 export type SpawnCodex = ({
   cwd,
   env,
+  args,
 }: {
   cwd: string
   env: NodeJS.ProcessEnv
+  args?: string[]
 }) => ChildProcessWithoutNullStreams
 
 type ObjectValue = Record<string, unknown>
@@ -824,12 +828,14 @@ export function codexProvider({
   spawnCodex = ({
     cwd,
     env,
+    args = [],
   }) => spawn(
     'codex',
     [
       'app-server',
       '--listen',
       'stdio://',
+      ...args,
     ],
     {
       cwd,
@@ -931,6 +937,7 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
+      policy: ceiling,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
@@ -941,6 +948,7 @@ export function codexProvider({
         child: spawnCodex({
           cwd,
           env,
+          args: ceiling ? policyArguments({ policy: ceiling }) : undefined,
         }),
       })
 
@@ -965,6 +973,10 @@ export function codexProvider({
       }
 
       try {
+        if (ceiling) {
+          validatePolicy({ policy: ceiling })
+        }
+
         await initialize({ rpc })
         const options = { ...settings }
         // Bypass permissions is Codex's never: no approvals, full access.
@@ -979,11 +991,17 @@ export function codexProvider({
             config: {
               ...pnyxShellEnvironment({ env }),
               'features.default_mode_request_user_input': true,
+              ...(ceiling ? policyConfiguration({ policy: ceiling }) : {}),
             },
             ...(instructions ? { developerInstructions: instructions } : {}),
             ...(options.model ? { model: options.model } : {}),
             ...serviceTier({ fast: options.fast }),
-            ...(policy()
+            ...(ceiling ? {
+              permissions: POLICY_PROFILE,
+              approvalPolicy: NEVER,
+              selectedCapabilityRoots: [],
+              environments: [],
+            } : policy()
               ? {
                 approvalPolicy: policy(),
                 sandbox: policy() === NEVER ? FULL_ACCESS : WORKSPACE_WRITE,
@@ -991,6 +1009,11 @@ export function codexProvider({
               : {}),
           },
         })
+
+        if (ceiling && object({ value: result.activePermissionProfile }).id !== POLICY_PROFILE) {
+          throw new Error('Codex did not acknowledge the frozen permission profile')
+        }
+
         const thread = object({ value: result.thread })
 
         if (typeof thread.id !== 'string' || !thread.id || (agent && thread.id !== agent.sessionId)) {
@@ -1149,7 +1172,10 @@ export function codexProvider({
                   ...(options.model ? { model: options.model } : {}),
                   ...serviceTier({ fast: options.fast }),
                   ...(options.effort ? { effort: options.effort } : {}),
-                  ...(policy()
+                  ...(ceiling ? {
+                    permissions: POLICY_PROFILE,
+                    approvalPolicy: NEVER,
+                  } : policy()
                     ? {
                       approvalPolicy: policy(),
                       sandboxPolicy: sandboxPolicy({
@@ -1376,6 +1402,10 @@ export function codexProvider({
             setting,
             value,
           }) {
+            fenceSetting({
+              policy: ceiling,
+              setting,
+            })
             options[setting] = value
           },
           async interrupt() {
@@ -1418,7 +1448,16 @@ export function codexProvider({
           close,
         }
 
-        return nativeSession({ native })
+        const hosted = nativeSession({ native })
+
+        if (ceiling) {
+          hosted.policy = policyReceipt({
+            policy: ceiling,
+            incarnation: id,
+          })
+        }
+
+        return hosted
       } catch (error) {
         close()
         throw error

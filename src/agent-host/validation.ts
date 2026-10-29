@@ -1,3 +1,5 @@
+import { validatePolicy } from '#workers/native-policy.ts'
+import type { NativePolicy } from '#workers/native-policy.ts'
 import { fail } from './protocol.ts'
 import type { ToHost, Fact, SessionRef } from './protocol.ts'
 
@@ -84,6 +86,11 @@ export function readFrame({ text }: { text: string }): ToHost {
         || scope.kind === 'session' && ref({ value: scope.ref }))
     } else if (op?.kind === 'open' && options) {
       const resume = object({ value: options.resume })
+
+      if (options.policy !== undefined) {
+        validatePolicy({ policy: options.policy as NativePolicy })
+      }
+
       valid = name({ value: op.controller })
       && provider({ value: options.provider })
       && name({ value: options.cwd })

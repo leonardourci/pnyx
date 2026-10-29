@@ -1,3 +1,4 @@
+import type { NativePolicy, NativePolicyReceipt } from '#workers/native-policy.ts'
 import type { HostedEvent, HostedFact, HostedInput, HostedSession, HostedUsage, NativePermission, PermissionDecision, ModelOption } from '#workers/provider.ts'
 import { HydraError } from '#store/errors.ts'
 
@@ -7,6 +8,7 @@ export const CAPABILITIES = [
   'named-requests',
   'critical-outbox',
   'live-owners',
+  'native-policy',
 ]
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 export const MAX_SOCKET_BYTES = 2 * MAX_FRAME_BYTES
@@ -25,6 +27,7 @@ export type Grant = {
   revision: number
 }
 export type Summary = {
+  policy?: NativePolicyReceipt
   ref: SessionRef
   provider: ProviderId
   nativeId?: string
@@ -33,6 +36,7 @@ export type Summary = {
   controllerRevision: number
 }
 export type OpenOptions = {
+  policy?: NativePolicy
   provider: ProviderId
   cwd: string
   settings: Record<string, string>

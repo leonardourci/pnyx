@@ -1,3 +1,4 @@
+import { claudePolicyOptions, fenceSetting, policyReceipt, toolCeiling } from './native-policy.ts'
 import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -240,6 +241,7 @@ export function claudeProvider({
       outputSchema,
       allow,
       context,
+      policy,
     }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
@@ -358,6 +360,35 @@ export function claudeProvider({
                   ],
                 },
               } : {}),
+              ...(policy ? {
+                hooks: {
+                  PreToolUse: [
+                    {
+                      hooks: [
+                        async input => {
+                          if (input.hook_event_name !== 'PreToolUse') {
+                            return {}
+                          }
+
+                          const ceiling = toolCeiling({
+                            policy,
+                            tool: input.tool_name,
+                            input: input.tool_input as Record<string, unknown>,
+                          })
+
+                          return {
+                            hookSpecificOutput: {
+                              hookEventName: 'PreToolUse' as const,
+                              permissionDecision: ceiling.allowed ? 'allow' as const : 'deny' as const,
+                              ...(ceiling.allowed ? { updatedInput: ceiling.input } : { permissionDecisionReason: ceiling.reason }),
+                            },
+                          }
+                        },
+                      ],
+                    },
+                  ],
+                },
+              } : {}),
               permissionPrompts: 'host',
               // eslint-disable-next-line pnyx/object-params -- The SDK owns this callback signature.
               canUseTool: async (
@@ -369,6 +400,26 @@ export function claudeProvider({
                   requestId,
                 },
               ) => {
+                if (policy) {
+                  const ceiling = toolCeiling({
+                    policy,
+                    tool,
+                    input,
+                  })
+
+                  if (!ceiling.allowed) {
+                    return {
+                      behavior: 'deny',
+                      message: ceiling.reason,
+                    }
+                  }
+
+                  return {
+                    behavior: 'allow',
+                    updatedInput: ceiling.input,
+                  }
+                }
+
                 const asked = tool === 'AskUserQuestion'
                   ? questions({ value: input.questions })
                   : undefined
@@ -413,6 +464,7 @@ export function claudeProvider({
               },
               env,
               ...sdkOptions({ settings }),
+              ...(policy ? claudePolicyOptions({ policy }) : {}),
             },
           })
 
@@ -700,6 +752,11 @@ export function claudeProvider({
           setting,
           value,
         }) {
+          fenceSetting({
+            policy,
+            setting,
+          })
+
           if (!running) {
             throw new Error('Claude Code is still loading')
           }
@@ -723,7 +780,16 @@ export function claudeProvider({
         },
       }
 
-      return nativeSession({ native })
+      const hosted = nativeSession({ native })
+
+      if (policy) {
+        hosted.policy = policyReceipt({
+          policy,
+          incarnation: id,
+        })
+      }
+
+      return hosted
     },
   }
 }

@@ -805,6 +805,7 @@ export function hostSessions({
             const options = operation.options
             entry.context = options.context ?? ''
             const nativeOptions: Parameters<Provider['open']>[0] = {
+              policy: options.policy,
               cwd: options.cwd,
               settings: options.settings,
               env: options.environment,
@@ -829,6 +830,7 @@ export function hostSessions({
                 entry,
                 action: async () => {
                   entry.native = await providers[options.provider].open(nativeOptions)
+                  entry.output.summary.policy = entry.native.policy
                   entry.output.summary.nativeId = entry.native.id
                   entry.output.summary.path = entry.native.path
 

@@ -1,3 +1,4 @@
+import { requireTaskRights } from '#tasks/rights.ts'
 import {
   ORCHESTRATE_SKILL,
   REPORT_PROGRESS_SKILL,
@@ -123,6 +124,7 @@ export function freeTask({
     })
   }
 
+  requireTaskRights({ card })
   requireUnheld({ card })
   requireReady({
     state,
@@ -384,6 +386,7 @@ export async function startTask({
     ref: task,
   })
 
+  requireTaskRights({ card })
   requireUnheld({ card })
   requireReady({
     state,
@@ -531,6 +534,7 @@ export async function startTask({
     state: currentState,
     ref: task,
   })
+  requireTaskRights({ card: currentCard })
   requireUnheld({ card: currentCard })
   requireReady({
     state: currentState,
@@ -642,6 +646,7 @@ function askFirstmate({
         })
       }
 
+      requireTaskRights({ card })
       requireUnheld({ card })
       requireReady({
         state: writer.state,
