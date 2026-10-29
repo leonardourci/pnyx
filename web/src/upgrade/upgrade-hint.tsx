@@ -6,7 +6,7 @@ import { Popover } from '#web-shared/ui/popover.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { clock } from '#web-hydra/chat.ts'
 
-const checkedDay = ({ at }: { at: string }) => {
+export const checkedDay = ({ at }: { at: string }) => {
   const day = new Date(at).toDateString()
 
   return day === new Date().toDateString() ? 'today'
