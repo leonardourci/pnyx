@@ -84,7 +84,7 @@ export function KeyboardSettings({
         </div>
         <Button variant="surface" disabled={busy} onClick={() => persist({ bindings: null })}>Reset all bindings</Button>
       </div>
-      <p className="muted">Bindings follow this Hydra. Text fields keep normal typing; Enter adds a newline. Browsers may reserve the settings shortcut—Commands and the Settings button always remain available.</p>
+      <p className="muted">Bindings apply to every Hydra. Text fields keep normal typing; Enter adds a newline. Browsers may reserve the settings shortcut—Commands and the Settings button always remain available.</p>
       <Switch label="Character shortcuts" checked={prefs.characterShortcuts} onChange={({ value: characterShortcuts }) => save({ patch: { keyboard: { characterShortcuts } } })} />
       <Input
         type="search"
