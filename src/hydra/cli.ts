@@ -293,8 +293,9 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     values,
     hydraId: id,
   })
+  // --base only shapes hydra homes, so on set it changes nothing in the Hydra.
   const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
-    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE))
+    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE) && flag !== 'base')
   const onlySettings = shared !== undefined && action === 'set' && !hydraFlags
 
   if (shared) {
