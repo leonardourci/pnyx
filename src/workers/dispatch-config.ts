@@ -6,9 +6,11 @@ import { HydraError } from '#store/errors.ts'
 import type { AgentConfig } from './model.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import type { HydraEvent } from '#app/model.ts'
+import type { Meta } from '#app/command-meta.ts'
+import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
-import { candidateIssues, checkDispatch, HARNESSES, mergePatch, type DispatchDocument } from './dispatch-check.ts'
+import { candidateIssues, checkDispatch, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>
@@ -37,6 +39,19 @@ export interface EffectiveDispatch {
 
 type Fields = Record<string, unknown>
 
+export interface ChangeEntry {
+  v: 1
+  id: string
+  at: string
+  actor: string
+  reason?: string
+  digest?: string
+  changes?: DispatchChange[]
+  receipt?: Output
+  // The whole document after this change; the last one logged is the saved heads dispatch.
+  document?: DispatchDocument
+}
+
 export function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
   return join(
     pnyxHome(),
@@ -45,7 +60,7 @@ export function configPath({ accounts = false }: { accounts?: boolean } = {}): s
   )
 }
 
-// One line per applied change; its length is the document's revision.
+// The change log is the saved heads dispatch: one line per change, each carrying the whole document.
 export const changesPath = () => join(
   pnyxHome(),
   'config',
@@ -141,6 +156,12 @@ export function readConfig({ path }: { path: string }): Fields {
   }
 }
 
+const serialized = ({ value }: { value: unknown }) => `${JSON.stringify(
+  value,
+  null,
+  2,
+)}\n`
+
 function writeJson({
   path,
   value,
@@ -152,11 +173,7 @@ function writeJson({
   const temp = `${path}.${randomUUID()}.tmp`
   writeDurably({
     path: temp,
-    data: `${JSON.stringify(
-      value,
-      null,
-      2,
-    )}\n`,
+    data: serialized({ value }),
     flag: 'w',
   })
   renameSync(
@@ -165,24 +182,98 @@ function writeJson({
   )
 }
 
-// ponytail: two renames, not one; a crash between them leaves the accounts file ahead, which the next check reports.
-export function writeDocument({ document }: { document: DispatchDocument }): void {
+const mirrorFiles = ({ document }: { document: DispatchDocument }) => {
   const {
     accounts,
     ...dispatch
   } = document
-  writeJson({
-    path: configPath({ accounts: true }),
-    value: { accounts },
-  })
-  writeJson({
-    path: configPath(),
-    value: dispatch,
+
+  return [
+    {
+      path: configPath({ accounts: true }),
+      value: { accounts },
+    },
+    {
+      path: configPath(),
+      value: dispatch,
+    },
+  ]
+}
+
+// The two files only mirror the change log for people reading them; a read rewrites them from the log.
+export function writeDocument({ document }: { document: DispatchDocument }): void {
+  for (const file of mirrorFiles({ document })) {
+    writeJson(file)
+  }
+}
+
+function mirrored({ document }: { document: DispatchDocument }): boolean {
+  return mirrorFiles({ document }).every(({
+    path,
+    value,
+  }) => {
+    try {
+      return readFileSync(
+        path,
+        'utf8',
+      ) === serialized({ value })
+    } catch {
+      // A missing or unreadable file is rewritten like a stale one.
+      return false
+    }
   })
 }
 
-// Copies the shipped templates into the Pnyx home; an existing file is never touched.
-export function initConfig(): {
+export function readChanges(): ChangeEntry[] {
+  const path = changesPath()
+
+  if (!existsSync(path)) {
+    return []
+  }
+
+  // A torn last line is a write cut short, so it was never saved; the complete lines before it still count.
+  return readFileSync(
+    path,
+    'utf8',
+  ).split('\n')
+    .slice(
+      0,
+      -1,
+    )
+    .filter(Boolean)
+    .flatMap(line => {
+      try {
+        return [JSON.parse(line) as ChangeEntry]
+      } catch {
+        return []
+      }
+    })
+}
+
+const committedDocument = () => readChanges().findLast(entry => entry.document)?.document
+
+// The durable log line is the commit point: a failed append changes nothing, and the files follow it.
+export function commitChange({ entry }: { entry: ChangeEntry }): void {
+  privateDir({ dir: dirname(changesPath()) })
+  // A torn last line keeps its own line, so the new entry is never glued onto it.
+  const logged = existsSync(changesPath()) ? readFileSync(
+    changesPath(),
+    'utf8',
+  ) : ''
+  const torn = logged !== '' && !logged.endsWith('\n')
+  writeDurably({
+    path: changesPath(),
+    data: `${torn ? '\n' : ''}${JSON.stringify(entry)}\n`,
+    flag: 'a',
+  })
+
+  if (entry.document) {
+    writeDocument({ document: entry.document })
+  }
+}
+
+// Saves the shipped templates as the first change, keeping either file that already exists; a saved document is never replaced.
+export function initConfig({ meta }: { meta: Meta }): {
   dispatch: string
   accounts: string
 } {
@@ -191,19 +282,33 @@ export function initConfig(): {
     accounts: configPath({ accounts: true }),
   }
 
-  if (!existsSync(paths.dispatch)) {
-    writeJson({
-      path: paths.dispatch,
-      value: readTemplate(),
-    })
-  }
+  withRegistryLock({
+    fn: () => {
+      mergeHydraFiles()
 
-  if (!existsSync(paths.accounts)) {
-    writeJson({
-      path: paths.accounts,
-      value: templateAccounts(),
-    })
-  }
+      if (committedDocument()) {
+        return
+      }
+
+      commitChange({
+        entry: {
+          v: 1,
+          id: meta.id ?? randomUUID(),
+          at: meta.at,
+          actor: meta.actor,
+          reason: 'Saved the shipped heads dispatch templates',
+          document: compose({
+            dispatch: existsSync(paths.dispatch)
+              ? readConfig({ path: paths.dispatch })
+              : readTemplate(),
+            accounts: existsSync(paths.accounts)
+              ? readConfig({ path: paths.accounts })
+              : templateAccounts(),
+          }) as DispatchDocument,
+        },
+      })
+    },
+  })
 
   return paths
 }
@@ -211,7 +316,7 @@ export function initConfig(): {
 const nonempty = ({ value }: { value: unknown }) => value !== undefined && value !== '' && value !== null
   && (typeof value !== 'object' || Object.keys(value).length > 0)
 
-// An empty section keeps the shipped template's rules and default list.
+// Before the first logged document, an empty section keeps the shipped template's rules and default list.
 function compose({
   dispatch,
   accounts,
@@ -239,11 +344,12 @@ function compose({
   return document
 }
 
-function storedDocument(): DispatchDocument {
-  const document = compose({
-    dispatch: readConfig({ path: configPath() }),
-    accounts: readConfig({ path: configPath({ accounts: true }) }),
-  })
+const filesDocument = () => compose({
+  dispatch: readConfig({ path: configPath() }),
+  accounts: readConfig({ path: configPath({ accounts: true }) }),
+})
+
+function checked({ document }: { document: unknown }): DispatchDocument {
   const errors = checkDispatch({ document }).filter(issue => issue.level === 'error' && !issue.readable)
 
   if (errors.length) {
@@ -415,11 +521,18 @@ export function mergeHydraFiles(): void {
     }
   }
 
-  writeDocument({
-    document: compose({
-      dispatch: dispatch as Fields,
-      accounts: accounts as Fields,
-    }) as DispatchDocument,
+  commitChange({
+    entry: {
+      v: 1,
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      actor: 'pnyx',
+      reason: 'Merged each Hydra’s own heads dispatch and accounts into the shared files',
+      document: compose({
+        dispatch: dispatch as Fields,
+        accounts: accounts as Fields,
+      }) as DispatchDocument,
+    },
   })
 
   for (const files of found) {
@@ -435,33 +548,57 @@ export function mergeHydraFiles(): void {
       }
     }
   }
+}
 
-  writeDurably({
-    path: changesPath(),
-    data: `${JSON.stringify({
-      v: 1,
-      id: randomUUID(),
-      at: new Date().toISOString(),
-      actor: 'pnyx',
-      reason: 'Merged each Hydra’s own heads dispatch and accounts into the shared files',
-    })}\n`,
-    flag: 'a',
-  })
+// For writers already holding the registry lock; rewrites files a save cut short left behind its log.
+export function lockedDocument(): DispatchDocument {
+  mergeHydraFiles()
+  const committed = committedDocument()
+
+  if (!committed) {
+    return checked({ document: filesDocument() })
+  }
+
+  if (!mirrored({ document: committed })) {
+    writeDocument({ document: committed })
+  }
+
+  return checked({ document: committed })
+}
+
+// A reader never waits for the lock: the log already gave it the document, and a later read repairs the files.
+function repairFiles(): void {
+  try {
+    withRegistryLock({
+      fn: lockedDocument,
+      timeout: 0,
+    })
+  } catch (error) {
+    if (!(error instanceof HydraError && error.code === 'LOCKED')) {
+      throw error
+    }
+  }
 }
 
 export function readDocument(): DispatchDocument {
   if (!existsSync(changesPath())) {
-    withRegistryLock({ fn: mergeHydraFiles })
+    return withRegistryLock({ fn: lockedDocument })
   }
 
-  return storedDocument()
-}
+  const committed = committedDocument()
 
-// For writers already holding the registry lock.
-export function lockedDocument(): DispatchDocument {
-  mergeHydraFiles()
+  if (committed) {
+    if (!mirrored({ document: committed })) {
+      repairFiles()
+    }
 
-  return storedDocument()
+    return checked({ document: committed })
+  }
+
+  const files = filesDocument()
+
+  // A first save logs its document before renaming either file, so files read before that line appears are one pair.
+  return checked({ document: committedDocument() ?? files })
 }
 
 export function effectiveDispatch(): EffectiveDispatch {

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
@@ -10,11 +10,11 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { runsInBypass } from '#hydra/hydra-session.ts'
 import { HydraError } from '#store/errors.ts'
-import { withRegistryLock, writeDurably } from '#store/storage.ts'
+import { withRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
-import { changesPath, loginFolder, lockedDocument, readDocument, writeDocument, type Account } from './dispatch-config.ts'
+import { commitChange, loginFolder, lockedDocument, readChanges, readDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 
 type Fields = Record<string, unknown>
 
@@ -22,17 +22,6 @@ export interface DispatchEnvelope {
   version: 1
   expected?: { revision: number }
   patch: Fields
-}
-
-interface ChangeEntry {
-  v: 1
-  id: string
-  at: string
-  actor: string
-  reason?: string
-  digest?: string
-  changes?: DispatchChange[]
-  receipt?: Output
 }
 
 export const DISPATCH_HELP_LINE = ['Run `pnyx-axi rule schema` for every field and allowed value']
@@ -112,32 +101,6 @@ export function parseEnvelope({ value: raw }: { value: unknown }): DispatchEnvel
   return value as unknown as DispatchEnvelope
 }
 
-function readChanges(): ChangeEntry[] {
-  const path = changesPath()
-
-  if (!existsSync(path)) {
-    return []
-  }
-
-  // A torn last line is a write cut short; the complete lines before it still count.
-  return readFileSync(
-    path,
-    'utf8',
-  ).split('\n')
-    .slice(
-      0,
-      -1,
-    )
-    .filter(Boolean)
-    .flatMap(line => {
-      try {
-        return [JSON.parse(line) as ChangeEntry]
-      } catch {
-        return []
-      }
-    })
-}
-
 export const dispatchRevision = () => readChanges().length
 
 // A save may keep an error the saved document already had, so an old file can be fixed one patch at a time.
@@ -160,27 +123,6 @@ export function dispatchIssues({ document }: { document: DispatchDocument }) {
     document,
     catalog: storedOffers(),
     exists: ({ folder }) => existsSync(loginFolder({ account: { folder } as Account })),
-  })
-}
-
-function record({
-  document,
-  entry,
-}: {
-  document: DispatchDocument
-  entry: ChangeEntry
-}): void {
-  writeDocument({ document })
-  // A torn last line keeps its own line, so the new entry is never glued onto it.
-  const logged = existsSync(changesPath()) ? readFileSync(
-    changesPath(),
-    'utf8',
-  ) : ''
-  const torn = logged !== '' && !logged.endsWith('\n')
-  writeDurably({
-    path: changesPath(),
-    data: `${torn ? '\n' : ''}${JSON.stringify(entry)}\n`,
-    flag: 'a',
   })
 }
 
@@ -395,16 +337,14 @@ export function applyDispatch({
         digest,
         changes,
         receipt,
+        document: after,
       }
 
       if (meta.reason) {
         entry.reason = meta.reason
       }
 
-      record({
-        document: after,
-        entry,
-      })
+      commitChange({ entry })
 
       return receipt
     },
@@ -517,18 +457,16 @@ export function resolveProposal({
           })
         }
 
-        const entry: ChangeEntry = {
-          v: 1,
-          id: `proposal-${token}`,
-          at: meta.at,
-          actor: meta.actor,
-          changes,
-        }
-
-        entry.reason = proposal.summary
-        record({
-          document: after,
-          entry,
+        commitChange({
+          entry: {
+            v: 1,
+            id: `proposal-${token}`,
+            at: meta.at,
+            actor: meta.actor,
+            reason: proposal.summary,
+            changes,
+            document: after,
+          },
         })
       }
 

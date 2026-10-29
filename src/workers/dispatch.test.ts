@@ -1192,7 +1192,7 @@ test(
 )
 
 test(
-  'rule init takes login folders from CLAUDE_CONFIG_DIR and CODEX_HOME, keeps the template otherwise and never overwrites a file',
+  'rule init takes login folders from CLAUDE_CONFIG_DIR and CODEX_HOME, keeps a file that exists and never replaces a saved document',
   () => {
     const accountsFile = () => JSON.parse(readFileSync(
       configPath({ accounts: true }),
@@ -1283,10 +1283,6 @@ test(
         configPath(),
         'utf8',
       )
-      writeFileSync(
-        configPath({ accounts: true }),
-        '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
-      )
       process.env.CLAUDE_CONFIG_DIR = '/logins/other'
       dispatchCommands.rule([
         'init',
@@ -1302,14 +1298,32 @@ test(
       )
       assert.deepEqual(
         accountsFile(),
-        {
-          accounts: {
-            'claude:mine': {
-              provider: 'claude',
-              folder: '~/.claude-mine',
-            },
+        registry({
+          claude: '/logins/claude',
+          codex: '/logins/codex',
+        }),
+      )
+      lab()
+      const mine = {
+        accounts: {
+          'claude:mine': {
+            provider: 'claude',
+            folder: '~/.claude-mine',
           },
         },
+      }
+      writeShared({
+        accounts: true,
+        value: mine,
+      })
+      dispatchCommands.rule([
+        'init',
+        '--hydra',
+        'lab',
+      ])
+      assert.deepEqual(
+        accountsFile(),
+        mine,
       )
     } finally {
       process.env.CLAUDE_CONFIG_DIR = join(

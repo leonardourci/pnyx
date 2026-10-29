@@ -327,7 +327,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
 
   if (action === 'init') {
     return {
-      ...initConfig(),
+      ...initConfig({ meta: meta({ values }) }),
       help: ['Fix login folders and remove accounts you do not use with `pnyx-axi rule apply` before starting workers; Pnyx stores no credentials'],
     }
   }

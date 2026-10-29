@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
+import { chmodSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -12,7 +12,8 @@ import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
-import { configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
+import { changesPath, configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
+import type { DispatchDocument } from './dispatch-check.ts'
 
 type Receipt = Record<string, unknown>
 
@@ -52,6 +53,16 @@ const rule = ({ args }: { args: string[] }) => dispatchCommands.rule([
   '--hydra',
   'lab',
 ]) as Receipt
+
+const show = () => rule({ args: ['show'] }) as {
+  revision: number
+  document: DispatchDocument
+}
+
+const dispatchFile = () => JSON.parse(readFileSync(
+  configPath(),
+  'utf8',
+)) as HeadsDispatch
 
 const failsWith = ({
   run,
@@ -263,6 +274,188 @@ test(
         ],
       }),
       { code: 'REVISION_CONFLICT' },
+    )
+  },
+)
+
+test(
+  'a save the change log refuses leaves both files and the revision as they were',
+  () => {
+    lab()
+    show()
+    const dispatch = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    const accounts = readFileSync(
+      configPath({ accounts: true }),
+      'utf8',
+    )
+    chmodSync(
+      changesPath(),
+      0o400,
+    )
+
+    try {
+      assert.throws(
+        () => rule({
+          args: [
+            'set',
+            'build',
+            '--when',
+            'Unsaved wording',
+          ],
+        }),
+        { code: 'EACCES' },
+      )
+    } finally {
+      chmodSync(
+        changesPath(),
+        0o600,
+      )
+    }
+
+    assert.equal(
+      readFileSync(
+        configPath(),
+        'utf8',
+      ),
+      dispatch,
+    )
+    assert.equal(
+      readFileSync(
+        configPath({ accounts: true }),
+        'utf8',
+      ),
+      accounts,
+    )
+    assert.equal(
+      show().revision,
+      0,
+    )
+  },
+)
+
+test(
+  'a save cut short between its two file renames reads as the logged change and rewrites the stale file',
+  () => {
+    const { file } = lab()
+    const before = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch: {
+              accounts: {
+                'codex:docs': {
+                  provider: 'codex',
+                  folder: '~/.codex-docs',
+                },
+              },
+              workers: { codex: ['codex:docs'] },
+            },
+          },
+        }),
+      ],
+    })
+    // The accounts file is renamed first, so a crash before the second rename leaves the old dispatch file.
+    writeFileSync(
+      configPath(),
+      before,
+    )
+    assert.deepEqual(
+      effectiveDispatch().dispatch.workers.codex,
+      ['codex:docs'],
+    )
+    assert.deepEqual(
+      dispatchFile().workers.codex,
+      ['codex:docs'],
+    )
+    assert.equal(
+      show().revision,
+      1,
+    )
+  },
+)
+
+test(
+  'a change log line cut short is not saved: reads return the change before it and its event id applies again',
+  () => {
+    const { file } = lab()
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'First wording',
+      ],
+    })
+    const second = file({
+      value: {
+        version: 1,
+        patch: { rules: { build: { when: 'Second wording' } } },
+      },
+    })
+    const apply = () => rule({
+      args: [
+        'apply',
+        '--file',
+        second,
+        '--event-id',
+        'second',
+      ],
+    })
+    apply()
+    const [
+      first,
+      torn,
+    ] = readFileSync(
+      changesPath(),
+      'utf8',
+    ).split('\n')
+    writeFileSync(
+      changesPath(),
+      `${first}\n${torn!.slice(
+        0,
+        6,
+      )}`,
+    )
+    const {
+      document,
+      revision,
+    } = show()
+    assert.equal(
+      revision,
+      1,
+    )
+    assert.equal(
+      document.rules.build?.when,
+      'First wording',
+    )
+    assert.equal(
+      dispatchFile().rules.build?.when,
+      'First wording',
+    )
+    const retried = apply()
+    assert.deepEqual(
+      [
+        retried.revision,
+        retried.duplicate,
+      ],
+      [
+        2,
+        undefined,
+      ],
+    )
+    assert.equal(
+      show().document.rules.build?.when,
+      'Second wording',
     )
   },
 )
