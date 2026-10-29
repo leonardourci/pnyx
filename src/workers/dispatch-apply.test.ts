@@ -636,6 +636,70 @@ test(
   },
 )
 
+const refuses = ({
+  patch,
+  paths,
+}: {
+  patch: Record<string, unknown>
+  paths: string[]
+}) => {
+  const { file } = lab()
+  failsWith({
+    run: () => rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch,
+          },
+        }),
+      ],
+    }),
+    paths,
+  })
+}
+
+test(
+  'a patch cannot remove the rules section',
+  () => refuses({
+    patch: { rules: null },
+    paths: ['/rules'],
+  }),
+)
+
+test(
+  'a patch cannot remove the accounts section, even when main and orders name only the harness logins',
+  () => refuses({
+    patch: {
+      accounts: null,
+      main: 'claude:default',
+      workers: {
+        claude: ['claude:default'],
+        codex: null,
+      },
+    },
+    paths: ['/accounts'],
+  }),
+)
+
+test(
+  'a patch cannot remove the workers section',
+  () => refuses({
+    patch: { workers: null },
+    paths: ['/workers'],
+  }),
+)
+
+test(
+  'a patch cannot remove the projects section',
+  () => refuses({
+    patch: { projects: null },
+    paths: ['/projects'],
+  }),
+)
+
 test(
   'removing the last account is refused while main or an order names it, and the harness logins stand in once none is registered',
   () => {

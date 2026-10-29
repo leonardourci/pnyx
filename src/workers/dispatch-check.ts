@@ -544,13 +544,14 @@ export function checkDispatch({
     return issues
   }
 
-  const accounts = fields.accounts === undefined ? undefined : checkAccounts({
+  // rules, default, workers, projects and accounts are required; a null patch would otherwise remove a section readers need.
+  const accounts = checkAccounts({
     value: fields.accounts,
     exists,
     error,
     warn,
   })
-  const rules = fields.rules === undefined ? {} : fieldsOf({
+  const rules = fieldsOf({
     value: fields.rules,
     allowed: Object.keys(asRecord({ value: fields.rules }) ?? {}),
     segments: ['rules'],
@@ -649,16 +650,13 @@ export function checkDispatch({
     }
   }
 
-  if (fields.workers !== undefined) {
-    checkOrder({
-      value: fields.workers,
-      segments: ['workers'],
-      accounts,
-      error,
-    })
-  }
-
-  const projects = fields.projects === undefined ? {} : fieldsOf({
+  checkOrder({
+    value: fields.workers,
+    segments: ['workers'],
+    accounts,
+    error,
+  })
+  const projects = fieldsOf({
     value: fields.projects,
     allowed: Object.keys(asRecord({ value: fields.projects }) ?? {}),
     segments: ['projects'],

@@ -117,6 +117,7 @@ test(
         default: [{ harness: 'claude' }],
         main: 'claude:main',
         workers: { claude: ['claude:main'] },
+        projects: {},
         accounts: ACCOUNTS,
       },
       catalog: {
@@ -157,6 +158,7 @@ test(
             },
           },
           default: [{ harness: 'claude' }],
+          projects: {},
           accounts: {},
         },
       }),
