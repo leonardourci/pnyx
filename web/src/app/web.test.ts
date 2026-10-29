@@ -302,6 +302,10 @@ test(
       card: state.cards.c1!,
       homes: [],
     }).entries.some(e => e.kind === 'tool'))
+    saveSettings({
+      patch: { focusMode: true },
+      meta,
+    })
   },
 )
 
