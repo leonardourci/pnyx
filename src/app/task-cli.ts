@@ -1,3 +1,4 @@
+import { rightsCommand } from '#tasks/rights-commands.ts'
 import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
@@ -122,7 +123,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
   } = parse({
     args,
     options: TASK_OPTIONS,
-    positionals: 4,
+    positionals: 7,
   })
   const action = positionals[0]
   validateLocalTaskFlags({
@@ -132,6 +133,18 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
   })
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+
+  if (action === 'rights') {
+    return rightsCommand({
+      args: positionals.slice(2),
+      task: positionals[1] ?? '',
+      hydraId,
+      file: values.file as string | undefined,
+      reason: m.reason,
+      meta: m,
+    })
+  }
+
   const local = localTaskCommand({
     action,
     values,

@@ -1,3 +1,4 @@
+import { ownerRights } from '#tasks/rights-commands.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -1364,10 +1365,35 @@ export async function mountOwnedHydra({
         })
       }
 
-      return readBody({ req }).then(body => hostRequest({
-        host: agents,
-        body,
-      }))
+      return readBody({ req }).then(body => {
+        if (body && typeof body === 'object' && 'action' in body && body.action === 'rights') {
+          const request = body as Record<string, unknown>
+
+          if ((request.operation !== 'confirm' && request.operation !== 'revoke')
+            || typeof request.task !== 'string' || typeof request.request !== 'string'
+            || !Number.isSafeInteger(request.revision) || typeof request.digest !== 'string') {
+            throw new HydraError({
+              code: 'INVALID_RIGHTS',
+              message: 'Expected an exact rights request, revision and digest',
+            })
+          }
+
+          return ownerRights({
+            hydraId,
+            task: request.task,
+            action: request.operation,
+            request: request.request,
+            revision: Number(request.revision),
+            digest: request.digest,
+            reason: typeof request.reason === 'string' ? request.reason : undefined,
+          })
+        }
+
+        return hostRequest({
+          host: agents,
+          body,
+        })
+      })
         .then(
           answer => reply({
             res,

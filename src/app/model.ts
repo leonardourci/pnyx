@@ -1,3 +1,4 @@
+import type { RightsChange } from '#tasks/rights-model.ts'
 import { EVENT_VERSION, type EventBase } from '#store/events.ts'
 import type { ViewEvent, ViewPreferences } from '#preferences/model.ts'
 import type { HydraProject, TaskCopy } from '#projects/model.ts'
@@ -26,6 +27,7 @@ export interface SourceRef {
 }
 
 export type HydraChange = EventBase & (
+  | RightsChange
   | {
     type: 'project.refreshed'
     data: ProjectRefresh
@@ -327,6 +329,10 @@ export const EVENT_TYPES: readonly EventType[] = [
   'board.configured',
   'board.columns',
   'task.created',
+  'task.rights-requested',
+  'task.rights-granted',
+  'task.rights-revoked',
+  'task.native-policy',
   'task.brief',
   'task.owner-ask',
   'task.intent',

@@ -686,6 +686,11 @@ export function summary({ event }: { event: HydraEvent }): string {
       ? `For this task only: lands as ${landingWording({ rule: event.data.after })}`
       : 'Follows its project\'s landing rule again'
     case 'task.copy': return `Task copy ${event.data.after.state}: ${event.data.after.path}${event.data.after.reason ? ` (${event.data.after.reason})` : ''}`
+    case 'task.rights-requested':
+    case 'task.rights-granted':
+    case 'task.rights-revoked':
+    case 'task.native-policy':
+      return 'Task rights changed'
     case 'task.created': return `Created ${event.data.parentId ? 'subtask' : 'task'}: ${event.data.title}`
     case 'task.permission': return `${event.data.tool} permission ${event.data.id}: ${event.data.status}`
     case 'task.reminder': return event.data.after ? `Reminder set for ${event.data.after}` : 'Reminder cleared'

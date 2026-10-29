@@ -1,3 +1,4 @@
+import { applyRights, rightsEvent } from '#tasks/rights.ts'
 import { ownerActor } from './actors.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { refreshTasks } from '#tasks/columns.ts'
@@ -361,6 +362,26 @@ export function applyHydra({
       state,
       ids: [event.cardId],
     })
+
+    return true
+  }
+
+  const rights = rightsEvent({ event })
+
+  if (rights) {
+    const card = state.cards[event.cardId]
+
+    if (!card) {
+      return false
+    }
+
+    card.rights = applyRights({
+      current: card.rights,
+      event: rights,
+    })
+    card.revision++
+    card.updatedSeq = event.seq
+    card.updatedAt = event.at
 
     return true
   }
