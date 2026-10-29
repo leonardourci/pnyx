@@ -21,8 +21,12 @@ const BOLD_STROKE = 16
 const LINE_PX = 1.5
 // Tabler draws in a 24-unit box.
 const TABLER_BOX = 24
-// The Fast toggle shows on and off by its color, so both draw the same lightning.
-const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
+// The Fast toggle shows on and off by its color, so both draw the same figure. Codex's modes share Claude's figures.
+const IDENTITY_ALIASES: Record<string, string> = {
+  'fast-on': 'fast',
+  'mode-on-request': 'mode-default',
+  'mode-never': 'mode-bypassPermissions',
+}
 
 export const identityGlyph = ({ name }: { name: string }) => {
   const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
