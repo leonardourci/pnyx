@@ -147,7 +147,7 @@ export interface Card {
   brief?: string
   // Shown on the card as its Intent.
   goal?: string
-  // The worker's newest progress report, which the card shows beside its status notes.
+  // The worker's newest progress report; the newer of it and the newest status note is the card's Current state.
   progress?: TaskProgress
   initialPrompt?: string
   project?: string
