@@ -209,6 +209,8 @@ export function Composer({
     anchor: number
     focus: number
   } | null>(null), caretLast = useRef(0)
+  // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
+  const beforeCuts = useRef(new Map<string, string>())
 
   const query = (mention?.query ?? '').trim().toLocaleLowerCase()
   const matches: MentionItem[] = [
@@ -1082,12 +1084,20 @@ export function Composer({
                 data: event.clipboardData,
               })) {
                 event.preventDefault()
-                write(replaceDisplay({
-                  text: draft,
-                  from: event.currentTarget.selectionStart,
-                  to: event.currentTarget.selectionEnd,
-                  insert: '',
-                }))
+                beforeCuts.current.set(
+                  display,
+                  draft,
+                )
+
+                // Only the browser's own edit lands on Undo; inside a script's execCommand it can't run, so write directly.
+                if (!document.execCommand('delete')) {
+                  write(replaceDisplay({
+                    text: draft,
+                    from: event.currentTarget.selectionStart,
+                    to: event.currentTarget.selectionEnd,
+                    insert: '',
+                  }))
+                }
               }
             }}
             // A dragged chip carries its Markdown too, so it lands as a chip, not its label.
@@ -1103,11 +1113,17 @@ export function Composer({
               }
             }}
             onChange={e => {
-              const edit = editDraft({
+              const undoneCut = e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType === 'historyUndo'
+                ? beforeCuts.current.get(e.target.value) : undefined
+              const edit = undoneCut === undefined ? editDraft({
                 text: draft,
                 next: e.target.value,
                 caret: e.target.selectionStart,
-              })
+              }) : {
+                text: undoneCut,
+                caret: e.target.selectionEnd,
+                anchor: e.target.selectionStart,
+              }
 
               write(edit)
               const shown = draftView({ text: edit.text }).display
