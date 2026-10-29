@@ -827,39 +827,20 @@ const comments: ChatComment[] = [
 ]
 const commentSection = `## Comments on your reply from 15:42
 
-### Comment 1
-
-Quote:
-
 > Ship it
 >
 > after review
-
-Comment:
-
 Which review?
 
 The second one.
 
-End of comment 1
-
-### Comment 2
-
-Quote:
+---
 
 > today
-
-Paragraph:
-
-> Merge it today.
-
-Comment:
-
+>
+> > Merge it today.
 Tomorrow instead.
-
-[image: /tmp/calendar.png]
-
-End of comment 2`
+[image: /tmp/calendar.png]`
 
 test(
   'comments reach the agent in one shape, with a message section only when the owner wrote one',
@@ -883,7 +864,7 @@ test(
         draft: 'Thanks',
         comments,
       }),
-      `${commentSection}\n\n## Message\n\nThanks`,
+      `${commentSection}\n\n## Message\nThanks`,
     )
   },
 )

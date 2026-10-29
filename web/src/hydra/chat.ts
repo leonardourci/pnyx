@@ -263,24 +263,16 @@ const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`.trimEnd())
   .join('\n')
 
-const numberedComment = ({
-  comment,
-  number,
-}: {
-  comment: ChatComment
-  number: number
-}) => {
+// A short quote's paragraph follows it as a nested quote, so the quote stays every `>` line before the comment.
+const quotedComment = ({ comment }: { comment: ChatComment }) => {
   const paragraph = commentContext({ comment })
+  const quote = markdownQuote({ text: comment.quote })
 
   return [
-    `### Comment ${number}`,
-    `Quote:\n\n${markdownQuote({ text: comment.quote })}`,
-    paragraph && `Paragraph:\n\n${markdownQuote({ text: paragraph })}`,
-    'Comment:',
+    paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote,
     comment.text.trim(),
     ...comment.images ?? [],
-    `End of comment ${number}`,
-  ].filter(Boolean).join('\n\n')
+  ].filter(Boolean).join('\n')
 }
 
 export function orderedComments({ comments }: { comments: ChatComment[] }) {
@@ -343,37 +335,21 @@ export function commentReply({
   draft: string
   comments: ChatComment[]
 }): string {
-  const ordered = orderedComments({ comments })
-  const numbers = new Map(ordered.map((
-    comment,
-    index,
-  ) => [
-    comment.id,
-    index + 1,
-  ]))
   const replies = groupComments({
-    comments: ordered.filter(comment => sendableComment({ comment })),
+    comments: comments.filter(comment => sendableComment({ comment })),
   })
 
   if (!replies.size) {
     return draft
   }
 
-  const sections: string[] = []
-
-  for (const [
+  const sections = [...replies].map(([
     time,
     items,
-  ] of replies) {
-    const numbered = items.map(comment => numberedComment({
-      comment,
-      number: numbers.get(comment.id)!,
-    }))
-    sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
-  }
+  ]) => `## Comments on your reply from ${time}\n\n${items.map(comment => quotedComment({ comment })).join('\n\n---\n\n')}`)
 
   if (draft.trim()) {
-    sections.push(`## Message\n\n${draft}`)
+    sections.push(`## Message\n${draft}`)
   }
 
   return sections.join('\n\n')
