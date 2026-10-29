@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent, type Ref } from 'react'
+import { composing } from '#web-shared/ime.ts'
 import { Icon } from './icon.tsx'
 import { badgeKey } from './search-badges.ts'
 
@@ -7,6 +8,14 @@ export interface SearchBadge {
   label: string
   // A badge's kind picks its color, as the Oracle colors scopes, kinds and columns apart.
   kind?: string
+  icon?: string
+}
+
+// The input as a combobox over a list it controls, as the Oracle uses it.
+export interface SearchCombobox {
+  expanded: boolean
+  controls: string
+  activeDescendant?: string
 }
 
 function Badge({
@@ -20,6 +29,7 @@ function Badge({
 }) {
   return (
     <span className="search-badge" data-kind={badge.kind} data-marked={marked || undefined}>
+      {badge.icon && <Icon name={badge.icon} size={14} />}
       {badge.label}
       <button
         type="button"
@@ -44,6 +54,7 @@ export function SearchBar({
   count,
   placeholder,
   inputRef,
+  combobox,
   onKeyDown,
 }: {
   label: string
@@ -54,6 +65,7 @@ export function SearchBar({
   count?: string
   placeholder?: string
   inputRef?: Ref<HTMLInputElement>
+  combobox?: SearchCombobox
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLInputElement> }): void
 }) {
   const [
@@ -77,10 +89,19 @@ export function SearchBar({
         ref={inputRef}
         className="search-bar-input"
         aria-label={label}
+        role={combobox ? 'combobox' : undefined}
+        aria-expanded={combobox?.expanded}
+        aria-controls={combobox?.controls}
+        aria-activedescendant={combobox?.activeDescendant}
+        aria-autocomplete={combobox ? 'list' : undefined}
         value={query}
         placeholder={placeholder}
         onChange={event => setQuery({ query: event.target.value })}
         onKeyDown={event => {
+          if (composing({ event: event.nativeEvent })) {
+            return
+          }
+
           const field = event.currentTarget
           const result = badgeKey({
             key: event.key,
