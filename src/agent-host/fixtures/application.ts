@@ -48,7 +48,7 @@ const trace = ({
   }
 }
 
-let holdAnswers = false
+let holdAnswers = false, holdDecisions = false, heldDecisions = 0
 const call = native.client.call
 const acknowledge = native.client.acknowledge
 const completions = new Set<string>()
@@ -129,6 +129,30 @@ native.client.call = async ({ ...request }) => {
   })
 
   return result
+}
+
+for (const adapter of Object.values(native.providers)) {
+  const open = adapter.open
+
+  adapter.open = async ({ ...options }) => {
+    const session = await open(options)
+    const run = session.run
+    session.run = ({ ...options }) => run({
+      ...options,
+      permission: async ({ ...request }) => {
+        const decision = await options.permission(request)
+
+        if (holdDecisions) {
+          heldDecisions++
+          await new Promise<void>(() => {})
+        }
+
+        return decision
+      },
+    })
+
+    return session
+  }
 }
 
 if (tracing) {
@@ -237,6 +261,16 @@ process.on(
       text?: string
     }
 
+    if (request.kind === 'hold-decision') {
+      holdDecisions = true
+      process.send?.({
+        id: request.id,
+        ok: true,
+      })
+
+      return
+    }
+
     if (request.kind === 'hold-answer') {
       holdAnswers = true
       process.send?.({
@@ -271,6 +305,8 @@ process.on(
         id: request.id,
         measurements,
         heldCompletions,
+        heldDecisions,
+
       })
 
       return

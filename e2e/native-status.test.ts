@@ -207,3 +207,156 @@ for (const provider of [
     },
   )
 }
+
+for (const provider of [
+  'claude',
+  'codex',
+]) {
+  for (const decision of [
+    'allow',
+    'deny',
+    'secret',
+  ] as const) {
+    test(
+      `${provider} decision-before-journal crash recovers ${decision}`,
+      async t => {
+        const app = await fixtureApplication({ t })
+        const first = await app.start()
+        await app.cli({
+          args: [
+            'rule',
+            'set',
+            'hydra',
+            '--harness',
+            provider,
+            '--model',
+            'fixture',
+          ],
+        })
+        await app.cli({
+          args: [
+            'hydra',
+            'set',
+            '--helper',
+            'off',
+          ],
+        })
+        await app.cli({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            'Exercise decision receipt recovery',
+          ],
+        })
+        await until({ check: () => !!app.state().cards[HYDRA_CARD]?.agent })
+        const nativeId = app.state().cards[HYDRA_CARD]!.agent!.sessionId
+        await until({
+          check: async () => {
+            const states = await app.host.stats()
+
+            return !!states.find(state => state.id === nativeId)?.input.length
+          },
+        })
+        await first.control({ kind: 'hold-decision' })
+        const secret = 'synthetic-pre-journal-secret'
+        const asking = app.host.control({
+          kind: decision === 'secret' ? 'ask-secret' : 'ask',
+          nativeId,
+          expected: decision === 'secret' ? secret : undefined,
+        })
+        asking.catch(() => {})
+        await until({ check: () => app.state().cards[HYDRA_CARD]!.permissions?.some(request => request.status === 'pending') === true })
+        const request = app.state().cards[HYDRA_CARD]!.permissions!.find(request => request.status === 'pending')!
+        const choice = decision === 'deny' ? 'deny' : 'allow'
+        const args = [
+          'task',
+          'permission',
+          HYDRA_CARD,
+          request.id,
+          choice,
+        ]
+
+        if (decision === 'secret') {
+          args.push(
+            '--answer',
+            JSON.stringify({ answers: [{ text: secret }] }),
+          )
+        }
+
+        await app.cli({ args })
+        await until({
+          check: async () => {
+            const metrics = await first.control({ kind: 'metrics' }) as { heldDecisions: number }
+
+            return metrics.heldDecisions === 1
+          },
+        })
+        const journalsBefore = readdirSync(join(
+          app.root,
+          'journal',
+        )).map(name =>
+          JSON.parse(readFileSync(
+            join(
+              app.root,
+              'journal',
+              name,
+            ),
+            'utf8',
+          )) as { answers: Record<string, unknown> })
+        assert.ok(journalsBefore.every(binding => Object.keys(binding.answers).length === 0))
+        assert.equal(
+          (await app.host.stats()).find(state => state.id === nativeId)!.answers,
+          0,
+        )
+        first.child.kill('SIGKILL')
+        await first.exited
+        const recovered = await app.start()
+
+        if (decision === 'secret') {
+          await until({
+            check: () => app.state().cards[HYDRA_CARD]!.permissions?.some(current =>
+              current.id === request.id && current.delivery === 'needs_reentry') === true,
+          })
+          await app.cli({ args })
+        }
+
+        await asking
+        await until({
+          check: () => app.state().cards[HYDRA_CARD]!.permissions?.some(current =>
+            current.id === request.id && current.delivery === 'submitted') === true,
+        })
+        assert.equal(
+          (await app.host.stats()).find(state => state.id === nativeId)!.answers,
+          1,
+        )
+        const after = journalText({ root: app.root })
+        assert.equal(
+          after.includes(secret),
+          false,
+        )
+        assert.equal(
+          readFileSync(
+            join(
+              app.home,
+              'hydras/default/events.jsonl',
+            ),
+            'utf8',
+          ).includes(secret),
+          false,
+        )
+        assert.equal(
+          app.errors().includes(secret),
+          false,
+        )
+        recovered.child.kill('SIGKILL')
+        await recovered.exited
+        await app.start()
+        assert.equal(
+          (await app.host.stats()).find(state => state.id === nativeId)!.answers,
+          1,
+        )
+      },
+    )
+  }
+}
