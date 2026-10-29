@@ -2,19 +2,17 @@ import { existsSync, readFileSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { readLog } from '#app/event-log.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { viewFor } from '#preferences/view.ts'
-import { DEFAULT_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
 import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
-import { DEFAULT_REVIEW_MINUTES, DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
+import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -157,57 +155,72 @@ function append({
   return entry
 }
 
-const lastChange = ({ hydraId }: { hydraId: string }) => (readLog({ dir: hydraDir({ hydraId }) })
-  ?.events ?? [])
-  .filter(event => event.type === 'board.view' || event.type === 'board.configured')
-  .map(event => event.at)
-  .sort()
-  .at(-1) ?? ''
+type ConfiguredEvent = HydraEvent & { type: 'board.configured' }
 
-// Settings used to belong to each Hydra; the first read takes the most recently changed Hydra's values.
+const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
+  .toSorted((
+    a,
+    b,
+  ) => a.at.localeCompare(b.at))
+  .at(-1)
+
+// Settings used to belong to each Hydra. The first read takes the view from the Hydra whose view changed
+// last, and each other value from the last Hydra config that set it; old Hide Done 0 meant keep visible.
 function migrate(): void {
   if (existsSync(settingsLogPath())) {
     return
   }
 
-  const source = hydraIds()
-    .map(hydraId => ({
-      hydraId,
-      at: lastChange({ hydraId }),
-    }))
-    .filter(hydra => hydra.at)
-    .sort((
-      a,
-      b,
-    ) => b.at.localeCompare(a.at))[0]
+  const events = hydraIds()
+    .flatMap(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
+  const views = events.filter((event): event is ViewEvent => event.type === 'board.view')
+  const view = newest({ events: views })
+  const configs = events.filter((event): event is ConfiguredEvent => event.type === 'board.configured')
+  const lastSet = ({ key }: { key: 'doneAfterHours' | 'reviewMinutes' | 'helper' }) =>
+    newest({ events: configs.filter(event => event.data[key] !== undefined) })?.data
+  const after = structuredClone(DEFAULT_SETTINGS)
 
-  if (!source) {
-    return
+  if (view) {
+    Object.assign(
+      after,
+      pickView({ view: viewFor({ state: { view: view.data.after } }) }),
+    )
   }
 
-  const { state } = loadHydra({ hydraId: source.hydraId })
-  const config = hydraConfig({ state })
-  const done = config.doneAfterHours === 0 ? 'off' : config.doneAfterHours ?? DEFAULT_DONE_HOURS
-  let helper: Settings['helper'] = 'auto'
+  const hours = lastSet({ key: 'doneAfterHours' })?.doneAfterHours
 
-  if (config.helper === false) {
-    helper = 'off'
-  } else if (config.helper) {
-    helper = config.helper
+  if (hours !== undefined) {
+    after.doneAfterHours = hours === 0 ? 'off' : hours
+  }
+
+  const minutes = lastSet({ key: 'reviewMinutes' })?.reviewMinutes
+
+  if (minutes !== undefined) {
+    after.reviewMinutes = minutes
+  }
+
+  const helper = lastSet({ key: 'helper' })?.helper
+
+  if (helper !== undefined) {
+    after.helper = helper === false ? 'off' : helper
+  }
+
+  if (isDeepStrictEqual(
+    after,
+    DEFAULT_SETTINGS,
+  )) {
+    writeLine({ line: '' })
+
+    return
   }
 
   append({
     before: DEFAULT_SETTINGS,
-    after: {
-      ...pickView({ view: viewFor({ state }) }),
-      doneAfterHours: done,
-      reviewMinutes: config.reviewMinutes ?? DEFAULT_REVIEW_MINUTES,
-      helper,
-    },
+    after,
     meta: {
       at: new Date().toISOString(),
       actor: 'pnyx',
-      reason: `Moved from Hydra ${source.hydraId} when settings became Pnyx-wide`,
+      reason: 'Moved from each Hydra when settings became shared by every Hydra',
     },
   })
 }
