@@ -210,7 +210,7 @@ test(
     )
     assert.equal(
       JSON.parse(readFileSync(
-        configPath({ hydraId: 'lab' }),
+        configPath(),
         'utf8',
       )).default[0].harness,
       'codex',

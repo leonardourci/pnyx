@@ -13,7 +13,7 @@ import { liveTask, rankOf } from '#tasks/select.ts'
 import { describeColumnRule } from '#tasks/columns.ts'
 import { helperLeases } from '#routine-helper/state.ts'
 
-export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init --shared` copies them into the Pnyx home to edit'
+export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init` copies them into the Pnyx home to edit'
 
 // ponytail: a Hydra with more live tasks lists the first ones by column and rank; page the rest with task list.
 const TASK_LIMIT = 40

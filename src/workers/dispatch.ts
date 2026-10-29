@@ -3,9 +3,9 @@ import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
 import type { PlanWindow } from './provider.ts'
-import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { StartOverride } from './model.ts'
+import { offered, ONE_MILLION } from './dispatch-check.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './dispatch-config.ts'
 
 interface EffectiveQuota {
@@ -215,9 +215,6 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
   }
 }
 
-// Claude Code takes a 1M-context suffix on any model it lists, such as opus[1m].
-const ONE_MILLION = /\[1m\]$/
-
 export const ruleCandidates = ({
   dispatch,
   rule = 'default',
@@ -352,20 +349,6 @@ function exhausted({ effective }: { effective?: EffectiveQuota }): boolean {
   return effective?.runway?.status === 'exhausted_now' || (effective?.status === 'known' && effective.effectivePercentRemaining !== undefined && effective.effectivePercentRemaining <= 0)
 }
 
-const offered = ({
-  harness,
-  model,
-  available,
-}: {
-  harness: Harness
-  model: string
-  available: string[]
-}) =>
-  available.includes(harness === 'claude' ? model.replace(
-    ONE_MILLION,
-    '',
-  ) : model)
-
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
   const score = row.selection?.status === 'known' ? row.selection.spendPriority : undefined
 
@@ -433,7 +416,7 @@ export function chooseCandidate({
     throw new HydraError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
-      help: ['Run `pnyx-axi rule init --shared`, then edit the shared accounts and account order'],
+      help: ['Run `pnyx-axi rule init`, then set the accounts and account order with `pnyx-axi rule apply`'],
     })
   }
 
@@ -595,16 +578,12 @@ export function chooseCandidate({
 }
 
 export function dispatchTask({
-  hydraId,
-  state,
   rule,
   project,
   harness,
   override,
   offers,
 }: {
-  hydraId: string
-  state: HydraState
   rule?: string
   project?: string
   harness?: string
@@ -612,10 +591,7 @@ export function dispatchTask({
   offers?: Partial<Record<Harness, string[]>>
 }): DispatchChoice {
   return chooseCandidate({
-    config: effectiveDispatch({
-      hydraId,
-      state,
-    }),
+    config: effectiveDispatch(),
     rule,
     project,
     harness,

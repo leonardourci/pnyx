@@ -26,6 +26,25 @@ function readModels(): Record<string, unknown> {
   }
 }
 
+// Every model each harness listed on any login, for warnings about a model no login offers.
+export function storedOffers(): Partial<Record<Harness, string[]>> {
+  const offers: Partial<Record<Harness, string[]>> = {}
+
+  for (const harness of [
+    'claude',
+    'codex',
+  ] as const) {
+    const models = Object.keys(readModels()).filter(key => key.startsWith(`${harness}:`))
+      .flatMap(key => storedModels({ key }) ?? [])
+
+    if (models.length) {
+      offers[harness] = modelIds({ models })
+    }
+  }
+
+  return offers
+}
+
 export function storedModels({ key }: { key: string }): ModelOption[] | undefined {
   const value = readModels()[key]
   const models = (Array.isArray(value) ? value as Partial<ModelOption>[] : [])

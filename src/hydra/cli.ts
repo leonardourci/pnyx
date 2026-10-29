@@ -932,10 +932,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         state,
         id: hydraId,
       })
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
-      })
+      const effective = effectiveDispatch()
       const provider = config.hydra.agent?.harness
         ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
         ?? effective.dispatch.default[0]?.harness

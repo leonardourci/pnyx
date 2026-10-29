@@ -29,11 +29,9 @@ interface Target {
 function context({
   state,
   target,
-  hydraId,
 }: {
   state: HydraState
   target: Target
-  hydraId: string
 }): string {
   const {
     name,
@@ -54,10 +52,7 @@ function context({
   return createHash('sha256').update(JSON.stringify({
     config: name === 'hydra' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' ? state.projects : undefined,
-    dispatch: name === 'rule' || name === 'account' ? effectiveDispatch({
-      hydraId,
-      state,
-    }) : undefined,
+    dispatch: name === 'rule' || name === 'account' ? effectiveDispatch() : undefined,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -126,7 +121,6 @@ export function proposeOwnerCommand({
             before: context({
               state: writer.state,
               target,
-              hydraId,
             }),
             value,
             summary,
@@ -215,7 +209,6 @@ export const approval = guard({
         if (action === 'confirm' && context({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
-          hydraId,
         }) !== proposal.before) {
           throw new HydraError({
             message: 'The target changed; dismiss this question and ask Hydra to propose it again',
