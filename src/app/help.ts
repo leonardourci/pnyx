@@ -17,6 +17,7 @@ commands:
   rule; account list|set|remove              Heads dispatch rules and worker login folders
   task sessions|queue|unqueue|reorder        Sessions and ordered worker queues
   task attach|detach <task> [--session <id>]  Attach an interactive session or detach it
+  apply --file <changes.json|-> [--check]    Validate and atomically apply local task changes
   push --key <key> --file <card.json|->      Create or update the card with this key
   card <id|key> [--full]                     Show one card with its summary, decisions and context
   harvest [--card <id>]                      Collect summaries and decisions sources already recorded
@@ -46,6 +47,20 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
+  apply: `usage: pnyx-axi apply --file <path|-> [--check] [--event-id <id>] [--hydra <hydra>]
+Read one version: 1 JSON document with changes and optional expected.tasks revisions.
+Operations: task.create, task.brief, task.intent, task.depend, task.undepend, task.status,
+task.hold, task.release, link and outcome. Unknown operations and fields are rejected.
+A task.create as alias can be referenced later as $alias. References stay in this Hydra.
+--check prints the before/after diff, aliases, base and resulting task revisions without writing.
+Apply validates the whole document again under the writer lock and appends one atomic log record.
+Errors include zero-based operation indexes, field paths, codes and reasons; nothing is written.
+An identical --event-id retry returns the original receipt. Different contents or actor are refused.
+Each change can carry reason; Hydra must explain creates, briefs and intents. Owner message
+references and existing authority, discussion-hold, report and landing checks still apply.
+No worker starts, messages, memory, settings or external effects. Correct a batch with another apply;
+undo refuses its individual events. See docs/pnyx-axi.md for the full operation schema and examples.
+`,
   hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--identity <identity>] [--session <session>] [--firstmate <home>]
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
@@ -133,6 +148,7 @@ pnyx-axi task show <id> [--full]
 Long fields are cut to 1,000 characters with their total length; --full shows the whole record.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
+Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
