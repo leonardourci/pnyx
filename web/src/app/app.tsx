@@ -40,7 +40,7 @@ import { Detail } from '#web-tasks/detail.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { useSharedSettings, saveSharedSettings } from '#web-settings/shared-settings.ts'
 import { pickView } from '#settings/settings.ts'
-import { isSharedViewKey } from '#settings/model.ts'
+import { isSettingKey } from '#settings/model.ts'
 
 const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
@@ -599,8 +599,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const save = useCallback(
     async ({ patch }: { patch: Record<string, unknown> }) => {
       const entries = Object.entries(patch)
-      const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
-      const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
+      const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSettingKey({ key })))
+      const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSettingKey({ key })))
 
       const writes = []
 

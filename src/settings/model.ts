@@ -55,6 +55,9 @@ export const SETTING_KEYS = [
 
 export type SettingKey = (typeof SETTING_KEYS)[number]
 
+export const isSettingKey = ({ key }: { key: string }) =>
+  SETTING_KEYS.includes(key as SettingKey)
+
 // One change to the shared settings; the log is only appended, so every old value stays.
 export interface SettingsEntry {
   v: 1
