@@ -8,6 +8,7 @@ import { ContextMenu, DeleteItem, menuPoint, opensMenu } from '#web-shared/ui/me
 import { HydraLabel, HydraNameEditor, type HydraIdentity } from '#web-hydra/hydra-title.tsx'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
+import { placements } from './hydra-order.ts'
 
 type MenuItem = {
   kind: 'hydra'
@@ -28,34 +29,6 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
   name: hydra.name,
   icon: hydra.icon ?? HYDRA_MARK,
 })
-
-// Order keys sit between their neighbors', so a move writes one event to the moved Hydra only.
-// ponytail: float midpoints of one gap run out after a few dozen moves into it; renumber the list if that ever matters.
-const ORDER_GAP = 1000
-
-const positionAt = ({
-  hydras,
-  id,
-  index,
-}: {
-  hydras: HydraSummary[]
-  id: string
-  index: number
-}) => {
-  const others = hydras.filter(h => h.id !== id)
-  const before = others[index - 1], after = others[index]
-
-  if (before && after) {
-    return (before.order + after.order) / 2
-  }
-
-  if (before) {
-    return before.order + ORDER_GAP
-  }
-
-  // A move always has another Hydra beside it, so with no Hydra before there is one after.
-  return after!.order - ORDER_GAP
-}
 
 const HYDRA_DRAG = 'application/pnyx-hydra'
 
@@ -233,20 +206,21 @@ export function Hydras({
     })
   }
 
-  const move = ({
+  const move = async ({
     id,
     index,
   }: {
     id: string
     index: number
-  }) => moveHydra({
-    id,
-    position: positionAt({
+  }) => {
+    for (const placement of placements({
       hydras,
       id,
       index,
-    }),
-  })
+    })) {
+      await moveHydra(placement)
+    }
+  }
 
   const copyPath = async ({ path }: { path: string }) => {
     try {
