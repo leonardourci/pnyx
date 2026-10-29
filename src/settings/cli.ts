@@ -1,6 +1,6 @@
 import { AxiError } from 'axi-sdk-js'
 import { guard, meta, parse, required, WRITE } from '#app/cli-support.ts'
-import { readSettings, saveSettings } from './store.ts'
+import { readSettings, saveSettings, settingsReceipt } from './store.ts'
 import { DEFAULT_SETTINGS } from './settings.ts'
 
 const USE = 'use settings show, schema or set'
@@ -61,23 +61,11 @@ export const settings = guard({
       )
     }
 
-    const saved = saveSettings({
-      patch,
-      meta: meta({ values }),
+    return settingsReceipt({
+      saved: saveSettings({
+        patch,
+        meta: meta({ values }),
+      }),
     })
-
-    if (saved.skipped) {
-      return {
-        event: `none: ${saved.skipped}`,
-        settings: saved.settings,
-        revision: saved.revision,
-      }
-    }
-
-    return {
-      changed: saved.entry!.after,
-      settings: saved.settings,
-      revision: saved.revision,
-    }
   },
 })

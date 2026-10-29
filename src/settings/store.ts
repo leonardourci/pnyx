@@ -5,6 +5,7 @@ import { isDeepStrictEqual } from 'node:util'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { ViewEvent } from '#preferences/model.ts'
 import type { Meta } from '#app/command-meta.ts'
+import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
@@ -233,18 +234,22 @@ export function readSettings(): SettingsRead {
   return readFolded()
 }
 
+export type SettingsSave = {
+  settings: Settings
+  revision: number
+} & ({
+  skipped: 'duplicate' | 'unchanged'
+} | {
+  entry: SettingsEntry
+})
+
 export function saveSettings({
   patch,
   meta,
 }: {
   patch: unknown
   meta: Meta
-}): {
-  entry?: SettingsEntry
-  skipped?: 'duplicate' | 'unchanged'
-  settings: Settings
-  revision: number
-} {
+}): SettingsSave {
   return withRegistryLock({
     fn: () => {
       migrate()
@@ -252,7 +257,7 @@ export function saveSettings({
 
       if (meta.id && current.ids.has(meta.id)) {
         return {
-          skipped: 'duplicate',
+          skipped: 'duplicate' as const,
           settings: current.settings,
           revision: current.revision,
         }
@@ -275,7 +280,7 @@ export function saveSettings({
         current.settings,
       )) {
         return {
-          skipped: 'unchanged',
+          skipped: 'unchanged' as const,
           settings: current.settings,
           revision: current.revision,
         }
@@ -294,6 +299,30 @@ export function saveSettings({
       }
     },
   })
+}
+
+// A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
+export function checkSettings({ patch }: { patch: unknown }): void {
+  patchSettings({
+    current: readSettings().settings,
+    input: patch,
+  })
+}
+
+export function settingsReceipt({ saved }: { saved: SettingsSave }): Output {
+  if ('skipped' in saved) {
+    return {
+      event: `none: ${saved.skipped}`,
+      settings: saved.settings,
+      revision: saved.revision,
+    }
+  }
+
+  return {
+    changed: saved.entry.after,
+    settings: saved.settings,
+    revision: saved.revision,
+  }
 }
 
 export function effectiveView({ state }: { state: Pick<HydraState, 'view' | 'config'> }) {

@@ -2,7 +2,7 @@ import { AxiError } from 'axi-sdk-js'
 import { guard, parse, WRITE, required, meta, commit } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { effectiveView, readSettings, saveSettings } from '#settings/store.ts'
+import { checkSettings, effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { isSharedViewKey } from '#settings/model.ts'
 import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths } from './view.ts'
 import { decideView } from './decisions.ts'
@@ -75,26 +75,7 @@ export const view = guard({
     const entries = Object.entries(patch)
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
     const board = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
-    // --if-revision guards the board's own view; shared keys follow the settings store.
-    const settings = Object.keys(shared).length ? saveSettings({
-      patch: shared,
-      meta: {
-        ...m,
-        ifRevision: undefined,
-      },
-    }) : undefined
-
-    if (settings && !Object.keys(board).length) {
-      return settings.skipped ? {
-        event: `none: ${settings.skipped}`,
-        settingsRevision: settings.revision,
-      } : {
-        changed: settings.entry!.after,
-        settingsRevision: settings.revision,
-      }
-    }
-
-    return commit({
+    const viewCommit = () => commit({
       hydraId,
       meta: m,
       intent: {
@@ -107,6 +88,32 @@ export const view = guard({
         meta: m,
       }),
     })
+
+    if (!Object.keys(shared).length) {
+      return viewCommit()
+    }
+
+    checkSettings({ patch: shared })
+    const committed = Object.keys(board).length ? viewCommit() : undefined
+    // --if-revision guards the board's own view; shared keys follow the settings store.
+    const settings = settingsReceipt({
+      saved: saveSettings({
+        patch: shared,
+        meta: {
+          ...m,
+          ifRevision: undefined,
+        },
+      }),
+    })
+
+    if (!committed) {
+      return settings
+    }
+
+    return {
+      ...committed,
+      settings,
+    }
   },
 })
 

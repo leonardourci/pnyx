@@ -18,7 +18,6 @@ import { canonical } from '#store/paths.ts'
 import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
-import { MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { FILE_BLOCK } from './attachments.ts'
 import { REFERENCE, referenceLabel, mentionContext } from './mentions.ts'
@@ -38,7 +37,7 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
-import { readSettings, saveSettings } from '#settings/store.ts'
+import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#routine-helper/route.ts'
@@ -139,16 +138,7 @@ function sharedSettingFlags({
 
   if (done !== undefined) {
     const raw = String(done).trim()
-    const hours = Number(raw)
-
-    if (raw !== 'off' && (!raw || !Number.isFinite(hours) || hours < 0 || hours > MAX_DONE_HOURS)) {
-      throw new HydraError({
-        message: `--done-after-hours takes off or hours from 0 to ${MAX_DONE_HOURS} (0 hides Done cards right away)`,
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    patch.doneAfterHours = raw === 'off' ? 'off' : hours
+    patch.doneAfterHours = raw === 'off' ? 'off' : Number(raw || Number.NaN)
   }
 
   if (values['review-minutes'] !== undefined) {
@@ -292,27 +282,14 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     values,
     hydraId: id,
   })
-  const saved = shared ? saveSettings({
-    patch: shared,
-    meta: {
-      ...m,
-      ifRevision: undefined,
-    },
-  }) : undefined
   const configFlags = CONFIG_FLAGS.some(flag => values[flag] !== undefined)
+  const onlySettings = shared !== undefined && action === 'set' && !configFlags
 
-  if (saved && action === 'set' && !configFlags) {
-    return saved.skipped ? {
-      event: `none: ${saved.skipped}`,
-      settingsRevision: saved.revision,
-    } : {
-      changed: saved.entry!.after,
-      settingsRevision: saved.revision,
-      help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
-    }
+  if (shared) {
+    checkSettings({ patch: shared })
   }
 
-  return commit({
+  const committed = onlySettings ? undefined : commit({
     hydraId: id,
     create: action === 'create',
     meta: m,
@@ -434,6 +411,32 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       })
     },
   })
+
+  if (!shared) {
+    return committed!
+  }
+
+  const settings = settingsReceipt({
+    saved: saveSettings({
+      patch: shared,
+      meta: {
+        ...m,
+        ifRevision: undefined,
+      },
+    }),
+  })
+
+  if (committed) {
+    return {
+      ...committed,
+      settings,
+    }
+  }
+
+  return {
+    ...settings,
+    help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
+  }
 }
 
 const HYDRA_NAME_MAX = 40
