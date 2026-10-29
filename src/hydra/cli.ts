@@ -264,7 +264,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       state,
       id,
     }))
-    // Hide Done, review cadence and the helper are shared now; a Hydra's own copy is no longer read.
+    // These three live in the shared settings; a Hydra's own config copy is never read.
     delete hydra.doneAfterHours
     delete hydra.reviewMinutes
     delete hydra.helper
