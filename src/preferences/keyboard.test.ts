@@ -359,6 +359,11 @@ test(
       /Reserved/,
     )
     assert.match(
+      check({ bindings: { palette: ['Mod+f'] } })!,
+      /Reserved/,
+      'Mod+F stays the browser’s own find',
+    )
+    assert.match(
       check({ bindings: { reply: ['a b c d'] } })!,
       /three/,
     )
@@ -452,5 +457,39 @@ test(
       }).consume,
       false,
     )
+  },
+)
+
+test(
+  'Mod+F belongs to the browser’s own find, so no action takes it and only Mod+K opens the Oracle',
+  () => {
+    for (const change of [
+      { scope: 'navigation' as const },
+      {
+        scope: 'composer' as const,
+        editing: true,
+      },
+    ]) {
+      assert.equal(
+        resolve({
+          event: {
+            key: 'f',
+            metaKey: true,
+          },
+          change,
+        }).action,
+        undefined,
+      )
+      assert.equal(
+        resolve({
+          event: {
+            key: 'k',
+            metaKey: true,
+          },
+          change,
+        }).action,
+        'palette',
+      )
+    }
   },
 )

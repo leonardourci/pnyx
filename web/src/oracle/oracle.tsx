@@ -492,10 +492,6 @@ export function Oracle({
     },
   })
   useKeyAction({
-    id: 'find',
-    handler: ({ context }) => show({ context }),
-  })
-  useKeyAction({
     id: 'search',
     handler: ({ context }) => show({ context }),
   })

@@ -5,7 +5,6 @@ import { KEY_ACTIONS, type KeyScope } from '#preferences/keyboard.ts'
 // Keys that open, close or type into the Oracle itself are no use as its rows.
 const OWN_KEYS = [
   'palette',
-  'find',
   'search',
   'help',
   'cancel',
