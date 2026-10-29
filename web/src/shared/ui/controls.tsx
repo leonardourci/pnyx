@@ -77,10 +77,13 @@ export function Switch({
   label,
   checked,
   onChange,
+  quiet = false,
 }: {
   label: string
   checked: boolean
   onChange({ value }: { value: boolean }): unknown
+  // Leaves the visible name to the row around it; the switch keeps it as its accessible name.
+  quiet?: boolean
 }) {
   const [
     busy,
@@ -99,7 +102,7 @@ export function Switch({
       <span className="switch-track">
         <span />
       </span>
-      {label}
+      {!quiet && label}
     </Button>
   )
 }
