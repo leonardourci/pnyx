@@ -71,6 +71,7 @@ The flows:
 - `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
 - `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves in-process ownership only.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
+- `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.
 
 The in-process provider contracts and their current limits are described in [Provider sessions](provider-sessions.md).
