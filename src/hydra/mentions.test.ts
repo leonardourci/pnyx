@@ -239,6 +239,13 @@ test(
       assert.deepEqual(
         matchingTasks({
           cards,
+          query: 'chatfea',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
           query: 'THE.CHAT',
         }).map(({ card }) => card.id),
         ['owner'],
@@ -254,6 +261,42 @@ test(
           'inside',
           'prompt',
         ],
+      )
+    } finally {
+      f.close()
+    }
+  },
+)
+
+test(
+  'fuzzy prompt highlights survive excerpt truncation',
+  async () => {
+    const f = await fixture()
+
+    try {
+      const matches = matchingTasks({
+        cards: [
+          {
+            ...f.referenced,
+            title: 'Other work',
+            initialPrompt: 'chat' + 'x'.repeat(500) + 'feature',
+          },
+        ],
+        query: 'chatfea',
+      })
+      assert.equal(
+        matches.length,
+        1,
+      )
+      assert.equal(
+        matches[0]?.excerptHighlights.map(({
+          from,
+          to,
+        }) => matches[0]?.excerpt.slice(
+          from,
+          to,
+        )).join(''),
+        'chat',
       )
     } finally {
       f.close()
