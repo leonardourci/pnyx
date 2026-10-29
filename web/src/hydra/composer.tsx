@@ -114,20 +114,28 @@ function folderSuggestions({
     ]
   }
 
-  const candidates = [
-    ...otherProjects.map(project => ({
-      ...project,
-      detail: `In ${project.hydra}`,
-    })),
-    ...(listing?.recent ?? []).map(folder => ({
+  const candidates = otherProjects.map(project => ({
+    ...project,
+    detail: `In ${project.hydra}`,
+  }))
+  const folders: FolderListing['recent'] = []
+
+  if (listing) {
+    folders.push(...listing.recent)
+  }
+
+  if (listing && typedPath) {
+    folders.push(...listing.folders)
+  }
+
+  for (const folder of folders) {
+    candidates.push({
       ...folder,
+      hydra: '',
       detail: folder.path,
-    })),
-    ...(typedPath ? listing?.folders ?? [] : []).map(folder => ({
-      ...folder,
-      detail: folder.path,
-    })),
-  ]
+    })
+  }
+
   const skip = new Set(attached.filter(project => !project.detached).map(project => project.path))
   const items: MentionItem[] = []
 
