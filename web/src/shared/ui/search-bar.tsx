@@ -42,6 +42,7 @@ export function SearchBar({
   badges = [],
   removeBadge,
   count,
+  hint,
   placeholder,
   inputRef,
   onKeyDown,
@@ -52,6 +53,8 @@ export function SearchBar({
   badges?: SearchBadge[]
   removeBadge?({ id }: { id: string }): void
   count?: string
+  // The key that focuses this search, shown while it is empty.
+  hint?: string
   placeholder?: string
   inputRef?: Ref<HTMLInputElement>
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLInputElement> }): void
@@ -106,6 +109,7 @@ export function SearchBar({
         onBlur={() => setMarked(undefined)}
       />
       {count && <span className="search-bar-count" aria-live="polite">{count}</span>}
+      {hint && <kbd className="search-bar-key">{hint}</kbd>}
     </div>
   )
 }
