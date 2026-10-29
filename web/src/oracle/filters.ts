@@ -2,7 +2,7 @@ import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import { columnLook } from '#web-tasks/view.ts'
 
-// A panel is a whole settings block from the old Oracle rows, such as Projects.
+// A panel is a whole settings block shown in the preview, such as Projects.
 export type ResultKind = 'project' | 'task' | 'conversation' | 'setting' | 'panel' | 'action'
 export type FilterType = 'kind' | 'hydra' | 'column' | 'project' | 'when'
 
@@ -66,7 +66,6 @@ export interface Filter {
   words?: string
 }
 
-// What a result shows the filters.
 export interface Candidate {
   kind: ResultKind
   hydra?: string
@@ -145,7 +144,6 @@ export const hydraFilter = ({ hydra }: {
   words: 'hydra',
 })
 
-// Every filter the menu can offer: the kinds, the current Hydra, its columns and projects, and the time windows.
 export function filterOptions({
   hydra,
   columns,
@@ -184,7 +182,6 @@ export interface FilterToken {
   needle: string
 }
 
-// The half-typed filter at the end of the query, if any.
 export function filterToken({ query }: { query: string }): FilterToken | null {
   const text = TOKEN.exec(query)?.[1]
 
@@ -211,7 +208,6 @@ export function filterToken({ query }: { query: string }): FilterToken | null {
   }
 }
 
-// The query without its half-typed filter, which is what the search reads.
 export const queryText = ({ query }: { query: string }) => query.replace(
   TOKEN,
   '',
@@ -267,7 +263,6 @@ export function filterMenu({
     }))
 }
 
-// The query once its token became a badge: the text before it, ready for more.
 export const committedQuery = ({ query }: { query: string }) => {
   const text = queryText({ query })
 

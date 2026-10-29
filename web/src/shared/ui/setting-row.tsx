@@ -2,7 +2,6 @@ import type { ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
-// The text with each search term marked.
 export function Highlight({
   text,
   terms,

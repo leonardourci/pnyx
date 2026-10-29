@@ -86,7 +86,6 @@ const conversationResult = ({
   hit,
 })
 
-// The live tasks, latest activity first.
 const recentCards = ({ state }: { state: HydraState }) => Object.values(state.cards)
   .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
   .sort((

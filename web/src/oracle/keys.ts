@@ -21,7 +21,6 @@ export function paletteKey({
   mod?: boolean
   composing: boolean
   pending: boolean
-  // The half-typed filter, if any.
   token?: string
   query: string
 }): PaletteKey | null {

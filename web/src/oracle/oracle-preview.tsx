@@ -92,7 +92,6 @@ function ColumnOf({
   return <ColumnChip icon={look.icon} tone={look.tone} label={column.title} />
 }
 
-// A read-only summary drawn with the board card's own pieces.
 function TaskPreview({
   card,
   hit,
@@ -186,7 +185,6 @@ function ActionPreview({ action }: { action: OracleAction }) {
 
 const names = ({ kinds }: { kinds: string[] }) => [...new Set(kinds.map(kind => KIND_NAMES[kind]))].join(', ')
 
-// What a badge keeps, in the words of the rules it follows.
 function filterReach({ filter }: { filter: Filter }) {
   if (filter.type === 'kind') {
     return `Keeps only ${names({ kinds: filter.values })}.`
@@ -231,7 +229,6 @@ export interface SettingProps {
   startUpgrade(): void
 }
 
-// The Settings page's own row for this setting, with its control and live preview.
 function SettingResult({
   match,
   state,

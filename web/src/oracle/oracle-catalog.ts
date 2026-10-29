@@ -16,7 +16,6 @@ export type OracleAction = {
   id: string
   label: string
   words: string
-  // What Enter does, for the preview.
   does: string
 } & ({
   run: 'task'
@@ -49,7 +48,6 @@ export const oraclePanels = ({ state }: { state: HydraState }): OraclePanel[] =>
   },
 ]
 
-// The actions the Oracle runs: a new task in each column, a new column, and the keyboard actions the opening place allows.
 export function oracleActions({
   columns,
   scope,

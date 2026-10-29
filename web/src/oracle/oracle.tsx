@@ -89,7 +89,6 @@ function resultMeta({
   }
 }
 
-// What to type for a filter: > and the last word of its name.
 const menuHint = ({ filter }: { filter: Filter }) => {
   const words = filter.label.toLowerCase().split(' ')
 
@@ -116,7 +115,6 @@ function Option({
   pick,
 }: {
   id: string
-  // The result or filter id, which hover reads.
   value: string
   selected: boolean
   icon: string
@@ -188,7 +186,6 @@ export function Oracle({
     name: string
     icon: string
   }
-  // The current Hydra's attached projects.
   projects: HydraProjectSummary[]
   workspace: string
   // The page element the palette draws in, so it takes the page's text sizes.

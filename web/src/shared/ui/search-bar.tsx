@@ -11,7 +11,6 @@ export interface SearchBadge {
   icon?: string
 }
 
-// The input as a combobox over a list it controls, as the Oracle uses it.
 export interface SearchCombobox {
   expanded: boolean
   controls: string
