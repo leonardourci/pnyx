@@ -14,6 +14,7 @@ import { isUpgradeSuggestion } from '#upgrade/model.ts'
 import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
 import { useFolders } from '#web-projects/add-project.tsx'
 import { completePath } from './path-completion.ts'
+import { COMPOSER_ICON } from './hydra-agent.tsx'
 import { GOALS, sendableRequest, withProjectRequest } from './project-request.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
@@ -1671,7 +1672,7 @@ export function Composer({
           )}
         </div>
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={18} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={COMPOSER_ICON} />}>
             {({ close }) => (
               <>
                 <Button
@@ -1804,7 +1805,7 @@ export function Composer({
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={sending || !outgoing.trim() || imagesLoading}
           >
-            <Icon name="send" size={18} />
+            <Icon name="send" size={COMPOSER_ICON} />
           </Button>
         </div>
       </form>
