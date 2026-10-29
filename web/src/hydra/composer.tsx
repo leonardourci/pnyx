@@ -13,6 +13,7 @@ import { readSkillReference, skillReference } from '#hydra/transcripts-skill-ref
 import { isUpgradeSuggestion } from '#upgrade/model.ts'
 import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
 import { useFolders } from '#web-projects/add-project.tsx'
+import { completePath } from './path-completion.ts'
 import { GOALS, sendableRequest, withProjectRequest } from './project-request.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
@@ -347,7 +348,19 @@ export function Composer({
     listing: folders?.listing,
     typedPath: !!folderPath,
   })
-  const matches: MentionItem[] = [
+  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
+  const typedFolder: MentionItem | undefined = selectedFolder && {
+    key: `folder:${selectedFolder.path}`,
+    kind: 'project',
+    title: selectedFolder.name,
+    detail: selectedFolder.path,
+    insert: reference({
+      kind: 'project',
+      value: selectedFolder.path,
+      label: selectedFolder.name,
+    }),
+  }
+  const listed: MentionItem[] = [
     ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
       && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
@@ -405,6 +418,13 @@ export function Composer({
       }),
     })),
   ]
+  // A typed path that names a folder leads, so Enter adds the folder typed rather than a project under it.
+  const matches = typedFolder
+    ? [
+      typedFolder,
+      ...listed.filter(item => item.insert !== typedFolder.insert),
+    ]
+    : listed
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -427,6 +447,31 @@ export function Composer({
       text: shown.display,
       cursor,
     })
+    const typed = mention && `@${mention.query}`
+    const leftFolder = !found && typedFolder && typed
+      && shown.display.slice(
+        mention.start,
+        mention.start + typed.length,
+      ) === typed
+
+    // Moving the caret off a typed path that names a folder adds that folder as a badge.
+    if (leftFolder) {
+      const edit = replaceDisplay({
+        text,
+        from: mention.start,
+        to: mention.start + typed.length,
+        insert: typedFolder.insert,
+      })
+      const grown = draftView({ text: edit.text }).display.length - shown.display.length
+      write({
+        text: edit.text,
+        caret: cursor > mention.start ? cursor + grown : cursor,
+      })
+      setMention(null)
+
+      return
+    }
+
     const insideChip = found && shown.chips.some(chip =>
       chip.from <= found.start && found.start < chip.to)
     setMention(insideChip ? null : found)
@@ -1428,6 +1473,35 @@ export function Composer({
 
                   return
                 }
+              }
+
+              // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
+              if (mention && folderPath && folders?.listing && e.key === 'Tab'
+                && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault()
+                e.stopPropagation()
+                const completed = completePath({
+                  typed: folderPath,
+                  listing: folders.listing,
+                })
+
+                if (typedFolder) {
+                  chooseMention({ item: typedFolder })
+                } else if (completed) {
+                  const edit = replaceDisplay({
+                    text: draft,
+                    from: mention.start + 1,
+                    to: e.currentTarget.selectionStart,
+                    insert: completed,
+                  })
+                  write(edit)
+                  trackMention({
+                    text: edit.text,
+                    cursor: edit.caret,
+                  })
+                }
+
+                return
               }
 
               const pickerCount = mention ? matches.length : suggestions.length
