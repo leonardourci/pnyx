@@ -233,6 +233,103 @@ for (const context of [
   )
 }
 
+test(
+  'owner copies rewritten from the transcript keep their place in the conversation',
+  () => {
+    const turn = ({
+      id,
+      role,
+      text,
+    }: {
+      id: string
+      role: string
+      text: string
+    }): ThreadEntry => ({
+      id,
+      kind: 'message',
+      role,
+      text,
+    })
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'first',
+            text: 'Plan it',
+          }),
+          context: 'Referenced tasks (context only):\n\nTask t2: Plan',
+        },
+        {
+          ...message({
+            id: 'second',
+            text: 'go ahead',
+          }),
+          task: 't1',
+        },
+      ],
+      transcript: [
+        turn({
+          id: 'user-a',
+          role: 'user',
+          text: 'Plan it\n\nReferenced tasks (context only):\n\nTask t2: Plan',
+        }),
+        turn({
+          id: 'answer-a',
+          role: 'assistant',
+          text: 'Planned.',
+        }),
+        turn({
+          id: 'user-b',
+          role: 'user',
+          text: 'go ahead',
+        }),
+        turn({
+          id: 'answer-b',
+          role: 'assistant',
+          text: 'Started.',
+        }),
+      ],
+    })
+
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.id,
+        entry.text,
+        entry.task,
+      ]),
+      [
+        [
+          'user-a',
+          'Plan it',
+          undefined,
+        ],
+        [
+          'answer-a',
+          'Planned.',
+          undefined,
+        ],
+        [
+          'user-b',
+          'go ahead',
+          't1',
+        ],
+        [
+          'answer-b',
+          'Started.',
+          undefined,
+        ],
+      ],
+    )
+    assert.equal(
+      Object.hasOwn(
+        entries[0]!,
+        'task',
+      ),
+      false,
+    )
+  },
+)
+
 for (const recorded of [
   false,
   true,
@@ -593,8 +690,8 @@ test(
       }).map(entry => entry.text),
       [
         leading,
-        tagged,
         quoting,
+        tagged,
       ],
     )
   },

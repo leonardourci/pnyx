@@ -28,6 +28,7 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
     normalized(entry),
@@ -79,12 +80,19 @@ export function hydraMessages({
           })
         }
       } else if (message.task || normalized(entry!) !== normalized({ text: shown })) {
-        replaced.add(entry!)
-        recorded.push({
+        const copy: ThreadEntry = {
           ...entry!,
           text: shown,
-          task: message.task,
-        })
+        }
+
+        if (message.task) {
+          copy.task = message.task
+        }
+
+        rewritten.set(
+          entry!,
+          copy,
+        )
       }
     } else if (!report) {
       recorded.push({
@@ -101,7 +109,7 @@ export function hydraMessages({
 
   return [
     ...recorded,
-    ...transcript.filter(entry => !replaced.has(entry)),
+    ...transcript.filter(entry => !replaced.has(entry)).map(entry => rewritten.get(entry) ?? entry),
   ]
 }
 
