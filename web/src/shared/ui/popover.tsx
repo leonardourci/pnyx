@@ -131,6 +131,7 @@ export function Popover({
           }
         }}
         aria-label={label}
+        title={label}
         aria-haspopup="dialog"
         aria-expanded={open}
         aria-controls={open ? id : undefined}

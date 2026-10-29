@@ -1306,7 +1306,7 @@ export function Composer({
           )}
         </div>
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={16} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={18} />}>
             {({ close }) => (
               <>
                 <Button
@@ -1437,7 +1437,7 @@ export function Composer({
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={sending || !outgoing.trim() || imagesLoading}
           >
-            <Icon name="send" size={14} />
+            <Icon name="send" size={18} />
           </Button>
         </div>
       </form>
