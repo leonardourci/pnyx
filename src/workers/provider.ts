@@ -174,6 +174,16 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
+  permissionDelivery?({ permission }: { permission: string }): string | undefined
+  remote?: true
+  recovered?: boolean
+  replayed?(): Promise<void>
+  fact?(): {
+    id: string
+    at: string
+  } | undefined
+  applied?(): Promise<void>
+  detach?(): void
   id: string
   path?: string
   run({
@@ -229,6 +239,8 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   ])
 
 export interface Provider {
+  remote?: true
+  owns?({ agent }: { agent: AgentRef }): boolean
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({

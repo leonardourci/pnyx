@@ -20,6 +20,7 @@ export async function connectHost({
   const socket = createConnection(path)
   socket.setEncoding('utf8')
   const ready = deferred<Extract<ToClient, { type: 'ready' }>>()
+  const disconnects = new Set<() => void>()
   const requests = new Map<string, ReturnType<typeof deferred<Result>>>()
   const subscribers = new Set<({ frame }: { frame: ToClient }) => void>()
   let buffered = '', authenticated = false
@@ -130,6 +131,10 @@ export async function connectHost({
     () => {
       clearTimeout(handshakeTimer)
       failed({ error: new Error('The native host connection ended; reconcile named requests before retry') })
+
+      for (const disconnected of disconnects) {
+        disconnected()
+      }
     },
   )
   let inventory: Extract<ToClient, { type: 'ready' }>
@@ -231,6 +236,11 @@ export async function connectHost({
       subscribers.add(receive)
 
       return () => subscribers.delete(receive)
+    },
+    onDisconnect({ receive }: { receive(): void }) {
+      disconnects.add(receive)
+
+      return () => disconnects.delete(receive)
     },
     detach() {
       socket.destroy()
