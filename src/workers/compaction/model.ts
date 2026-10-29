@@ -14,6 +14,7 @@ export interface Compaction {
 export interface CompactInput {
   id: string
   text: string
+  original?: string
   actor: string
   route: 'hydra' | 'steering' | 'direct'
   accepted?: boolean

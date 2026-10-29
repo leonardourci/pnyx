@@ -31,6 +31,7 @@ export interface Host {
     id,
   }: {
     text: string
+    original?: string
     actor: string
     id: string
     release?: boolean
