@@ -276,6 +276,7 @@ export function hostSessions({
         const message = entry.incoming.shift()
 
         if (message) {
+          await entry.output.flush()
           yield message
           continue
         }
@@ -742,6 +743,11 @@ export function hostSessions({
             }
 
             if (operation.kind === 'attach') {
+              if (scope.kind === 'session') {
+                // Failed persistence remains explicit in the baseline and must permit reconciliation.
+                await Promise.allSettled([find({ ref: scope.ref }).output.flush()])
+              }
+
               if (control.revision !== operation.expectedRevision) {
                 return fail({
                   code: 'STALE_REVISION',
@@ -862,7 +868,7 @@ export function hostSessions({
     result({ id }: { id: string }) {
       return ledger.lookup({ id })
     },
-    acknowledge({
+    async acknowledge({
       peer,
       frame,
     }: {
@@ -871,14 +877,14 @@ export function hostSessions({
     }): Promise<Result> {
       const entry = find({ ref: frame.ref })
 
-      return entry.control.queue.run({
+      const accepted = await entry.control.queue.run({
         action: async () => {
           authorize({
             control: entry.control,
             token: frame.controller,
             peer,
           })
-          entry.output.acknowledge({
+          const persisted = entry.output.acknowledge({
             through: frame.appliedFactsThrough,
             delivered: entry.control.delivered,
           })
@@ -889,9 +895,12 @@ export function hostSessions({
             }
           }
 
-          return { kind: 'ok' }
+          return { persisted }
         },
       })
+      await accepted.persisted
+
+      return { kind: 'ok' }
     },
     watch({
       peer,
@@ -903,6 +912,7 @@ export function hostSessions({
       after?: number
     }) {
       const entry = find({ ref })
+      let ready = false, cancelled = false
 
       if (after !== undefined && (after < 0 || after > entry.output.through())) {
         fail({
@@ -919,6 +929,10 @@ export function hostSessions({
 
       const unsubscribe = entry.output.subscribe({
         listener: ({ frame }) => {
+          if (!ready) {
+            return
+          }
+
           if (peer.send({ frame }) && eventClass({ event: frame.event }) === 'critical') {
             delivered({ seq: frame.seq })
           }
@@ -935,38 +949,53 @@ export function hostSessions({
         })
       }
 
-      const pendingFacts = entry.output.pending()
-      const current = entry.native?.snapshot()
-      let native: Parameters<Output['baseline']>[0]['native']
+      const baseline = () => {
+        if (cancelled) {
+          return
+        }
 
-      if (current) {
+        const pendingFacts = entry.output.pending({ persisted: entry.output.retention() === 'healthy' })
+        const current = entry.native?.snapshot()
+        let native: Parameters<Output['baseline']>[0]['native']
+
+        if (current) {
         // Terminal outcomes are replayed as original critical facts, never duplicated in the view.
-        native = {
-          work: current.work,
-          permissions: current.permissions,
-          answers: [...entry.answers.values()].map(answer => structuredClone(answer.receipt)),
+          native = {
+            work: current.work,
+            permissions: current.permissions,
+            answers: [...entry.answers.values()].map(answer => structuredClone(answer.receipt)),
+          }
         }
+
+        const snapshot = entry.output.baseline({ native })
+
+        const accepted = peer.send({
+          frame: {
+            type: 'snapshot',
+            ref,
+            viewThrough: entry.output.through(),
+            pendingFacts,
+            snapshot,
+          },
+        })
+
+        if (accepted) {
+          for (const fact of pendingFacts) {
+            delivered({ seq: fact.seq })
+          }
+        }
+
+        ready = true
       }
 
-      const snapshot = entry.output.baseline({ native })
+      entry.output.flush().then(
+        baseline,
+        baseline,
+      )
 
-      const accepted = peer.send({
-        frame: {
-          type: 'snapshot',
-          ref,
-          viewThrough: entry.output.through(),
-          pendingFacts,
-          snapshot,
-        },
-      })
-
-      if (accepted) {
-        for (const fact of pendingFacts) {
-          delivered({ seq: fact.seq })
-        }
+      return () => {
+        cancelled = true; unsubscribe()
       }
-
-      return unsubscribe
     },
     detach({ peer }: { peer: Peer }) {
       for (const entry of sessions.values()) {
@@ -988,6 +1017,14 @@ export function hostSessions({
           errors.push(error)
         } finally {
           entry.finished.resolve()
+        }
+      }
+
+      for (const entry of sessions.values()) {
+        try {
+          await entry.output.flush()
+        } catch (error) {
+          errors.push(error)
         }
       }
 

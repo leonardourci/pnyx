@@ -6,6 +6,7 @@ import type { HostedEvent, HostedUsage } from '#workers/provider.ts'
 import type { Fact, EventFrame, Summary, Snapshot } from './protocol.ts'
 import { fail } from './protocol.ts'
 import { readFact } from './validation.ts'
+import { durableWriter } from './durable.ts'
 
 const VIEW_EVENTS = 256
 const VIEW_BYTES = 1024 * 1024
@@ -74,7 +75,11 @@ export function output({
     directory,
     'session.json',
   )
-  let sequence = 0, acknowledged = 0, durableBytes = 0, emergencyBytes = 0
+  let sequence = 0, acknowledged = 0, requestedAck = 0, persistedThrough = 0
+  let durableBytes = 0, emergencyBytes = 0
+  let lastWrite = Promise.resolve(), delivery = Promise.resolve()
+  let degradedThrough = 0
+  const writer = durableWriter({ path })
   let retention: Snapshot['retention'] = 'healthy'
   let facts: Fact[] = []
   const raw: EventFrame[] = []
@@ -147,29 +152,76 @@ export function output({
     })
   }
 
+  requestedAck = acknowledged
+  persistedThrough = sequence
+
   const persist = () => {
-    const checkpoint = JSON.stringify({
-      kind: 'checkpoint',
-      through: sequence,
-      acknowledged,
-    })
-    const lines = facts.map(fact => JSON.stringify(fact))
-    const saved = `${[
-      checkpoint,
-      ...lines,
-    ].join('\n')}\n`
-    replaceFile({
-      path,
-      text: saved,
-    })
-    durableBytes = Buffer.byteLength(saved)
-    emergencyBytes = 0
-    retention = durableBytes < limits.criticalBytes ? 'healthy' : 'degraded'
+    const through = sequence
+    const applied = requestedAck
+    const written = writer.write({
+      text: () => {
+        const checkpoint = JSON.stringify({
+          kind: 'checkpoint',
+          through: sequence,
+          acknowledged: requestedAck,
+        })
+        const retained = facts.filter(fact => fact.seq > requestedAck)
+        const lines = retained.map(fact => JSON.stringify(fact))
+
+        return `${[
+          checkpoint,
+          ...lines,
+        ].join('\n')}\n`
+      },
+    }).then(
+      () => {
+        persistedThrough = Math.max(
+          persistedThrough,
+          through,
+        )
+        acknowledged = Math.max(
+          acknowledged,
+          applied,
+        )
+        facts = facts.filter(fact => fact.seq > acknowledged)
+        durableBytes = facts.reduce(
+          (
+            bytes,
+            fact,
+          ) => bytes + Buffer.byteLength(JSON.stringify(fact)) + 1,
+          0,
+        )
+
+        if (persistedThrough >= degradedThrough) {
+          emergencyBytes = 0
+          retention = durableBytes < limits.criticalBytes ? 'healthy' : 'degraded'
+        }
+      },
+      error => {
+        requestedAck = acknowledged
+        degradedThrough = sequence
+        emergencyBytes = facts.filter(fact => fact.seq > persistedThrough)
+          .reduce(
+            (
+              bytes,
+              fact,
+            ) => bytes + Buffer.byteLength(JSON.stringify(fact)) + 1,
+            0,
+          )
+        retention = emergencyBytes >= limits.emergencyBytes ? 'exhausted' : 'degraded'
+        throw error
+      },
+    )
+    lastWrite = written
+
+    return written
   }
 
   return {
     summary: session,
-    pending: () => structuredClone(facts),
+    pending: ({ persisted = false }: { persisted?: boolean } = {}) =>
+      structuredClone(facts.filter(fact => !persisted || fact.seq <= persistedThrough)),
+    flush: () => lastWrite,
     through: () => sequence,
     retention: () => retention,
     canAdmit: () => retention === 'healthy' && durableBytes < limits.criticalBytes,
@@ -187,6 +239,8 @@ export function output({
         at: new Date().toISOString(),
         event: structuredClone(event),
       }
+
+      let durable = Promise.resolve()
 
       if (eventClass({ event }) === 'critical') {
         // The classifier is type constrained; critical entries have object event variants.
@@ -208,13 +262,10 @@ export function output({
             })
           }
 
-          writeDurably({
-            path,
-            data: line,
-            flag: 'a',
-          })
           durableBytes += bytes
+          durable = persist()
         } catch {
+          degradedThrough = sequence
           emergencyBytes += bytes
           retention = emergencyBytes >= limits.emergencyBytes ? 'exhausted' : 'degraded'
         }
@@ -273,8 +324,30 @@ export function output({
         }
       }
 
-      for (const listener of listeners) {
-        listener({ frame })
+      const deliver = () => {
+        for (const listener of listeners) {
+          listener({ frame })
+        }
+      }
+
+      if (eventClass({ event }) === 'critical') {
+        // A degraded outbox exposes its reserved in-memory facts so the coordinator can reconcile them.
+        const retained = durable.then(
+          () => {},
+          () => {},
+        )
+        delivery = delivery.then(async () => {
+          await retained
+          deliver()
+        }).catch(error => {
+          retention = 'degraded'
+          console.error(
+            'Native critical delivery failed; retained facts require reconciliation:',
+            error,
+          )
+        })
+      } else {
+        deliver()
       }
 
       return frame
@@ -286,8 +359,8 @@ export function output({
       through: number
       delivered: Set<number>
     }) {
-      if (through === acknowledged) {
-        return
+      if (through <= requestedAck && through <= acknowledged) {
+        return Promise.resolve()
       }
 
       const target = facts.find(fact => fact.seq === through)
@@ -301,19 +374,12 @@ export function output({
         })
       }
 
-      const before = facts
-      const previous = acknowledged
-      facts = facts.filter(fact => fact.seq > through)
-      acknowledged = through
+      requestedAck = Math.max(
+        requestedAck,
+        through,
+      )
 
-      try {
-        persist()
-      } catch (error) {
-        facts = before
-        acknowledged = previous
-        retention = 'degraded'
-        throw error
-      }
+      return persist()
     },
     baseline({ native }: { native?: Snapshot['native'] }): Snapshot {
       return structuredClone({
