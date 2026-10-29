@@ -1,4 +1,5 @@
 import type { ViewPreferences } from '#preferences/model.ts'
+import type { Settings } from '#settings/model.ts'
 import { DEFAULT_COLUMN_WIDTH } from '#preferences/view.ts'
 import { DEFAULT_KEYBOARD } from '#preferences/keyboard.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
@@ -13,13 +14,35 @@ const differs = ({
   initial: unknown
 }) => JSON.stringify(value) !== JSON.stringify(initial)
 
+// The Hydra settings Settings shows beside the view.
+const HYDRA_KEYS = [
+  'doneAfterHours',
+  'reviewMinutes',
+  'helper',
+] as const
+
 // Column widths count once any column differs, since the map also names columns the default does not.
-export function changedIds({ view }: { view: ViewPreferences }): Set<string> {
+export function changedIds({
+  view,
+  settings,
+}: {
+  view: ViewPreferences
+  settings: Settings
+}): Set<string> {
   const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => key !== 'defaultColumnWidths'
     && key in view && differs({
     value: view[key as keyof ViewPreferences],
     initial: initialOf({ id: key }),
   })))
+
+  for (const key of HYDRA_KEYS) {
+    if (differs({
+      value: settings[key],
+      initial: DEFAULT_SETTINGS[key],
+    })) {
+      ids.add(key)
+    }
+  }
 
   if (Object.values(view.defaultColumnWidths).some(width => width !== DEFAULT_COLUMN_WIDTH)) {
     ids.add('defaultColumnWidths')

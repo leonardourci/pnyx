@@ -3,22 +3,37 @@ export const SETTINGS_SECTIONS = [
   {
     id: 'appearance',
     label: 'Appearance',
+    icon: 'theme',
   },
   {
     id: 'layout',
     label: 'Layout',
+    icon: 'columns',
   },
   {
     id: 'cards',
     label: 'Cards and chat',
+    icon: 'cards',
+  },
+  {
+    id: 'hydra',
+    label: 'Hydra',
+    icon: 'hydra',
+  },
+  {
+    id: 'agent',
+    label: 'Hydra’s default agent',
+    icon: 'model',
   },
   {
     id: 'keyboard',
     label: 'Keyboard',
+    icon: 'keyboard',
   },
   {
     id: 'about',
     label: 'About',
+    icon: 'about',
   },
 ] as const
 
@@ -162,6 +177,65 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     related: [
       'reasoning',
       'expand',
+    ],
+  },
+  {
+    id: 'doneAfterHours',
+    section: 'hydra',
+    label: 'Hide Done cards',
+    description: 'Take finished cards off the board once they have been in Done this long.',
+    values: ['Off'],
+    related: [
+      'archive',
+      'clean',
+      'finished',
+      'completed',
+      'retention',
+    ],
+  },
+  {
+    id: 'reviewMinutes',
+    section: 'hydra',
+    label: 'Review cadence',
+    description: 'How often Hydra looks over the board for anything that needs action. It still wakes right away for your messages and for worker updates.',
+    related: [
+      'timer',
+      'interval',
+      'minutes',
+      'often',
+      'check',
+    ],
+  },
+  {
+    id: 'helper',
+    section: 'hydra',
+    label: 'Routine helper',
+    description: 'A lighter agent that handles Hydra’s routine wakes, so the main Hydra spends its quota on your messages and decisions.',
+    values: [
+      'Auto',
+      'Off',
+      'Choose',
+    ],
+    related: [
+      'cheaper',
+      'quota',
+      'sonnet',
+      'luna',
+      'wakes',
+    ],
+  },
+  {
+    id: 'hydraAgent',
+    section: 'agent',
+    label: 'Model, effort and permissions',
+    description: 'Every Hydra session starts on this. The model picker in Hydra’s chat can switch a running session; pinning there saves the choice here.',
+    related: [
+      'orchestrator',
+      'opus',
+      'sonnet',
+      'codex',
+      'claude',
+      'fast',
     ],
   },
   {

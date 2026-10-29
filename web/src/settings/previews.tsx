@@ -1,6 +1,8 @@
 import type { CSSProperties, ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
+import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
 import { DEFAULT_COLUMN_WIDTH } from '#preferences/view.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
@@ -180,7 +182,7 @@ function MiniBoard({
   mark,
 }: {
   widths: Widths
-  mark: 'columns' | 'chat'
+  mark: 'columns' | 'chat' | 'none'
 }) {
   const scaled = ({ px }: { px: number }): CSSProperties => ({ width: px * BOARD_SCALE })
 
@@ -271,6 +273,214 @@ export function ConversationPreview({
           </div>
         )}
         <div className="preview-bubble">The empty report skips its header row. Fixing it.</div>
+      </div>
+    </Preview>
+  )
+}
+
+// Hours in Done for each synthetic card, so the preview shows which ones the delay would hide.
+const DONE_CARDS = [
+  {
+    title: 'Rename settings route',
+    hours: 0,
+  },
+  {
+    title: 'Bump Vite',
+    hours: 20,
+  },
+  {
+    title: 'Fix flaky e2e',
+    hours: 30,
+  },
+  {
+    title: 'Upgrade Node',
+    hours: 80,
+  },
+]
+
+const age = ({ hours }: { hours: number }) => {
+  if (hours === 0) {
+    return 'just now'
+  }
+
+  return hours < 48 ? `${hours} h` : `${Math.round(hours / 24)} d`
+}
+
+export function DonePreview({ hours }: { hours: DoneAfterHours }) {
+  const hidden = ({ card }: { card: typeof DONE_CARDS[number] }) => hours !== 'off' && card.hours >= hours
+  const count = DONE_CARDS.filter(card => hidden({ card })).length
+  const caption = hours === 'off' ? 'Every Done card stays on the board.' : `${count} of ${DONE_CARDS.length} Done cards hidden.`
+
+  return (
+    <Preview caption={caption}>
+      <div className="preview-done">
+        {DONE_CARDS.map(card => (
+          <div key={card.title} className="preview-card" data-hidden={hidden({ card }) || undefined}>
+            <span>{card.title}</span>
+            <span className="preview-card-meta">{age({ hours: card.hours })}</span>
+          </div>
+        ))}
+      </div>
+    </Preview>
+  )
+}
+
+// Three hours of review ticks at the chosen cadence.
+const TIMELINE_MINUTES = 180
+const MAX_TICKS = 60
+
+export function ReviewPreview({ minutes }: { minutes: number }) {
+  const count = minutes > 0 ? Math.min(
+    Math.floor(TIMELINE_MINUTES / minutes),
+    MAX_TICKS,
+  ) : 0
+  const ticks = Array.from(
+    { length: count },
+    (
+      _,
+      index,
+    ) => (index + 1) * minutes,
+  )
+
+  const caption = minutes === 0 ? 'Timed reviews off. Hydra still wakes for messages and worker updates.'
+    : minutes > TIMELINE_MINUTES ? `First review in ${minutes} min.` : `${ticks.length} reviews in the next 3 hours.`
+
+  return (
+    <Preview caption={caption}>
+      <div className="preview-timeline">
+        <span className="preview-timeline-axis" />
+        {ticks.map(at => <span key={at} className="preview-timeline-tick" style={{ left: `${at / TIMELINE_MINUTES * 100}%` }} />)}
+        <span className="preview-timeline-label" style={{ left: '0%' }}>now</span>
+        <span className="preview-timeline-label" style={{ left: '50%' }}>+1.5 h</span>
+        <span className="preview-timeline-label" data-end style={{ left: '100%' }}>+3 h</span>
+      </div>
+    </Preview>
+  )
+}
+
+const agentName = ({ agent }: { agent: Partial<AgentConfig> }) => `${agent.harness === 'codex' ? 'Codex' : 'Claude Code'}${agent.model ? ` · ${agent.model}` : ''}`
+
+function Pill({
+  icon,
+  label,
+  helper = false,
+}: {
+  icon: string
+  label: string
+  helper?: boolean
+}) {
+  return <span className="preview-pill" data-helper={helper || undefined}><Icon name={icon} size={12} />{label}</span>
+}
+
+export function HelperPreview({
+  helper,
+  hydra,
+}: {
+  helper: HelperSetting
+  hydra: Partial<AgentConfig>
+}) {
+  const main = <Pill icon={hydra.harness === 'codex' ? 'codex' : 'claude-code'} label={`Hydra · ${agentName({ agent: hydra })}`} />
+  const routine = helper === 'off' ? main : (
+    <Pill
+      helper
+      icon="helper"
+      label={`Helper · ${helper === 'auto' ? HELPER_MODELS[hydra.harness ?? 'claude'] : agentName({ agent: helper })}`}
+    />
+  )
+  const rows: [string, ReactNode][] = [
+    [
+      'Routine wakes',
+      routine,
+    ],
+    [
+      'Your messages',
+      main,
+    ],
+    [
+      'Questions and reviews',
+      main,
+    ],
+  ]
+
+  return (
+    <Preview>
+      <div className="preview-route">
+        {rows.map(([
+          what,
+          who,
+        ]) => (
+          <div key={what} className="preview-route-row">
+            <span>{what}</span>
+            <Icon name="arrow_right" size={12} />
+            {who}
+          </div>
+        ))}
+      </div>
+    </Preview>
+  )
+}
+
+export function AgentPreview({ agent }: { agent: Partial<AgentConfig> }) {
+  const details = [
+    agentName({ agent }),
+    agent.effort,
+    agent.mode,
+    agent.fast ? 'fast' : undefined,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <Preview>
+      <div className="preview-lanes">
+        <div className="preview-lane" data-on>
+          <b><Icon name="hydra" size={14} />Hydra, the orchestrator</b>
+          <span>{details}</span>
+        </div>
+        <div className="preview-lane">
+          <b><Icon name="workers" size={14} />Workers</b>
+          <span>Picked per task by heads dispatch, not by this setting.</span>
+        </div>
+      </div>
+    </Preview>
+  )
+}
+
+export function ResetPreview({
+  state,
+  view,
+}: {
+  state: HydraState
+  view: ViewPreferences
+}) {
+  const now = boardWidths({
+    state,
+    view,
+    dragged: true,
+  })
+  const after = boardWidths({
+    state,
+    view,
+    dragged: false,
+  })
+  const moved = now.chat !== after.chat || now.columns.some(column => column.dragged)
+  let left = 3
+  const outlines = [
+    after.chat,
+    ...after.columns.map(column => column.width),
+  ].map(width => {
+    const outline = {
+      left,
+      width: width * BOARD_SCALE,
+    }
+    left += width * BOARD_SCALE + 3
+
+    return outline
+  })
+
+  return (
+    <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Nothing is dragged in this Hydra; every pane already sits at its default.'}>
+      <div className="preview-board-frame">
+        <MiniBoard widths={now} mark="none" />
+        {outlines.map(outline => <span key={outline.left} className="preview-board-ghost" style={outline} />)}
       </div>
     </Preview>
   )
