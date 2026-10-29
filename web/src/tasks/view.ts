@@ -100,6 +100,8 @@ export const shownActivity = ({ card }: { card: Card }) =>
 
 // The card a dragged task goes above when dropped on `over`: `over` itself, or the
 // next card when dropped on its lower half. Undefined means the end of the column.
+export const TASK_DRAG = 'application/pnyx-task'
+
 export function dropBefore({
   cards,
   over,
