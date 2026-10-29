@@ -1,3 +1,4 @@
+import { matchingSuggestions, suggestionMatch } from '#hydra/suggestion-matches.ts'
 import type { HydraProject } from '#projects/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
@@ -24,7 +25,7 @@ import { ImageThumb, ImageViewer } from './attached-image.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { columnLook } from '#web-tasks/view.ts'
-import { slashMatches, slashPrefix } from './view.ts'
+import { slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
@@ -210,10 +211,11 @@ export function Composer({
   // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
   const beforeCuts = useRef(new Map<string, string>())
 
-  const query = (mention?.query ?? '').trim().toLocaleLowerCase()
-  const matches: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
-      && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
+  const query = mention?.query ?? ''
+  const candidates: (MentionItem & { search?: string })[] = [
+    ...view.chips.filter(chip => {
+      return chip.attached && !isPendingImage({ path: chip.value })
+    }).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
       title: chip.name,
@@ -224,19 +226,27 @@ export function Composer({
         label: chip.name,
       }),
     })),
-    ...projects.filter(project => !project.detached
-      && `${project.name} ${project.path}`.toLocaleLowerCase().includes(query)).map(project => ({
-      key: `project:${project.path}`,
-      kind: 'project' as const,
-      title: project.name,
-      detail: 'Project',
-      insert: reference({
-        kind: 'project',
-        value: project.path,
-        label: project.name,
-      }),
-    })),
-    ...columns.filter(column => column.title.toLocaleLowerCase().includes(query)).map(column => ({
+    ...projects.filter(project => !project.detached).map(project => {
+      const titleMatch = suggestionMatch({
+        name: project.name,
+        query,
+      })
+
+      return ({
+        key: `project:${project.path}`,
+        kind: 'project' as const,
+        title: project.name,
+        excerpt: titleMatch ? undefined : project.path,
+        search: project.path,
+        detail: 'Project',
+        insert: reference({
+          kind: 'project',
+          value: project.path,
+          label: project.name,
+        }),
+      })
+    }),
+    ...columns.map(column => ({
       key: `column:${column.id}`,
       kind: 'column' as const,
       title: column.title,
@@ -255,12 +265,15 @@ export function Composer({
     }).map(({
       card,
       excerpt,
+      excerptHighlights,
     }) => ({
       key: `task:${card.id}`,
       kind: 'task' as const,
       title: card.title,
+      search: card.initialPrompt ?? card.brief ?? '',
       detail: card.project ? projectTitle({ project: card.project }) : 'No project',
       excerpt,
+      excerptHighlights,
       ...taskLook({ id: card.id }),
       insert: taskMention({
         id: card.id,
@@ -268,6 +281,12 @@ export function Composer({
       }),
     })),
   ]
+  const matches: MentionItem[] = matchingSuggestions({
+    items: candidates,
+    query,
+    name: ({ item }) => item.title,
+    fallback: ({ item }) => item.search ?? '',
+  })
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -285,6 +304,7 @@ export function Composer({
     setPrefix(slashPrefix({
       text: shown.display,
       cursor,
+      chips: shown.chips,
     }))
     const found = mentionQuery({
       text: shown.display,
@@ -503,10 +523,11 @@ export function Composer({
       onCatalogOpen,
     ],
   )
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
-    command: s.command,
-    prefix: prefix ?? '',
-  }))
+  const suggestions = matchingSuggestions({
+    items: catalog?.suggestions ?? [],
+    query: prefix ?? '',
+    name: ({ item }) => item.command,
+  })
 
   const choose = ({ command }: { command: string }) => {
     const unavailable = catalog?.suggestions.some(item =>
@@ -520,6 +541,7 @@ export function Composer({
     const query = slashPrefix({
       text: display,
       cursor,
+      chips: view.chips,
     })
 
     if (query === null || query !== prefix) {
@@ -927,6 +949,7 @@ export function Composer({
             <MentionPicker
               anchor={input}
               id={mentionList}
+              query={query}
               matches={matches}
               active={picked}
               choose={chooseMention}
@@ -935,6 +958,7 @@ export function Composer({
           {prefix !== null && (
             <SuggestionPicker
               id={`suggestions-${card}`}
+              query={prefix}
               anchor={input}
               label="Skills and commands"
               className="slash-menu"
@@ -1090,11 +1114,6 @@ export function Composer({
               }
 
               write(edit)
-              const shown = draftView({ text: edit.text }).display
-              setPrefix(slashPrefix({
-                text: shown,
-                cursor: edit.caret,
-              }))
               setActive(0)
               trackMention({
                 text: edit.text,

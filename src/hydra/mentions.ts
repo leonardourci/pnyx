@@ -1,5 +1,6 @@
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
+import { matchingSuggestions, suggestionMatch, type SuggestionMatch } from './suggestion-matches.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveTask } from '#tasks/select.ts'
 import { paragraphs } from '#oracle/text.ts'
@@ -157,27 +158,23 @@ export function matchingTasks({
 }): {
   card: Card
   excerpt: string
+  excerptHighlights: SuggestionMatch['ranges']
 }[] {
-  const search = query.trim().toLocaleLowerCase()
-  const compactSearch = search.replace(
-    /\s/g,
-    '',
-  )
+  const matches = matchingSuggestions({
+    items: cards.filter(card => card.id !== HYDRA_CARD && liveTask({ card })),
+    query,
+    name: ({ item: card }) => card.title,
+    fallback: ({ item: card }) => card.initialPrompt ?? card.brief ?? '',
+  })
 
-  return cards.filter(card => card.id !== HYDRA_CARD && liveTask({ card })).flatMap(card => {
+  return matches.map(card => {
     const prompt = card.initialPrompt ?? card.brief ?? ''
-    const title = card.title.toLocaleLowerCase()
-    const inTitle = title.includes(search) || compactSearch.length > 0 && title.replace(
-      /\s/g,
-      '',
-    ).includes(compactSearch)
-    const index = prompt.toLocaleLowerCase().indexOf(search)
-
-    if (!inTitle && index < 0) {
-      return []
-    }
-
-    const source = index >= 0 ? prompt : card.title
+    const promptMatch = suggestionMatch({
+      name: prompt,
+      query,
+    })
+    const index = promptMatch?.ranges[0]?.from ?? 0
+    const source = promptMatch ? prompt : card.title
     const start = Math.max(
       0,
       index - 48,
@@ -187,12 +184,22 @@ export function matchingTasks({
       start + 180,
     )}${source.length > start + 180 ? '…' : ''}`
 
-    return [
-      {
-        card,
-        excerpt: excerpt || 'No initial prompt',
-      },
-    ]
+    const sourceMatch = promptMatch ?? suggestionMatch({
+      name: card.title,
+      query,
+    })
+    const leading = start ? 1 : 0
+    const excerptHighlights = (sourceMatch?.ranges ?? []).filter(range =>
+      range.from >= start && range.to <= start + 180).map(range => ({
+      from: range.from - start + leading,
+      to: range.to - start + leading,
+    }))
+
+    return {
+      card,
+      excerpt: excerpt || 'No initial prompt',
+      excerptHighlights,
+    }
   })
 }
 
