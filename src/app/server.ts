@@ -2357,6 +2357,18 @@ export async function mountOwnedHydra({
     }
   }
 
+  const sendSettings = ({ ws }: { ws: HydraClient }) => {
+    const read = readSettings()
+    send({
+      ws,
+      message: {
+        type: 'settings',
+        settings: read.settings,
+        revision: read.revision,
+      },
+    })
+  }
+
   const connect = ({
     ws,
     after,
@@ -2386,6 +2398,7 @@ export async function mountOwnedHydra({
       })
     }
 
+    sendSettings({ ws })
     resume({
       ws,
       after,
@@ -2625,6 +2638,21 @@ export async function mountOwnedHydra({
           })
         }
       }
+    },
+    settings() {
+      for (const ws of clients) {
+        sendSettings({ ws })
+
+        // Focus mode and the detail switches decide what a thread page shows.
+        for (const map of threadSubscriptions) {
+          if (map.has(ws)) {
+            refreshThread({ ws })
+          }
+        }
+      }
+
+      // The Done deadline follows the shared hours.
+      kick()
     },
     upgrade() {
       const upgrade = upgradeStatus()

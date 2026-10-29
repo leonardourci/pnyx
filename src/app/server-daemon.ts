@@ -1,6 +1,6 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { unwatchFile, existsSync, watchFile, mkdirSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
@@ -19,6 +19,8 @@ import { localToken, hydraIdentity, claimServer } from './server-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { watchPath } from './watch.ts'
+import { readSettings, settingsLogPath } from '#settings/store.ts'
+import { privateDir } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
@@ -635,6 +637,24 @@ export async function startServer({
     }),
     RETRY_MS,
   ).unref()
+  // The settings log is written by any pnyx-axi process; every open page gets the change.
+  const settingsDir = dirname(settingsLogPath())
+  privateDir({ dir: settingsDir })
+  let settingsRevision = readSettings().revision
+  const settingsWatcher = watchPath({
+    path: settingsDir,
+    changed: () => {
+      const { revision } = readSettings()
+
+      if (closed || revision === settingsRevision) {
+        return
+      }
+
+      settingsRevision = revision
+      served.forEach(m => m.settings())
+    },
+    interval: CREATION_POLL_MS,
+  })
   // Once at start, then daily: an offline check leaves the last answer, and no answer shows no hint.
   const checkUpgrade = () => options.upgradeRoot && background({
     name: 'upgrade check',
@@ -661,6 +681,7 @@ export async function startServer({
   const close = async () => {
     closed = true
     watcher.close()
+    settingsWatcher.close()
     clearInterval(retry)
     clearInterval(upgradeTimer)
     pendingLogs.forEach(stop => stop())
