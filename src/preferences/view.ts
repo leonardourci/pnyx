@@ -150,9 +150,23 @@ export const viewFor = ({
   state: Pick<HydraState, 'view' | 'config'>
   settings?: Partial<ViewPreferences>
 }): ViewPreferences => {
+  const own = structuredClone(state.view ?? {}) as Partial<ViewPreferences>
+
+  // Only a Hydra's own view from older releases can hold their saved default widths; shared values are literal.
+  if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
+    delete own.defaultHydraWidth
+  }
+
+  if (own.defaultColumnWidths) {
+    own.defaultColumnWidths = Object.fromEntries(Object.entries(own.defaultColumnWidths)
+      .filter(([
+        , width,
+      ]) => width !== LEGACY_DEFAULT_WIDTHS.column))
+  }
+
   const view = {
     ...structuredClone(DEFAULT_VIEW),
-    ...state.view,
+    ...own,
     ...structuredClone(settings),
   }
   const columnIds = new Set<string>([
@@ -168,9 +182,7 @@ export const viewFor = ({
         .filter(([id]) => KEY_ACTIONS.some(action => action.id === id))),
     },
     defaultHydraWidth: persistedSize({
-      value: view.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra
-        ? undefined
-        : view.defaultHydraWidth,
+      value: view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
@@ -181,10 +193,7 @@ export const viewFor = ({
           DEFAULT_COLUMN_WIDTH,
         ])),
       ...Object.fromEntries(Object.entries(persistedMap({
-        values: Object.fromEntries(Object.entries(view.defaultColumnWidths ?? {})
-          .filter(([
-            , width,
-          ]) => width !== LEGACY_DEFAULT_WIDTHS.column)),
+        values: view.defaultColumnWidths ?? {},
         ...VIEW_SIZE_LIMITS.columnWidth,
       })).filter(([id]) => columnIds.has(id))),
     },
@@ -300,9 +309,12 @@ const size = ({
 export function patchView({
   state,
   input: rawInput,
+  settings,
 }: {
   state: HydraState
   input: unknown
+  // Shared settings to patch instead of the Hydra's own view.
+  settings?: Partial<ViewPreferences>
 }): ViewPreferences {
   const input = record({ value: rawInput })
 
@@ -310,7 +322,10 @@ export function patchView({
     return invalid({ detail: 'expected an object' })
   }
 
-  const next = structuredClone(viewFor({ state }))
+  const next = structuredClone(viewFor({
+    state,
+    settings,
+  }))
   const hydraColumnIds = state.config?.columns.map(c => c.id) ?? []
 
   for (const [

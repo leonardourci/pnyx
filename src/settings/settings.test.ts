@@ -321,6 +321,49 @@ test(
 )
 
 test(
+  'widths an older release used as defaults keep their value as shared settings through an unrelated edit',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      JSON.stringify({
+        defaultHydraWidth: 360,
+        defaultColumnWidths: { in_progress: 290 },
+      }),
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      '{"fontSize":17}',
+    ])
+
+    const saved = await settings()
+    assert.equal(
+      saved.settings.defaultHydraWidth,
+      360,
+    )
+    assert.equal(
+      saved.settings.defaultColumnWidths.in_progress,
+      290,
+    )
+    const { view } = await show({ hydraId: 'alpha' })
+    assert.equal(
+      view.defaultHydraWidth,
+      360,
+    )
+    assert.equal(
+      (view.defaultColumnWidths as Record<string, number>).in_progress,
+      290,
+    )
+  },
+)
+
+test(
   'hydra set flags write the shared settings, with off keeping Done cards and 0 hiding them right away',
   async () => {
     home()

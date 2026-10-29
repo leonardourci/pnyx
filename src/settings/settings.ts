@@ -43,16 +43,14 @@ function patchSharedView({
     ...rest
   } = input
   const state = {
-    view: {
-      ...DEFAULT_VIEW,
-      ...current,
-    },
+    view: {},
     cards: {},
   } as unknown as HydraState
   const next = pickView({
     view: patchView({
       state,
       input: rest,
+      settings: current,
     }),
   })
   next.defaultColumnWidths = structuredClone(current.defaultColumnWidths)
