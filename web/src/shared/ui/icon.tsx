@@ -2,22 +2,30 @@ import { IconRobot } from '@tabler/icons-react'
 import { TABLER_ICONS } from '#web-shared/ui/icons/tabler.ts'
 import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 
-// The identity files as built URLs; identity.test.ts checks every registry entry has its file.
+// The identity files' text; identity.test.ts checks every registry entry has its file.
 const IDENTITY_FILES = import.meta.glob<string>(
   './icons/identity/*.svg',
   {
     eager: true,
-    query: '?url',
+    query: '?raw',
     import: 'default',
   },
 )
+// Every identity file is one 512-unit path.
+const PATH_DATA = / d="([^"]+)"/
+// Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
+const BOLD_STROKE = 16
 // The Fast toggle shows on and off by its color, so both draw the same lightning.
 const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
 
-export const identityFile = ({ name }: { name: string }) => {
+export const identityGlyph = ({ name }: { name: string }) => {
   const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
+  const path = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]?.match(PATH_DATA)?.[1]
 
-  return icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
+  return path && {
+    path,
+    stroke: icon.bold ? BOLD_STROKE : 0,
+  }
 }
 
 // Brand marks from Simple Icons 16.35.0 (https://simpleicons.org,
@@ -36,7 +44,7 @@ export const hasIcon = ({ name }: { name: string }) =>
   ) || Object.hasOwn(
     brands,
     name,
-  ) || !!identityFile({ name })
+  ) || !!identityGlyph({ name })
 
 export function Icon({
   name,
@@ -45,20 +53,26 @@ export function Icon({
   name: string
   size?: number
 }) {
-  const identity = identityFile({ name })
+  const identity = identityGlyph({ name })
 
+  // Inline vectors, not CSS masks: Chrome rasterizes a mask image before scaling it, which blurs the edges.
   if (identity) {
     return (
-      <span
+      <svg
         aria-hidden="true"
         className={name === 'hydra' ? 'identity-icon hydra-icon' : 'identity-icon'}
         data-icon={name}
-        style={{
-          width: size,
-          height: size,
-          maskImage: `url("${identity}")`,
-        }}
-      />
+        width={size}
+        height={size}
+        viewBox="0 0 512 512"
+        fill="currentColor"
+        {...identity.stroke ? {
+          stroke: 'currentColor',
+          strokeWidth: identity.stroke,
+          strokeLinejoin: 'round',
+        } : {}}
+      ><path d={identity.path} />
+      </svg>
     )
   }
 

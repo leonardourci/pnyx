@@ -10,6 +10,8 @@ export interface IdentityIcon {
   license: string
   source: string
   kind: IdentityKind
+  // A thin glyph that needs an outline to read at 14 to 20 px.
+  bold?: true
 }
 
 const GAME_ICONS_LICENSE = 'CC BY 3.0'
@@ -50,6 +52,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/pocket-bow.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'hermes',
@@ -59,6 +62,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/caduceus.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'ares',
@@ -77,6 +81,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/tiara.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'zeus',
@@ -86,6 +91,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/zeus-sword.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'poseidon',
@@ -95,6 +101,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/trident.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'hephaestus',
@@ -203,6 +210,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/laurel-crown.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'aeolus',
@@ -212,6 +220,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/whirlwind.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'hades',
@@ -221,6 +230,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/hades-symbol.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'themis',
@@ -230,6 +240,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/scales.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'kratos',
@@ -239,6 +250,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/spartan.html',
     kind: 'hydra',
+    bold: true,
   },
   {
     id: 'queued',
@@ -257,6 +269,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/caro-asercion/spinning-wheel.html',
     kind: 'column',
+    bold: true,
   },
   {
     id: 'needs_you',
@@ -275,6 +288,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/anchor.html',
     kind: 'column',
+    bold: true,
   },
   {
     id: 'done',
@@ -284,6 +298,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/laurels.html',
     kind: 'column',
+    bold: true,
   },
   {
     id: 'custom',
@@ -338,6 +353,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/eagle-emblem.html',
     kind: 'control',
+    bold: true,
   },
   {
     id: 'oracle',
@@ -365,6 +381,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/strong.html',
     kind: 'control',
+    bold: true,
   },
   {
     id: 'effort-medium',
@@ -374,6 +391,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/weight-lifting-up.html',
     kind: 'control',
+    bold: true,
   },
   {
     id: 'effort-high',
@@ -383,6 +401,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/muscle-up.html',
     kind: 'control',
+    bold: true,
   },
   {
     id: 'effort-xhigh',
@@ -401,6 +420,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/delapouite/strong-man.html',
     kind: 'control',
+    bold: true,
   },
 ]
 
