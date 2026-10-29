@@ -4455,10 +4455,12 @@ export function createHost({
           value,
         })
       } catch {
-        // Some settings require replacing the process after its current turn.
+        // Some settings require replacing the process after its native work settles.
         running.stale = true
 
-        if (running.activity !== 'working') {
+        const settled = running.session && nativeIdle({ work: running.session.snapshot().work })
+
+        if (running.activity !== 'working' && settled) {
           retire({
             key,
             entry: running,
