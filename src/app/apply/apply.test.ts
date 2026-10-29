@@ -1897,3 +1897,97 @@ test(
     )
   },
 )
+
+test(
+  'a pre-existing lifecycle child ID refuses the whole document',
+  async t => {
+    const f = fixture({ t })
+    await commands.task([
+      'create',
+      '--key',
+      'a',
+      '--title',
+      'A',
+    ])
+    const state = loadHydra({ hydraId: 'default' }).state
+    const task = state.keys.a!
+    await commands.task([
+      'brief',
+      task,
+      '--brief',
+      'Before',
+      '--event-id',
+      `derived-collision:op:0:${task}:lifecycle`,
+    ])
+    const log = readFileSync(
+      join(
+        f.dir,
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    const snapshot = readFileSync(
+      join(
+        f.dir,
+        'snapshot.json',
+      ),
+      'utf8',
+    )
+    assert.throws(
+      () => f.apply({
+        flags: [
+          '--event-id',
+          'derived-collision',
+        ],
+        document: {
+          version: 1,
+          changes: [
+            {
+              op: 'task.status',
+              task,
+              status: 'working',
+            },
+            {
+              op: 'task.create',
+              key: 'sibling',
+              title: 'Must not exist',
+            },
+          ],
+        },
+      }),
+      error => {
+        assert.ok(error instanceof ApplyError)
+        assert.equal(
+          error.errors[0]?.path,
+          '/changes/0/op',
+        )
+        assert.equal(
+          error.errors[0]?.code,
+          'IDEMPOTENCY_CONFLICT',
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'snapshot.json',
+        ),
+        'utf8',
+      ),
+      snapshot,
+    )
+  },
+)

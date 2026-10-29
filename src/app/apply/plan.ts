@@ -176,12 +176,12 @@ export function planDocument({
       }
       field = 'op'
 
-      if (Object.hasOwn(
-        current.eventIds,
-        operationId,
-      )) {
+      const collision = Object.keys(current.eventIds).find(existing =>
+        existing === operationId || existing.startsWith(`${operationId}:`))
+
+      if (collision) {
         throw new HydraError({
-          message: `event id ${operationId} already exists`,
+          message: `event id ${collision} already exists`,
           code: 'IDEMPOTENCY_CONFLICT',
           field: 'op',
         })
