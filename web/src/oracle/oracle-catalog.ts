@@ -86,8 +86,8 @@ export function oracleSettings({ view }: {
       ],
       [
         'lastMessageOnCards',
-        'Last message on cards',
-        'preview latest reply cards',
+        'Current state on closed cards',
+        'preview latest reply cards current state',
       ],
       [
         'toolDetails',
