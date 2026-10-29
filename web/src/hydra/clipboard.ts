@@ -26,11 +26,13 @@ function selectedText({
   // What a native copy leaves out, being unselectable, goes from this one too.
   host.querySelectorAll(MESSAGE_CONTROLS).forEach(element => element.remove())
 
-  // An image under the text copies as its token only when the copy leaves out its chip in the sentence.
+  // Per message (none when the copy sits inside one): an image copies its token unless its own chip is copied too.
+  const occurrence = ({ element }: { element: Element }) =>
+    `${element.closest('[data-entry-id]')?.getAttribute('data-entry-id')} ${element.getAttribute(CHIP_SOURCE)}`
   const inSentence = new Set([...host.querySelectorAll(`[${CHIP_SOURCE}]:not(.message-image)`)]
-    .map(chip => chip.getAttribute(CHIP_SOURCE)))
+    .map(chip => occurrence({ element: chip })))
   host.querySelectorAll(`.message-image[${CHIP_SOURCE}]`).forEach(image => {
-    if (inSentence.has(image.getAttribute(CHIP_SOURCE))) {
+    if (inSentence.has(occurrence({ element: image }))) {
       image.remove()
     }
   })
