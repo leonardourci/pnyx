@@ -124,6 +124,24 @@ export function ResultGrid({
   ] = useState<string | null>(null)
   const rows = groups.flatMap(group => group.rows)
   const selected = rows.some(row => row.id === active) ? active : rows[0]?.id
+  // Removing a focused row blurs to nowhere, so only a blur to another element ends the hold.
+  const holding = useRef(false)
+  const ids = rows.map(row => row.id).join('\n')
+  useLayoutEffect(
+    () => {
+      const grid = root.current
+
+      if (!holding.current || !grid || !selected || grid.contains(document.activeElement)) {
+        return
+      }
+
+      grid.querySelector<HTMLElement>(`[data-result-id="${CSS.escape(selected)}"]`)?.focus()
+    },
+    [
+      ids,
+      selected,
+    ],
+  )
 
   return (
     <div
@@ -132,6 +150,14 @@ export function ResultGrid({
       role="grid"
       aria-label={label}
       className="oracle-results"
+      onFocus={() => {
+        holding.current = true
+      }}
+      onBlur={e => {
+        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) {
+          holding.current = false
+        }
+      }}
       onKeyDownCapture={e => {
         if (composing({ event: e.nativeEvent })) {
           return
