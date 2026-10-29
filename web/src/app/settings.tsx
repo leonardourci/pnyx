@@ -106,7 +106,7 @@ function ConnectedSettings({
               onChange={({ value }) => save({ patch: { [key]: value } })}
             />
           ))}
-          <Switch label="Agent updates on cards" checked={view.lastMessageOnCards} onChange={({ value }) => save({ patch: { lastMessageOnCards: value } })} />
+          <Switch label="Current state on closed cards" checked={view.lastMessageOnCards} onChange={({ value }) => save({ patch: { lastMessageOnCards: value } })} />
         </section>
         <section className="settings-box">
           <h2>Conversations</h2>

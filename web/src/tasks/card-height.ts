@@ -1,5 +1,7 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 
+const PANEL_MINIMUM = 120
+
 const spacing = ({ element }: { element: HTMLElement }) => {
   const css = getComputedStyle(element)
 
@@ -63,7 +65,15 @@ export function useCardHeight({
         let maximum = minimum
 
         for (const child of children) {
-          if (child.classList.contains('card-rest')) {
+          if (child.classList.contains('card-panel')) {
+            // An open card's tab scrolls, so it needs only a few lines to stay usable.
+            const full = naturalHeight({ element: child })
+            minimum += Math.min(
+              full,
+              PANEL_MINIMUM,
+            )
+            maximum += full
+          } else if (child.classList.contains('card-rest')) {
             const update = child.querySelector<HTMLElement>('.last-message')
             const full = naturalHeight({ element: child })
             const line = update ? parseFloat(getComputedStyle(update).lineHeight) : full
@@ -130,7 +140,7 @@ export function useCardHeight({
         resize.disconnect()
         resize.observe(column)
         resize.observe(content)
-        card.querySelectorAll('.last-message, .task-updates > *, .task-requests')
+        card.querySelectorAll('.last-message, .task-updates > *, .task-requests, .card-panel > *')
           .forEach(child => resize.observe(child))
       }
 
@@ -146,7 +156,12 @@ export function useCardHeight({
           subtree: true,
           characterData: true,
           attributes: true,
-          attributeFilter: ['open'],
+          // A tab switch shows a panel and hides the updates list.
+          attributeFilter: [
+            'open',
+            'hidden',
+            'data-tab',
+          ],
         },
       )
 

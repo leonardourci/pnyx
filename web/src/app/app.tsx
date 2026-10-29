@@ -37,6 +37,9 @@ import { HydraCard } from '#web-tasks/card.tsx'
 import { Detail } from '#web-tasks/detail.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
+// An open card's visible tab, which takes focus when the card opens.
+const OPEN_PANEL = '.card-panel:not([hidden])'
+
 export function App() {
   const hydra = useHydra()
 
@@ -193,12 +196,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     }
 
     const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
-    const updates = element?.querySelector<HTMLElement>('.task-updates')
+    const panel = element?.querySelector<HTMLElement>(OPEN_PANEL)
 
-    if (updates) {
+    if (panel) {
       pendingFocus.current = null
       requestAnimationFrame(() => {
-        updates.focus({ preventScroll: true })
+        panel.focus({ preventScroll: true })
       })
     }
   })
@@ -725,7 +728,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       focus: false,
     }),
     settle: () => afterTaskLayout({ signal }),
-    opened: ({ element }) => element.querySelector<HTMLElement>('.task-updates')?.focus({ preventScroll: true }),
+    opened: ({ element }) => element.querySelector<HTMLElement>(OPEN_PANEL)
+      ?.focus({ preventScroll: true }),
     align: async ({ element }) => await afterSteadyLayout({
       element,
       signal,
@@ -809,7 +813,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       const updates = element.querySelector<HTMLElement>('.task-updates')
 
       if (focusUpdates) {
-        updates?.focus({ preventScroll: true })
+        element.querySelector<HTMLElement>(OPEN_PANEL)?.focus({ preventScroll: true })
       }
 
       return !!updates && element.isConnected && !signal.aborted
@@ -1228,8 +1232,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                         state={state}
                                         command={command}
                                         connected={connected}
-                                        notify={notify}
-                                        answer={answerTask}
                                       />
                                     )}
                                   </HydraCard>
