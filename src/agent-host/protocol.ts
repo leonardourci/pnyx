@@ -10,6 +10,7 @@ export const CAPABILITIES = [
   'live-owners',
   'volatile-inputs',
   'idle-stop',
+  'host-status',
 ]
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 export const MAX_SOCKET_BYTES = 2 * MAX_FRAME_BYTES
@@ -221,17 +222,21 @@ export type ToHost = {
     appliedFactsThrough: number
   }
 export type ToClient = {
-  type: 'ready'
-  protocol: number
-  instance: string
-  build: string
-  capabilities: string[]
-  hostControllerRevision: number
-  maintenance: Maintenance
-  predecessor?: string
-  sessions: Summary[]
-  ledger: 'intact' | 'recovery_required'
+  type: 'host-status'
+  status: Maintenance
 }
+  | {
+    type: 'ready'
+    protocol: number
+    instance: string
+    build: string
+    capabilities: string[]
+    hostControllerRevision: number
+    maintenance: Maintenance
+    predecessor?: string
+    sessions: Summary[]
+    ledger: 'intact' | 'recovery_required'
+  }
   | {
     type: 'reply'
     id: string

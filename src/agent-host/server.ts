@@ -38,6 +38,36 @@ export async function serveAgentHost({
     bootIdentity,
   })
   let sessions: Awaited<ReturnType<typeof hostSessions>>
+  const peers = new Map<string, ({ frame }: { frame: ToClient }) => boolean>()
+  let statusQueued = false, statusKey = ''
+
+  const changed = () => {
+    if (statusQueued) {
+      return
+    }
+
+    statusQueued = true
+    setImmediate(() => {
+      statusQueued = false
+      const status = sessions.maintenance()
+      const key = JSON.stringify(status)
+
+      if (key === statusKey) {
+        return
+      }
+
+      statusKey = key
+
+      for (const send of peers.values()) {
+        send({
+          frame: {
+            type: 'host-status',
+            status,
+          },
+        })
+      }
+    })
+  }
 
   try {
     sessions = await hostSessions({
@@ -47,6 +77,7 @@ export async function serveAgentHost({
       limits,
       controlTimeout,
       boot: claim.boot,
+      changed,
     })
   } catch (error) {
     claim.release()
@@ -126,6 +157,10 @@ export async function serveAgentHost({
         }
 
         authenticated = true
+        peers.set(
+          peer.id,
+          send,
+        )
         clearTimeout(timeout)
         send({ frame: sessions.ready() })
 
@@ -260,6 +295,7 @@ export async function serveAgentHost({
           unsubscribe()
         }
 
+        peers.delete(peer.id)
         sessions.detach({ peer })
         sockets.delete(socket)
       },

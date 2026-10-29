@@ -248,6 +248,8 @@ export function output({
       await lastWrite
       await delivery
     },
+    pendingCount: () => facts.length,
+
     through: () => sequence,
     retention: () => retention,
     canAdmit: () => retention === 'healthy' && durableBytes < limits.criticalBytes,

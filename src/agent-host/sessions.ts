@@ -5,7 +5,7 @@ import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { privateDir } from '#store/storage.ts'
 import { eventClass, nativeIdle } from '#workers/native-session.ts'
-import type { HostedEvent, HostedInput, HostedSession, PermissionDecision, Provider } from '#workers/provider.ts'
+import type { HostedEvent, HostedInput, HostedSession, PermissionDecision, Provider, NativeWork } from '#workers/provider.ts'
 import { output, replaceFile, type Output, type OutputLimits } from './output.ts'
 import { requestLedger, fingerprint } from './ledger.ts'
 import { serial } from './serial.ts'
@@ -37,6 +37,7 @@ type Session = {
   context: string
   uncertain: Set<string>
   abort: AbortController
+  work?: NativeWork
   operations: number
   incoming: HostedInput[]
   incomingBytes: number
@@ -63,6 +64,7 @@ export async function hostSessions({
   limits,
   controlTimeout = CONTROL_TIMEOUT_MS,
   boot,
+  changed = () => {},
 }: {
   directory: string
   providers: Record<ProviderId, Provider>
@@ -70,6 +72,7 @@ export async function hostSessions({
   limits?: OutputLimits
   controlTimeout?: number
   boot?: string
+  changed?(): void
 }) {
   const instance = randomUUID()
   const sessions = new Map<string, Session>()
@@ -205,7 +208,7 @@ export async function hostSessions({
     if (predecessor && [
       'closed',
       'failed',
-    ].includes(summary.phase) && entry.output.pending().length === 0) {
+    ].includes(summary.phase) && entry.output.pendingCount() === 0) {
       rmSync(
         join(
           root,
@@ -333,10 +336,18 @@ export async function hostSessions({
       return
     }
 
+    if (typeof event === 'object' && event.type === 'work') {
+      entry.work = structuredClone(event.work)
+    }
+
     const idleClose = stopped && typeof event === 'object' && event.type === 'ended' && event.reason === 'closed'
 
     if (!idleClose) {
       entry.output.publish({ event })
+    }
+
+    if (typeof event === 'object' && (event.type === 'work' || eventClass({ event }) === 'critical')) {
+      changed()
     }
 
     if (typeof event === 'object' && event.type === 'ended') {
@@ -779,18 +790,18 @@ export async function hostSessions({
         reasons.push('Native permission answers remain pending')
       }
 
-      const work = entry.native?.snapshot().work
+      const work = entry.work
       const unresolvedTerminal = terminal && work && (work.unsettledInputs.length > 0 || work.runningTools.length > 0 || work.pendingControls.length > 0 || work.background.knowledge !== 'known' || work.background.tasks.length > 0)
 
       if (unresolvedTerminal) {
         reasons.push('An ended native session still has unresolved inputs, controls or background ownership')
       }
 
-      if (!terminal && (!entry.native || !nativeIdle({ work: entry.native.snapshot().work }))) {
+      if (!terminal && (!entry.native || !work || !nativeIdle({ work }))) {
         reasons.push('Native turns, inputs, tools, queue or background work are active or unknown')
       }
 
-      if (entry.output.pending().length) {
+      if (entry.output.pendingCount()) {
         reasons.push('Critical facts await application acknowledgement')
       }
 
@@ -867,6 +878,7 @@ export async function hostSessions({
   }
 
   return {
+    maintenance,
     ready(): Extract<ToClient, { type: 'ready' }> {
       return {
         type: 'ready',
@@ -898,7 +910,13 @@ export async function hostSessions({
       }
 
       if (operation.kind === 'catalog') {
-        requireReady()
+        if (stopped) {
+          fail({
+            code: 'HOST_STOPPED',
+            message: 'The native host has completed its clean shutdown',
+          })
+        }
+
         queries++
 
         try {
@@ -918,11 +936,18 @@ export async function hostSessions({
           }
         } finally {
           queries--
+          changed()
         }
       }
 
       if (operation.kind === 'commands') {
-        requireReady()
+        if (stopped) {
+          fail({
+            code: 'HOST_STOPPED',
+            message: 'The native host has completed its clean shutdown',
+          })
+        }
+
         queries++
 
         try {
@@ -934,6 +959,7 @@ export async function hostSessions({
           }
         } finally {
           queries--
+          changed()
         }
       }
 
@@ -1104,6 +1130,7 @@ export async function hostSessions({
                   entry,
                   action: async () => {
                     entry.native = await providers[options.provider].open(nativeOptions)
+                    entry.work = entry.native.snapshot().work
                     entry.output.summary.nativeId = entry.native.id
                     entry.output.summary.path = entry.native.path
 
@@ -1137,6 +1164,8 @@ export async function hostSessions({
         if (target) {
           target.operations--
         }
+
+        changed()
       }
     },
     result({ id }: { id: string }) {
@@ -1170,9 +1199,11 @@ export async function hostSessions({
           }
 
           return { persisted }
+
         },
       })
       await accepted.persisted
+      changed()
 
       if (entry.output.summary.recovery && entry.output.pending().length === 0) {
         await entry.output.compact()
@@ -1211,6 +1242,8 @@ export async function hostSessions({
 
       const unsubscribe = entry.output.subscribe({
         listener: ({ frame }) => {
+          changed()
+
           if (!ready) {
             return
           }
