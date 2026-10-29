@@ -965,5 +965,17 @@ test(
       }),
       `${commentSection}\n\n## Message\nThanks`,
     )
+    assert.equal(
+      commentReply({
+        draft: '',
+        comments: [
+          {
+            ...comments[0]!,
+            text: '> Not this\n---\n## Message\n  # Nor this',
+          },
+        ],
+      }),
+      '## Comments on your reply from 15:42\n\n> Ship it\n>\n> after review\n\n\\> Not this\n\\---\n\\## Message\n  \\# Nor this',
+    )
   },
 )

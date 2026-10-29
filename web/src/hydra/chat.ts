@@ -271,12 +271,20 @@ const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`.trimEnd())
   .join('\n')
 
+// A comment line that would read as a quote, heading or separator is escaped, so it can't pass for the format.
+const commentLines = ({ text }: { text: string }) => text.split('\n')
+  .map(line => line.replace(
+    /^(\s*)(>|#|---)/,
+    '$1\\$2',
+  ))
+  .join('\n')
+
 // A short quote's paragraph follows it as a nested quote, so the quote stays every `>` line before the comment.
 const quotedComment = ({ comment }: { comment: ChatComment }) => {
   const paragraph = commentContext({ comment })
   const quote = markdownQuote({ text: comment.quote })
   const words = [
-    comment.text.trim(),
+    commentLines({ text: comment.text.trim() }),
     ...comment.images ?? [],
   ].filter(Boolean).join('\n')
 
