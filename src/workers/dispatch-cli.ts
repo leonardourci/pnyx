@@ -499,12 +499,12 @@ pnyx-axi rule propose set|remove|accounts <same arguments>
 pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name>
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
-Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders. rule show prints it with its revision; rule schema lists every field and allowed value.
-rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, and --propose asks the owner to confirm. Hydra proposes outside bypass.
-set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. rule init copies the templates, taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set, and never overwrites a file.`,
+Heads dispatch is one document every Hydra shares: rules, the required default list, accounts, the main account and account orders. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
+rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra proposes outside bypass.
+set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder>
 pnyx-axi account propose set|remove <same arguments>
 pnyx-axi account remove <name>
-Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first.`,
+Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first. To remove the last account, rule apply one patch that also sets main to claude:default or codex:default.`,
 }
