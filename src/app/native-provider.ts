@@ -389,7 +389,7 @@ export async function nativeProviders({
           secret: true,
           phase: deliveryPhase({ result }),
         }
-        save()
+        await save()
       }
 
       session.permissionDelivery = ({ permission }) => {
