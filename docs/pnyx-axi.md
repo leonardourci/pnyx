@@ -317,6 +317,8 @@ The session it starts attaches to its task, or becomes Hydra, when its hooks fir
 
 Every agent Pnyx starts carries `PNYX_HOME` and `PNYX_HYDRA`, so its hooks report to the Hydra that started it, even from a separate Pnyx home, once `pnyx-axi setup hooks` has installed this version's hook. `pnyx-axi integrations` shows which of global skills, hooks, Paseo, Firstmate, the configured command and GitHub are ready, with the command that sets each up; the same list is under Settings > Integrations.
 
+Hosted agents receive only images attached to the message being delivered. If an attached file is missing or its bytes change before delivery, the turn reports an image error so you can attach it again.
+
 ### Kinds, the light check and the worker contract
 
 ```sh
