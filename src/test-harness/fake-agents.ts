@@ -52,6 +52,8 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
+  // Received messages whose turn ended: for Claude once Pnyx has read the turn's last message, for Codex once turn/completed is written.
+  answered?: number
   model?: string
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
@@ -158,6 +160,7 @@ export function replayClaude() {
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      answered: 0,
       model: options.model,
       useTool: ({
         tool,
@@ -249,6 +252,8 @@ export function replayClaude() {
           }
         }
 
+        // The loop above resumes past the last yield only when Pnyx asks for more, so Pnyx has read the whole turn.
+        session.answered = session.received.length
         record({
           role: 'assistant',
           text: answer,
@@ -328,6 +333,7 @@ export function replayCodex() {
       cwd,
       env,
       received: [],
+      answered: 0,
       requests: [],
       ask: ({
         method,
@@ -478,6 +484,10 @@ export function replayCodex() {
             }
 
             send({ message: notification })
+
+            if (notification.method === 'turn/completed') {
+              session.answered = session.received.length
+            }
           }
         } catch (error) {
           child.emit(
