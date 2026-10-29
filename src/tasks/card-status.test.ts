@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { cardStatus, currentState, statusLabel, waitingQuestions } from './card-status.ts'
 import { permissionAttention } from '#workers/permission-rules.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { Ask, Card, TaskDeclaration, TaskStatus } from './model.ts'
 import type { Reply, ReplyState } from '#workers/model.ts'
@@ -267,7 +269,7 @@ test(
       word({
         card: {
           activity: 'working',
-          workingSince: later,
+          turnStartedAt: later,
           status: declared({ state: 'paused' }),
         },
       }),
@@ -291,6 +293,24 @@ test(
     assert.equal(
       word({
         card: {
+          status: declared({ state: 'blocked' }),
+          asks: [
+            ask({
+              id: 'ask-hydra',
+              audience: 'hydra',
+              at: later,
+              answered: 'r1',
+              answeredAt: later,
+            }),
+          ],
+        },
+      }),
+      'Finished its turn',
+      'Hydra answering the newer question does not bring the old wait back',
+    )
+    assert.equal(
+      word({
+        card: {
           status: declared({ state: 'needs_you' }),
           asks: [
             ask({
@@ -300,6 +320,104 @@ test(
             }),
           ],
         },
+      }),
+      'Finished its turn',
+    )
+  },
+)
+
+test(
+  'a worker\'s wait stays cleared after the newer turn ends',
+  () => {
+    let seq = 0
+    const event = ({
+      at: when,
+      actor = 'cli',
+      ...rest
+    }: {
+      at: string
+      actor?: string
+    } & Pick<HydraEvent, 'type' | 'data'>) => ({
+      v: 1,
+      seq: ++seq,
+      id: `evt_${seq}`,
+      at: when,
+      actor,
+      cardId: 'c1',
+      ...rest,
+    }) as HydraEvent
+    const turn = ({
+      at: when,
+      activity,
+    }: {
+      at: string
+      activity: 'working' | 'finished'
+    }) => event({
+      at: when,
+      type: 'card.pushed',
+      data: {
+        key: 'claude:test',
+        agent: {
+          ...agent,
+          cwd: '/lab',
+        },
+        activity,
+        source: {
+          adapter: 'hooks',
+          instanceId: 'claude',
+          objectId: 'test',
+          observedAt: when,
+        },
+      },
+    } as Pick<HydraEvent, 'type' | 'data'> & { at: string })
+    const blocked = [
+      turn({
+        at: '2026-10-29T09:55:00Z',
+        activity: 'working',
+      }),
+      event({
+        at: '2026-10-29T10:00:00Z',
+        actor: 'worker:c1',
+        type: 'task.declared',
+        data: {
+          state: 'blocked',
+          note: 'Waiting on the API key.',
+        },
+      } as Pick<HydraEvent, 'type' | 'data'> & {
+        at: string
+        actor: string
+      }),
+      turn({
+        at: '2026-10-29T10:01:00Z',
+        activity: 'finished',
+      }),
+    ]
+    const status = ({ events }: { events: HydraEvent[] }) => statusLabel({
+      status: cardStatus({
+        card: replay({
+          state: emptyHydra(),
+          events,
+        }).cards.c1!,
+      }),
+    })
+
+    assert.equal(
+      status({ events: blocked }),
+      'Blocked',
+    )
+    assert.equal(
+      status({
+        events: [
+          ...blocked,
+          turn({
+            at: '2026-10-29T11:00:00Z',
+            activity: 'working',
+          }),
+          turn({
+            at: '2026-10-29T11:01:00Z',
+            activity: 'finished',
+          }),
+        ],
       }),
       'Finished its turn',
     )

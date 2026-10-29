@@ -779,6 +779,7 @@ function apply({
         delete card.workingSince
       } else if (card.sessionActivity !== 'working' || !card.workingSince) {
         card.workingSince = event.at
+        card.turnStartedAt = event.at
       }
 
       card.sessionActivity = activity

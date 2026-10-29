@@ -98,10 +98,7 @@ export function cardStatus({ card }: { card: Card }): CardStatus {
     }
   }
 
-  const declared = waitingDeclaration({
-    card,
-    activity,
-  })
+  const declared = waitingDeclaration({ card })
 
   if (declared) {
     return declared
@@ -130,15 +127,8 @@ export function cardStatus({ card }: { card: Card }): CardStatus {
   }
 }
 
-// A worker's needs-you, blocked or paused note says more than "finished its turn", until it works again,
-// asks Hydra something newer or the owner answers after it.
-function waitingDeclaration({
-  card,
-  activity,
-}: {
-  card: Card
-  activity: ReturnType<typeof agentActivity>
-}) {
+// A worker's needs-you, blocked or paused note shows until a later turn starts, it asks Hydra again or the owner answers.
+function waitingDeclaration({ card }: { card: Card }) {
   const declared = card.status
   const wait = declared && WAITS[declared.state]
 
@@ -147,11 +137,8 @@ function waitingDeclaration({
     return undefined
   }
 
-  const resumed = activity === 'working' && !!card.workingSince && card.workingSince > declared.at
-  const askedLater = openAsks({
-    card,
-    audience: 'hydra',
-  }).some(ask => (ask.escalated?.at ?? ask.at) > declared.at)
+  const resumed = (card.turnStartedAt ?? '') > declared.at
+  const askedLater = (card.asks ?? []).some(ask => ask.audience === 'hydra' && (ask.escalated?.at ?? ask.at) > declared.at)
   const answered = (card.asks ?? []).some(ask => ask.audience === 'owner' && (ask.answeredAt ?? '') > declared.at)
 
   return resumed || askedLater || answered ? undefined : {

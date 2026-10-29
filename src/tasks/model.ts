@@ -171,6 +171,8 @@ export interface Card {
   sessionActivity?: string
   // When the session's current turn began, while it is working.
   workingSince?: string
+  // When the session's latest working turn began; kept after the turn ends.
+  turnStartedAt?: string
   // The change that ended the session's last working turn.
   turnEndedSeq?: number
   stoppedAt?: string
