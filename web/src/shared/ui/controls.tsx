@@ -304,7 +304,7 @@ export function Select({
                 }}
               >
                 <span className="select-option">
-                  {o.icon && <Icon name={o.icon} size={14} />}
+                  {o.icon && <Icon name={o.icon} size={iconSize} />}
                   {o.label}
                   {onDefault && o.value === defaultValue && (
                     <span
