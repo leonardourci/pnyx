@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { memo, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
@@ -180,7 +180,7 @@ export function ImageViewer({
 }
 
 // The icon holds the slot until the thumbnail has arrived, so a slow download never leaves it blank.
-export function ImageThumb({ path }: { path: string }) {
+export const ImageThumb = memo(function ImageThumb({ path }: { path: string }) {
   const [
     failed,
     setFailed,
@@ -207,7 +207,7 @@ export function ImageThumb({ path }: { path: string }) {
       />
     </>
   )
-}
+})
 
 export function ImageChip({
   path,
