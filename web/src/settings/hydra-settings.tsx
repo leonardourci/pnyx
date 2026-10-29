@@ -13,6 +13,8 @@ const DONE_SLIDER_MAX = 168
 const REVIEW_SLIDER_MAX = 120
 
 type Save = ({ patch }: { patch: Record<string, unknown> }) => Promise<boolean>
+// Reports a slider's value while it moves, so the preview beside it follows.
+type Slide = ({ value }: { value?: number }) => void
 
 export function Help({ text }: { text: string }) {
   return <p className="setting-help"><Icon name="about" size={14} />{text}</p>
@@ -31,14 +33,17 @@ const doneHelp = ({ hours }: { hours: DoneAfterHours }) => {
 export function HideDone({
   hours,
   save,
+  slide,
 }: {
   hours: DoneAfterHours
   save: Save
+  slide: Slide
 }) {
   return (
     <div className="setting-stack">
       <Switch
-        label="Hide them"
+        label="Hide Done cards"
+        caption="Hide them"
         checked={hours !== 'off'}
         onChange={({ value }) => save({ patch: { doneAfterHours: value ? DEFAULT_DONE_HOURS : 'off' } })}
       />
@@ -55,6 +60,7 @@ export function HideDone({
             unit: 'h',
           }}
           onChange={({ value }) => save({ patch: { doneAfterHours: value } })}
+          onSlide={slide}
         />
       )}
       <Help text={doneHelp({ hours })} />
@@ -65,9 +71,11 @@ export function HideDone({
 export function ReviewCadence({
   minutes,
   save,
+  slide,
 }: {
   minutes: number
   save: Save
+  slide: Slide
 }) {
   return (
     <div className="setting-stack">
@@ -83,6 +91,7 @@ export function ReviewCadence({
           unit: 'min',
         }}
         onChange={({ value }) => save({ patch: { reviewMinutes: value } })}
+        onSlide={slide}
       />
       <Help text="0 turns timed reviews off." />
     </div>
@@ -93,14 +102,17 @@ const HELPER_CHOICES = [
   {
     value: 'auto',
     label: 'Auto',
+    icon: 'helper',
   },
   {
     value: 'off',
     label: 'Off',
+    icon: 'close',
   },
   {
     value: 'pick',
     label: 'Choose',
+    icon: 'agent',
   },
 ]
 

@@ -9,9 +9,10 @@ import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { About } from '#web-app/about.tsx'
 import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
+import { keyActionsMatching } from '#web-preferences/key-search.ts'
 import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
-import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
+import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
@@ -23,7 +24,7 @@ import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
-import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
+import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
 const ICONS: Record<string, string> = {
   theme: 'theme',
@@ -45,16 +46,97 @@ const ICONS: Record<string, string> = {
   helper: 'helper',
   hydraAgent: 'agent',
 }
+const UNITS: Record<string, string> = {
+  fontSize: 'px',
+  chatFontSize: 'px',
+  codeFontSize: 'px',
+  defaultHydraWidth: 'px',
+  doneAfterHours: 'h',
+  reviewMinutes: 'min',
+}
+// The rows that draw a live preview beside their control.
+const PREVIEWED = new Set([
+  'theme',
+  'fontSize',
+  'chatFontSize',
+  'codeFontSize',
+  'defaultColumnWidths',
+  'defaultHydraWidth',
+  'resetWidths',
+  'lastMessageOnCards',
+  'focusMode',
+  'toolDetails',
+  'thinkingDetails',
+  'doneAfterHours',
+  'reviewMinutes',
+  'helper',
+  'hydraAgent',
+])
 const WIDTH_SLIDER_MAX = 900
 const WIDTH_MAX = 2400
 const SUGGESTIONS = [
-  'dark',
-  'bigger',
   'width',
-  'focus',
+  'model',
+  'dark',
+  'quota',
+  'shortcut',
+]
+const THEMES = [
+  {
+    value: 'system',
+    label: 'System',
+    icon: 'theme-system',
+  },
+  {
+    value: 'light',
+    label: 'Light',
+    icon: 'theme-light',
+  },
+  {
+    value: 'dark',
+    label: 'Dark',
+    icon: 'theme-dark',
+  },
 ]
 
 type Toggle = 'lastMessageOnCards' | 'focusMode' | 'toolDetails' | 'thinkingDetails'
+
+const CAPTIONS: Record<Toggle, string> = {
+  lastMessageOnCards: 'Show',
+  focusMode: 'On',
+  toolDetails: 'Expanded',
+  thinkingDetails: 'Expanded',
+}
+
+interface Saving {
+  view: ViewPreferences
+  save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
+}
+
+// The settings every Hydra shares beyond its view, and the agent new Hydras start on.
+interface Hydra {
+  settings: Settings
+  rule: AgentConfig
+}
+
+// A slider's value while it moves, keyed by the setting it changes; undefined once it is let go.
+type Slide = ({
+  key,
+  value,
+}: {
+  key: string
+  value?: unknown
+}) => void
+
+const resetTo = ({ id }: { id: string }) => {
+  const initial: unknown = DEFAULT_SETTINGS[id as keyof Settings]
+
+  if (typeof initial === 'number') {
+    return UNITS[id] ? `${initial} ${UNITS[id]}` : String(initial)
+  }
+
+  return typeof initial === 'string' ? initial : undefined
+}
 
 function Preview({
   entry,
@@ -102,25 +184,16 @@ function Preview({
   }
 }
 
-interface Saving {
-  view: ViewPreferences
-  save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
-}
-
-// The settings every Hydra shares beyond its view, and the agent new Hydras start on.
-interface Hydra {
-  settings: Settings
-  rule: AgentConfig
-}
-
 function TextSize({
   id,
   label,
   view,
   save,
+  slide,
 }: Saving & {
   id: 'fontSize' | 'chatFontSize' | 'codeFontSize'
   label: string
+  slide: Slide
 }) {
   return (
     <NumberField
@@ -135,40 +208,115 @@ function TextSize({
         unit: 'px',
       }}
       onChange={({ value }) => save({ patch: { [id]: value } })}
+      onSlide={({ value }) => slide({
+        key: id,
+        value,
+      })}
     />
   )
 }
+
+// The width most columns start at, which the one slider sets for all of them.
+const commonWidth = ({ widths }: { widths: number[] }) => widths.reduce(
+  (
+    best,
+    width,
+  ) => {
+    const used = ({ at }: { at: number }) => widths.filter(other => other === at).length
+
+    return used({ at: width }) > used({ at: best }) ? width : best
+  },
+  widths[0] ?? DEFAULT_COLUMN_WIDTH,
+)
 
 function ColumnWidths({
   state,
   view,
   save,
-}: Saving & { state: HydraState }) {
+  slide,
+}: Saving & {
+  state: HydraState
+  slide: Slide
+}) {
   const columns = columnsFor({ state })
+  const widthOf = ({ id }: { id: string }) => view.defaultColumnWidths[id] ?? DEFAULT_COLUMN_WIDTH
+  const every = ({ width }: { width: number }) => Object.fromEntries(columns.map(column => [
+    column.id,
+    width,
+  ]))
+  const slider = {
+    max: WIDTH_SLIDER_MAX,
+    initial: DEFAULT_COLUMN_WIDTH,
+    unit: 'px',
+  }
 
   return (
     <div className="setting-stack">
-      {columns.map(column => (
-        <div className="setting-labeled" key={column.id}>
-          <span>{column.title}</span>
-          <NumberField
-            label={`${column.title} width`}
-            value={view.defaultColumnWidths[column.id] ?? DEFAULT_COLUMN_WIDTH}
-            min={VIEW_SIZE_LIMITS.columnWidth.min}
-            max={WIDTH_MAX}
-            slider={{
-              max: WIDTH_SLIDER_MAX,
-              initial: DEFAULT_COLUMN_WIDTH,
-              unit: 'px',
-            }}
-            onChange={({ value }) => save({
-              patch: { defaultColumnWidths: { [column.id]: value } },
-            })}
-          />
+      <NumberField
+        label="Default column width"
+        value={commonWidth({ widths: columns.map(column => widthOf({ id: column.id })) })}
+        min={VIEW_SIZE_LIMITS.columnWidth.min}
+        max={WIDTH_MAX}
+        slider={slider}
+        onChange={({ value }) => save({ patch: { defaultColumnWidths: every({ width: value }) } })}
+        onSlide={({ value }) => slide({
+          key: 'defaultColumnWidths',
+          value: value === undefined ? undefined : {
+            ...view.defaultColumnWidths,
+            ...every({ width: value }),
+          },
+        })}
+      />
+      <details className="setting-more">
+        <summary>Per column</summary>
+        <div className="setting-per-column">
+          {columns.map(column => (
+            <div className="setting-labeled" key={column.id}>
+              <span>{column.title}</span>
+              <NumberField
+                label={`${column.title} width`}
+                value={widthOf({ id: column.id })}
+                min={VIEW_SIZE_LIMITS.columnWidth.min}
+                max={WIDTH_MAX}
+                slider={slider}
+                onChange={({ value }) => save({
+                  patch: { defaultColumnWidths: { [column.id]: value } },
+                })}
+                onSlide={({ value }) => slide({
+                  key: 'defaultColumnWidths',
+                  value: value === undefined ? undefined : {
+                    ...view.defaultColumnWidths,
+                    [column.id]: value,
+                  },
+                })}
+              />
+            </div>
+          ))}
         </div>
-      ))}
+      </details>
     </div>
   )
+}
+
+// What the dragged-widths row says about this Hydra's own drags.
+const draggedText = ({ state }: { state: HydraState }) => {
+  const dragged: string[] = []
+
+  if (state.view?.hydraWidth) {
+    dragged.push(`the chat to ${state.view.hydraWidth} px`)
+  }
+
+  for (const column of columnsFor({ state })) {
+    const width = state.view?.columnWidths?.[column.id]
+
+    if (width !== undefined) {
+      dragged.push(`${column.title} to ${width} px`)
+    }
+  }
+
+  return dragged.length
+    ? `In this Hydra you dragged ${dragged.join(' and ')}. Reset returns every pane in every Hydra to the defaults above.`
+    : 'Nothing is dragged in this Hydra; every pane sits at its default.'
 }
 
 function ResetWidths({
@@ -201,9 +349,9 @@ function ResetWidths({
   return (
     <InlineConfirm
       label="Reset dragged widths in every Hydra"
-      trigger="Reset every Hydra"
+      trigger="Reset widths in every Hydra"
       action="Reset widths"
-      message="Every Hydra’s columns and chat go back to the widths above."
+      message="Every Hydra’s columns and chat go back to the defaults above."
       disabled={false}
       confirm={reset}
     />
@@ -215,6 +363,7 @@ function Control({
   state,
   view,
   save,
+  slide,
   command,
   notify,
   upgrade,
@@ -226,6 +375,7 @@ function Control({
 }: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
+  slide: Slide
   command: Command
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
@@ -238,8 +388,8 @@ function Control({
   const toggle = ({ key }: { key: Toggle }) => (
     <div className="setting-stack">
       <Switch
-        quiet
         label={entry.label}
+        caption={CAPTIONS[key]}
         checked={view[key]}
         disabled={hidden}
         onChange={({ value }) => save({ patch: { [key]: value } })}
@@ -247,6 +397,10 @@ function Control({
       {hidden && <Help text="Focus mode is on, so these stay hidden; turn it off to use this." />}
     </div>
   )
+  const slideTo = ({ key }: { key: string }) => ({ value }: { value?: number }) => slide({
+    key,
+    value,
+  })
 
   switch (entry.id) {
     case 'theme':
@@ -254,20 +408,7 @@ function Control({
         <Segmented
           label="Theme"
           value={view.theme}
-          options={[
-            {
-              value: 'system',
-              label: 'System',
-            },
-            {
-              value: 'light',
-              label: 'Light',
-            },
-            {
-              value: 'dark',
-              label: 'Dark',
-            },
-          ]}
+          options={THEMES}
           onChange={({ value }) => save({ patch: { theme: value } })}
         />
       )
@@ -280,10 +421,18 @@ function Control({
           label={entry.label}
           view={view}
           save={save}
+          slide={slide}
         />
       )
     case 'defaultColumnWidths':
-      return <ColumnWidths state={state} view={view} save={save} />
+      return (
+        <ColumnWidths
+          state={state}
+          view={view}
+          save={save}
+          slide={slide}
+        />
+      )
     case 'defaultHydraWidth':
       return (
         <NumberField
@@ -297,6 +446,7 @@ function Control({
             unit: 'px',
           }}
           onChange={({ value }) => save({ patch: { defaultHydraWidth: value } })}
+          onSlide={slideTo({ key: 'defaultHydraWidth' })}
         />
       )
     case 'resetWidths':
@@ -307,9 +457,9 @@ function Control({
     case 'thinkingDetails':
       return toggle({ key: entry.id })
     case 'doneAfterHours':
-      return <HideDone hours={settings.doneAfterHours} save={save} />
+      return <HideDone hours={settings.doneAfterHours} save={save} slide={slideTo({ key: 'doneAfterHours' })} />
     case 'reviewMinutes':
-      return <ReviewCadence minutes={settings.reviewMinutes} save={save} />
+      return <ReviewCadence minutes={settings.reviewMinutes} save={save} slide={slideTo({ key: 'reviewMinutes' })} />
     case 'helper':
       return (
         <RoutineHelper
@@ -333,7 +483,16 @@ function Control({
     case 'headsDispatch':
       return <DispatchSettings state={state} command={command} notify={notify} />
     case 'keyboard':
-      return <KeyRows prefs={view.keyboard} save={save} query="" />
+      return (
+        <Switch
+          label="Character shortcuts"
+          caption="On"
+          checked={view.keyboard.characterShortcuts}
+          onChange={({ value: characterShortcuts }) => save({
+            patch: { keyboard: { characterShortcuts } },
+          })}
+        />
+      )
     case 'version':
       return <About upgrade={upgrade} startUpgrade={startUpgrade} />
     default:
@@ -341,19 +500,25 @@ function Control({
   }
 }
 
-function Empty({ search }: { search({ query }: { query: string }): void }) {
+function Empty({
+  query,
+  search,
+  clear,
+}: {
+  query: string
+  search({ query }: { query: string }): void
+  clear(): void
+}) {
   return (
     <div className="settings-empty" role="status">
-      <p>No setting matches.</p>
-      <p className="muted">Try {SUGGESTIONS.map((
-        word,
-        index,
-      ) => (
-        <span key={word}>
-          {index ? ', ' : ''}<Button className="settings-suggestion" onClick={() => search({ query: word })}>{word}</Button>
-        </span>
-      ))}.
-      </p>
+      <h3>No setting matches “{query || 'Changed'}”</h3>
+      <p>Search looks at names, descriptions, values and related words.</p>
+      <div className="settings-chips">
+        {SUGGESTIONS.map(word => (
+          <Button key={word} className="settings-chip" onClick={() => search({ query: word })}>{word}</Button>
+        ))}
+      </div>
+      <Button variant="surface" onClick={clear}>Clear search</Button>
     </div>
   )
 }
@@ -381,58 +546,77 @@ export function SettingsPage({
     setQuery,
   ] = useState('')
   const [
-    section,
-    setSection,
-  ] = useState<SettingsSection>()
-  const [
     onlyChanged,
     setOnlyChanged,
   ] = useState(false)
+  const [
+    live,
+    setLive,
+  ] = useState<Record<string, unknown>>({})
   const settings = useSharedSettings() ?? DEFAULT_SETTINGS
   const {
     effective,
     saveHydra,
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
+  // Previews draw what a slider shows while it moves, before the value saves.
+  const shownView = {
+    ...view,
+    ...live,
+  } as ViewPreferences
+  const shownSettings = {
+    ...settings,
+    ...live,
+  } as Settings
   const changed = changedIds({
     view,
     settings,
   })
+  const searching = query.trim() !== ''
   const found = searchSettings({ query })
-    .filter(match => !onlyChanged || changed.has(match.entry.id))
-  const shown = found.filter(match => !section || match.entry.section === section)
+  const keyboardFound = found.some(match => match.entry.id === 'keyboard')
+  const keys = searching && !keyboardFound ? keyActionsMatching({ query }) : []
+  const keyboardEntry = SETTINGS_CATALOG.find(entry => entry.id === 'keyboard')!
+  // A search that names a shortcut shows the Keyboard section with only its matching rows.
+  const matches = keys.length ? [
+    ...found,
+    {
+      entry: keyboardEntry,
+      terms: [],
+    },
+  ] : found
+  const shown = matches.filter(match => !onlyChanged || changed.has(match.entry.id))
   const counts = Object.fromEntries(SETTINGS_SECTIONS.map(item => [
     item.id,
-    found.filter(match => match.entry.section === item.id).length,
+    shown.filter(match => match.entry.section === item.id).length + (item.id === 'keyboard' ? keys.length : 0),
   ]))
-  const badges: SearchBadge[] = []
-
-  if (section) {
-    badges.push({
-      id: 'section',
-      label: SETTINGS_SECTIONS.find(item => item.id === section)!.label,
-      kind: 'section',
-    })
-  }
-
-  if (onlyChanged) {
-    badges.push({
-      id: 'changed',
-      label: 'Changed',
-      kind: 'changed',
-    })
-  }
-
-  const filtering = query !== '' || badges.length > 0
-  const count = filtering ? `${shown.length} of ${SETTINGS_CATALOG.length}` : undefined
+  const filtering = searching || onlyChanged
+  const total = shown.length + keys.length
+  const count = filtering ? `${total} match${total === 1 ? '' : 'es'}` : undefined
   const sections = SETTINGS_SECTIONS
     .filter(item => shown.some(match => match.entry.section === item.id))
 
+  const slide: Slide = ({
+    key,
+    value,
+  }) => setLive(current => {
+    const rest = Object.fromEntries(Object.entries(current).filter(([name]) => name !== key))
+
+    return value === undefined ? rest : {
+      ...rest,
+      [key]: value,
+    }
+  })
+
   const clearFilters = () => {
     setQuery('')
-    setSection(undefined)
     setOnlyChanged(false)
   }
+
+  const goTo = ({ id }: { id: string }) => document.getElementById(`settings-${id}`)?.scrollIntoView({
+    behavior: 'smooth',
+    block: 'start',
+  })
 
   // While Settings is open, the search action focuses its own search instead of the Oracle's.
   useKeyAction({
@@ -447,7 +631,7 @@ export function SettingsPage({
   if (!connected) {
     return (
       <section className="settings-page" aria-label="Settings">
-        <h1>Settings</h1>
+        <header className="settings-head"><h1>Settings</h1></header>
         <p role="status" className="muted">Waiting for connection…</p>
       </section>
     )
@@ -457,14 +641,16 @@ export function SettingsPage({
     <section className="settings-page" aria-label="Settings">
       <header className="settings-head">
         <h1 data-settings-heading tabIndex={-1}>Settings</h1>
+        <p>Apply to every Hydra · changes save as you make them</p>
+      </header>
+      <div className="settings-search">
         <SearchBar
           label="Search settings"
           query={query}
           setQuery={({ query }) => setQuery(query)}
-          badges={badges}
-          removeBadge={({ id }) => id === 'section' ? setSection(undefined) : setOnlyChanged(false)}
           count={count}
-          placeholder="Search settings, values or what they do"
+          hint={query ? undefined : '/'}
+          placeholder="Search settings"
           inputRef={search}
           onKeyDown={({ event }) => {
             if (event.key === 'Escape' && filtering) {
@@ -474,74 +660,109 @@ export function SettingsPage({
           }}
         />
         <nav className="settings-chips" aria-label="Settings sections">
+          <Button
+            className="settings-chip"
+            data-filter
+            aria-pressed={onlyChanged}
+            onClick={() => setOnlyChanged(current => !current)}
+          >
+            <Icon name="edit" size={14} />Changed{changed.size > 0 && <span className="settings-chip-count">{changed.size}</span>}
+          </Button>
           {SETTINGS_SECTIONS.map(item => (
             <Button
               key={item.id}
-              aria-pressed={section === item.id}
-              disabled={!counts[item.id]}
-              onClick={() => setSection(current => current === item.id ? undefined : item.id)}
+              className="settings-chip"
+              data-zero={(filtering && !counts[item.id]) || undefined}
+              onClick={() => goTo({ id: item.id })}
             >
-              {item.label}<span className="settings-chip-count">{counts[item.id]}</span>
+              <Icon name={item.icon} size={14} />{item.label}
+              {filtering && counts[item.id] ? <span className="settings-chip-count">{counts[item.id]}</span> : null}
             </Button>
           ))}
-          <Button aria-pressed={onlyChanged} onClick={() => setOnlyChanged(current => !current)}>
-            Changed<span className="settings-chip-count">{changed.size}</span>
-          </Button>
         </nav>
-      </header>
+      </div>
       {sections.map(item => (
-        <section key={item.id} className="settings-section" aria-labelledby={`settings-${item.id}`}>
-          <div className="settings-section-head">
-            <h2 id={`settings-${item.id}`}><Icon name={item.icon} size={18} />{item.label}</h2>
-          </div>
-          {shown.filter(match => match.entry.section === item.id).map(match => (
-            <SettingRow
-              key={match.entry.id}
-              icon={ICONS[match.entry.id] ?? 'settings'}
-              label={match.entry.label}
-              description={match.entry.description}
-              terms={match.terms}
-              changed={changed.has(match.entry.id)}
-              reset={() => save({
-                patch: resetPatch({
-                  id: match.entry.id,
-                  view,
-                }),
-              })}
-              preview={(
-                <Preview
+        <section
+          key={item.id}
+          id={`settings-${item.id}`}
+          className="settings-section"
+          aria-labelledby={`settings-${item.id}-title`}
+        >
+          <h2 id={`settings-${item.id}-title`}>
+            <span className="settings-section-icon"><Icon name={item.icon} size={16} /></span>{item.label}
+          </h2>
+          {'note' in item && <p className="settings-section-note">{item.note}</p>}
+          <div className="settings-rows">
+            {shown.filter(match => match.entry.section === item.id).map(match => {
+              const control = (
+                <Control
                   entry={match.entry}
                   state={state}
                   view={view}
                   save={save}
+                  slide={slide}
+                  command={command}
+                  notify={notify}
+                  upgrade={upgrade}
+                  startUpgrade={startUpgrade}
                   settings={settings}
                   rule={rule}
+                  connected={connected}
+                  saveHydra={saveHydra}
                 />
-              )}
-            >
-              <Control
-                entry={match.entry}
-                state={state}
-                view={view}
-                save={save}
-                command={command}
-                notify={notify}
-                upgrade={upgrade}
-                startUpgrade={startUpgrade}
-                settings={settings}
-                rule={rule}
-                connected={connected}
-                saveHydra={saveHydra}
-              />
-            </SettingRow>
-          ))}
+              )
+
+              // Heads dispatch is a whole editor, so it fills the box instead of sitting in a row.
+              if (match.entry.id === 'headsDispatch') {
+                return <div key={match.entry.id} className="settings-wide">{control}</div>
+              }
+
+              return (
+                <SettingRow
+                  key={match.entry.id}
+                  icon={ICONS[match.entry.id] ?? 'settings'}
+                  label={match.entry.label}
+                  description={match.entry.id === 'resetWidths' ? draggedText({ state }) : match.entry.description}
+                  terms={match.terms}
+                  changed={changed.has(match.entry.id)}
+                  reset={() => save({
+                    patch: resetPatch({
+                      id: match.entry.id,
+                      view,
+                    }),
+                  })}
+                  resetTo={resetTo({ id: match.entry.id })}
+                  preview={PREVIEWED.has(match.entry.id) && (
+                    <Preview
+                      entry={match.entry}
+                      state={state}
+                      view={shownView}
+                      save={save}
+                      settings={shownSettings}
+                      rule={rule}
+                    />
+                  )}
+                >
+                  {control}
+                </SettingRow>
+              )
+            })}
+            {item.id === 'keyboard' && (
+              <KeyRows prefs={view.keyboard} save={save} query={keyboardFound ? '' : query} />
+            )}
+          </div>
         </section>
       ))}
-      {!shown.length && (
+      {!sections.length && (
         <Empty
+          query={query}
           search={({ query }) => {
             clearFilters()
             setQuery(query)
+          }}
+          clear={() => {
+            clearFilters()
+            search.current?.focus()
           }}
         />
       )}

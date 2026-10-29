@@ -8,7 +8,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 
 // The board preview draws a 1440 px screen this many times smaller.
-const BOARD_SCALE = 0.3
+const BOARD_SCALE = 0.175
 const SCREEN = 1440
 // The gaps and padding a real board spends beside the chat and between columns.
 const CHAT_GAP = 20
@@ -357,7 +357,13 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
   )
 }
 
-const agentName = ({ agent }: { agent: Partial<AgentConfig> }) => `${agent.harness === 'codex' ? 'Codex' : 'Claude Code'}${agent.model ? ` · ${agent.model}` : ''}`
+const harnessName = ({ agent }: { agent: Partial<AgentConfig> }) =>
+  agent.harness === 'codex' ? 'Codex' : 'Claude Code'
+const agentName = ({ agent }: { agent: Partial<AgentConfig> }) =>
+  `${harnessName({ agent })}${agent.model ? ` · ${agent.model}` : ''}`
+// The pills name only the model, since their icon already shows the harness.
+const modelName = ({ agent }: { agent: Partial<AgentConfig> }) =>
+  agent.model ?? harnessName({ agent })
 
 function Pill({
   icon,
@@ -378,12 +384,12 @@ export function HelperPreview({
   helper: HelperSetting
   hydra: Partial<AgentConfig>
 }) {
-  const main = <Pill icon={hydra.harness === 'codex' ? 'codex' : 'claude-code'} label={`Hydra · ${agentName({ agent: hydra })}`} />
+  const main = <Pill icon={hydra.harness === 'codex' ? 'codex' : 'claude-code'} label={`Hydra · ${modelName({ agent: hydra })}`} />
   const routine = helper === 'off' ? main : (
     <Pill
       helper
       icon="helper"
-      label={`Helper · ${helper === 'auto' ? HELPER_MODELS[hydra.harness ?? 'claude'] : agentName({ agent: helper })}`}
+      label={`Helper · ${helper === 'auto' ? HELPER_MODELS[hydra.harness ?? 'claude'] : modelName({ agent: helper })}`}
     />
   )
   const rows: [string, ReactNode][] = [
