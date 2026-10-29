@@ -158,6 +158,8 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
         outcome: structuredClone(outcome),
       },
     })
+    texts.clear()
+    structured = undefined
     work.runningTurns = []
     work.queue = { knowledge: 'unknown' }
 

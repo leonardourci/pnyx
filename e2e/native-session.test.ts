@@ -1048,3 +1048,119 @@ test(
     await reader.return!()
   },
 )
+
+test(
+  'a result-only Claude turn without input echoes cannot inherit prior assistant or structured output',
+  async t => {
+    const native = claudeNative()
+    const session = await claudeProvider({ query: native.query }).open({
+      cwd: tmpdir(),
+      settings: {},
+      env: {},
+      signal: new AbortController().signal,
+    })
+    const input = inbox()
+    const observed = observe({
+      session,
+      input,
+    })
+    t.after(async () => {
+      input.end(); session.close(); await observed.done
+    })
+    input.push({
+      id: 'first',
+      text: 'First',
+    })
+    await until({
+      what: 'first input',
+      check: () => native.incoming.length === 1,
+    })
+    const first = terminal({
+      input: native.incoming[0]!.uuid,
+      text: 'First result',
+    })
+    assert.ok(first.type === 'result' && first.subtype === 'success')
+    const assistant = claudeRecording.turn.find(message => message.type === 'assistant')
+    assert.ok(assistant?.type === 'assistant')
+    native.send({
+      message: {
+        ...assistant,
+        uuid: randomUUID(),
+        user_message_uuid: native.incoming[0]!.uuid,
+        message: {
+          ...assistant.message,
+          id: 'first-assistant',
+          content: [
+            {
+              type: 'text',
+              text: 'First turn text',
+              citations: [],
+            },
+          ],
+        },
+      },
+    })
+    native.send({
+      message: {
+        ...first,
+        structured_output: { first: true },
+      },
+    })
+    await until({
+      what: 'first outcome',
+      check: () => observed.outcomes().length === 1,
+    })
+    const saved = structuredClone(observed.outcomes()[0]!)
+    assert.deepEqual(
+      saved.structured,
+      { first: true },
+    )
+    assert.equal(
+      saved.assistant[0]?.text,
+      'First turn text',
+    )
+    input.push({
+      id: 'second',
+      text: '/cost',
+    })
+    await until({
+      what: 'second input',
+      check: () => native.incoming.length === 2,
+    })
+    const second = terminal({ text: 'Second result' })
+    assert.ok(second.type === 'result' && second.subtype === 'success')
+    delete second.user_message_uuid
+    delete second.user_message_uuids
+    delete second.structured_output
+    native.send({ message: second })
+    await until({
+      what: 'second outcome',
+      check: () => observed.outcomes().length === 2,
+    })
+    const outcome = observed.outcomes()[1]!
+    assert.notEqual(
+      outcome.turn,
+      saved.turn,
+    )
+    assert.equal(
+      outcome.result,
+      'Second result',
+    )
+    assert.deepEqual(
+      outcome.assistant,
+      [],
+    )
+    assert.equal(
+      outcome.structured,
+      undefined,
+    )
+    assert.deepEqual(
+      session.snapshot().outcome,
+      outcome,
+    )
+    assert.deepEqual(
+      observed.outcomes()[0],
+      saved,
+    )
+  },
+)
