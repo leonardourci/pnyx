@@ -187,7 +187,7 @@ export interface HostedSession {
     at: string
   } | undefined
   applied?(): Promise<void>
-  settle?(): Promise<void>
+  settle?({ through }?: { through?: string }): Promise<void>
   detach?(): void
   id: string
   path?: string
@@ -280,6 +280,8 @@ export interface Provider {
     reattachOnly,
   }: {
     cwd: string
+    // Reconcile retained facts without admitting a replacement native session.
+    reattach?: true
     instructions?: string
     outputSchema?: Record<string, unknown>
     // Live state the session gets when it starts or resumes and again after each compaction.

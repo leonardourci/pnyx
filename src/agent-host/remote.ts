@@ -76,6 +76,7 @@ export async function remoteSession({
   let contextWrite = Promise.resolve()
   let baseline: Snapshot | undefined
   const started = deferred<void>(), replay = deferred<void>()
+  let viewThrough = 0
   let boundary = 0, through = 0, detached = false, failure: Error | undefined
   let wake = deferred<void>()
   const queue: {
@@ -181,6 +182,7 @@ export async function remoteSession({
         admitted.add(id)
       }
 
+      viewThrough = frame.viewThrough
       boundary = Math.max(
         0,
         ...frame.pendingFacts.map(fact => fact.seq),
@@ -431,11 +433,41 @@ export async function remoteSession({
     replayed: () => replay.promise,
     refreshContext,
     applied,
-    async settle() {
+    async settle({ through: completion } = {}) {
+      let completed = true
+
+      if (completion) {
+        const sequence = Number(completion.slice(summary.ref.epoch.length + 1))
+
+        if (!completion.startsWith(`${summary.ref.epoch}:`) || !Number.isSafeInteger(sequence)
+          || sequence <= 0 || sequence > viewThrough || baseline?.retention !== 'healthy') {
+          fail({
+            code: 'RECOVERY_REQUIRED',
+            message: 'The retained completion fact cannot be reconciled in this native epoch',
+          })
+        }
+
+        completed = !queue.some(item => item.fact?.seq === sequence)
+      }
+
       await applied()
+
+      if ((summary.phase === 'closed' || summary.phase === 'failed') && known.size === 0) {
+        return
+      }
+
       let requested = false
 
       for await (const event of events()) {
+        if (!completed) {
+          if (`${current?.ref.epoch}:${current?.seq}` === completion) {
+            completed = true
+            await applied()
+          }
+
+          continue
+        }
+
         if (typeof event === 'object' && [
           'turn-ended',
           'structured',
