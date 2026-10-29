@@ -22,6 +22,7 @@ export const retryable = ({
     'agent',
     'hydra-agent',
   ].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
+  || (name === 'settings' && args[0] === 'set' && args.includes('--event-id'))
 
 export function commandTimeout({
   name,
