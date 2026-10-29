@@ -2,7 +2,7 @@ import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { SHOWN_IMAGE, shownImageNames, shownImagePath } from '#hydra/images.ts'
+import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
@@ -112,7 +112,10 @@ const withImages = ({
       <Sourced key={`${match.index}:image`} markdown={source}>
         <ImageChip
           path={path}
-          label={images?.get(path) ?? 'Image'}
+          label={shownImageLabel({
+            match,
+            names: images,
+          })}
         />
       </Sourced>,
     )

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { attachedImages, imageNames, shownImageNames } from './images.ts'
+import { SHOWN_IMAGE, attachedImages, imageNames, shownImageLabel, shownImageNames } from './images.ts'
 
 const stored = '/home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png'
 
@@ -71,6 +71,24 @@ test(
           '/tmp/b.png',
           'b.png',
         ],
+      ],
+    )
+  },
+)
+
+test(
+  'a bare path keeps its file name even where the same path is also a numbered token',
+  () => {
+    const text = 'Compare /home/.pnyx/hydras/dev/copies/task/shot.png then [image: /home/.pnyx/hydras/dev/copies/task/shot.png]'
+    const names = shownImageNames({ text })
+    assert.deepEqual(
+      [...text.matchAll(SHOWN_IMAGE)].map(match => shownImageLabel({
+        match,
+        names,
+      })),
+      [
+        'shot.png',
+        'Image 1',
       ],
     )
   },

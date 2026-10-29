@@ -69,6 +69,22 @@ export function imageNames({ text }: { text: string }): Map<string, string> {
   return names
 }
 
+// A bare occurrence is named by its file even where the same path also appears as a numbered token.
+export const shownImageLabel = ({
+  match,
+  names,
+}: {
+  match: RegExpMatchArray
+  names?: Map<string, string>
+}) => {
+  const {
+    path,
+    bare,
+  } = shownImagePath({ match })
+
+  return bare ? path.slice(path.lastIndexOf('/') + 1) : names?.get(path) ?? 'Image'
+}
+
 // Tokens keep the composer's Image N numbers; a bare path is named by its file, like the path it shows.
 export function shownImageNames({ text }: { text: string }): Map<string, string> {
   const shown = text.replace(
