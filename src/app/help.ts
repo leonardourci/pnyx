@@ -91,7 +91,7 @@ pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
 Standing worker instructions are included verbatim in every new worker header.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
+Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor and inscribe-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
