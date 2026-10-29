@@ -188,6 +188,51 @@ test(
   },
 )
 
+for (const context of [
+  undefined,
+  'Referenced tasks (context only):\n\nTask t1: Fix login',
+]) {
+  test(
+    `an owner reply sent from a task card keeps its task once Hydra's copy arrives ${context ? 'with' : 'without'} context`,
+    () => {
+      const entries = hydraMessages({
+        messages: [
+          {
+            ...message({
+              id: 'reply',
+              text: 'go ahead',
+            }),
+            task: 't1',
+            context,
+          },
+        ],
+        transcript: [
+          {
+            id: 'native',
+            kind: 'message',
+            role: 'user',
+            text: context ? `go ahead\n\n${context}` : 'go ahead',
+            at: '2026-10-20T10:00:01Z',
+          },
+        ],
+      })
+
+      assert.deepEqual(
+        entries.map(entry => [
+          entry.text,
+          entry.task,
+        ]),
+        [
+          [
+            'go ahead',
+            't1',
+          ],
+        ],
+      )
+    },
+  )
+}
+
 for (const recorded of [
   false,
   true,

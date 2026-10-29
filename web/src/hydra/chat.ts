@@ -79,11 +79,12 @@ export function hydraMessages({
             hidden: true,
           })
         }
-      } else if (normalized(entry!) !== normalized({ text: shown })) {
+      } else if (message.task || normalized(entry!) !== normalized({ text: shown })) {
         replaced.add(entry!)
         recorded.push({
           ...entry!,
           text: shown,
+          task: message.task,
         })
       }
     } else if (!report) {
