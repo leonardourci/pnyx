@@ -812,7 +812,10 @@ type NativeBundle = {
 }
 
 type ApplicationServiceOptions = Parameters<typeof setupApplicationService>[0]
-type NativeServiceOptions = ApplicationServiceOptions & { nativeBundle?(): NativeBundle }
+export type NativeServiceOptions = ApplicationServiceOptions & {
+  nativeBundle?(): NativeBundle
+  replace?: boolean
+}
 
 export function setupService({
   nativeBundle,
@@ -838,7 +841,7 @@ export function setupService({
   }
 }
 
-function setupNativeService({
+export function setupNativeService({
   platform = process.platform,
   userHome = homedir(),
   environment = process.env,
@@ -851,6 +854,7 @@ function setupNativeService({
     { encoding: 'utf8' },
   ),
   nativeBundle,
+  replace = false,
 }: NativeServiceOptions): NativeService {
   if (platform !== 'darwin' && platform !== 'linux') {
     throw new HydraError({
@@ -859,24 +863,16 @@ function setupNativeService({
     })
   }
 
-  const application = serviceFile({
+  const {
+    label,
+    path,
+  } = nativeServiceFile({
     platform,
     userHome,
-    configHome: environment.XDG_CONFIG_HOME,
+    environment,
   })
-  const label = application.label.replace(
-    '.server.',
-    '.native.',
-  )
-  const path = join(
-    dirname(application.path),
-    basename(application.path).replace(
-      '.server.',
-      '.native.',
-    ),
-  )
 
-  if (existsSync(path)) {
+  if (existsSync(path) && !replace) {
     return {
       path,
       label,
@@ -956,7 +952,7 @@ ${Object.entries(variables).map(([
 ]) => `Environment=${systemdQuote({ text: `${key}=${value}` })}`)
   .join('\n')}
 WorkingDirectory=${systemdLiteral({ text: home })}
-Restart=always
+Restart=on-failure
 RestartSec=${SERVICE_RESTART_SECONDS}
 StandardOutput=append:${systemdLiteral({ text: log })}
 StandardError=append:${systemdLiteral({ text: log })}
@@ -975,7 +971,7 @@ WantedBy=default.target
 ]) => `<key>${key}</key><string>${xml({ text: value })}</string>`)
   .join('')}</dict>
 <key>WorkingDirectory</key><string>${xml({ text: home })}</string>
-<key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
 <key>ThrottleInterval</key><integer>${SERVICE_RESTART_SECONDS}</integer>
 <key>StandardOutPath</key><string>${xml({ text: log })}</string>
 <key>StandardErrorPath</key><string>${xml({ text: log })}</string>
@@ -1043,5 +1039,31 @@ WantedBy=default.target
     path,
     label,
     state: 'installed',
+  }
+}
+
+export function nativeServiceFile({
+  platform = process.platform,
+  userHome = homedir(),
+  environment = process.env,
+}: Pick<NativeServiceOptions, 'platform' | 'userHome' | 'environment'> = {}) {
+  const application = serviceFile({
+    platform,
+    userHome,
+    configHome: environment.XDG_CONFIG_HOME,
+  })
+
+  return {
+    label: application.label.replace(
+      '.server.',
+      '.native.',
+    ),
+    path: join(
+      dirname(application.path),
+      basename(application.path).replace(
+        '.server.',
+        '.native.',
+      ),
+    ),
   }
 }
