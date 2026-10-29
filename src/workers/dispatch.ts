@@ -362,6 +362,26 @@ const described = ({ override }: { override?: Override }) => Object.entries(over
   ]) => `${key} ${value === true ? 'on' : value === false ? 'off' : value}`)
   .join(', ')
 
+function howChosen({
+  ownerOverride,
+  tied,
+  best,
+}: {
+  ownerOverride: boolean
+  tied: number
+  best?: number
+}): string {
+  if (ownerOverride) {
+    return 'owner override; quota does not veto an explicit choice'
+  }
+
+  if (tied > 1) {
+    return `${best === undefined ? 'quota unknown' : `tie at spendPriority ${best}`}; first listed candidate`
+  }
+
+  return best === undefined ? 'only usable candidate; quota unknown' : 'selected by highest known spendPriority; unknown quota ranks below known'
+}
+
 // Known spendPriority ranks first and unknown quota after it; list order breaks a tie.
 export function chooseCandidate({
   config,
@@ -565,9 +585,11 @@ export function chooseCandidate({
   }
 
   const chosen = (best ?? tied[0]!).choice
-  const how = ownerOverride ? 'owner override; quota does not veto an explicit choice'
-    : tied.length > 1 ? `${best ? `tie at spendPriority ${best.priority}` : 'quota unknown'}; first listed candidate`
-      : best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
+  const how = howChosen({
+    ownerOverride,
+    tied: tied.length,
+    best: best?.priority,
+  })
   const changed = described({ override: chosen.override })
 
   return {

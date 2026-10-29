@@ -8,7 +8,7 @@ import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { readLog } from '#app/event-log.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
-import { candidateIssues, checkDispatch, mergePatch, type DispatchDocument } from './dispatch-check.ts'
+import { candidateIssues, checkDispatch, HARNESSES, mergePatch, type DispatchDocument } from './dispatch-check.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>
@@ -244,7 +244,7 @@ function storedDocument(): DispatchDocument {
     dispatch: readConfig({ path: configPath() }),
     accounts: readConfig({ path: configPath({ accounts: true }) }),
   })
-  const errors = checkDispatch({ document }).filter(issue => issue.level === 'error')
+  const errors = checkDispatch({ document }).filter(issue => issue.level === 'error' && !issue.readable)
 
   if (errors.length) {
     throw new HydraError({
@@ -478,10 +478,7 @@ export function effectiveDispatch(): EffectiveDispatch {
   }
 
   // With no registered accounts, Hydra and workers run on each harness's own login, as an unconfigured harness does.
-  const accounts: Record<string, Account> = Object.fromEntries(([
-    'claude',
-    'codex',
-  ] as const)
+  const accounts: Record<string, Account> = Object.fromEntries(HARNESSES
     .filter(provider => existsSync(defaultLogin({ provider })))
     .map(provider => [
       `${provider}:default`,

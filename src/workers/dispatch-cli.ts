@@ -4,9 +4,10 @@ import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-suppo
 import { ApplyError } from '#app/apply/schema.ts'
 import { parseApplyJson } from '#app/apply/json.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
-import { applyDispatch, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
-import { harnessValues, HARNESSES, NAME } from './dispatch-check.ts'
-import { candidates, effectiveDispatch, initConfig, invalid, onTemplate, readDocument, type Candidate, type Harness } from './dispatch-config.ts'
+import { withRegistryLock } from '#store/storage.ts'
+import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
+import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
+import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, readDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -62,7 +63,7 @@ const EXAMPLE = {
 
 function checkedName({ value }: { value: string }): string {
   if (!NAME.test(value)) {
-    invalid({ message: 'names use lowercase letters, digits, colon, dot, underscore and dash' })
+    invalid({ message: NAME_RULE })
   }
 
   return value
@@ -142,6 +143,43 @@ function candidateList({
   ]
 }
 
+// A removed account leaves every account order too; the main account still needs a new main first.
+function withoutAccount({
+  document,
+  name,
+}: {
+  document: DispatchDocument
+  name: string
+}): Record<string, unknown> {
+  const without = ({ order }: { order: AccountOrder }) => Object.fromEntries(Object.entries(order)
+    .filter(([
+      , names,
+    ]) => names?.includes(name))
+    .map(([
+      harness,
+      names,
+    ]) => {
+      const kept = names!.filter(item => item !== name)
+
+      return [
+        harness,
+        kept.length ? kept : null,
+      ]
+    }))
+
+  return {
+    accounts: { [name]: null },
+    workers: without({ order: document.workers }),
+    projects: Object.fromEntries(Object.entries(document.projects).map(([
+      path,
+      order,
+    ]) => [
+      path,
+      without({ order }),
+    ])),
+  }
+}
+
 function readPatchFile({ file }: { file: string }): unknown {
   try {
     return parseApplyJson({
@@ -164,6 +202,7 @@ function readPatchFile({ file }: { file: string }): unknown {
           reason: error instanceof Error ? error.message : String(error),
         },
       ],
+      help: DISPATCH_HELP_LINE,
     })
   }
 }
@@ -223,13 +262,22 @@ function ruleCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'show') {
-    const document = readDocument()
-    const revision = dispatchRevision()
+    readDocument()
+    // Both under the lock, so a patch built on this document never carries a newer revision.
+    const {
+      document,
+      revision,
+    } = withRegistryLock({
+      fn: () => ({
+        document: lockedDocument(),
+        revision: dispatchRevision(),
+      }),
+    })
 
     return {
       revision,
       document,
-      warnings: dispatchIssues({ document }).map(found => `${found.path}: ${found.problem}`),
+      issues: dispatchIssues({ document }).map(found => `${found.level} ${found.path}: ${found.problem}`),
       help: ['Change it with `pnyx-axi rule apply --file <patch.json> --check`, then without --check (Hydra: --propose)'],
     }
   }
@@ -411,22 +459,27 @@ function accountCommand({ args }: { args: string[] }): Output {
     return invalid({ message: 'Use account list, set or remove' })
   }
 
-  return apply({
-    hydraId,
-    patch: {
-      accounts: {
-        [key]: action === 'remove' ? null : {
-          provider: required({
-            value: values.provider as string | undefined,
-            what: '--provider',
-          }),
-          folder: required({
-            value: values.folder as string | undefined,
-            what: '--folder',
-          }),
-        },
+  const patch: Record<string, unknown> = action === 'remove' ? withoutAccount({
+    document: readDocument(),
+    name: key,
+  }) : {
+    accounts: {
+      [key]: {
+        provider: required({
+          value: values.provider as string | undefined,
+          what: '--provider',
+        }),
+        folder: required({
+          value: values.folder as string | undefined,
+          what: '--folder',
+        }),
       },
     },
+  }
+
+  return apply({
+    hydraId,
+    patch,
     values,
     propose,
     summary: `Account ${action} ${key}`,
@@ -447,11 +500,11 @@ pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name>
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
 Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders. rule show prints it with its revision; rule schema lists every field and allowed value.
-rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing; --check previews the changes and warnings, and --propose asks the owner to confirm. Hydra proposes outside bypass.
+rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, and --propose asks the owner to confirm. Hydra proposes outside bypass.
 set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. rule init copies the templates, taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set, and never overwrites a file.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder>
 pnyx-axi account propose set|remove <same arguments>
 pnyx-axi account remove <name>
-Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account that an order still names is refused.`,
+Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first.`,
 }

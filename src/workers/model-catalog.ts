@@ -3,6 +3,7 @@ import { readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs'
 import type { Harness } from './dispatch-config.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { modelIds, type ModelOption } from './provider.ts'
+import { HARNESSES } from './dispatch-check.ts'
 import type { Host } from '#app/host-types.ts'
 
 export const providerName = ({ harness }: { harness: Harness }) => harness === 'codex' ? 'codex' : 'claude-code'
@@ -30,10 +31,7 @@ function readModels(): Record<string, unknown> {
 export function storedOffers(): Partial<Record<Harness, string[]>> {
   const offers: Partial<Record<Harness, string[]>> = {}
 
-  for (const harness of [
-    'claude',
-    'codex',
-  ] as const) {
+  for (const harness of HARNESSES) {
     const models = Object.keys(readModels()).filter(key => key.startsWith(`${harness}:`))
       .flatMap(key => storedModels({ key }) ?? [])
 

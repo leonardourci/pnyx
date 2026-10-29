@@ -13,7 +13,7 @@ import { HydraError } from '#store/errors.ts'
 import { withRegistryLock, writeDurably } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
-import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
+import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { changesPath, loginFolder, lockedDocument, readDocument, writeDocument, type Account } from './dispatch-config.ts'
 
 type Fields = Record<string, unknown>
@@ -34,6 +34,8 @@ interface ChangeEntry {
   changes?: DispatchChange[]
   receipt?: Output
 }
+
+export const DISPATCH_HELP_LINE = ['Run `pnyx-axi rule schema` for every field and allowed value']
 
 const ENVELOPE_FIELDS = [
   'version',
@@ -65,6 +67,7 @@ export function parseEnvelope({ value: raw }: { value: unknown }): DispatchEnvel
           reason: 'the document must be an object with version, expected and patch',
         }),
       ],
+      help: DISPATCH_HELP_LINE,
     })
   }
 
@@ -100,7 +103,10 @@ export function parseEnvelope({ value: raw }: { value: unknown }): DispatchEnvel
   }
 
   if (errors.length) {
-    throw new ApplyError({ errors })
+    throw new ApplyError({
+      errors,
+      help: DISPATCH_HELP_LINE,
+    })
   }
 
   return value as unknown as DispatchEnvelope
@@ -134,6 +140,20 @@ function readChanges(): ChangeEntry[] {
 
 export const dispatchRevision = () => readChanges().length
 
+// A save may keep an error the saved document already had, so an old file can be fixed one patch at a time.
+function newErrors({
+  before,
+  after,
+}: {
+  before: DispatchDocument
+  after: DispatchDocument
+}): DispatchIssue[] {
+  const known = new Set(checkDispatch({ document: before }).map(found => `${found.path} ${found.problem}`))
+
+  return dispatchIssues({ document: after }).filter(found => found.level === 'error'
+    && !(found.readable && known.has(`${found.path} ${found.problem}`)))
+}
+
 // Model and login-folder warnings need the catalog and the disk, so only the CLI and server add them.
 export function dispatchIssues({ document }: { document: DispatchDocument }) {
   return checkDispatch({
@@ -151,9 +171,15 @@ function record({
   entry: ChangeEntry
 }): void {
   writeDocument({ document })
+  // A torn last line keeps its own line, so the new entry is never glued onto it.
+  const logged = existsSync(changesPath()) ? readFileSync(
+    changesPath(),
+    'utf8',
+  ) : ''
+  const torn = logged !== '' && !logged.endsWith('\n')
   writeDurably({
     path: changesPath(),
-    data: `${JSON.stringify(entry)}\n`,
+    data: `${torn ? '\n' : ''}${JSON.stringify(entry)}\n`,
     flag: 'a',
   })
 }
@@ -178,16 +204,22 @@ function proposalToken({
     )
 }
 
+// --if-revision names the dispatch revision, so the Hydra event that records a proposal never checks it.
+function eventMeta({ meta }: { meta: Meta }): Meta {
+  const event = structuredClone(meta)
+  delete event.ifRevision
+
+  return event
+}
+
 function propose({
   hydraId,
   meta,
-  patch,
   changes,
   summary,
 }: {
   hydraId: string
   meta: Meta
-  patch: Fields
   changes: DispatchChange[]
   summary: string
 }): Output {
@@ -196,7 +228,7 @@ function propose({
     kind: 'dispatch',
     shared: true,
     before: JSON.stringify(changes),
-    value: JSON.stringify(patch),
+    value: JSON.stringify(patchOf({ changes })),
     summary,
   }
   proposal.token = proposalToken({
@@ -208,7 +240,7 @@ function propose({
     fn: ({ writer }) => {
       const decision = hydraEvent({
         state: writer.state,
-        meta,
+        meta: eventMeta({ meta }),
         cardId: HYDRA_CARD,
         change: {
           type: 'hydra.dispatch-proposed',
@@ -294,7 +326,10 @@ export function applyDispatch({
         patch: envelope.patch,
       }) as DispatchDocument
       const issues = dispatchIssues({ document: after })
-      const errors = issues.filter(found => found.level === 'error')
+      const errors = newErrors({
+        before: document,
+        after,
+      })
 
       if (errors.length) {
         throw new ApplyError({
@@ -302,6 +337,7 @@ export function applyDispatch({
             path: found.path,
             reason: found.problem,
           })),
+          help: DISPATCH_HELP_LINE,
         })
       }
 
@@ -309,8 +345,7 @@ export function applyDispatch({
         document,
         patch: envelope.patch,
       })
-      const warnings = issues.filter(found => found.level === 'warning')
-        .map(found => `${found.path}: ${found.problem}`)
+      const remaining = issues.map(found => `${found.level} ${found.path}: ${found.problem}`)
 
       if (!changes.length) {
         return {
@@ -325,7 +360,7 @@ export function applyDispatch({
           check: true,
           revision,
           changes,
-          warnings,
+          issues: remaining,
         }
       }
 
@@ -333,7 +368,6 @@ export function applyDispatch({
         return propose({
           hydraId,
           meta,
-          patch: envelope.patch,
           changes,
           summary,
         })
@@ -351,7 +385,7 @@ export function applyDispatch({
         applied: true,
         revision: revision + 1,
         changes,
-        warnings,
+        issues: remaining,
       }
       const entry: ChangeEntry = {
         v: 1,
@@ -470,7 +504,10 @@ export function resolveProposal({
           target: document,
           patch: JSON.parse(proposal.value),
         }) as DispatchDocument
-        const errors = dispatchIssues({ document: after }).filter(found => found.level === 'error')
+        const errors = newErrors({
+          before: document,
+          after,
+        })
 
         if (errors.length) {
           throw new HydraError({
@@ -500,7 +537,7 @@ export function resolveProposal({
         fn: ({ writer }) => {
           const decision = hydraEvent({
             state: writer.state,
-            meta,
+            meta: eventMeta({ meta }),
             cardId: HYDRA_CARD,
             change: {
               type: 'hydra.dispatch-resolved',

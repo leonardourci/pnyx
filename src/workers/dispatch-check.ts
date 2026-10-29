@@ -12,6 +12,8 @@ export interface DispatchIssue {
   path: string
   level: 'error' | 'warning'
   problem: string
+  // An error a saved document can still be read with; a save may not add a new one.
+  readable?: true
 }
 
 export interface DispatchChange {
@@ -24,9 +26,11 @@ type Fields = Record<string, unknown>
 type Report = ({
   segments,
   problem,
+  readable,
 }: {
   segments: string[]
   problem: string
+  readable?: boolean
 }) => void
 
 export const HARNESSES: readonly Harness[] = [
@@ -38,7 +42,7 @@ const HOSTED_PROVIDER: Record<Harness, string> = {
   codex: 'codex',
 }
 export const NAME = /^[a-z][a-z0-9:._-]{0,79}$/
-const NAME_RULE = 'names use lowercase letters, digits, colon, dot, underscore and dash'
+export const NAME_RULE = 'names use lowercase letters, digits, colon, dot, underscore and dash'
 const DOCUMENT_FIELDS = [
   'rules',
   'default',
@@ -171,6 +175,7 @@ function checkCandidates({
     error({
       segments,
       problem: 'needs at least one candidate',
+      readable: true,
     })
   }
 
@@ -242,6 +247,7 @@ function checkCandidates({
             key,
           ],
           problem: `${harness} takes ${key} ${allowed.join(', ')}`,
+          readable: true,
         })
       }
 
@@ -327,6 +333,7 @@ function checkOrder({
             String(index),
           ],
           problem,
+          readable: problem !== NAME_RULE,
         })
       }
     })
@@ -504,12 +511,19 @@ export function checkDispatch({
   const report = ({ level }: { level: DispatchIssue['level'] }): Report => ({
     segments,
     problem,
+    readable,
   }) => {
-    issues.push({
+    const issue: DispatchIssue = {
       path: pointer({ segments }),
       level,
       problem,
-    })
+    }
+
+    if (readable) {
+      issue.readable = true
+    }
+
+    issues.push(issue)
   }
 
   const error = report({ level: 'error' })
@@ -621,6 +635,7 @@ export function checkDispatch({
       error({
         segments: ['main'],
         problem,
+        readable: problem !== NAME_RULE,
       })
     }
   }
@@ -789,6 +804,37 @@ export function outOfDate({
   }) !== canonical({ value: change.before }))
 }
 
+const keysOf = ({ path }: { path: string }) => path.split('/').slice(1)
+  .map(segment => segment.replaceAll(
+    '~1',
+    '/',
+  ).replaceAll(
+    '~0',
+    '~',
+  ))
+
+// The patch that makes exactly these changes, so confirming one never rewrites a value it did not show.
+export function patchOf({ changes }: { changes: DispatchChange[] }): Fields {
+  const patch: Fields = {}
+
+  for (const change of changes) {
+    const keys = keysOf({ path: change.path })
+    let at = patch
+
+    for (const key of keys.slice(
+      0,
+      -1,
+    )) {
+      at[key] = asRecord({ value: at[key] }) ?? {}
+      at = at[key] as Fields
+    }
+
+    at[keys.at(-1)!] = change.after === undefined ? null : structuredClone(change.after)
+  }
+
+  return patch
+}
+
 function valueAt({
   document,
   path,
@@ -798,14 +844,7 @@ function valueAt({
 }): unknown {
   let value = document
 
-  for (const segment of path.split('/').slice(1)) {
-    const key = segment.replaceAll(
-      '~1',
-      '/',
-    ).replaceAll(
-      '~0',
-      '~',
-    )
+  for (const key of keysOf({ path })) {
     const fields = asRecord({ value })
     value = fields && Object.hasOwn(
       fields,
