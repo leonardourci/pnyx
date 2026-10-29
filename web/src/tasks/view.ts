@@ -26,66 +26,18 @@ export function filterCards({
   state,
   workspace,
   tag,
-  query = '',
 }: {
   state: HydraState
   workspace: string
   tag: string
-  query?: string
 }): Card[] {
-  const words = query.toLowerCase().trim()
-    .split(/\s+/)
-    .filter(Boolean)
-
   return Object.values(state.cards).filter(c => liveTask({ card: c })
     && (!workspace || c.workspace === workspace)
-    && (!tag || c.tags.includes(tag))
-    && words.every(w => [
-      c.title,
-      c.project ?? '',
-      c.key,
-      ...c.tags,
-      ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`),
-    ].join(' ').toLowerCase()
-      .includes(w)))
+    && (!tag || c.tags.includes(tag)))
     .sort((
       a,
       b,
     ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
-}
-
-// The "Find a card" box: every card the filter above matches, in its order, then
-// the other cards the Hydra's search found, best first, within the same workspace
-// and tag filters.
-export function findBoxCards(
-  {
-    state,
-    workspace,
-    tag,
-    query,
-    meaning: found,
-  }: {
-    state: HydraState
-    workspace: string
-    tag: string
-    query: string
-    meaning: string[]
-  },
-): Card[] {
-  const local = filterCards({
-    state,
-    workspace,
-    tag,
-    query,
-  })
-  const seen = new Set(local.map(c => c.id))
-
-  return [
-    ...local,
-    ...found.map(id => state.cards[id]).filter((c): c is Card =>
-      !!c && liveTask({ card: c }) && !seen.has(c.id)
-    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))),
-  ]
 }
 
 export function visibleParent({
