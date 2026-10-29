@@ -686,13 +686,13 @@ test(
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({ name: 'card-context-app' })
-    const goal = 'You want unknown pages to go to their Hydra\'s home instead of breaking the page.'
+    const intent = 'You want unknown pages to go to their Hydra\'s home instead of breaking the page.'
     const create = ({ value }: { value: string }) => [
       'task',
       'create',
       '--title',
-      'Refused goal',
-      '--goal',
+      'Refused intent',
+      '--intent',
       value,
     ]
 
@@ -716,8 +716,8 @@ test(
         'redirect',
         '--project',
         app,
-        '--goal',
-        goal,
+        '--intent',
+        intent,
       ],
     })
     const page = await openPage({
@@ -729,7 +729,7 @@ test(
     try {
       await page.shows({
         what: 'the Intent on the card',
-        check: ({ state }) => card({ state })?.goal === goal,
+        check: ({ state }) => card({ state })?.intent === intent,
       })
       assert.match(
         await s.owner({
@@ -739,7 +739,7 @@ test(
             'redirect',
           ],
         }),
-        /goal: .*unknown pages/,
+        /intent: .*unknown pages/,
       )
       await s.owner({
         args: [

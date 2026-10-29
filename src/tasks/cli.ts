@@ -28,7 +28,7 @@ import { lifecycleMoves } from './lifecycle.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
 
-const GOAL_LIMIT = 4000
+const INTENT_LIMIT = 4000
 
 function column({ value }: { value: string }): Column {
   return (value.startsWith('custom:') ? value : value.replace(
@@ -320,14 +320,14 @@ export function taskBrief({ value }: { value: unknown }): string | undefined {
   return value
 }
 
-export function taskGoal({ value }: { value: unknown }): string | undefined {
+export function taskIntent({ value }: { value: unknown }): string | undefined {
   if (value === undefined) {
     return undefined
   }
 
-  if (typeof value !== 'string' || !value.trim() || value.length > GOAL_LIMIT) {
+  if (typeof value !== 'string' || !value.trim() || value.length > INTENT_LIMIT) {
     throw new HydraError({
-      message: `a goal must be text of 1 to ${GOAL_LIMIT} characters`,
+      message: `an intent must be text of 1 to ${INTENT_LIMIT} characters`,
       code: 'VALIDATION_ERROR',
     })
   }

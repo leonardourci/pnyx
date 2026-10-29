@@ -21,7 +21,7 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld, decideHold } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
-import { taskBrief, taskGoal, taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, untilTime, type TaskCreated, type TaskField } from '#tasks/cli.ts'
+import { taskBrief, taskIntent, taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, untilTime, type TaskCreated, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -47,7 +47,7 @@ export const TASK_OPTIONS: Options = {
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
-  goal: { type: 'string' },
+  intent: { type: 'string' },
   ask: { type: 'string' },
   message: { type: 'string' },
   key: { type: 'string' },
@@ -455,7 +455,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
 
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
-    const goal = taskGoal({ value: values.goal })
+    const intent = taskIntent({ value: values.intent })
     const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
 
     return withHelp({
@@ -525,8 +525,8 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
             created.brief = brief
           }
 
-          if (goal) {
-            created.goal = goal
+          if (intent) {
+            created.intent = intent
           }
 
           if (folder) {
@@ -731,7 +731,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           text: clip({ text: ask.text }),
         })) : 'none: no owner words recorded',
         spend,
-        goal: task.goal === undefined ? 'none' : clip({ text: task.goal }),
+        intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',

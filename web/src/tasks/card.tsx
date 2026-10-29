@@ -534,10 +534,10 @@ export function HydraCard({
             />
             <div {...panel({ id: 'context' })}>
               {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
-              {waiting.length > 0 && (card.goal || factual) && (
+              {waiting.length > 0 && (card.intent || factual) && (
                 <ContextIndex
                   questions={waiting.length}
-                  intent={!!card.goal}
+                  intent={!!card.intent}
                   state={!!factual}
                 />
               )}
@@ -549,10 +549,10 @@ export function HydraCard({
                   answer={answer}
                 />
               )}
-              {card.goal && (
+              {card.intent && (
                 <section className="card-section card-intent" aria-label="Intent">
                   <h3 className="eyebrow">Intent</h3>
-                  <CollapsibleText text={card.goal} />
+                  <CollapsibleText text={card.intent} />
                 </section>
               )}
               {factual && (

@@ -145,8 +145,8 @@ export interface Card {
   // Derived transcript totals sent to the browser; never used as Hydra state.
   spend?: TaskSpend
   brief?: string
-  // Shown on the card as its Intent.
-  goal?: string
+  // The card's Intent: what the owner wants from the task, newest version.
+  intent?: string
   // The worker's newest progress report; the newer of it and the newest status note is the card's Current state.
   progress?: TaskProgress
   initialPrompt?: string

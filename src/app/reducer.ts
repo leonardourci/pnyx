@@ -348,8 +348,8 @@ export function applyHydra({
       state.cards[event.cardId]!.kind = kind
     }
 
-    if (event.data.goal) {
-      state.cards[event.cardId]!.goal = event.data.goal
+    if (event.data.intent) {
+      state.cards[event.cardId]!.intent = event.data.intent
     }
 
     state.keys[key] = event.cardId

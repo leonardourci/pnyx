@@ -107,8 +107,8 @@ export type HydraChange = EventBase & (
       key: string
       title: string
       brief?: string
-      // What the owner wants from the task and why, written by Hydra when it creates the task.
-      goal?: string
+      // The card's first Intent: what the owner wants from the task and why, written by Hydra.
+      intent?: string
       parentId?: string
       column?: Column
       folder?: string
