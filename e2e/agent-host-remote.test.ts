@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
 import { nativeProviders } from '#app/native-provider.ts'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
 import { fixtureHost, until } from '#agent-host/fixtures/harness.ts'
 
@@ -336,151 +336,229 @@ for (const harness of [
   'claude',
   'codex',
 ] as const) {
-  test(
-    `${harness} helper keeps its lease during an outage and replays its original completion once`,
-    async t => {
-      const app = await fixtureApplication({ t })
-      const {
-        host,
-        cli,
-        folder,
-      } = app
-      const first = await app.start()
-      await cli({
-        args: [
-          'task',
-          'create',
-          '--title',
-          'Help',
-          '--key',
-          'help',
-          '--folder',
+  for (const result of [
+    'text',
+    'structured',
+    'malformed',
+    'late',
+  ] as const) {
+    test(
+      `${harness} helper recovers ${result} completion and releases its outage lease`,
+      async t => {
+        const app = await fixtureApplication({ t })
+        const {
+          host,
+          cli,
           folder,
-          '--brief',
-          'Keep running',
-        ],
-      })
-      await cli({
-        args: [
-          'task',
-          'start',
-          'help',
-          '--via',
-          'pnyx',
-          '--harness',
-          harness,
-          '--model',
-          'fixture',
-          '--folder',
-          folder,
-        ],
-      })
-      await cli({
-        args: [
-          'rule',
-          'set',
-          'hydra',
-          '--harness',
-          harness,
-          '--model',
-          'fixture',
-        ],
-      })
-      await cli({
-        args: [
-          'hydra',
-          'set',
-          '--helper',
-          harness,
-          '--helper-model',
-          'fixture',
-        ],
-      })
-      await cli({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          'Hold this main turn',
-        ],
-      })
-      await cli({
-        args: [
-          'task',
-          'status',
-          'help',
-          'blocked',
-          '--note',
-          'The worker needs a routine nudge',
-        ],
-      })
-      await until({ check: async () => (await host.stats()).some(state => state.input.some(input => input.text.includes('Granted tasks:'))) })
-      const helper = (await host.stats()).find(state => state.input.some(input => input.text.includes('Granted tasks:')))!
-      assert.ok(helper)
-      const batch = Object.values(app.state().helper!.runs)[0]!
-      first.child.kill('SIGKILL')
-      await first.exited
-      await assert.rejects(
-        cli({
+        } = app
+        const first = await app.start()
+        await cli({
+          args: [
+            'task',
+            'create',
+            '--title',
+            'Help',
+            '--key',
+            'help',
+            '--folder',
+            folder,
+            '--brief',
+            'Keep running',
+          ],
+        })
+        await cli({
+          args: [
+            'task',
+            'start',
+            'help',
+            '--via',
+            'pnyx',
+            '--harness',
+            harness,
+            '--model',
+            'fixture',
+            '--folder',
+            folder,
+          ],
+        })
+        await cli({
+          args: [
+            'rule',
+            'set',
+            'hydra',
+            '--harness',
+            harness,
+            '--model',
+            'fixture',
+          ],
+        })
+        await cli({
+          args: [
+            'hydra',
+            'set',
+            '--helper',
+            harness,
+            '--helper-model',
+            'fixture',
+          ],
+        })
+        await cli({
+          args: [
+            'hydra',
+            'send',
+            '--text',
+            'Hold this main turn',
+          ],
+        })
+        await until({ check: async () => (await host.stats()).some(state => state.input.some(input => input.text.includes('Hold this main turn'))) })
+        await cli({
+          args: [
+            'task',
+            'status',
+            'help',
+            'blocked',
+            '--note',
+            'The worker needs a routine nudge',
+          ],
+        })
+        await until({ check: async () => (await host.stats()).some(state => state.input.some(input => input.text.includes('Granted tasks:'))) })
+        const helper = (await host.stats()).find(state => state.input.some(input => input.text.includes('Granted tasks:')))!
+        assert.ok(helper)
+        const batch = Object.values(app.state().helper!.runs)[0]!
+        first.child.kill('SIGKILL')
+        await first.exited
+        await assert.rejects(
+          cli({
+            args: [
+              'task',
+              'rename',
+              'help',
+              '--title',
+              'Competing write',
+            ],
+          }),
+          /Command failed/,
+        )
+        const turn = helper.turn!
+        const outcomes = {
+          outcomes: [
+            {
+              task: batch.tasks[0],
+              audience: 'routine',
+              summary: 'Nudged once.',
+            },
+          ],
+        }
+
+        if (result === 'structured') {
+          await host.control({
+            kind: 'event',
+            nativeId: helper.id,
+            event: {
+              type: 'structured',
+              value: outcomes,
+            },
+          })
+        }
+
+        if (result === 'late') {
+          await host.control({
+            kind: 'event',
+            nativeId: helper.id,
+            event: {
+              type: 'turn-ended',
+              outcome: {
+                turn,
+                inputIds: [batch.id],
+                status: 'completed',
+                at: new Date(Date.parse(batch.startedAt!) + 120_001).toISOString(),
+                assistant: [],
+                structured: outcomes,
+              },
+            },
+          })
+        }
+
+        await host.control({
+          kind: 'event',
+          nativeId: helper.id,
+          event: {
+            type: 'result',
+            turn,
+            inputIds: [batch.id],
+            status: 'completed',
+            final: result === 'malformed' ? '{}' : JSON.stringify(outcomes),
+            queued: 0,
+          },
+        })
+        const failed = result === 'malformed' || result === 'late'
+        const second = await app.start()
+
+        try {
+          await until({
+            check: () => failed
+              ? !!app.state().helper!.runs[batch.id]?.error
+              : app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.'),
+          })
+          await until({
+            check: async () => {
+              const native = (await host.stats()).find(state => state.id === helper.id)
+
+              return native?.closed === true
+            },
+          })
+          await until({
+            check: () => !existsSync(join(
+              app.home,
+              'hydras/default',
+              `helper-lease-${encodeURIComponent(batch.tasks[0]!)}.json`,
+            )),
+          })
+        } catch (error) {
+          t.diagnostic(JSON.stringify(app.state().helper))
+          t.diagnostic(app.errors())
+          t.diagnostic(JSON.stringify(await host.stats()))
+          throw error
+        }
+
+        assert.equal(
+          (await host.stats()).length,
+          3,
+        )
+        assert.equal(
+          app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
+          failed ? 0 : 1,
+        )
+
+        if (failed) {
+          assert.match(
+            app.state().helper!.runs[batch.id]!.error!,
+            result === 'late' ? /original deadline/ : /outcome records/,
+          )
+        }
+
+        await cli({
           args: [
             'task',
             'rename',
             'help',
             '--title',
-            'Competing write',
+            'Lease released',
           ],
-        }),
-        /Command failed/,
-      )
-      const turn = helper.turn!
-      await host.control({
-        kind: 'event',
-        nativeId: helper.id,
-        event: {
-          type: 'result',
-          turn,
-          inputIds: [batch.id],
-          status: 'completed',
-          final: JSON.stringify({
-            outcomes: [
-              {
-                task: batch.tasks[0],
-                audience: 'routine',
-                summary: 'Nudged once.',
-              },
-            ],
-          }),
-          queued: 0,
-        },
-      })
-      await app.start()
-
-      try {
-        await until({ check: () => app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.') })
-      } catch (error) {
-        t.diagnostic(JSON.stringify(app.state().helper))
-        t.diagnostic(app.errors())
-        t.diagnostic(JSON.stringify(await host.stats()))
-        throw error
-      }
-
-      assert.equal(
-        (await host.stats()).length,
-        3,
-      )
-      assert.equal(
-        app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
-        1,
-      )
-      await cli({
-        args: [
-          'task',
-          'rename',
-          'help',
-          '--title',
-          'Lease released',
-        ],
-      })
-    },
-  )
+        })
+        second.child.kill('SIGKILL')
+        await second.exited
+        await app.start()
+        await cli({
+          args: [
+            'task',
+            'rename',
+            'help',
+            '--title',
+            'Lease still released',
+          ],
+        })
+      },
+    )
+  }
 }
