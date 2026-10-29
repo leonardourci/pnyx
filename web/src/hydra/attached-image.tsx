@@ -10,11 +10,12 @@ import { CHIP_SOURCE } from './message-selection.ts'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
 function attachmentSource({ path }: { path: string }) {
-  const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/i.exec(path)
+  const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
   const route = served?.[2]
   const stored = route?.startsWith('attachments/') && ATTACHMENT_NAME.test(route.slice('attachments/'.length))
   const copied = route?.startsWith('copies/') && imageType({ path: route })
+    && !route.split('/').some(part => part === '.' || part === '..')
 
   // Cached chat can render while navigation still has the previous Hydra's base URL.
   return token && route && (stored || copied)
