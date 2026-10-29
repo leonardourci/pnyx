@@ -168,20 +168,20 @@ const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
 type Legacy = 'doneAfterHours' | 'reviewMinutes' | 'helper'
 
 // A Hydra's last change to an old value; an old reset removed the value, so a removal counts as a change too.
-function lastChange({
+function lastChange<K extends Legacy>({
   events,
   key,
 }: {
   events: ConfiguredEvent[]
-  key: Legacy
+  key: K
 }): {
   at: string
-  value: unknown
+  value: ConfiguredEvent['data'][K]
 } | undefined {
-  let previous: unknown
+  let previous: ConfiguredEvent['data'][K] | undefined
   let change: {
     at: string
-    value: unknown
+    value: ConfiguredEvent['data'][K]
   } | undefined
 
   for (const event of events) {
@@ -212,7 +212,7 @@ function migrate(): void {
   const logs = hydraIds().map(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
   const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
-  const changed = ({ key }: { key: Legacy }) => newest({
+  const changed = <K extends Legacy>({ key }: { key: K }) => newest({
     events: logs.flatMap(events => lastChange({
       events: events.filter((event): event is ConfiguredEvent => event.type === 'board.configured'),
       key,
@@ -239,7 +239,7 @@ function migrate(): void {
     after.reviewMinutes = minutes
   }
 
-  const helper = changed({ key: 'helper' }) as Settings['helper'] | false | undefined
+  const helper = changed({ key: 'helper' })
 
   if (helper !== undefined) {
     after.helper = helper === false ? 'off' : helper
