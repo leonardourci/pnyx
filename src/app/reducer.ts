@@ -133,7 +133,7 @@ export function applyHydra({
     return true
   }
 
-  if (event.type === 'task.intent') {
+  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
     const card = state.cards[event.cardId]
 
     if (card) {

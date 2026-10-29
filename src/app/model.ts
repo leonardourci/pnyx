@@ -170,7 +170,8 @@ export type HydraChange = EventBase & (
     }
   }
   | {
-    type: 'task.intent'
+    // Logs written before the card's Intent existed record an owner ask as task.intent.
+    type: 'task.owner-ask' | 'task.intent'
     data: OwnerAsk
   }
   | {
@@ -323,6 +324,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'board.columns',
   'task.created',
   'task.brief',
+  'task.owner-ask',
   'task.intent',
   'task.visibility',
   'task.retention',

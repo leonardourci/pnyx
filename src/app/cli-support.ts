@@ -31,7 +31,7 @@ const EXPLAINED: readonly EventType[] = [
   'card.moved',
   'task.created',
   'task.brief',
-  'task.intent',
+  'task.owner-ask',
   'task.visibility',
   'task.reminder',
 ]
@@ -671,6 +671,7 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.reminder-due': return event.data.message.text
     case 'task.held': return `Held for discussion: ${event.data.reason}`
     case 'task.released': return `Released on owner message ${event.data.message.id}`
+    case 'task.owner-ask':
     case 'task.intent': return 'Owner ask added'
     case 'task.brief': return 'Task brief updated'
     case 'task.retention': return event.data.after === null ? 'Using the Hydra hide time' : event.data.after === 0 ? 'Keeping the Done card visible' : `Done card hidden after ${event.data.after} hours`

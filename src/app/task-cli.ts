@@ -30,7 +30,7 @@ import { decideDependencies } from '#tasks/dependency-decisions.ts'
 import { canonical } from '#store/paths.ts'
 import { parseKind } from '#investigations/report.ts'
 import { taskProject, findProject } from '#projects/read.ts'
-import { ownerAsk } from '#tasks/intent.ts'
+import { ownerAsk } from '#tasks/owner-ask.ts'
 import { decideQueue } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
@@ -964,6 +964,13 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
   }
 
   if (action === 'intent') {
+    throw new HydraError({
+      message: 'task intent is now task owner-ask <task> --text <owner words>; the card\'s Intent changes with task brief --intent',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (action === 'owner-ask') {
     const ref = required({
       value: positionals[1],
       what: 'task id',
@@ -973,7 +980,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
       hydraId,
       meta: m,
       intent: {
-        type: 'task.intent',
+        type: 'task.owner-ask',
         card: ref,
       },
       decide: ({ state }) => {
@@ -1012,7 +1019,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           meta: m,
           cardId: task.id,
           change: {
-            type: 'task.intent',
+            type: 'task.owner-ask',
             data: entry,
           },
         })

@@ -6,7 +6,7 @@ import { base, type Meta } from '#app/command-meta.ts'
 import { findSession, interactive } from './session-attachments.ts'
 import { findCard, checkRevision } from '#tasks/push-rules.ts'
 import { HydraError } from '#store/errors.ts'
-import { taskInstructions } from '#tasks/intent.ts'
+import { taskInstructions } from '#tasks/owner-ask.ts'
 
 export function parseSource({ value: rawValue }: { value: unknown }): SourceRef {
   const value = asRecord({ value: rawValue })
