@@ -123,6 +123,10 @@ test(
           '/upgrade',
           'Built-in',
         ],
+        [
+          '/add-project',
+          'Built-in',
+        ],
       ],
     )
     assert.equal(
