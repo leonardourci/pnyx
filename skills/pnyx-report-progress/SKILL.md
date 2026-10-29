@@ -47,6 +47,8 @@ Send routine progress with `pnyx-axi hydra send --task <task> --kind progress --
 
 For a native hosted worker (`PNYX_STEERING_WORKER` is set), replies arrive as durable inbox notices, including during a turn. Run `pnyx-axi task inbox read <task> --hydra <hydra>` at startup, on each notice and before ending a turn. This records read acknowledgements for the returned pending messages and stops their reminders. An acknowledgement means read, never completed work. Apply instructions in order, report progress and blockers with `task status`, and file any needed question with `task ask`. `task inbox ack <task> <message-id> --session <session> --generation <generation>` also records receipt and is safe to repeat with the claim returned by read. Duplicate notices do not create new instructions. Checkpoint side effects; after a crash, use `inbox read --all` and verify existing effects before repeating work. Transport delivery alone is not a read receipt. Firstmate workers keep Firstmate's own inbox contract.
 
+The owner's comments on your replies arrive under `## Comments on your reply from <time>`, one heading per commented reply. In each comment the `>` lines are the quoted passage and the plain lines after them are the owner's comment; a quote of three words or fewer is followed by its paragraph as a nested `> >` quote, for context. `---` separates comments. A `## Message` heading follows with the owner's message only when they wrote one. Address the comments together with the message.
+
 Other replies reach you as ordinary messages in your session. Link pull requests or tickets with `pnyx-axi link <task> --url <url> --hydra <hydra>`.
 
 ## Review pages
