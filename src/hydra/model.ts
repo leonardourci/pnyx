@@ -16,6 +16,8 @@ export interface HydraConfig {
   helper?: AgentConfig | false
   id: string
   name: string
+  // An identity icon id from hydra-names.ts; without one the Hydra shows the Hydra mark.
+  icon?: string
   hydra: HydraIdentity
   columns: HydraColumn[]
   // Retained so pre-dispatch event logs still replay.
