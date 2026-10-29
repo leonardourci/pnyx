@@ -14,7 +14,7 @@ Start in the UI requests a worker in your chat; you choose the project, copy or 
 
 Before starting, refresh a missing or out-of-date project profile as the Hydra contract describes. Pnyx adds shared project memory and the standing repository-conventions instruction to every opening prompt and task handoff. Keep briefs task-specific; do not repeat that instruction.
 
-An explicit owner choice comes first: pass their `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly. Only `--harness` and `--model` choose what runs: they start even when no rule lists that harness or model, Pnyx checks the harness’s own catalog and login, records an owner override, and does not let quota veto the choice. `--effort`, `--mode` and `--fast` alone only change settings: quota still picks the candidate and account and skips spent ones, then those settings apply. Never invent an owner choice to resolve a tie.
+An explicit owner choice comes first: pass their `--harness`, `--model`, `--effort`, `--mode` and `--fast on|off` exactly. Only `--harness` and `--model` choose what runs: they start even when no rule lists that harness or model, Pnyx checks the harness’s own catalog and login, records an owner override, and does not let quota veto the choice. `--effort`, `--mode` and `--fast` alone only change settings: quota still picks the candidate and account and skips spent ones, then those settings apply.
 
 Otherwise read `pnyx-axi rule list --hydra <hydra>` first, pick the named rule whose plain-language `when` fits the task, and run
 
