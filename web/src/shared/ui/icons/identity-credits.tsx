@@ -1,7 +1,8 @@
-import { IDENTITY_ICONS } from './identity.ts'
+import { IDENTITY_ICONS, PNYX_AUTHOR } from './identity.ts'
 
 const CC_BY = 'https://creativecommons.org/licenses/by/3.0/'
 const AUTHORS = [...new Set(IDENTITY_ICONS.map(icon => icon.author))]
+  .filter(author => author !== PNYX_AUTHOR)
 
 function AuthorCredit({ author }: { author: string }) {
   const drawn = IDENTITY_ICONS.filter(icon => icon.author === author)
