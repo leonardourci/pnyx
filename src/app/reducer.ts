@@ -21,6 +21,7 @@ import { applyAttachment, cardSessionId, observeSession, sessionId } from '#work
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '#tasks/events.ts'
 import { isStaleLink } from '#tasks/delivery/events.ts'
 import { requestId } from '#workers/answers.ts'
+import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
 
 export function applyHydra({
@@ -821,14 +822,19 @@ function apply({
       const previous = card.replies?.find(r => r.id === event.data.reply)
       const taskMessage = event.data.taskMessage || previous?.route
       const resumes = event.data.resumes ?? previous?.resumes
-      const reply = {
-        decision: event.data.decision ?? previous?.decision,
+      const reply: Reply = {
         id: event.data.reply,
         state: event.data.state,
         ...(resumes !== undefined ? { resumes } : {}),
         ...(taskMessage ? { route: event.data.route } : {}),
         ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
       }
+      const decision = event.data.decision ?? previous?.decision
+
+      if (decision) {
+        reply.decision = decision
+      }
+
       const kept = answers ? {
         ...reply,
         answers,
