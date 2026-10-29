@@ -94,7 +94,8 @@ pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
 Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor and inscribe-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
-pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
+pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
+--inscribe starts after the saved inscribe-cursor (the whole history when none is saved) and adds task briefs and the owner's words on tasks.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>
