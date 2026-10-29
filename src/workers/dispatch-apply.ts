@@ -101,7 +101,10 @@ export function parseEnvelope({ value: raw }: { value: unknown }): DispatchEnvel
   return value as unknown as DispatchEnvelope
 }
 
-export const dispatchRevision = () => readChanges().length
+const revisionOf = ({ entries }: { entries: ChangeEntry[] }) => entries
+  .filter(entry => !entry.unchanged).length
+
+export const dispatchRevision = () => revisionOf({ entries: readChanges() })
 
 // A save may keep an error the saved document already had, so an old file can be fixed one patch at a time.
 function newErrors({
@@ -228,7 +231,7 @@ export function applyDispatch({
   return withRegistryLock({
     fn: () => {
       const entries = readChanges()
-      const revision = entries.length
+      const revision = revisionOf({ entries })
       const digest = createHash('sha256').update(canonical({
         value: {
           envelope,
@@ -290,10 +293,27 @@ export function applyDispatch({
       const remaining = issues.map(found => `${found.level} ${found.path}: ${found.problem}`)
 
       if (!changes.length) {
-        return {
+        const unchanged: Output = {
           event: 'none: unchanged',
           revision,
         }
+
+        // A retry of this id must answer the same, even after a later change makes the patch apply.
+        if (meta.id !== undefined && !check) {
+          commitChange({
+            entry: {
+              v: 1,
+              id: meta.id,
+              at: meta.at,
+              actor: meta.actor,
+              digest,
+              receipt: unchanged,
+              unchanged: true,
+            },
+          })
+        }
+
+        return unchanged
       }
 
       if (check) {

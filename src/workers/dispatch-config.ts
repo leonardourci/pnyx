@@ -50,6 +50,8 @@ export interface ChangeEntry {
   receipt?: Output
   // The whole document after this change; the last one logged is the saved heads dispatch.
   document?: DispatchDocument
+  // A retry record for a patch that changed nothing; it does not count toward the revision.
+  unchanged?: true
 }
 
 export function configPath({ accounts = false }: { accounts?: boolean } = {}): string {

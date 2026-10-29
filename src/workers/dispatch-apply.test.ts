@@ -280,6 +280,71 @@ test(
 )
 
 test(
+  'a retried event id whose first attempt changed nothing returns that receipt and never reapplies after a later edit',
+  () => {
+    const { file } = lab()
+    const template = readTemplate() as unknown as HeadsDispatch
+    const unchanged = file({
+      value: {
+        version: 1,
+        patch: { rules: { build: { when: template.rules.build!.when } } },
+      },
+    })
+    const retry = ({ path }: { path: string }) => rule({
+      args: [
+        'apply',
+        '--file',
+        path,
+        '--event-id',
+        'retry-noop',
+      ],
+    })
+    assert.deepEqual(
+      retry({ path: unchanged }),
+      {
+        event: 'none: unchanged',
+        revision: 0,
+      },
+    )
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'Later owner change',
+      ],
+    })
+    assert.deepEqual(
+      retry({ path: unchanged }),
+      {
+        event: 'none: unchanged',
+        revision: 0,
+        duplicate: true,
+      },
+    )
+    assert.equal(
+      show().document.rules.build?.when,
+      'Later owner change',
+    )
+    assert.equal(
+      show().revision,
+      1,
+    )
+    assert.throws(
+      () => retry({
+        path: file({
+          value: {
+            version: 1,
+            patch: { rules: { build: { when: 'Other wording' } } },
+          },
+        }),
+      }),
+      { code: 'IDEMPOTENCY_CONFLICT' },
+    )
+  },
+)
+
+test(
   'a save the change log refuses leaves both files and the revision as they were',
   () => {
     lab()
