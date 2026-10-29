@@ -267,12 +267,15 @@ const markdownQuote = ({ text }: { text: string }) => text.split('\n')
 const quotedComment = ({ comment }: { comment: ChatComment }) => {
   const paragraph = commentContext({ comment })
   const quote = markdownQuote({ text: comment.quote })
-
-  return [
-    paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote,
+  const words = [
     comment.text.trim(),
     ...comment.images ?? [],
   ].filter(Boolean).join('\n')
+
+  return [
+    paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote,
+    words,
+  ].join('\n\n')
 }
 
 export function orderedComments({ comments }: { comments: ChatComment[] }) {

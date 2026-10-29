@@ -830,6 +830,7 @@ const commentSection = `## Comments on your reply from 15:42
 > Ship it
 >
 > after review
+
 Which review?
 
 The second one.
@@ -839,6 +840,7 @@ The second one.
 > today
 >
 > > Merge it today.
+
 Tomorrow instead.
 [image: /tmp/calendar.png]`
 
