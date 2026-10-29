@@ -13,10 +13,14 @@ export async function fixtureApplication({
   t,
   boot,
   groups = false,
+  built = true,
+  local = false,
 }: {
   t: TestContext
   boot?: string
   groups?: boolean
+  built?: boolean
+  local?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-app-'))
   const messages: string[] = []
@@ -41,6 +45,7 @@ export async function fixtureApplication({
     directory: root,
     boot,
     groups,
+    built,
   })
   t.after(() => rmSync(
     root,
@@ -73,6 +78,7 @@ export async function fixtureApplication({
 
   const env = {
     ...process.env,
+    PNYX_FIXTURE_LOCAL: local ? '1' : '0',
     PNYX_HOME: home,
     HOME: root,
     CODEX_HOME: join(
@@ -138,7 +144,7 @@ export async function fixtureApplication({
       ],
       {
         silent: true,
-        execArgv: ['--conditions=source'],
+        execArgv: built ? [] : ['--conditions=source'],
         env: {
           ...env,
           PNYX_FIXTURE_HOLD_INPUTS: String(holdInputs),
@@ -151,6 +157,8 @@ export async function fixtureApplication({
       epoch: string
       id: string
     }[] = []
+    let port = 0
+    const requests = new Map<string, ReturnType<typeof deferred<unknown>>>()
     let errors = ''
     child.stderr!.on(
       'data',
@@ -180,7 +188,14 @@ export async function fixtureApplication({
           })
         }
 
+        const id = (message as { id?: string }).id
+
+        if (id) {
+          requests.get(id)?.resolve(message)
+        }
+
         if ((message as { type: string }).type === 'ready') {
+          port = (message as { port: number }).port
           ready.resolve()
         }
       },
@@ -213,6 +228,39 @@ export async function fixtureApplication({
     return {
       child,
       heldInputs,
+      port,
+      control: async ({
+        kind,
+        nativeId,
+        text,
+      }: {
+        kind: string
+        nativeId?: string
+        text?: string
+      }) => {
+        const id = String(Math.random())
+        const result = deferred<unknown>()
+        requests.set(
+          id,
+          result,
+        )
+        const timer = setTimeout(
+          () => result.reject(new Error('Application fixture control timed out')),
+          READY_MS,
+        )
+        child.send({
+          id,
+          kind,
+          nativeId,
+          text,
+        })
+
+        try {
+          return await result.promise
+        } finally {
+          clearTimeout(timer); requests.delete(id)
+        }
+      },
       exited: exited.promise,
     }
   }

@@ -46,6 +46,7 @@ export async function fixtureHost({
   entry,
   boot,
   groups = false,
+  built = false,
 }: {
   t: TestContext
   pressure?: boolean
@@ -54,6 +55,7 @@ export async function fixtureHost({
   entry?: string
   boot?: string | null
   groups?: boolean
+  built?: boolean
 }) {
   const root = directory ?? realpathSync(mkdtempSync('/tmp/pnyx-host-'))
   const installation = 'fixture-installation'
@@ -67,7 +69,7 @@ export async function fixtureHost({
       installation,
     ],
     {
-      execArgv: ['--conditions=source'],
+      execArgv: built ? [] : ['--conditions=source'],
       silent: true,
       env: {
         ...process.env,

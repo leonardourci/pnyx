@@ -1,4 +1,6 @@
 import { nativeProviders } from '#app/native-provider.ts'
+import { fixtureProvider, states } from './provider.ts'
+import { performance } from 'node:perf_hooks'
 import { startServer } from '#app/server-daemon.ts'
 
 const [
@@ -11,6 +13,10 @@ const native = await nativeProviders({
   installation: 'fixture-installation',
 })
 
+const measurements: {
+  operation: string
+  ms: number
+}[] = []
 const call = native.client.call
 const acknowledge = native.client.acknowledge
 const completions = new Set<string>()
@@ -47,7 +53,14 @@ native.client.call = async ({ ...request }) => {
     await new Promise<void>(() => {})
   }
 
-  return call(request)
+  const started = performance.now()
+  const result = await call(request)
+  measurements.push({
+    operation: request.operation.kind,
+    ms: performance.now() - started,
+  })
+
+  return result
 }
 
 if (process.env.PNYX_TEST_VERBOSE === '1') {
@@ -100,9 +113,15 @@ const forbidden = () => {
   throw new Error('Fixture application cannot launch native providers')
 }
 
+const providers = process.env.PNYX_FIXTURE_LOCAL === '1'
+  ? {
+    'claude-code': fixtureProvider(),
+    codex: fixtureProvider(),
+  }
+  : native.providers
 const server = await startServer({
   port: 0,
-  native,
+  native: { providers },
   query: forbidden,
   spawnCodex: forbidden,
   wakeDelay: 10,
@@ -114,7 +133,75 @@ process.send?.({
 process.on(
   'message',
   async message => {
-    if ((message as { kind: string }).kind === 'stop') {
+    const request = message as {
+      kind: string
+      id: string
+      nativeId?: string
+      text?: string
+    }
+
+    if (request.kind === 'metrics') {
+      process.send?.({
+        id: request.id,
+        measurements,
+      })
+
+      return
+    }
+
+    if (request.kind === 'stats') {
+      process.send?.({
+        id: request.id,
+        states: [...states.values()].map(state => ({
+          id: state.id,
+          input: state.input,
+          closed: state.closed,
+          turn: state.turn,
+        })),
+      })
+
+      return
+    }
+
+    if (request.kind === 'ask') {
+      const state = states.get(request.nativeId!)!
+      await state.permission!({
+        id: 'native-ask',
+        tool: 'Question',
+        input: { prompt: 'Benchmark permission' },
+        signal: new AbortController().signal,
+      })
+      state.emit?.({
+        event: {
+          type: 'answer-submitted',
+          id: 'native-ask',
+        },
+      })
+      process.send?.({
+        id: request.id,
+        ok: true,
+      })
+
+      return
+    }
+
+    if (request.kind === 'emit') {
+      states.get(request.nativeId!)?.emit?.({
+        event: {
+          type: 'text',
+          id: 'bench',
+          text: request.text!,
+        },
+      })
+      process.send?.({
+        id: request.id,
+        ok: true,
+      })
+
+      return
+    }
+
+    if (request.kind === 'stop') {
       await server.close()
       native.detach()
       process.disconnect()
