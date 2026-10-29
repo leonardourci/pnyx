@@ -13,6 +13,8 @@ export interface IdentityIcon {
   kind: IdentityKind
   // A thin glyph that needs an outline to read at 14 to 20 px.
   bold?: true
+  // Drawn this much larger than its box, so a row of levels reads as rising.
+  scale?: number
 }
 
 const GAME_ICONS_LICENSE = 'CC BY 3.0'
@@ -467,6 +469,7 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     license: GAME_ICONS_LICENSE,
     source: 'https://game-icons.net/1x1/lorc/muscle-fat.html',
     kind: 'control',
+    scale: 1.12,
   },
   {
     id: 'effort-max',
