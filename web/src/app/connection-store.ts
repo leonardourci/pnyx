@@ -28,6 +28,7 @@ interface Creation {
   attempt: string
   from: string
   name: string
+  icon?: string
   refusal?: {
     message: string
     code: string
@@ -1342,6 +1343,7 @@ export function createHydraConnection() {
         patch: {
           id,
           name: creation.name,
+          ...(creation.icon ? { icon: creation.icon } : {}),
           hydra: 'Hydra',
           projects: [],
           creationAttempt: creation.attempt,
@@ -1399,6 +1401,7 @@ export function createHydraConnection() {
           'create',
           creation.name,
           creation.attempt,
+          ...(creation.icon ? [creation.icon] : []),
         ],
         creation: creation.attempt,
       })
@@ -1435,11 +1438,18 @@ export function createHydraConnection() {
     }
   }
 
-  const create = ({ name = '' }: { name?: string } = {}) => attemptCreation({
+  const create = ({
+    name,
+    icon,
+  }: {
+    name: string
+    icon: string
+  }) => attemptCreation({
     creation: {
       attempt: crypto.randomUUID(),
       from: selection().id,
       name,
+      icon,
     },
     choose: true,
     push: true,
