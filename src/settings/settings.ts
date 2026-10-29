@@ -3,6 +3,7 @@ import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
 import { HydraError } from '#store/errors.ts'
+import { HYDRA_ID } from '#hydra/identity.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
 
 export const DEFAULT_REVIEW_MINUTES = 30
@@ -17,8 +18,6 @@ export const DEFAULT_SETTINGS: Settings = {
   oracleRememberFilters: false,
   hydraOrder: [],
 }
-
-const HYDRA_ID = /^[a-z0-9][a-z0-9._-]{0,63}$/i
 
 export function pickView({ view }: { view: SharedView }): SharedView {
   return structuredClone(Object.fromEntries(SHARED_VIEW_KEYS.map(key => [
@@ -188,8 +187,10 @@ export function patchSettings({
 
   if ('hydraOrder' in patch) {
     const order = patch.hydraOrder
+    const ids = Array.isArray(order) && order.every(id => typeof id === 'string' && HYDRA_ID.test(id))
+    const once = Array.isArray(order) && new Set(order).size === order.length
 
-    if (!Array.isArray(order) || order.some(id => typeof id !== 'string' || !HYDRA_ID.test(id)) || new Set(order).size !== order.length) {
+    if (!ids || !once) {
       return invalid({ detail: 'hydraOrder takes a list of Hydra ids, each once' })
     }
 

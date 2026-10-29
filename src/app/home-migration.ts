@@ -1,3 +1,4 @@
+import { HYDRA_ID } from '#hydra/identity.ts'
 import { HydraError } from '#store/errors.ts'
 import { basename, dirname, join } from 'node:path'
 import { readdirSync, mkdirSync, existsSync, renameSync, rmdirSync, readFileSync, symlinkSync } from 'node:fs'
@@ -315,7 +316,7 @@ export function hydraDir({
   hydraId: string
   migrate?: boolean
 }): string {
-  if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(hydraId)) {
+  if (!HYDRA_ID.test(hydraId)) {
     throw new HydraError({
       message: `invalid Hydra name: ${hydraId}`,
       code: 'VALIDATION_ERROR',
