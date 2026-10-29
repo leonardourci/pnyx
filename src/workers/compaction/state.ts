@@ -1,5 +1,4 @@
 import { sessionId } from '#workers/session-attachments.ts'
-import { commentEpoch } from './comments.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 
@@ -49,11 +48,6 @@ export function applyCompaction({
       compact.operations[index] = structuredClone(change.operation)
     }
 
-    if (change.operation.state === 'done') {
-      compact.commentEpoch = change.operation.id
-      compact.commentSession = change.operation.session
-    }
-
     if (change.operation.state === 'running' && change.operation.trigger === 'manual') {
       compact.inputs = compact.inputs.filter(input => input.route !== 'direct'
         || `manual:${input.id}` !== change.operation.id)
@@ -68,9 +62,6 @@ export function applyCompaction({
     if (compact.inputs.some(input => input.id === change.id)) {
       compact.priority = change.id
     }
-  } else if (change.epoch === commentEpoch({ card }) && compact.taughtEpoch !== change.epoch) {
-    compact.taughtEpoch = change.epoch
-    compact.commentMessage = change.message
   }
 
   card.revision++

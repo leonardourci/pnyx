@@ -11,7 +11,6 @@ import { upgradeCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
-import { commentEpoch, commentInput, needsCommentNote } from '#workers/compaction/comments.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -437,42 +436,6 @@ export function createHost({
       ).unref(),
     )
   }
-
-  const teachComments = ({
-    card,
-    id,
-    text,
-  }: {
-    card: string
-    id: string
-    text: string
-  }) => write({
-    fn: ({ writer }) => {
-      const current = writer.state.cards[card]
-
-      if (current && needsCommentNote({
-        card: current,
-        text,
-      })) {
-        recordCompaction({
-          writer,
-          card,
-          at: at(),
-          change: {
-            kind: 'comments',
-            epoch: commentEpoch({ card: current }),
-            message: id,
-          },
-        })
-      }
-
-      return current ? commentInput({
-        card: writer.state.cards[card]!,
-        id,
-        text,
-      }) : text
-    },
-  })
 
   const holdCompact = ({
     card,
@@ -1212,14 +1175,6 @@ export function createHost({
 
     const ids = messages.map(message => message.id)
 
-    for (const message of messages) {
-      teachComments({
-        card: card.id,
-        id: message.id,
-        text: message.text,
-      })
-    }
-
     for (const id of ids) {
       entry.steering.add(id)
     }
@@ -1470,19 +1425,10 @@ export function createHost({
           }
 
           const original = item.original ?? item.text
-          let text = item.text
-
-          if (item.id) {
-            text = teachComments({
-              card: card.id,
-              id: item.id,
-              text: item.text,
-            })
-          }
 
           yield agentInput({
             id: item.id ?? randomUUID(),
-            text,
+            text: item.text,
             original,
             hydras: join(
               pnyxHome(),

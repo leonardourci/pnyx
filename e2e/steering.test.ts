@@ -83,21 +83,42 @@ test(
     )
     page.close()
 
+    const commented = '## Comments on your reply from 10:00\n\n### Comment 1\n> Write the changelog\n\nAdd the release date.'
     await s.owner({
       args: [
         'reply',
         card.id,
         '--text',
-        'Add the release date.',
+        commented,
       ],
     })
     await finished({ turns: 2 })
     const instruction = s.task({ key: 'notes' }).steering![0]!
     assert.equal(
       instruction.text,
-      'Add the release date.',
+      commented,
     )
     const worker = s.as({ agent: first })
+    const inbox = await worker.run({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        card.id,
+      ],
+    })
+    assert.match(
+      inbox,
+      /### Comment 1/,
+    )
+    assert.doesNotMatch(
+      inbox,
+      /Internal note/,
+    )
+    assert.equal(
+      s.events().some(event => event.type === 'session.compaction' && event.data.kind === 'comments'),
+      false,
+    )
     const current = s.task({ key: 'notes' })
     await worker.run({
       args: [
