@@ -7,7 +7,7 @@ import { fail } from '#agent-host/protocol.ts'
 import { connectHost } from '#agent-host/client.ts'
 import { checked, remoteSession } from '#agent-host/remote.ts'
 import { fingerprint } from '#agent-host/ledger.ts'
-import { replaceFile } from '#agent-host/output.ts'
+import { durableWriter } from '#agent-host/durable.ts'
 import { privateDir } from '#store/storage.ts'
 
 type Binding = {
@@ -68,6 +68,7 @@ export async function nativeProviders({
     throw new Error('Missing host controller')
   }
 
+  const writers = new Map<string, ReturnType<typeof durableWriter>>()
   const inventory = client.ready.sessions
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
@@ -120,10 +121,17 @@ export async function nativeProviders({
         path,
         'utf8',
       )) : undefined
-      const save = () => replaceFile({
-        path,
-        text: JSON.stringify(binding),
-      })
+      let writer = writers.get(path)
+
+      if (!writer) {
+        writer = durableWriter({ path })
+        writers.set(
+          path,
+          writer,
+        )
+      }
+
+      const save = () => writer!.write({ text: () => JSON.stringify(binding) })
       let summary = agent && inventory.find(session =>
         session.provider === provider && session.nativeId === agent.sessionId)
       let recovered = false
@@ -167,7 +175,7 @@ export async function nativeProviders({
           inputs: {},
           answers: {},
         }
-        save()
+        await save()
         const result = checked({
           result: await client.call({
             id: binding.request,
@@ -208,7 +216,7 @@ export async function nativeProviders({
       }
 
       binding.session = summary
-      save()
+      await save()
       const active = binding
 
       for (const [
@@ -228,12 +236,12 @@ export async function nativeProviders({
         }
       }
 
-      save()
+      await save()
       const session = await remoteSession({
         client,
         summary,
         recovered,
-        persistInput({ input }) {
+        async persistInput({ input }) {
           const stored = active.inputs[input.id]
 
           if (stored) {
@@ -241,11 +249,11 @@ export async function nativeProviders({
           }
 
           active.inputs[input.id] = input
-          save()
+          await save()
 
           return input
         },
-        persistAnswer({
+        async persistAnswer({
           permission,
           decision,
         }) {
@@ -266,18 +274,19 @@ export async function nativeProviders({
             decision: secret ? undefined : decision,
             phase: 'queued',
           }
-          save()
+          await save()
 
           return id
         },
-        completedAnswer({
+        async completedAnswer({
           answerId,
           phase,
         }) {
           const answer = active.answers[answerId]
 
-          if (answer) {
-            answer.phase = phase; save()
+          if (answer && answer.phase !== phase) {
+            answer.phase = phase
+            await save()
           }
         },
       })
