@@ -1,3 +1,4 @@
+import { suggestionMatch, type SuggestionMatch } from '#hydra/suggestion-matches.ts'
 import { useEffect, useLayoutEffect, useRef, type RefObject } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
@@ -8,11 +9,60 @@ export interface PickerItem {
   title: string
   detail: string
   excerpt?: string
+  excerptHighlights?: SuggestionMatch['ranges']
   icons?: string[]
   tone?: string
   group?: string
   badge?: ReactNode
   disabled?: boolean
+}
+
+function MatchedText({
+  text,
+  query,
+  ranges,
+}: {
+  text: string
+  query: string
+  ranges?: SuggestionMatch['ranges']
+}) {
+  const highlights = ranges ?? suggestionMatch({
+    name: text,
+    query,
+  })?.ranges ?? []
+
+  if (!highlights.length) {
+    return text
+  }
+
+  const parts: ReactNode[] = []
+  let cursor = 0
+
+  for (const {
+    from,
+    to,
+  } of highlights) {
+    if (from < cursor) {
+      continue
+    }
+
+    parts.push(
+      text.slice(
+        cursor,
+        from,
+      ),
+      <mark key={from}>{text.slice(
+        from,
+        to,
+      )}
+      </mark>,
+    )
+    cursor = to
+  }
+
+  parts.push(text.slice(cursor))
+
+  return parts
 }
 
 export function SuggestionPicker<T extends PickerItem>({
@@ -26,6 +76,7 @@ export function SuggestionPicker<T extends PickerItem>({
   empty = 'Nothing in this Hydra matches.',
   footer,
   className = '',
+  query = '',
 }: {
   id: string
   anchor: RefObject<HTMLTextAreaElement | null>
@@ -37,6 +88,7 @@ export function SuggestionPicker<T extends PickerItem>({
   empty?: string
   footer?: ReactNode
   className?: string
+  query?: string
 }) {
   const root = useRef<HTMLDivElement>(null)
   useLayoutEffect(
@@ -152,10 +204,10 @@ export function SuggestionPicker<T extends PickerItem>({
                   {(item.icons ?? ['star']).map(icon => <Icon key={icon} name={icon} size={14} />)}
                 </span>
                 {item.badge && <span className="picker-project">{item.badge}</span>}
-                <strong>{item.title}</strong>
+                <strong><MatchedText text={item.title} query={query} /></strong>
                 <small>{item.detail}</small>
               </span>
-              {item.excerpt && <span className="mention-excerpt">{item.excerpt}</span>}
+              {item.excerpt && <span className="mention-excerpt"><MatchedText text={item.excerpt} query={query} ranges={item.excerptHighlights} /></span>}
             </Button>
           </div>
         ))}

@@ -1,4 +1,4 @@
-import { matchingSuggestions } from '#hydra/suggestion-matches.ts'
+import { matchingSuggestions, suggestionMatch } from '#hydra/suggestion-matches.ts'
 import type { HydraProject } from '#projects/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
@@ -228,18 +228,26 @@ export function Composer({
         label: chip.name,
       }),
     })),
-    ...projects.filter(project => !project.detached).map(project => ({
-      key: `project:${project.path}`,
-      kind: 'project' as const,
-      title: project.name,
-      search: project.path,
-      detail: 'Project',
-      insert: reference({
-        kind: 'project',
-        value: project.path,
-        label: project.name,
-      }),
-    })),
+    ...projects.filter(project => !project.detached).map(project => {
+      const titleMatch = suggestionMatch({
+        name: project.name,
+        query,
+      })
+
+      return ({
+        key: `project:${project.path}`,
+        kind: 'project' as const,
+        title: project.name,
+        excerpt: titleMatch ? undefined : project.path,
+        search: project.path,
+        detail: 'Project',
+        insert: reference({
+          kind: 'project',
+          value: project.path,
+          label: project.name,
+        }),
+      })
+    }),
     ...columns.map(column => ({
       key: `column:${column.id}`,
       kind: 'column' as const,
@@ -259,6 +267,7 @@ export function Composer({
     }).map(({
       card,
       excerpt,
+      excerptHighlights,
     }) => ({
       key: `task:${card.id}`,
       kind: 'task' as const,
@@ -266,6 +275,7 @@ export function Composer({
       search: card.initialPrompt ?? card.brief ?? '',
       detail: card.project ? projectTitle({ project: card.project }) : 'No project',
       excerpt,
+      excerptHighlights,
       ...taskLook({ id: card.id }),
       insert: taskMention({
         id: card.id,
@@ -975,6 +985,7 @@ export function Composer({
             <MentionPicker
               anchor={input}
               id={mentionList}
+              query={query}
               matches={matches}
               active={picked}
               choose={chooseMention}
@@ -983,6 +994,7 @@ export function Composer({
           {prefix !== null && (
             <SuggestionPicker
               id={`suggestions-${card}`}
+              query={prefix}
               anchor={input}
               label="Skills and commands"
               className="slash-menu"
