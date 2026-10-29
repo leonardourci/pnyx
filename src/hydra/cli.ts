@@ -116,15 +116,14 @@ export async function home(): Promise<Output> {
   return out
 }
 
-// The flags that change this Hydra's own config; the rest of hydra set are shared settings.
-const CONFIG_FLAGS = [
-  'name',
-  'identity',
-  'session',
-  'firstmate',
-  'command',
-  'command-folder',
-] as const
+// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
+const SETTING_FLAGS = [
+  'done-after-hours',
+  'review-minutes',
+  'helper',
+  'helper-model',
+  'helper-effort',
+]
 
 function sharedSettingFlags({
   values,
@@ -294,8 +293,9 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     values,
     hydraId: id,
   })
-  const configFlags = CONFIG_FLAGS.some(flag => values[flag] !== undefined)
-  const onlySettings = shared !== undefined && action === 'set' && !configFlags
+  const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
+    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE))
+  const onlySettings = shared !== undefined && action === 'set' && !hydraFlags
 
   if (shared) {
     checkSettings({ patch: shared })

@@ -630,6 +630,34 @@ test(
 )
 
 test(
+  'hydra set with a Hydra flag and a shared setting saves both',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    await commands.hydra([
+      'set',
+      '--name',
+      'Athena',
+      '--review-minutes',
+      '7',
+      '--hydra',
+      'alpha',
+    ])
+    assert.equal(
+      loadHydra({ hydraId: 'alpha' }).state.config?.name,
+      'Athena',
+    )
+    assert.equal(
+      (await settings()).settings.reviewMinutes,
+      7,
+    )
+  },
+)
+
+test(
   'a save after a torn last line is kept',
   async () => {
     home()
