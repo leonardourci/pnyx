@@ -1,14 +1,13 @@
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { existsSync } from 'node:fs'
-import { join } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Question } from './model.ts'
 import { form } from '#integrations/hooks/observe.ts'
 import { pnyxHome } from '#store/paths.ts'
-import { attachedImages } from '#hydra/images.ts'
+import { imageBytes } from './input.ts'
+import { nativeSession, type NativeEvent, type NativeSession } from './native-session.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
-import type { AskPermission, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -34,6 +33,18 @@ const TOOLS: Record<string, string> = {
   'item/tool/requestUserInput': 'Question',
   'mcpServer/elicitation/request': 'MCP input',
 }
+const VIEW_ITEMS = [
+  'userMessage',
+  'hookPrompt',
+  'agentMessage',
+  'functionCallOutput',
+  'plan',
+  'reasoning',
+  'imageView',
+  'enteredReviewMode',
+  'exitedReviewMode',
+  'contextCompaction',
+]
 const ASKS = Object.keys(TOOLS)
 const REQUEST_TIMEOUT_MS = 30_000
 // Opening a thread first starts every configured MCP server and plugin, which can take minutes.
@@ -80,12 +91,120 @@ function userQuestions({ value }: { value: unknown }): (Question & { id: string 
 
 function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
   let permission: AskPermission | undefined, activeThread: string | undefined
+  let emit: ({ event }: { event: NativeEvent }) => void = () => {}
   const approvals = new Map<string | number, {
     abort: AbortController
     thread: unknown
     turn: unknown
   }>()
   const items = new Map<string, ObjectValue>()
+  const background = new Map<string, {
+    id: string
+    type: string
+  }>()
+  let unknownWork: string | undefined
+
+  const observeWork = ({
+    params,
+    completed,
+  }: {
+    params: ObjectValue
+    completed: boolean
+  }) => {
+    if (params.threadId !== activeThread) {
+      return
+    }
+
+    const item = object({ value: params.item })
+
+    if (item.type === 'collabAgentToolCall') {
+      const receivers = Array.isArray(item.receiverThreadIds) ? item.receiverThreadIds : []
+      const states = object({ value: item.agentsStates })
+
+      for (const receiver of receivers) {
+        if (typeof receiver !== 'string') {
+          unknownWork = 'Codex reported an unrecognized child agent'
+          continue
+        }
+
+        const status = object({ value: states[receiver] }).status
+        const id = `agent:${receiver}`
+
+        if (status === 'shutdown' || status === 'notFound') {
+          background.delete(id)
+        } else {
+          // A completed child turn can still own native queued or background work.
+          background.set(
+            id,
+            {
+              id,
+              type: 'agent',
+            },
+          )
+        }
+      }
+
+      if (receivers.length === 0 && item.status !== 'failed') {
+        unknownWork = 'Codex did not identify the child agents of a collaboration call'
+      }
+    } else if (item.type === 'subAgentActivity' && typeof item.agentThreadId === 'string') {
+      const id = `agent:${item.agentThreadId}`
+      background.set(
+        id,
+        {
+          id,
+          type: 'agent',
+        },
+      )
+    } else if (item.type === 'commandExecution' && completed && typeof item.id === 'string') {
+      const id = `command:${item.id}`
+
+      if (typeof item.exitCode === 'number' || item.status === 'failed' || item.status === 'declined') {
+        background.delete(id)
+      } else if (typeof item.processId === 'string') {
+        background.set(
+          id,
+          {
+            id,
+            type: 'command',
+          },
+        )
+      } else if (item.status !== 'completed') {
+        unknownWork = 'Codex did not report whether a command stopped'
+      }
+    } else if (typeof item.type !== 'string' || ![
+      ...VIEW_ITEMS,
+      ...TOOL_ITEMS,
+      'fileChange',
+      'imageGeneration',
+      'sleep',
+    ].includes(item.type)) {
+      unknownWork = `Codex reported an unrecognized native item: ${String(item.type)}`
+    }
+
+    if (unknownWork) {
+      emit({
+        event: {
+          type: 'background',
+          background: {
+            knowledge: 'unknown',
+            reason: unknownWork,
+          },
+        },
+      })
+    } else {
+      emit({
+        event: {
+          type: 'background',
+          background: {
+            knowledge: 'known',
+            tasks: [...background.values()],
+          },
+        },
+      })
+    }
+  }
+
   let next = 0, stopped = false, compacted = false, failure: Error | undefined, stderr = ''
   const pending = new Map<number, {
     resolve({ value }: { value: ObjectValue }): void
@@ -209,7 +328,9 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               ...(method === 'item/permissions/requestApproval' ? { scope: 'turn' } : {}),
               ...(item?.changes ? { changes: item.changes } : {}),
             }
+            const nativeId = `${typeof id}:${id}`
             const answer = permission && params.threadId === activeThread ? permission({
+              id: nativeId,
               tool: TOOLS[method]!,
               input,
               signal: abort.signal,
@@ -260,6 +381,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
                     result,
                   },
                 })
+                emit({
+                  event: {
+                    type: 'answer-submitted',
+                    id: nativeId,
+                  },
+                })
               }
             }
 
@@ -301,6 +428,14 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             wake?.()
           } else if (message.method === 'item/agentMessage/delta' || message.method === 'item/completed') {
             const params = object({ value: message.params })
+
+            if (message.method === 'item/completed') {
+              observeWork({
+                params,
+                completed: true,
+              })
+            }
+
             const item = object({ value: params.item })
 
             const toolDone = message.method === 'item/completed' && TOOL_ITEMS.includes(String(item.type))
@@ -321,6 +456,10 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
             }
           } else if (message.method === 'item/started') {
             const params = object({ value: message.params })
+            observeWork({
+              params,
+              completed: false,
+            })
             const item = object({ value: params.item })
 
             if (item.type === 'fileChange' && typeof item.id === 'string') {
@@ -364,12 +503,15 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
     permissions({
       ask,
       thread,
+      events,
     }: {
       ask: AskPermission
       thread: string
+      events({ event }: { event: NativeEvent }): void
     }) {
       permission = ask
       activeThread = thread
+      emit = events
     },
     async request({
       method,
@@ -883,16 +1025,18 @@ export function codexProvider({
           }
         }
 
-        return {
+        const native: NativeSession = {
           id,
           ...(typeof thread.path === 'string' ? { path: thread.path } : {}),
           async* run({
             input,
             permission,
+            emit,
           }) {
             rpc.permissions({
               ask: permission,
               thread: id,
+              events: emit,
             })
             const messages = input[Symbol.asyncIterator]()
 
@@ -907,42 +1051,37 @@ export function codexProvider({
             let incoming = messages.next()
             let inputDone = false
             // Messages that could not join the running turn, because it was ending or being stopped; each opens a turn of its own.
-            const carried: string[] = []
-            // text may lead with the context.
+            const carried: HostedInput[] = []
             const turnInput = ({
               text,
-              said,
+              message,
             }: {
               text: string
-              said: string
+              message: HostedInput
             }) => [
               {
                 type: 'text',
                 text,
                 text_elements: [],
               },
-              // Only the message's own images, never one named in the context before it.
-              ...attachedImages({
-                text: said,
-                hydras: join(
-                  pnyxHome(),
-                  'hydras',
-                ),
-              }).filter(path => existsSync(path))
-                .map(path => ({
+              ...message.images.map(image => {
+                imageBytes({ image })
+
+                return {
                   type: 'localImage',
-                  path,
-                })),
+                  path: image.path,
+                }
+              }),
             ]
 
             for (;;) {
-              let said = carried.shift()
+              let message = carried.shift()
 
-              if (said === undefined && inputDone) {
+              if (message === undefined && inputDone) {
                 return
               }
 
-              if (said === undefined) {
+              if (message === undefined) {
                 const next = await Promise.race([
                   incoming,
                   appServerClosed(),
@@ -952,10 +1091,21 @@ export function codexProvider({
                   return
                 }
 
-                said = next.value
+                message = next.value
                 incoming = messages.next()
               }
 
+              const said = message.text
+              const inputIds = [message.id]
+              emit({
+                event: {
+                  type: 'input',
+                  receipt: {
+                    inputId: message.id,
+                    phase: 'taken',
+                  },
+                },
+              })
               const manualCompact = compactCommand({ text: said })
               const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
 
@@ -973,6 +1123,16 @@ export function codexProvider({
                   state: 'failed',
                   error: 'Codex compact does not accept instructions. Send /compact on its own.',
                 }
+                emit({
+                  event: {
+                    type: 'result',
+                    turn: randomUUID(),
+                    inputIds,
+                    status: 'failed',
+                    queued: carried.length,
+                    error: 'Codex compact does not accept instructions',
+                  },
+                })
                 yield 'finished'
                 continue
               }
@@ -984,7 +1144,7 @@ export function codexProvider({
                   ...(outputSchema ? { outputSchema } : {}),
                   input: turnInput({
                     text,
-                    said,
+                    message,
                   }),
                   ...(options.model ? { model: options.model } : {}),
                   ...serviceTier({ fast: options.fast }),
@@ -1008,6 +1168,23 @@ export function codexProvider({
 
               turnId = manualCompact ? undefined : turn.id as string
               let runningTurn = turnId
+              let resultId = turnId ?? randomUUID()
+              emit({
+                event: {
+                  type: 'turn-started',
+                  turn: resultId,
+                },
+              })
+              emit({
+                event: {
+                  type: 'input',
+                  receipt: {
+                    inputId: message.id,
+                    phase: 'confirmed',
+                    turn: resultId,
+                  },
+                },
+              })
 
               // A stop that came before Codex named the turn applies now.
               if (turnId) {
@@ -1021,12 +1198,24 @@ export function codexProvider({
                 started: async ({ id }) => {
                   turnId = id
                   runningTurn = id
+                  resultId = id
+                  emit({
+                    event: {
+                      type: 'input',
+                      receipt: {
+                        inputId: message.id,
+                        phase: 'confirmed',
+                        turn: resultId,
+                      },
+                    },
+                  })
                   await interruptStartedTurn()
                 },
               })[Symbol.asyncIterator]()
               // Compaction must receive its turn id even when the output consumer pauses.
               const compactEvent = manualCompact ? events.next() : undefined
               yield 'working'
+              let terminal: Record<string, unknown> | undefined
               let pendingEvent = compactEvent ?? events.next()
               type Arrival = {
                 kind: 'event'
@@ -1070,6 +1259,15 @@ export function codexProvider({
                   // Compact turns cannot accept steering; an interrupted turn answers nothing more.
                   if (interrupted || manualCompact) {
                     carried.push(message)
+                    emit({
+                      event: {
+                        type: 'input',
+                        receipt: {
+                          inputId: message.id,
+                          phase: 'carried',
+                        },
+                      },
+                    })
                     yield 'carried'
 
                     continue
@@ -1082,14 +1280,34 @@ export function codexProvider({
                         threadId: id,
                         expectedTurnId: runningTurn,
                         input: turnInput({
-                          text: message,
-                          said: message,
+                          text: message.text,
+                          message,
                         }),
+                      },
+                    })
+                    inputIds.push(message.id)
+                    emit({
+                      event: {
+                        type: 'input',
+                        receipt: {
+                          inputId: message.id,
+                          phase: 'confirmed',
+                          turn: resultId,
+                        },
                       },
                     })
                   } catch (error) {
                     console.error(`pnyx-axi serve: Codex did not take a message into its running turn, so it starts the next turn: ${(error as Error).message}`)
                     carried.push(message)
+                    emit({
+                      event: {
+                        type: 'input',
+                        receipt: {
+                          inputId: message.id,
+                          phase: 'carried',
+                        },
+                      },
+                    })
                     yield 'carried'
                   }
 
@@ -1110,12 +1328,45 @@ export function codexProvider({
                   continue
                 }
 
+                terminal = event.turn
+
                 // A turn the owner stopped is a finished turn, not a failure.
                 if (!manualCompact && event.turn.status !== 'completed' && !(interrupted && event.turn.status === 'interrupted')) {
-                  throw new Error(String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`))
+                  const error = String(object({ value: event.turn.error }).message ?? `Codex turn ${event.turn.status}`)
+                  emit({
+                    event: {
+                      type: 'result',
+                      turn: resultId,
+                      inputIds,
+                      status: 'failed',
+                      queued: carried.length,
+                      error,
+                    },
+                  })
+                  throw new Error(error)
                 }
               }
 
+              let status: 'completed' | 'interrupted' | 'failed' = 'completed'
+              let error: string | undefined
+
+              if (terminal?.status === 'interrupted') {
+                status = 'interrupted'
+              } else if (terminal?.status !== 'completed') {
+                status = 'failed'
+                error = String(object({ value: terminal?.error }).message ?? 'Codex ended without a successful result')
+              }
+
+              emit({
+                event: {
+                  type: 'result',
+                  turn: resultId,
+                  inputIds,
+                  status,
+                  error,
+                  queued: carried.length,
+                },
+              })
               turnId = undefined
               interrupted = false
               yield 'finished'
@@ -1166,6 +1417,8 @@ export function codexProvider({
           },
           close,
         }
+
+        return nativeSession({ native })
       } catch (error) {
         close()
         throw error

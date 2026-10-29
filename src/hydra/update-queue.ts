@@ -3,6 +3,7 @@ import type { AgentConfig } from '#workers/model.ts'
 // id names the Hydra message or wake an item carries, so a turn knows what it answered.
 export function inbox() {
   const items: {
+    original?: string
     text: string
     id?: string
     steeringIds?: string[]
@@ -13,10 +14,12 @@ export function inbox() {
   return {
     push({
       text,
+      original,
       id,
       steeringIds,
       agent,
     }: {
+      original?: string
       text: string
       id?: string
       steeringIds?: string[]
@@ -24,6 +27,7 @@ export function inbox() {
     }) {
       items.push({
         text,
+        original,
         ...(id ? { id } : {}),
         steeringIds,
         agent,
@@ -40,6 +44,7 @@ export function inbox() {
       wake?.()
     },
     async* [Symbol.asyncIterator](): AsyncGenerator<{
+      original?: string
       text: string
       id?: string
       steeringIds?: string[]

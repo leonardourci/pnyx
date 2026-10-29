@@ -173,6 +173,7 @@ export type SteeringEvent = EventBase & (
 
 export interface PermissionRequest {
   id: string
+  nativeId?: string
   session: string
   tool: string
   input: Record<string, unknown>

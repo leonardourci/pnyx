@@ -67,12 +67,97 @@ export type HostedCompaction = {
   trigger: 'manual' | 'auto'
   error?: string
 }
+export type HostedImage = {
+  path: string
+  mediaType: 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp'
+  digest: string
+}
+export type HostedInput = {
+  id: string
+  text: string
+  images: HostedImage[]
+}
+export type InputReceipt = {
+  inputId: string
+  phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'unknown'
+  turn?: string
+}
+// Submitted means handed to the SDK callback or native pipe, not acknowledged by the model.
+export type AnswerReceipt = {
+  answerId: string
+  permission: string
+  phase: 'received' | 'submitted' | 'aborted' | 'failed'
+}
+export type NativePermission = {
+  id: string
+  tool: string
+  input: Record<string, unknown>
+  description?: string
+} & Pick<PermissionRequest, 'questions' | 'form'>
+export type NativeWork = {
+  runningTurns: string[]
+  runningTools: string[]
+  unsettledInputs: string[]
+  pendingControls: string[]
+  queue: {
+    knowledge: 'known'
+    count: number
+  } | { knowledge: 'unknown' }
+  background: {
+    knowledge: 'known'
+    tasks: {
+      id: string
+      type: string
+    }[]
+  } | {
+    knowledge: 'unknown'
+    reason: string
+  }
+}
+export type TurnOutcome = {
+  turn: string
+  inputIds: string[]
+  status: 'completed' | 'interrupted' | 'failed'
+  at: string
+  assistant: {
+    id: string
+    text: string
+  }[]
+  result?: string
+  structured?: unknown
+  usage?: Omit<HostedUsage, 'type'>
+  error?: string
+}
+export type HostedFact = {
+  type: 'input'
+  receipt: InputReceipt
+} | {
+  type: 'permission'
+  request: NativePermission
+} | {
+  type: 'answer'
+  receipt: AnswerReceipt
+} | {
+  type: 'permission-ended'
+  id: string
+} | {
+  type: 'turn-ended'
+  outcome: TurnOutcome
+} | {
+  type: 'ended'
+  reason: 'closed' | 'failed'
+  error?: string
+}
 // carried: the message the agent took last, mid-turn, opens its next turn instead of joining this one.
 export type HostedEvent = 'working' | 'finished' | 'carried' | HostedText | {
   type: 'structured'
   value: unknown
-} | HostedUsage | HostedTool | HostedThinking | HostedCompaction
+} | HostedUsage | HostedTool | HostedThinking | HostedCompaction | HostedFact | {
+  type: 'work'
+  work: NativeWork
+}
 export type AskPermission = ({
+  id,
   tool,
   input,
   signal,
@@ -80,6 +165,7 @@ export type AskPermission = ({
   questions,
   form,
 }: {
+  id: string
   tool: string
   input: Record<string, unknown>
   signal: AbortSignal
@@ -93,9 +179,17 @@ export interface HostedSession {
     input,
     permission,
   }: {
-    input: AsyncIterable<string>
+    input: AsyncIterable<HostedInput>
     permission: AskPermission
   }): AsyncIterable<HostedEvent>
+  // Returning from an attachment only removes that reader; close owns native shutdown.
+  attach(): AsyncIterable<HostedEvent>
+  snapshot(): {
+    work: NativeWork
+    permissions: NativePermission[]
+    answers: AnswerReceipt[]
+    outcome?: TurnOutcome
+  }
   set({
     setting,
     value,

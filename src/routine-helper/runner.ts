@@ -1,3 +1,5 @@
+import { pnyxHome } from '#store/paths.ts'
+import { agentInput } from '#app/agent-input.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
@@ -482,8 +484,6 @@ export function createRoutineHelper({
           host: 'pnyx',
           transcriptPath: active.path,
         }
-        const texts = new Map<string, string>()
-        let structured: unknown
 
         const input = async function* () {
           const card = state.cards[HYDRA_CARD]
@@ -506,7 +506,16 @@ export function createRoutineHelper({
             state,
             tasks: batch.tasks,
           })
-          yield `Use pnyx-axi with --hydra ${hydraId}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}\n\n${HELPER_INSTRUCTIONS}`
+          const text = `Use pnyx-axi with --hydra ${hydraId}. Recent owner conversation (read-only context):\n${recentDialog({ state })}\n${thread}\n\nGranted tasks: ${granted.join(', ')}\n${receipts ? `Your earlier outcomes on these tasks:\n${receipts}\n` : ''}${batch.prompt}\n\n${HELPER_INSTRUCTIONS}`
+          yield agentInput({
+            id: batch.id,
+            text,
+            original: batch.prompt,
+            hydras: join(
+              pnyxHome(),
+              'hydras',
+            ),
+          })
         }
 
         for await (const event of active.run({
@@ -536,21 +545,21 @@ export function createRoutineHelper({
             }
           }
 
-          if (typeof event === 'object' && event.type === 'structured') {
-            structured = event.value
-          }
+          if (typeof event === 'object' && event.type === 'turn-ended') {
+            const { outcome } = event
 
-          if (typeof event === 'object' && event.type === 'text') {
-            const previous = texts.get(event.id) ?? ''
-            texts.set(
-              event.id,
-              event.append ? previous + event.text : event.text,
-            )
-          }
+            if (outcome.status !== 'completed') {
+              throw new Error(outcome.error ?? `Helper turn ${outcome.status}`)
+            }
 
-          if (event === 'finished') {
+            let text = outcome.assistant.at(-1)?.text ?? outcome.result ?? ''
+
+            if (outcome.structured !== undefined) {
+              text = JSON.stringify(outcome.structured)
+            }
+
             return parseOutcomes({
-              text: structured === undefined ? [...texts.values()].at(-1) ?? '' : JSON.stringify(structured),
+              text,
               tasks: batch.tasks,
             })
           }

@@ -109,14 +109,20 @@ test(
 
     for await (const event of session.run({
       input: (async function* () {
-        yield 'Hi'
+        yield {
+          id: 'input',
+          text: 'Hi',
+          images: [],
+        }
       })(),
       permission: async () => ({
         behavior: 'deny',
         message: 'unused',
       }),
     })) {
-      events.push(event)
+      if (typeof event === 'string' || event.type === 'text' || event.type === 'thinking' || event.type === 'tool') {
+        events.push(event)
+      }
 
       if (typeof event !== 'string' && event.type === 'text') {
         live.update(event)

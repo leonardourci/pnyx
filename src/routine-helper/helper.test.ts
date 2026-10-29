@@ -1,3 +1,4 @@
+import { nativeSession } from '#workers/native-session.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import fs from 'node:fs'
@@ -357,6 +358,9 @@ function helperLab({
 } = {}) {
   let reply = ''
   let fail = false
+  let finalOnly = false
+  let structured: unknown
+  let failedResult = false
   let held: Promise<void> | undefined
   let expire = () => {}
   let opened = deferred()
@@ -377,40 +381,61 @@ function helperLab({
       opens.push(options)
       opened.resolve()
 
-      return {
-        id: 'helper-session',
-        set: async () => {},
-        interrupt: async () => {},
-        close() {
-          if (failClose) {
-            throw new Error('session cleanup failed')
-          }
-        },
-        async *run({ input }) {
-          for await (const text of input) {
-            inputs.push(text)
-            await held
+      return nativeSession({
+        native: {
+          id: 'helper-session',
+          set: async () => {},
+          interrupt: async () => {},
+          close() {
+            if (failClose) {
+              throw new Error('session cleanup failed')
+            }
+          },
+          async *run({ input }) {
+            for await (const text of input) {
+              inputs.push(text.text)
+              await held
 
-            if (cost !== undefined) {
+              if (cost !== undefined) {
+                yield {
+                  type: 'usage',
+                  cost,
+                } as const
+              }
+
+              if (fail) {
+                throw new Error('provider failed')
+              }
+
+              if (!finalOnly) {
+                yield {
+                  type: 'text',
+                  id: 'final',
+                  text: reply,
+                }
+              }
+
+              if (structured !== undefined) {
+                yield {
+                  type: 'structured',
+                  value: structured,
+                }
+              }
+
               yield {
-                type: 'usage',
-                cost,
-              } as const
+                type: 'result',
+                turn: 'helper-turn',
+                inputIds: [text.id],
+                status: failedResult ? 'failed' : 'completed',
+                final: reply,
+                error: failedResult ? 'Native helper turn failed' : undefined,
+                queued: 0,
+              }
+              yield 'finished'
             }
-
-            if (fail) {
-              throw new Error('provider failed')
-            }
-
-            yield {
-              type: 'text',
-              id: 'final',
-              text: reply,
-            }
-            yield 'finished'
-          }
+          },
         },
-      }
+      })
     },
   }
   const helper = createRoutineHelper({
@@ -457,16 +482,25 @@ function helperLab({
     async run({
       text,
       error = false,
+      terminalOnly = false,
+      value,
+      terminalFailed = false,
       wait,
       tasks = [state().keys.work!],
     }: {
       text: string
       error?: boolean
+      terminalOnly?: boolean
+      value?: unknown
+      terminalFailed?: boolean
       wait?: Promise<void>
       tasks?: string[]
     }) {
       reply = text
       fail = error
+      finalOnly = terminalOnly
+      structured = value
+      failedResult = terminalFailed
       held = wait
       idle = deferred()
       opened = deferred()
@@ -482,6 +516,86 @@ function helperLab({
     },
   }
 }
+
+test(
+  'a terminal-only helper result is persisted without streamed text',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const turn = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task: state().keys.work!,
+            audience: 'routine',
+            summary: 'Terminal result',
+          },
+        ],
+      }),
+      terminalOnly: true,
+    })
+    await turn.finished
+    assert.equal(
+      state().helper?.outcomes[0]?.summary,
+      'Terminal result',
+    )
+    assert.equal(
+      lab.handbacks.length,
+      0,
+    )
+  },
+)
+
+test(
+  'a helper uses structured terminal output and refuses valid JSON from a failed native turn',
+  async t => {
+    const lab = helperLab()
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+    const structured = await lab.run({
+      text: 'unstructured prose',
+      value: {
+        outcomes: [
+          {
+            task,
+            audience: 'routine',
+            summary: 'Structured result',
+          },
+        ],
+      },
+    })
+    await structured.finished
+    assert.equal(
+      state().helper?.outcomes[0]?.summary,
+      'Structured result',
+    )
+    const failed = await lab.run({
+      text: JSON.stringify({
+        outcomes: [
+          {
+            task,
+            audience: 'routine',
+            summary: 'Must not be accepted',
+          },
+        ],
+      }),
+      terminalFailed: true,
+    })
+    await failed.finished
+    assert.equal(
+      state().helper?.outcomes.length,
+      1,
+    )
+    assert.equal(
+      lab.handbacks.length,
+      1,
+    )
+    assert.match(
+      lab.handbacks[0]!.text,
+      /Native helper turn failed/,
+    )
+  },
+)
 
 test(
   'a failed lease release does not skip the other lease and recovery finishes cleanup without duplicating the outcome',
