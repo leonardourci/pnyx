@@ -29,7 +29,8 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { search as oracleSearch, updateIndex } from '#oracle/index.ts'
+import { indexStatus, search as oracleSearch } from '#oracle/index.ts'
+import { indexRuns } from '#oracle/index-runs.ts'
 import { replyRoute } from '#workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
@@ -105,6 +106,15 @@ const REPLY_WORKER = join(
   import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
 )
 const REPLY_WORKER_TIMEOUT_MS = 130_000
+// node:sqlite is synchronous, so the Oracle index catches up in a child as well.
+const INDEX_WORKER = join(
+  import.meta.dirname,
+  '..',
+  'oracle',
+  import.meta.url.endsWith('.ts') ? 'index-process.ts' : 'index-process.js',
+)
+// A first build of a long history takes seconds; this only ends a stuck one.
+const INDEX_WORKER_TIMEOUT_MS = 10 * 60_000
 
 export async function mountOwnedHydra({
   hydraId,
@@ -959,6 +969,11 @@ export async function mountOwnedHydra({
     }
 
     offset = read.end
+
+    if (read.events.length) {
+      historyIndex.changed()
+    }
+
     hydrasChanged()
     agents.reconcile({ state })
     followHome()
@@ -1024,6 +1039,41 @@ export async function mountOwnedHydra({
       () => workers.delete(child),
     )
   }
+
+  const historyIndex = indexRuns({
+    start: () => new Promise(resolve => {
+      if (closed) {
+        return resolve()
+      }
+
+      const child = execFile(
+        process.execPath,
+        [
+          ...SOURCE_CONDITIONS,
+          INDEX_WORKER,
+          hydraId,
+        ],
+        { timeout: INDEX_WORKER_TIMEOUT_MS },
+        error => {
+          // The next change retries; a query that needed this catch-up searches what is there.
+          if (error) {
+            console.error(`pnyx oracle index: ${error.message}`)
+          }
+
+          resolve()
+        },
+      )
+      workers.set(
+        child,
+        true,
+      )
+      child.once(
+        'close',
+        () => workers.delete(child),
+      )
+    }),
+  })
+  historyIndex.changed()
 
   const runWorker = ({ args }: { args: string[] }) => new Promise<{ stdout: string }>((
     resolve,
@@ -1856,18 +1906,38 @@ export async function mountOwnedHydra({
             highlight: false,
           }
 
-          updateIndex({ hydraId })
-          send({
-            ws,
-            message: {
-              type: 'receipt',
-              id,
-              ...oracleSearch({
-                hydraId,
-                query,
-              }),
-            },
-          })
+          // Never rejects, so nothing is lost by not awaiting it.
+          const answer = async () => {
+            try {
+              const index = indexStatus({ hydraId })
+              const behind = !index?.current || index.builtThrough < state.seq
+
+              if (behind) {
+                await historyIndex.ready()
+              } else {
+                historyIndex.changed()
+              }
+
+              send({
+                ws,
+                message: {
+                  type: 'receipt',
+                  id,
+                  ...oracleSearch({
+                    hydraId,
+                    query,
+                  }),
+                },
+              })
+            } catch (error) {
+              fail({
+                error: (error as Error).message,
+                code: error instanceof HydraError ? error.code : 'UNKNOWN',
+              })
+            }
+          }
+
+          answer()
         } else if (name === 'hydra-agent') {
           if (args.length !== 1) {
             throw new HydraError({
@@ -2485,6 +2555,7 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    historyIndex.stop()
     unwatchFile(
       eventsPath,
       kick,
