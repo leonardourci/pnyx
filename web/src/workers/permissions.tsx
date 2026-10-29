@@ -13,6 +13,15 @@ const title = ({ request }: { request: PermissionRequest }) => request.questions
   : request.form ? `Asking for input · ${request.tool}` : `Asking permission · ${request.tool}`
 
 function Receipt({ request }: { request: PermissionRequest }) {
+  const delivery = request.delivery
+  const message = delivery === 'unknown' ? 'Answer delivery is unknown. Checking the existing receipt; do not resend.'
+    : delivery === 'received' ? 'Answer received · native submission pending'
+      : delivery === 'submitted' ? 'Answer submitted to the agent' : undefined
+
+  if (message) {
+    return <span className="receipt" role="status">{message}</span>
+  }
+
   const answered = request.answers
     ? request.answers.map(a => a.join(', ')).join(' · ')
     : request.values && Object.entries(request.values).map(([
@@ -81,9 +90,10 @@ export function InlinePermissions({
 
   return (
     <>
-      {(card.permissions ?? []).filter(request => !pendingOnly || !request.questions || request.status === 'pending').map(request => {
+      {(card.permissions ?? []).filter(request => !pendingOnly || !request.questions || request.status === 'pending' || request.delivery === 'needs_reentry' || request.delivery === 'unknown').map(request => {
         const details = permissionDetails({ request })
-        const pending = request.status === 'pending'
+        const reentry = request.delivery === 'needs_reentry'
+        const pending = request.status === 'pending' || reentry
         const asked: Attention = {
           kind: 'question',
           key: request.id,
@@ -115,6 +125,7 @@ export function InlinePermissions({
                 </pre>
               </Disclosure>
             )}
+            {reentry && <p className="muted small" role="status">The host never received this answer. Enter the missing secret again for the saved decision.</p>}
             {!pending
               ? <Receipt request={request} />
               : request.questions
@@ -122,6 +133,8 @@ export function InlinePermissions({
                   <>
                     <Questions
                       request={asked}
+                      reentry={reentry}
+                      savedAnswers={request.answers}
                       busy={busy === request.id}
                       send={({ value }) => answer({
                         request: request.id,
@@ -129,21 +142,24 @@ export function InlinePermissions({
                         value,
                       })}
                     />
-                    <Button
-                      variant="surface"
-                      disabled={busy !== null}
-                      onClick={() => void answer({
-                        request: request.id,
-                        choice: 'deny',
-                      })}
-                    >Skip
-                    </Button>
+                    {!reentry && (
+                      <Button
+                        variant="surface"
+                        disabled={busy !== null}
+                        onClick={() => void answer({
+                          request: request.id,
+                          choice: 'deny',
+                        })}
+                      >Skip
+                      </Button>
+                    )}
                   </>
                 )
                 : request.form
                   ? (
                     <Form
                       request={asked}
+                      reentry={reentry}
                       busy={busy === request.id}
                       send={({ value }) => (value as { choice: string }).choice === 'decline'
                         ? answer({
