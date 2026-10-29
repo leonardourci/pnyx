@@ -41,6 +41,14 @@ const provider = (): Provider => ({
     cwd,
     ownProcess,
   }) {
+    if (process.env.PNYX_TEST_VERBOSE === '1') {
+      console.error(
+        'fixture native open',
+        process.pid,
+        cwd,
+      )
+    }
+
     const state: State = {
       id: agent?.sessionId ?? randomUUID(),
       closed: false,
@@ -112,6 +120,14 @@ const provider = (): Provider => ({
 
           const feed = async () => {
             for await (const message of input) {
+              if (process.env.PNYX_TEST_VERBOSE === '1') {
+                console.error(
+                  'fixture native input',
+                  state.id,
+                  message.id,
+                )
+              }
+
               state.input.push(message)
               const turn = randomUUID()
               state.turn = turn
@@ -295,6 +311,14 @@ try {
             ok: true,
           })
         } else if (request.kind === 'event' && state?.emit && request.event) {
+          if (process.env.PNYX_TEST_VERBOSE === '1') {
+            console.error(
+              'fixture native emitted',
+              state.id,
+              typeof request.event === 'string' ? request.event : request.event.type,
+            )
+          }
+
           state.emit({ event: request.event })
 
           if (request.nextEvent) {

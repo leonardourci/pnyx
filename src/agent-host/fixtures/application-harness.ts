@@ -132,6 +132,11 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
       'data',
       chunk => {
         errors += chunk
+
+        if (process.env.PNYX_TEST_VERBOSE === '1') {
+          process.stderr.write(String(chunk))
+        }
+
         messages.push(String(chunk))
       },
     )

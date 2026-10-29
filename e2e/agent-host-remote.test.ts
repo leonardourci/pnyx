@@ -185,10 +185,13 @@ for (const harness of [
           folder,
         ],
       })
-      await until({ check: async () => {
-      const states = await host.stats()
-      return states.length === 2 && states.every(state => state.input.length === 1)
-    } })
+      await until({
+        check: async () => {
+          const states = await host.stats()
+
+          return states.length === 2 && states.every(state => state.input.length === 1)
+        },
+      })
       const before = await host.stats()
       first.child.kill('SIGKILL')
       await first.exited
@@ -451,6 +454,7 @@ for (const harness of [
         },
       })
       await app.start()
+
       try {
         await until({ check: () => app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.') })
       } catch (error) {
@@ -459,6 +463,7 @@ for (const harness of [
         t.diagnostic(JSON.stringify(await host.stats()))
         throw error
       }
+
       assert.equal(
         (await host.stats()).length,
         3,

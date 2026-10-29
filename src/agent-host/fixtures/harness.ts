@@ -88,6 +88,10 @@ export async function fixtureHost({
     'data',
     chunk => {
       stderr += chunk
+
+      if (process.env.PNYX_TEST_VERBOSE === '1') {
+        process.stderr.write(String(chunk))
+      }
     },
   )
   child.on(
