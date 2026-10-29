@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { mkdirSync, mkdtempSync, realpathSync, symlinkSync, writeFileSync } from 'node:fs'
+import { execFileSync, spawnSync } from 'node:child_process'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -135,6 +136,129 @@ test(
       served({ route: 'attachments/notes.png' }),
       undefined,
       'an attachment Pnyx did not name',
+    )
+  },
+)
+
+const lab = () => {
+  const home = realpathSync(mkdtempSync(join(
+    tmpdir(),
+    'pnyx-image-escape-',
+  )))
+  const dir = join(
+    home,
+    'hydra',
+  )
+  const outside = join(
+    home,
+    'outside',
+  )
+  mkdirSync(dir)
+  mkdirSync(outside)
+  writeFileSync(
+    join(
+      outside,
+      'private.png',
+    ),
+    'outside',
+  )
+
+  return {
+    dir,
+    outside,
+  }
+}
+
+test(
+  'a copies folder or a parent folder that links elsewhere never makes that place served',
+  () => {
+    const linkedRoot = lab()
+    symlinkSync(
+      linkedRoot.outside,
+      join(
+        linkedRoot.dir,
+        'copies',
+      ),
+    )
+    assert.equal(
+      hydraImageFile({
+        dir: linkedRoot.dir,
+        route: 'copies/private.png',
+      }),
+      undefined,
+    )
+
+    const linkedParent = lab()
+    mkdirSync(
+      join(
+        linkedParent.dir,
+        'copies',
+        'task',
+      ),
+      { recursive: true },
+    )
+    symlinkSync(
+      linkedParent.outside,
+      join(
+        linkedParent.dir,
+        'copies',
+        'task',
+        'shots',
+      ),
+    )
+    assert.equal(
+      hydraImageFile({
+        dir: linkedParent.dir,
+        route: 'copies/task/shots/private.png',
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a FIFO named like an image is refused at once instead of blocking the server',
+  () => {
+    const { dir } = lab()
+    mkdirSync(join(
+      dir,
+      'copies',
+    ))
+    execFileSync(
+      'mkfifo',
+      [
+        join(
+          dir,
+          'copies',
+          'pipe.png',
+        ),
+      ],
+    )
+    // In a child process, so a reader that blocks fails this test by its deadline instead of hanging the run.
+    const child = spawnSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        `import { hydraImageFile } from ${JSON.stringify(new URL(
+          './image-files.ts',
+          import.meta.url,
+        ).href)}
+console.log(JSON.stringify(hydraImageFile({ dir: ${JSON.stringify(dir)}, route: 'copies/pipe.png' }) ?? null))`,
+      ],
+      {
+        encoding: 'utf8',
+        timeout: 5000,
+      },
+    )
+    assert.equal(
+      child.error,
+      undefined,
+    )
+    assert.equal(
+      child.stdout.trim(),
+      'null',
     )
   },
 )
