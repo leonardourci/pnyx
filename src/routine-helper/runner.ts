@@ -720,9 +720,10 @@ export function createRoutineHelper({
         cancelDeadline()
         let cleaned = !remote || !!active
 
+
         try {
           try {
-            await active?.close()
+            await (active?.remote ? active.settle?.() : active?.close())
           } catch (error) {
             cleaned = false
             console.error(

@@ -14,6 +14,10 @@ type Binding = {
   request: string
   instance: string
   session?: Summary
+  applied?: Record<string, {
+    through: number
+    at: string
+  }>
   answers: Record<string, {
     permission: string
     secret: boolean
@@ -162,14 +166,25 @@ export async function nativeProviders({
       }
 
       if (!summary && binding) {
-        if (binding.instance !== client.ready.instance) {
+        const sameOwner = binding.instance === client.ready.instance
+        const cleanPredecessor = binding.instance === client.ready.predecessor
+
+        if (!sameOwner && !cleanPredecessor) {
           fail({
             code: 'RECOVERY_REQUIRED',
             message: 'Native owner changed; reconcile old ownership and retained facts before reopening',
           })
         }
 
-        const previous = checked({ result: await client.result({ requestId: binding.request }) })
+        const previous = binding.instance === client.ready.predecessor && binding.session
+          ? {
+            kind: 'opened' as const,
+            session: {
+              ...binding.session,
+              phase: 'closed' as const,
+            },
+          }
+          : checked({ result: await client.result({ requestId: binding.request }) })
 
         if (previous.kind !== 'opened') {
           throw new Error('Native opening is not established')
@@ -297,7 +312,16 @@ export async function nativeProviders({
 
           return id
         },
+        async appliedFact({ fact }) {
+          active.applied ??= {}
+          active.applied[fact.ref.epoch] = {
+            through: fact.seq,
+            at: fact.at,
+          }
+          await save()
+        },
         async completedAnswer({
+
           answerId,
           phase,
         }) {
