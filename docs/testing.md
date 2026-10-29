@@ -57,7 +57,7 @@ Rules:
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads.
 
-For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` and replays the recording with the chosen reply. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
+For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` that an agent of the latest scenario's Hydra gets, and replays the recording with the chosen reply. A plan a flow leaves unused never answers another flow. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
 
 The flows:
 - `tasks.test.ts` covers a task's life, column rules and dependencies.
