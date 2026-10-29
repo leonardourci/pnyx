@@ -376,10 +376,11 @@ export async function sendReply({
       const differentQuestion = request.ask && known?.answers !== request.ask.id
       const recordedSource = known?.decision?.fromMessage?.id
       const differentSource = request.ask && recordedSource !== request.ask.fromMessage
+      const legacyOwnerAnswer = request.ask?.fromMessage !== undefined && !known?.accepted
 
-      if (known?.accepted && (differentQuestion || differentSource)) {
+      if (known && request.ask && (differentQuestion || differentSource || legacyOwnerAnswer)) {
         throw new HydraError({
-          message: 'this reply key belongs to a different question or owner message',
+          message: 'this reply key belongs to a different question, owner message or answer attempt',
           code: 'CONFLICT',
         })
       }
@@ -910,12 +911,31 @@ export const reply = guard({
       },
     })
     const out: Output = { reply: receipt }
+    const current = loadHydra({ hydraId }).state.cards[receipt.card]
+    const savedAnswer = current?.replies?.find(saved => saved.id === receipt.reply
+      && saved.accepted)
+    const source = savedAnswer?.decision?.fromMessage
+
+    if (savedAnswer?.answers && source) {
+      const help = [`Owner answer recorded; delivery ${receipt.state}. The saved decision is unchanged.`]
+      const recordError = 'recordError' in receipt ? receipt.recordError : undefined
+
+      if (receipt.state === 'failed' && !recordError) {
+        help.push(`Retry with reply ${receipt.card} --text "Resend saved answer" --idempotency-key ${receipt.reply}`)
+      } else if (receipt.state !== 'delivered' || recordError) {
+        help.push(`Check the worker's session. Only if it never arrived, run task answer ${receipt.card} ${savedAnswer.answers} --from-message ${source.id} --event-id ${receipt.reply} --undelivered --reason "Retry saved delivery" --hydra ${hydraId}`)
+      }
+
+      out.help = help
+
+      return out
+    }
 
     if ('recordError' in receipt && receipt.recordError && receipt.state === 'failed') {
       out.help = ['The send failed and nothing was delivered; once the cause is fixed, send again without --idempotency-key']
     } else if ('recordError' in receipt && receipt.recordError) {
       out.help = [`The send ended ${receipt.state} but was not recorded, so the Hydra still shows it queued; check the task's inbox or the session before sending again`]
-    } else if (loadHydra({ hydraId }).state.cards[receipt.card]?.steering
+    } else if (current?.steering
       ?.some(message => message.reply === receipt.reply)
       && receipt.state !== 'delivered') {
       out.help = [`Instruction ${receipt.reply} is saved in the task inbox until the worker acknowledges it. Pending IDs replay when the worker opens or resumes; held workers wait for release. Retry with the same key to preserve its identity.`]
