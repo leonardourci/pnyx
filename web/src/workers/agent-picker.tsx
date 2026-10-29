@@ -3,7 +3,13 @@ import type { ModelOption } from '#workers/provider.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button, Select, type Option } from '#web-shared/ui/controls.tsx'
 
-type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault' | 'iconSize'>
+// A picker that is a table cell: changed from what is saved, or holding a problem.
+export interface CellMark {
+  changed?: boolean
+  invalid?: boolean
+}
+
+type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault' | 'iconSize'> & { mark?: CellMark }
 
 export function PickerField({
   label,
@@ -12,6 +18,7 @@ export function PickerField({
   disabled,
   reason,
   onChange,
+  mark,
   ...look
 }: {
   label: string
@@ -22,7 +29,7 @@ export function PickerField({
   onChange({ value }: { value: string }): void
 } & Look) {
   return (
-    <div className="picker-field">
+    <div className="picker-field" data-changed={mark?.changed || undefined} data-invalid={mark?.invalid || undefined}>
       <span>{label}</span>
       <Select
         label={label}
