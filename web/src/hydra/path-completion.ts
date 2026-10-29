@@ -1,4 +1,5 @@
 import type { FolderListing } from '#projects/folders.ts'
+import { FOLDER_LIMIT } from '#projects/folder-limit.ts'
 
 const commonPrefix = ({ names }: { names: string[] }) => names.reduce((
   prefix,
@@ -25,7 +26,8 @@ export function completePath({
   typed: string
   listing: FolderListing
 }): string | undefined {
-  if (listing.selected || !listing.folders.length) {
+  // A full listing may leave out matches, so their common prefix could complete too far.
+  if (listing.selected || !listing.folders.length || listing.folders.length >= FOLDER_LIMIT) {
     return undefined
   }
 
