@@ -6,7 +6,7 @@ import { test } from 'node:test'
 import { hydraDir } from '#app/home-migration.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
-import { QUESTION_REMINDER_MS } from '#hydra/review.ts'
+import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
@@ -499,5 +499,84 @@ test(
         true,
       ],
     )
+  },
+)
+
+test(
+  'the review cadence follows the setting every Hydra shares, and 0 turns timed reviews off',
+  async () => {
+    const s = await pnyx.scenario()
+    const before = /reviewMinutes: (\d+)/.exec(await s.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    }))![1]!
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ready work',
+        '--key',
+        'ready',
+      ],
+    })
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        '{"reviewMinutes":10}',
+      ],
+    })
+    let time = Date.now()
+    const timer = startReviewTimer({
+      hydraId: s.hydraId,
+      now: () => time,
+      interval: () => () => {},
+      wake: () => {},
+    })
+    const reviews = () => s.events().filter(event => event.type === 'hydra.review').length
+
+    try {
+      time += 10 * MINUTE_MS - 1
+      timer.check()
+      assert.equal(
+        reviews(),
+        0,
+      )
+      time += 1
+      timer.check()
+      assert.equal(
+        reviews(),
+        1,
+      )
+      await s.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          '{"reviewMinutes":0}',
+        ],
+      })
+      time += 2 * REVIEW_MS
+      timer.check()
+      assert.equal(
+        reviews(),
+        1,
+      )
+    } finally {
+      timer.close()
+      // Every flow shares one Pnyx home, so later flows keep the cadence they started with.
+      await s.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({ reviewMinutes: Number(before) }),
+        ],
+      })
+    }
   },
 )
