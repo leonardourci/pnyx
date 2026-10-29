@@ -1,11 +1,15 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { appendFileSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { commit } from '#app/cli-support.ts'
+import { loadHydra } from '#app/store.ts'
+import { hydraConfig } from '#hydra/config.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { decideView } from '#preferences/decisions.ts'
+import { hideDone } from '#tasks/retention.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { settingsLogPath } from './store.ts'
@@ -24,22 +28,27 @@ after(() => rmSync(
 ))
 
 function home() {
-  process.env.PNYX_HOME = realpathSync(mkdtempSync(join(
+  const dir = realpathSync(mkdtempSync(join(
     scratch,
     'pnyx-settings-',
   )))
+  process.env.PNYX_HOME = dir
+
+  return dir
 }
 
 // Writes a Hydra's own view the way releases before shared settings did, without touching the store.
 function legacyView({
   hydraId,
+  at,
   patch,
 }: {
   hydraId: string
+  at: string
   patch: Record<string, unknown>
 }) {
   const meta = {
-    at: new Date().toISOString(),
+    at,
     actor: 'cli',
   }
 
@@ -58,6 +67,46 @@ function legacyView({
   })
 }
 
+// Writes a Hydra's own config the way releases before shared settings did.
+function legacyConfig({
+  hydraId,
+  at,
+  data,
+}: {
+  hydraId: string
+  at: string
+  data: Record<string, unknown>
+}) {
+  const meta = {
+    at,
+    actor: 'cli',
+  }
+
+  return commit({
+    hydraId,
+    meta,
+    intent: {
+      type: 'board.configured',
+      card: '$board',
+    },
+    decide: ({ state }) => hydraEvent({
+      state,
+      meta,
+      cardId: '$board',
+      change: {
+        type: 'board.configured',
+        data: {
+          ...hydraConfig({
+            state,
+            id: hydraId,
+          }),
+          ...data,
+        },
+      },
+    }),
+  })
+}
+
 const show = async ({ hydraId }: { hydraId: string }) =>
   (await commands.view([
     'show',
@@ -68,6 +117,56 @@ const show = async ({ hydraId }: { hydraId: string }) =>
 const settings = async () => (await commands.settings(['show'])) as {
   settings: Settings
   revision: number
+}
+
+const cardOf = ({
+  hydraId,
+  key,
+}: {
+  hydraId: string
+  key: string
+}) => {
+  const { state } = loadHydra({ hydraId })
+
+  return state.cards[state.keys[key]!]!
+}
+
+async function doneCard({
+  dir,
+  hydraId,
+  key,
+}: {
+  dir: string
+  hydraId: string
+  key: string
+}) {
+  const file = join(
+    dir,
+    `${key}.json`,
+  )
+  writeFileSync(
+    file,
+    JSON.stringify({ title: key }),
+  )
+  await commands.push([
+    '--key',
+    key,
+    '--file',
+    file,
+    '--hydra',
+    hydraId,
+  ])
+  await commands.outcome([
+    key,
+    'done',
+    '--hydra',
+    hydraId,
+  ])
+
+  return Date.parse(cardOf({
+    hydraId,
+    key,
+  }).doneAt!)
 }
 
 test(
@@ -111,26 +210,37 @@ test(
 )
 
 test(
-  'the first read moves the values of the Hydra changed most recently',
+  'the first read takes the view changed last and each Hydra value set last, turning an old 0 into off',
   async () => {
     home()
     await commands.hydra([
       'create',
-      'older',
+      'beta',
     ])
     await commands.hydra([
       'create',
-      'newer',
+      'alpha',
     ])
     legacyView({
-      hydraId: 'older',
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
       patch: { theme: 'light' },
     })
     legacyView({
-      hydraId: 'newer',
+      hydraId: 'beta',
+      at: '2026-02-01T00:00:00.000Z',
       patch: {
         theme: 'dark',
         defaultHydraWidth: 600,
+      },
+    })
+    legacyConfig({
+      hydraId: 'alpha',
+      at: '2026-03-01T00:00:00.000Z',
+      data: {
+        doneAfterHours: 0,
+        reviewMinutes: 5,
+        helper: false,
       },
     })
 
@@ -144,15 +254,20 @@ test(
       600,
     )
     assert.equal(
+      moved.settings.doneAfterHours,
+      'off',
+    )
+    assert.equal(
+      moved.settings.reviewMinutes,
+      5,
+    )
+    assert.equal(
+      moved.settings.helper,
+      'off',
+    )
+    assert.equal(
       moved.revision,
       1,
-    )
-    assert.match(
-      readFileSync(
-        settingsLogPath(),
-        'utf8',
-      ),
-      /Moved from Hydra newer/,
     )
   },
 )
@@ -214,7 +329,57 @@ test(
         '--hydra',
         'main',
       ]),
-      /takes off or hours/,
+      { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'a refused command leaves the shared settings as they were',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    const before = await settings()
+
+    assert.throws(
+      () => commands.view([
+        'set',
+        '--json',
+        '{"theme":"dark","hydraWidth":600}',
+        '--if-revision',
+        '5',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'REVISION_CONFLICT' },
+    )
+    assert.throws(
+      () => commands.view([
+        'set',
+        '--json',
+        '{"fontSize":18,"panelWidth":-5}',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => commands.hydra([
+        'create',
+        'main',
+        '--name',
+        'Other',
+        '--helper',
+        'claude',
+      ]),
+      { code: 'CONFLICT' },
+    )
+    assert.deepEqual(
+      await settings(),
+      before,
     )
   },
 )
@@ -229,21 +394,31 @@ test(
         '--json',
         '{"panelWidth":500}',
       ]),
-      /unknown keys panelWidth/,
+      { code: 'VALIDATION_ERROR' },
     )
-    const save = () => commands.settings([
+    await commands.settings([
       'set',
       '--json',
       '{"focusMode":false}',
       '--event-id',
       'one',
     ])
-    await save()
     const saved = await settings()
-    await save()
+    const repeat = await commands.settings([
+      'set',
+      '--json',
+      '{"focusMode":true}',
+      '--event-id',
+      'one',
+    ])
+
     assert.equal(
-      (await settings()).revision,
-      saved.revision,
+      repeat.event,
+      'none: duplicate',
+    )
+    assert.deepEqual(
+      await settings(),
+      saved,
     )
     assert.throws(
       () => commands.settings([
@@ -251,9 +426,187 @@ test(
         '--json',
         '{"focusMode":true}',
         '--if-revision',
-        String(saved.revision - 1),
+        '0',
       ]),
-      /settings changed/,
+      { code: 'REVISION_CONFLICT' },
+    )
+  },
+)
+
+test(
+  'a save after a torn last line is kept',
+  async () => {
+    home()
+    await commands.settings([
+      'set',
+      '--json',
+      '{"fontSize":15}',
+    ])
+    appendFileSync(
+      settingsLogPath(),
+      '{"torn',
+    )
+    await commands.settings([
+      'set',
+      '--json',
+      '{"fontSize":16}',
+    ])
+
+    const read = await settings()
+    assert.equal(
+      read.settings.fontSize,
+      16,
+    )
+    assert.equal(
+      read.revision,
+      2,
+    )
+  },
+)
+
+test(
+  'layout reset --all returns every Hydra to the shared default widths once',
+  async () => {
+    home()
+
+    for (const hydraId of [
+      'first',
+      'second',
+    ]) {
+      await commands.hydra([
+        'create',
+        hydraId,
+      ])
+      await commands.view([
+        'set',
+        '--json',
+        '{"hydraWidth":700}',
+        '--hydra',
+        hydraId,
+      ])
+    }
+
+    await commands.settings([
+      'set',
+      '--json',
+      '{"defaultHydraWidth":520}',
+    ])
+    await commands.layout([
+      'reset',
+      '--all',
+      '--event-id',
+      'reset-1',
+    ])
+    await commands.view([
+      'set',
+      '--json',
+      '{"hydraWidth":700}',
+      '--hydra',
+      'second',
+    ])
+    await commands.layout([
+      'reset',
+      '--all',
+      '--event-id',
+      'reset-1',
+    ])
+
+    assert.equal(
+      (await show({ hydraId: 'first' })).view.hydraWidth,
+      520,
+    )
+    assert.equal(
+      (await show({ hydraId: 'second' })).view.hydraWidth,
+      700,
+    )
+    assert.throws(
+      () => commands.layout([
+        'reset',
+        '--all',
+        '--if-revision',
+        '1',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'Done cards follow the shared hours, while a task\'s own 0 keeps it visible',
+  async () => {
+    const dir = home()
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    const doneAt = await doneCard({
+      dir,
+      hydraId: 'main',
+      key: 'ship',
+    })
+    await doneCard({
+      dir,
+      hydraId: 'main',
+      key: 'keep',
+    })
+    await commands.task([
+      'hide-after',
+      'keep',
+      '0',
+      '--hydra',
+      'main',
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      '{"doneAfterHours":2}',
+    ])
+
+    assert.equal(
+      hideDone({
+        hydraId: 'main',
+        at: new Date(doneAt + 2 * HOUR_MS - 1).toISOString(),
+      }),
+      0,
+    )
+    assert.equal(
+      hideDone({
+        hydraId: 'main',
+        at: new Date(doneAt + 2 * HOUR_MS).toISOString(),
+      }),
+      1,
+    )
+    assert.equal(
+      cardOf({
+        hydraId: 'main',
+        key: 'ship',
+      }).hidden,
+      true,
+    )
+    assert.equal(
+      cardOf({
+        hydraId: 'main',
+        key: 'keep',
+      }).hidden,
+      undefined,
+    )
+
+    await doneCard({
+      dir,
+      hydraId: 'main',
+      key: 'later',
+    })
+    await commands.settings([
+      'set',
+      '--json',
+      '{"doneAfterHours":"off"}',
+    ])
+    assert.equal(
+      hideDone({
+        hydraId: 'main',
+        at: new Date(doneAt + 1000 * HOUR_MS).toISOString(),
+      }),
+      0,
     )
   },
 )
@@ -277,13 +630,6 @@ test(
         hours: 0,
       }),
       Date.parse(doneAt),
-    )
-    assert.equal(
-      cardDoneDeadline({
-        card,
-        hours: 2,
-      }),
-      Date.parse(doneAt) + 2 * HOUR_MS,
     )
     assert.equal(
       cardDoneDeadline({
