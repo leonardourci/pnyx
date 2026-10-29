@@ -110,7 +110,6 @@ export function invalid({ message }: { message: string }): never {
   })
 }
 
-// Checks a candidate's shape and characters only; a start override has no harness of its own yet.
 export function candidates({ value }: { value: unknown }): Candidate[] {
   const [issue] = candidateIssues({ value })
 

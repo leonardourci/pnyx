@@ -205,16 +205,20 @@ function ruleCommand({ args }: { args: string[] }): Output {
 
   if (action === 'list') {
     const { state } = loadHydra({ hydraId })
+    const help = [
+      'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+      'Run `pnyx-axi rule show` for the editable document and its revision',
+    ]
+
+    if (onTemplate()) {
+      help.push(TEMPLATE_NUDGE)
+    }
 
     return {
       hydraId,
       ...effectiveDispatch(),
       proposals: proposalStatus({ state }),
-      help: [
-        'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
-        'Run `pnyx-axi rule show` for the editable document and its revision',
-        ...(onTemplate() ? [TEMPLATE_NUDGE] : []),
-      ],
+      help,
     }
   }
 

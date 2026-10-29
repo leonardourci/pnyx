@@ -564,7 +564,6 @@ export function chooseCandidate({
     })
   }
 
-  // Candidates are tried in list order, so on a tie or with no known quota the first listed starts.
   const chosen = (best ?? tied[0]!).choice
   const how = ownerOverride ? 'owner override; quota does not veto an explicit choice'
     : tied.length > 1 ? `${best ? `tie at spendPriority ${best.priority}` : 'quota unknown'}; first listed candidate`
