@@ -10,7 +10,7 @@ import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
-import type { CompactInput, CompactionChange } from '#workers/compaction/model.ts'
+import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { commentEpoch, commentInput, needsCommentNote } from '#workers/compaction/comments.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
@@ -84,6 +84,9 @@ const RETRY_MS = [
   600_000,
 ]
 
+// A running compaction that hears nothing from its agent this long has failed; Claude Code reports a live one every 30 seconds.
+const COMPACTION_MS = 10 * 60 * 1000
+
 export function createHost({
   hydraId,
   query,
@@ -96,6 +99,7 @@ export function createHost({
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
   pauseDelay = PAUSE_MS,
+  compactionDelay = COMPACTION_MS,
   retryDelays = RETRY_MS,
   helperBound,
   upgradeRoot,
@@ -121,6 +125,7 @@ export function createHost({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  compactionDelay?: number
   retryDelays?: number[]
   helperBound?: number
   // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
@@ -349,20 +354,78 @@ export function createHost({
     at,
   })
 
+  const compactionDeadlines = new Map<string, NodeJS.Timeout>()
+
   const compactChange = ({
     card,
     change,
   }: {
     card: string
     change: CompactionChange
-  }) => write({
-    fn: ({ writer }) => recordCompaction({
-      writer,
-      card,
-      change,
-      at: at(),
-    }),
-  })
+  }) => {
+    write({
+      fn: ({ writer }) => recordCompaction({
+        writer,
+        card,
+        change,
+        at: at(),
+      }),
+    })
+
+    if (change.kind === 'status') {
+      compactionDeadline({ operation: change.operation })
+    }
+  }
+
+  // Each signal of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
+  const compactionDeadline = ({ operation }: { operation: Compaction }) => {
+    clearTimeout(compactionDeadlines.get(operation.session))
+    compactionDeadlines.delete(operation.session)
+
+    if (operation.state !== 'running') {
+      return
+    }
+
+    compactionDeadlines.set(
+      operation.session,
+      setTimeout(
+        () => background({
+          name: 'compaction deadline',
+          run: () => {
+            compactionDeadlines.delete(operation.session)
+
+            if (closing) {
+              return
+            }
+
+            const { cards } = loadHydra({ hydraId }).state
+            const card = Object.values(cards).find(card => card.compaction?.operations
+              .some(item => item.id === operation.id && item.state === 'running'))
+
+            if (!card) {
+              return
+            }
+
+            compactChange({
+              card: card.id,
+              change: {
+                kind: 'status',
+                operation: {
+                  ...operation,
+                  state: 'failed',
+                  endedAt: at(),
+                  error: 'The agent stopped reporting this compaction before it finished',
+                },
+              },
+            })
+            releaseCompact({ card: card.id })
+          },
+        }),
+        compactionDelay,
+      ).unref(),
+    )
+  }
+
   const teachComments = ({
     card,
     id,
@@ -1453,11 +1516,10 @@ export function createHost({
             continue
           }
 
+          // One session compacts once at a time: Claude Code repeats its start every 30 seconds under a new id, and a manual request opened its operation before the provider's first signal.
           const mapped = compactionIds.get(activity.id)
-          const matched = current?.compaction?.operations.find(operation => operation.id === mapped)
-          const previous = matched
-            ?? activeCompaction({ card: current })
-          const operation = previous && (activity.trigger === 'manual' || previous.id === activity.id) ? previous : {
+          const operation = current.compaction?.operations.find(running => running.id === mapped)
+            ?? activeCompaction({ card: current }) ?? {
             id: activity.id,
             session: key,
             trigger: activity.trigger,
