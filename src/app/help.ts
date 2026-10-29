@@ -118,14 +118,15 @@ pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, do
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 --project names a project attached to the Hydra (see project list).
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
-pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
-pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
+pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
+pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
+--intent rewrites the card's Intent when the goal itself changes; the log keeps the earlier ones.
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.

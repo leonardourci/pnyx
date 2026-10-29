@@ -5,6 +5,8 @@ import { test } from 'node:test'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { boardReview } from '#hydra/review.ts'
+import type { HydraState } from '#app/model.ts'
+import { cardStatus, currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -676,5 +678,254 @@ test(
       ],
     })
     assert.ok(s.task({ key: 'dependent' }).sessionIds?.length)
+  },
+)
+
+test(
+  'a card carries its Intent until Hydra rewrites it for a changed goal, follows the worker\'s newest words and asks you to merge',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'card-context-app' })
+    const intent = 'You want unknown pages to go to their Hydra\'s home instead of breaking the page.'
+    const create = ({ value }: { value: string }) => [
+      'task',
+      'create',
+      '--title',
+      'Refused intent',
+      '--intent',
+      value,
+    ]
+
+    for (const value of [
+      ' \n ',
+      'x'.repeat(4001),
+    ]) {
+      assert.equal(
+        await s.ownerRefused({ args: create({ value }) }),
+        'VALIDATION_ERROR',
+      )
+    }
+
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Redirect unknown pages',
+        '--key',
+        'redirect',
+        '--project',
+        app,
+        '--intent',
+        intent,
+      ],
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const card = ({ state }: { state: HydraState }) => state.cards[s.task({ key: 'redirect' }).id]
+
+    try {
+      await page.shows({
+        what: 'the Intent on the card',
+        check: ({ state }) => card({ state })?.intent === intent,
+      })
+      assert.match(
+        await s.owner({
+          args: [
+            'task',
+            'show',
+            'redirect',
+          ],
+        }),
+        /intent: .*unknown pages/,
+      )
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'redirect',
+        ],
+      })
+      const redirect = s.task({ key: 'redirect' })
+      const worker = s.as({ agent: await s.agent({ cwd: redirect.copy!.path }) })
+      await worker.run({
+        args: [
+          'task',
+          'status',
+          'redirect',
+          'working',
+          '--note',
+          'Checking what an unknown address does today.',
+        ],
+      })
+      await page.shows({
+        what: 'the worker\'s note as the current state',
+        check: ({ state }) => currentState({ card: card({ state })! })?.text === 'Checking what an unknown address does today.',
+      })
+      const progress = {
+        text: 'Redirect built; opening the pull request next.',
+        source: 'progress',
+      }
+      await worker.run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          'redirect',
+          '--kind',
+          'progress',
+          '--text',
+          progress.text,
+        ],
+      })
+      await page.shows({
+        what: 'the newer progress report as the current state',
+        check: ({ state }) => {
+          const said = currentState({ card: card({ state })! })
+
+          return said?.text === progress.text && said.source === progress.source
+        },
+      })
+      const url = s.pullRequest({
+        number: 147,
+        title: 'Redirect unknown pages to their Hydra\'s home',
+        checks: '4 passed, 0 failed, 4 total',
+      })
+      await worker.run({
+        args: [
+          'link',
+          'redirect',
+          '--url',
+          url,
+        ],
+      })
+      await page.shows({
+        what: 'the merge question reading Needs you',
+        check: ({ state }) => {
+          const task = card({ state })!
+          const merge = task.asks?.filter(ask => ask.kind === 'merge').map(ask => ask.id) ?? []
+
+          return merge.length === 1
+            && waitingQuestions({ card: task }).map(question => question.ask?.id)
+              .join() === merge.join()
+            && statusLabel({ status: cardStatus({ card: task }) }) === 'Needs you'
+        },
+      })
+      assert.deepEqual(
+        currentState({ card: s.task({ key: 'redirect' }) }),
+        {
+          ...progress,
+          at: s.task({ key: 'redirect' }).progress!.at,
+        },
+        'a pull request link is not the task\'s state',
+      )
+      assert.equal(
+        s.task({ key: 'redirect' }).intent,
+        intent,
+        'notes, progress, a pull request and a question leave the Intent alone',
+      )
+
+      const stale = await s.ownerRefusal({
+        args: [
+          'task',
+          'intent',
+          'redirect',
+          '--text',
+          'Also cover retired task links.',
+        ],
+      })
+      assert.equal(
+        stale.code,
+        'VALIDATION_ERROR',
+      )
+      assert.match(
+        stale.error ?? '',
+        /task owner-ask/,
+        'the old command points to its new name and never writes the Intent',
+      )
+      await s.owner({
+        args: [
+          'task',
+          'owner-ask',
+          'redirect',
+          '--text',
+          'Also cover retired task links.',
+        ],
+      })
+      assert.equal(
+        s.task({ key: 'redirect' }).ask?.at(-1)?.text,
+        'Also cover retired task links.',
+      )
+      assert.equal(
+        s.task({ key: 'redirect' }).intent,
+        intent,
+      )
+
+      const hydra = s.as({ agent: await s.chat({ text: 'Also send links to retired tasks to their Hydra\'s home.' }) })
+      const widened = 'You want unknown pages and links to retired tasks to go to their Hydra\'s home instead of breaking the page.'
+      const rewrite = ({ value }: { value?: string }) => [
+        'task',
+        'brief',
+        'redirect',
+        ...(value === undefined ? [] : [
+          '--intent',
+          value,
+        ]),
+        '--reason',
+        'the owner widened the scope to retired task links',
+      ]
+
+      for (const value of [
+        undefined,
+        ' ',
+      ]) {
+        assert.equal(
+          (await hydra.refusal({ args: rewrite({ value }) })).code,
+          'VALIDATION_ERROR',
+        )
+      }
+
+      await hydra.run({ args: rewrite({ value: widened }) })
+      await page.shows({
+        what: 'the rewritten Intent on the card',
+        check: ({ state }) => card({ state })?.intent === widened,
+      })
+      assert.match(
+        await s.owner({
+          args: [
+            'task',
+            'show',
+            'redirect',
+          ],
+        }),
+        /intent: .*retired tasks/,
+      )
+      assert.deepEqual(
+        s.events().flatMap(event => event.cardId === redirect.id
+          && (event.type === 'task.created' || event.type === 'task.brief') && event.data.intent
+          ? [event.data.intent]
+          : []),
+        [
+          intent,
+          widened,
+        ],
+        'the log keeps the earlier Intent',
+      )
+      assert.match(
+        await s.owner({
+          args: [
+            'history',
+            '--card',
+            'redirect',
+            '--updates',
+          ],
+        }),
+        /Intent updated/,
+      )
+    } finally {
+      page.close()
+    }
   },
 )

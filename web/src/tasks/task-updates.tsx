@@ -5,7 +5,7 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { groupUpdates, taskTimeline, updateLayout } from './task-updates.ts'
 import { loadOlderUpdates, loadUpdates, retryUpdates, subscribeUpdates, updatesOf } from './updates-cache.ts'
-import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
+import { hasTaskQuestion } from './task-question.tsx'
 import { UpdateRow } from './update-rows.tsx'
 
 export function TaskUpdates({
@@ -13,15 +13,11 @@ export function TaskUpdates({
   columns,
   command,
   connected,
-  notify,
-  answer,
 }: {
   card: Card
   columns: HydraColumn[]
   command: Command
   connected: boolean
-  notify({ text }: { text: string }): void
-  answer({ card }: { card: Card }): void
 }) {
   const {
     events,
@@ -88,7 +84,7 @@ export function TaskUpdates({
   const questionPending = hasTaskQuestion({
     card,
   })
-  // An open question to the owner shows in the pending panel, not twice.
+  // An open question to the owner shows on the card's Context tab, not here too.
   const history = timeline.filter(update => (!questionPending || update.id !== card.status?.id
     || update.state !== 'needs_you' || !!update.decision)
     && !card.asks?.some(ask => ask.id === update.id && ask.audience === 'owner' && !ask.answered && !ask.closed))
@@ -122,19 +118,6 @@ export function TaskUpdates({
       open,
     }
   })
-  const pending = questionPending ? (
-    <li key="pending-question" className="pending-question">
-      <div className="pending-question-panel">
-        <div className="update-heading"><strong>Decision needed</strong></div>
-        <TaskQuestion
-          card={card}
-          command={command}
-          notify={notify}
-          answer={answer}
-        />
-      </div>
-    </li>
-  ) : null
 
   return (
     <div
@@ -152,9 +135,8 @@ export function TaskUpdates({
         >{oldestFirst ? 'Oldest first ↑' : 'Newest first ↓'}
         </Button>
       </div>
-      {(shown.length > 0 || pending) && (
+      {shown.length > 0 && (
         <ol>
-          {!oldestFirst && pending}
           {shown.flatMap(group => group.updates.map((
             update,
             index,
@@ -169,11 +151,10 @@ export function TaskUpdates({
               toggle={() => toggle({ id: group.updates[0]!.id })}
             />
           )))}
-          {oldestFirst && pending}
         </ol>
       )}
       {loading && <p className="muted" role="status">Loading updates…</p>}
-      {!shown.length && !pending && !loading && !error && <p className="empty">No updates yet.</p>}
+      {!shown.length && !loading && !error && <p className="empty">No updates yet.</p>}
       {error && (
         <p role="alert">{error} <Button disabled={!connected} onClick={retry}>Try again</Button></p>
       )}

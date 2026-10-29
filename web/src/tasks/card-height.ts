@@ -1,5 +1,7 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 
+const PANEL_MINIMUM = 120
+
 const spacing = ({ element }: { element: HTMLElement }) => {
   const css = getComputedStyle(element)
 
@@ -18,14 +20,21 @@ const outerHeight = ({ element }: { element: HTMLElement }) => {
     + parseFloat(css.marginTop) + parseFloat(css.marginBottom)
 }
 
-const naturalHeight = ({ element }: { element: HTMLElement }) => spacing({ element })
-  + rows({ element }).reduce(
+const naturalHeight = ({ element }: { element: HTMLElement }) => {
+  const children = rows({ element })
+  const gap = parseFloat(getComputedStyle(element).rowGap) || 0
+
+  return spacing({ element }) + gap * Math.max(
+    0,
+    children.length - 1,
+  ) + children.reduce(
     (
       height,
       child,
     ) => height + outerHeight({ element: child }),
     0,
   )
+}
 
 export function useCardHeight({
   element,
@@ -63,7 +72,15 @@ export function useCardHeight({
         let maximum = minimum
 
         for (const child of children) {
-          if (child.classList.contains('card-rest')) {
+          if (child.classList.contains('card-panel')) {
+            // A tab's body scrolls, so it needs only a few lines to stay usable.
+            const full = naturalHeight({ element: child })
+            minimum += Math.min(
+              full,
+              PANEL_MINIMUM,
+            )
+            maximum += full
+          } else if (child.classList.contains('card-rest')) {
             const update = child.querySelector<HTMLElement>('.last-message')
             const full = naturalHeight({ element: child })
             const line = update ? parseFloat(getComputedStyle(update).lineHeight) : full
@@ -77,29 +94,6 @@ export function useCardHeight({
             minimum += height
             maximum += height
           }
-        }
-
-        const detail = card.querySelector<HTMLElement>('.detail')
-
-        if (selected && detail) {
-          const updates = detail.querySelector<HTMLElement>('.task-updates')
-          const full = updates ? naturalHeight({ element: updates }) : 0
-          const other = rows({ element: detail }).filter(child => child !== updates)
-            .reduce(
-              (
-                height,
-                child,
-              ) => height + outerHeight({ element: child }),
-              0,
-            )
-          const frame = spacing({ element: detail })
-            + parseFloat(getComputedStyle(detail).marginTop)
-          + (parseFloat(getComputedStyle(card).rowGap) || 0) + other
-          minimum += frame + Math.min(
-            80,
-            full,
-          )
-          maximum += frame + full
         }
 
         const next = {
@@ -130,7 +124,7 @@ export function useCardHeight({
         resize.disconnect()
         resize.observe(column)
         resize.observe(content)
-        card.querySelectorAll('.last-message, .task-updates > *, .task-requests')
+        card.querySelectorAll('.last-message, .task-updates > *, .task-requests, .card-panel > *')
           .forEach(child => resize.observe(child))
       }
 
@@ -146,7 +140,12 @@ export function useCardHeight({
           subtree: true,
           characterData: true,
           attributes: true,
-          attributeFilter: ['open'],
+          // A tab switch shows one panel and hides the other.
+          attributeFilter: [
+            'open',
+            'hidden',
+            'data-tab',
+          ],
         },
       )
 

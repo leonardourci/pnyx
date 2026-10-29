@@ -1,12 +1,9 @@
-import { askWording, openAsks } from './questions.ts'
+import { askWording, openAsks, waitingPrompt } from './questions.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
 import { failedChecks, pendingChecks, type Link } from '#tasks/delivery/model.ts'
-import type { Attention } from '#workers/model.ts'
-import { PERMISSION_PREFIX } from '#workers/permission-rules.ts'
 import { liveTask } from './select.ts'
-import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { mergeApproved, quote } from '#hydra/wake-reasons.ts'
 import { taskMention } from '#hydra/mentions.ts'
 
@@ -22,10 +19,6 @@ export interface OpenDecision {
   at?: string
   detail: string
 }
-
-// A pending permission's own attention entry is left out: it is listed once, as a permission.
-const waitingPrompt = ({ prompt }: { prompt: Attention }) => prompt.blocking && !prompt.answered
-  && prompt.key !== INTERRUPTED && !prompt.key.startsWith(PERMISSION_PREFIX)
 
 const asked = ({ questions }: { questions?: { question: string }[] }) => questions?.map(q => q.question).join(' ')
 

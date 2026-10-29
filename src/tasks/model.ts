@@ -120,6 +120,12 @@ export interface OwnerAsk {
   message?: string
 }
 
+export interface TaskProgress {
+  text: string
+  at: string
+  actor: string
+}
+
 export interface TaskHold {
   id: string
   at: string
@@ -139,6 +145,10 @@ export interface Card {
   // Derived transcript totals sent to the browser; never used as Hydra state.
   spend?: TaskSpend
   brief?: string
+  // The card's Intent: what the owner wants from the task, newest version.
+  intent?: string
+  // The worker's newest progress report; the newer of it and the newest status note is the card's Current state.
+  progress?: TaskProgress
   initialPrompt?: string
   project?: string
   kind?: TaskKind
@@ -161,6 +171,8 @@ export interface Card {
   sessionActivity?: string
   // When the session's current turn began, while it is working.
   workingSince?: string
+  // When the session's latest working turn began; kept after the turn ends.
+  turnStartedAt?: string
   // The change that ended the session's last working turn.
   turnEndedSeq?: number
   stoppedAt?: string

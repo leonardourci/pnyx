@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { ownerAsk, taskInstructions } from './intent.ts'
+import { ownerAsk, taskInstructions } from './owner-ask.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 
@@ -147,6 +147,65 @@ test(
         actor: 'web',
         at,
       },
+    )
+  },
+)
+
+test(
+  'owner words recorded before the rename still replay into the ask, beside new ones',
+  () => {
+    const added = ({
+      seq,
+      type,
+      text,
+    }: {
+      seq: number
+      type: 'task.intent' | 'task.owner-ask'
+      text: string
+    }): HydraEvent => ({
+      v: 1,
+      boardId: 'test',
+      id: `ask-${seq}`,
+      seq,
+      at,
+      actor: 'cli',
+      cardId: 'task',
+      type,
+      data: {
+        text,
+        at,
+        actor: 'cli',
+      },
+    })
+    const card = replay({
+      state: emptyHydra(),
+      events: [
+        create,
+        added({
+          seq: 2,
+          type: 'task.intent',
+          text: 'Keep keyboard saving too',
+        }),
+        added({
+          seq: 3,
+          type: 'task.owner-ask',
+          text: 'Save drafts on blur',
+        }),
+      ],
+    }).cards.task!
+
+    assert.deepEqual(
+      card.ask?.map(entry => entry.text),
+      [
+        'Fix the save button',
+        'Keep keyboard saving too',
+        'Save drafts on blur',
+      ],
+    )
+    assert.equal(
+      card.intent,
+      undefined,
+      'owner words never become the card\'s Intent',
     )
   },
 )

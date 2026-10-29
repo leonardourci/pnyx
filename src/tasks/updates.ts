@@ -7,6 +7,16 @@ import type { PermissionRequest } from '#workers/model.ts'
 import { reportActor } from '#hydra/hydra.ts'
 import { taskMentions } from '#hydra/mentions.ts'
 
+// Updates and the CLI history name a brief change the same way; a rewritten Intent is never folded as bookkeeping.
+export const briefChange = ({ data }: {
+  data: {
+    before?: unknown
+    after?: unknown
+    intent?: unknown
+  }
+}) =>
+  !data.intent ? 'Brief updated' : data.before === data.after ? 'Intent updated' : 'Brief and Intent updated'
+
 export interface TaskEvent {
   id: string
   seq: number
@@ -438,7 +448,7 @@ function updateRow({
     }
     case 'task.brief': return {
       kind: 'plain',
-      state: 'Brief updated',
+      state: briefChange({ data }),
       note: event.reason ?? '',
     }
     case 'task.reminder-due': return {

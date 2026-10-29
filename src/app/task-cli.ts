@@ -21,7 +21,7 @@ import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
 import { requireUnheld, decideHold } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
-import { taskBrief, taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, untilTime, type TaskCreated, type TaskField } from '#tasks/cli.ts'
+import { taskBrief, taskIntent, taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, untilTime, type TaskCreated, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -30,7 +30,7 @@ import { decideDependencies } from '#tasks/dependency-decisions.ts'
 import { canonical } from '#store/paths.ts'
 import { parseKind } from '#investigations/report.ts'
 import { taskProject, findProject } from '#projects/read.ts'
-import { ownerAsk } from '#tasks/intent.ts'
+import { ownerAsk } from '#tasks/owner-ask.ts'
 import { decideQueue } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
@@ -47,6 +47,7 @@ export const TASK_OPTIONS: Options = {
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
+  intent: { type: 'string' },
   ask: { type: 'string' },
   message: { type: 'string' },
   key: { type: 'string' },
@@ -454,6 +455,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
 
     const folder = canonical({ path: values.folder })
     const brief = taskBrief({ value: values.brief })
+    const intent = taskIntent({ value: values.intent })
     const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
 
     return withHelp({
@@ -521,6 +523,10 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
 
           if (brief !== undefined) {
             created.brief = brief
+          }
+
+          if (intent) {
+            created.intent = intent
           }
 
           if (folder) {
@@ -725,6 +731,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           text: clip({ text: ask.text }),
         })) : 'none: no owner words recorded',
         spend,
+        intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
@@ -957,6 +964,13 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
   }
 
   if (action === 'intent') {
+    throw new HydraError({
+      message: 'task intent is now task owner-ask <task> --text <owner words>; the card\'s Intent changes with task brief --intent',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  if (action === 'owner-ask') {
     const ref = required({
       value: positionals[1],
       what: 'task id',
@@ -966,7 +980,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
       hydraId,
       meta: m,
       intent: {
-        type: 'task.intent',
+        type: 'task.owner-ask',
         card: ref,
       },
       decide: ({ state }) => {
@@ -1005,7 +1019,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           meta: m,
           cardId: task.id,
           change: {
-            type: 'task.intent',
+            type: 'task.owner-ask',
             data: entry,
           },
         })
@@ -1040,24 +1054,30 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
         }
 
         if (action === 'brief') {
-          const after = taskBrief({ value: values.brief })
+          const brief = taskBrief({ value: values.brief })
+          const intent = taskIntent({ value: values.intent })
 
-          if (after === undefined) {
+          if (brief === undefined && intent === undefined) {
             throw new HydraError({
-              message: 'pass --brief <text> (empty text clears it)',
+              message: 'pass --brief <text> (empty text clears it) or --intent <text>',
               code: 'VALIDATION_ERROR',
             })
           }
 
-          return after === (task.brief ?? '') ? { skipped: 'unchanged' } : hydraEvent({
+          const before = task.brief ?? ''
+          const after = brief ?? before
+          const rewritten = intent !== undefined && intent !== task.intent
+
+          return after === before && !rewritten ? { skipped: 'unchanged' } : hydraEvent({
             state,
             meta: m,
             cardId: task.id,
             change: {
               type: 'task.brief',
               data: {
-                before: task.brief ?? '',
+                before,
                 after,
+                ...(rewritten ? { intent } : {}),
               },
             },
           })
