@@ -1,3 +1,4 @@
+import { MAX_OPTIONS } from './native-prompts.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Attention, FormField } from './model.ts'
 import { replyRoute } from './reply-route.ts'
@@ -81,7 +82,7 @@ const CODEX_PERMISSION: Choice[] = [
 
 // A question's options are picked by digit, and a form's choices are each a Down key
 // away, so longer lists are left to the terminal.
-export const MAX_OPTIONS = 8
+export { MAX_OPTIONS } from './native-prompts.ts'
 
 // Names one request exactly as it was shown, so an answer lands only on the prompt
 // it was written for: a later request under the same key with other text,
