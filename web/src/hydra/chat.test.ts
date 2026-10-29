@@ -6,7 +6,7 @@ import { recordEntries, splitEntry } from '#hydra/transcripts-read.ts'
 import { hydraDelivery } from '#hydra/hydra.ts'
 import { transcriptMessages } from '#oracle/text.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask } from './chat.ts'
+import { commentReply, hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask, type ChatComment } from './chat.ts'
 
 test(
   'Markdown messages split for transport reassemble across older pages without losing text',
@@ -799,6 +799,91 @@ test(
         },
       }),
       'task-login',
+    )
+  },
+)
+
+const comments: ChatComment[] = [
+  {
+    id: 'c1',
+    messageId: 'm1',
+    at: '15:42',
+    block: 0,
+    offset: 0,
+    quote: 'Ship it\n\nafter review',
+    text: 'Which review?\n\nThe second one.',
+  },
+  {
+    id: 'c2',
+    messageId: 'm1',
+    at: '15:42',
+    block: 1,
+    offset: 0,
+    quote: 'today',
+    paragraph: 'Merge it today.',
+    text: 'Tomorrow instead.',
+    images: ['[image: /tmp/calendar.png]'],
+  },
+]
+const commentSection = `## Comments on your reply from 15:42
+
+### Comment 1
+
+Quote:
+
+> Ship it
+>
+> after review
+
+Comment:
+
+Which review?
+
+The second one.
+
+End of comment 1
+
+### Comment 2
+
+Quote:
+
+> today
+
+Paragraph:
+
+> Merge it today.
+
+Comment:
+
+Tomorrow instead.
+
+[image: /tmp/calendar.png]
+
+End of comment 2`
+
+test(
+  'comments reach the agent in one shape, with a message section only when the owner wrote one',
+  () => {
+    assert.equal(
+      commentReply({
+        draft: '',
+        comments,
+      }),
+      commentSection,
+    )
+    assert.equal(
+      commentReply({
+        draft: 'Thanks',
+        comments: [],
+      }),
+      'Thanks',
+    )
+    assert.equal(
+      commentReply({
+        draft: 'Thanks',
+        comments,
+      }),
+      `${commentSection}\n\n## Message\n\nThanks`,
     )
   },
 )

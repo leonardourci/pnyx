@@ -1,4 +1,3 @@
-import { COMMENT_NOTE } from '#workers/compaction/comments.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraMessage, HydraStatus } from '#hydra/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '#hydra/hydra.ts'
@@ -260,10 +259,8 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   } : entry)
 }
 
-export { COMMENT_NOTE } from '#workers/compaction/comments.ts'
-
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
-  .map(line => `> ${line}`)
+  .map(line => `> ${line}`.trimEnd())
   .join('\n')
 
 const numberedComment = ({
@@ -273,17 +270,16 @@ const numberedComment = ({
   comment: ChatComment
   number: number
 }) => {
-  const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
   const paragraph = commentContext({ comment })
 
-  if (paragraph) {
-    parts.push(`Paragraph:\n\n${markdownQuote({ text: paragraph })}`)
-  }
-
   return [
-    ...parts,
+    `### Comment ${number}`,
+    `Quote:\n\n${markdownQuote({ text: comment.quote })}`,
+    paragraph && `Paragraph:\n\n${markdownQuote({ text: paragraph })}`,
+    'Comment:',
     comment.text.trim(),
     ...comment.images ?? [],
+    `End of comment ${number}`,
   ].filter(Boolean).join('\n\n')
 }
 
@@ -343,11 +339,9 @@ export function groupComments({ comments }: { comments: ChatComment[] }) {
 export function commentReply({
   draft,
   comments,
-  firstComment = false,
 }: {
   draft: string
   comments: ChatComment[]
-  firstComment?: boolean
 }): string {
   const ordered = orderedComments({ comments })
   const numbers = new Map(ordered.map((
@@ -365,7 +359,7 @@ export function commentReply({
     return draft
   }
 
-  const sections = firstComment ? [COMMENT_NOTE] : []
+  const sections: string[] = []
 
   for (const [
     time,
@@ -378,7 +372,9 @@ export function commentReply({
     sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
   }
 
-  sections.push(`## Message\n\n${draft}`)
+  if (draft.trim()) {
+    sections.push(`## Message\n\n${draft}`)
+  }
 
   return sections.join('\n\n')
 }
