@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra } from '#app/reducer.ts'
 import { cardState } from './view.ts'
+import { currentState, ownerDecisions, statusLabel } from '#tasks/card-status.ts'
 import { cardFacts, placeCard } from '#tasks/columns.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
@@ -556,7 +557,7 @@ test(
 )
 
 test(
-  'cards distinguish not started, working, finished, stopped, and unanswered asks',
+  'cards distinguish no worker, working, finished, stopped, and unanswered asks',
   () => {
     const state = ({ card }: { card: Partial<Card> }) =>
       cardState({
@@ -568,7 +569,7 @@ test(
       })
     assert.equal(
       state({ card: {} }).text,
-      'not started',
+      'no worker assigned',
     )
     assert.equal(
       state({
@@ -625,7 +626,7 @@ test(
           ],
         },
       }).text,
-      'not started',
+      'no worker assigned',
     )
   },
 )
@@ -761,5 +762,180 @@ test(
         'needs_you',
       )
     }
+  },
+)
+
+test(
+  'a worker\'s own wait shows in the status until it works again, and every open decision counts',
+  () => {
+    const declared = ({
+      state,
+      at: when = at,
+    }: {
+      state: TaskStatus
+      at?: string
+    }) => ({
+      id: `evt-${state}`,
+      at: when,
+      actor: 'worker:task-test',
+      state,
+      note: `${state} note`,
+    })
+    const word = ({ card }: { card: Partial<Card> }) => statusLabel({
+      status: cardState({
+        card: {
+          ...task,
+          agent,
+          activity: 'finished',
+          ...card,
+        },
+        now,
+      }),
+    })
+    const ask = ({ id }: { id: string }) => ({
+      id,
+      at,
+      actor: 'hydra',
+      audience: 'owner' as const,
+      question: `Question ${id}?`,
+    })
+
+    assert.deepEqual(
+      [
+        'needs_you',
+        'blocked',
+        'paused',
+      ].map(state => word({ card: { status: declared({ state: state as TaskStatus }) } })),
+      [
+        'Needs you',
+        'Blocked',
+        'Paused',
+      ],
+    )
+    assert.equal(
+      word({
+        card: {
+          activity: 'working',
+          workingSince: '2026-10-15T01:00:00Z',
+          status: declared({ state: 'paused' }),
+        },
+      }),
+      'Working',
+      'working again after the pause',
+    )
+    assert.equal(
+      statusLabel({
+        status: cardState({
+          card: {
+            ...task,
+            status: {
+              id: 'evt-created',
+              at,
+              actor: 'hydra',
+              state: 'paused',
+              note: '',
+            },
+          },
+          now,
+        }),
+      }),
+      'No worker assigned',
+      'the column default at creation is not a wait',
+    )
+    assert.equal(
+      word({
+        card: {
+          asks: [
+            ask({ id: 'ask-1' }),
+            ask({ id: 'ask-2' }),
+          ],
+        },
+      }),
+      'Needs you · 2',
+    )
+    assert.equal(
+      word({
+        card: {
+          asks: [ask({ id: 'ask-1' })],
+          replies: [
+            {
+              id: 'r1',
+              state: 'failed',
+              answers: 'ask-1',
+            },
+          ],
+        },
+      }),
+      'Answer not sent',
+    )
+  },
+)
+
+test(
+  'an old needs-you note is not a question once the question is answered',
+  () => {
+    const card: Card = {
+      ...task,
+      agent,
+      status: {
+        id: 'evt-1',
+        at,
+        actor: 'worker:task-test',
+        state: 'needs_you',
+        note: 'Which option?',
+      },
+      asks: [
+        {
+          id: 'ask-1',
+          at,
+          actor: 'hydra',
+          audience: 'owner',
+          question: 'Which option?',
+          answered: 'r1',
+        },
+      ],
+    }
+    assert.deepEqual(
+      ownerDecisions({ card }),
+      [],
+    )
+  },
+)
+
+test(
+  'the current state is the worker\'s newest note or progress report, never Pnyx\'s own declarations',
+  () => {
+    const card: Card = {
+      ...task,
+      statusLog: [
+        {
+          id: 'evt-1',
+          at,
+          actor: 'worker:task-test',
+          state: 'working',
+          note: 'Building the redirect.',
+        },
+        {
+          id: 'evt-2',
+          at: '2026-10-15T00:30:00Z',
+          actor: 'pnyx',
+          state: 'needs_you',
+          note: 'Pull request ready for owner review',
+        },
+      ],
+      progress: {
+        text: 'Tests pass; opening the pull request.',
+        at: '2026-10-15T00:20:00Z',
+        actor: 'worker:task-test',
+      },
+    }
+    assert.deepEqual(
+      currentState({ card }),
+      {
+        text: 'Tests pass; opening the pull request.',
+        at: '2026-10-15T00:20:00Z',
+        source: 'progress',
+      },
+    )
   },
 )
