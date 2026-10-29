@@ -798,7 +798,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .settings-box.integrations > .button { margin-top: 14px; }
 
-.ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-meta); border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
+.ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-ui); border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
 
 .ask.answered { border-color: var(--color-line); background: transparent; }
 
@@ -1502,7 +1502,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card .task-report, .card .card-question { gap: 3px; padding: 6px 8px; }
 .card .task-updates > ol > li { padding-block: 5px; }
 .ask .decision-recommended { flex-shrink: 0; margin: 0; padding: 0 4px; font-size: .85em; }
-.ask .textarea { font-size: var(--text-meta); padding: 5px 7px; }
+.ask .textarea { font-size: var(--text-ui); padding: 5px 7px; }
 .ask .disclosure > summary { padding-block: 3px; }
 :is(.card, .ask) .markdown code { font-size: .95em; }
 .card .collapsible-text { min-width: 0; max-width: 100%; }
