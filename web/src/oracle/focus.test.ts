@@ -2,7 +2,6 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { INPUT, moveFocus, recoverFocus, type FocusMove } from './focus.ts'
 
-// The stops a run of keys visits, starting from the input.
 const walk = ({
   controls,
   moves,
@@ -195,7 +194,6 @@ test(
   },
 )
 
-// One typical control list per preview: Tab from the input reaches the first control, and the last one wraps back to the input.
 const PREVIEWS: Record<string, string[]> = {
   task: [
     'PR #31 link',

@@ -525,7 +525,7 @@ export function Oracle({
     }
   }
 
-  // The preview's Tab stops in document order: enabled, shown, and not a roving item another one stands for.
+  // A roving item (tabindex -1) is reached through the one that stands for its group.
   const previewControls = () => [...preview.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []]
     .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.checkVisibility())
 
@@ -1025,8 +1025,7 @@ export function Oracle({
     })
   }
 
-  // Esc goes back to the bar from any control, once a control that had a popup or edit open has closed it and kept the key.
-  // A typed character carries on the query there.
+  // A control that closed its own popup on this Esc already kept the key, so only the next Esc returns.
   const previewKey = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
     if (composing({ event: event.nativeEvent })) {
       return

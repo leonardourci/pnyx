@@ -1,10 +1,8 @@
-// The palette's input; every other stop is one of the preview's controls.
 export const INPUT = 'input'
 
 export type FocusMove = 'next' | 'previous' | 'escape'
 
-// The palette's one Tab order: the input, then the preview's controls in document order, then the input again.
-// Focus anywhere else counts as the input, so a stray focus always rejoins the cycle.
+// Focus outside the cycle counts as the input, so a stray focus always rejoins it.
 export function moveFocus<T>({
   controls,
   from,
@@ -31,7 +29,6 @@ export function moveFocus<T>({
   return order[(at + step + order.length) % order.length]!
 }
 
-// Where focus goes once its control unmounted or was disabled: the next control after it that is still there, else the input.
 export function recoverFocus<T>({
   before,
   controls,
