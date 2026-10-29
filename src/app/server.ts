@@ -41,10 +41,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, w
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
-import { AxiError } from 'axi-sdk-js'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
-import { integrationsCommand } from '#integrations/cli.ts'
-import { browserCommand } from './server-browser.ts'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -64,7 +61,7 @@ import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
-import { commands, RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
+import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { readBytes, readBody, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
@@ -105,6 +102,10 @@ const REPLY_WORKER = join(
   '..',
   'workers',
   import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
+)
+const COMMAND_WORKER = join(
+  import.meta.dirname,
+  import.meta.url.endsWith('.ts') ? 'command-process.ts' : 'command-process.js',
 )
 const REPLY_WORKER_TIMEOUT_MS = 130_000
 const OWNER_WRITE_RETRY_MS = 100
@@ -989,9 +990,13 @@ export async function mountOwnedHydra({
 
   const startWorker = ({
     args,
+    file = REPLY_WORKER,
+    timeout = REPLY_WORKER_TIMEOUT_MS,
     done,
   }: {
     args: string[]
+    file?: string
+    timeout?: number
     done: ({
       error,
       stdout,
@@ -1000,15 +1005,29 @@ export async function mountOwnedHydra({
       stdout: string
     }) => void
   }) => {
+    if (closed) {
+      done({
+        error: new Error('Pnyx is shutting down'),
+        stdout: JSON.stringify({
+          error: {
+            message: 'Pnyx is shutting down',
+            code: 'UNAVAILABLE',
+          },
+        }),
+      })
+
+      return
+    }
+
     const child = execFile(
       process.execPath,
       [
         ...SOURCE_CONDITIONS,
-        REPLY_WORKER,
+        file,
         ...args,
       ],
       {
-        timeout: REPLY_WORKER_TIMEOUT_MS,
+        timeout,
         maxBuffer: MAX_BODY,
       },
       (
@@ -2403,33 +2422,40 @@ export async function mountOwnedHydra({
       'web',
     ]
 
-    const failed = ({ error }: { error: unknown }) => error instanceof AxiError
-      ? fail({
-        error: error.message,
-        code: error.code,
-        help: error.suggestions,
-      })
-      : fail({
-        error: (error as Error).message,
-        code: 'UNKNOWN',
-      })
+    startWorker({
+      file: COMMAND_WORKER,
+      timeout: commandTimeout({
+        name,
+        args,
+      }),
+      args: [
+        name,
+        ...args,
+        ...actor,
+        '--hydra',
+        hydraId,
+      ],
+      done: ({
+        error,
+        stdout,
+      }) => {
+        kick()
 
-    try {
-      const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
-      void Promise.resolve(browserCommand.run(
-        true,
-        () => handler([
-          ...args,
-          ...actor,
-          '--hydra',
-          hydraId,
-        ]),
-      )).then(
-        result => {
-          try {
-            pump()
-          } catch {
-            kick()
+        try {
+          const result = JSON.parse(stdout)
+
+          if (error) {
+            if (typeof result.error?.message === 'string' && typeof result.error.code === 'string') {
+              fail({
+                error: result.error.message,
+                code: result.error.code,
+                help: result.error.help,
+              })
+
+              return
+            }
+
+            throw error
           }
 
           send({
@@ -2440,12 +2466,14 @@ export async function mountOwnedHydra({
               id,
             },
           })
-        },
-        error => failed({ error }),
-      )
-    } catch (error) {
-      failed({ error })
-    }
+        } catch {
+          fail({
+            error: 'Command could not be confirmed; check history before sending again',
+            code: 'DELIVERY_UNKNOWN',
+          })
+        }
+      },
+    })
   }
 
   const connect = ({
