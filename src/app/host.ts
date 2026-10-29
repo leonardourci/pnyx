@@ -1482,12 +1482,17 @@ export function createHost({
 
         if (typeof activity !== 'string' && activity.type === 'tool') {
           if (activity.running) {
+            entry.toolNames.set(
+              activity.id,
+              activity.tool ?? 'tool',
+            )
             entry.tools.set(
               activity.id,
               Date.now(),
             )
           } else {
             entry.tools.delete(activity.id)
+            entry.toolNames.delete(activity.id)
           }
 
           streamed({ session: key })
@@ -1500,6 +1505,7 @@ export function createHost({
         }
 
         if (typeof activity !== 'string' && activity.type === 'work') {
+          streamed({ session: key })
           armIdle()
           continue
         }
@@ -1549,6 +1555,7 @@ export function createHost({
           turnRunning = false
           entry.stopping = false
           entry.tools.clear()
+          entry.toolNames.clear()
           entry.thinking.clear()
           completedOffset = transcriptSize()
           entry.replies.finish()
@@ -1839,6 +1846,7 @@ export function createHost({
       session,
       thinking: new Set(),
       tools: new Map(),
+      toolNames: new Map(),
     }
     live.set(
       key,
@@ -4494,15 +4502,27 @@ export function createHost({
     }) => {
       const entry = card.agent && live.get(sessionId({ agent: card.agent }))
 
-      if (entry?.activity === 'working' && entry.thinking.size && !entry.tools.size) {
-        return {
-          calls: [],
-          done: false,
-          thinking: true,
-        }
+      if (!entry?.session) {
+        return action
       }
 
-      return action
+      const work = entry.session.snapshot().work
+      const calls = work.runningTools.map(id => {
+        const recorded = action?.calls.find(call => call.id === id)
+
+        return recorded ?? {
+          id,
+          tool: entry.toolNames.get(id) ?? 'tool',
+        }
+      })
+
+      return {
+        ...action,
+        calls,
+        done: nativeIdle({ work }),
+        thinking: entry.thinking.size > 0 && calls.length === 0,
+        work,
+      }
     },
 
     thread: ({

@@ -537,6 +537,7 @@ export function claudeProvider({
                   yield {
                     type: 'tool' as const,
                     id: block.id,
+                    tool: block.name,
                     running: true,
                   }
                 }
