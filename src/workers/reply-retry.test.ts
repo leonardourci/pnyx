@@ -589,6 +589,152 @@ function queuedSteer({ id = 'durable' }: { id?: string } = {}) {
 }
 
 test(
+  'reading steering stops reminders while its work is still in progress, across replay',
+  async () => {
+    queuedSteer()
+    const card = task()
+    const read = [
+      'inbox',
+      'read',
+      card.id,
+      '--hydra',
+      'lab',
+    ]
+    await commands.task(read)
+    assert.equal(
+      task().steering![0]!.ack,
+      undefined,
+    )
+    assert.throws(
+      () => commands.task([
+        ...read,
+        '--actor',
+        'worker:someone-else',
+      ]),
+      { code: 'NOT_ALLOWED' },
+    )
+    const received = await commands.task([
+      ...read,
+      '--actor',
+      `worker:${card.id}`,
+    ])
+    assert.match(
+      JSON.stringify(received),
+      /Olá 🌊/,
+    )
+    const acknowledged = task().steering![0]!.ack
+    assert.equal(
+      acknowledged?.outcome,
+      'read',
+    )
+    const count = readEvents({ hydraId: 'lab' }).length
+    await commands.task([
+      ...read,
+      '--actor',
+      `worker:${card.id}`,
+    ])
+    assert.equal(
+      readEvents({ hydraId: 'lab' }).length,
+      count,
+    )
+    rmSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'lab',
+      'snapshot.json',
+    ))
+    assert.deepEqual(
+      task().steering![0]!.ack,
+      acknowledged,
+    )
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 10 * STEERING_GRACE_MS,
+      notify: async () => assert.fail('a read instruction must not ring or exhaust'),
+    })
+    assert.equal(
+      task().steering![0]!.recovery,
+      undefined,
+    )
+    assert.deepEqual(
+      task().statusLog,
+      card.statusLog,
+    )
+    queuedSteer({ id: 'new-instruction' })
+    let notified = ''
+    await followUpSteering({
+      hydraId: 'lab',
+      now: SENT + 11 * STEERING_GRACE_MS,
+      notify: async ({ message }) => {
+        notified = message
+
+        return { result: 'delivered' }
+      },
+    })
+    assert.equal(
+      notified,
+      'new-instruction',
+    )
+  },
+)
+
+test(
+  'legacy incorporated and blocked acknowledgements retain their outcomes on replay',
+  async () => {
+    queuedSteer({ id: 'incorporated' })
+    queuedSteer({ id: 'blocked' })
+    const card = task()
+    const claim = [
+      '--hydra',
+      'lab',
+      '--actor',
+      `worker:${card.id}`,
+      '--session',
+      card.sessionIds![0]!,
+      '--generation',
+      String(card.steeringGeneration ?? card.createdSeq),
+    ]
+    await commands.task([
+      'inbox',
+      'ack',
+      card.id,
+      'incorporated',
+      ...claim,
+      '--outcome',
+      'incorporated',
+    ])
+    await commands.task([
+      'inbox',
+      'ack',
+      card.id,
+      'blocked',
+      ...claim,
+      '--outcome',
+      'blocked',
+      '--note',
+      'Waiting for a decision',
+    ])
+    rmSync(join(
+      process.env.PNYX_HOME!,
+      'hydras',
+      'lab',
+      'snapshot.json',
+    ))
+    assert.deepEqual(
+      task().steering!.map(message => message.ack?.outcome),
+      [
+        'incorporated',
+        'blocked',
+      ],
+    )
+    assert.equal(
+      task().steering![1]!.ack?.note,
+      'Waiting for a decision',
+    )
+  },
+)
+
+test(
   'a crash after reserving consumes the durable budget, and younger instructions never bypass the oldest',
   async () => {
     queuedSteer()
