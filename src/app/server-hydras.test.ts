@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { commands } from './cli.ts'
-import { listHydras } from './server-hydras.ts'
+import { editHydra, listHydras } from './server-hydras.ts'
 
 const listed = () => listHydras().map(hydra => hydra.id)
 
@@ -61,9 +61,10 @@ test(
       zeta,
       alpha,
     ] = listHydras()
-    move({
+    // The web's drag reaches the CLI through the server's edit.
+    editHydra({
       id: 'mu',
-      position: String((zeta!.order + alpha!.order) / 2),
+      position: (zeta!.order + alpha!.order) / 2,
     })
     assert.deepEqual(
       listed(),
