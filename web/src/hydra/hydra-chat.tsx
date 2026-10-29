@@ -56,7 +56,6 @@ interface Sending {
   confirmed: boolean
 }
 
-// The Hydra's icon and name: the icon opens the icon grid, the name edits in place, and a right-click offers Edit and Add project.
 function HydraHead({
   name,
   icon = HYDRA_MARK,

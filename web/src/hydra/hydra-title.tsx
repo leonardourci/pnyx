@@ -5,7 +5,6 @@ import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
 import { Input } from '#web-shared/ui/controls.tsx'
 import { hydraTitle } from '#web-app/view.ts'
 
-// The counter shows once a name gets close to the cap.
 const COUNTER_FROM = 30
 export const HYDRA_ICONS = [
   HYDRA_MARK,
