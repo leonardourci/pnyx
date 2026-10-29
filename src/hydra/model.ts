@@ -18,6 +18,8 @@ export interface HydraConfig {
   name: string
   // An identity icon id from hydra-names.ts; without one the Hydra shows the Hydra mark.
   icon?: string
+  // Sort key in the Hydra list, in the same scale as creation time in ms; unset sorts by creation time.
+  position?: number
   hydra: HydraIdentity
   columns: HydraColumn[]
   // Retained so pre-dispatch event logs still replay.
