@@ -1,6 +1,7 @@
 import { followUpSteering, STEERING_GRACE_MS, STEERING_RING_LIMIT } from './inbox-follow-up.ts'
 import type { NotificationResult } from './inbox-notice.ts'
 import { enqueueSteering } from './inbox.ts'
+import { steeringWorkerIdentity } from './steering.ts'
 import assert from 'node:assert/strict'
 import { appendFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -674,6 +675,109 @@ test(
     assert.equal(
       notified,
       'new-instruction',
+    )
+  },
+)
+
+test(
+  'an old hosted launch cannot read a replacement terminal worker’s instructions',
+  async t => {
+    const original = task()
+    const meta = {
+      actor: 'test',
+      at: new Date().toISOString(),
+    }
+    const staleIdentity = steeringWorkerIdentity({
+      state: loadHydra({ hydraId: 'lab' }).state,
+      card: original,
+    })
+    assert.ok(staleIdentity)
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const hosted = decidePush({
+          state: writer.state,
+          newCardId: 'unused',
+          key: 'terminal-session',
+          input: {
+            agent: {
+              ...original.agent!,
+              host: 'pnyx',
+            },
+          },
+          meta,
+        })
+        assert.ok('event' in hosted)
+        writer.append({ event: hosted.event })
+        const detached = decideSession({
+          state: writer.state,
+          ref: original.sessionIds![0]!,
+          task: null,
+          meta,
+        })
+        assert.ok('event' in detached)
+        writer.append({ event: detached.event })
+        const replacement = decidePush({
+          state: writer.state,
+          newCardId: `c${writer.state.seq + 1}`,
+          key: 'replacement',
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'replacement',
+              cwd: root,
+            },
+            terminal: { tty: '/dev/ttys124' },
+            activity: 'finished',
+          },
+          meta,
+        })
+        assert.ok('event' in replacement)
+        writer.append({ event: replacement.event })
+        const attached = decideSession({
+          state: writer.state,
+          ref: 'claude-code:replacement',
+          task: original.id,
+          meta,
+        })
+        assert.ok('event' in attached)
+        writer.append({ event: attached.event })
+      },
+    })
+    queuedSteer()
+    process.env.PNYX_STEERING_WORKER = staleIdentity
+    t.after(() => {
+      delete process.env.PNYX_STEERING_WORKER
+    })
+    assert.throws(
+      () => commands.task([
+        'inbox',
+        'read',
+        original.id,
+        '--hydra',
+        'lab',
+        '--actor',
+        `worker:${original.id}`,
+      ]),
+      { code: 'STALE_CLAIM' },
+    )
+    assert.equal(
+      task().steering![0]!.ack,
+      undefined,
+    )
+    delete process.env.PNYX_STEERING_WORKER
+    await commands.task([
+      'inbox',
+      'read',
+      original.id,
+      '--hydra',
+      'lab',
+      '--actor',
+      `worker:${original.id}`,
+    ])
+    assert.equal(
+      task().steering![0]!.ack?.outcome,
+      'read',
     )
   },
 )
