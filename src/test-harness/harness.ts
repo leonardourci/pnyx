@@ -335,14 +335,15 @@ export function scenarioGroup({
     process.env.PNYX_HOME!,
     { recursive: true },
   )
-  const claude = replayClaude()
-  const codex = replayCodex()
+  let scenarios = 0
+  const currentHydra = () => `s${scenarios}`
+  const claude = replayClaude({ hydra: currentHydra })
+  const codex = replayCodex({ hydra: currentHydra })
   // The Pnyx folder /upgrade pulls into: a throwaway clone of its own local origin.
   const upgrade = upgradeRepo({ root })
   // A real restart signals this process, which the flows share; a flow restarts with pnyx.restart() instead.
   let restarts = 0
   let server: RunningServer | undefined
-  let scenarios = 0
 
   const start = async ({ port }: { port?: number }) => {
     server = await startServer({
@@ -386,7 +387,8 @@ export function scenarioGroup({
     },
     // A Hydra of its own for one scenario, created through the CLI and served once the server mounts it.
     scenario: async () => {
-      const hydraId = `s${++scenarios}`
+      scenarios += 1
+      const hydraId = currentHydra()
       const s = hydraScenario({
         hydraId,
         root,
