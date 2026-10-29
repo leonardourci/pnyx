@@ -1,7 +1,8 @@
 import { taskMention } from '#hydra/mentions.ts'
 import { imagePaths } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
-import { CHIP_SOURCE, MESSAGE_DECORATIONS } from './message-selection.ts'
+import { CHIP_SOURCE } from './message-selection.ts'
+import { MESSAGE_CONTROLS } from './caret.ts'
 
 // A task message's leading chip comes from its task id, not its text, so it is rebuilt from the chip.
 const CHIPS = `[${CHIP_SOURCE}], .message-lead [data-task-ref]`
@@ -18,7 +19,8 @@ function selectedText({
   const host = document.createElement('div')
   host.style.cssText = 'position: fixed; left: -10000px; top: 0; white-space: pre-wrap'
   host.append(range.cloneContents())
-  host.querySelectorAll(MESSAGE_DECORATIONS).forEach(element => element.remove())
+  // What a native copy leaves out, being unselectable, goes from this one too.
+  host.querySelectorAll(MESSAGE_CONTROLS).forEach(element => element.remove())
 
   // An image under the text copies as its token only when the copy leaves out its chip in the sentence.
   const inSentence = new Set([...host.querySelectorAll(`[${CHIP_SOURCE}]:not(.message-image)`)]
@@ -140,12 +142,13 @@ export function imagesHtml({
     .replace(
       IMAGE_MARK,
       (
-        _mark,
+        mark,
         index: string,
       ) => {
-        const image = images[Number(index)]!
+        // The owner's own text can hold these characters too; only a mark for an embedded image becomes one.
+        const image = images[Number(index)]
 
-        return `<img src="${image.data}" alt="${escapeHtml({ text: image.name })}">`
+        return image ? `<img src="${image.data}" alt="${escapeHtml({ text: image.name })}">` : mark
       },
     )
 }
