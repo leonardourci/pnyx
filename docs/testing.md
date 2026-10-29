@@ -68,6 +68,7 @@ The flows:
 - `landing.test.ts` covers landing a branch or a pull request and project refresh.
 - `helper.test.ts` covers the routine helper's routing: progress that wakes nobody, batches while main works, capped batches and a failed batch's hand-back.
 - `recovery.test.ts` covers restart and recovery, and a server that goes idle once nothing changes.
+- `oracle.test.ts` covers Oracle queries from the page: the server builds and updates the search index in a child process, and a query waits for it only when it is missing or behind the log.
 - `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
 - `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves in-process ownership only.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
