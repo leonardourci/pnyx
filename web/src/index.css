@@ -1181,6 +1181,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydras-heading form .input { width: 100%; }
 .hydras-tree { min-height: 0; overflow-y: auto; }
 .hydra-row { display: flex; align-items: center; min-width: 0; }
+.hydra-branch.drop-before { box-shadow: inset 0 2px 0 var(--color-gold); }
+.hydra-branch.drop-after { box-shadow: inset 0 -2px 0 var(--color-gold); }
 .hydra-row > .button:first-child { flex: 0 0 25px; padding: 6px 2px; color: var(--color-muted); }
 .hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; padding: 7px 8px; font-size: var(--text-ui); }
 .hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
