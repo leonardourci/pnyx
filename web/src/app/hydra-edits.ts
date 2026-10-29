@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from './connection.ts'
 
 type Edit = {
@@ -9,6 +10,10 @@ type Edit = {
 }
 
 const iconOf = ({ hydra }: { hydra: HydraSummary }) => hydra.icon ?? HYDRA_MARK
+
+// A refused change goes back; one whose outcome is unknown may have been saved, so it keeps showing
+// until the server's summary settles it.
+const refused = ({ error }: { error: unknown }) => !(error instanceof CommandFailure && error.outcome === 'unknown')
 
 const applied = ({
   hydra,
@@ -66,9 +71,16 @@ export function useHydraEdits({
     [hydras],
   )
 
-  const drop = ({ id }: { id: string }) => setEdits(current => Object.fromEntries(
-    Object.entries(current).filter(([key]) => key !== id),
-  ))
+  // Only this edit goes back, never a newer one made since.
+  const drop = ({
+    id,
+    edit,
+  }: {
+    id: string
+    edit: Edit
+  }) => setEdits(current => current[id]?.name === edit.name && current[id]?.icon === edit.icon
+    ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== id))
+    : current)
 
   const edit = useCallback(
     async ({
@@ -77,14 +89,13 @@ export function useHydraEdits({
       icon,
     }: Edit & { id: string }) => {
       const hydra = hydras.find(h => h.id === id)
+      // Compared with what the panel shows, so changing a pending edit back still saves.
+      const shownEdit = hydra && (edits[id] ?? {
+        name: hydra.name,
+        icon: iconOf({ hydra }),
+      })
 
-      if (!hydra || applied({
-        hydra,
-        edit: {
-          name,
-          icon,
-        },
-      })) {
+      if (!shownEdit || (shownEdit.name === name && shownEdit.icon === icon)) {
         return
       }
 
@@ -102,17 +113,27 @@ export function useHydraEdits({
           args: [
             'edit',
             id,
-            name === hydra.name ? '' : name,
-            icon === iconOf({ hydra }) ? '' : icon,
+            name,
+            icon,
           ],
         })
       } catch (error) {
-        drop({ id })
+        if (refused({ error })) {
+          drop({
+            id,
+            edit: {
+              name,
+              icon,
+            },
+          })
+        }
+
         notify({ text: (error as Error).message })
       }
     },
     [
       hydras,
+      edits,
       command,
       notify,
     ],
@@ -141,9 +162,12 @@ export function useHydraEdits({
           ],
         })
       } catch (error) {
-        setOrders(current => Object.fromEntries(
-          Object.entries(current).filter(([key]) => key !== id),
-        ))
+        if (refused({ error })) {
+          setOrders(current => current[id] === position
+            ? Object.fromEntries(Object.entries(current).filter(([key]) => key !== id))
+            : current)
+        }
+
         notify({ text: (error as Error).message })
       }
     },
