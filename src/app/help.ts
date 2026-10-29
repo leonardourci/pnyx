@@ -139,6 +139,7 @@ pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--m
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
+Release records Go for the open go question bound to the hold, if any; the source must also postdate that question.
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
 pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
@@ -184,8 +185,8 @@ and never while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
-Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
-An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
+Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
+Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>
