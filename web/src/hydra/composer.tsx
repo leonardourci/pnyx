@@ -1590,7 +1590,8 @@ export function Composer({
                   onClick={() => {
                     close(); files.current?.click()
                   }}
-                >Insert files or images
+                >
+                  <Icon name="paperclip" size={16} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
@@ -1615,7 +1616,8 @@ export function Composer({
                       }); setMentionActive(0); setPrefix(null)
                     }
                   }}
-                >Mention
+                >
+                  <Icon name="mention" size={16} />Mention
                 </Button>
               </>
             )}
