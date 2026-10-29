@@ -1,3 +1,4 @@
+import type { RepliedEvent } from '#tasks/model.ts'
 import type { EventBase } from '#store/events.ts'
 import type { Outcome } from '#tasks/delivery/model.ts'
 import type { SourceRef } from '#app/model.ts'
@@ -89,6 +90,7 @@ export interface Attention {
 
 // A reply's latest receipt. The text stays in the log, on its queued event.
 export interface Reply {
+  decision?: RepliedEvent['data']['decision']
   id: string
   state: ReplyState
   answers?: string

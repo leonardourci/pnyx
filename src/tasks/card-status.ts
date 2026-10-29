@@ -1,61 +1,49 @@
-import type { Card } from './model.ts'
-import { askWording, openAsks } from './questions.ts'
-import { agentActor, reportActor } from '#hydra/hydra.ts'
-import { INTERRUPTED } from '#workers/session-attachments.ts'
+import type { Card, TaskStatus } from './model.ts'
+import { openAsks, ownerQuestions, type OwnerQuestion } from './questions.ts'
+import { reportActor } from '#hydra/hydra.ts'
+import type { ReplyState } from '#workers/model.ts'
 import { agentActivity } from '#workers/activity.ts'
 
-const ANSWER_STATES = {
-  queued: 'answer sending',
-  delivery_unknown: 'answer delivery uncertain',
-  failed: 'answer not sent',
-} as const
-
-type AnswerState = keyof typeof ANSWER_STATES
-
-export interface OwnerDecision {
-  id: string
-  text: string
-  // The receipt of an answer already sent but not yet confirmed.
-  answer?: AnswerState
+const ACTIVITY_TEXT: Record<string, string> = {
+  working: 'working',
+  finished: 'finished its turn',
 }
 
-// Everything waiting on the owner: the status word counts it and the closed card shows its first item.
-export function ownerDecisions({ card }: { card: Card }): OwnerDecision[] {
-  const sent = ({ id }: { id: string }) => {
-    const state = card.replies?.filter(reply => reply.answers === id).at(-1)?.state
+const ANSWER_STATES: Partial<Record<ReplyState, string>> = {
+  queued: 'answer sending',
+  delivery_unknown: 'answer delivery uncertain',
+}
 
-    return state && state in ANSWER_STATES ? state as AnswerState : undefined
-  }
-
-  return [
-    ...(card.permissions ?? []).filter(request => request.status === 'pending').map(request => ({
-      id: `permission:${request.id}`,
-      text: request.questions?.map(question => question.question).join(' ') || `Allow ${request.tool}?`,
-    })),
-    ...card.attention
-      .filter(request => request.key !== INTERRUPTED && request.blocking && !request.answered)
-      .map(request => ({
-        id: `attention:${request.key}`,
-        text: request.text ?? request.questions?.map(question => question.question).join(' ') ?? 'The agent is waiting for you',
-      })),
-    ...openAsks({
-      card,
-      audience: 'owner',
-    }).map(ask => ({
-      id: ask.id,
-      text: askWording({ ask }).question,
-      answer: sent({ id: ask.id }),
-    })),
-  ]
+const WAITS: Partial<Record<TaskStatus, Omit<CardStatus, 'at'>>> = {
+  needs_you: {
+    kind: 'waiting',
+    text: 'waiting on a decision',
+  },
+  blocked: {
+    kind: 'blocked',
+    text: 'blocked',
+  },
+  paused: {
+    kind: 'waiting',
+    text: 'paused',
+  },
 }
 
 export interface CardStatus {
   kind: string
   text: string
   at?: string
-  // Decisions still waiting on the owner, when there are several.
+  // Questions still waiting on the owner, when there are several.
   count?: number
 }
+
+// An answer on its way leaves its question with the worker; a failed one comes back to the owner.
+const inFlight = ({ question }: { question: OwnerQuestion }) =>
+  !!question.delivery && question.delivery.state in ANSWER_STATES
+
+// What the owner still has to answer, failed sends included; the status word and closed card share it.
+export const waitingQuestions = ({ card }: { card: Card }) =>
+  ownerQuestions({ card }).filter(question => !inFlight({ question }))
 
 // The status word's rule, newest information first; the page adds elapsed times to done and stopped.
 export function cardStatus({ card }: { card: Card }): CardStatus {
@@ -67,27 +55,28 @@ export function cardStatus({ card }: { card: Card }): CardStatus {
     }
   }
 
-  const decisions = ownerDecisions({ card })
-  const waiting = decisions.filter(decision => !decision.answer)
+  const waiting = waitingQuestions({ card })
+  const unsent = waiting.filter(question => question.delivery?.state === 'failed')
 
   if (waiting.length || card.reminder?.dueAt) {
     return {
       kind: 'asks',
-      text: 'asks',
+      text: unsent.length && unsent.length === waiting.length ? 'answer not sent' : 'needs you',
       count: waiting.length > 1 ? waiting.length : undefined,
     }
   }
 
-  const answer = ([
-    'failed',
+  const states = ownerQuestions({ card }).map(question => question.delivery?.state)
+  // Delivery that may have failed says more than delivery still on its way.
+  const sending = ([
     'delivery_unknown',
     'queued',
-  ] as const).find(state => decisions.some(decision => decision.answer === state))
+  ] as const).find(state => states.includes(state))
 
-  if (answer) {
+  if (sending) {
     return {
       kind: 'answering',
-      text: ANSWER_STATES[answer],
+      text: ANSWER_STATES[sending]!,
     }
   }
 
@@ -137,27 +126,12 @@ export function cardStatus({ card }: { card: Card }): CardStatus {
 
   return {
     kind: activity ?? 'not-started',
-    text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'no worker assigned',
+    text: ACTIVITY_TEXT[activity ?? ''] ?? (card.agent ? 'activity unknown' : card.mirror ? 'not started' : 'no worker assigned'),
   }
 }
 
-const WAITS = {
-  needs_you: {
-    kind: 'asks',
-    text: 'asks',
-  },
-  blocked: {
-    kind: 'blocked',
-    text: 'blocked',
-  },
-  paused: {
-    kind: 'waiting',
-    text: 'paused',
-  },
-} as const
-
-// A needs-you, blocked or paused declaration says more than "finished its turn", unless the
-// worker has since started working again or asked Hydra something newer.
+// A worker's needs-you, blocked or paused note says more than "finished its turn", until it works again,
+// asks Hydra something newer or the owner answers after it.
 function waitingDeclaration({
   card,
   activity,
@@ -166,11 +140,10 @@ function waitingDeclaration({
   activity: ReturnType<typeof agentActivity>
 }) {
   const declared = card.status
-  const wait = declared && WAITS[declared.state as keyof typeof WAITS]
-  // A column's default declaration at creation has no note and says nothing about the work.
-  const said = !!declared?.note.trim() && agentActor({ actor: declared.actor })
+  const wait = declared && WAITS[declared.state]
 
-  if (!declared || !wait || !said) {
+  // Pnyx's own declarations (a column's default, a fired reminder, a detached worker) say nothing about the work.
+  if (!declared || !wait || !declared.note.trim() || !reportActor({ actor: declared.actor })) {
     return undefined
   }
 
@@ -179,28 +152,21 @@ function waitingDeclaration({
     card,
     audience: 'hydra',
   }).some(ask => (ask.escalated?.at ?? ask.at) > declared.at)
+  const answered = (card.asks ?? []).some(ask => ask.audience === 'owner' && (ask.answeredAt ?? '') > declared.at)
 
-  return resumed || askedLater ? undefined : {
+  return resumed || askedLater || answered ? undefined : {
     ...wait,
     at: declared.at,
   }
 }
 
-export const statusLabel = ({ status }: {
-  status: {
-    kind: string
-    text: string
-    count?: number
-  }
-}) => {
-  if (status.kind === 'asks') {
-    return status.count ? `Needs you · ${status.count}` : 'Needs you'
-  }
-
-  return status.text.replace(
+export const statusLabel = ({ status }: { status: CardStatus }) => {
+  const text = status.text.replace(
     /^./,
     c => c.toUpperCase(),
   )
+
+  return status.count ? `${text} · ${status.count}` : text
 }
 
 // Where the task stands, in the worker's own newest words: its latest status note or progress report.

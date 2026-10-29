@@ -15,7 +15,8 @@ import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { projectTitle } from '#web-projects/view.ts'
 import { cardState } from './view.ts'
-import { currentState, ownerDecisions, statusLabel } from '#tasks/card-status.ts'
+import { currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
+import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
 import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
 import { harnessName } from '#web-workers/view.ts'
@@ -24,7 +25,6 @@ import { Resize } from '#web-shared/ui/resize.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { WorkingDots } from '#web-hydra/streaming.tsx'
-import { openAsks } from '#tasks/questions.ts'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
@@ -272,20 +272,28 @@ export function HydraCard({
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
   const created = card.createdAt || card.statusLog?.[0]?.at
-  const request = card.permissions?.find(request => request.status === 'pending')
-  const attention = card.attention.find(request => request.blocking && !request.answered)
+  const waiting = waitingQuestions({ card })
+  // A question whose answer is still on its way shows only when nothing else waits.
+  const question = waiting[0] ?? ownerQuestions({ card })[0]
+  const request = question?.permission
+  const attention = question?.attention
+  const asked = question?.ask
   const canAnswer = attention && answerPrompt({
     card,
     request: attention,
   })
-  const asked = openAsks({
-    card,
-    audience: 'owner',
-  })[0]
-  // The same list the status word counts, so the box and the status always agree.
-  const waiting = ownerDecisions({ card }).filter(decision => !decision.answer)
-  const question = waiting[0]?.text
-  const questionLabel = waiting.length > 1 ? `${waiting.length} questions` : 'Question'
+  const delivery = question?.delivery
+  const answerSaved = delivery && delivery.state !== 'delivered'
+  let questionLabel = answerSaved ? 'Answer saved' : 'Question'
+
+  if (waiting.length > 1) {
+    questionLabel = `${waiting.length} questions`
+  }
+
+  const answerLabel = answerSaved ? 'Review answer' : 'Answer'
+  const deliveryText = delivery?.state === 'failed'
+    ? 'Delivery failed. Open the task to send the answer again.'
+    : 'Waiting to reach the worker.'
 
   const tags = card.tags.filter(tag => tag !== card.project)
   const labels = tags.length > 0 && (
@@ -601,7 +609,8 @@ export function HydraCard({
         {!selected && question && (
           <div className="card-question" aria-label="Task question">
             <strong className="eyebrow">{questionLabel}</strong>
-            <CollapsibleText text={question} />
+            <CollapsibleText text={question.text} />
+            {answerSaved && <p className="muted small">{deliveryText}</p>}
             <Button
               variant="primary"
               onClick={async () => {
@@ -615,7 +624,7 @@ export function HydraCard({
 
                 answer({ card })
               }}
-            >Answer
+            >{answerLabel}
             </Button>
           </div>
         )}
