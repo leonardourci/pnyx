@@ -5,6 +5,8 @@ import { test } from 'node:test'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { boardReview } from '#hydra/review.ts'
+import type { HydraState } from '#app/model.ts'
+import { cardStatus, currentState, statusLabel } from '#tasks/card-status.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -676,5 +678,103 @@ test(
       ],
     })
     assert.ok(s.task({ key: 'dependent' }).sessionIds?.length)
+  },
+)
+
+test(
+  'a card carries the Intent Hydra wrote, follows the worker\'s newest words and asks you to merge',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'card-context-app' })
+    const goal = 'You want unknown pages to go to their Hydra\'s home instead of breaking the page.'
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Redirect unknown pages',
+        '--key',
+        'redirect',
+        '--project',
+        app,
+        '--goal',
+        goal,
+      ],
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    const card = ({ state }: { state: HydraState }) => state.cards[s.task({ key: 'redirect' }).id]
+
+    try {
+      await page.shows({
+        what: 'the Intent on the card',
+        check: ({ state }) => card({ state })?.goal === goal,
+      })
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'redirect',
+        ],
+      })
+      const redirect = s.task({ key: 'redirect' })
+      const worker = s.as({ agent: await s.agent({ cwd: redirect.copy!.path }) })
+      await worker.run({
+        args: [
+          'task',
+          'status',
+          'redirect',
+          'working',
+          '--note',
+          'Checking what an unknown address does today.',
+        ],
+      })
+      await page.shows({
+        what: 'the worker\'s note as the current state',
+        check: ({ state }) => currentState({ card: card({ state })! })?.text === 'Checking what an unknown address does today.',
+      })
+      await worker.run({
+        args: [
+          'hydra',
+          'send',
+          '--task',
+          'redirect',
+          '--kind',
+          'progress',
+          '--text',
+          'Redirect built; opening the pull request next.',
+        ],
+      })
+      await page.shows({
+        what: 'the newer progress report as the current state',
+        check: ({ state }) => currentState({ card: card({ state })! })?.source === 'progress',
+      })
+      const url = s.pullRequest({
+        number: 147,
+        title: 'Redirect unknown pages to their Hydra\'s home',
+        checks: '4 passed, 0 failed, 4 total',
+      })
+      await worker.run({
+        args: [
+          'link',
+          'redirect',
+          '--url',
+          url,
+        ],
+      })
+      await page.shows({
+        what: 'the merge question reading Needs you',
+        check: ({ state }) => {
+          const task = card({ state })!
+
+          return task.asks?.some(ask => ask.kind === 'merge')
+            && statusLabel({ status: cardStatus({ card: task }) }) === 'Needs you'
+        },
+      })
+    } finally {
+      page.close()
+    }
   },
 )
