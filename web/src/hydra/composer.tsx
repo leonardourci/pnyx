@@ -1306,7 +1306,7 @@ export function Composer({
           )}
         </div>
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="plus" size={16} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={16} />}>
             {({ close }) => (
               <>
                 <Button
