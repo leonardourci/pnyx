@@ -113,7 +113,7 @@ function cardDetail({
 
   detail.sessions = card.sessionIds?.length ? card.sessionIds : 'none'
   detail.visibility = card.hidden ? 'history' : 'hydra'
-  detail.hideAfterHours = card.doneAfterHours ?? 'Hydra setting'
+  detail.hideAfterHours = card.doneAfterHours ?? 'shared setting'
 
   if (card.settings) {
     detail.settings = card.settings
