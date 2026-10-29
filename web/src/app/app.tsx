@@ -1076,6 +1076,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           <Hydras
             createHydra={hydra.createHydra}
             editHydra={edits.edit}
+            moveHydra={edits.move}
             command={command}
             connected={connected}
             notify={notify}

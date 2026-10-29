@@ -18,7 +18,7 @@ const applied = ({
   edit: Edit
 }) => hydra.name === edit.name && iconOf({ hydra }) === edit.icon
 
-// A Hydra's new name and icon show at once in the panel and the header; the server's summary replaces them once it agrees.
+// A Hydra's new name, icon and place show at once in the panel and the header; the server's summary replaces them once it agrees.
 export function useHydraEdits({
   hydras,
   command,
@@ -32,6 +32,21 @@ export function useHydraEdits({
     edits,
     setEdits,
   ] = useState<Record<string, Edit>>({})
+  const [
+    orders,
+    setOrders,
+  ] = useState<Record<string, number>>({})
+  useEffect(
+    () => setOrders(current => {
+      const pending = Object.entries(current).filter(([
+        id,
+        order,
+      ]) => hydras.find(h => h.id === id)?.order !== order)
+
+      return pending.length === Object.keys(current).length ? current : Object.fromEntries(pending)
+    }),
+    [hydras],
+  )
   useEffect(
     () => setEdits(current => {
       const pending = Object.entries(current).filter(([
@@ -103,24 +118,75 @@ export function useHydraEdits({
     ],
   )
 
+  const move = useCallback(
+    async ({
+      id,
+      position,
+    }: {
+      id: string
+      position: number
+    }) => {
+      setOrders(current => ({
+        ...current,
+        [id]: position,
+      }))
+
+      try {
+        await command({
+          name: 'hydras',
+          args: [
+            'move',
+            id,
+            String(position),
+          ],
+        })
+      } catch (error) {
+        setOrders(current => Object.fromEntries(
+          Object.entries(current).filter(([key]) => key !== id),
+        ))
+        notify({ text: (error as Error).message })
+      }
+    },
+    [
+      command,
+      notify,
+    ],
+  )
+
   // Kept stable while nothing changes, so effects that read the list don't run on every render.
   const shown = useMemo(
-    () => hydras.map(hydra => {
-      const pending = edits[hydra.id]
+    () => {
+      const named = hydras.map(hydra => {
+        const pending = edits[hydra.id]
 
-      return pending ? {
+        return pending ? {
+          ...hydra,
+          ...pending,
+        } : hydra
+      })
+
+      if (!Object.keys(orders).length) {
+        return named
+      }
+
+      return named.map(hydra => ({
         ...hydra,
-        ...pending,
-      } : hydra
-    }),
+        order: orders[hydra.id] ?? hydra.order,
+      })).sort((
+        a,
+        b,
+      ) => a.order - b.order || a.id.localeCompare(b.id))
+    },
     [
       hydras,
       edits,
+      orders,
     ],
   )
 
   return {
     hydras: shown,
     edit,
+    move,
   }
 }
