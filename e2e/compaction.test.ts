@@ -156,14 +156,14 @@ test(
 )
 
 test(
-  'a compaction its agent stops reporting, or never answers, fails at its deadline and releases held input',
+  'compactions stay one operation through late statuses and a locked writer, fail at their deadline and hold input until the last ends',
   async t => {
     assert.match(
       await runFixture({
         t,
         name: 'compaction-deadline',
       }),
-      /Silent and unanswered compactions failed at their deadline and released held input/,
+      /Compactions kept one operation each, failed at their deadline and released held input after the last/,
     )
   },
 )
