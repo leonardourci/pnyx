@@ -713,7 +713,7 @@ function hydraScenario({
         (
           sum,
           s,
-        ) => sum + (s.answered ?? 0),
+        ) => sum + s.answered,
         0,
       ),
     state,

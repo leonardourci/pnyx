@@ -1023,6 +1023,7 @@ test(
           PNYX_HYDRA: s.hydraId,
         },
         received: [],
+        answered: 0,
       },
     })
     const answer = ({

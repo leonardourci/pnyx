@@ -53,7 +53,7 @@ export interface AgentSession {
   env: NodeJS.ProcessEnv
   received: string[]
   // Received messages whose turn ended: for Claude once Pnyx has read the turn's last message, for Codex once turn/completed is written.
-  answered?: number
+  answered: number
   model?: string
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
