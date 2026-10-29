@@ -1,3 +1,4 @@
+import { cloneValue } from '#app/preimage.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraEvent, HydraState, Decision } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
@@ -634,7 +635,7 @@ export function applyAsk({
       }
 
       if (a.kind === 'go' && a.choice === 'Go' && a.hold && !card.hold) {
-        card.hold = structuredClone(a.hold)
+        card.hold = cloneValue({ value: a.hold })
       }
 
       const reopened = { ...a }
