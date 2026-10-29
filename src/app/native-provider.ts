@@ -3,7 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider, PermissionDecision, HostedSession } from '#workers/provider.ts'
-import type { ProviderId, Summary } from '#agent-host/protocol.ts'
+import type { ProviderId, Result, Summary } from '#agent-host/protocol.ts'
 import { fail } from '#agent-host/protocol.ts'
 import { nativeConnection } from './native-connection.ts'
 import { checked, remoteSession } from '#agent-host/remote.ts'
@@ -312,6 +312,7 @@ export async function nativeProviders({
       binding.session = summary
       await save()
       const active = binding
+      const initialAttempt = ({ permission }: { permission: string }) => `${summary.ref.epoch}:answer:${permission}`
 
       for (const [
         id,
@@ -319,15 +320,7 @@ export async function nativeProviders({
       ] of Object.entries(active.answers)) {
         const result = await client.result({ requestId: id })
 
-        if (result.kind === 'answer') {
-          answer.phase = result.receipt.phase
-        } else if (result.kind === 'error' && result.code === 'NOT_RECEIVED') {
-          answer.phase = 'not_received'
-        } else if (result.kind === 'error' && result.code === 'IN_FLIGHT') {
-          answer.phase = 'received'
-        } else {
-          answer.phase = 'unknown'
-        }
+        answer.phase = deliveryPhase({ result })
       }
 
       await save()
@@ -342,7 +335,7 @@ export async function nativeProviders({
           permission,
           decision,
         }) {
-          const prefix = `${summary.ref.epoch}:answer:${permission}`
+          const prefix = initialAttempt({ permission })
           const prior = Object.entries(active.answers).filter(([
             , answer,
           ]) => answer.permission === permission)
@@ -382,6 +375,22 @@ export async function nativeProviders({
           }
         },
       })
+
+      // This stable ID survives a crash before the decision's journal write.
+      for (const permission of session.snapshot().permissions) {
+        if (Object.values(active.answers).some(answer => answer.permission === permission.id)) {
+          continue
+        }
+
+        const id = initialAttempt({ permission: permission.id })
+        const result = await client.result({ requestId: id })
+        active.answers[id] = {
+          permission: permission.id,
+          secret: true,
+          phase: deliveryPhase({ result }),
+        }
+        save()
+      }
 
       session.permissionDelivery = ({ permission }) => {
         return Object.values(active.answers).filter(answer => answer.permission === permission)
@@ -448,3 +457,19 @@ function environment({ env }: { env: NodeJS.ProcessEnv }): Record<string, string
 export type NativeProviders = Awaited<ReturnType<typeof nativeProviders>>
 
 export type NativeConnection = Pick<NativeProviders, 'providers'> & Partial<Pick<NativeProviders, 'status' | 'subscribeStatus'>>
+
+function deliveryPhase({ result }: { result: Result }): string {
+  if (result.kind === 'answer') {
+    return result.receipt.phase
+  }
+
+  if (result.kind === 'error' && result.code === 'NOT_RECEIVED') {
+    return 'not_received'
+  }
+
+  if (result.kind === 'error' && result.code === 'IN_FLIGHT') {
+    return 'received'
+  }
+
+  return 'unknown'
+}
