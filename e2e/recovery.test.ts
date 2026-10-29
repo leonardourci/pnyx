@@ -9,6 +9,10 @@ import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { snapshotPath } from '#store/storage.ts'
+import { spoolWrite } from '#app/spool.ts'
+import { OBSERVATION_HEARTBEAT_MS } from '#app/decision.ts'
+import { STALL_MS } from '#workers/host.ts'
+import type { PushedEvent } from '#tasks/model.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -404,5 +408,82 @@ test(
     await settled()
     // The server loaded the new task, so the mock sees its loads and the quiet wait above was real.
     assert.ok(loads > idle)
+  },
+)
+
+test(
+  'a quiet hooked worker repeating itself logs one push per heartbeat, so it never looks stalled',
+  async () => {
+    const s = await pnyx.scenario()
+    const session = crypto.randomUUID()
+    const payload = ({ event }: { event: string }) => ({
+      session_id: session,
+      transcript_path: `/work/home/.claude/projects/-work-repo/${session}.jsonl`,
+      cwd: '/work/repo',
+      permission_mode: 'default',
+      hook_event_name: event,
+      tool_name: 'Bash',
+      tool_input: { command: 'sleep 600' },
+      tool_use_id: 'toolu_quiet',
+    })
+    const repeats = 16
+    const every = 20_000
+    const start = Date.now() - repeats * every
+    const at = ({ index }: { index: number }) => new Date(start + index * every).toISOString()
+
+    for (let index = 0; index < repeats; index++) {
+      spoolWrite({
+        hydraId: s.hydraId,
+        entry: {
+          v: 1,
+          id: `hook-quiet-${index}`,
+          at: at({ index }),
+          harness: 'claude',
+          event: 'PreToolUse',
+          payload: payload({ event: 'PreToolUse' }),
+        },
+      })
+    }
+
+    spoolWrite({
+      hydraId: s.hydraId,
+      entry: {
+        v: 1,
+        id: 'hook-quiet-stop',
+        at: at({ index: repeats }),
+        harness: 'claude',
+        event: 'Stop',
+        payload: payload({ event: 'Stop' }),
+      },
+    })
+    const pushes = () => s.events().filter((event): event is PushedEvent => event.type === 'card.pushed'
+      && event.data.source?.objectId === session)
+    await until({
+      what: 'the worker\'s Stop to be logged after its quiet stretch',
+      check: () => pushes().some(event => event.data.activity === 'finished'),
+    })
+
+    const times = pushes().map(event => Date.parse(event.at))
+    assert.deepEqual(
+      times.map(time => (time - start) / 1000),
+      [
+        0,
+        60,
+        120,
+        180,
+        240,
+        300,
+        320,
+      ],
+      'the repeats are logged once a minute, then the Stop',
+    )
+    assert.ok(
+      times.slice(1).every((
+        time,
+        index,
+      ) => time - times[index]! <= OBSERVATION_HEARTBEAT_MS
+        && OBSERVATION_HEARTBEAT_MS < STALL_MS),
+      'the worker\'s last sign of life is never older than a heartbeat',
+    )
   },
 )
