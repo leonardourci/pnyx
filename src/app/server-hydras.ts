@@ -143,7 +143,7 @@ function summarize({ id }: { id: string }): {
           seq,
         ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
         name: config.name,
-        ...(config.icon ? { icon: config.icon } : {}),
+        icon: config.icon,
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         projects,
       },
@@ -192,24 +192,33 @@ export function createHydra({
       }
 
       const id = `hydra-${n}`
-      commands.hydra([
+      const args = [
         'create',
         id,
-        ...(name ? [
-          '--name',
-          name,
-        ] : []),
-        ...(icon ? [
-          '--icon',
-          icon,
-        ] : []),
         '--actor',
         'web',
         ...(eventId ? [
           '--event-id',
           eventId,
         ] : []),
-      ])
+      ]
+
+      // Without a name the CLI picks an unused Greek one.
+      if (name) {
+        args.push(
+          '--name',
+          name,
+        )
+      }
+
+      if (icon) {
+        args.push(
+          '--icon',
+          icon,
+        )
+      }
+
+      commands.hydra(args)
 
       return id
     },
@@ -225,21 +234,29 @@ export function editHydra({
   name?: string
   icon?: string
 }): void {
-  commands.hydra([
+  const args = [
     'set',
     '--hydra',
     id,
-    ...(name ? [
-      '--name',
-      name,
-    ] : []),
-    ...(icon ? [
-      '--icon',
-      icon,
-    ] : []),
     '--actor',
     'web',
-  ])
+  ]
+
+  if (name) {
+    args.push(
+      '--name',
+      name,
+    )
+  }
+
+  if (icon) {
+    args.push(
+      '--icon',
+      icon,
+    )
+  }
+
+  commands.hydra(args)
 }
 
 // Once at start: a Hydra still named after its id, or not named at all, takes a Greek name and icon.
