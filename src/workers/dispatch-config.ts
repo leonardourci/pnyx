@@ -561,7 +561,7 @@ function repairFiles(): void {
   }
 }
 
-// The saved document with any errors it holds, so a patch can still repair it; readers take readDocument.
+// The saved document with any errors it holds, so a patch can still repair it; readers take effectiveDispatch.
 export function savedDocument(): DispatchDocument {
   migrate()
   const committed = committedDocument()
@@ -580,13 +580,14 @@ export function savedDocument(): DispatchDocument {
   return committedDocument() ?? files
 }
 
-export const readDocument = () => checked({ document: savedDocument() })
-
-export function effectiveDispatch(): EffectiveDispatch {
+// The saved document, or another one such as an unsaved draft, as starts read it.
+export function effectiveDispatch({
+  document = savedDocument(),
+}: { document?: unknown } = {}): EffectiveDispatch {
   const {
     accounts: registered,
     ...dispatch
-  } = readDocument()
+  } = checked({ document })
 
   if (Object.keys(registered).length) {
     return {

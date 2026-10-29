@@ -621,6 +621,85 @@ export function dispatchTask({
   })
 }
 
+export interface RuleNow {
+  rule: string
+  // The list position of the candidate that would start; absent when none can.
+  candidate?: number
+  account?: string
+  reason: string
+}
+
+// ponytail: a reading is kept for a minute so Settings can ask after each edit; reads are synchronous like a start's, so the first one per login holds the server.
+const NOW_QUOTA_MS = 60_000
+const recentQuota = new Map<string, {
+  at: number
+  reading: QuotaReading
+}>()
+
+const keptQuota: ReadQuota = ({ account }) => {
+  const key = `${account.provider}:${loginFolder({ account })}`
+  const kept = recentQuota.get(key)
+
+  if (kept && Date.now() - kept.at < NOW_QUOTA_MS) {
+    return kept.reading
+  }
+
+  const reading = readQuota({ account })
+  recentQuota.set(
+    key,
+    {
+      at: Date.now(),
+      reading,
+    },
+  )
+
+  return reading
+}
+
+// Which candidate of each rule a start would pick right now; a rule that cannot start says why.
+export function startsNow({
+  config,
+  offers,
+  quota = keptQuota,
+}: {
+  config: EffectiveDispatch
+  offers?: Partial<Record<Harness, string[]>>
+  quota?: ReadQuota
+}): RuleNow[] {
+  return [
+    'default',
+    ...Object.keys(config.dispatch.rules),
+  ].map(rule => {
+    try {
+      const choice = chooseCandidate({
+        config,
+        rule,
+        offers,
+        quota,
+      })
+
+      return {
+        rule,
+        candidate: ruleCandidates({
+          dispatch: config.dispatch,
+          rule,
+        })!.indexOf(choice.candidate),
+        account: choice.account,
+        reason: choice.reason,
+      }
+    } catch (error) {
+      if (!(error instanceof HydraError)) {
+        throw error
+      }
+
+      return {
+        rule,
+        reason: error.message,
+      }
+    }
+  })
+}
+
 // A Pnyx-hosted agent takes only the values its own setting pickers offer.
 export function hostedOverride({
   harness,

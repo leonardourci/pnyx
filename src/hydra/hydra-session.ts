@@ -27,6 +27,7 @@ const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
     'list',
     'show',
     'schema',
+    'now',
     'init',
     'apply',
     'propose',
