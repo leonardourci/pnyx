@@ -77,7 +77,7 @@ h2 { font-size: var(--text-pane); }
 
 h1, h2 { font-weight: 700; }
 
-.settings > h1, .settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
+.settings-box > h2, .keyboard-settings h2, .hydra-head { font-family: var(--font-brand); font-weight: 700; }
 
 .hydra-head strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: inherit; }
 
@@ -501,11 +501,8 @@ h3 { font-weight: 600; }
 
 .column-cards > .detail { width: 100%!important; flex: 0 0 min(680px, 100%)!important; height: min(680px, 100%); min-height: 440px; }
 
-.settings { display: flex; flex-direction: column; gap: 18px; flex: 1; min-height: 0; overflow: auto; }
 
-.settings > .row p { font-size: var(--text-ui); margin-top: 5px; }
 
-.settings-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 18px; max-width: none; }
 
 .settings-box { padding: 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); min-width: 0; }
 
@@ -523,7 +520,6 @@ h3 { font-weight: 600; }
 
 .number-control .button { font-size: var(--text-pane); padding: 4px 6px; }
 
-.setting-label { display: block; margin: 18px 0 8px; font-size: var(--text-ui); }
 
 .settings-box dl { font-size: var(--text-ui); color: var(--color-muted); }
 
@@ -558,13 +554,10 @@ h1 { font-size: var(--text-pane); }
 .detail > .resize-x { display: none; }
 
 
-.settings-grid { grid-template-columns: minmax(0, 1fr); }
 
 .settings-box { padding: 15px; }
 
-.settings > .row { align-items: flex-start; }
 
-.settings > .row > .button { flex-shrink: 0; }
 
 .brand { font-size: var(--text-pane); }
 
@@ -811,13 +804,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .thread > .composer .textarea { border: 0; background: transparent; outline: none; font-size: var(--text-chat); }
 
-.integrations dd { display: flex; flex-direction: column; gap: 3px; }
 
-.integrations dd .ok { color: var(--color-green); }
 
-.integrations code { overflow-wrap: anywhere; font-size: var(--text-code); }
 
-.settings-box.integrations > .button { margin-top: 14px; }
 
 .ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-ui); border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
 
@@ -1020,11 +1009,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-chat > .composer { margin-bottom: 12px; }
 
-.settings { width: 100%; margin: 0 auto; padding: 24px 12px 48px; flex: 1; }
 
-.settings > h1 { margin-bottom: 8px; }
 
-.settings-grid { display: flex; flex-direction: column; gap: 18px; max-width: none; }
 
 .settings-box, .keyboard-settings { flex-shrink: 0; }
 
@@ -1677,14 +1663,14 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* Settings page: one centered column with a sticky search bar, section chips and rows of the same shape. */
 .settings-page { flex: 1; min-height: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 16px; padding: 0 max(20px, calc((100% - 880px) / 2)) 24px; }
 .settings-head { position: sticky; top: 0; z-index: 2; display: flex; flex-direction: column; gap: 10px; padding: 20px 0 12px; background: var(--color-background); }
-.settings-head > h1 { font-family: var(--font-brand); font-size: 28px; }
+.settings-head > h1 { font-family: var(--font-brand); font-size: calc(var(--text-ui) * 2); }
 .settings-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .settings-chips .button { min-height: var(--control-h); font-size: var(--text-body); border: 1px solid var(--color-line); gap: 6px; }
 .settings-chips .button[aria-pressed=true] { background: var(--color-gold-wash); border-color: var(--color-gold-line); color: var(--color-gold); }
 .settings-chip-count { color: var(--color-muted); font-size: var(--text-detail); }
 .settings-section { border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); padding: 0 20px; }
 .settings-section-head { display: flex; align-items: center; justify-content: space-between; padding: 16px 0 8px; }
-.settings-section-head h2 { font-family: var(--font-brand); font-size: 20px; }
+.settings-section-head h2 { font-family: var(--font-brand); font-size: calc(var(--text-ui) * 10 / 7); }
 .settings-section-head .button { min-height: var(--control-h); font-size: var(--text-body); }
 .setting-row { display: grid; grid-template-columns: 24px minmax(0, 1fr) auto; column-gap: 12px; row-gap: 8px; align-items: start; padding: 16px 0; border-top: 1px solid var(--color-subtle); }
 .setting-icon { color: var(--color-muted); padding-top: 2px; }
@@ -1695,13 +1681,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .setting-text mark { background: var(--color-gold-wash); color: inherit; border-radius: 2px; }
 .setting-reset { align-self: flex-start; min-height: 24px; font-size: var(--text-detail); padding: 0 6px; }
 .setting-control { display: flex; justify-content: flex-end; min-width: 0; }
-.setting-help, .setting-preview { grid-column: 2 / -1; font-size: var(--text-detail); color: var(--color-muted); }
 .setting-row:has(.keyboard-settings, .about, .setting-stack) { grid-template-columns: 24px minmax(0, 1fr); }
 .setting-row:has(.keyboard-settings, .about, .setting-stack) .setting-control { grid-column: 2 / -1; justify-content: flex-start; }
 .setting-control > .keyboard-settings { width: 100%; min-width: 0; padding: 0; border: 0; background: none; box-shadow: none; }
-.setting-control > .keyboard-settings .eyebrow, .setting-control > .keyboard-settings h2 { display: none; }
-.setting-stack { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .setting-labeled { display: grid; grid-template-columns: minmax(96px, 160px) minmax(0, 1fr); align-items: center; gap: 12px; font-size: var(--text-body); }
+.setting-stack { display: flex; flex-direction: column; gap: 8px; width: 100%; }
 .slider-field { display: flex; align-items: center; gap: 10px; min-width: 300px; }
 .slider-track { position: relative; flex: 1; display: flex; align-items: center; height: var(--control-h); }
 .slider-track[data-tick]::after { content: ""; position: absolute; left: var(--tick); bottom: 2px; width: 2px; height: 6px; border-radius: 1px; background: var(--color-control); transform: translateX(-1px); pointer-events: none; }
@@ -1718,10 +1702,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .search-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 6px; min-height: 42px; padding: 6px 10px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 .search-bar:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 .search-bar-eye { display: inline-flex; flex: none; color: var(--color-gold); }
-.search-bar-input { flex: 1 1 140px; min-width: 100px; border: 0; outline: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: 15px; padding: 3px 2px; }
+.search-bar-input { flex: 1 1 140px; min-width: 100px; border: 0; outline: 0; background: transparent; color: var(--color-ink); font: inherit; font-size: calc(var(--text-ui) * 15 / 14); padding: 3px 2px; }
 .search-bar-input::placeholder { color: var(--color-muted); }
 .search-bar-count { font-size: var(--text-detail); color: var(--color-muted); white-space: nowrap; }
-.search-badge { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px 0 8px; border: 1px solid transparent; border-radius: 6px; background: var(--color-raised); color: var(--color-ink); font-size: 12.5px; font-weight: 600; white-space: nowrap; }
+.search-badge { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 4px 0 8px; border: 1px solid transparent; border-radius: 6px; background: var(--color-raised); color: var(--color-ink); font-size: var(--text-detail); font-weight: 600; white-space: nowrap; }
 .search-badge[data-kind=section] { background: var(--color-gold-wash); color: var(--color-gold); }
 .search-badge[data-kind=changed] { color: var(--color-teal); }
 .search-badge[data-marked] { border-color: var(--color-red); box-shadow: 0 0 0 2px color-mix(in srgb, var(--color-red) 22%, transparent); }
