@@ -4,7 +4,7 @@ import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import type { Command } from '#web-app/connection.ts'
 
-// Kept per stored report for the whole tab, so switching back to Activity shows it at once.
+// Reports already read, by report id, for the life of the page, so switching back to Activity shows one at once.
 const reports = new Map<string, string>()
 
 // A task's stored investigation report, read when its card's Activity tab first shows it.
@@ -21,7 +21,7 @@ export function TaskReport({
   const [
     report,
     setReport,
-  ] = useState<string | null>(() => reports.get(stored ?? '') ?? null)
+  ] = useState<string | null>(() => (stored ? reports.get(stored) : undefined) ?? null)
   const [
     error,
     setError,
@@ -29,7 +29,11 @@ export function TaskReport({
 
   useEffect(
     () => {
-      const kept = reports.get(stored ?? '')
+      if (!stored) {
+        return
+      }
+
+      const kept = reports.get(stored)
 
       if (kept !== undefined) {
         setReport(kept)
@@ -37,7 +41,7 @@ export function TaskReport({
         return
       }
 
-      if (!stored || !connected) {
+      if (!connected) {
         return
       }
 

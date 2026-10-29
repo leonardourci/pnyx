@@ -324,8 +324,7 @@ export function HydraCard({
     tabIndex: 0,
     className: 'card-panel',
   })
-  // Only the visible tab mounts, so a hidden Activity reads no history or report.
-  const showsContext = tab === 'context'
+  // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
   const showsActivity = tab === 'activity'
   // The title opens the brief, which exists only while Activity shows; before that it controls the Activity panel.
   const briefControl = showsActivity ? briefId : panelId({
@@ -541,46 +540,42 @@ export function HydraCard({
               ]}
             />
             <div {...panel({ id: 'context' })}>
-              {showsContext && (
-                <>
-                  {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
-                  {waiting.length > 0 && (card.intent || factual) && (
-                    <ContextIndex
-                      questions={waiting.length}
-                      intent={!!card.intent}
-                      state={!!factual}
-                    />
-                  )}
-                  {hasTaskQuestion({ card }) && (
-                    <TaskQuestion
-                      card={card}
-                      command={command}
-                      notify={notify}
-                      answer={answer}
-                    />
-                  )}
-                  {card.intent && (
-                    <section className="card-section card-intent" aria-label="Intent">
-                      <h3 className="eyebrow">Intent</h3>
-                      <CollapsibleText text={card.intent} />
-                    </section>
-                  )}
-                  {factual && (
-                    <section className="card-section card-current-state" aria-label="Current state">
-                      <h3 className="eyebrow">Current state</h3>
-                      <CollapsibleText text={factual.text} />
-                      <p className="muted small">{stateSource}, {relativeTime({
-                        at: factual.at,
-                        now,
-                      })}
-                      </p>
-                    </section>
-                  )}
-                  {labels}
-                  <CardLinks links={card.links} expanded />
-                  <ReminderLabel card={card} />
-                </>
+              {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
+              {waiting.length > 0 && (card.intent || factual) && (
+                <ContextIndex
+                  questions={waiting.length}
+                  intent={!!card.intent}
+                  state={!!factual}
+                />
               )}
+              {hasTaskQuestion({ card }) && (
+                <TaskQuestion
+                  card={card}
+                  command={command}
+                  notify={notify}
+                  answer={answer}
+                />
+              )}
+              {card.intent && (
+                <section className="card-section card-intent" aria-label="Intent">
+                  <h3 className="eyebrow">Intent</h3>
+                  <CollapsibleText text={card.intent} />
+                </section>
+              )}
+              {factual && (
+                <section className="card-section card-current-state" aria-label="Current state">
+                  <h3 className="eyebrow">Current state</h3>
+                  <CollapsibleText text={factual.text} />
+                  <p className="muted small">{stateSource}, {relativeTime({
+                    at: factual.at,
+                    now,
+                  })}
+                  </p>
+                </section>
+              )}
+              {labels}
+              <CardLinks links={card.links} expanded />
+              <ReminderLabel card={card} />
             </div>
             <div {...panel({ id: 'activity' })}>
               {showsActivity && (

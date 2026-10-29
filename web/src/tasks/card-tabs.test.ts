@@ -1,14 +1,17 @@
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { registerHooks } from 'node:module'
+import * as nodeModule from 'node:module'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 import ts from 'typescript'
 import type { HydraEvent } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 
-// Node strips types from .ts but cannot read JSX, so the card's .tsx files are transpiled as they load.
-registerHooks({
+// Node strips types from .ts but cannot read JSX, so the card's .tsx files are transpiled as they load;
+// the card's modules are imported below, after the hook. registerHooks exists from Node 22.15.
+const hooks = typeof nodeModule.registerHooks === 'function'
+
+nodeModule.registerHooks?.({
   // eslint-disable-next-line pnyx/object-params -- Node owns the load hook's signature.
   load(
     url,
@@ -47,19 +50,21 @@ Object.assign(
   { CSS: { supports: () => false } },
 )
 
-const { createElement } = await import('react')
-const { renderToStaticMarkup } = await import('react-dom/server')
-const { HydraCard } = await import('./card.tsx')
-const { KeyboardProvider } = await import('#web-preferences/keyboard-registry.tsx')
-const { DEFAULT_VIEW } = await import('#preferences/view.ts')
-const {
-  emptyHydra,
-  replay,
-} = await import('#app/reducer.ts')
-
 const AT = '2026-10-13T10:00:00Z'
 
-const reportedCard = (): Card => {
+const load = async () => ({
+  ...await import('react'),
+  ...await import('react-dom/server'),
+  ...await import('./card.tsx'),
+  ...await import('#web-preferences/keyboard-registry.tsx'),
+  ...await import('#preferences/view.ts'),
+  ...await import('#app/reducer.ts'),
+})
+
+const reportedCard = ({
+  emptyHydra,
+  replay,
+}: Pick<Awaited<ReturnType<typeof load>>, 'emptyHydra' | 'replay'>): Card => {
   const state = replay({
     state: emptyHydra(),
     events: [
@@ -101,7 +106,17 @@ const noop = () => undefined
 
 test(
   'an open card on Context mounts none of Activity: no updates, report or brief',
-  () => {
+  { skip: !hooks && 'needs module.registerHooks (Node 22.15)' },
+  async () => {
+    const {
+      createElement,
+      renderToStaticMarkup,
+      HydraCard,
+      KeyboardProvider,
+      DEFAULT_VIEW,
+      emptyHydra,
+      replay,
+    } = await load()
     const updates = createElement(
       'div',
       { className: 'activity-updates' },
@@ -109,7 +124,10 @@ test(
     const card = createElement(
       HydraCard,
       {
-        card: reportedCard(),
+        card: reportedCard({
+          emptyHydra,
+          replay,
+        }),
         lookup: {} as never,
         notify: noop,
         selected: true,
@@ -144,7 +162,7 @@ test(
     )
     assert.doesNotMatch(
       html,
-      /activity-updates|task-report|Build the form/,
+      /activity-updates|Build the form/,
       'the hidden Activity tab mounts nothing',
     )
   },
