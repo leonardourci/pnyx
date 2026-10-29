@@ -635,7 +635,7 @@ export function createHydraConnection() {
             outcome: 'unknown',
           })
 
-          if (request.saveId) {
+          if (request.saveId || (request.checking && request.retry)) {
             request.checking = true
             request.unconfirmed()
             request.sent = false
@@ -1033,7 +1033,7 @@ export function createHydraConnection() {
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
     } else if ('id' in message && message.id) {
-      if (message.type !== 'error' && Array.isArray(message.hydras)) {
+      if (message.type === 'receipt' && Array.isArray(message.hydras)) {
         updateHydras({ rows: message.hydras as HydraSummary[] })
       }
 
@@ -1041,6 +1041,16 @@ export function createHydraConnection() {
 
       if (!request || request.scope !== scope) {
         publish(); flush()
+
+        return
+      }
+
+      const waitingOnLock = message.type === 'error' && message.code === 'LOCKED' && request.retry
+
+      if (message.type === 'checking' || waitingOnLock) {
+        request.checking = true
+        request.unconfirmed()
+        publish()
 
         return
       }
