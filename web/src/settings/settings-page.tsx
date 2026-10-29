@@ -58,8 +58,7 @@ const differs = ({
 
 const initialOf = ({ id }: { id: string }) => DEFAULT_SETTINGS[id as keyof typeof DEFAULT_SETTINGS]
 
-// A catalog entry that names a shared setting differs from its default; actions never do. Column widths
-// count as changed once any column differs, since the map also holds columns the default does not name.
+// Column widths count once any column differs, since the map also names columns the default does not.
 function changedIds({ view }: { view: ViewPreferences }): Set<string> {
   const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => key !== 'defaultColumnWidths' && key in view && differs({
     value: view[key as keyof ViewPreferences],

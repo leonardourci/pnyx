@@ -1,5 +1,4 @@
-// A key pressed at the start of the search field acts on its badges: ⌫ marks the last one and removes it
-// on a second press, ← → move the mark, Delete removes the marked badge, and any other key drops the mark.
+// At the field's start ⌫ marks the last badge and removes it on a second press; ← → move the mark.
 export interface BadgeKey {
   marked?: number
   remove?: number
