@@ -8,7 +8,7 @@ const FOLDER = new URL(
   import.meta.url,
 )
 // icon.tsx draws each file as one inline path in a 512-unit box.
-const ONE_PATH = /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 512 512"><path fill="#000" d="[^"]+"\/><\/svg>\n?$/
+const ONE_PATH = /^<svg xmlns="http:\/\/www\.w3\.org\/2000\/svg" viewBox="0 0 512 512"><path fill="#000"(?: fill-rule="evenodd")? d="[^"]+"\/><\/svg>\n?$/
 
 test(
   'every identity icon has its file and every file is in the registry',

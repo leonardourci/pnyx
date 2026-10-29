@@ -11,8 +11,9 @@ const IDENTITY_FILES = import.meta.glob<string>(
     import: 'default',
   },
 )
-// Every identity file is one 512-unit path.
+// Every identity file is one 512-unit path; a cut-out shape marks it even-odd.
 const PATH_DATA = / d="([^"]+)"/
+const EVEN_ODD = 'fill-rule="evenodd"'
 // Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
 const BOLD_STROKE = 16
 // The Fast toggle shows on and off by its color, so both draw the same lightning.
@@ -20,10 +21,16 @@ const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
 
 export const identityGlyph = ({ name }: { name: string }) => {
   const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
-  const path = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]?.match(PATH_DATA)?.[1]
+  const file = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
+  const path = file?.match(PATH_DATA)?.[1]
 
-  return path && {
+  if (!icon || !file || !path) {
+    return undefined
+  }
+
+  return {
     path,
+    fillRule: file.includes(EVEN_ODD) ? 'evenodd' as const : 'nonzero' as const,
     stroke: icon.bold ? BOLD_STROKE : 0,
   }
 }
@@ -69,7 +76,7 @@ export function Icon({
         stroke="currentColor"
         strokeWidth={identity.stroke}
         strokeLinejoin="round"
-      ><path d={identity.path} />
+      ><path d={identity.path} fillRule={identity.fillRule} />
       </svg>
     )
   }
