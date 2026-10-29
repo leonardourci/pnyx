@@ -48,6 +48,7 @@ test('…', async () => {
 Rules:
 
 - Wait with `until` (or `shows`) on something observable. No fixed sleeps, and no retries: a test that fails now and then is a bug. `until` stops on any value but `undefined` and `false`, so a count waits as `length > 0`.
+- The server reads each write on its own schedule, and builds the routine helper's next batch and Hydra's next wake only from what it has read. It sends each event to open pages in the same step, so release a held turn that must see a write once an open page shows that event's `seq`.
 - At most two heavy processes at once: the test process (which runs the server) and one awaited `pnyx-axi`. The Codex fake runs inside the test process.
 - Nothing outside the scenario's temporary folder: never run `pnyx-axi setup`, never a real agent, terminal or GitHub.
 
@@ -57,7 +58,7 @@ Rules:
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads.
 
-For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` and replays the recording with the chosen reply. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
+For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` that reaches an agent of the Hydra whose scenario made the plan, and replays the recording with the chosen reply. Another flow's agents never take it, even if it goes unused. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
 
 The flows:
 - `tasks.test.ts` covers a task's life, column rules and dependencies.

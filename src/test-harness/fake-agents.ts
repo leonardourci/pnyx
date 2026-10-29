@@ -87,8 +87,10 @@ interface TurnPlan {
   hold?: boolean
 }
 
-function plannedTurns() {
+// A plan answers only the Hydra that was current when it was made, so flows never share plans.
+function plannedTurns({ hydra }: { hydra(): string }) {
   const plans: (TurnPlan & {
+    hydra: string
     wait: Promise<void>
   })[] = []
 
@@ -106,6 +108,7 @@ function plannedTurns() {
         text,
         reply,
         hold,
+        hydra: hydra(),
         wait,
       })
 
@@ -115,8 +118,15 @@ function plannedTurns() {
 
       return { release }
     },
-    take: ({ text }: { text: string }) => {
-      const index = plans.findIndex(plan => text.endsWith(plan.text))
+    take: ({
+      text,
+      env,
+    }: {
+      text: string
+      env: NodeJS.ProcessEnv
+    }) => {
+      const index = plans.findIndex(plan => plan.hydra === env.PNYX_HYDRA
+        && text.endsWith(plan.text))
 
       if (index >= 0) {
         return plans.splice(
@@ -129,9 +139,9 @@ function plannedTurns() {
 }
 
 // Each message starts the recorded turn again under the session's own id; the transcript is written as Claude Code writes it.
-export function replayClaude() {
+export function replayClaude({ hydra }: { hydra(): string }) {
   const sessions: AgentSession[] = []
-  const turns = plannedTurns()
+  const turns = plannedTurns({ hydra })
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
@@ -212,7 +222,10 @@ export function replayClaude() {
           text,
         })
 
-        const plan = turns.take({ text })
+        const plan = turns.take({
+          text,
+          env: session.env,
+        })
         const answer = plan?.reply ?? reply
 
         for (const recorded of claudeRecording.turn) {
@@ -283,9 +296,9 @@ export function replayClaude() {
 
 // An app-server in this process: each request gets its recorded result, followed by the notifications
 // recorded after it, under the session's own thread id. thread/resume answers as thread/start did.
-export function replayCodex() {
+export function replayCodex({ hydra }: { hydra(): string }) {
   const sessions: AgentSession[] = []
-  const turns = plannedTurns()
+  const turns = plannedTurns({ hydra })
   // refuse: a method answered with an error while set, as a harness that cannot open a thread; refused counts them.
   const control = {
     refuse: undefined as string | undefined,
@@ -440,7 +453,10 @@ export function replayCodex() {
           const input = (message.params as { input?: { text?: string }[] }).input ?? []
           const text = input.map(part => part.text ?? '').join('\n')
           session.received.push(text)
-          plan = turns.take({ text })
+          plan = turns.take({
+            text,
+            env,
+          })
         }
 
         if (message.method === 'turn/steer') {
