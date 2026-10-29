@@ -1,5 +1,6 @@
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -18,7 +19,9 @@ import { hydraConfig } from '#hydra/config.ts'
 import { Projects } from '#web-projects/projects.tsx'
 import { AgentKinds } from '#web-workers/agent-kinds.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
+import { composing } from '#web-shared/ime.ts'
 import { commandQuery, matchesCommand, resetWidths, oracleSettings, SHORTCUT_QUERY, shortcutLabel } from './oracle-catalog.ts'
+import { HIT_ROW, inputKey, type InputKey } from './keys.ts'
 
 export function Oracle({
   state,
@@ -27,6 +30,7 @@ export function Oracle({
   query,
   setQuery,
   hits,
+  pending,
   save,
   openTask,
   openHydra,
@@ -44,6 +48,7 @@ export function Oracle({
   query: string
   setQuery({ query }: { query: string }): void
   hits: Hit[]
+  pending: boolean
   save({ patch }: { patch: unknown }): Promise<boolean>
   openTask({ id }: { id: string }): void
   openHydra(): void
@@ -65,9 +70,13 @@ export function Oracle({
     setExpanded,
   ] = useState(false)
   const input = useRef<HTMLInputElement>(null), root = useRef<HTMLDivElement>(null)
+  // The last Enter or arrow pressed while the query was still being answered, run once it is.
+  const waitingKey = useRef<string | null>(null)
   useEffect(
     () => {
       if (!expanded) {
+        waitingKey.current = null
+
         return
       }
 
@@ -100,9 +109,9 @@ export function Oracle({
       return false
     }
 
-    showPanel(); requestAnimationFrame(() => {
-      input.current?.focus(); setExpanded(true)
-    })
+    // The panel renders before focusing, so keys typed right after the shortcut reach the input.
+    flushSync(showPanel)
+    input.current?.focus(); setExpanded(true)
 
     return true
   }
@@ -138,6 +147,8 @@ export function Oracle({
     setExpanded(false); setQuery({ query: '' })
     context.current.target.focus(); work()
   }
+
+  const openHit = ({ hit }: { hit: Hit }) => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })
 
   const rows: (ResultRow & { text: string })[] = []
 
@@ -517,11 +528,11 @@ export function Oracle({
 
   const visibleHits = commandQuery({ query }) ? [] : hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card].hidden))
   const searchRows: ResultRow[] = visibleHits.map(hit => ({
-    id: `hit:${hit.card}`,
+    id: `${HIT_ROW}${hit.card}`,
     label: hit.title,
     content: (
       <div className="oracle-hit">
-        <Button onClick={() => run({ work: () => hit.kind === 'hydra' ? openHydra() : openTask({ id: hit.card }) })}>
+        <Button onClick={() => openHit({ hit })}>
           <strong>{hit.title}</strong>
         </Button>
         <small>
@@ -535,13 +546,71 @@ export function Oracle({
     ),
   }))
 
+  const searching = !commandQuery({ query }) && !!query.trim()
+  const taskGroup = {
+    label: 'Tasks & messages',
+    rows: searchRows,
+    message: !visibleHits.length ? 'No matching tasks or messages.' : undefined,
+  }
+  const settingsGroup = {
+    label: 'Settings & actions',
+    rows: matchingRows,
+    message: !matchingRows.length ? 'No matching settings or actions.' : undefined,
+  }
+  const shownRows = searching ? [
+    ...searchRows,
+    ...matchingRows,
+  ] : matchingRows
+  const firstRow = shownRows[0]?.id
+
+  const focusRow = ({ last }: { last: boolean }) => {
+    const results = root.current?.querySelectorAll<HTMLElement>('[data-result-id]')
+    results?.[last ? results.length - 1 : 0]?.focus()
+  }
+
+  const act = ({ action }: { action: InputKey }) => {
+    const top = visibleHits[0]
+
+    if (action === 'open' && top) {
+      openHit({ hit: top })
+    } else if (action === 'first' || action === 'last') {
+      focusRow({ last: action === 'last' })
+    }
+  }
+
+  useEffect(
+    () => {
+      const key = waitingKey.current
+
+      if (!key || pending) {
+        return
+      }
+
+      waitingKey.current = null
+      const action = inputKey({
+        key,
+        composing: false,
+        pending: false,
+        first: firstRow,
+      })
+
+      if (action) {
+        act({ action })
+      }
+    },
+    [
+      pending,
+      firstRow,
+    ],
+  )
+
   return (
     <div
       className="oracle"
       data-oracle-slot
       ref={root}
       onKeyDown={e => {
-        if (e.key === 'Escape' && !e.nativeEvent.isComposing && !e.defaultPrevented) {
+        if (e.key === 'Escape' && !composing({ event: e.nativeEvent }) && !e.defaultPrevented) {
           e.preventDefault(); e.stopPropagation()
 
           if (context.current.target.isConnected) {
@@ -565,7 +634,11 @@ export function Oracle({
         setExpanded(true)
       }}
       onBlur={e => {
-        if (e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)) {
+        const movedOut = !!e.relatedTarget && !e.currentTarget.contains(e.relatedTarget)
+        // ponytail: a hover means the blur came from a click inside; a keyboard exit while hovered stays.
+        const leftForPage = !e.relatedTarget && document.hasFocus() && !e.currentTarget.matches(':hover')
+
+        if (movedOut || leftForPage) {
           setExpanded(false)
         }
       }}
@@ -583,12 +656,22 @@ export function Oracle({
           setQuery({ query: e.target.value }); setExpanded(true)
         }}
         onKeyDown={e => {
-          if (e.nativeEvent.isComposing) {
+          const action = inputKey({
+            key: e.key,
+            composing: composing({ event: e.nativeEvent }),
+            pending: searching && pending,
+            first: firstRow,
+          })
+
+          if (!action) {
             return
           }
 
-          if (e.key === 'Escape') {
-            e.preventDefault(); e.stopPropagation()
+          e.preventDefault(); e.stopPropagation()
+
+          if (action === 'wait') {
+            waitingKey.current = e.key
+          } else if (action === 'clear') {
             setQuery({ query: '' }); setExpanded(false)
 
             if (context.current.target.isConnected) {
@@ -596,14 +679,8 @@ export function Oracle({
             } else {
               focusElement({ selector: '[data-card]' })
             }
-          } else if ([
-            'ArrowDown',
-            'ArrowUp',
-            'Enter',
-          ].includes(e.key)) {
-            e.preventDefault(); e.stopPropagation()
-            const results = root.current?.querySelectorAll<HTMLElement>('[data-result-id]')
-            results?.[e.key === 'ArrowUp' ? results.length - 1 : 0]?.focus()
+          } else {
+            act({ action })
           }
         }}
       />
@@ -612,20 +689,10 @@ export function Oracle({
           id="hydra-oracle-results"
           label="Oracle results"
           search={() => input.current?.focus()}
-          groups={[
-            ...(!commandQuery({ query }) && query.trim() ? [
-              {
-                label: 'Tasks & messages',
-                rows: searchRows,
-                message: !visibleHits.length ? 'No matching tasks or messages.' : undefined,
-              },
-            ] : []),
-            {
-              label: 'Settings & actions',
-              rows: matchingRows,
-              message: !matchingRows.length ? 'No matching settings or actions.' : undefined,
-            },
-          ]}
+          groups={searching ? [
+            taskGroup,
+            settingsGroup,
+          ] : [settingsGroup]}
         />
       )}
     </div>

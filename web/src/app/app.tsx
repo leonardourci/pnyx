@@ -1025,6 +1025,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               query={query}
               setQuery={({ query }) => setQuery(query)}
               hits={found.hits}
+              pending={found.pending}
               save={save}
               openTask={open}
               openHydra={openHydra}
