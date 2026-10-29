@@ -3,12 +3,13 @@ import { execFile } from 'node:child_process'
 import { parseArgs, promisify } from 'node:util'
 import { join } from 'node:path'
 import { WRITE, guard, meta, parse, required, type Output } from './cli-support.ts'
-import { effectiveDispatch } from '#workers/dispatch-config.ts'
+import { effectiveDispatch, type EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { withWriter } from './writer.ts'
+import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 
@@ -26,12 +27,19 @@ interface Target {
   cwd: string
 }
 
+// Read before taking a Hydra writer, so the shared registry lock is never taken inside one.
+const dispatchFor = ({ target }: { target: Target }) => target.name === 'rule' || target.name === 'account'
+  ? effectiveDispatch()
+  : undefined
+
 function context({
   state,
   target,
+  dispatch,
 }: {
   state: HydraState
   target: Target
+  dispatch?: EffectiveDispatch
 }): string {
   const {
     name,
@@ -52,7 +60,7 @@ function context({
   return createHash('sha256').update(JSON.stringify({
     config: name === 'hydra' || name === 'setup' ? state.config : undefined,
     projects: name === 'project' ? state.projects : undefined,
-    dispatch: name === 'rule' || name === 'account' ? effectiveDispatch() : undefined,
+    dispatch,
     card: card && {
       agent: card.agent,
       settings: card.settings,
@@ -102,6 +110,7 @@ export function proposeOwnerCommand({
   }
   const value = JSON.stringify(target)
   const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
+  const dispatch = dispatchFor({ target })
   withWriter({
     hydraId,
     fn: ({ writer }) => {
@@ -121,6 +130,7 @@ export function proposeOwnerCommand({
             before: context({
               state: writer.state,
               target,
+              dispatch,
             }),
             value,
             summary,
@@ -179,6 +189,10 @@ export const approval = guard({
       })
     }
 
+    const asked = loadHydra({ hydraId }).state.dispatchProposals?.find(p => p.token === token)
+    const dispatch = action === 'confirm' && asked?.kind === 'command'
+      ? dispatchFor({ target: JSON.parse(asked.value) as Target })
+      : undefined
     const selected = withWriter({
       hydraId,
       fn: ({ writer }) => {
@@ -209,6 +223,7 @@ export const approval = guard({
         if (action === 'confirm' && context({
           state: writer.state,
           target: JSON.parse(proposal.value) as Target,
+          dispatch,
         }) !== proposal.before) {
           throw new HydraError({
             message: 'The target changed; dismiss this question and ask Hydra to propose it again',
