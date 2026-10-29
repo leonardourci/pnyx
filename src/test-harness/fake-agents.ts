@@ -52,6 +52,7 @@ export interface AgentSession {
   cwd: string
   env: NodeJS.ProcessEnv
   received: string[]
+  images?: unknown[][]
   // Received messages whose turn ended: for Claude once Pnyx has read the turn's last message, for Codex once turn/completed is written.
   answered: number
   model?: string
@@ -65,11 +66,20 @@ export interface AgentSession {
     tool: string
     input: Record<string, unknown>
   }): Promise<PermissionResult | null>
-  // Codex only: the agent sends this request mid-turn, as Codex asks for an approval, and gets Pnyx's answer.
-  ask?({
+  notify?({
     method,
     params,
   }: {
+    method: string
+    params: Message
+  }): void
+  // Codex only: the agent sends this request mid-turn, as Codex asks for an approval, and gets Pnyx's answer.
+  ask?({
+    id,
+    method,
+    params,
+  }: {
+    id?: string
     method: string
     params: Message
   }): Promise<unknown>
@@ -164,12 +174,14 @@ export function replayClaude({ hydra }: { hydra(): string }) {
     // Without its own environment an agent's commands would reach the owner's real Pnyx.
     assert.ok(options.env)
     const id = options.sessionId ?? options.resume!
+    const receivedImages: unknown[][] = []
     const session: AgentSession = {
       id,
       resumed: Boolean(options.resume),
       cwd: options.cwd!,
       env: options.env,
       received: [],
+      images: receivedImages,
       answered: 0,
       model: options.model,
       useTool: ({
@@ -217,6 +229,8 @@ export function replayClaude({ hydra }: { hydra(): string }) {
       for await (const message of prompt) {
         const text = textOf({ message })
         session.received.push(text)
+        const content = message.message.content
+        receivedImages.push(typeof content === 'string' ? [] : content.filter(part => part.type === 'image'))
         record({
           role: 'user',
           text,
@@ -256,6 +270,14 @@ export function replayClaude({ hydra }: { hydra(): string }) {
                   text: answer,
                 },
               },
+            }
+          } else if (recorded.type === 'result' && recorded.subtype === 'success') {
+            yield {
+              ...recorded,
+              session_id: id,
+              user_message_uuid: message.uuid,
+              queued_turn_count: 0,
+              result: answer,
             }
           } else {
             yield {
@@ -303,6 +325,8 @@ export function replayCodex({ hydra }: { hydra(): string }) {
   const control = {
     refuse: undefined as string | undefined,
     refused: 0,
+    compact: undefined as 'completed' | 'failed' | undefined,
+    compactTurn: undefined as string | undefined,
   }
   const notifications = codexRecording.session.flatMap(entry => 'notification' in entry ? [entry.notification] : [])
   const reply = notifications
@@ -340,19 +364,33 @@ export function replayCodex({ hydra }: { hydra(): string }) {
     cwd,
     env,
   }) => {
+    const receivedImages: unknown[][] = []
     const session: AgentSession = {
       id: '',
       resumed: false,
       cwd,
       env,
       received: [],
+      images: receivedImages,
       answered: 0,
       requests: [],
+      notify: ({
+        method,
+        params,
+      }) => send({
+        message: {
+          method,
+          params: {
+            threadId: session.id,
+            ...params,
+          },
+        },
+      }),
       ask: ({
+        id = `ask-${randomUUID()}`,
         method,
         params,
       }) => new Promise(resolve => {
-        const id = `ask-${randomUUID()}`
         answers.once(
           id,
           resolve,
@@ -453,6 +491,7 @@ export function replayCodex({ hydra }: { hydra(): string }) {
           const input = (message.params as { input?: { text?: string }[] }).input ?? []
           const text = input.map(part => part.text ?? '').join('\n')
           session.received.push(text)
+          receivedImages.push(input.filter(part => !part.text))
           plan = turns.take({
             text,
             env,
@@ -464,6 +503,60 @@ export function replayCodex({ hydra }: { hydra(): string }) {
             message: {
               id: message.id,
               result: { turnId: (message.params as { expectedTurnId: string }).expectedTurnId },
+            },
+          })
+
+          return
+        }
+
+        if (message.method === 'thread/compact/start' && control.compact) {
+          const turn = {
+            id: randomUUID(),
+            status: 'inProgress',
+            error: null as null | { message: string },
+          }
+          control.compactTurn = turn.id
+          send({
+            message: {
+              id: message.id,
+              result: {},
+            },
+          })
+          send({
+            message: {
+              method: 'turn/started',
+              params: {
+                threadId: session.id,
+                turn,
+              },
+            },
+          })
+          send({
+            message: {
+              method: 'item/started',
+              params: {
+                threadId: session.id,
+                turnId: turn.id,
+                item: {
+                  type: 'contextCompaction',
+                  id: randomUUID(),
+                },
+              },
+            },
+          })
+          turn.status = control.compact
+
+          if (control.compact === 'failed') {
+            turn.error = { message: 'Synthetic compaction failure' }
+          }
+
+          send({
+            message: {
+              method: 'turn/completed',
+              params: {
+                threadId: session.id,
+                turn,
+              },
             },
           })
 

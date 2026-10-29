@@ -51,6 +51,7 @@ export interface UpgradeStep {
 export interface HeldMessage {
   id: string
   text: string
+  original?: string
   actor: string
   at: string
 }

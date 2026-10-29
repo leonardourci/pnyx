@@ -1,13 +1,13 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
 import { questions } from '#integrations/hooks/observe.ts'
-import type { ModelOption, Provider } from './provider.ts'
-import { attachedImages, imageType } from '#hydra/images.ts'
-import { pnyxHome } from '#store/paths.ts'
+import type { HostedImage, ModelOption, Provider } from './provider.ts'
+import { nativeSession, type NativeSession } from './native-session.ts'
+import { imageBytes } from './input.ts'
 import { compactCommand } from '#workers/compaction/state.ts'
 
 export type QueryFn = typeof query
@@ -15,46 +15,53 @@ export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
 type UserMessage = Parameters<QueryFn>[0]['prompt'] extends string | AsyncIterable<infer M> ? M : never
 type Content = Exclude<UserMessage['message']['content'], string>
 
-// Only the message's own images are sent, never one named in the context before it; an unreadable one stays a path.
 function content({
   text,
-  said,
+  images,
 }: {
   text: string
-  said: string
+  images: HostedImage[]
 }): string | Content {
-  const images = attachedImages({
-    text: said,
-    hydras: join(
-      pnyxHome(),
-      'hydras',
-    ),
-  }).flatMap(path => {
-    const media_type = imageType({ path })
+  if (images.length === 0) {
+    return text
+  }
 
-    try {
-      return media_type ? [
-        {
-          type: 'image' as const,
-          source: {
-            type: 'base64' as const,
-            media_type,
-            data: readFileSync(path).toString('base64'),
-          },
-        },
-      ] : []
-    } catch {
-      return []
-    }
-  })
-
-  return images.length ? [
+  return [
     {
       type: 'text',
       text,
     },
-    ...images,
-  ] : text
+    ...images.map(image => ({
+      type: 'image' as const,
+      source: {
+        type: 'base64' as const,
+        media_type: image.mediaType,
+        data: imageBytes({ image }).toString('base64'),
+      },
+    })),
+  ]
+}
+
+function consumedInputs({
+  message,
+  nativeInputs,
+}: {
+  message: SDKMessage
+  nativeInputs: Map<string, string>
+}): string[] {
+  let ids: string[] = []
+
+  if ('user_message_uuids' in message && message.user_message_uuids) {
+    ids = message.user_message_uuids
+  } else if ('user_message_uuid' in message && message.user_message_uuid) {
+    ids = [message.user_message_uuid]
+  }
+
+  return ids.flatMap(id => {
+    const input = nativeInputs.get(id)
+
+    return input ? [input] : []
+  })
 }
 
 const EFFORTS: readonly string[] = [
@@ -243,7 +250,7 @@ export function claudeProvider({
       let running: ReturnType<QueryFn> | undefined
       let closed = false, interrupted = false
 
-      return {
+      const native: NativeSession = {
         id,
         path,
         async commands() {
@@ -252,6 +259,7 @@ export function claudeProvider({
         async* run({
           input,
           permission,
+          emit,
         }) {
           const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
 
@@ -262,8 +270,11 @@ export function claudeProvider({
           // SessionStart fires too early for an SDK hook on startup and resume, so the context leads the first message.
           let fresh = true, manualCompact = false
 
+          const nativeInputs = new Map<string, string>()
+
           const prompt = async function* (): AsyncGenerator<UserMessage> {
-            for await (const text of input) {
+            for await (const item of input) {
+              const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
               const message = fresh && context && !compact ? `${context()}\n\n${text}` : text
@@ -272,13 +283,28 @@ export function claudeProvider({
                 fresh = false
               }
 
+              const uuid = randomUUID()
+              nativeInputs.set(
+                uuid,
+                item.id,
+              )
+              emit({
+                event: {
+                  type: 'input',
+                  receipt: {
+                    inputId: item.id,
+                    phase: 'taken',
+                  },
+                },
+              })
               yield {
                 type: 'user',
+                uuid,
                 message: {
                   role: 'user',
                   content: content({
                     text: message,
-                    said: text,
+                    images: item.images,
                   }),
                 },
                 parent_tool_use_id: null,
@@ -340,17 +366,26 @@ export function claudeProvider({
                 {
                   signal,
                   decisionReason,
+                  requestId,
                 },
               ) => {
                 const asked = tool === 'AskUserQuestion'
                   ? questions({ value: input.questions })
                   : undefined
                 const decision = await permission({
+                  id: requestId,
                   tool,
                   input,
                   signal,
                   description: decisionReason,
                   ...(asked ? { questions: asked } : {}),
+                })
+
+                emit({
+                  event: {
+                    type: 'answer-submitted',
+                    id: requestId,
+                  },
                 })
 
                 if (decision.behavior === 'deny') {
@@ -382,7 +417,7 @@ export function claudeProvider({
           })
 
           // The SDK sends each finished block as its own message at index 0, so its text reuses the index it streamed under.
-          let messageId = '', textIndex = 0, active = false
+          let messageId = '', textIndex = 0, active = false, turnId = randomUUID()
           let compaction: {
             id: string
             trigger: 'manual' | 'auto'
@@ -390,6 +425,21 @@ export function claudeProvider({
           const thinking = new Set<number>()
 
           for await (const message of running) {
+            if (message.type === 'system' && message.subtype === 'background_tasks_changed') {
+              emit({
+                event: {
+                  type: 'background',
+                  background: {
+                    knowledge: 'known',
+                    tasks: message.tasks.map(task => ({
+                      id: task.task_id,
+                      type: task.task_type,
+                    })),
+                  },
+                },
+              })
+            }
+
             if (message.type === 'system' && message.subtype === 'status') {
               if (message.status === 'compacting') {
                 compaction = {
@@ -400,6 +450,13 @@ export function claudeProvider({
 
                 if (!active) {
                   active = true
+                  turnId = randomUUID()
+                  emit({
+                    event: {
+                      type: 'turn-started',
+                      turn: turnId,
+                    },
+                  })
                   yield 'working'
                 }
 
@@ -422,11 +479,39 @@ export function claudeProvider({
 
             const activity = turnOf({ message })
             const starts = activity === 'working'
-              || (message.type === 'stream_event' && !message.parent_tool_use_id && message.event.type === 'message_start')
-              || (message.type === 'assistant' && !message.parent_tool_use_id)
+            || (message.type === 'stream_event' && !message.parent_tool_use_id && message.event.type === 'message_start')
+            || (message.type === 'assistant' && !message.parent_tool_use_id)
 
-            if (starts && !active) {
+            const started = starts && !active
+
+            if (started) {
               active = true
+              turnId = randomUUID()
+              emit({
+                event: {
+                  type: 'turn-started',
+                  turn: turnId,
+                },
+              })
+            }
+
+            for (const inputId of consumedInputs({
+              message,
+              nativeInputs,
+            })) {
+              emit({
+                event: {
+                  type: 'input',
+                  receipt: {
+                    inputId,
+                    phase: 'confirmed',
+                    turn: turnId,
+                  },
+                },
+              })
+            }
+
+            if (started) {
               yield 'working'
             }
 
@@ -482,7 +567,7 @@ export function claudeProvider({
                   yield {
                     type: 'usage' as const,
                     used: (usage.input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0)
-                      + (usage.cache_read_input_tokens ?? 0),
+                    + (usage.cache_read_input_tokens ?? 0),
                   }
                 }
               } else if (event.type === 'content_block_start' && event.content_block.type === 'thinking') {
@@ -551,8 +636,49 @@ export function claudeProvider({
                   ...(typeof cost === 'number' ? { cost } : {}),
                   ...(usage ? {
                     inputTokens: usage.input_tokens + usage.cache_creation_input_tokens
-                      + usage.cache_read_input_tokens,
+                    + usage.cache_read_input_tokens,
                   } : {}),
+                }
+              }
+            }
+
+            if (message.type === 'result') {
+              const inputIds = consumedInputs({
+                message,
+                nativeInputs,
+              })
+
+              let status: 'completed' | 'interrupted' | 'failed' = 'completed'
+              let error: string | undefined
+
+              if (interrupted) {
+                status = 'interrupted'
+              } else if (message.is_error) {
+                status = 'failed'
+                error = 'errors' in message ? message.errors.join('; ') : 'Claude Code could not complete this turn'
+              }
+
+              emit({
+                event: {
+                  type: 'result',
+                  turn: turnId,
+                  inputIds,
+                  status,
+                  error,
+                  queued: message.queued_turn_count,
+                  final: 'result' in message ? message.result : undefined,
+                },
+              })
+
+              active = false
+              turnId = randomUUID()
+
+              for (const [
+                native,
+                input,
+              ] of nativeInputs) {
+                if (inputIds.includes(input)) {
+                  nativeInputs.delete(native)
                 }
               }
             }
@@ -596,6 +722,8 @@ export function claudeProvider({
           closed = true; running?.close()
         },
       }
+
+      return nativeSession({ native })
     },
   }
 }
