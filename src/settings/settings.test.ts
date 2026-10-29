@@ -525,6 +525,55 @@ test(
 )
 
 test(
+  'retrying an attempt that changed nothing returns without undoing a newer edit, through settings set and view set',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+
+    for (const command of [
+      'settings',
+      'view',
+    ] as const) {
+      const attempt = [
+        'set',
+        '--json',
+        '{"theme":"system"}',
+        '--event-id',
+        `retry-noop-${command}`,
+        '--hydra',
+        'alpha',
+      ]
+      await commands[command](attempt)
+      await commands.settings([
+        'set',
+        '--json',
+        '{"theme":"dark"}',
+      ])
+      await commands[command](attempt)
+      const after = await settings()
+      assert.equal(
+        after.settings.theme,
+        'dark',
+        command,
+      )
+      await commands.settings([
+        'set',
+        '--json',
+        '{"theme":"system"}',
+      ])
+    }
+
+    assert.equal(
+      (await settings()).revision,
+      4,
+    )
+  },
+)
+
+test(
   'a save after a torn last line is kept',
   async () => {
     home()

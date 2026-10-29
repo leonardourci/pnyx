@@ -78,7 +78,7 @@ function fold({ entries }: { entries: SettingsEntry[] }): SettingsRead {
 
   return {
     settings,
-    revision: entries.length,
+    revision: entries.filter(entry => Object.keys(entry.after).length > 0).length,
     ids: new Set(entries.map(entry => entry.id)),
   }
 }
@@ -318,6 +318,15 @@ export function saveSettings({
         after,
         current.settings,
       )) {
+        // An attempt that changed nothing keeps its id, so its retry after a newer edit is not applied again.
+        if (meta.id) {
+          append({
+            before: current.settings,
+            after,
+            meta,
+          })
+        }
+
         return {
           skipped: 'unchanged' as const,
           settings: current.settings,
