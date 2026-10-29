@@ -114,7 +114,7 @@ one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
-Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
+Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
 Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
