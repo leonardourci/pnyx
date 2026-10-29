@@ -6,9 +6,9 @@ import {
   IconEyeCheck, IconFileText, IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer,
   IconHourglass, IconLink, IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize,
   IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
-  IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlug, IconPlus, IconQuote, IconRobot,
-  IconSearch, IconSettings, IconStar, IconTag, IconTerminal2, IconTestPipe, IconTool, IconUser,
-  IconWorld, IconX,
+  IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerStopFilled, IconPlug, IconPlus,
+  IconQuote, IconRobot, IconSearch, IconSettings, IconStar, IconTag, IconTerminal2, IconTestPipe,
+  IconTool, IconUser, IconWorld, IconX,
 } from '@tabler/icons-react'
 
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
@@ -34,6 +34,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   pinned: IconPinnedFilled,
   // What each permission mode lets the agent do on its own.
   fast: IconBolt,
+  stop: IconPlayerStopFilled,
   'fast-on': IconBoltFilled,
   'mode-plan': IconMap,
   'mode-untrusted': IconLock,
