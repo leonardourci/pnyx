@@ -682,7 +682,7 @@ test(
 )
 
 test(
-  'a card carries its Intent, follows the worker\'s newest words and asks you to merge',
+  'a card carries its Intent until Hydra rewrites it for a changed goal, follows the worker\'s newest words and asks you to merge',
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({ name: 'card-context-app' })
@@ -820,6 +820,109 @@ test(
           at: s.task({ key: 'redirect' }).progress!.at,
         },
         'a pull request link is not the task\'s state',
+      )
+      assert.equal(
+        s.task({ key: 'redirect' }).intent,
+        intent,
+        'notes, progress, a pull request and a question leave the Intent alone',
+      )
+
+      const stale = await s.ownerRefusal({
+        args: [
+          'task',
+          'intent',
+          'redirect',
+          '--text',
+          'Also cover retired task links.',
+        ],
+      })
+      assert.equal(
+        stale.code,
+        'VALIDATION_ERROR',
+      )
+      assert.match(
+        stale.error ?? '',
+        /task owner-ask/,
+        'the old command points to its new name and never writes the Intent',
+      )
+      await s.owner({
+        args: [
+          'task',
+          'owner-ask',
+          'redirect',
+          '--text',
+          'Also cover retired task links.',
+        ],
+      })
+      assert.equal(
+        s.task({ key: 'redirect' }).ask?.at(-1)?.text,
+        'Also cover retired task links.',
+      )
+      assert.equal(
+        s.task({ key: 'redirect' }).intent,
+        intent,
+      )
+
+      const hydra = s.as({ agent: await s.chat({ text: 'Also send links to retired tasks to their Hydra\'s home.' }) })
+      const widened = 'You want unknown pages and links to retired tasks to go to their Hydra\'s home instead of breaking the page.'
+      const rewrite = ({ value }: { value?: string }) => [
+        'task',
+        'brief',
+        'redirect',
+        ...(value === undefined ? [] : [
+          '--intent',
+          value,
+        ]),
+        '--reason',
+        'the owner widened the scope to retired task links',
+      ]
+
+      for (const value of [
+        undefined,
+        ' ',
+      ]) {
+        assert.equal(
+          (await hydra.refusal({ args: rewrite({ value }) })).code,
+          'VALIDATION_ERROR',
+        )
+      }
+
+      await hydra.run({ args: rewrite({ value: widened }) })
+      await page.shows({
+        what: 'the rewritten Intent on the card',
+        check: ({ state }) => card({ state })?.intent === widened,
+      })
+      assert.match(
+        await s.owner({
+          args: [
+            'task',
+            'show',
+            'redirect',
+          ],
+        }),
+        /intent: .*retired tasks/,
+      )
+      assert.deepEqual(
+        s.events().flatMap(event => event.cardId === redirect.id
+          && (event.type === 'task.created' || event.type === 'task.brief') && event.data.intent
+          ? [event.data.intent]
+          : []),
+        [
+          intent,
+          widened,
+        ],
+        'the log keeps the earlier Intent',
+      )
+      assert.match(
+        await s.owner({
+          args: [
+            'history',
+            '--card',
+            'redirect',
+            '--updates',
+          ],
+        }),
+        /Intent updated/,
       )
     } finally {
       page.close()
