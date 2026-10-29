@@ -30,6 +30,7 @@ const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
 })
 
 // Order keys sit between their neighbors', so a move writes one event to the moved Hydra only.
+// ponytail: float midpoints of one gap run out after a few dozen moves into it; renumber the list if that ever matters.
 const ORDER_GAP = 1000
 
 const positionAt = ({
@@ -52,7 +53,8 @@ const positionAt = ({
     return before.order + ORDER_GAP
   }
 
-  return after ? after.order - ORDER_GAP : Date.now()
+  // A move always has another Hydra beside it, so with no Hydra before there is one after.
+  return after!.order - ORDER_GAP
 }
 
 const HYDRA_DRAG = 'application/pnyx-hydra'
@@ -69,6 +71,7 @@ export function Hydras({
   command,
   createHydra,
   editHydra,
+  moveHydra,
   connected,
   notify,
   hydras,
@@ -91,6 +94,13 @@ export function Hydras({
     name,
     icon,
   }: HydraIdentity & { id: string }): void
+  moveHydra({
+    id,
+    position,
+  }: {
+    id: string
+    position: number
+  }): Promise<void>
   navigate({ url }: { url: string }): Promise<void>
   command: Command
   connected: boolean
@@ -223,30 +233,20 @@ export function Hydras({
     })
   }
 
-  const move = async ({
+  const move = ({
     id,
     index,
   }: {
     id: string
     index: number
-  }) => {
-    try {
-      await command({
-        name: 'hydras',
-        args: [
-          'move',
-          id,
-          String(positionAt({
-            hydras,
-            id,
-            index,
-          })),
-        ],
-      })
-    } catch (error) {
-      notify({ text: (error as Error).message })
-    }
-  }
+  }) => moveHydra({
+    id,
+    position: positionAt({
+      hydras,
+      id,
+      index,
+    }),
+  })
 
   const copyPath = async ({ path }: { path: string }) => {
     try {
