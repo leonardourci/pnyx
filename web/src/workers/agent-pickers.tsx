@@ -11,6 +11,12 @@ import { modelOptions } from './model-options.ts'
 // The composer's control icons, one size so they read alike.
 export const COMPOSER_ICON = 18
 
+const ALL_FIELDS = [
+  'effort',
+  'mode',
+  'fast',
+] as const
+
 const HARNESSES = [
   {
     harness: 'claude',
@@ -59,6 +65,7 @@ export function AgentPickers({
   onChange,
   onResolved,
   startsWith,
+  fields = ALL_FIELDS,
 }: {
   agent: AgentConfig
   // Values the agent falls back to when it names none, such as its rule's.
@@ -72,6 +79,8 @@ export function AgentPickers({
   // The agent with every value the pickers show filled in, once the catalog names them.
   onResolved?({ next }: { next: AgentConfig }): void
   startsWith?({ field }: { field: 'model' | 'effort' | 'mode' }): PickerDefault
+  // The pickers shown beside the model; the routine helper has no permissions or Fast mode.
+  fields?: readonly (typeof ALL_FIELDS)[number][]
 }) {
   const controls = harnessControls({
     provider: agent.harness === 'claude' ? 'claude-code' : 'codex',
@@ -183,7 +192,7 @@ export function AgentPickers({
       {([
         'effort',
         'mode',
-      ] as const).map(field => {
+      ] as const).filter(field => fields.includes(field)).map(field => {
         const value = named[field]
         const choices = controls?.controls.find(c => c.setting === field)?.options ?? []
         const options = choices.map(o => ({
@@ -218,22 +227,24 @@ export function AgentPickers({
           />
         )
       })}
-      <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
-        <Button
-          className="fast-toggle"
-          aria-label="Fast mode"
-          aria-pressed={agent.fast === true}
-          disabled={!connected}
-          onClick={() => onChange({
-            next: {
-              ...agent,
-              fast: !agent.fast,
-            },
-          })}
-        >
-          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={COMPOSER_ICON} />
-        </Button>
-      </Tooltip>
+      {fields.includes('fast') && (
+        <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
+          <Button
+            className="fast-toggle"
+            aria-label="Fast mode"
+            aria-pressed={agent.fast === true}
+            disabled={!connected}
+            onClick={() => onChange({
+              next: {
+                ...agent,
+                fast: !agent.fast,
+              },
+            })}
+          >
+            <Icon name={agent.fast ? 'fast-on' : 'fast'} size={COMPOSER_ICON} />
+          </Button>
+        </Tooltip>
+      )}
     </div>
   )
 }
