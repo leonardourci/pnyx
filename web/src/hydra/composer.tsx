@@ -115,6 +115,7 @@ function folderSuggestions({
         icons: ['clone'],
         group: 'Folders',
         insert: typed,
+        path: typed,
       },
     ]
   }
@@ -160,11 +161,88 @@ function folderSuggestions({
           value: folder.path,
           label: folder.name,
         }),
+        path: folder.path,
       })
     }
   }
 
   return items
+}
+
+const REQUEST_HEAD = 'Add '
+// The path in an Add project request, which shows as a badge while staying plain text.
+const REQUEST_PATH = /(^|\n)Add ([^\s@]\S*) to this Hydra/g
+
+// In an Add project request a project goes in as its plain path, so the caret moves through it like text.
+const mentionText = ({
+  item,
+  before,
+}: {
+  item: MentionItem
+  before: string
+}) => before.endsWith(REQUEST_HEAD) && item.path ? item.path : item.insert
+
+function requestPaths({ display }: { display: string }) {
+  const matches = [...display.matchAll(REQUEST_PATH)]
+
+  // Both groups always take part in a match.
+  return matches.map(match => {
+    const from = match.index + match[1]!.length + REQUEST_HEAD.length
+
+    return {
+      from,
+      to: from + match[2]!.length,
+    }
+  })
+}
+
+// Display text from `from` to `to`, with the request paths in it marked.
+function markedPaths({
+  display,
+  from,
+  to,
+  paths,
+}: {
+  display: string
+  from: number
+  to: number
+  paths: {
+    from: number
+    to: number
+  }[]
+}): ReactNode[] {
+  const parts: ReactNode[] = []
+  let at = from
+
+  for (const path of paths.filter(path => path.to > from && path.from < to)) {
+    const start = Math.max(
+      path.from,
+      at,
+    )
+    const end = Math.min(
+      path.to,
+      to,
+    )
+    parts.push(
+      display.slice(
+        at,
+        start,
+      ),
+      <span key={start} className="draft-path">{display.slice(
+        start,
+        end,
+      )}
+      </span>,
+    )
+    at = end
+  }
+
+  parts.push(display.slice(
+    at,
+    to,
+  ))
+
+  return parts
 }
 
 function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
@@ -324,6 +402,8 @@ export function Composer({
   ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
   const display = view.display
+  const paths = requestPaths({ display })
+  const mirrored = view.chips.length > 0 || paths.length > 0
   const mentionList = `mentions-${card}`
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
@@ -362,6 +442,7 @@ export function Composer({
       value: selectedFolder.path,
       label: selectedFolder.name,
     }),
+    path: selectedFolder.path,
   }
 
   const candidates: (MentionItem & { search?: string })[] = [
@@ -378,6 +459,7 @@ export function Composer({
         label: chip.name,
       }),
     })),
+
     ...projects.filter(project => !project.detached).map(project => {
       const titleMatch = suggestionMatch({
         name: project.name,
@@ -396,6 +478,7 @@ export function Composer({
           value: project.path,
           label: project.name,
         }),
+        path: project.path,
       })
     }),
     ...columns.map(column => ({
@@ -486,7 +569,13 @@ export function Composer({
         text,
         from: mention.start,
         to: mention.start + typed.length,
-        insert: typedFolder.insert,
+        insert: mentionText({
+          item: typedFolder,
+          before: shown.display.slice(
+            0,
+            mention.start,
+          ),
+        }),
       })
       const grown = draftView({ text: edit.text }).display.length - shown.display.length
       write({
@@ -602,16 +691,24 @@ export function Composer({
       return
     }
 
+    const written = mentionText({
+      item,
+      before: display.slice(
+        0,
+        mention.start,
+      ),
+    })
     const edit = replaceDisplay({
       text: draft,
       from: mention.start,
       to: element.selectionStart,
-      insert: `${item.insert} `,
+      // A chip is followed by a space; a plain path already has the request's own.
+      insert: written === item.insert ? `${written} ` : written,
     })
     const goalSlot = display.slice(
       0,
       mention.start,
-    ).endsWith('Add ') && draftView({ text: edit.text }).chips.find(chip => chip.kind === 'slot' && chip.from >= edit.caret)
+    ).endsWith(REQUEST_HEAD) && draftView({ text: edit.text }).chips.find(chip => chip.kind === 'slot' && chip.from >= edit.caret)
 
     if (goalSlot) {
       write({
@@ -1236,7 +1333,7 @@ export function Composer({
             close={() => setListing(null)}
           />
         )}
-        <div className="composer-input" data-chips={view.chips.length > 0 || undefined}>
+        <div className="composer-input" data-chips={mirrored || undefined}>
           {mention && (
             <MentionPicker
               anchor={input}
@@ -1600,7 +1697,7 @@ export function Composer({
               }
             }}
           />
-          {view.chips.length > 0 && (
+          {mirrored && (
             <div className="draft-mirror" ref={mirror} aria-hidden="true">
               {view.chips.map((
                 chip,
@@ -1608,10 +1705,12 @@ export function Composer({
               ) => {
                 const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
                 const title = chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined
-                const before = display.slice(
-                  view.chips[index - 1]?.to ?? 0,
-                  chip.from,
-                )
+                const before = markedPaths({
+                  display,
+                  from: view.chips[index - 1]?.to ?? 0,
+                  to: chip.from,
+                  paths,
+                })
 
                 const skill = chip.kind === 'skill' ? readSkillReference({
                   value: chip.value,
@@ -1659,7 +1758,12 @@ export function Composer({
                   </Fragment>
                 )
               })}
-              {display.slice(view.chips.at(-1)!.to)}
+              {markedPaths({
+                display,
+                from: view.chips.at(-1)?.to ?? 0,
+                to: display.length,
+                paths,
+              })}
               {/* A trailing newline still gets a line box, as it does in the textarea. */}
               {'\u200B'}
             </div>

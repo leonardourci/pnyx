@@ -415,6 +415,8 @@ h3 { font-weight: 600; }
 
 .draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
+.draft-path { border-radius: 4px; background: var(--color-gold-wash); box-shadow: 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
+
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
 .draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
