@@ -2,12 +2,12 @@ import {
   IconAlertCircle, IconArrowDown, IconArrowFork, IconArrowRight, IconArrowUpRight, IconAt,
   IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck, IconChevronDown,
   IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu,
-  IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye, IconEyeCheck,
-  IconFileText, IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer, IconHourglass,
-  IconLink, IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize, IconMessage,
-  IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil, IconPencilCheck,
-  IconPhoto, IconPinnedFilled, IconPlug, IconPlus, IconQuote, IconRobot, IconSearch, IconSettings,
-  IconTag, IconStar, IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
+  IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye, IconFileText, IconFolder,
+  IconGauge, IconGitFork, IconGitPullRequest, IconHammer, IconHourglass, IconLink, IconList,
+  IconListCheck, IconLock, IconMaximize, IconMessage, IconMessagePlus, IconMinus, IconPaperclip,
+  IconPencil, IconPhoto, IconPinnedFilled, IconPlug, IconPlus, IconQuote, IconRobot, IconSearch,
+  IconSettings, IconTag, IconStar, IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld,
+  IconX,
 } from '@tabler/icons-react'
 
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
@@ -32,14 +32,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   effort: IconGauge,
   pinned: IconPinnedFilled,
   // What each permission mode lets the agent do on its own.
-  'mode-plan': IconMap,
   'mode-untrusted': IconLock,
-  'mode-default': IconMessageQuestion,
-  'mode-on-request': IconMessageQuestion,
-  'mode-acceptEdits': IconPencilCheck,
-  'mode-auto': IconEyeCheck,
-  'mode-never': IconLockOpen,
-  'mode-bypassPermissions': IconLockOpen,
   context: IconMaximize,
   client: IconDeviceDesktop,
   version: IconTag,
