@@ -685,7 +685,12 @@ export function Composer({
   }
 
   const fillGoal = ({ text }: { text: string }) => {
-    const slot = view.chips.find(chip => chip.kind === 'slot')
+    // The goal the caret is on, so a second request never fills the first one's blank.
+    const caret = input.current?.selectionStart ?? 0
+    const slots = view.chips.filter(chip => chip.kind === 'slot')
+    const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
+    const slot = onCaret ?? slots.find(chip => chip.from >= caret)
+
 
     if (slot) {
       write(replaceDisplay({
