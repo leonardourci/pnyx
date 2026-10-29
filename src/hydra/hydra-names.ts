@@ -24,7 +24,7 @@ export const HYDRA_NAMES = [
   'Hades',
   'Themis',
   'Kratos',
-]
+] as const
 
 // The Hydra mark: the icon of a Hydra that has none of its own.
 export const HYDRA_MARK = 'hydra'
@@ -51,16 +51,16 @@ export function pickName({
   const used = new Set(taken.map(name => name.trim().toLowerCase()))
   const unused = HYDRA_NAMES.filter(name => !used.has(name.toLowerCase()))
 
-  if (unused.length) {
-    const name = unused[Math.floor(random() * unused.length)]!
+  const name = unused[Math.floor(random() * unused.length)]
 
+  if (name) {
     return {
       name,
       icon: name.toLowerCase(),
     }
   }
 
-  const first = HYDRA_NAMES[0]!
+  const first = HYDRA_NAMES[0]
   let n = 2
 
   while (used.has(`${first} ${n}`.toLowerCase())) {
