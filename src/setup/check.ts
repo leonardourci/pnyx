@@ -93,7 +93,7 @@ export function setupCheck({
       name: 'config',
       missing: (error as Error).message,
       by: 'owner',
-      fix: 'fix that file by hand',
+      fix: `pnyx-axi rule show --hydra ${hydraId}, then fix it with pnyx-axi rule apply`,
     })
   }
 
