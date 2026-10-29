@@ -1615,3 +1615,71 @@ test(
     )
   },
 )
+
+test(
+  'hold and release attribute missing reasons to reason and invalid evidence to message',
+  t => {
+    const f = fixture({ t })
+    commands.task([
+      'create',
+      '--key',
+      'a',
+      '--title',
+      'A',
+    ])
+    const log = readFileSync(
+      join(
+        f.dir,
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    assert.throws(
+      () => f.apply({
+        document: {
+          version: 1,
+          changes: [
+            {
+              op: 'task.hold',
+              task: 'a',
+            },
+            {
+              op: 'task.release',
+              task: 'a',
+              message: 'missing-owner-message',
+            },
+            {
+              op: 'task.release',
+              task: 'a',
+              message: 'missing-owner-message',
+              reason: 'Release with evidence',
+            },
+          ],
+        },
+      }),
+      error => {
+        assert.ok(error instanceof ApplyError)
+        assert.deepEqual(
+          error.errors.map(issue => issue.path),
+          [
+            '/changes/0/reason',
+            '/changes/1/reason',
+            '/changes/2/message',
+          ],
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
+    )
+  },
+)
