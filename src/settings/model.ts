@@ -46,7 +46,6 @@ export type SettingKey = (typeof SETTING_KEYS)[number]
 // One change to the shared settings; the log is only appended, so every old value stays.
 export interface SettingsEntry {
   v: 1
-  seq: number
   id: string
   at: string
   actor: string

@@ -1,5 +1,5 @@
 import { existsSync, readFileSync, statSync } from 'node:fs'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraState } from '#app/model.ts'
@@ -37,20 +37,28 @@ function readEntries(): SettingsEntry[] {
   }
 
   // A torn last line is a write cut short; the complete lines before it still count.
-  return text.split('\n').slice(
+  const lines = text.split('\n').slice(
     0,
     -1,
   )
     .filter(Boolean)
-    .flatMap(line => {
-      try {
-        const entry = JSON.parse(line) as SettingsEntry
+  const entries = lines.flatMap(line => {
+    try {
+      const entry = JSON.parse(line) as SettingsEntry
+      const readable = entry?.v === 1 && typeof entry.after === 'object' && entry.after !== null
 
-        return entry?.v === 1 && typeof entry.after === 'object' && entry.after !== null ? [entry] : []
-      } catch {
-        return []
-      }
-    })
+      return readable ? [entry] : []
+    } catch {
+      return []
+    }
+  })
+  const skipped = lines.length - entries.length
+
+  if (skipped) {
+    console.error(`pnyx-axi: skipped ${skipped} unreadable lines in ${settingsLogPath()}`)
+  }
+
+  return entries
 }
 
 export interface SettingsRead {
@@ -96,16 +104,30 @@ function readFolded(): SettingsRead {
   return cache.read
 }
 
+function writeLine({ line }: { line: string }): void {
+  const path = settingsLogPath()
+  privateDir({ dir: dirname(path) })
+  const size = existsSync(path) ? statSync(path).size : 0
+  // A torn last line keeps its own line, so the new entry is never glued onto it.
+  const torn = size > 0 && !readFileSync(
+    path,
+    'utf8',
+  ).endsWith('\n')
+  writeDurably({
+    path,
+    data: `${torn ? '\n' : ''}${line}`,
+    flag: 'a',
+  })
+}
+
 function append({
   before,
   after,
   meta,
-  revision,
 }: {
   before: Settings
   after: Settings
   meta: Meta
-  revision: number
 }): SettingsEntry {
   const changed = SETTING_KEYS.filter(key => !isDeepStrictEqual(
     before[key],
@@ -113,7 +135,6 @@ function append({
   ))
   const entry: SettingsEntry = {
     v: 1,
-    seq: revision + 1,
     id: meta.id ?? randomUUID(),
     at: meta.at,
     actor: meta.actor,
@@ -131,17 +152,7 @@ function append({
     entry.reason = meta.reason
   }
 
-  privateDir({
-    dir: join(
-      pnyxHome(),
-      'settings',
-    ),
-  })
-  writeDurably({
-    path: settingsLogPath(),
-    data: `${JSON.stringify(entry)}\n`,
-    flag: 'a',
-  })
+  writeLine({ line: `${JSON.stringify(entry)}\n` })
 
   return entry
 }
@@ -198,7 +209,6 @@ function migrate(): void {
       actor: 'pnyx',
       reason: `Moved from Hydra ${source.hydraId} when settings became Pnyx-wide`,
     },
-    revision: 0,
   })
 }
 
@@ -262,7 +272,6 @@ export function saveSettings({
         before: current.settings,
         after,
         meta,
-        revision: current.revision,
       })
 
       return {
