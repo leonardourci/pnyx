@@ -33,6 +33,7 @@ const reportOf = ({ event }: { event: PushedEvent }) => ({
   id: undefined,
   seq: undefined,
   at: undefined,
+  commandId: undefined,
   data: {
     ...event.data,
     before: undefined,
