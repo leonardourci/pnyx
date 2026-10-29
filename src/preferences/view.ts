@@ -142,10 +142,18 @@ export function traces({
   }
 }
 
-export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> }): ViewPreferences => {
+// Shared settings, when given, win over the Hydra's own copy of the same preferences.
+export const viewFor = ({
+  state,
+  settings,
+}: {
+  state: Pick<HydraState, 'view' | 'config'>
+  settings?: Partial<ViewPreferences>
+}): ViewPreferences => {
   const view = {
     ...structuredClone(DEFAULT_VIEW),
     ...state.view,
+    ...structuredClone(settings),
   }
   const columnIds = new Set<string>([
     ...COLUMNS,

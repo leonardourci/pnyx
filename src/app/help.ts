@@ -28,6 +28,7 @@ commands:
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
+  settings show|schema|set                   Pnyx-wide settings every Hydra shares: theme, text sizes, Hide Done, review cadence, routine helper
   view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
@@ -358,6 +359,10 @@ export function commandHelp({ command }: { command: string }): string | undefine
 
   if (command === 'view') {
     return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]'
+  }
+
+  if (command === 'settings') {
+    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, model, effort }.'
   }
 
   return COMMAND_HELP[command]

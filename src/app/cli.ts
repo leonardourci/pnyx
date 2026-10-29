@@ -11,6 +11,7 @@ import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { layout, view } from '#preferences/cli.ts'
 import { owner } from '#memory/cli.ts'
+import { settings } from '#settings/cli.ts'
 import { harvest } from '#integrations/cli.ts'
 import { link, outcome } from '#tasks/delivery/cli.ts'
 import { columnCommandHandler, push, card, move, context } from '#tasks/cli.ts'
@@ -199,6 +200,7 @@ export const commands = supervisedCommands({
     column: columnCommandHandler,
     hydra: hydraCommandHandler,
     owner,
+    settings,
     task,
     view,
     push,
