@@ -187,6 +187,7 @@ export interface HostedSession {
     at: string
   } | undefined
   applied?(): Promise<void>
+  settle?(): Promise<void>
   detach?(): void
   id: string
   path?: string

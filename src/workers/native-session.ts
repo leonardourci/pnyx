@@ -212,6 +212,17 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
     }
 
     if (typeof event === 'object') {
+      if (event.type === 'compaction') {
+        const id = `compaction:${event.id}`
+        work.pendingControls = work.pendingControls.filter(pending => pending !== id)
+
+        if (event.state === 'running') {
+          work.pendingControls.push(id)
+        }
+
+        publishWork()
+      }
+
       if (event.type === 'tool') {
         work.runningTools = work.runningTools.filter(id => id !== event.id)
 
