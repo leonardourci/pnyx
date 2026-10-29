@@ -53,20 +53,10 @@ export function isStaleSource({
     b: source,
   }))
 
-  return !!known && observedBefore({
-    source,
-    known,
-  })
-}
+  if (!known) {
+    return false
+  }
 
-// Whether `source` is an older observation of the same source than `known`.
-export function observedBefore({
-  source,
-  known,
-}: {
-  source: SourceRef
-  known: SourceRef
-}): boolean {
   const knownGen = known.generation ?? 0
   const gen = source.generation ?? 0
 
