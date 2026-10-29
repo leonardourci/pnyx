@@ -104,10 +104,6 @@ export const apply = guard({
         }
       }
 
-      return duplicate
-    }
-
-    if (values.check) {
       const loaded = loadHydra({
         hydraId,
         migrate: false,

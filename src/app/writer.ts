@@ -96,6 +96,13 @@ export function withWriter<T>({
       })
 
       if (previous) {
+        // A complete record may come from a writer killed before its fsync.
+        writeDurably({
+          path: logPath({ dir }),
+          data: '',
+          flag: 'a',
+        })
+
         return previous
       }
     }
