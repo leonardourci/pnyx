@@ -88,15 +88,16 @@ export const apply = guard({
       hydraId,
       migrate: false,
     })
-    const duplicate = transactionReceipt({
-      hydraId,
-      id,
-      digest,
-      migrate: false,
-    })
 
-    if (duplicate) {
-      if (values.check) {
+    if (values.check) {
+      const duplicate = transactionReceipt({
+        hydraId,
+        id,
+        digest,
+        migrate: false,
+      })
+
+      if (duplicate) {
         return {
           ...duplicate,
           applied: false,
