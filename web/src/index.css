@@ -1337,6 +1337,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-agent-pickers .select { min-width: 0; }
 
+.hydra-agent-pickers .select > .button > .identity-icon { width: 18px; height: 18px; color: var(--color-ink); }
+
 .hydra-agent-pickers .fast-toggle { min-height: 26px; padding: 2px 6px; color: var(--color-muted); }
 
 .hydra-agent-pickers .fast-toggle[aria-pressed=true] { color: var(--color-gold); }

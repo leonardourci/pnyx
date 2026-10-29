@@ -31,7 +31,7 @@ export function PickerField({
         disabled={disabled || !!reason}
         onChange={onChange}
         {...look}
-        title={reason}
+        title={reason ?? label}
       />
       {reason && <small>{reason}</small>}
     </div>
