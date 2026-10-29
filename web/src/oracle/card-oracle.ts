@@ -135,7 +135,7 @@ export function searchSchedule({
   }
 }
 
-// Keeps the last answered hits until the new query is answered, so the list never empties.
+// Keeps the last answered hits while a new query is pending, so typing never clears the list.
 export function useFoundCards({
   command,
   query,
