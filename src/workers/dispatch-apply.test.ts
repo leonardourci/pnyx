@@ -11,6 +11,8 @@ import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { HydraError } from '#store/errors.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { changesPath, configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
@@ -1209,6 +1211,86 @@ test(
     assert.deepEqual(
       rule({ args: ['show'] }).issues,
       [],
+    )
+  },
+)
+
+test(
+  'a merged rule with a bad name stops reads with the rule apply hint until a patch removes it, and a patch cannot add another',
+  () => {
+    const { file } = lab()
+    writeFileSync(
+      join(
+        hydraDir({ hydraId: 'lab' }),
+        'heads-dispatch.json',
+      ),
+      JSON.stringify({
+        rules: {
+          'Bad Name!': {
+            when: 'Old rule',
+            candidates: [{ harness: 'claude' }],
+          },
+        },
+      }),
+    )
+    assert.throws(
+      () => effectiveDispatch(),
+      (error: unknown) => {
+        assert.ok(error instanceof HydraError)
+        assert.match(
+          error.message,
+          /\/rules\/Bad Name! names use/,
+        )
+        assert.deepEqual(
+          error.help,
+          ['Run `pnyx-axi rule schema`, then fix it with `pnyx-axi rule apply`'],
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      show().document.rules['Bad Name!']?.when,
+      'Old rule',
+    )
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--file',
+          file({
+            value: {
+              version: 1,
+              patch: {
+                rules: {
+                  'Bad Name!': null,
+                  'Also Bad': {
+                    when: 'Another',
+                    candidates: [{ harness: 'claude' }],
+                  },
+                },
+              },
+            },
+          }),
+        ],
+      }),
+      paths: ['/rules/Also Bad'],
+    })
+    rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch: { rules: { 'Bad Name!': null } },
+          },
+        }),
+      ],
+    })
+    assert.deepEqual(
+      effectiveDispatch().dispatch.rules,
+      {},
     )
   },
 )

@@ -7,7 +7,7 @@ import { loadHydra, requireHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
 import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
-import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, readDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
+import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -262,7 +262,6 @@ function ruleCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'show') {
-    readDocument()
     // Both under the lock, so a patch built on this document never carries a newer revision.
     const {
       document,
@@ -333,7 +332,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
   }
 
   requireHydra({ hydraId })
-  const document = readDocument()
+  const document = savedDocument()
 
   if (action === 'accounts') {
     const patch: Record<string, unknown> = {}
@@ -460,7 +459,7 @@ function accountCommand({ args }: { args: string[] }): Output {
   }
 
   const patch: Record<string, unknown> = action === 'remove' ? withoutAccount({
-    document: readDocument(),
+    document: savedDocument(),
     name: key,
   }) : {
     accounts: {

@@ -323,7 +323,7 @@ function compose({
 const filesDocument = () => compose({
   dispatch: readConfig({ path: configPath() }),
   accounts: readConfig({ path: configPath({ accounts: true }) }),
-})
+}) as DispatchDocument
 
 function checked({ document }: { document: unknown }): DispatchDocument {
   const errors = checkDispatch({ document }).filter(issue => issue.level === 'error' && !issue.readable)
@@ -521,20 +521,27 @@ export function mergeHydraFiles(): void {
   }
 }
 
-// For writers already holding the registry lock; rewrites files a save cut short left behind its log.
+// The one-time merge takes the registry lock, so callers run it before taking a Hydra writer.
+function migrate(): void {
+  if (!existsSync(changesPath())) {
+    withRegistryLock({ fn: mergeHydraFiles })
+  }
+}
+
+// For writers holding the registry lock: the saved document, errors included, with files a cut-short save left behind rewritten.
 export function lockedDocument(): DispatchDocument {
   mergeHydraFiles()
   const committed = committedDocument()
 
   if (!committed) {
-    return checked({ document: filesDocument() })
+    return filesDocument()
   }
 
   if (!mirrored({ document: committed })) {
     writeDocument({ document: committed })
   }
 
-  return checked({ document: committed })
+  return committed
 }
 
 // A reader never waits for the lock: the log already gave it the document, and a later read repairs the files.
@@ -551,11 +558,9 @@ function repairFiles(): void {
   }
 }
 
-export function readDocument(): DispatchDocument {
-  if (!existsSync(changesPath())) {
-    return withRegistryLock({ fn: lockedDocument })
-  }
-
+// The saved document with any errors it holds, so a patch can still repair it; readers take readDocument.
+export function savedDocument(): DispatchDocument {
+  migrate()
   const committed = committedDocument()
 
   if (committed) {
@@ -563,14 +568,16 @@ export function readDocument(): DispatchDocument {
       repairFiles()
     }
 
-    return checked({ document: committed })
+    return committed
   }
 
   const files = filesDocument()
 
   // A first save logs its document before renaming either file, so files read before that line appears are one pair.
-  return checked({ document: committedDocument() ?? files })
+  return committedDocument() ?? files
 }
+
+export const readDocument = () => checked({ document: savedDocument() })
 
 export function effectiveDispatch(): EffectiveDispatch {
   const {

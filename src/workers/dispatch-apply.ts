@@ -14,7 +14,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
-import { commitChange, loginFolder, lockedDocument, readChanges, readDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
+import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 
 type Fields = Record<string, unknown>
 
@@ -106,7 +106,7 @@ const revisionOf = ({ entries }: { entries: ChangeEntry[] }) => entries
 
 export const dispatchRevision = () => revisionOf({ entries: readChanges() })
 
-// A save may keep an error the saved document already had, so an old file can be fixed one patch at a time.
+// A save may keep an error the saved document already had, so an old or merged document can be fixed one patch at a time.
 function newErrors({
   before,
   after,
@@ -117,7 +117,7 @@ function newErrors({
   const known = new Set(checkDispatch({ document: before }).map(found => `${found.path} ${found.problem}`))
 
   return dispatchIssues({ document: after }).filter(found => found.level === 'error'
-    && !(found.readable && known.has(`${found.path} ${found.problem}`)))
+    && !known.has(`${found.path} ${found.problem}`))
 }
 
 // Model and login-folder warnings need the catalog and the disk, so only the CLI and server add them.
@@ -226,8 +226,6 @@ export function applyDispatch({
   proposeIt?: boolean
   summary: string
 }): Output {
-  readDocument()
-
   return withRegistryLock({
     fn: () => {
       const entries = readChanges()
@@ -407,7 +405,7 @@ function proposalProblem({
 }
 
 export function proposalStatus({ state }: { state: HydraState }): ProposalStatus[] {
-  const document = readDocument()
+  const document = savedDocument()
 
   return (state.dispatchProposals ?? []).filter(proposal => proposal.kind !== 'command')
     .map(proposal => {
@@ -449,8 +447,6 @@ export function resolveProposal({
       code: 'OWNER_ONLY',
     })
   }
-
-  readDocument()
 
   return withRegistryLock({
     fn: () => {
