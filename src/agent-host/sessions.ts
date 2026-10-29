@@ -1199,7 +1199,6 @@ export async function hostSessions({
           }
 
           return { persisted }
-
         },
       })
       await accepted.persisted
