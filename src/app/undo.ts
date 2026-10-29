@@ -92,6 +92,10 @@ export function decideUndo({
   target: HydraEvent
   meta: Meta
 }): Decision {
+  if (target.transaction) {
+    throw notUndoable({ message: `${target.id} belongs to apply ${target.transaction}; append a correction with apply` })
+  }
+
   if (target.type === 'board.columns') {
     if (target.actor === 'pnyx') {
       throw notUndoable({ message: 'the move onto the default columns cannot be undone' })

@@ -1,3 +1,5 @@
+import type { Transaction } from './transactions.ts'
+import { asRecord } from './command-validation.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
@@ -7,6 +9,7 @@ import { hydraDir } from './home-migration.ts'
 
 export interface LogRead {
   events: HydraEvent[]
+  transactions: Transaction[]
   // Byte offset just past the last complete line.
   end: number
   size: number
@@ -93,6 +96,7 @@ export function readLog({
   if (!existsSync(path)) {
     return from === 0 ? {
       events: [],
+      transactions: [],
       end: 0,
       size: 0,
     } : null
@@ -120,10 +124,12 @@ export function readLog({
     )
     const complete = buf.lastIndexOf(10) + 1
     const events: HydraEvent[] = []
+    const transactions: Transaction[] = []
     let previous: {
       offset: number
       length: number
-      event?: HydraEvent
+      count?: number
+      transaction?: Transaction
       error?: HydraError
     } | undefined
 
@@ -154,8 +160,12 @@ export function readLog({
           throw corrupt({ offset })
         }
 
-        if (previous.event) {
-          events.pop()
+        if (previous.count) {
+          events.splice(events.length - previous.count)
+        }
+
+        if (previous.transaction) {
+          transactions.pop()
         }
 
         previous = undefined
@@ -172,11 +182,53 @@ export function readLog({
       }
 
       try {
-        previous.event = toEvent({
-          event: value,
-          offset,
-        })
-        events.push(previous.event)
+        const record = asRecord({ value })
+
+        if (record?.type === 'log.transaction') {
+          if (record.v !== EVENT_VERSION || typeof record.id !== 'string'
+            || typeof record.digest !== 'string' || !Array.isArray(record.events)
+            || !asRecord({ value: record.receipt })) {
+            throw corrupt({ offset })
+          }
+
+          const children = record.events.map(event => toEvent({
+            event,
+            offset,
+          }))
+          const receiptEvent = children.at(-1)
+
+          if (receiptEvent?.type !== 'apply.recorded' || receiptEvent.id !== record.id
+            || receiptEvent.data.digest !== record.digest) {
+            throw corrupt({ offset })
+          }
+
+          if (children.some((
+            event,
+            index,
+          ) => event.transaction !== record.id
+            || (index > 0 && event.seq !== children[index - 1]!.seq + 1))) {
+            throw corrupt({ offset })
+          }
+
+          const transaction: Transaction = {
+            v: EVENT_VERSION,
+            type: 'log.transaction',
+            id: record.id,
+            digest: record.digest,
+            events: children,
+            receipt: record.receipt as Record<string, unknown>,
+          }
+          transactions.push(transaction)
+          events.push(...children)
+          previous.count = children.length
+          previous.transaction = transaction
+        } else {
+          events.push(toEvent({
+            event: value,
+            offset,
+          }))
+          previous.count = 1
+        }
       } catch (error) {
         previous.error = error as HydraError
       }
@@ -188,6 +240,7 @@ export function readLog({
 
     return {
       events,
+      transactions,
       end: from + complete,
       size,
     }
@@ -248,8 +301,15 @@ export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent |
           newline,
         ))
 
+        const value = parseLine({ line: Buffer.concat(chunks).toString('utf8') })
+        const record = asRecord({ value })
+
+        if (record?.type === 'log.transaction') {
+          return readLog({ dir: hydraDir({ hydraId }) })?.events[0] ?? null
+        }
+
         return toEvent({
-          event: parseLine({ line: Buffer.concat(chunks).toString('utf8') }),
+          event: value,
           offset: 0,
         })
       }

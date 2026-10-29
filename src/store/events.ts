@@ -3,6 +3,7 @@ import type { SavedLabelColor } from '#tasks/model.ts'
 export const EVENT_VERSION = 1 as const
 
 export interface EventBase {
+  transaction?: string
   labelColors?: SavedLabelColor[]
   v: typeof EVENT_VERSION
   seq: number

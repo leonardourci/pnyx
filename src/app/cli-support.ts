@@ -659,6 +659,7 @@ export function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'apply.recorded': return `Applied local changes: ${event.id}`
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
     case 'pnyx.upgrade': return `Upgrade ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'task.source.registered': return `External source ${event.data.source.id} registered`

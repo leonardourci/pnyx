@@ -308,13 +308,41 @@ export function hydraIds(): string[] {
   ].sort()
 }
 
-export function hydraDir({ hydraId }: { hydraId: string }): string {
+export function hydraDir({
+  hydraId,
+  migrate = true,
+}: {
+  hydraId: string
+  migrate?: boolean
+}): string {
   if (!/^[a-z0-9][a-z0-9._-]{0,63}$/i.test(hydraId)) {
     throw new HydraError({
       message: `invalid Hydra name: ${hydraId}`,
       code: 'VALIDATION_ERROR',
       help: ['Use letters, digits, dot, dash or underscore'],
     })
+  }
+
+  if (!migrate) {
+    const old = join(
+      pnyxHome(),
+      'boards',
+      hydraId,
+    )
+    const current = join(
+      pnyxHome(),
+      'hydras',
+      hydraId,
+    )
+
+    if (existsSync(old) && existsSync(current)) {
+      throw conflict({
+        from: old,
+        to: current,
+      })
+    }
+
+    return existsSync(old) ? old : current
   }
 
   return join(

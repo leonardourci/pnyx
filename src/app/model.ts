@@ -277,6 +277,7 @@ export type HydraChange = EventBase & (
 )
 
 export type HydraEvent =
+  | import('./transactions.ts').ApplyRecordedEvent
   | import('#workers/compaction/model.ts').CompactionEvent
   | import('#upgrade/model.ts').UpgradeEvent
   | ExternalSourceEvent
@@ -296,6 +297,7 @@ export type HydraEvent =
 export type EventType = HydraEvent['type']
 
 export const EVENT_TYPES: readonly EventType[] = [
+  'apply.recorded',
   'session.compaction',
   'pnyx.upgrade',
   'task.source.registered',
