@@ -297,8 +297,9 @@ async function answerCommand({
   }
 
   const question = card.asks?.find(a => a.id === id)
+  const acceptedReply = card.replies?.find(reply => reply.id === m.id && reply.accepted)
 
-  if (question?.actor === HYDRA_ACTOR || question?.kind === 'merge') {
+  if ((question?.actor === HYDRA_ACTOR || question?.kind === 'merge') && !acceptedReply) {
     return answerHydra({
       hydraId,
       ref,
@@ -334,7 +335,7 @@ async function answerCommand({
   if (fromMessage) {
     help = [`Answer recorded; delivery ${receipt.state}. Delivery does not change the saved decision.`]
 
-    if (receipt.state === 'failed') {
+    if (receipt.state === 'failed' && !receipt.recordError) {
       help.push(`Retry with reply ${card.id} --text "Resend saved answer" --idempotency-key ${receipt.reply}`)
     } else if (receipt.state !== 'delivered') {
       help.push(`Check the worker's session. Only if it never arrived, repeat task answer with --event-id ${receipt.reply} --undelivered`)

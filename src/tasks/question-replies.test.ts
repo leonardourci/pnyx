@@ -27,7 +27,7 @@ type Change = {
   [Kind in HydraEvent['type']]: Pick<Extract<HydraEvent, { type: Kind }>, 'type' | 'data'>
 }[HydraEvent['type']]
 
-type Mode = 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error'
+type Mode = 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
 
 async function lab({ t }: { t: TestContext }) {
   const root = mkdtempSync(join(
@@ -299,7 +299,10 @@ async function lab({ t }: { t: TestContext }) {
     const output = await reply(args)
     assert.ok(output.reply && typeof output.reply === 'object' && 'state' in output.reply)
 
-    return { reply: output.reply }
+    return {
+      reply: output.reply,
+      help: output.help,
+    }
   }
 
   const server = createServer(async (
@@ -336,7 +339,17 @@ async function lab({ t }: { t: TestContext }) {
 
     received.push(body)
 
-    if (mode === 'failed') {
+    if (mode === 'failed' || mode === 'failed-record-error') {
+      if (mode === 'failed-record-error') {
+        releaseLock = acquireLock({
+          dir: join(
+            root,
+            'hydras',
+            hydraId,
+          ),
+        })
+      }
+
       response.statusCode = 409
       response.end(JSON.stringify({
         error: 'Synthetic worker unavailable',
@@ -1470,6 +1483,254 @@ test(
     assert.equal(
       readEvents({ hydraId }).filter(event => event.type === 'card.replied' && event.data.accepted && event.data.text !== undefined).length,
       1,
+    )
+  },
+)
+
+test(
+  'a question relay rejects the key of an ordinary delivered reply without accepting or sending anything',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'ordinary-collision' })
+    const ordinary = await l.relay({
+      ref,
+      key: 'ordinary-feedback',
+    })
+    assert.equal(
+      ordinary.reply.state,
+      'delivered',
+    )
+    const question = await l.ask({ ref })
+    const message = l.chat({ ref })
+    const before = l.state().seq
+    const sends = l.received.length
+    await assert.rejects(
+      l.relay({
+        ref,
+        question,
+        message,
+        key: 'ordinary-feedback',
+      }),
+      /different question/,
+    )
+    assert.equal(
+      l.state().seq,
+      before,
+    )
+    assert.equal(
+      l.received.length,
+      sends,
+    )
+    assert.equal(
+      ownerQuestions({ card: l.card({ ref }) }).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a checked retry of a Go relay sends its saved message after the hold has been released',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({
+      key: 'go-retry',
+      hold: true,
+    })
+    const question = await l.ask({
+      ref,
+      go: true,
+    })
+    const message = l.chat({
+      ref,
+      text: 'Proceed with the cache change.',
+    })
+    l.mode({ value: 'unknown' })
+    await l.relay({
+      ref,
+      question,
+      message,
+      choice: 'Go',
+      key: 'saved-go',
+      text: 'Proceed with the cache.',
+    })
+    assert.equal(
+      l.card({ ref }).hold,
+      undefined,
+    )
+    l.mode({ value: 'delivered' })
+    const result = await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        message,
+        '--event-id',
+        'saved-go',
+        '--undelivered',
+      ],
+    })
+    assert.equal(
+      result.state,
+      'delivered',
+    )
+    assert.equal(
+      l.received.length,
+      2,
+    )
+    assert.equal(
+      l.received[1]?.text,
+      'Proceed with the cache.',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      'saved-go',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Go',
+    )
+  },
+)
+
+test(
+  'failed delivery plus a lost receipt keeps the reply key in its recovery help and can resend a Hydra relay',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'failed-receipt' })
+    const question = await l.ask({ ref })
+    const message = l.chat({ ref })
+    l.mode({ value: 'failed-record-error' })
+    const result = await l.relay({
+      ref,
+      question,
+      message,
+      key: 'failed-receipt-answer',
+      text: 'Keep the existing cache.',
+    })
+    l.unlock()
+    assert.equal(
+      result.reply.state,
+      'failed',
+    )
+    assert.ok('recordError' in result.reply)
+    assert.match(
+      String(result.reply.recordError),
+      /locked/,
+    )
+    assert.ok(Array.isArray(result.help))
+    assert.match(
+      result.help.join(' '),
+      /--event-id failed-receipt-answer --undelivered/,
+    )
+    assert.doesNotMatch(
+      result.help.join(' '),
+      /without --idempotency-key/,
+    )
+    assert.equal(
+      l.card({ ref }).replies?.[0]?.state,
+      'queued',
+    )
+    l.mode({ value: 'delivered' })
+    const retried = await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        message,
+        '--event-id',
+        'failed-receipt-answer',
+        '--undelivered',
+      ],
+    })
+    assert.equal(
+      retried.state,
+      'delivered',
+    )
+    assert.equal(
+      l.received.length,
+      2,
+    )
+    assert.equal(
+      l.received[1]?.text,
+      'Keep the existing cache.',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      'failed-receipt-answer',
+    )
+  },
+)
+
+test(
+  'task answer also preserves checked recovery guidance after failed delivery and a lost receipt',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'worker-failed-receipt' })
+    const question = await l.ask({
+      ref,
+      worker: true,
+    })
+    const message = l.chat({ ref })
+    l.mode({ value: 'failed-record-error' })
+    const result = await taskHandler([
+      'answer',
+      ref,
+      question,
+      '--from-message',
+      message,
+      '--event-id',
+      'worker-lost-receipt',
+      '--actor',
+      'hydra',
+      '--reason',
+      reason,
+      '--hydra',
+      hydraId,
+    ])
+    l.unlock()
+    assert.equal(
+      result.state,
+      'failed',
+    )
+    assert.match(
+      String(result.recordError),
+      /locked/,
+    )
+    assert.ok(Array.isArray(result.help))
+    assert.match(
+      result.help.join(' '),
+      /--event-id worker-lost-receipt --undelivered/,
+    )
+    assert.equal(
+      l.card({ ref }).replies?.[0]?.state,
+      'queued',
+    )
+    l.mode({ value: 'delivered' })
+    const retried = await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        message,
+        '--event-id',
+        'worker-lost-receipt',
+        '--undelivered',
+      ],
+    })
+    assert.equal(
+      retried.state,
+      'delivered',
+    )
+    assert.equal(
+      l.received.length,
+      2,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      'worker-lost-receipt',
     )
   },
 )
