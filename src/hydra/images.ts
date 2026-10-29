@@ -26,13 +26,28 @@ export const imageExtension = ({ type }: { type: string }) =>
 export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
+// Shown text also renders a bare absolute image path as its image; only tokens are sent as images.
+export const SHOWN_IMAGE = new RegExp(
+  `\\[image: (\\/[^\\]\\n]+)\\]|(?<![\\w/.:~-])(\\/[^\\s\\[\\]()<>"'\`]+\\.(?:${EXTENSIONS}))(?![\\w/])`,
+  'g',
+)
+
 export const imagePaths = ({ text }: { text: string }) =>
   [...text.matchAll(IMAGE)].map(match => match[1]!)
 
-export function imageNames({ text }: { text: string }): Map<string, string> {
+export const shownImagePaths = ({ text }: { text: string }) =>
+  [...text.matchAll(SHOWN_IMAGE)].map(match => match[1] ?? match[2]!)
+
+export function imageNames({
+  text,
+  paths = imagePaths,
+}: {
+  text: string
+  paths?: typeof imagePaths
+}): Map<string, string> {
   const names = new Map<string, string>()
 
-  for (const path of imagePaths({
+  for (const path of paths({
     text: text.replace(
       FILE_BLOCK,
       '',
@@ -48,6 +63,11 @@ export function imageNames({ text }: { text: string }): Map<string, string> {
 
   return names
 }
+
+export const shownImageNames = ({ text }: { text: string }) => imageNames({
+  text,
+  paths: shownImagePaths,
+})
 
 // Only files Pnyx stored for a Hydra are sent as images; any other path stays text.
 export function attachedImages({
