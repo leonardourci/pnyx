@@ -117,8 +117,11 @@ export function templateAccounts(): { accounts: Record<string, Account> } {
   return template
 }
 
+// Nothing is saved yet: the change log holds no document, even after the one-time merge.
 export function onTemplate(): boolean {
-  return !existsSync(configPath()) && !existsSync(configPath({ accounts: true }))
+  migrate()
+
+  return !committedDocument()
 }
 
 export function invalid({ message }: { message: string }): never {
