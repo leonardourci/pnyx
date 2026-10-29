@@ -24,7 +24,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { Panel } from './panel.tsx'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { Oracle } from '#web-oracle/oracle.tsx'
+import { Oracle, type OracleHandle } from '#web-oracle/oracle.tsx'
 import { Hydras } from './hydras.tsx'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
@@ -492,6 +492,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ],
   )
   const pendingScroll = useRef(restored.scroll)
+  const oracle = useRef<OracleHandle>(null)
   const shared = useSharedSettings()
   const view = viewFor({
     state,
@@ -1045,15 +1046,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     filterProject({ path }); clearSelection(); setPage('hydra')
   }
 
-  const askInChat = ({ text }: { text: string }) => {
-    setPage('hydra')
-    setDrafts(drafts => ({
-      ...drafts,
-      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\n${text}`.trimStart(),
-    }))
-    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
-  }
-
   // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
   const askHydra = ({
     id,
@@ -1187,6 +1179,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               hydras={askTargets}
               send={askHydra}
               openChat={openChat}
+              ref={oracle}
             />
           )}
         >
