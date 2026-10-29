@@ -71,7 +71,7 @@ The flows:
 - `recovery.test.ts` covers restart and recovery, and a server that goes idle once nothing changes.
 - `oracle.test.ts` covers Oracle queries from the page: a query waits for the index only when it is missing or behind the log, a change catches it up without a query, and a catch-up that fails reaches the page as an error.
 - `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
-- `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves in-process ownership only.
+- `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves the provider inventory used by both ownership modes.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
 - `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
 - `compaction.test.ts` covers compaction. Through the real CLI and server it sends Claude Code's repeated status during one long `/compact` and a compaction followed straight by another; an isolated child with a controlled clock checks that a silent or unanswered compaction fails at its deadline, even while another writer holds the lock, that late statuses keep its one operation, and that held input waits through a second compaction started after a pause. Each case releases the messages held during the compaction.
@@ -80,6 +80,11 @@ The flows:
 - `agent-host-steering.test.ts` proves that a pending durable inbox rings once after host recovery, keeps its repeat warning and stays deduplicated after another app restart for both providers.
 - `agent-host-reboot.test.ts` checks kernel boot identity persistence, resume with same or unknown identities, and retained-fact settlement before cold resume.
 - `agent-host.test.ts` exercises the authenticated native host in a real isolated subprocess: reconnect, request/input deduplication, controller takeover, critical replay and acknowledgements, secret receipts, pressure, singleton discovery and host-loss refusal.
+- `agent-host-remote.test.ts` runs real CLI/server SIGKILL flows for Hydra and workers on both providers and tracks the separate helper replay gate.
+- `agent-host-maintenance.test.ts` proves drain, carried input settlement, background/compaction blockers, withheld and final-close acknowledgements, controller fencing and real-process bundle replacement/rollback.
+- `native-status.test.ts` checks status over the existing browser socket and secret re-entry after an app crash before native delivery.
+- `native-startup.test.ts` starts the copied production SDK closure in an isolated home and records idle resources.
+- `native-performance.test.ts` runs the opt-in full application comparison: `PNYX_NATIVE_BENCHMARK=1 node --conditions=source --test --test-timeout=600000 e2e/native-performance.test.ts`. Its p95/p99 native call gates are 5/10 ms; page p95 regression must remain within 10 ms of the local baseline.
 - `agent-host-bundle.test.ts` starts a host from copied runtime bytes and checks that rebuilding the source payload leaves its native owner and old bundle usable.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.
 

@@ -45,3 +45,11 @@ Helper recovery can attach to retained old-incarnation facts without opening a p
 Normal app upgrades leave the native host and selected runtime unchanged. Host updates are rare, manual maintenance. `pnyx-axi native status` reports live work and unapplied outcomes without taking control. Owner-only `native stop` closes the host only when queued input, permissions, controls, native background work and unapplied outcomes are all clear. Busy or uncertain ownership defers the stop; it never kills an active turn to finish an update. Stop the application before maintaining the host so it cannot admit new work or start the selected runtime again. A login-managed native job must also be stopped separately before changing its runtime.
 
 There is no automatic candidate staging, drain, swap, rollback or application restart. The selected immutable runtime stays available until explicit maintenance. A clean idle stop records its predecessor only after compacting acknowledged outcomes; a replacement can then discard closed descriptors. A host crash does not establish a clean handoff and leaves ambiguous inputs UNKNOWN.
+
+## Status and answers
+
+The navigation panel shows host unavailability and required recovery through the existing browser WebSocket. A healthy host adds no status card. `native status` and `/health` expose readiness for local diagnostics.
+
+Answer receipts distinguish received, submitted and unknown delivery. Submitted means handed to the SDK callback or native pipe, without proof of native application. Reconcile unknown delivery by the original request ID. Re-enter secrets only when the same live host confirms NOT_RECEIVED for the pending request; host loss returns UNKNOWN and never authorizes a resend.
+
+The full application benchmark is opt-in with `PNYX_NATIVE_BENCHMARK=1`. It compares one and ten active fixture sessions, image materialization, permissions and browser delta delivery against the same in-process provider fixture. Page latency and native call latency are separate gates. See [Testing](testing.md) for the command.
