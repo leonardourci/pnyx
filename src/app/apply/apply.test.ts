@@ -588,7 +588,7 @@ test(
 )
 
 test(
-  'intent and release retain owner-message provenance, and worker authority cannot bypass holds or prerequisites',
+  'owner asks and release retain owner-message provenance, and worker authority cannot bypass holds or prerequisites',
   async t => {
     const f = fixture({ t })
     t.mock.timers.enable({
@@ -633,7 +633,7 @@ test(
             reason: 'Owner gave go',
           },
           {
-            op: 'task.intent',
+            op: 'task.owner-ask',
             task: 'held',
             text: 'Go build the export',
             message: messageId,
@@ -698,7 +698,7 @@ test(
           version: 1,
           changes: [
             {
-              op: 'task.intent',
+              op: 'task.owner-ask',
               task: 'held',
               text: 'Invented permission',
               message: messageId,
@@ -738,7 +738,7 @@ test(
               on: ['prerequisite'],
             },
             {
-              op: 'task.intent',
+              op: 'task.owner-ask',
               task: 'held',
               text: 'Unsigned ask',
             },
@@ -1731,6 +1731,169 @@ test(
     assert.deepEqual(
       readdirSync(f.root),
       [],
+    )
+  },
+)
+
+test(
+  'apply and short commands keep Intent, brief and owner words separate',
+  async t => {
+    const f = fixture({ t })
+    await commands.task([
+      'create',
+      '--key',
+      'short',
+      '--title',
+      'Short task',
+      '--intent',
+      'Initial goal',
+      '--brief',
+      'Initial instructions',
+      '--ask',
+      'Exact owner words',
+    ])
+    f.apply({
+      document: {
+        version: 1,
+        changes: [
+          {
+            op: 'task.create',
+            key: 'bulk',
+            title: 'Bulk task',
+            intent: 'Bulk goal',
+            brief: 'Bulk instructions',
+            ask: 'Bulk owner words',
+          },
+          {
+            op: 'task.brief',
+            task: 'short',
+            intent: 'Expanded goal',
+          },
+          {
+            op: 'task.brief',
+            task: 'bulk',
+            intent: 'Expanded bulk goal',
+            brief: 'Updated bulk instructions',
+          },
+        ],
+      },
+    })
+    await commands.task([
+      'brief',
+      'short',
+      '--intent',
+      'Final goal',
+      '--brief',
+      'Final instructions',
+    ])
+    await commands.task([
+      'owner-ask',
+      'short',
+      '--text',
+      'Later owner words',
+    ])
+    const state = loadHydra({ hydraId: 'default' }).state
+    const short = state.cards[state.keys.short!]!
+    const bulk = state.cards[state.keys.bulk!]!
+    assert.equal(
+      short.intent,
+      'Final goal',
+    )
+    assert.equal(
+      short.brief,
+      'Final instructions',
+    )
+    assert.deepEqual(
+      short.ask?.map(ask => ask.text),
+      [
+        'Exact owner words',
+        'Later owner words',
+      ],
+    )
+    assert.equal(
+      bulk.intent,
+      'Expanded bulk goal',
+    )
+    assert.equal(
+      bulk.brief,
+      'Updated bulk instructions',
+    )
+    assert.equal(
+      bulk.ask?.[0]?.text,
+      'Bulk owner words',
+    )
+    const log = readFileSync(
+      join(
+        f.dir,
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    assert.match(
+      log,
+      /"intent":"Expanded goal"/,
+    )
+    assert.throws(
+      () => commands.task([
+        'intent',
+        'short',
+        '--text',
+        'Rejected legacy command',
+      ]),
+      /task owner-ask/,
+    )
+    assert.throws(
+      () => f.apply({
+        document: {
+          version: 1,
+          changes: [
+            {
+              op: 'task.brief',
+              task: 'short',
+              brief: 'Must not persist',
+            },
+            {
+              op: 'task.intent',
+              task: 'short',
+              text: 'Rejected legacy operation',
+            },
+          ],
+        },
+      }),
+      ApplyError,
+    )
+    assert.throws(
+      () => f.apply({
+        document: {
+          version: 1,
+          changes: [
+            {
+              op: 'task.brief',
+              task: 'short',
+              intent: 'x'.repeat(4001),
+            },
+          ],
+        },
+      }),
+      error => {
+        assert.ok(error instanceof ApplyError)
+        assert.equal(
+          error.errors[0]?.path,
+          '/changes/0/intent',
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
     )
   },
 )

@@ -356,7 +356,7 @@ h3 { font-weight: 600; }
 
 .action-label { display: inline-flex; min-width: 0; }
 
-.card-state .agent-activity { min-width: 0; }
+.card-state .agent-activity { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .card-state > :not(.agent-activity), .agent-activity > .working-dots { flex-shrink: 0; }
 
@@ -808,7 +808,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .settings-box.integrations > .button { margin-top: 14px; }
 
-.ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-meta); border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
+.ask { display: flex; flex-direction: column; gap: 6px; margin: 8px 0; padding: 8px; font-size: var(--text-ui); border: 1px solid var(--color-gold-line); border-radius: 12px; background: var(--color-gold-wash); }
 
 .ask.answered { border-color: var(--color-line); background: transparent; }
 
@@ -846,6 +846,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .ask-description { width: 100%; min-width: 0; font-size: var(--text-meta); color: var(--color-muted); }
 .ask-description .markdown { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; max-height: 1.4em; overflow: hidden; }
 .ask-description .markdown p { display: inline; }
+/* A card shows its questions whole, at reading size: they are what the owner decides on. */
+.card :is(.ask .markdown, .ask-label, .ask-description) { font-size: var(--text-ui); }
+.card .ask-description .markdown { display: block; -webkit-line-clamp: none; line-clamp: none; max-height: none; }
+.card .ask-description .markdown p { display: block; }
 /* The Hydra keeps one viewport; each conversation and column owns its scrolling. */
 
 
@@ -1202,6 +1206,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .activity-asks { color: var(--color-gold); }
 .activity-asks-hydra { color: var(--color-slate); }
 .activity-done { color: var(--color-green); }
+
+.activity-blocked { color: var(--color-red); }
+
+.activity-waiting { color: var(--color-slate); }
 .copy-warning { color: var(--color-gold); font-size: var(--text-meta); }
 @media (hover: none) {
 .card:not(.selected) > .resize-y { opacity: 1; }
@@ -1439,7 +1447,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card-content { display: flex; flex-direction: column; gap: 7px; min-height: 0; overflow: hidden; flex: 1; }
 .card-content > :is(.card-labels, .card-state, .copy-warning, .reminder-label) { flex-shrink: 0; }
-.card.selected > .card-content { flex: none; }
 
 
 
@@ -1467,28 +1474,56 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-title-row { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
 .card-title-row .card-open { flex: 1; min-width: 0; }
 .card-title-row > .tooltip-anchor { flex-shrink: 0; }
-.button.card-metadata-toggle { padding: 2px; min-height: 0; color: var(--color-muted); }
-.card-metadata-toggle svg { transition: transform 140ms ease; }
-.card-metadata-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
-.card-metadata { display: grid; grid-template-columns: minmax(0, 1fr); gap: 7px; }
-.card-metadata[hidden] { display: none; }
 .pending-decision { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
 .pending-decision-actions > .button { padding: 5px 9px; font-size: var(--text-meta); }
 .pending-decision-actions { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; }
-.pending-question-panel { padding: 12px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-gold-wash); }
-.pending-question-panel > .update-heading { color: var(--color-gold); margin-bottom: 8px; }
-.pending-question .task-requests { margin-top: 0; }
-.pending-question .ask { margin: 0; padding: 0; border: 0; background: transparent; }
-.pending-question .ask-title { display: none; }
 @media (prefers-reduced-motion: reduce) { .disclosure-chevron { transition: none; } }
 
-@media (prefers-reduced-motion: reduce) { .card-metadata-toggle svg { transition: none; } }
+@media (prefers-reduced-motion: reduce) { .card-instructions-toggle svg { transition: none; } }
 
 .card-brief-chevron { display: inline-flex; vertical-align: -2px; margin-right: 3px; color: var(--color-muted); transition: transform 140ms ease; }
 .card-open:hover .card-brief-chevron, .card-open[aria-expanded="true"] .card-brief-chevron { color: var(--color-gold); }
 .card-open[aria-expanded="true"] .card-brief-chevron { transform: rotate(90deg); }
 .card-brief { padding: 2px 0 2px 10px; border-left: 2px solid var(--color-gold-line); font-size: var(--text-meta); }
 .card-brief[hidden] { display: none; }
+
+.tabs { display: flex; gap: 2px; border-bottom: 1px solid var(--color-line); }
+
+.tab { border: 0; background: transparent; color: var(--color-muted); padding: 3px 8px; margin-bottom: -1px; border-bottom: 2px solid transparent; white-space: nowrap; }
+
+.tab[aria-selected="true"] { color: var(--color-ink); border-bottom-color: var(--color-gold); font-weight: 600; }
+
+.card-panel { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
+
+/* A tab's body scrolls inside the card, however long it grows; the status, title and tabs stay in view. */
+.card .card-content > .card-panel { flex-shrink: 1; min-height: 0; overflow: auto; }
+
+.card.selected .card-panel:not([hidden]) { flex: 1; }
+
+/* The updates list grows with the Activity body, which scrolls as a whole. */
+.card-panel > .detail { flex: none; overflow: visible; }
+
+.card-index { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--color-muted); font-size: var(--text-meta); }
+
+.card-index .button { padding: 0 4px; min-height: 0; font-size: var(--text-meta); }
+
+.card-owner-words + .card-owner-words { margin-top: 6px; }
+
+.card-panel[hidden] { display: none; }
+
+.card-section { display: flex; flex-direction: column; gap: 3px; }
+
+.card-section > .eyebrow { margin: 0; color: var(--color-gold); }
+
+.button.card-instructions-toggle { justify-content: flex-start; padding: 2px 0; min-height: 0; }
+
+.card-instructions-toggle svg { transition: transform 140ms ease; }
+
+.card-instructions-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+
+/* The status word never shortens for the project: the badge wraps to its own line first. */
+.card-state { flex-wrap: wrap; row-gap: 4px; }
+.card-state > .tooltip-anchor:has(.project-label) { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; }
 .card .card-brief .text-preview { max-height: 8.4em; -webkit-line-clamp: 6; line-clamp: 6; }
 .task-editor { display: flex; flex-direction: column; gap: 6px; }
 .task-editor .textarea { min-height: 96px; resize: vertical; font-size: var(--text-ui); }
@@ -1536,7 +1571,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card .task-report, .card .card-question { gap: 3px; padding: 6px 8px; }
 .card .task-updates > ol > li { padding-block: 5px; }
 .ask .decision-recommended { flex-shrink: 0; margin: 0; padding: 0 4px; font-size: .85em; }
-.ask .textarea { font-size: var(--text-meta); padding: 5px 7px; }
+.ask .textarea { font-size: var(--text-ui); padding: 5px 7px; }
 .ask .disclosure > summary { padding-block: 3px; }
 :is(.card, .ask) .markdown code { font-size: .95em; }
 .card .collapsible-text { min-width: 0; max-width: 100%; }

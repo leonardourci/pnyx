@@ -10,8 +10,8 @@ import { canonical } from '#store/paths.ts'
 import { taskProject } from '#projects/read.ts'
 import { parseKind } from '#investigations/report.ts'
 import { findCard } from './push-rules.ts'
-import { taskBrief, untilTime, type TaskCreated } from './cli.ts'
-import { ownerAsk } from './intent.ts'
+import { taskBrief, taskIntent, untilTime, type TaskCreated } from './cli.ts'
+import { ownerAsk } from './owner-ask.ts'
 import { declareTask } from './declarations.ts'
 import { decideDependencies } from './dependency-decisions.ts'
 import { decideHold } from './holds.ts'
@@ -25,6 +25,7 @@ export type TaskOperation = { reason?: string } & (
     title: string
     project?: string
     brief?: string
+    intent?: string
     folder?: string
     kind?: string
     hold?: boolean
@@ -36,10 +37,11 @@ export type TaskOperation = { reason?: string } & (
   | {
     op: 'task.brief'
     task: string
-    brief: string
+    brief?: string
+    intent?: string
   }
   | {
-    op: 'task.intent'
+    op: 'task.owner-ask'
     task: string
     text: string
     message?: string
@@ -90,7 +92,7 @@ export function planTaskChange({
   if ([
     'task.create',
     'task.brief',
-    'task.intent',
+    'task.owner-ask',
   ].includes(operation.op)) {
     inField({
       field: 'reason',
@@ -182,6 +184,10 @@ export function planTaskChange({
       field: 'brief',
       read: () => taskBrief({ value: operation.brief }),
     })
+    const intent = inField({
+      field: 'intent',
+      read: () => taskIntent({ value: operation.intent }),
+    })
     const kind = inField({
       field: 'kind',
       read: () => parseKind({ value: operation.kind ?? 'build' }),
@@ -209,6 +215,10 @@ export function planTaskChange({
 
     if (brief !== undefined) {
       created.brief = brief
+    }
+
+    if (intent !== undefined) {
+      created.intent = intent
     }
 
     if (kind === 'investigation') {
@@ -313,21 +323,53 @@ export function planTaskChange({
   }
 
   if (operation.op === 'task.brief') {
-    const after = taskBrief({ value: operation.brief })!
+    const brief = inField({
+      field: 'brief',
+      read: () => taskBrief({ value: operation.brief }),
+    })
+    const intent = inField({
+      field: 'intent',
+      read: () => taskIntent({ value: operation.intent }),
+    })
 
-    return after === (task.brief ?? '') ? { skipped: 'unchanged' }
-      : hydraEvent({
-        state,
-        meta,
-        cardId: task.id,
-        change: {
-          type: 'task.brief',
-          data: {
-            before: task.brief ?? '',
-            after,
-          },
-        },
+    if (brief === undefined && intent === undefined) {
+      throw new HydraError({
+        message: 'provide brief (empty text clears it) or intent',
+        field: 'brief',
+        code: 'VALIDATION_ERROR',
       })
+    }
+
+    const before = task.brief ?? ''
+    const after = brief ?? before
+    const rewritten = intent !== undefined && intent !== task.intent
+
+    if (after === before && !rewritten) {
+      return { skipped: 'unchanged' }
+    }
+
+    const data: {
+      before: string
+      after: string
+      intent?: string
+    } = {
+      before,
+      after,
+    }
+
+    if (rewritten) {
+      data.intent = intent
+    }
+
+    return hydraEvent({
+      state,
+      meta,
+      cardId: task.id,
+      change: {
+        type: 'task.brief',
+        data,
+      },
+    })
   }
 
   const entry = ownerAsk({
@@ -348,7 +390,7 @@ export function planTaskChange({
     meta,
     cardId: task.id,
     change: {
-      type: 'task.intent',
+      type: 'task.owner-ask',
       data: entry,
     },
   })

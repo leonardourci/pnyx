@@ -44,6 +44,7 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       title: 'text',
       project: 'text',
       brief: 'string',
+      intent: 'text',
       folder: 'text',
       kind: 'text',
       hold: 'boolean',
@@ -58,13 +59,11 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
     fields: {
       task: 'text',
       brief: 'string',
+      intent: 'text',
     },
-    required: [
-      'task',
-      'brief',
-    ],
+    required: ['task'],
   },
-  'task.intent': {
+  'task.owner-ask': {
     fields: {
       task: 'text',
       text: 'text',

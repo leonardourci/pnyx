@@ -133,7 +133,7 @@ export function applyHydra({
     return true
   }
 
-  if (event.type === 'task.intent') {
+  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
     const card = state.cards[event.cardId]
 
     if (card) {
@@ -155,6 +155,10 @@ export function applyHydra({
     if (card) {
       if (event.type === 'task.brief') {
         card.brief = event.data.after
+
+        if (event.data.intent) {
+          card.intent = event.data.intent
+        }
       } else if (event.type === 'task.retention') {
         if (event.data.after === null) {
           delete card.doneAfterHours
@@ -348,6 +352,10 @@ export function applyHydra({
       state.cards[event.cardId]!.kind = kind
     }
 
+    if (event.data.intent) {
+      state.cards[event.cardId]!.intent = event.data.intent
+    }
+
     state.keys[key] = event.cardId
     refreshTasks({
       state,
@@ -482,6 +490,12 @@ export function applyHydra({
             message: event.id,
           },
         ]
+      } else if (event.data.kind === 'progress') {
+        card.progress = {
+          text: event.data.text,
+          at: event.at,
+          actor: event.actor,
+        }
       }
 
       card.revision++
@@ -774,6 +788,7 @@ function apply({
         delete card.workingSince
       } else if (card.sessionActivity !== 'working' || !card.workingSince) {
         card.workingSince = event.at
+        card.turnStartedAt = event.at
       }
 
       card.sessionActivity = activity

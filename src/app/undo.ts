@@ -162,6 +162,7 @@ export function decideUndo({
     'task.created',
     'task.held',
     'task.released',
+    'task.owner-ask',
     'task.intent',
     'task.declared',
     'task.kind',

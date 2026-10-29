@@ -11,6 +11,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'title',
     'project',
     'brief',
+    'intent',
     'ask',
     'message',
     'key',
@@ -20,8 +21,11 @@ const ACTION_FLAGS: Record<string, string[]> = {
     'kind',
     'hold',
   ],
-  brief: ['brief'],
-  intent: [
+  brief: [
+    'brief',
+    'intent',
+  ],
+  'owner-ask': [
     'text',
     'message',
   ],
@@ -42,7 +46,7 @@ const ACTION_FLAGS: Record<string, string[]> = {
 const EVENT_TYPES: Record<TaskOperation['op'], EventType> = {
   'task.create': 'task.created',
   'task.brief': 'task.brief',
-  'task.intent': 'task.intent',
+  'task.owner-ask': 'task.owner-ask',
   'task.depend': 'task.dependencies',
   'task.undepend': 'task.dependencies',
   'task.status': 'task.declared',

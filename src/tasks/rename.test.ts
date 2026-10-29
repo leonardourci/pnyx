@@ -112,7 +112,7 @@ test(
           id,
         ],
       }),
-      /--brief: required field/,
+      /provide brief.*or intent/,
     )
     assert.equal(
       loadHydra({ hydraId: 'default' }).state.cards[id]?.title,

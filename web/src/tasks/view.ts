@@ -5,9 +5,9 @@ import type { Card } from '#tasks/model.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import { elapsedTime } from '#web-shared/time.ts'
-import { asksOwner } from '#tasks/lifecycle.ts'
-import { agentActivity } from '#web-workers/view.ts'
-import { openAsks } from '#tasks/questions.ts'
+import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
+import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
+import { answerPrompt } from '#workers/answers.ts'
 
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
@@ -134,12 +134,10 @@ export function cardState({
   card: Card
   hours?: number
   now: number
-}): {
-  kind: string
-  text: string
-  at?: string
-} {
-  if (card.doneAt) {
+}): CardStatus {
+  const status = cardStatus({ card })
+
+  if (status.kind === 'done' && card.doneAt) {
     const deadline = cardDoneDeadline({
       card,
       hours,
@@ -147,7 +145,7 @@ export function cardState({
     const remaining = deadline === undefined ? undefined : deadline - now
 
     return {
-      kind: 'done',
+      ...status,
       text: remaining !== undefined && remaining <= 6 * HOUR_MS
         ? `hidden in ${remaining > HOUR_MS ? `${Math.ceil(remaining / HOUR_MS)}h` : `${Math.max(
           1,
@@ -157,54 +155,20 @@ export function cardState({
           at: card.doneAt,
           now,
         })}`,
-      at: card.doneAt,
     }
   }
 
-  if (asksOwner({ card })) {
+  if (status.kind === 'stopped' && status.at) {
     return {
-      kind: 'asks',
-      text: 'asks',
-    }
-  }
-
-  if (card.hold) {
-    return {
-      kind: 'paused',
-      text: 'talking',
-      at: card.hold.at,
-    }
-  }
-
-  const activity = agentActivity({ card })
-
-  if (activity === 'stopped') {
-    const at = card.stoppedAt ?? card.updatedAt
-
-    return {
-      kind: 'stopped',
+      ...status,
       text: `stopped · ${elapsedTime({
-        at,
+        at: status.at,
         now,
       })}`,
-      at,
     }
   }
 
-  if (activity !== 'working' && openAsks({
-    card,
-    audience: 'hydra',
-  }).length) {
-    return {
-      kind: 'asks-hydra',
-      text: 'asks Hydra',
-    }
-  }
-
-  return {
-    kind: activity ?? 'not-started',
-    text: activity === 'working' ? 'working' : activity === 'finished' ? 'finished its turn' : card.agent ? 'activity unknown' : 'not started',
-  }
+  return status
 }
 
 export function expandedByColumn({
@@ -230,3 +194,10 @@ export function expandedByColumn({
 
   return kept.reverse()
 }
+
+// Every waiting prompt without inline controls gets the generic Answer, whatever else waits.
+export const genericPrompts = ({ card }: { card: Card }): OwnerQuestion[] =>
+  ownerQuestions({ card }).filter(question => question.attention && !answerPrompt({
+    card,
+    request: question.attention,
+  }))

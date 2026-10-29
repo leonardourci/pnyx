@@ -3,6 +3,7 @@ import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { cardState } from './view.ts'
+import { statusLabel } from '#tasks/card-status.ts'
 
 export function taskReferences({
   state,
@@ -27,10 +28,7 @@ export function taskReferences({
         c.id,
         {
           title: c.title,
-          state: status.kind === 'asks' ? 'Needs you' : status.text.replace(
-            /^./,
-            letter => letter.toUpperCase(),
-          ),
+          state: statusLabel({ status }),
           kind: status.kind,
           column: column?.role ?? column?.id ?? 'custom',
         },

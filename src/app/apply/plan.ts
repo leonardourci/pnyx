@@ -17,7 +17,7 @@ interface ApplyReceipt extends Output {
 const OPERATION_FIELDS: Record<Operation['op'], string> = {
   'task.create': 'op',
   'task.brief': 'brief',
-  'task.intent': 'text',
+  'task.owner-ask': 'text',
   'task.depend': 'on',
   'task.undepend': 'on',
   'task.status': 'status',

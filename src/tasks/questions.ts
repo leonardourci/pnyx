@@ -5,6 +5,8 @@ import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
 import { cardLanding, type Link } from '#tasks/delivery/model.ts'
 import type { Question, PermissionRequest, Attention, Reply } from '#workers/model.ts'
 import { requestId } from '#workers/answers.ts'
+import { PERMISSION_PREFIX } from '#workers/permission-rules.ts'
+import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -919,60 +921,60 @@ export function answerDelivery({
   return card.replies?.findLast(reply => reply.answers === question)
 }
 
-export function cardQuestion({ card }: { card: Card }): {
+export interface OwnerQuestion {
   text: string
   permission?: PermissionRequest
   attention?: Attention
   ask?: Ask
+  // The receipt of an answer the owner gave that has not been confirmed yet.
   delivery?: Reply
-} | undefined {
-  const permission = card.permissions?.find(request => request.status === 'pending')
-  const attention = card.attention.find(request => request.blocking && !request.answered)
+}
 
-  if (permission) {
-    const questions = permission.questions?.map(question => question.question).join(' ')
-    let text = permission.tool
+// A pending permission's prompt is listed once, as the permission; an interrupted turn waits on nobody.
+export const waitingPrompt = ({ prompt }: { prompt: Attention }) =>
+  prompt.blocking && !prompt.answered
+  && prompt.key !== INTERRUPTED && !prompt.key.startsWith(PERMISSION_PREFIX)
 
-    if (attention?.text) {
-      text = attention.text
-    }
+const asked = ({ questions }: { questions?: { question: string }[] }) => questions?.map(q => q.question).join(' ')
 
-    if (questions) {
-      text = questions
-    }
+// Everything on the card waiting on the owner; the status word and the closed card's question box both read it.
+export function ownerQuestions({ card }: { card: Card }): OwnerQuestion[] {
+  const permissions = (card.permissions ?? []).filter(request => request.status === 'pending')
+    .map((permission): OwnerQuestion => {
+      const own = card.attention.find(prompt => prompt.key === `${PERMISSION_PREFIX}${permission.id}`)
 
-    return {
-      text,
-      permission,
-    }
-  }
-
-  if (attention?.text) {
-    return {
-      text: attention.text,
+      return {
+        text: asked({ questions: permission.questions }) || own?.text || permission.tool,
+        permission,
+      }
+    })
+  const prompts = card.attention.filter(prompt => waitingPrompt({ prompt }))
+    .map((attention): OwnerQuestion => ({
+      text: attention.text || asked({ questions: attention.questions }) || attention.kind,
       attention,
       delivery: answerDelivery({
         card,
         question: requestId({ request: attention }),
       }),
-    }
-  }
-
-  const ask = openAsks({
+    }))
+  const asks = openAsks({
     card,
     audience: 'owner',
-  })[0]
+  }).map((ask): OwnerQuestion => ({
+    text: askWording({ ask }).question,
+    ask,
+    delivery: answerDelivery({
+      card,
+      question: ask.id,
+    }),
+  }))
 
-  if (ask) {
-    return {
-      text: askWording({ ask }).question,
-      ask,
-      delivery: answerDelivery({
-        card,
-        question: ask.id,
-      }),
-    }
-  }
-
-  return undefined
+  return [
+    ...permissions,
+    ...prompts,
+    ...asks,
+  ]
 }
+
+export const cardQuestion = ({ card }: { card: Card }): OwnerQuestion | undefined =>
+  ownerQuestions({ card })[0]

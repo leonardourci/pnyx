@@ -107,6 +107,8 @@ export type HydraChange = EventBase & (
       key: string
       title: string
       brief?: string
+      // The card's first Intent: what the owner wants from the task and why, written by Hydra.
+      intent?: string
       parentId?: string
       column?: Column
       folder?: string
@@ -168,7 +170,8 @@ export type HydraChange = EventBase & (
     }
   }
   | {
-    type: 'task.intent'
+    // Logs written before the card's Intent existed record an owner ask as task.intent.
+    type: 'task.owner-ask' | 'task.intent'
     data: OwnerAsk
   }
   | {
@@ -176,6 +179,8 @@ export type HydraChange = EventBase & (
     data: {
       before: string
       after: string
+      // Hydra's rewrite of the card's Intent when the goal itself changed; older ones stay in the log.
+      intent?: string
     }
   }
   | {
@@ -323,6 +328,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'board.columns',
   'task.created',
   'task.brief',
+  'task.owner-ask',
   'task.intent',
   'task.visibility',
   'task.retention',

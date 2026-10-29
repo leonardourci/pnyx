@@ -49,15 +49,16 @@ flags:
 const COMMAND_HELP: Record<string, string> = {
   apply: `usage: pnyx-axi apply --file <path|-> [--check] [--event-id <id>] [--hydra <hydra>]
 Read one version: 1 JSON document with changes and optional expected.tasks revisions.
-Operations: task.create, task.brief, task.intent, task.depend, task.undepend, task.status,
+Operations: task.create, task.brief, task.owner-ask, task.depend, task.undepend, task.status,
 task.hold, task.release, link and outcome. Unknown operations and fields are rejected.
+task.create/task.brief accept intent for the card goal; task.owner-ask saves exact owner words.
 A task.create as alias can be referenced later as $alias. References stay in this Hydra.
 --check prints the before/after diff, aliases, base and resulting task revisions without writing.
 Apply validates the whole document again under the writer lock and appends one atomic log record.
 Errors include zero-based operation indexes, field paths, codes and reasons; nothing is written.
 An identical --event-id retry returns the original receipt. Different contents or actor are refused.
-Each change can carry reason; Hydra must explain creates, briefs and intents. Owner message
-references and existing authority, discussion-hold, report and landing checks still apply.
+Each change can carry reason; Hydra must explain creates, brief/Intent edits and owner asks.
+Owner message references and existing authority, discussion-hold, report and landing checks apply.
 No worker starts, messages, memory, settings or external effects. Correct a batch with another apply;
 undo refuses its individual events. See docs/pnyx-axi.md for the full operation schema and examples.
 `,
@@ -133,14 +134,15 @@ pr:none|draft|open|pending|green|red|merged|closed, kind:build|investigation, do
 Use --if-revision for the Hydra revision (the view revision for resize).
 `,
   task: `usage: pnyx-axi task hide-after <task> <hours|default> [--hydra <id>]
-pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
+pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--message <owner-message-id>] [--intent <text>] [--brief <text>] [--kind build|investigation] [--hold] [--key <key>] [--folder <path>] [--column <id>] [--parent <task>] [--reason <text>] [--details <text>]
 --project names a project attached to the Hydra (see project list).
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
-pnyx-axi task intent <id> --text <owner-words> [--message <owner-message-id>]
-pnyx-axi task brief <id> --brief <text> [--reason <text>] [--details <text>]
+pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
+pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
+--intent rewrites the card's Intent when the goal itself changes; the log keeps the earlier ones.
 pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.

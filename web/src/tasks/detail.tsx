@@ -10,15 +10,11 @@ export function Detail({
   state,
   command,
   connected,
-  notify,
-  answer,
 }: {
   card: Card
   state: HydraState
   command: Command
   connected: boolean
-  notify({ text }: { text: string }): void
-  answer({ card }: { card: Card }): void
 }) {
   return (
     <section aria-label={`Details for ${card.title}`} className="detail inline">
@@ -28,8 +24,6 @@ export function Detail({
         columns={columnsFor({ state })}
         command={command}
         connected={connected}
-        notify={notify}
-        answer={answer}
       />
     </section>
   )

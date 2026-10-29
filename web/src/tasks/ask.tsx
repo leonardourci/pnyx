@@ -3,7 +3,8 @@ import { useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
 import { answerDelivery, askWording } from '#tasks/questions.ts'
 import { Button, Textarea } from '#web-shared/ui/controls.tsx'
-import { CollapsibleText, Disclosure } from '#web-shared/ui/disclosure.tsx'
+import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
+import { Markdown } from '#web-hydra/markdown.tsx'
 import type { Command } from '#web-app/connection.ts'
 
 const RECEIPT: Record<string, string> = {
@@ -100,9 +101,11 @@ export function AskPanel({
 
   return (
     <article className="ask ask-structured" aria-label="Question for you">
-      <CollapsibleText className="ask-headline" text={question} />
+      <div className="ask-headline"><Markdown text={question} /></div>
       {failed && <p className="muted small">Answer saved. Delivery failed; send it again below.</p>}
-      {context && <CollapsibleText text={context} />}
+      {/* The whole question shows at once: context and evidence are what the owner decides on. */}
+      {context && <div className="ask-context"><Markdown text={context} /></div>}
+      {ask.details && <div className="ask-details"><Markdown text={ask.details} /></div>}
       {question !== ask.question && <div className="decision-from">The worker asked:<CollapsibleText text={ask.question} /></div>}
       {!!options.length && (
         <div className="ask-options" role="group" aria-label="Choices">
@@ -136,11 +139,6 @@ export function AskPanel({
           text: e.target.value,
         })}
       />
-      {ask.details && (
-        <Disclosure className="decision-details" title="Details">
-          <CollapsibleText text={ask.details} />
-        </Disclosure>
-      )}
       <div className="pending-decision-actions">
         <div className="muted small">{ask.escalated ? 'Hydra passed this on' : 'Hydra asks'}{ask.escalated?.reason && <CollapsibleText text={ask.escalated.reason} />}</div>
         <Button

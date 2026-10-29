@@ -42,6 +42,7 @@ export const TASK_OPTIONS: Options = {
   title: { type: 'string' },
   project: { type: 'string' },
   brief: { type: 'string' },
+  intent: { type: 'string' },
   ask: { type: 'string' },
   message: { type: 'string' },
   key: { type: 'string' },
@@ -542,6 +543,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           text: clip({ text: ask.text }),
         })) : 'none: no owner words recorded',
         spend,
+        intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
@@ -727,6 +729,13 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
             },
           })
       },
+    })
+  }
+
+  if (action === 'intent') {
+    throw new HydraError({
+      message: 'task intent is now task owner-ask <task> --text <owner words>; the card\'s Intent changes with task brief --intent',
+      code: 'VALIDATION_ERROR',
     })
   }
 
