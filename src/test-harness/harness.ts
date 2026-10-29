@@ -707,6 +707,15 @@ function hydraScenario({
     // Every message the agents in this folder received, across restarts and resumed sessions.
     received: ({ cwd }: { cwd: string }) => sessions().filter(s => s.cwd === cwd)
       .flatMap(s => s.received),
+    // Messages the agents in this folder received whose turn ended, across restarts and resumed sessions.
+    answered: ({ cwd }: { cwd: string }) => sessions().filter(s => s.cwd === cwd)
+      .reduce(
+        (
+          sum,
+          s,
+        ) => sum + s.answered,
+        0,
+      ),
     state,
     task: ({ key }: { key: string }) => {
       const {
