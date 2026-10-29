@@ -2,14 +2,9 @@ import { useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
+import { installationScope } from '#web-shared/installation.ts'
 
 const dispatches = new Map<string, ReturnType<typeof createDispatch>>()
-
-function installationScope({ resource }: { resource: string }): string {
-  const identity = document.querySelector<HTMLMetaElement>('meta[name=pnyx-installation]')?.content ?? ''
-
-  return `${location.origin}:${identity}/${resource}`
-}
 
 function createDispatch({ scope }: { scope: string }) {
   return createSettingsResource<EffectiveDispatch, Partial<AgentConfig>>({
