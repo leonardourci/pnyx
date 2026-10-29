@@ -507,7 +507,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     workspace,
     tag,
     query: commandQuery({ query }) ? '' : query,
-    meaning: found.map(h => h.card),
+    meaning: found.hits.map(h => h.card),
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
   const filterScope = JSON.stringify([
     workspace,
@@ -1024,7 +1024,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               command={command}
               query={query}
               setQuery={({ query }) => setQuery(query)}
-              hits={found}
+              hits={found.hits}
               save={save}
               openTask={open}
               openHydra={openHydra}
