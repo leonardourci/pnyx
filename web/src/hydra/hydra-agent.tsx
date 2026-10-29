@@ -10,6 +10,9 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { modelOptions } from '#web-workers/model-options.ts'
 import type { Command } from '#web-app/connection.ts'
 
+// The composer's control icons, one size so they read alike.
+export const COMPOSER_ICON = 18
+
 const HARNESSES = [
   {
     harness: 'claude',
@@ -152,6 +155,7 @@ export function HydraAgent({
     <div className="hydra-agent-pickers" aria-label="Hydra agent settings">
       <ModelPicker
         {...catalog}
+        iconSize={COMPOSER_ICON}
         value={picker.value && `${agent.harness}:${picker.value}`}
         options={HARNESSES.flatMap(({
           harness,
@@ -218,6 +222,7 @@ export function HydraAgent({
         return (
           <PickerField
             key={field}
+            iconSize={COMPOSER_ICON}
             label={field === 'mode' ? 'Permissions' : 'Effort'}
             value={value ?? ''}
             options={options}
@@ -245,7 +250,7 @@ export function HydraAgent({
             },
           })}
         >
-          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={18} />
+          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={COMPOSER_ICON} />
         </Button>
       </Tooltip>
     </div>

@@ -125,6 +125,7 @@ export function Select({
   title,
   defaultValue,
   onDefault,
+  iconSize = 14,
 }: {
   label: string
   value: string
@@ -136,6 +137,7 @@ export function Select({
   // Mod+click or a long press on an option picks it and makes it the default.
   defaultValue?: string
   onDefault?({ value }: { value: string }): void
+  iconSize?: number
 }) {
   const [
       open,
@@ -251,7 +253,7 @@ export function Select({
         }}
         aria-activedescendant={open ? `${id}-${active}` : undefined}
       >
-        {chosen?.icon && <Icon name={chosen.icon} size={14} />}
+        {chosen?.icon && <Icon name={chosen.icon} size={iconSize} />}
         {display ?? chosen?.label ?? label}
         <Icon name="chevron_down" size={14} />
       </Button>
