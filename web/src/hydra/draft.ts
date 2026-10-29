@@ -1,14 +1,24 @@
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
-import { IMAGE, imageNames } from '#hydra/images.ts'
+import { IMAGE, imageNames, imagePaths } from '#hydra/images.ts'
 import { FILE_BLOCK } from '#hydra/attachments.ts'
 import { decodeValue, REFERENCE, referenceLabel, type ReferenceKind } from '#hydra/mentions.ts'
 
 // The draft stays the Markdown Hydra receives; the textarea shows each chip as its label.
 export type ChipKind = ReferenceKind
 
+// An image still uploading holds its place in the draft as an image token for a path no file has.
+const PENDING_IMAGE = '/pending-image/'
+
+export const pendingImage = ({ id }: { id: string }) => `${PENDING_IMAGE}${id}`
+
+export const isPendingImage = ({ path }: { path: string }) => path.startsWith(PENDING_IMAGE)
+
+export const hasPendingImage = ({ text }: { text: string }) =>
+  imagePaths({ text }).some(path => isPendingImage({ path }))
+
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
-const QUARTER_SPACE = '\u2005'
+export const QUARTER_SPACE = '\u2005'
 export const CHIP_SPACE = QUARTER_SPACE + QUARTER_SPACE
 const NO_BREAK_SPACE = '\u00A0'
 export const WORD_JOINER = '\u2060'
@@ -103,7 +113,8 @@ function draftChips({ text }: { text: string }): DraftChip[] {
 
   for (const match of text.matchAll(IMAGE)) {
     if (!inside({ at: match.index })) {
-      const name = names.get(match[1]!) ?? 'Image'
+      const named = names.get(match[1]!) ?? 'Image'
+      const name = isPendingImage({ path: match[1]! }) ? `Loading ${named.toLowerCase()}` : named
       chips.push({
         kind: 'image',
         attached: true,
@@ -227,7 +238,7 @@ function displayOffset({
 }
 
 // A caret never rests inside a chip: it moves to the edge it was heading for.
-export function snapCaret({
+function snapCaret({
   view,
   offset,
   backward,
@@ -239,6 +250,42 @@ export function snapCaret({
   const chip = view.chips.find(c => c.from < offset && offset < c.to)
 
   return chip ? backward ? chip.from : chip.to : offset
+}
+
+// A selection never ends inside a chip: its moving end jumps over a chip the way it was heading, and its
+// fixed end widens to take the whole chip.
+export function snapSelection({
+  view,
+  anchor,
+  focus,
+  previous,
+}: {
+  view: DraftView
+  anchor: number
+  focus: number
+  previous: number
+}) {
+  const moved = snapCaret({
+    view,
+    offset: focus,
+    backward: focus < previous,
+  })
+
+  if (anchor === focus) {
+    return {
+      anchor: moved,
+      focus: moved,
+    }
+  }
+
+  return {
+    anchor: snapCaret({
+      view,
+      offset: anchor,
+      backward: moved > anchor,
+    }),
+    focus: moved,
+  }
 }
 
 // A chip the range touches goes as a whole, so its Markdown is never left half edited.
@@ -392,6 +439,144 @@ export function removeChip({
     from,
     to,
     insert: '',
+  })
+}
+
+// The upload's answer takes its placeholder's place, or removes it when the upload failed. Text typed
+// meanwhile and the selection stay where they were; undefined means the owner already removed the placeholder.
+export function settleImage({
+  text,
+  anchor,
+  focus,
+  path,
+  line,
+}: {
+  text: string
+  anchor: number
+  focus: number
+  path: string
+  line?: string
+}) {
+  const view = draftView({ text })
+  const chip = view.chips.find(placed => placed.kind === 'image' && placed.attached && placed.value === path)
+
+  if (!chip) {
+    return undefined
+  }
+
+  const settled = line ? {
+    text: text.slice(
+      0,
+      chip.start,
+    ) + line + text.slice(chip.end),
+    caret: chip.from,
+  } : removeChip({
+    text,
+    chip,
+  })
+  const removed = view.display.length - draftView({ text: settled.text }).display.length
+  const kept = ({ offset }: { offset: number }) => offset <= settled.caret ? offset : Math.max(
+    settled.caret,
+    offset - removed,
+  )
+
+  return {
+    text: settled.text,
+    anchor: kept({ offset: anchor }),
+    focus: kept({ offset: focus }),
+  }
+}
+
+// A placeholder saved with a draft lost its upload when the page closed.
+export function withoutPendingImages({ text }: { text: string }) {
+  let rest = text
+
+  for (const path of imagePaths({ text }).filter(path => isPendingImage({ path }))) {
+    rest = settleImage({
+      text: rest,
+      anchor: 0,
+      focus: 0,
+      path,
+    })?.text ?? rest
+  }
+
+  return rest
+}
+
+// For a rich-text app a chip reads as it shows and an attached file keeps its contents; `image` stands an
+// attached image in for its name.
+export function shownDraft({
+  text,
+  image,
+}: {
+  text: string
+  image({
+    path,
+    name,
+  }: {
+    path: string
+    name: string
+  }): string
+}) {
+  let drawn = '', cursor = 0
+
+  for (const chip of draftChips({ text })) {
+    const attachedFile = chip.kind === 'file' && chip.attached
+    const attachedImage = chip.kind === 'image' && chip.attached
+    const shownBare = chip.attached || chip.kind === 'skill' || REFERENCE_ROOM[chip.kind] !== undefined
+    const reference = shownBare ? chip.name : `@${chip.name}`
+    const shown = attachedImage ? image({
+      path: chip.value,
+      name: chip.name,
+    }) : reference
+    drawn += text.slice(
+      cursor,
+      chip.start,
+    ) + (attachedFile ? text.slice(
+      chip.start,
+      chip.end,
+    ) : shown)
+    cursor = chip.end
+  }
+
+  return drawn + text.slice(cursor)
+}
+
+// A selection that touches a chip copies the whole chip as its Markdown; undefined means it holds none and
+// copies as it shows.
+export function copyDraft({
+  text,
+  from,
+  to,
+}: {
+  text: string
+  from: number
+  to: number
+}) {
+  const view = draftView({ text })
+  const touched = view.chips.filter(chip => from < chip.to && to > chip.from)
+
+  if (!touched.length) {
+    return undefined
+  }
+
+  return withoutPendingImages({
+    text: text.slice(
+      sourceOffset({
+        view,
+        offset: Math.min(
+          from,
+          ...touched.map(chip => chip.from),
+        ),
+      }),
+      sourceOffset({
+        view,
+        offset: Math.max(
+          to,
+          ...touched.map(chip => chip.to),
+        ),
+      }),
+    ),
   })
 }
 

@@ -9,13 +9,12 @@ const RESULTS = {
 
 export function CopyButton({
   label,
-  text,
   className = '',
+  ...copied
 }: {
   label: string
-  text(): string
   className?: string
-}) {
+} & ({ text(): string } | { write(): Promise<void> })) {
   const [
     result,
     setResult,
@@ -45,13 +44,17 @@ export function CopyButton({
       data-copied={result === 'copied' || undefined}
       contentEditable={false}
       onMouseDown={event => event.preventDefault()}
-      onClick={event => {
+      onClick={async event => {
         // Inside a summary, a click would also fold the row.
         event.preventDefault()
-        void navigator.clipboard.writeText(text()).then(
-          () => setResult('copied'),
-          () => setResult('failed'),
-        )
+        const writing = 'write' in copied ? copied.write() : navigator.clipboard.writeText(copied.text())
+
+        try {
+          await writing
+          setResult('copied')
+        } catch {
+          setResult('failed')
+        }
       }}
     >
       <Icon name={result === 'copied' ? 'check' : 'copy'} size={14} />

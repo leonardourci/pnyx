@@ -23,9 +23,11 @@ import {
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
 } from './caret.ts'
-import { clock, duration, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
+import { clock, copiedText, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
+import { MessageImages } from './attached-image.tsx'
+import { copyMessageChips } from './clipboard.ts'
 import { MessageComment } from './message-comment.tsx'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
@@ -43,6 +45,16 @@ let highlights = 0
 export type ChatEntry = ThreadEntry & {
   sending?: boolean
   renderKey?: string
+}
+
+function MessageTask({ entry }: { entry: ChatEntry }) {
+  const task = leadingTask({ entry })
+
+  return task ? (
+    <span className="message-lead">
+      <TaskReference id={task} />
+    </span>
+  ) : null
 }
 
 const roleLabel = ({
@@ -142,6 +154,7 @@ export function Messages({
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
+  const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
   const turns = timings ?? turnTimings({
     entries,
     working,
@@ -799,12 +812,41 @@ export function Messages({
         spellCheck={false}
         data-gramm="false"
         onKeyDown={event => caretKey({ event })}
+        onCopy={event => {
+          const editing = event.target instanceof Element && isEditing({ target: event.target })
+
+          if (!editing && copyMessageChips({
+            selection: window.getSelection(),
+            clipboard: event.clipboardData,
+          })) {
+            event.preventDefault()
+          }
+        }}
         onCut={event => {
-          if (!(event.target instanceof Element && isEditing({ target: event.target }))) {
-            event.preventDefault(); event.clipboardData.setData(
+          if (event.target instanceof Element && isEditing({ target: event.target })) {
+            return
+          }
+
+          event.preventDefault()
+
+          if (!copyMessageChips({
+            selection: window.getSelection(),
+            clipboard: event.clipboardData,
+          })) {
+            event.clipboardData.setData(
               'text/plain',
               window.getSelection()?.toString() ?? '',
             )
+          }
+        }}
+        onDragStart={event => {
+          const editing = event.target instanceof Element && isEditing({ target: event.target })
+
+          if (!editing) {
+            copyMessageChips({
+              selection: window.getSelection(),
+              clipboard: event.dataTransfer,
+            })
           }
         }}
         onPaste={event => paste({ event })}
@@ -838,12 +880,7 @@ export function Messages({
               title={entry.at && !ownMessage({ entry })
                 ? new Date(entry.at).toLocaleString() : undefined}
             >
-              {entry.task && taskReferences && !inline?.has(entry.id) && (
-                <div className="message-task">
-                  <span className="message-task-label">About</span>
-                  <TaskReference id={entry.task} />
-                </div>
-              )}
+              {taskReferences && !inline?.has(entry.id) && <MessageTask entry={entry} />}
               {inline?.get(entry.id) ?? (entry.kind === 'message' ? (
                 <ChatMessageText
                   catalog={ownMessage({ entry }) ? catalog : undefined}
@@ -926,6 +963,7 @@ export function Messages({
                   ? <PnyxCallRow call={calls.get(entry.id)!} />
                   : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               ))}
+              {entry.kind === 'message' && !inline?.has(entry.id) && <MessageImages text={entry.text} />}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([
@@ -949,11 +987,20 @@ export function Messages({
                   >{clock({ at: entry.at })}
                   </time>
                 )}
-                <CopyButton label="Copy message" text={() => entry.text} />
+                <CopyButton
+                  label="Copy message"
+                  text={() => copiedText({
+                    text: entry.text,
+                    task: leadingTask({ entry }),
+                    title: taskTitle({ id: leadingTask({ entry }) }),
+                  })}
+                />
               </div>
             )}
             {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
-            {turns.has(entry.id) && <TurnFooter turn={turns.get(entry.id)!} />}
+            {turns.has(entry.id) && (
+              <TurnFooter turn={turns.get(entry.id)!} taskTitle={taskTitle} />
+            )}
           </Fragment>
         ))}
         <CommentAnnotations host={root} comments={ordered} highlight={highlight} />
@@ -990,7 +1037,13 @@ export function Messages({
   )
 }
 
-function TurnFooter({ turn }: { turn: TurnTiming }) {
+function TurnFooter({
+  turn,
+  taskTitle,
+}: {
+  turn: TurnTiming
+  taskTitle({ id }: { id?: string }): string | undefined
+}) {
   const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
   const started = clock({
     at: turn.start,
@@ -999,7 +1052,16 @@ function TurnFooter({ turn }: { turn: TurnTiming }) {
 
   return (
     <div className="turn-foot" contentEditable={false}>
-      {turn.reply && <CopyButton label="Copy reply" text={() => turn.reply} />}
+      {turn.reply && (
+        <CopyButton
+          label="Copy reply"
+          text={() => copiedText({
+            text: turn.reply,
+            task: turn.task,
+            title: taskTitle({ id: turn.task }),
+          })}
+        />
+      )}
       {turn.latest
         ? <time dateTime={turn.end} title={`Worked for ${took} · started ${started}`}>{clock({ at: turn.end })}</time>
         : (

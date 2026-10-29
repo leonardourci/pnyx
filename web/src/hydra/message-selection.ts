@@ -2,6 +2,9 @@ import type { ChatComment } from './chat.ts'
 
 export type CommentPassage = Omit<ChatComment, 'id' | 'text'>
 export const MESSAGE_DECORATIONS = '.comment-card, .comment-pill, .comment-annotations, .code-language, .receipt'
+// Each chip in a rendered message, and each image under its text, keeps the Markdown it came from, so a copy can
+// bring the chip back.
+export const CHIP_SOURCE = 'data-chip-source'
 
 export const messageBlockKey = ({
   messageId,

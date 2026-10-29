@@ -5,7 +5,8 @@ import { test } from 'node:test'
 import { recordEntries, splitEntry } from '#hydra/transcripts-read.ts'
 import { hydraDelivery } from '#hydra/hydra.ts'
 import { transcriptMessages } from '#oracle/text.ts'
-import { hydraMessages, joinMessageParts, keepStreamedKeys } from './chat.ts'
+import { taskMention } from '#hydra/mentions.ts'
+import { hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask } from './chat.ts'
 
 test(
   'Markdown messages split for transport reassemble across older pages without losing text',
@@ -708,6 +709,51 @@ test(
       })[0]!.renderKey,
       undefined,
       'an older message never takes the key',
+    )
+  },
+)
+
+test(
+  'a message about a task opens with its chip unless its words already mention that task',
+  () => {
+    const login = taskMention({
+      id: 'task-login',
+      title: 'Fix the login',
+    })
+    const cards = taskMention({
+      id: 'task-cards',
+      title: 'Card spacing',
+    })
+    assert.equal(
+      leadingTask({ entry: { text: 'The worker found the cause.' } }),
+      undefined,
+    )
+    assert.equal(
+      leadingTask({
+        entry: {
+          task: 'task-login',
+          text: 'The worker found the cause.',
+        },
+      }),
+      'task-login',
+    )
+    assert.equal(
+      leadingTask({
+        entry: {
+          task: 'task-login',
+          text: `Reminder: ${login} still needs your answer.`,
+        },
+      }),
+      undefined,
+    )
+    assert.equal(
+      leadingTask({
+        entry: {
+          task: 'task-login',
+          text: `It waits for ${cards}.`,
+        },
+      }),
+      'task-login',
     )
   },
 )

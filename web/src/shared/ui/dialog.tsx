@@ -5,11 +5,14 @@ import { Icon } from './icon.tsx'
 export function Dialog({
   title,
   className = '',
+  actions,
   close,
   children,
 }: {
   title: ReactNode
   className?: string
+  // Buttons for the dialog's subject, shown before Close.
+  actions?: ReactNode
   close(): void
   children: ReactNode
 }) {
@@ -52,6 +55,7 @@ export function Dialog({
     >
       <header className="dialog-head">
         <h2 id={heading}>{title}</h2>
+        {actions}
         <Button className="icon-button" aria-label="Close" onClick={close}>
           <Icon name="close" size={14} />
         </Button>

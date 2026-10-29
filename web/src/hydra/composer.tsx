@@ -7,6 +7,7 @@ import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
 import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { flushSync } from 'react-dom'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { isUpgradeSuggestion } from '#upgrade/model.ts'
@@ -28,32 +29,79 @@ import { clock, commentReply, sendableComment, type ChatComment } from './chat.t
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
-import { pastedImages, uploadImages } from './image-upload.ts'
+import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
+import { embedImages, imagesHtml } from './clipboard.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, placeBlock, placeImages, removeChip, replaceDisplay, snapCaret, type PlacedChip } from './draft.ts'
+import { imageLine } from '#hydra/images.ts'
+import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, hasPendingImage, isPendingImage, shownDraft, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapSelection, withoutPendingImages, type PlacedChip } from './draft.ts'
+
+// A selection's fixed end and the end that moves, whichever way it was made.
+const selectionEnds = ({ field }: { field: HTMLTextAreaElement }) => field.selectionDirection === 'backward'
+  ? {
+    anchor: field.selectionEnd,
+    focus: field.selectionStart,
+  }
+  : {
+    anchor: field.selectionStart,
+    focus: field.selectionEnd,
+  }
+
+const select = ({
+  field,
+  anchor,
+  focus,
+}: {
+  field: HTMLTextAreaElement
+  anchor: number
+  focus: number
+}) => field.setSelectionRange(
+  Math.min(
+    anchor,
+    focus,
+  ),
+  Math.max(
+    anchor,
+    focus,
+  ),
+  focus < anchor ? 'backward' : 'forward',
+)
+
+function UploadBar({ fraction }: { fraction: number }) {
+  return (
+    <span className="upload-bar">
+      <span className="upload-bar-done" style={{ width: `${fraction * 100}%` }} />
+    </span>
+  )
+}
 
 function DraftCard({
   chip,
+  progress = 0,
   open,
   remove,
 }: {
   chip: PlacedChip
+  progress?: number
   open(): void
   remove(): void
 }) {
   const image = chip.kind === 'image'
+  const loading = image && isPendingImage({ path: chip.value })
+  const stored = image && !loading
+  const slot = stored ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
+  const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
 
   return (
-    <span className="draft-chip draft-card" data-kind={chip.kind}>
+    <span className="draft-chip draft-card" data-kind={chip.kind} data-loading={loading || undefined}>
       {chip.label}
       <AttachmentCard
         keepsInputFocus
-        slot={image ? <ImageThumb path={chip.value} /> : <Icon name="file" size={13} />}
-        label={chip.name}
-        title={image ? 'Show image' : chip.name}
+        slot={slot}
+        label={label}
+        title={stored ? 'Show image' : chip.name}
         tone={chip.attached ? undefined : 'reference'}
-        open={image ? open : undefined}
+        open={stored ? open : undefined}
         remove={remove}
         removeLabel={`Remove ${chip.name}`}
       />
@@ -146,17 +194,27 @@ export function Composer({
     viewing,
     setViewing,
   ] = useState<PlacedChip | null>(null)
+  // How far each image still uploading has got, by its placeholder's path.
+  const [
+    uploads,
+    setUploads,
+  ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
   const display = view.display
   const mentionList = `mentions-${card}`
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
-  // Where the caret goes once React has written the new display text.
-  const caretNext = useRef<number | null>(null), caretLast = useRef(0)
+  // Where the selection goes once React has written the new display text.
+  const caretNext = useRef<{
+    anchor: number
+    focus: number
+  } | null>(null), caretLast = useRef(0)
+  // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
+  const beforeCuts = useRef(new Map<string, string>())
 
   const query = (mention?.query ?? '').trim().toLocaleLowerCase()
   const matches: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached
+    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
       && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
@@ -243,11 +301,17 @@ export function Composer({
   const write = ({
     text,
     caret,
+    anchor = caret,
   }: {
     text: string
     caret: number
+    anchor?: number
   }) => {
-    caretNext.current = caret; setDraft({ text })
+    caretNext.current = {
+      anchor,
+      focus: caret,
+    }
+    setDraft({ text })
     // An insert finishing before the next render, like a second chosen file, builds on this text.
     current.current.draft = text
   }
@@ -283,11 +347,11 @@ export function Composer({
       fit({ element })
 
       if (caretNext.current !== null) {
-        element.setSelectionRange(
-          caretNext.current,
-          caretNext.current,
-        )
-        caretLast.current = caretNext.current
+        select({
+          field: element,
+          ...caretNext.current,
+        })
+        caretLast.current = caretNext.current.focus
         caretNext.current = null
       }
 
@@ -369,10 +433,25 @@ export function Composer({
     }
   }
 
+  // Chips let the pointer through to the textarea so a drag can start on one; a click on one still opens it.
+  const chipAt = ({
+    x,
+    y,
+  }: {
+    x: number
+    y: number
+  }) => {
+    const token = [...mirror.current?.querySelectorAll<HTMLElement>('.draft-token') ?? []]
+      .find(element => [...element.querySelector('.draft-chip')?.getClientRects() ?? []]
+        .some(rect => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom))
+
+    return token ? view.chips.find(chip => chip.from === Number(token.dataset.from)) : undefined
+  }
+
   const openChip = ({ chip }: { chip: PlacedChip }) => {
     if (chip.kind === 'task') {
       openTask({ id: chip.value })
-    } else if (chip.kind === 'image') {
+    } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
       setViewing(chip)
     }
   }
@@ -410,6 +489,7 @@ export function Composer({
     firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
+  const imagesLoading = hasPendingImage({ text: outgoing })
   const commented = sendable.length
   const [
     listing,
@@ -494,24 +574,164 @@ export function Composer({
     return edit.text
   }
 
-  const attach = async ({ files }: { files: File[] }) => {
+  // A placeholder lives only while this composer's upload runs, so a restored one goes and leaving stops them.
+  const uploading = useRef(new AbortController())
+  useEffect(
+    () => {
+      const controller = new AbortController()
+      uploading.current = controller
+      const restored = current.current.draft
+
+      if (hasPendingImage({ text: restored })) {
+        setDraft({ text: withoutPendingImages({ text: restored }) })
+      }
+
+      return () => controller.abort()
+    },
+    [],
+  )
+
+  const settle = ({
+    path,
+    line,
+  }: {
+    path: string
+    line?: string
+  }) => {
+    if (uploading.current.signal.aborted) {
+      return
+    }
+
+    const ends = input.current ? selectionEnds({ field: input.current }) : {
+      anchor: caretLast.current,
+      focus: caretLast.current,
+    }
+    const settled = settleImage({
+      text: current.current.draft,
+      ...ends,
+      path,
+      line,
+    })
+
+    // Written before the next keystroke or upload reads the draft and caret.
+    if (settled) {
+      flushSync(() => write({
+        text: settled.text,
+        caret: settled.focus,
+        anchor: settled.anchor,
+      }))
+    }
+  }
+
+  const upload = async ({
+    file,
+    path,
+  }: {
+    file: File
+    path: string
+  }) => {
+    const { signal } = uploading.current
+    const track = ({ fraction }: { fraction: number }) => setUploads(progress => ({
+      ...progress,
+      [path]: fraction,
+    }))
+
+    track({ fraction: 0 })
+
+    try {
+      settle({
+        path,
+        line: await uploadImage({
+          file,
+          progress: track,
+          signal,
+        }),
+      })
+    } catch (error) {
+      if (signal.aborted) {
+        return
+      }
+
+      settle({ path })
+      notify({ text: error instanceof Error ? error.message : 'Could not add the image.' })
+    } finally {
+      setUploads(progress => Object.fromEntries(Object.entries(progress)
+        .filter(([key]) => key !== path)))
+    }
+  }
+
+  // Each image takes its place at the caret at once, so typing goes on while it uploads.
+  const attach = ({ files }: { files: File[] }) => {
     const {
-      lines,
+      images,
       failures,
-    } = await uploadImages({ files })
+    } = checkImages({ files })
 
     if (failures.length) {
       notify({ text: failures.join(' ') })
     }
 
-    if (lines.length) {
-      write(placeImages({
-        text: current.current.draft,
-        caret: input.current?.selectionEnd,
-        lines,
-      }))
-      input.current?.focus()
+    if (!images.length) {
+      return
     }
+
+    const placed = images.map(file => ({
+      file,
+      path: pendingImage({ id: crypto.randomUUID() }),
+    }))
+    write(placeImages({
+      text: current.current.draft,
+      caret: input.current?.selectionEnd,
+      lines: placed.map(({ path }) => imageLine({ path })),
+    }))
+    input.current?.focus()
+
+    // Each upload settles its own placeholder and reports its own failure.
+    for (const image of placed) {
+      void upload(image)
+    }
+  }
+
+  // A selection with chips carries their Markdown as plain text, so a paste rebuilds them; one without goes as it shows.
+  const carryChips = ({
+    field,
+    data,
+  }: {
+    field: HTMLTextAreaElement
+    data: DataTransfer
+  }) => {
+    const source = copyDraft({
+      text: draft,
+      from: field.selectionStart,
+      to: field.selectionEnd,
+    })
+
+    if (source === undefined) {
+      return false
+    }
+
+    data.setData(
+      'text/plain',
+      source,
+    )
+
+    const embedded = embedImages()
+    const marked = shownDraft({
+      text: source,
+      image: embedded.image,
+    })
+
+    if (embedded.images.length) {
+      data.setData(
+        'text/html',
+        imagesHtml({
+          text: marked,
+          images: embedded.images,
+        }),
+      )
+    }
+
+    return true
   }
 
   const removeCard = ({ chip }: { chip: PlacedChip }) => {
@@ -526,6 +746,12 @@ export function Composer({
     const text = restore && attempt.current ? attempt.current.text : outgoing
 
     if (sending || !text.trim()) {
+      return
+    }
+
+    if (hasPendingImage({ text })) {
+      notify({ text: 'Images are still loading. Send once they are in.' })
+
       return
     }
 
@@ -712,7 +938,7 @@ export function Composer({
         }}
         onDrop={event => {
           if (event.dataTransfer.files.length) {
-            event.preventDefault(); void attach({ files: [...event.dataTransfer.files] })
+            event.preventDefault(); attach({ files: [...event.dataTransfer.files] })
           }
         }}
       >
@@ -808,47 +1034,96 @@ export function Composer({
             onSelect={event => {
               const element = event.currentTarget
               const {
-                selectionStart: start,
-                selectionEnd: end,
-              } = element
+                anchor,
+                focus,
+              } = selectionEnds({ field: element })
+              const snapped = snapSelection({
+                view,
+                anchor,
+                focus,
+                previous: caretLast.current,
+              })
 
-              if (start === end) {
-                const snapped = snapCaret({
-                  view,
-                  offset: start,
-                  backward: start < caretLast.current,
+              if (snapped.anchor !== anchor || snapped.focus !== focus) {
+                select({
+                  field: element,
+                  ...snapped,
                 })
-
-                if (snapped !== start) {
-                  element.setSelectionRange(
-                    snapped,
-                    snapped,
-                  )
-                }
-
-                caretLast.current = snapped
               }
+
+              caretLast.current = snapped.focus
             }}
             onClick={event => {
+              const element = event.currentTarget
+              const clicked = element.selectionStart === element.selectionEnd ? chipAt({
+                x: event.clientX,
+                y: event.clientY,
+              }) : undefined
+
+              if (clicked) {
+                openChip({ chip: clicked })
+              }
+
               trackMention({
                 text: draft,
-                cursor: event.currentTarget.selectionStart,
+                cursor: element.selectionStart,
               })
             }}
             onBlur={() => setMention(null)}
+            onCopy={event => {
+              if (carryChips({
+                field: event.currentTarget,
+                data: event.clipboardData,
+              })) {
+                event.preventDefault()
+              }
+            }}
+            onCut={event => {
+              if (carryChips({
+                field: event.currentTarget,
+                data: event.clipboardData,
+              })) {
+                event.preventDefault()
+                beforeCuts.current.set(
+                  display,
+                  draft,
+                )
+
+                // Only the browser's own edit lands on Undo; inside a script's execCommand it can't run, so write directly.
+                if (!document.execCommand('delete')) {
+                  write(replaceDisplay({
+                    text: draft,
+                    from: event.currentTarget.selectionStart,
+                    to: event.currentTarget.selectionEnd,
+                    insert: '',
+                  }))
+                }
+              }
+            }}
+            // A dragged chip carries its Markdown too, so it lands as a chip, not its label.
+            onDragStart={event => carryChips({
+              field: event.currentTarget,
+              data: event.dataTransfer,
+            })}
             onPaste={event => {
               const files = pastedImages({ clipboardData: event.clipboardData })
 
               if (files.length) {
-                event.preventDefault(); void attach({ files })
+                event.preventDefault(); attach({ files })
               }
             }}
             onChange={e => {
-              const edit = editDraft({
+              const undoneCut = e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType === 'historyUndo'
+                ? beforeCuts.current.get(e.target.value) : undefined
+              const edit = undoneCut === undefined ? editDraft({
                 text: draft,
                 next: e.target.value,
                 caret: e.target.selectionStart,
-              })
+              }) : {
+                text: undoneCut,
+                caret: e.target.selectionEnd,
+                anchor: e.target.selectionStart,
+              }
 
               write(edit)
               const shown = draftView({ text: edit.text }).display
@@ -996,6 +1271,7 @@ export function Composer({
                   token = (
                     <DraftCard
                       chip={chip}
+                      progress={uploads[chip.value]}
                       open={() => openChip({ chip })}
                       remove={() => removeCard({ chip })}
                     />
@@ -1080,7 +1356,7 @@ export function Composer({
               event.target.value = ''
 
               if (images.length) {
-                void attach({ files: images })
+                attach({ files: images })
               }
 
               if (!selected.length) {
@@ -1159,7 +1435,7 @@ export function Composer({
             className="composer-send"
             aria-label="Send reply"
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
-            disabled={sending || !outgoing.trim()}
+            disabled={sending || !outgoing.trim() || imagesLoading}
           >
             <Icon name="send" size={14} />
           </Button>
