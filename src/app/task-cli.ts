@@ -1,6 +1,7 @@
+import { localTaskCommand, validateLocalTaskFlags } from '#tasks/plans-cli.ts'
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
-import { WRITE, parse, meta, required, commit, explained, withHelp, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
+import { WRITE, parse, meta, required, commit, explained, integer, HISTORY_LIMIT, clip, type Options, type Output } from './cli-support.ts'
 import { sourceCommand } from '#task-sources/cli.ts'
 import { inboxCommand } from '#workers/inbox-cli.ts'
 import { reportReviewCommand, reportCommand, buildCommand } from '#investigations/cli.ts'
@@ -11,26 +12,21 @@ import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
-import { declaredState, declareTask } from '#tasks/declarations.ts'
+import { declaredState } from '#tasks/declarations.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
-import { hydraConfig } from '#hydra/config.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
 import { askHost } from './server-state.ts'
 import { paseoStatus } from '#integrations/paseo/launch.ts'
-import { requireUnheld, decideHold } from '#tasks/holds.ts'
+import { requireUnheld } from '#tasks/holds.ts'
 import { startTask } from '#workers/start.ts'
-import { taskBrief, taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, untilTime, type TaskCreated, type TaskField } from '#tasks/cli.ts'
+import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
 import { liveTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
-import { decideDependencies } from '#tasks/dependency-decisions.ts'
-import { canonical } from '#store/paths.ts'
-import { parseKind } from '#investigations/report.ts'
-import { taskProject, findProject } from '#projects/read.ts'
-import { ownerAsk } from '#tasks/intent.ts'
+import { findProject } from '#projects/read.ts'
 import { decideQueue } from '#workers/queue-decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { queuePosition, workerQueue } from '#workers/queue.ts'
@@ -39,7 +35,6 @@ import { readEvents } from './event-log.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
-import { refuseEarlyDone } from '#tasks/delivery/done.ts'
 import { MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 
 export const TASK_OPTIONS: Options = {
@@ -129,8 +124,24 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
     positionals: 4,
   })
   const action = positionals[0]
+  validateLocalTaskFlags({
+    action,
+    values,
+    positionals,
+  })
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
+  const local = localTaskCommand({
+    action,
+    values,
+    positionals,
+    hydraId,
+    meta: m,
+  })
+
+  if (local) {
+    return local
+  }
 
   if (action === 'report-review') {
     return reportReviewCommand({
@@ -378,200 +389,6 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
     }))
 
     return { sessions: sessions.length ? sessions : 'none: no sessions recorded' }
-  }
-
-  if (action === 'depend' || action === 'undepend') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-    const prerequisites = values.on as string[] | undefined
-
-    if (!prerequisites?.length) {
-      throw new HydraError({
-        message: 'pass --on <prerequisite task>; repeat --on for several tasks',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.dependencies',
-        card: ref,
-      },
-      decide: ({ state }) => decideDependencies({
-        state,
-        ref,
-        prerequisites,
-        remove: action === 'undepend',
-        meta: m,
-      }),
-    })
-  }
-
-  if (action === 'hold' || action === 'release') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: action === 'hold' ? 'task.held' : 'task.released',
-        card: ref,
-      },
-      decide: ({ state }) => decideHold({
-        state,
-        ref,
-        release: action === 'release',
-        message: values['from-message'] as string | undefined,
-        meta: m,
-      }),
-    })
-  }
-
-  if (action === 'create') {
-    const title = required({
-      value: values.title as string | undefined,
-      what: '--title',
-    }).trim()
-    required({
-      value: title,
-      what: '--title',
-    })
-    const key = values.key as string | undefined ?? `task:${m.id ?? randomUUID()}`
-
-    if (key.startsWith('$')) {
-      throw new HydraError({
-        message: 'task keys beginning with $ are reserved',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const folder = canonical({ path: values.folder })
-    const brief = taskBrief({ value: values.brief })
-    const kind = values.kind === undefined ? 'build' : parseKind({ value: String(values.kind) })
-
-    return withHelp({
-      output: commit({
-        hydraId,
-        meta: m,
-        intent: {
-          type: 'task.created',
-          card: key,
-        },
-        decide: ({ state }) => {
-          if (state.keys[key]) {
-            throw new HydraError({
-              message: `task key already exists: ${key}`,
-              code: 'CONFLICT',
-            })
-          }
-
-          const project = values.project
-            ? taskProject({
-              state,
-              ref: String(values.project),
-            }) : undefined
-          const parent = values.parent ? findCard({
-            state,
-            ref: String(values.parent),
-          }) : undefined
-
-          if (parent?.parentId || parent?.automaticTask || parent?.id === HYDRA_CARD) {
-            throw new HydraError({
-              message: 'subtasks have one level under a task',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const columns = hydraConfig({
-            state,
-            id: hydraId,
-          }).columns
-          const selected = values.column
-            ? columns.find(c => c.id === values.column || c.title === values.column
-              || c.role === values.column) : undefined
-
-          if (values.column && !selected) {
-            throw new HydraError({
-              message: 'unknown Hydra column',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const cardId = `task-${randomUUID()}`
-          const holdReason = m.reason?.trim() || title
-          const created: TaskCreated['data'] = {
-            key,
-            title,
-          }
-
-          if (values.hold) {
-            created.hold = holdReason
-          }
-
-          if (project) {
-            created.project = project
-          }
-
-          if (brief !== undefined) {
-            created.brief = brief
-          }
-
-          if (folder) {
-            created.folder = folder
-          }
-
-          if (parent) {
-            created.parentId = parent.id
-          }
-
-          if (selected) {
-            created.column = selected.id
-          }
-
-          // A build task, the default, records no kind.
-          if (kind === 'investigation') {
-            created.kind = kind
-          }
-
-          const ask = values.ask
-
-          if (ask !== undefined && String(ask).trim()) {
-            created.ask = ownerAsk({
-              state,
-              text: String(ask),
-              message: values.message as string | undefined,
-              actor: m.actor,
-              at: m.at,
-            })
-          }
-
-          return hydraEvent({
-            state,
-            meta: m,
-            cardId,
-            change: {
-              type: 'task.created',
-              data: created,
-            },
-          })
-        },
-      }),
-      help: ({ output }) => {
-        const id = (output.card as { id?: string } | undefined)?.id ?? '<id>'
-
-        return [
-          `Run \`pnyx-axi task start ${id} --hydra ${hydraId}\` to start a worker`,
-          `Run \`pnyx-axi task show ${id} --hydra ${hydraId}\` for the task`,
-        ]
-      },
-    })
   }
 
   if (action === 'queue' || action === 'unqueue' || action === 'reorder') {
@@ -855,49 +672,6 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
     })
   }
 
-  if (action === 'status') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    if (positionals[2] === 'done') {
-      const state = loadHydra({ hydraId }).state
-      refuseEarlyDone({
-        state,
-        card: findCard({
-          state,
-          ref,
-        }),
-        hydraId,
-      })
-    }
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: 'task.declared',
-        card: ref,
-      },
-      decide: ({ state }) => declareTask({
-        state,
-        ref,
-        status: required({
-          value: positionals[2],
-          what: 'status',
-        }),
-        note: String(values.note ?? ''),
-        meta: m,
-        until: untilTime({
-          until: values.until as string | undefined,
-          now: m.at,
-        }),
-        hold: values.hold as boolean | undefined,
-      }),
-    })
-  }
-
   if (action === 'hide-after') {
     const ref = required({
       value: positionals[1],
@@ -956,7 +730,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
     })
   }
 
-  if (action === 'intent') {
+  if (action === 'hide' || action === 'unhide') {
     const ref = required({
       value: positionals[1],
       what: 'task id',
@@ -966,64 +740,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
       hydraId,
       meta: m,
       intent: {
-        type: 'task.intent',
-        card: ref,
-      },
-      decide: ({ state }) => {
-        const task = findCard({
-          state,
-          ref,
-        })
-
-        if (task.automaticTask || task.id === HYDRA_CARD) {
-          throw new HydraError({
-            message: 'Choose a task for the owner ask',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        const entry = ownerAsk({
-          state,
-          text: required({
-            value: values.text as string | undefined,
-            what: '--text',
-          }),
-          message: values.message as string | undefined,
-          actor: m.actor,
-          at: m.at,
-        })
-
-        const recorded = task.ask?.some(ask => ask.message === entry.message
-          && ask.text === entry.text)
-
-        if (entry.message && recorded) {
-          return { skipped: 'unchanged' }
-        }
-
-        return hydraEvent({
-          state,
-          meta: m,
-          cardId: task.id,
-          change: {
-            type: 'task.intent',
-            data: entry,
-          },
-        })
-      },
-    })
-  }
-
-  if (action === 'brief' || action === 'hide' || action === 'unhide') {
-    const ref = required({
-      value: positionals[1],
-      what: 'task id',
-    })
-
-    return commit({
-      hydraId,
-      meta: m,
-      intent: {
-        type: action === 'brief' ? 'task.brief' : 'task.visibility',
+        type: 'task.visibility',
         card: ref,
       },
       decide: ({ state }) => {
@@ -1036,30 +753,6 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           throw new HydraError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',
-          })
-        }
-
-        if (action === 'brief') {
-          const after = taskBrief({ value: values.brief })
-
-          if (after === undefined) {
-            throw new HydraError({
-              message: 'pass --brief <text> (empty text clears it)',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          return after === (task.brief ?? '') ? { skipped: 'unchanged' } : hydraEvent({
-            state,
-            meta: m,
-            cardId: task.id,
-            change: {
-              type: 'task.brief',
-              data: {
-                before: task.brief ?? '',
-                after,
-              },
-            },
           })
         }
 

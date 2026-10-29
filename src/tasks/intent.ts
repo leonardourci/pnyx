@@ -19,6 +19,7 @@ export function ownerAsk({
   if (!text.trim() || text.length > 24000) {
     throw new HydraError({
       message: 'The owner ask needs 1 to 24000 characters',
+      field: 'text',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -30,6 +31,7 @@ export function ownerAsk({
     if (!source || !source.text.includes(text)) {
       throw new HydraError({
         message: 'Quote the saved owner message exactly',
+        field: 'message',
         code: 'ASK_SOURCE_MISMATCH',
       })
     }
@@ -45,6 +47,7 @@ export function ownerAsk({
   if (!ownerActor({ actor })) {
     throw new HydraError({
       message: 'Only the owner can add an ask without a saved owner message',
+      field: 'message',
       code: 'OWNER_ONLY',
       help: ['Pass --message <owner-message-id> and quote its words exactly'],
     })

@@ -1,8 +1,6 @@
-import { OUTCOME_STATES, type LandingRule, type OutcomeState } from './model.ts'
-import { AxiError } from 'axi-sdk-js'
-import { guard, WRITE, parse, meta, required, commit, type Options } from '#app/cli-support.ts'
-import { parseLink, decideLink } from './links.ts'
-import { decideOutcome } from './outcome.ts'
+import { type LandingRule } from './model.ts'
+import { guard, WRITE, parse, meta, required, commit } from '#app/cli-support.ts'
+import { planDeliveryChange } from './plans.ts'
 
 export function landingWording({ rule }: { rule: LandingRule }): string {
   if (rule.landing === 'branch') {
@@ -14,22 +12,21 @@ export function landingWording({ rule }: { rule: LandingRule }): string {
 
 export const link = guard({
   handler: ({ args }) => {
-    const options: Options = {
-      ...WRITE,
-      url: { type: 'string' },
-      kind: { type: 'string' },
-      number: { type: 'string' },
-      title: { type: 'string' },
-      state: { type: 'string' },
-      remove: { type: 'boolean' },
-    }
     const {
       values,
       positionals,
       hydraId,
     } = parse({
       args,
-      options,
+      options: {
+        ...WRITE,
+        url: { type: 'string' },
+        kind: { type: 'string' },
+        number: { type: 'string' },
+        title: { type: 'string' },
+        state: { type: 'string' },
+        remove: { type: 'boolean' },
+      },
       positionals: 1,
     })
     const m = meta({ values })
@@ -37,23 +34,19 @@ export const link = guard({
       value: positionals[0],
       what: 'card id',
     })
-    const url = required({
-      value: values.url as string | undefined,
-      what: '--url',
-    })
-    const s = ({ name }: { name: string }) => values[name] as string | undefined
-    const parsed = values.remove
-      ? null
-      : parseLink({
-        input: {
-          url,
-          kind: s({ name: 'kind' }),
-          number: s({ name: 'number' }),
-          title: s({ name: 'title' }),
-          state: s({ name: 'state' }),
-          checkedAt: s({ name: 'state' }) && new Date().toISOString(),
-        },
-      })
+    const operation = {
+      op: 'link' as const,
+      task: ref,
+      url: required({
+        value: values.url as string | undefined,
+        what: '--url',
+      }),
+      kind: values.kind as string | undefined,
+      number: values.number as string | undefined,
+      title: values.title as string | undefined,
+      state: values.state as string | undefined,
+      remove: values.remove === true,
+    }
 
     return commit({
       hydraId,
@@ -62,12 +55,13 @@ export const link = guard({
         type: 'card.linked',
         card: ref,
       },
-      decide: ({ state }) => decideLink({
+      decide: ({
         state,
-        ref,
-        url,
-        link: parsed,
-        meta: m,
+        meta,
+      }) => planDeliveryChange({
+        state,
+        operation,
+        meta,
       }),
     })
   },
@@ -93,31 +87,13 @@ export const outcome = guard({
       value: positionals[0],
       what: 'card id',
     })
-    const state = positionals[1]
-
-    if (Boolean(values.clear) === (state !== undefined)) {
-      throw new AxiError(
-        'give either an outcome or --clear',
-        'VALIDATION_ERROR',
-        [`Outcomes: ${OUTCOME_STATES.join(', ')}`],
-      )
+    const operation = {
+      op: 'outcome' as const,
+      task: ref,
+      state: positionals[1],
+      note: values.note as string | undefined,
+      clear: values.clear === true,
     }
-
-    if (state !== undefined && !(OUTCOME_STATES as readonly string[]).includes(state)) {
-      throw new AxiError(
-        `unknown outcome: ${state}`,
-        'VALIDATION_ERROR',
-        [`Use one of ${OUTCOME_STATES.join(', ')}`],
-      )
-    }
-
-    const note = values.note as string | undefined
-    const result = state === undefined
-      ? null
-      : {
-        state: state as OutcomeState,
-        ...(note ? { note } : {}),
-      }
 
     return commit({
       hydraId,
@@ -126,11 +102,13 @@ export const outcome = guard({
         type: 'card.outcome',
         card: ref,
       },
-      decide: ({ state: s }) => decideOutcome({
-        state: s,
-        ref,
-        outcome: result,
-        meta: m,
+      decide: ({
+        state,
+        meta,
+      }) => planDeliveryChange({
+        state,
+        operation,
+        meta,
       }),
     })
   },

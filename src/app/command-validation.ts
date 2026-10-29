@@ -8,10 +8,17 @@ export function notUndoable({ message }: { message: string }): HydraError {
   })
 }
 
-export function invalid({ message }: { message: string }): HydraError {
+export function invalid({
+  message,
+  field,
+}: {
+  message: string
+  field?: string
+}): HydraError {
   return new HydraError({
     message,
     code: 'VALIDATION_ERROR',
+    field,
   })
 }
 

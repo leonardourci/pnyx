@@ -21,11 +21,17 @@ export function parseLink({ input }: {
   try {
     url = new URL(input.url)
   } catch {
-    throw invalid({ message: `not a URL: ${input.url}` })
+    throw invalid({
+      message: `not a URL: ${input.url}`,
+      field: 'url',
+    })
   }
 
   if (url.protocol !== 'https:' && url.protocol !== 'http:') {
-    throw invalid({ message: 'link URL must be http or https' })
+    throw invalid({
+      message: 'link URL must be http or https',
+      field: 'url',
+    })
   }
 
   const pr = /^\/[^/]+\/[^/]+\/pull\/(\d+)\/?$/.exec(url.pathname)
@@ -33,17 +39,26 @@ export function parseLink({ input }: {
   const kind = input.kind ?? (isGitHubPr ? 'github_pr' : 'url')
 
   if (!(LINK_KINDS as readonly string[]).includes(kind)) {
-    throw invalid({ message: `kind must be one of ${LINK_KINDS.join(', ')}` })
+    throw invalid({
+      message: `kind must be one of ${LINK_KINDS.join(', ')}`,
+      field: 'kind',
+    })
   }
 
   if (input.state !== undefined && !(LINK_STATES as readonly string[]).includes(input.state)) {
-    throw invalid({ message: `state must be one of ${LINK_STATES.join(', ')}` })
+    throw invalid({
+      message: `state must be one of ${LINK_STATES.join(', ')}`,
+      field: 'state',
+    })
   }
 
   const number = input.number ?? (isGitHubPr ? pr[1] : undefined)
 
   if (number !== undefined && !/^\d+$/.test(number)) {
-    throw invalid({ message: 'number must be a positive integer' })
+    throw invalid({
+      message: 'number must be a positive integer',
+      field: 'number',
+    })
   }
 
   const link: Link = {
