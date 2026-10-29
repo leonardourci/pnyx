@@ -731,7 +731,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
           text: clip({ text: ask.text }),
         })) : 'none: no owner words recorded',
         spend,
-        goal: task.goal ?? 'none',
+        goal: task.goal === undefined ? 'none' : clip({ text: task.goal }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
         status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
