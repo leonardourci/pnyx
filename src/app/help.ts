@@ -169,10 +169,11 @@ pnyx-axi task source read <task> <source-id> [--all]
 pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
 pnyx-axi task source stop <task> <source-id>
 pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
-pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
+pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome read|incorporated|blocked --note <why>]
 pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
-Inbox reads return the active session/generation claim and pending instructions in order. Acknowledge the oldest instruction after incorporating it.
-A blocked acknowledgement requires --note; it records why incorporation could not proceed. Delivery receipts never mark an instruction handled.
+Worker inbox reads return pending instructions in order and record read acknowledgements, stopping reminders. Owner and Hydra inspection is read-only.
+An ack means read, never completed work. The default outcome is read; legacy incorporated/blocked outcomes remain accepted (blocked requires --note).
+Reads return the active session/generation claim. Report progress and blockers through task status, and questions through task ask. Use read --all for recovery history.
 Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
