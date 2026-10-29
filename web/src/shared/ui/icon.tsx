@@ -17,6 +17,10 @@ const PATH_DATA = / d="([^"]+)"/
 const EVEN_ODD = 'fill-rule="evenodd"'
 // Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
 const BOLD_STROKE = 16
+// Line icons draw this many screen pixels wide at every size, so a 14 px and a 24 px icon match in weight.
+const LINE_PX = 1.5
+// Tabler draws in a 24-unit box.
+const TABLER_BOX = 24
 // The Fast toggle shows on and off by its color, so both draw the same lightning.
 const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
 
@@ -115,5 +119,5 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  return <Mark aria-hidden="true" size={size} stroke={1.6} />
+  return <Mark aria-hidden="true" size={size} stroke={LINE_PX * TABLER_BOX / size} />
 }
