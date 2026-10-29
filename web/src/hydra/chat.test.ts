@@ -924,6 +924,7 @@ const comments: ChatComment[] = [
 ]
 const commentSection = `## Comments on your reply from 15:42
 
+### Comment 1
 > Ship it
 >
 > after review
@@ -932,8 +933,7 @@ Which review?
 
 The second one.
 
----
-
+### Comment 2
 > today
 >
 > > Merge it today.
@@ -960,6 +960,21 @@ test(
     )
     assert.equal(
       commentReply({
+        draft: '',
+        comments: [
+          comments[0]!,
+          {
+            ...comments[1]!,
+            messageId: 'm2',
+            at: '15:50',
+          },
+        ],
+      }),
+      '## Comments on your reply from 15:42\n\n### Comment 1\n> Ship it\n>\n> after review\n\nWhich review?\n\nThe second one.'
+        + '\n\n## Comments on your reply from 15:50\n\n### Comment 1\n> today\n>\n> > Merge it today.\n\nTomorrow instead.\n[image: /tmp/calendar.png]',
+    )
+    assert.equal(
+      commentReply({
         draft: 'Thanks',
         comments,
       }),
@@ -975,7 +990,7 @@ test(
           },
         ],
       }),
-      '## Comments on your reply from 15:42\n\n> Ship it\n>\n> after review\n\n\\> Not this\n\\---\n\\## Message\n  \\# Nor this',
+      '## Comments on your reply from 15:42\n\n### Comment 1\n> Ship it\n>\n> after review\n\n\\> Not this\n---\n\\## Message\n  \\# Nor this',
     )
   },
 )

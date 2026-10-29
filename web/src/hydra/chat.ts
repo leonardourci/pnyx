@@ -271,16 +271,22 @@ const markdownQuote = ({ text }: { text: string }) => text.split('\n')
   .map(line => `> ${line}`.trimEnd())
   .join('\n')
 
-// A comment line that would read as a quote, heading or separator is escaped, so it can't pass for the format.
+// A comment line that would read as a quote or heading is escaped, so it can't pass for the format.
 const commentLines = ({ text }: { text: string }) => text.split('\n')
   .map(line => line.replace(
-    /^(\s*)(>|#|---)/,
+    /^(\s*)(>|#)/,
     '$1\\$2',
   ))
   .join('\n')
 
 // A short quote's paragraph follows it as a nested quote, so the quote stays every `>` line before the comment.
-const quotedComment = ({ comment }: { comment: ChatComment }) => {
+const quotedComment = ({
+  comment,
+  number,
+}: {
+  comment: ChatComment
+  number: number
+}) => {
   const paragraph = commentContext({ comment })
   const quote = markdownQuote({ text: comment.quote })
   const words = [
@@ -288,10 +294,9 @@ const quotedComment = ({ comment }: { comment: ChatComment }) => {
     ...comment.images ?? [],
   ].filter(Boolean).join('\n')
 
-  return [
-    paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote,
-    words,
-  ].join('\n\n')
+  const quoted = paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote
+
+  return `### Comment ${number}\n${quoted}\n\n${words}`
 }
 
 export function orderedComments({ comments }: { comments: ChatComment[] }) {
@@ -365,7 +370,13 @@ export function commentReply({
   const sections = [...replies].map(([
     time,
     items,
-  ]) => `## Comments on your reply from ${time}\n\n${items.map(comment => quotedComment({ comment })).join('\n\n---\n\n')}`)
+  ]) => `## Comments on your reply from ${time}\n\n${items.map((
+    comment,
+    index,
+  ) => quotedComment({
+    comment,
+    number: index + 1,
+  })).join('\n\n')}`)
 
   if (draft.trim()) {
     sections.push(`## Message\n${draft}`)
