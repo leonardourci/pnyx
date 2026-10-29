@@ -250,7 +250,8 @@ card.json fields (all optional): title, autoTitle {from: session|prompt|agent|fo
   terminal {tty, pid, program, tmux, tmuxPane, paseoTerminal, paseoHome, herdrSession, herdrPane},
   folder (absolute path, null to clear; a hook session started there reports to this card),
   source {adapter, objectId, instanceId, generation, cursor, observedAt}
-An observation older than the card's latest one from the same source is ignored.
+An observation older than the card's latest one from the same source is ignored. A push whose only change is a newer
+source.observedAt is logged at most once a minute.
 `,
   card: `usage: pnyx-axi card <id|key> [--full] [--hydra <name>]
 Shows the card and its notes in three sections, summary, decisions and context, newest first:
