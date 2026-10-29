@@ -8,7 +8,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { About } from '#web-app/about.tsx'
-import { KeyboardSettings } from '#web-preferences/keyboard-settings.tsx'
+import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
@@ -333,7 +333,7 @@ function Control({
     case 'headsDispatch':
       return <DispatchSettings state={state} command={command} notify={notify} />
     case 'keyboard':
-      return <KeyboardSettings embedded prefs={view.keyboard} save={save} />
+      return <KeyRows prefs={view.keyboard} save={save} query="" />
     case 'version':
       return <About upgrade={upgrade} startUpgrade={startUpgrade} />
     default:
