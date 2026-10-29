@@ -1,33 +1,44 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { attachedImages, shownImageNames, shownImagePaths } from './images.ts'
+import { attachedImages, imageNames, shownImageNames } from './images.ts'
+
+const stored = '/home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png'
 
 test(
-  'shown text treats a bare absolute image path as an image, but only tokens are sent',
+  'shown text names a bare absolute image path by its file and keeps the composer’s token numbers',
   () => {
     const bare = '/Users/owner/.pnyx/hydras/default/copies/pnyx-1/.lavish/icons/alts-crop.png'
-    const stored = '/home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png'
-    const text = `Compare ${bare}. With [image: ${stored}] and (/tmp/b.gif)`
+    const text = `Compare ${bare}. With [image: ${stored}] and (/tmp/b.gif), again ${bare}`
     assert.deepEqual(
-      shownImagePaths({ text }),
+      [...shownImageNames({ text })],
       [
-        bare,
-        stored,
-        '/tmp/b.gif',
+        [
+          stored,
+          'Image 1',
+        ],
+        [
+          bare,
+          'alts-crop.png',
+        ],
+        [
+          '/tmp/b.gif',
+          'b.gif',
+        ],
       ],
     )
     assert.deepEqual(
-      [...shownImageNames({ text: `${text} ${bare}` }).values()],
+      [...imageNames({ text })],
       [
-        'Image 1',
-        'Image 2',
-        'Image 3',
+        [
+          stored,
+          'Image 1',
+        ],
       ],
-      'a path shown twice keeps one name',
+      'the composer numbers the same token the same way',
     )
     assert.deepEqual(
       attachedImages({
-        text: `${bare} /home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png`,
+        text: `${bare} ${stored}`,
         hydras: '/home/.pnyx/hydras',
       }),
       [],
@@ -40,8 +51,27 @@ test(
   'a path inside a URL, a relative or home path, or another extension stays text',
   () => {
     assert.deepEqual(
-      shownImagePaths({ text: 'https://example.com/a.png docs/b.png ~/c.png /d.pngx /e.png/f /g.PNG' }),
+      [...shownImageNames({ text: 'https://example.com/a.png docs/b.png ./h.png ~/c.png /d.pngx /e.png/f /g.PNG /i.png.bak' })],
       [],
+    )
+  },
+)
+
+test(
+  'a path in code or a link target stays literal',
+  () => {
+    assert.deepEqual(
+      [
+        ...shownImageNames({
+          text: 'Run `open /tmp/a.png`, see [the shot](/tmp/c.png), then /tmp/b.png\n\n```sh\nls /tmp/d.png\n```',
+        }),
+      ],
+      [
+        [
+          '/tmp/b.png',
+          'b.png',
+        ],
+      ],
     )
   },
 )

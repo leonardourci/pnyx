@@ -2,7 +2,7 @@ import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { SHOWN_IMAGE } from '#hydra/images.ts'
+import { SHOWN_IMAGE, shownImagePath } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokenText, SkillToken } from './chat-token-text.tsx'
@@ -97,7 +97,8 @@ const withImages = ({
   let end = 0
 
   for (const match of text.matchAll(SHOWN_IMAGE)) {
-    const path = match[1] ?? match[2]!
+    const [source] = match
+    const { path } = shownImagePath({ match })
     parts.push(
       <ChatTokenText
         key={end}
@@ -106,14 +107,14 @@ const withImages = ({
           match.index,
         )}
       />,
-      <Sourced key={`${match.index}:image`} markdown={match[0]}>
+      <Sourced key={`${match.index}:image`} markdown={source}>
         <ImageChip
           path={path}
           label={images?.get(path) ?? 'Image'}
         />
       </Sourced>,
     )
-    end = match.index + match[0].length
+    end = match.index + source.length
   }
 
   return [

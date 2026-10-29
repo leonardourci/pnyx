@@ -1,5 +1,5 @@
 import { taskMention } from '#hydra/mentions.ts'
-import { shownImagePaths } from '#hydra/images.ts'
+import { shownImageNames } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
 import { CHIP_SOURCE } from './message-selection.ts'
 import { MESSAGE_CONTROLS } from './caret.ts'
@@ -216,7 +216,7 @@ export function copyMessageChips({
   const marked = selectedText({
     range,
     chip: ({ element }) => {
-      const path = shownImagePaths({ text: element.getAttribute(CHIP_SOURCE) ?? '' })[0]
+      const path = [...shownImageNames({ text: element.getAttribute(CHIP_SOURCE) ?? '' }).keys()][0]
 
       return path ? embedded.image({
         path,

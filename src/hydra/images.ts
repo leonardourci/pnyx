@@ -26,28 +26,33 @@ export const imageExtension = ({ type }: { type: string }) =>
 export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
-// Shown text also renders a bare absolute image path as its image; only tokens are sent as images.
+// Shown text also renders a bare absolute image path as an image chip; only tokens are sent as images.
 export const SHOWN_IMAGE = new RegExp(
-  `\\[image: (\\/[^\\]\\n]+)\\]|(?<![\\w/.:~-])(\\/[^\\s\\[\\]()<>"'\`]+\\.(?:${EXTENSIONS}))(?![\\w/])`,
+  `\\[image: (\\/[^\\]\\n]+)\\]|(?<![\\w/.:~-])(\\/[^\\s\\[\\]()<>"'\`]+\\.(?:${EXTENSIONS}))(?![\\w/]|\\.\\w)`,
   'g',
 )
+// Code and link targets render literally, so their paths get no chip and no number.
+const LITERAL = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1|`[^`\n]+`|\]\([^)\n]*\)/gm
 
 export const imagePaths = ({ text }: { text: string }) =>
   [...text.matchAll(IMAGE)].map(match => match[1]!)
 
-export const shownImagePaths = ({ text }: { text: string }) =>
-  [...text.matchAll(SHOWN_IMAGE)].map(match => match[1] ?? match[2]!)
+export const shownImagePath = ({ match }: { match: RegExpMatchArray }) => {
+  const [
+    , tokenPath,
+    barePath,
+  ] = match
 
-export function imageNames({
-  text,
-  paths = imagePaths,
-}: {
-  text: string
-  paths?: typeof imagePaths
-}): Map<string, string> {
+  return {
+    path: (tokenPath ?? barePath)!,
+    bare: tokenPath === undefined,
+  }
+}
+
+export function imageNames({ text }: { text: string }): Map<string, string> {
   const names = new Map<string, string>()
 
-  for (const path of paths({
+  for (const path of imagePaths({
     text: text.replace(
       FILE_BLOCK,
       '',
@@ -64,10 +69,30 @@ export function imageNames({
   return names
 }
 
-export const shownImageNames = ({ text }: { text: string }) => imageNames({
-  text,
-  paths: shownImagePaths,
-})
+// Tokens keep the composer's Image N numbers; a bare path is named by its file, like the path it shows.
+export function shownImageNames({ text }: { text: string }): Map<string, string> {
+  const shown = text.replace(
+    LITERAL,
+    '',
+  )
+  const names = imageNames({ text: shown })
+
+  for (const match of shown.matchAll(SHOWN_IMAGE)) {
+    const {
+      path,
+      bare,
+    } = shownImagePath({ match })
+
+    if (bare && !names.has(path)) {
+      names.set(
+        path,
+        path.slice(path.lastIndexOf('/') + 1),
+      )
+    }
+  }
+
+  return names
+}
 
 // Only files Pnyx stored for a Hydra are sent as images; any other path stays text.
 export function attachedImages({
