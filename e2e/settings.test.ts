@@ -36,6 +36,18 @@ test(
         what: 'the dark theme pushed to the other Hydra\'s page',
         check: () => page.settings.at(-1)?.theme === 'dark',
       })
+      await first.owner({
+        args: [
+          'view',
+          'set',
+          '--json',
+          '{"keyboard":{"bindings":{"palette":["Mod+j"]}}}',
+        ],
+      })
+      await until({
+        what: 'the rebound Oracle shortcut pushed to the other Hydra\'s page',
+        check: () => page.settings.at(-1)?.keyboard.bindings.palette?.[0] === 'Mod+j',
+      })
       assert.match(
         await first.owner({
           args: [
@@ -74,6 +86,7 @@ test(
           JSON.stringify({
             theme: /theme: (\w+)/.exec(before)![1],
             fontSize: Number(/fontSize: (\d+)/.exec(before)![1]),
+            keyboard: { bindings: { palette: null } },
           }),
         ],
       })
