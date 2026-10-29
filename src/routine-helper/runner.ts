@@ -403,6 +403,7 @@ export function createRoutineHelper({
     let cancelDeadline = () => {}
     const usage: HelperUsage = {}
     let completedAt: string | undefined
+    let remote = false
 
     try {
       const state = loadHydra({ hydraId }).state
@@ -415,13 +416,15 @@ export function createRoutineHelper({
         throw new Error('The batch now belongs to main')
       }
 
+      remote = !!provider({ harness: candidate.harness }).remote
+
       for (const task of batch.tasks) {
         releases.push(await defer({
           run: () => taskLease({
             hydraId,
             task,
             actor,
-            durable: provider({ harness: candidate.harness }).remote ? true : undefined,
+            durable: remote ? true : undefined,
             lockTimeout: 0,
           }),
         }))
@@ -652,16 +655,6 @@ export function createRoutineHelper({
 
       await active?.applied?.()
 
-      if (active?.remote) {
-        for (const task of batch.tasks) {
-          releaseTask({
-            hydraId,
-            task,
-            actor,
-          })
-        }
-      }
-
       if (outcomes.some(outcome => outcome.audience === 'owner')) {
         outcomesReady()
       }
@@ -706,16 +699,31 @@ export function createRoutineHelper({
         active = undefined
         busy = false
       } else {
-        const cleanups = [
-          cancelDeadline,
-          () => active?.close(),
-          ...releases,
-        ]
-
-        let cleaned = true
+        cancelDeadline()
+        let cleaned = !remote || !!active
 
         try {
-          for (const cleanup of cleanups) {
+          try {
+            await active?.close()
+          } catch (error) {
+            cleaned = false
+            console.error(
+              'pnyx-axi helper native shutdown:',
+              error,
+            )
+          }
+
+          const terminal = `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds
+          const cleanups = remote ? batch.tasks.map(task => () => releaseTask({
+            hydraId,
+            task,
+            actor,
+            lockTimeout: 0,
+          })) : releases
+
+          const releaseAllowed = !remote || (cleaned && terminal)
+
+          for (const cleanup of releaseAllowed ? cleanups : []) {
             try {
               await defer({
                 run: cleanup,
