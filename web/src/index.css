@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --chat-end: 64px; --chat-line: 1.75; --card-h: 1.5em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-text: 1.125em; --chip-pad: calc((var(--chip-h) - var(--chip-text)) / 2); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -397,21 +397,23 @@ h3 { font-weight: 600; }
 
 @media (prefers-reduced-motion: reduce) { .jump, .chat-fade { animation: none; } }
 
-.composer { --composer-line: 2; position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
+.composer { position: relative; display: flex; flex-direction: column; gap: 4px; flex-shrink: 0; max-height: min(50%, 480px); padding: 10px 10px 6px 12px; border: 1px solid var(--color-line); border-radius: 16px; background: var(--color-composer); transition: border-color .12s, box-shadow .12s; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
-.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
+.composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--composer-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
-.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--composer-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
+.composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
 
 .composer-input[data-chips] .textarea { color: transparent; caret-color: var(--color-ink); }
 
 .draft-mirror { position: absolute; inset: 0; overflow: hidden; pointer-events: none; color: var(--color-ink); }
 
-.draft-chip { pointer-events: auto; cursor: pointer; margin: 0 -.25em; padding: .15em .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
+.draft-mirror :is(.card-x, .skill-remove) { pointer-events: auto; }
+
+.draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
@@ -425,7 +427,13 @@ h3 { font-weight: 600; }
 
 .draft-chip.draft-card { position: relative; cursor: default; margin: 0; padding: 0; color: transparent; background: none; box-shadow: none; }
 
-.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--card-h) / 2 - .0625em); }
+.draft-card > .attachment-card { position: absolute; left: 0; right: 0; top: calc(50% - var(--chip-h) / 2); }
+
+.draft-card[data-loading] .card-label { color: var(--color-muted); }
+
+.upload-bar { position: absolute; left: 0; right: 0; bottom: 0; height: 2px; background: var(--color-line); }
+
+.upload-bar-done { display: block; height: 100%; background: var(--color-blue); transition: width .2s; }
 
 .chip.column-chip { display: inline-flex; align-items: center; gap: 4px; padding: 0 6px; border-radius: 6px; font-size: .92em; vertical-align: baseline; }
 
@@ -652,9 +660,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .disclosure-body { padding-top: 8px; }
 
-.markdown { min-width: 0; max-width: 100%; font: var(--text-chat)/1.65 var(--font-chat); overflow-wrap: anywhere; }
+.markdown { min-width: 0; max-width: 100%; font: var(--text-chat)/var(--chat-line) var(--font-chat); overflow-wrap: anywhere; }
 
-.markdown p { margin: .7em 0; }
+.markdown p { margin: var(--block-gap) 0; }
 
 .markdown > :first-child, .markdown > .message-block:first-child > :first-child { margin-top: 0; }
 
@@ -666,13 +674,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .markdown h2 { font-size: var(--text-pane); }
 
-.markdown ul, .markdown ol { padding-left: 1.6em; margin: .7em 0; }
+.markdown ul, .markdown ol { padding-left: 1.6em; margin: var(--block-gap) 0; }
 
 .markdown ul { list-style: disc; }
 
 .markdown ol { list-style: decimal; }
 
-.markdown li { margin: .35em 0; }
+.markdown li { margin: .25em 0; }
 
 .markdown li p { display: inline; }
 
@@ -680,9 +688,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .markdown code { font: var(--text-code) var(--font-mono); background: var(--color-raised); border-radius: 3px; padding: 1px 4px; }
 
-.markdown blockquote { border-left: 2px solid var(--color-gold-line); margin: .6em 0; padding-left: 12px; color: var(--color-muted); }
+.markdown blockquote { border-left: 2px solid var(--color-gold-line); margin: var(--block-gap) 0; padding-left: 12px; color: var(--color-muted); }
 
-.markdown hr { border: 0; border-top: 1px solid var(--color-line); margin: 14px 0; }
+.markdown hr { border: 0; border-top: 1px solid var(--color-line); margin: var(--block-gap) 0; }
 
 .code-block { background: var(--color-background); border: 1px solid var(--color-line); border-radius: 6px; margin: 8px 0; min-width: 0; }
 
@@ -691,6 +699,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .code-block pre, .trace-text { margin: 0; overflow: auto; max-width: 100%; padding: 10px; font: var(--text-code)/1.65 var(--font-mono); white-space: pre; }
 
 .markdown .code-block code { padding: 0; font-size: var(--text-code); background: transparent; }
+
+.markdown .code-block, .markdown .markdown-table { margin-block: var(--block-gap); }
 
 .trace-text { background: var(--color-background); border-radius: 5px; white-space: pre-wrap; overflow-wrap: anywhere; max-height: 240px; }
 
@@ -927,7 +937,15 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 
 
-.message-task { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; font-size: var(--text-meta); color: var(--color-muted); }
+/* Floated beside the text, which comments quote, and layered over its positioned blocks so it keeps its clicks. */
+.message-lead { position: relative; z-index: 1; float: left; max-width: 100%; margin-right: .5em; font: var(--text-chat)/var(--chat-line) var(--font-chat); }
+
+.message-lead .task-reference-space { display: none; }
+
+.message-lead .draft-chip { margin: 0; }
+
+/* A list, quote, code block or table can't flow beside the chip, so the chip takes its own line. */
+.message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
 
 .task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
 
@@ -1248,9 +1266,19 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .attached-image { display: inline-block; max-width: 100%; }
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
 
+.message-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--block-gap); font-size: var(--text-chat); }
+
+.message-image { display: grid; gap: 4px; justify-items: start; min-width: 0; margin: 0; }
+
+.message-image-open.button { min-height: 0; padding: 0; border: 0; border-radius: 6px; }
+
+.message-image img { display: block; height: 96px; width: auto; max-width: 100%; border: 1px solid var(--color-line); border-radius: 6px; }
+
+.message-image figcaption { color: var(--color-muted); font-size: var(--text-meta); line-height: 1; }
+
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
-.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--card-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
+.attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--chip-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
 
 .attachment-card > .button { min-height: 0; padding: 0; border: 0; border-radius: 0; color: inherit; font: inherit; }
 
@@ -1261,6 +1289,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-slot { display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
 
 .card-slot > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.card-slot > img[data-loading] { display: none; }
 
 .card-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; font-size: .75em; }
 
@@ -1274,12 +1304,18 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .attachment-card.reference { border-style: dashed; background: transparent; }
 
-.message .attachment-card { margin: 0 1px; }
+/* A card in a message selects with the text around it, like the other chips. */
+.message .attachment-card { margin: 0 1px; user-select: auto; }
 
 .message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
-/* Sent text keeps the draft's line height, so a card never changes the spacing. */
-.message.mine .markdown { line-height: var(--chat-line); }
+/* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
+.message .markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
+
+.message .markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
+
+/* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
+.message :is(.markdown, .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
@@ -1426,14 +1462,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 @starting-style { .card-menu:popover-open { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .card, .card-menu { transition: none; } }
 
-.message-task-label { color: var(--color-muted); font-size: var(--text-meta); }
 .button.task-reference { display: inline; max-width: 100%; min-height: 0; padding: 0; border: 0; border-radius: 0; background: transparent; color: inherit; font: inherit; text-align: left; white-space: inherit; overflow-wrap: anywhere; vertical-align: baseline; }
 .button.task-reference:hover { background: transparent; }
 .task-reference[aria-disabled=true] { opacity: .45; cursor: default; }
 
 
 
-.message-task > .tooltip-anchor { min-width: 0; }
 .tooltip-anchor:has(> .task-reference) { display: inline; }
 
 .disclosure-chevron { transition: transform 140ms ease; }

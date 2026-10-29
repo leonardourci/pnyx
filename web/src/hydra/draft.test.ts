@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { taskMention } from '#hydra/mentions.ts'
-import { draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, placeImages, replaceDisplay } from './draft.ts'
+import { reference, taskMention } from '#hydra/mentions.ts'
+import { copyDraft, snapSelection, draftView, editDraft, CHIP_SPACE, CHIP_JOIN, WORD_JOINER, ICON_SPACE, hasPendingImage, pendingImage, placeImages, replaceDisplay, settleImage, withoutPendingImages } from './draft.ts'
 
 const task = taskMention({
   id: 'task-1',
@@ -188,6 +188,289 @@ test(
         at: 'ok 👍',
       }).text,
       `ok 👍 ${image} 👍 go`,
+    )
+  },
+)
+
+test(
+  'an image keeps its place while it uploads and the owner keeps typing; send waits until it becomes the stored image there',
+  () => {
+    const shown = ({ text }: { text: string }) => draftView({ text }).display
+    const path = pendingImage({ id: 'p1' })
+    const placed = placeImages({
+      text: 'here is what I see',
+      lines: [`[image: ${path}]`],
+    })
+    const typed = `${placed.text}and tell me`
+    assert.equal(
+      draftView({ text: typed }).chips[0]!.name,
+      'Loading image 1',
+    )
+    assert.ok(hasPendingImage({ text: typed }))
+
+    const end = shown({ text: typed }).length
+    const settled = settleImage({
+      text: typed,
+      anchor: end,
+      focus: end,
+      path,
+      line: image,
+    })
+    const after = shown({ text: `here is what I see ${image} and tell me` })
+    assert.deepEqual(
+      settled,
+      {
+        text: `here is what I see ${image} and tell me`,
+        anchor: after.length,
+        focus: after.length,
+      },
+    )
+    // A selection made while it uploads, here "tell" selected backward, stays selected the same way.
+    const tell = shown({ text: typed }).indexOf('tell')
+    assert.deepEqual(
+      settleImage({
+        text: typed,
+        anchor: tell + 4,
+        focus: tell,
+        path,
+        line: image,
+      }),
+      {
+        text: settled.text,
+        anchor: after.indexOf('tell') + 4,
+        focus: after.indexOf('tell'),
+      },
+    )
+    assert.equal(
+      draftView({ text: settled.text }).chips[0]!.name,
+      'Image 1',
+    )
+    assert.equal(
+      hasPendingImage({ text: settled.text }),
+      false,
+    )
+    assert.equal(
+      settleImage({
+        text: typed,
+        anchor: 4,
+        focus: 4,
+        path,
+        line: image,
+      })?.focus,
+      4,
+    )
+  },
+)
+
+test(
+  'a failed upload removes its placeholder and keeps what the owner typed; a removed placeholder drops the image',
+  () => {
+    const path = pendingImage({ id: 'p1' })
+    const typed = `here is what I see [image: ${path}] and tell me`
+    const end = draftView({ text: typed }).display.length
+    const failed = settleImage({
+      text: typed,
+      anchor: end,
+      focus: end,
+      path,
+    })
+    assert.deepEqual(
+      failed,
+      {
+        text: 'here is what I see and tell me',
+        anchor: 30,
+        focus: 30,
+      },
+    )
+    assert.equal(
+      settleImage({
+        text: 'here is what I see and tell me',
+        anchor: 0,
+        focus: 0,
+        path,
+        line: image,
+      }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a draft restored after a reload loses the placeholders of uploads that never finished',
+  () => {
+    assert.equal(
+      withoutPendingImages({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${other} too` }),
+      `see and ${other} too`,
+    )
+  },
+)
+
+test(
+  'two images uploading together keep their numbers and places whichever answers first',
+  () => {
+    const first = pendingImage({ id: 'p1' }), second = pendingImage({ id: 'p2' })
+    const text = `before [image: ${first}] middle [image: ${second}] after`
+    assert.deepEqual(
+      draftView({ text }).chips.map(chip => chip.name),
+      [
+        'Loading image 1',
+        'Loading image 2',
+      ],
+    )
+    const later = settleImage({
+      text,
+      anchor: 0,
+      focus: 0,
+      path: second,
+      line: other,
+    })!
+    const both = settleImage({
+      text: later.text,
+      anchor: 0,
+      focus: 0,
+      path: first,
+      line: image,
+    })!
+    assert.equal(
+      both.text,
+      `before ${image} middle ${other} after`,
+    )
+    assert.deepEqual(
+      draftView({ text: both.text }).chips.map(chip => chip.name),
+      [
+        'Image 1',
+        'Image 2',
+      ],
+    )
+  },
+)
+
+test(
+  'a mention of an image still loading is not taken for its placeholder',
+  () => {
+    const path = pendingImage({ id: 'p1' })
+    const mention = reference({
+      kind: 'image',
+      value: path,
+      label: 'Loading image 1',
+    })
+    const text = `${mention} see [image: ${path}]`
+    assert.equal(
+      settleImage({
+        text,
+        anchor: 0,
+        focus: 0,
+        path,
+        line: image,
+      })?.text,
+      `${mention} see ${image}`,
+    )
+  },
+)
+
+test(
+  'copied chips travel as their Markdown and come back as chips when pasted',
+  () => {
+    const skill = reference({
+      kind: 'skill',
+      label: '/review-code',
+      value: JSON.stringify({ name: 'review-code' }),
+    })
+    const text = `Can you run ${skill} on ${task} here ${image} please`
+    const shown = draftView({ text }).display
+    const copied = copyDraft({
+      text,
+      from: shown.indexOf('run'),
+      to: shown.indexOf('please'),
+    })!
+    assert.equal(
+      copied,
+      `run ${skill} on ${task} here ${image} `,
+    )
+    const pasted = editDraft({
+      text: 'Again: ',
+      next: `Again: ${copied}`,
+      caret: `Again: ${copied}`.length,
+    })
+    assert.deepEqual(
+      draftView({ text: pasted.text }).chips.map(chip => chip.kind),
+      [
+        'skill',
+        'task',
+        'image',
+      ],
+    )
+
+    const skillChip = draftView({ text }).chips[0]!
+    const taskChip = draftView({ text }).chips[1]!
+    assert.equal(
+      copyDraft({
+        text,
+        from: skillChip.from + 3,
+        to: taskChip.to - 3,
+      }),
+      `${skill} on ${task}`,
+    )
+    assert.equal(
+      copyDraft({
+        text,
+        from: 0,
+        to: 'Can you'.length,
+      }),
+      undefined,
+    )
+    assert.equal(
+      copyDraft({
+        text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}`,
+        from: 0,
+        to: draftView({ text: `see [image: ${pendingImage({ id: 'p1' })}] and ${image}` }).display.length,
+      }),
+      `see and ${image}`,
+    )
+  },
+)
+
+test(
+  'a selection steps over a chip in one move, and an end left inside a chip takes the whole chip',
+  () => {
+    const text = `${task} waits here`
+    const view = draftView({ text })
+    const chip = view.chips[0]!
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: view.display.length,
+        focus: chip.to - 1,
+        previous: chip.to,
+      }),
+      {
+        anchor: view.display.length,
+        focus: chip.from,
+      },
+    )
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: chip.from + 2,
+        focus: view.display.length,
+        previous: view.display.length - 1,
+      }),
+      {
+        anchor: chip.from,
+        focus: view.display.length,
+      },
+    )
+    assert.deepEqual(
+      snapSelection({
+        view,
+        anchor: chip.from + 2,
+        focus: chip.from + 2,
+        previous: chip.from + 1,
+      }),
+      {
+        anchor: chip.to,
+        focus: chip.to,
+      },
     )
   },
 )
