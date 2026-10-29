@@ -41,6 +41,7 @@ import { upgradeCommand } from '#upgrade/model.ts'
 import { readSettings, saveSettings } from '#settings/store.ts'
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
+import { HELPER_MODELS } from '#routine-helper/route.ts'
 
 export async function home(): Promise<Output> {
   hideDone({ hydraId: DEFAULT_HYDRA })
@@ -175,7 +176,7 @@ function sharedSettingFlags({
       const effort = values['helper-effort'] ?? previous?.effort
       const helper: AgentConfig = {
         harness,
-        model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
+        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
       }
 
       if (effort !== undefined) {
