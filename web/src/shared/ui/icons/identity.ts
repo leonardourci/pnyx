@@ -376,6 +376,15 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     kind: 'control',
   },
   {
+    id: 'mode-untrusted',
+    label: 'Untrusted',
+    file: 'mode-untrusted.svg',
+    author: 'Delapouite',
+    license: GAME_ICONS_LICENSE,
+    source: 'https://game-icons.net/1x1/delapouite/gate.html',
+    kind: 'control',
+  },
+  {
     id: 'fast',
     label: 'Fast mode',
     file: 'fast.svg',
