@@ -69,7 +69,7 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     ],
   )
 
-  const saveHydra = ({ patch }: { patch: Partial<AgentConfig> }) => {
+  const saveHydra = async ({ patch }: { patch: Partial<AgentConfig> }) => {
     const args = [
       'set',
       'hydra',
@@ -92,13 +92,15 @@ export function useHeadsDispatch({ command }: { command: Command }) {
       }
     }
 
-    return resource.write({
+    await resource.write({
       command,
       name: 'rule',
       args,
       patch,
       targets: Object.keys(patch),
     })
+    // A rule change answers with what changed, so the whole dispatch is read again.
+    window.dispatchEvent(new Event(DISPATCH_CHANGED))
   }
 
   return {
