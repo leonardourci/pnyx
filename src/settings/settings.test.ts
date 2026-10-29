@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict'
-import { appendFileSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdtempSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { spawn } from 'node:child_process'
+import { once } from 'node:events'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
@@ -14,6 +16,8 @@ import { hideDone } from '#tasks/retention.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import type { Card } from '#tasks/model.ts'
 import { settingsLogPath } from './store.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { acquireLock } from '#store/storage.ts'
 import type { Settings } from './model.ts'
 
 const scratch = mkdtempSync(join(
@@ -288,6 +292,11 @@ test(
       'create',
       'beta',
     ])
+    legacyView({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: { defaultHydraWidth: 360 },
+    })
     legacyConfig({
       hydraId: 'alpha',
       at: '2026-01-01T00:00:00.000Z',
@@ -316,6 +325,11 @@ test(
     assert.equal(
       moved.settings.reviewMinutes,
       12,
+    )
+    // An older release saved 360 as its default Hydra width, so it moves as today's default.
+    assert.equal(
+      moved.settings.defaultHydraWidth,
+      480,
     )
   },
 )
@@ -532,43 +546,49 @@ test(
       'create',
       'alpha',
     ])
-
-    for (const command of [
-      'settings',
-      'view',
-    ] as const) {
-      const attempt = [
-        'set',
-        '--json',
-        '{"theme":"system"}',
-        '--event-id',
-        `retry-noop-${command}`,
-        '--hydra',
-        'alpha',
-      ]
-      await commands[command](attempt)
-      await commands.settings([
-        'set',
-        '--json',
-        '{"theme":"dark"}',
-      ])
-      await commands[command](attempt)
-      const after = await settings()
-      assert.equal(
-        after.settings.theme,
-        'dark',
-        command,
-      )
-      await commands.settings([
-        'set',
-        '--json',
-        '{"theme":"system"}',
-      ])
-    }
-
+    const settingsAttempt = [
+      'set',
+      '--json',
+      '{"theme":"system"}',
+      '--event-id',
+      'retry-noop-settings',
+    ]
+    await commands.settings(settingsAttempt)
+    await commands.settings([
+      'set',
+      '--json',
+      '{"theme":"dark"}',
+    ])
+    await commands.settings(settingsAttempt)
     assert.equal(
-      (await settings()).revision,
-      4,
+      (await settings()).settings.theme,
+      'dark',
+    )
+
+    const viewAttempt = [
+      'set',
+      '--json',
+      '{"theme":"dark"}',
+      '--event-id',
+      'retry-noop-view',
+      '--hydra',
+      'alpha',
+    ]
+    await commands.view(viewAttempt)
+    await commands.settings([
+      'set',
+      '--json',
+      '{"theme":"light"}',
+    ])
+    await commands.view(viewAttempt)
+    const after = await settings()
+    assert.equal(
+      after.settings.theme,
+      'light',
+    )
+    assert.equal(
+      after.revision,
+      2,
     )
   },
 )
@@ -622,6 +642,22 @@ test(
       ]),
       { code: 'VALIDATION_ERROR' },
     )
+    await assert.rejects(
+      async () => commands.settings([
+        'set',
+        '--json',
+        '{"hydraOrder":["../x"]}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await assert.rejects(
+      async () => commands.settings([
+        'set',
+        '--json',
+        '{"hydraOrder":"zeus"}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
     assert.equal(
       (await settings()).revision,
       saved.revision,
@@ -653,6 +689,71 @@ test(
     assert.equal(
       (await settings()).settings.reviewMinutes,
       7,
+    )
+  },
+)
+
+test(
+  'layout reset moves old settings before it takes the Hydra writer, so it never waits for the shared lock while holding it',
+  async () => {
+    const dir = home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    legacyView({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: { theme: 'dark' },
+    })
+    rmSync(
+      settingsLogPath(),
+      { force: true },
+    )
+    const writerLock = join(
+      hydraDir({ hydraId: 'alpha' }),
+      'writer.lock',
+    )
+    const release = acquireLock({ dir })
+    const reset = spawn(
+      process.execPath,
+      [
+        '--conditions=source',
+        'src/cli/pnyx-axi.ts',
+        'layout',
+        'reset',
+        '--hydra',
+        'alpha',
+      ],
+      { env: process.env },
+    )
+    let held = false
+    const watch = setInterval(
+      () => {
+        if (existsSync(writerLock)) {
+          held = true
+        }
+      },
+      20,
+    )
+    await once(
+      reset,
+      'exit',
+    )
+    clearInterval(watch)
+    release()
+    assert.equal(
+      held,
+      false,
+    )
+    await commands.layout([
+      'reset',
+      '--hydra',
+      'alpha',
+    ])
+    assert.equal(
+      (await settings()).settings.theme,
+      'dark',
     )
   },
 )
