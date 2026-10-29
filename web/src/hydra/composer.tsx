@@ -15,7 +15,7 @@ import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
 import { useFolders } from '#web-projects/add-project.tsx'
 import { completePath } from './path-completion.ts'
 import { COMPOSER_ICON } from './hydra-agent.tsx'
-import { GOALS, sendableRequest, withProjectRequest } from './project-request.ts'
+import { GOALS, mentionText, REQUEST_HEAD, requestPaths, sendableRequest, withProjectRequest } from './project-request.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
@@ -166,33 +166,6 @@ function folderSuggestions({
   }
 
   return items
-}
-
-const REQUEST_HEAD = 'Add '
-// The path in an Add project request, which shows as a badge while staying plain text.
-const REQUEST_PATH = /(^|\n)Add ([^\s@]\S*) to this Hydra/g
-
-// In an Add project request a project goes in as its plain path, so the caret moves through it like text.
-const mentionText = ({
-  item,
-  before,
-}: {
-  item: MentionItem
-  before: string
-}) => before.endsWith(REQUEST_HEAD) && item.path ? item.path : item.insert
-
-function requestPaths({ display }: { display: string }) {
-  const matches = [...display.matchAll(REQUEST_PATH)]
-
-  // Both groups always take part in a match.
-  return matches.map(match => {
-    const from = match.index + match[1]!.length + REQUEST_HEAD.length
-
-    return {
-      from,
-      to: from + match[2]!.length,
-    }
-  })
 }
 
 // Display text from `from` to `to`, with the request paths in it marked.

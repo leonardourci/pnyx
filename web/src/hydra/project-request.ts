@@ -1,5 +1,6 @@
 import { reference } from '#hydra/mentions.ts'
 import { displayAt } from './draft.ts'
+import type { MentionItem } from './mention-picker.tsx'
 
 // Add project asks Hydra in the composer: the @ opens the project and folder picker, and the goal is an optional blank.
 export const GOAL_SLOT = reference({
@@ -7,9 +8,36 @@ export const GOAL_SLOT = reference({
   value: 'goal',
   label: 'what you want done',
 })
-const REQUEST_HEAD = 'Add @'
-const PROJECT_REQUEST = `${REQUEST_HEAD} to this Hydra and ${GOAL_SLOT}.`
+export const REQUEST_HEAD = 'Add '
+const REQUEST_START = `${REQUEST_HEAD}@`
+const PROJECT_REQUEST = `${REQUEST_START} to this Hydra and ${GOAL_SLOT}.`
 const UNPICKED = /(?:^|\n)Add @ to this Hydra\b/
+
+// The path in an Add project request, which shows as a badge while staying plain text.
+const REQUEST_PATH = /(^|\n)Add ([^\s@](?:(?! to this Hydra)[^\n])*) to this Hydra/g
+
+// In an Add project request a project goes in as its plain path, so the caret moves through it like text.
+export const mentionText = ({
+  item,
+  before,
+}: {
+  item: MentionItem
+  before: string
+}) => before.endsWith(REQUEST_HEAD) && item.path ? item.path : item.insert
+
+export function requestPaths({ display }: { display: string }) {
+  const matches = [...display.matchAll(REQUEST_PATH)]
+
+  // Both groups always take part in a match.
+  return matches.map(match => {
+    const from = match.index + match[1]!.length + REQUEST_HEAD.length
+
+    return {
+      from,
+      to: from + match[2]!.length,
+    }
+  })
+}
 
 export const GOALS = [
   'look around and tell me what it is',
@@ -30,7 +58,7 @@ export function withProjectRequest({ text }: { text: string }): {
     text: next,
     caret: displayAt({
       text: next,
-      offset: next.lastIndexOf(REQUEST_HEAD) + REQUEST_HEAD.length,
+      offset: next.lastIndexOf(REQUEST_START) + REQUEST_START.length,
     }),
   }
 }
