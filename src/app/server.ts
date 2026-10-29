@@ -1,3 +1,5 @@
+import { nonblockingLocks } from '#store/storage.ts'
+import { commandTimeout, retryable } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -105,6 +107,8 @@ const REPLY_WORKER = join(
   import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
 )
 const REPLY_WORKER_TIMEOUT_MS = 130_000
+const OWNER_WRITE_RETRY_MS = 100
+const OWNER_WRITE_RETRY_MAX_MS = 1000
 
 export async function mountOwnedHydra({
   hydraId,
@@ -1609,10 +1613,31 @@ export async function mountOwnedHydra({
     read: Promise<Catalog>
   }>()
 
+  const writeRetries = new Set<ReturnType<typeof setTimeout>>()
+
   const runCommand = ({
     ws,
     message,
+    retryUntil,
+    retryAttempt,
+  }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
+    true,
+    () => attemptCommand({
+      ws,
+      message,
+      retryUntil,
+      retryAttempt,
+    }),
+  )
+
+  const attemptCommand = ({
+    ws,
+    message,
+    retryUntil,
+    retryAttempt = 0,
   }: {
+    retryAttempt?: number
+    retryUntil?: number
     ws: HydraClient
     message: {
       id?: unknown
@@ -1621,6 +1646,10 @@ export async function mountOwnedHydra({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
+    const deadline = retryUntil ?? Date.now() + commandTimeout({
+      name: String(message.name),
+      args: Array.isArray(message.args) ? message.args : [],
+    })
 
     const fail = ({
       error,
@@ -1631,6 +1660,70 @@ export async function mountOwnedHydra({
       code: string
       help?: string[]
     }) => {
+      if (code === 'LOCKED' && id && typeof message.name === 'string'
+        && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
+        try {
+          const receipt = savedReceipt({
+            command: {
+              type: 'command',
+              id,
+              name: message.name,
+              args: message.args,
+            },
+            state: loadHydra({ hydraId }).state,
+          })
+
+          if (receipt) {
+            send({
+              ws,
+              message: {
+                ...receipt,
+                type: 'receipt',
+                id,
+              },
+            })
+
+            return
+          }
+        } catch { /* An unreadable log leaves the save pending. */ }
+      }
+
+      const retrySafe = retryable({
+        name: String(message.name),
+        args: Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string') ? message.args : [],
+      })
+
+      if (code === 'LOCKED' && retrySafe && id && !closed && Date.now() < deadline) {
+        send({
+          ws,
+          message: {
+            type: 'checking',
+            id,
+          },
+        })
+        const timer = setTimeout(
+          () => {
+            writeRetries.delete(timer)
+
+            if (!closed) {
+              runCommand({
+                ws,
+                message,
+                retryUntil: deadline,
+                retryAttempt: retryAttempt + 1,
+              })
+            }
+          },
+          Math.min(
+            OWNER_WRITE_RETRY_MS * 2 ** retryAttempt,
+            OWNER_WRITE_RETRY_MAX_MS,
+          ),
+        )
+        writeRetries.add(timer)
+
+        return
+      }
+
       let saved: boolean | undefined
 
       if (id && typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
@@ -2228,10 +2321,6 @@ export async function mountOwnedHydra({
             }) => {
               kick()
 
-              if (ws.readyState !== ws.OPEN) {
-                return
-              }
-
               if (error) {
                 let known: {
                   message?: unknown
@@ -2494,6 +2583,12 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+
+    for (const timer of writeRetries) {
+      clearTimeout(timer)
+    }
+
+    writeRetries.clear()
     unwatchFile(
       eventsPath,
       kick,
