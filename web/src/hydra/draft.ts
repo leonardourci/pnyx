@@ -443,15 +443,17 @@ export function removeChip({
 }
 
 // The upload's answer takes its placeholder's place, or removes it when the upload failed. Text typed
-// meanwhile and the caret stay where they were; undefined means the owner already removed the placeholder.
+// meanwhile and the selection stay where they were; undefined means the owner already removed the placeholder.
 export function settleImage({
   text,
-  caret,
+  anchor,
+  focus,
   path,
   line,
 }: {
   text: string
-  caret: number
+  anchor: number
+  focus: number
   path: string
   line?: string
 }) {
@@ -473,13 +475,15 @@ export function settleImage({
     chip,
   })
   const removed = view.display.length - draftView({ text: settled.text }).display.length
+  const kept = ({ offset }: { offset: number }) => offset <= settled.caret ? offset : Math.max(
+    settled.caret,
+    offset - removed,
+  )
 
   return {
     text: settled.text,
-    caret: caret <= settled.caret ? caret : Math.max(
-      settled.caret,
-      caret - removed,
-    ),
+    anchor: kept({ offset: anchor }),
+    focus: kept({ offset: focus }),
   }
 }
 
@@ -490,7 +494,8 @@ export function withoutPendingImages({ text }: { text: string }) {
   for (const path of imagePaths({ text }).filter(path => isPendingImage({ path }))) {
     rest = settleImage({
       text: rest,
-      caret: 0,
+      anchor: 0,
+      focus: 0,
       path,
     })?.text ?? rest
   }

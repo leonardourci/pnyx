@@ -208,17 +208,37 @@ test(
     )
     assert.ok(hasPendingImage({ text: typed }))
 
+    const end = shown({ text: typed }).length
     const settled = settleImage({
       text: typed,
-      caret: shown({ text: typed }).length,
+      anchor: end,
+      focus: end,
       path,
       line: image,
     })
+    const after = shown({ text: `here is what I see ${image} and tell me` })
     assert.deepEqual(
       settled,
       {
         text: `here is what I see ${image} and tell me`,
-        caret: shown({ text: `here is what I see ${image} and tell me` }).length,
+        anchor: after.length,
+        focus: after.length,
+      },
+    )
+    // A selection made while it uploads, here "tell" selected backward, stays selected the same way.
+    const tell = shown({ text: typed }).indexOf('tell')
+    assert.deepEqual(
+      settleImage({
+        text: typed,
+        anchor: tell + 4,
+        focus: tell,
+        path,
+        line: image,
+      }),
+      {
+        text: settled.text,
+        anchor: after.indexOf('tell') + 4,
+        focus: after.indexOf('tell'),
       },
     )
     assert.equal(
@@ -232,10 +252,11 @@ test(
     assert.equal(
       settleImage({
         text: typed,
-        caret: 4,
+        anchor: 4,
+        focus: 4,
         path,
         line: image,
-      })?.caret,
+      })?.focus,
       4,
     )
   },
@@ -246,22 +267,26 @@ test(
   () => {
     const path = pendingImage({ id: 'p1' })
     const typed = `here is what I see [image: ${path}] and tell me`
+    const end = draftView({ text: typed }).display.length
     const failed = settleImage({
       text: typed,
-      caret: draftView({ text: typed }).display.length,
+      anchor: end,
+      focus: end,
       path,
     })
     assert.deepEqual(
       failed,
       {
         text: 'here is what I see and tell me',
-        caret: 30,
+        anchor: 30,
+        focus: 30,
       },
     )
     assert.equal(
       settleImage({
         text: 'here is what I see and tell me',
-        caret: 0,
+        anchor: 0,
+        focus: 0,
         path,
         line: image,
       }),
@@ -294,13 +319,15 @@ test(
     )
     const later = settleImage({
       text,
-      caret: 0,
+      anchor: 0,
+      focus: 0,
       path: second,
       line: other,
     })!
     const both = settleImage({
       text: later.text,
-      caret: 0,
+      anchor: 0,
+      focus: 0,
       path: first,
       line: image,
     })!
@@ -331,7 +358,8 @@ test(
     assert.equal(
       settleImage({
         text,
-        caret: 0,
+        anchor: 0,
+        focus: 0,
         path,
         line: image,
       })?.text,

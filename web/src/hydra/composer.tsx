@@ -36,6 +36,37 @@ import { fileBlock } from '#hydra/attachments.ts'
 import { imageLine } from '#hydra/images.ts'
 import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, hasPendingImage, isPendingImage, shownDraft, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapSelection, withoutPendingImages, type PlacedChip } from './draft.ts'
 
+// A selection's fixed end and the end that moves, whichever way it was made.
+const selectionEnds = ({ field }: { field: HTMLTextAreaElement }) => field.selectionDirection === 'backward'
+  ? {
+    anchor: field.selectionEnd,
+    focus: field.selectionStart,
+  }
+  : {
+    anchor: field.selectionStart,
+    focus: field.selectionEnd,
+  }
+
+const select = ({
+  field,
+  anchor,
+  focus,
+}: {
+  field: HTMLTextAreaElement
+  anchor: number
+  focus: number
+}) => field.setSelectionRange(
+  Math.min(
+    anchor,
+    focus,
+  ),
+  Math.max(
+    anchor,
+    focus,
+  ),
+  focus < anchor ? 'backward' : 'forward',
+)
+
 function UploadBar({ fraction }: { fraction: number }) {
   return (
     <span className="upload-bar">
@@ -173,8 +204,11 @@ export function Composer({
   const mentionList = `mentions-${card}`
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
-  // Where the caret goes once React has written the new display text.
-  const caretNext = useRef<number | null>(null), caretLast = useRef(0)
+  // Where the selection goes once React has written the new display text.
+  const caretNext = useRef<{
+    anchor: number
+    focus: number
+  } | null>(null), caretLast = useRef(0)
 
   const query = (mention?.query ?? '').trim().toLocaleLowerCase()
   const matches: MentionItem[] = [
@@ -265,11 +299,17 @@ export function Composer({
   const write = ({
     text,
     caret,
+    anchor = caret,
   }: {
     text: string
     caret: number
+    anchor?: number
   }) => {
-    caretNext.current = caret; setDraft({ text })
+    caretNext.current = {
+      anchor,
+      focus: caret,
+    }
+    setDraft({ text })
     // An insert finishing before the next render, like a second chosen file, builds on this text.
     current.current.draft = text
   }
@@ -305,11 +345,11 @@ export function Composer({
       fit({ element })
 
       if (caretNext.current !== null) {
-        element.setSelectionRange(
-          caretNext.current,
-          caretNext.current,
-        )
-        caretLast.current = caretNext.current
+        select({
+          field: element,
+          ...caretNext.current,
+        })
+        caretLast.current = caretNext.current.focus
         caretNext.current = null
       }
 
@@ -560,16 +600,24 @@ export function Composer({
       return
     }
 
+    const ends = input.current ? selectionEnds({ field: input.current }) : {
+      anchor: caretLast.current,
+      focus: caretLast.current,
+    }
     const settled = settleImage({
       text: current.current.draft,
-      caret: input.current?.selectionEnd ?? caretLast.current,
+      ...ends,
       path,
       line,
     })
 
     // Written before the next keystroke or upload reads the draft and caret.
     if (settled) {
-      flushSync(() => write(settled))
+      flushSync(() => write({
+        text: settled.text,
+        caret: settled.focus,
+        anchor: settled.anchor,
+      }))
     }
   }
 
@@ -983,9 +1031,10 @@ export function Composer({
             }}
             onSelect={event => {
               const element = event.currentTarget
-              const backward = element.selectionDirection === 'backward'
-              const anchor = backward ? element.selectionEnd : element.selectionStart
-              const focus = backward ? element.selectionStart : element.selectionEnd
+              const {
+                anchor,
+                focus,
+              } = selectionEnds({ field: element })
               const snapped = snapSelection({
                 view,
                 anchor,
@@ -994,17 +1043,10 @@ export function Composer({
               })
 
               if (snapped.anchor !== anchor || snapped.focus !== focus) {
-                element.setSelectionRange(
-                  Math.min(
-                    snapped.anchor,
-                    snapped.focus,
-                  ),
-                  Math.max(
-                    snapped.anchor,
-                    snapped.focus,
-                  ),
-                  snapped.focus < snapped.anchor ? 'backward' : 'forward',
-                )
+                select({
+                  field: element,
+                  ...snapped,
+                })
               }
 
               caretLast.current = snapped.focus
