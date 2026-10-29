@@ -67,6 +67,14 @@ const ACCOUNT_FIELDS = [
   'folder',
 ]
 
+// The harness's own login, which Hydra and workers run on while no account is registered.
+export const fallbackAccount = ({ provider }: { provider: Harness }) => `${provider}:default`
+
+const FALLBACK_ACCOUNTS: Fields = Object.fromEntries(HARNESSES.map(provider => [
+  fallbackAccount({ provider }),
+  { provider },
+]))
+
 // Claude Code takes a 1M-context suffix on any model it lists, such as opus[1m].
 export const ONE_MILLION = /\[1m\]$/
 
@@ -340,7 +348,6 @@ function checkOrder({
   }
 }
 
-// With no registered accounts, workers run on each harness's own login, so names are not checked.
 function accountProblem({
   name,
   harness,
@@ -354,14 +361,11 @@ function accountProblem({
     return NAME_RULE
   }
 
-  if (!accounts || !Object.keys(accounts).length) {
-    return undefined
-  }
-
+  const registered = accounts && Object.keys(accounts).length ? accounts : FALLBACK_ACCOUNTS
   const account = Object.hasOwn(
-    accounts,
+    registered,
     name,
-  ) ? asRecord({ value: accounts[name] }) : undefined
+  ) ? asRecord({ value: registered[name] }) : undefined
 
   if (!account) {
     return `${name} is not a registered account`

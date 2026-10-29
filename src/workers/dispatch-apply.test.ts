@@ -514,6 +514,66 @@ test(
 )
 
 test(
+  'removing the last account is refused while main or an order names it, and the harness logins stand in once none is registered',
+  () => {
+    const { file } = lab()
+    dispatchCommands.account([
+      'remove',
+      'codex:test',
+      '--hydra',
+      'lab',
+    ])
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--file',
+          file({
+            value: {
+              version: 1,
+              patch: { accounts: { 'claude:test': null } },
+            },
+          }),
+        ],
+      }),
+      paths: [
+        '/main',
+        '/workers/claude/0',
+      ],
+    })
+    rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch: {
+              accounts: { 'claude:test': null },
+              main: 'claude:default',
+              workers: { claude: ['claude:default'] },
+            },
+          },
+        }),
+      ],
+    })
+    const { document } = show()
+    assert.deepEqual(
+      [
+        document.accounts,
+        document.main,
+        document.workers,
+      ],
+      [
+        {},
+        'claude:default',
+        { claude: ['claude:default'] },
+      ],
+    )
+  },
+)
+
+test(
   'single-candidate flags keep a rule’s fallbacks, an effort the harness lacks is refused, and a removed account leaves every order',
   () => {
     lab()

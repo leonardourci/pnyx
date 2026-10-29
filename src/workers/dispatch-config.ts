@@ -10,7 +10,7 @@ import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
-import { candidateIssues, checkDispatch, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
+import { candidateIssues, checkDispatch, fallbackAccount, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>
@@ -618,7 +618,7 @@ export function effectiveDispatch(): EffectiveDispatch {
   const accounts: Record<string, Account> = Object.fromEntries(HARNESSES
     .filter(provider => existsSync(defaultLogin({ provider })))
     .map(provider => [
-      `${provider}:default`,
+      fallbackAccount({ provider }),
       {
         provider,
         folder: defaultLogin({ provider }),

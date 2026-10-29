@@ -137,13 +137,19 @@ test(
 )
 
 test(
-  'with no registered accounts, workers run on the harness logins and account names are not checked',
+  'with no registered accounts, main and orders may name only the harness logins, each for its own provider',
   () => {
     assert.deepEqual(
       found({
         document: {
-          main: 'claude:default',
-          workers: { claude: ['claude:default'] },
+          main: 'codex:default',
+          workers: {
+            claude: [
+              'claude:default',
+              'claude:gone',
+            ],
+            codex: ['claude:default'],
+          },
           rules: {
             build: {
               when: 'Implementation',
@@ -154,7 +160,10 @@ test(
           accounts: {},
         },
       }),
-      [],
+      [
+        'error /workers/claude/1',
+        'error /workers/codex/0',
+      ],
     )
   },
 )
