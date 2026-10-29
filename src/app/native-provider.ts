@@ -1,3 +1,4 @@
+import { nativeStatus, type NativeStatus } from './native-status.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -17,6 +18,7 @@ type Binding = {
   answers: Record<string, {
     permission: string
     secret: boolean
+    supersedes?: string
     decision?: PermissionDecision
     phase: string
   }>
@@ -76,6 +78,43 @@ export async function nativeProviders({
   })
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
   const openings = new Map<string, Promise<HostedSession>>()
+  let status = nativeStatus({
+    maintenance: client.ready.maintenance ?? {
+      mode: 'ready',
+      blockers: [],
+    },
+    build: client.ready.build,
+    instance: client.ready.instance,
+  })
+  const listeners = new Set<() => void>()
+  client.subscribe({
+    receive({ frame }) {
+      if (frame.type === 'host-status') {
+        status = nativeStatus({
+          maintenance: frame.status,
+          build: client.ready.build,
+          instance: client.ready.instance,
+        })
+
+        for (const listener of listeners) {
+          listener()
+        }
+      }
+    },
+  })
+  client.onDisconnect({
+    receive() {
+      status = {
+        ...status,
+        state: 'unavailable',
+        reasons: ['The native owner is unavailable. Reconcile ownership before restarting agents.'],
+      }
+
+      for (const listener of listeners) {
+        listener()
+      }
+    },
+  })
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
     canOpen: () => client.available() && !inventory.some(session => session.phase === 'recovery_required'),
@@ -303,8 +342,13 @@ export async function nativeProviders({
           permission,
           decision,
         }) {
-          const id = `${summary.ref.epoch}:answer:${permission}`
-          const previous = active.answers[id]
+          const prefix = `${summary.ref.epoch}:answer:${permission}`
+          const prior = Object.entries(active.answers).filter(([
+            , answer,
+          ]) => answer.permission === permission)
+            .at(-1)
+          const previous = prior?.[1]
+          const id = previous?.secret && previous.phase === 'not_received' ? `${prefix}:reentry:${randomUUID()}` : prefix
 
           if (previous && previous.phase !== 'not_received') {
             fail({
@@ -317,6 +361,7 @@ export async function nativeProviders({
           active.answers[id] = {
             permission,
             secret,
+            supersedes: id === prefix ? undefined : prior?.[0],
             decision: secret ? undefined : decision,
             phase: 'queued',
           }
@@ -339,9 +384,8 @@ export async function nativeProviders({
       })
 
       session.permissionDelivery = ({ permission }) => {
-        const id = `${summary.ref.epoch}:answer:${permission}`
-
-        return active.answers[id]?.phase
+        return Object.values(active.answers).filter(answer => answer.permission === permission)
+          .at(-1)?.phase
       }
 
       return session
@@ -383,6 +427,12 @@ export async function nativeProviders({
 
   return {
     client,
+    status: (): NativeStatus => structuredClone(status),
+    subscribeStatus({ changed }: { changed(): void }) {
+      listeners.add(changed)
+
+      return () => listeners.delete(changed)
+    },
     providers: adapters,
     detach: () => client.detach(),
   }
@@ -396,3 +446,5 @@ function environment({ env }: { env: NodeJS.ProcessEnv }): Record<string, string
 }
 
 export type NativeProviders = Awaited<ReturnType<typeof nativeProviders>>
+
+export type NativeConnection = Pick<NativeProviders, 'providers'> & Partial<Pick<NativeProviders, 'status' | 'subscribeStatus'>>

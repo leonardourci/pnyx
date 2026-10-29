@@ -1053,7 +1053,9 @@ export function createHost({
         tool,
         input,
         status: previous?.status ?? 'pending',
-        delivery: previous?.status === 'allow' && delivery === 'not_received' ? 'needs_reentry' : undefined,
+        delivery: previous?.status === 'allow' && delivery === 'not_received' ? 'needs_reentry' : delivery === 'unknown' ? 'unknown' : undefined,
+        answers: previous?.answers,
+        values: previous?.values,
         ...(description ? { description } : {}),
         ...(questions?.length ? { questions } : {}),
         ...(form ? { form } : {}),
@@ -4842,7 +4844,9 @@ export function createHost({
         const card = state.cards[waiting.card]
         const request = card?.permissions?.find(p => p.id === id)
 
-        if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+        const actionable = request?.status === 'pending' || request?.delivery === 'needs_reentry'
+
+        if (!request || !actionable || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
           expire({ id })
         }
       }
