@@ -12,10 +12,14 @@ import { flushSync } from 'react-dom'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { isUpgradeSuggestion } from '#upgrade/model.ts'
+import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
+import { useFolders } from '#web-projects/add-project.tsx'
+import { GOALS, sendableRequest, withProjectRequest } from './project-request.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
-import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import type { Catalog, Suggestion } from '#hydra/transcripts-catalog.ts'
+import type { FolderListing } from '#projects/folders.ts'
 import { ReferenceBadge } from './reference-badge.tsx'
 import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -67,6 +71,97 @@ const select = ({
   ),
   focus < anchor ? 'backward' : 'forward',
 )
+
+const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
+
+// Folders the @ picker offers beyond this Hydra's projects: other Hydras' projects, folders agents worked in,
+// typed paths, and a pasted git URL to clone.
+function folderSuggestions({
+  query,
+  typed,
+  attached,
+  otherProjects,
+  listing,
+  typedPath,
+}: {
+  query: string
+  typed: string
+  attached: HydraProject[]
+  otherProjects: {
+    name: string
+    path: string
+    hydra: string
+  }[]
+  listing?: FolderListing
+  typedPath: boolean
+}): MentionItem[] {
+  if (CLONE_URL.test(typed)) {
+    const repository = typed.replace(
+      /\.git$/,
+      '',
+    ).split(/[/:]/)
+      .pop() || typed
+
+    return [
+      {
+        key: `clone:${typed}`,
+        kind: 'project',
+        title: `Clone ${repository}`,
+        detail: typed,
+        icons: ['clone'],
+        group: 'Folders',
+        insert: typed,
+      },
+    ]
+  }
+
+  const candidates = [
+    ...otherProjects.map(project => ({
+      ...project,
+      detail: `In ${project.hydra}`,
+    })),
+    ...(listing?.recent ?? []).map(folder => ({
+      ...folder,
+      detail: folder.path,
+    })),
+    ...(typedPath ? listing?.folders ?? [] : []).map(folder => ({
+      ...folder,
+      detail: folder.path,
+    })),
+  ]
+  const skip = new Set(attached.filter(project => !project.detached).map(project => project.path))
+  const items: MentionItem[] = []
+
+  for (const folder of candidates) {
+    const matching = typedPath || !query || `${folder.name} ${folder.path}`.toLocaleLowerCase().includes(query)
+
+    if (matching && !skip.has(folder.path)) {
+      skip.add(folder.path)
+      items.push({
+        key: `folder:${folder.path}`,
+        kind: 'project',
+        title: folder.name,
+        detail: folder.detail,
+        group: 'Folders',
+        insert: reference({
+          kind: 'project',
+          value: folder.path,
+          label: folder.name,
+        }),
+      })
+    }
+  }
+
+  return items
+}
+
+function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
+  if (isUpgradeSuggestion({ item })) {
+    return ['upgrade']
+  }
+
+  return item.command === ADD_PROJECT_COMMAND ? ['attach'] : undefined
+}
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -133,6 +228,9 @@ export function Composer({
   stop,
   compacting = false,
   focusAbove,
+  projectRequest = false,
+  projectRequested,
+  otherProjects = [],
 }: {
   card: string
   cards: Card[]
@@ -157,6 +255,15 @@ export function Composer({
   compacting?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
+  // An Add project request to write into the draft; projectRequested clears it once written.
+  projectRequest?: boolean
+  projectRequested?(): void
+  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
+  otherProjects?: {
+    name: string
+    path: string
+    hydra: string
+  }[]
 }) {
   const [
     failure,
@@ -189,6 +296,11 @@ export function Composer({
     mentionActive,
     setMentionActive,
   ] = useState(0)
+  // The goal blank of an Add project request is selected: -1 has no suggestion chosen yet.
+  const [
+    goal,
+    setGoal,
+  ] = useState<number | null>(null)
   const [
     viewing,
     setViewing,
@@ -212,6 +324,21 @@ export function Composer({
   const beforeCuts = useRef(new Map<string, string>())
 
   const query = mention?.query ?? ''
+  const typed = query.trim()
+  const folderPath = /^[~/]/.test(typed) ? typed : ''
+  const folders = useFolders({
+    path: folderPath,
+    repository: '',
+    connected: mention !== null,
+  })
+  const folderItems = folderSuggestions({
+    query: typed.toLocaleLowerCase(),
+    typed,
+    attached: projects,
+    otherProjects,
+    listing: folders?.listing,
+    typedPath: !!folderPath,
+  })
   const candidates: (MentionItem & { search?: string })[] = [
     ...view.chips.filter(chip => {
       return chip.attached && !isPendingImage({ path: chip.value })
@@ -281,12 +408,16 @@ export function Composer({
       }),
     })),
   ]
-  const matches: MentionItem[] = matchingSuggestions({
-    items: candidates,
-    query,
-    name: ({ item }) => item.title,
-    fallback: ({ item }) => item.search ?? '',
-  })
+  // Folders follow the ranked matches; they are already matched against what was typed.
+  const matches: MentionItem[] = [
+    ...matchingSuggestions({
+      items: candidates,
+      query,
+      name: ({ item }) => item.title,
+      fallback: ({ item }) => item.search ?? '',
+    }),
+    ...folderItems,
+  ]
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -414,14 +545,69 @@ export function Composer({
       return
     }
 
-    write(replaceDisplay({
+    const edit = replaceDisplay({
       text: draft,
       from: mention.start,
       to: element.selectionStart,
       insert: `${item.insert} `,
-    }))
+    })
+    const goalSlot = display.slice(
+      0,
+      mention.start,
+    ).endsWith('Add ') && draftView({ text: edit.text }).chips.find(chip => chip.kind === 'slot' && chip.from >= edit.caret)
+
+    if (goalSlot) {
+      write({
+        text: edit.text,
+        anchor: goalSlot.from,
+        caret: goalSlot.to,
+      })
+      setGoal(-1)
+    } else {
+      write(edit)
+    }
+
     setMention(null); element.focus()
   }
+
+  // Writes an Add project request under the draft and opens the project and folder picker at its @.
+  const requestProject = ({ text }: { text: string }) => {
+    const edit = withProjectRequest({ text })
+    write(edit)
+    input.current?.focus()
+    trackMention({
+      text: edit.text,
+      cursor: edit.caret,
+    })
+  }
+
+  const fillGoal = ({ text }: { text: string }) => {
+    const slot = view.chips.find(chip => chip.kind === 'slot')
+
+    if (slot) {
+      write(replaceDisplay({
+        text: draft,
+        from: slot.from,
+        to: slot.to,
+        insert: text,
+      }))
+    }
+
+    setGoal(null); input.current?.focus()
+  }
+
+  useEffect(
+    () => {
+      if (!projectRequest) {
+        return
+      }
+
+      projectRequested?.()
+      requestProject({ text: current.current.draft })
+    },
+    // Only a new request writes; the helpers read the latest draft.
+    [projectRequest],
+  )
 
   // A task looks like its card reference (card, then state, in its column's color); a column shows its icon.
   function taskLook({ id }: { id: string }) {
@@ -471,6 +657,27 @@ export function Composer({
       openTask({ id: chip.value })
     } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
       setViewing(chip)
+    } else if (chip.kind === 'slot') {
+      write({
+        text: draft,
+        anchor: chip.from,
+        caret: chip.to,
+      })
+      setGoal(-1); input.current?.focus()
+    } else if (chip.kind === 'project') {
+      // A picked project or folder opens the picker again in its place, to change it.
+      const edit = replaceDisplay({
+        text: draft,
+        from: chip.from,
+        to: chip.to,
+        insert: '@',
+      })
+      write(edit)
+      input.current?.focus()
+      trackMention({
+        text: edit.text,
+        cursor: edit.caret,
+      })
     }
   }
 
@@ -529,7 +736,13 @@ export function Composer({
     name: ({ item }) => item.command,
   })
 
-  const choose = ({ command }: { command: string }) => {
+  const choose = ({
+    command,
+    item,
+  }: {
+    command: string
+    item?: Suggestion
+  }) => {
     const unavailable = catalog?.suggestions.some(item =>
       skillReference({ item }) === command && item.unavailable)
 
@@ -546,6 +759,20 @@ export function Composer({
 
     if (query === null || query !== prefix) {
       setPrefix(null)
+
+      return
+    }
+
+    if (item?.kind === 'command' && item.command === ADD_PROJECT_COMMAND) {
+      setPrefix(null); setActive(0)
+      requestProject({
+        text: replaceDisplay({
+          text: draft,
+          from: cursor - query.length,
+          to: cursor,
+          insert: '',
+        }).text,
+      })
 
       return
     }
@@ -740,9 +967,19 @@ export function Composer({
   }
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
-    const text = restore && attempt.current ? attempt.current.text : outgoing
+    const request = sendableRequest({
+      text: restore && attempt.current ? attempt.current.text : outgoing,
+    })
+    const text = request.text
 
     if (sending || !text.trim()) {
+      return
+    }
+
+    if (request.unpicked) {
+      notify({ text: 'Pick a project or folder to add first.' })
+      input.current?.focus()
+
       return
     }
 
@@ -955,6 +1192,21 @@ export function Composer({
               choose={chooseMention}
             />
           )}
+          {goal !== null && !mention && (
+            <SuggestionPicker
+              id={`goals-${card}`}
+              anchor={input}
+              label="What you want done (optional)"
+              active={goal}
+              matches={GOALS.map(text => ({
+                key: text,
+                title: text,
+                detail: '',
+                group: 'What you want done (optional)',
+              }))}
+              choose={({ item }) => fillGoal({ text: item.title })}
+            />
+          )}
           {prefix !== null && (
             <SuggestionPicker
               id={`suggestions-${card}`}
@@ -985,10 +1237,13 @@ export function Composer({
                 ) : undefined,
                 group: item.source,
                 excerpt: item.description,
-                icons: isUpgradeSuggestion({ item }) ? ['upgrade'] : undefined,
+                icons: slashIcons({ item }),
 
               }))}
-              choose={({ item }) => choose({ command: skillReference({ item }) })}
+              choose={({ item }) => choose({
+                command: skillReference({ item }),
+                item,
+              })}
               loading={!catalog}
               empty={catalog?.unavailable ?? 'No matching skill or command.'}
               footer={(
@@ -1114,6 +1369,7 @@ export function Composer({
               }
 
               write(edit)
+              setGoal(null)
               setActive(0)
               trackMention({
                 text: edit.text,
@@ -1123,6 +1379,36 @@ export function Composer({
             onKeyDown={e => {
               if (e.nativeEvent.isComposing || e.key === 'Process') {
                 return
+              }
+
+              if (goal !== null && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const chosen = goal >= 0 ? GOALS[goal] : undefined
+
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setGoal(Math.max(
+                    -1,
+                    Math.min(
+                      GOALS.length - 1,
+                      goal + (e.key === 'ArrowDown' ? 1 : -1),
+                    ),
+                  ))
+
+                  return
+                }
+
+                if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && chosen)) {
+                  e.preventDefault()
+                  fillGoal({ text: chosen ?? GOALS[0]! })
+
+                  return
+                }
+
+                if (e.key === 'Escape') {
+                  e.preventDefault(); setGoal(null)
+
+                  return
+                }
               }
 
               const pickerCount = mention ? matches.length : suggestions.length
@@ -1161,7 +1447,10 @@ export function Composer({
                   if (mention && matches[index]) {
                     chooseMention({ item: matches[index] })
                   } else if (!mention && suggestions[index]) {
-                    choose({ command: skillReference({ item: suggestions[index] }) })
+                    choose({
+                      command: skillReference({ item: suggestions[index] }),
+                      item: suggestions[index],
+                    })
                   }
                 } else {
                   const next = Math.max(

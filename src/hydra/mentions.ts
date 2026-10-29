@@ -10,10 +10,11 @@ export interface TaskMention {
   title: string
 }
 
-export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file' | 'skill'
+// A slot is a blank the composer fills in before sending; it never reaches Hydra.
+export type ReferenceKind = 'task' | 'project' | 'column' | 'image' | 'file' | 'skill' | 'slot'
 
 // A reference as Pnyx writes it: [@Label](pnyx-<kind>:<encoded value>).
-export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file|skill):([\w%~.-]+)\)/
+export const REFERENCE = /\[@((?:\\.|[^\]\\\r\n])*)\]\(pnyx-(task|project|column|image|file|skill|slot):([\w%~.-]+)\)/
 
 export const referenceLabel = ({ label }: { label: string }) => label.replace(
   /\\(.)/g,
