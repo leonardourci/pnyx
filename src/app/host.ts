@@ -86,6 +86,8 @@ const RETRY_MS = [
 
 // A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
+// A deadline that could not record its failure, as when another writer holds the lock, tries again this soon.
+const COMPACTION_RETRY_MS = 1000
 
 export function createHost({
   hydraId,
@@ -378,7 +380,13 @@ export function createHost({
   }
 
   // Each status of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
-  const resetCompactionDeadline = ({ operation }: { operation: Compaction }) => {
+  const resetCompactionDeadline = ({
+    operation,
+    delay = compactionDelay,
+  }: {
+    operation: Compaction
+    delay?: number
+  }) => {
     clearTimeout(compactionDeadlines.get(operation.session))
     compactionDeadlines.delete(operation.session)
 
@@ -420,8 +428,12 @@ export function createHost({
             })
             releaseCompact({ card: card.id })
           },
+          retry: () => resetCompactionDeadline({
+            operation,
+            delay: COMPACTION_RETRY_MS,
+          }),
         }),
-        compactionDelay,
+        delay,
       ).unref(),
     )
   }
