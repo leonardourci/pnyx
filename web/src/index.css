@@ -1152,7 +1152,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 [data-label-color="rose"] { --label-color: var(--color-rose); }
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
-.identity-icon { display: inline-block; flex-shrink: 0; background: currentColor; mask-position: center; mask-size: contain; mask-repeat: no-repeat; }
+.identity-icon { flex-shrink: 0; overflow: visible; }
 .about summary { cursor: pointer; }
 .about a { text-decoration: underline; }
 
