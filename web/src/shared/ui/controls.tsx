@@ -79,12 +79,14 @@ export function Switch({
   checked,
   onChange,
   quiet = false,
+  disabled = false,
 }: {
   label: string
   checked: boolean
   onChange({ value }: { value: boolean }): unknown
   // Leaves the visible name to the row around it; the switch keeps it as its accessible name.
   quiet?: boolean
+  disabled?: boolean
 }) {
   const [
     busy,
@@ -98,6 +100,7 @@ export function Switch({
       aria-label={label}
       aria-checked={checked}
       aria-busy={busy}
+      disabled={disabled}
       onClick={() => run({ save: () => onChange({ value: !checked }) })}
     >
       <span className="switch-track">
