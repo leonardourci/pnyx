@@ -1320,9 +1320,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .attachment-card > .button:hover:not(:disabled) { background: var(--color-raised); }
 
-.card-slot { display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
+.card-slot { position: relative; display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
 
-.card-slot > img { display: block; width: 100%; height: 100%; object-fit: contain; }
+/* Absolute, so the slot sets the size whatever the image's shape; contain shows it whole. */
+.card-slot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
 .card-slot > img[data-loading] { display: none; }
 
