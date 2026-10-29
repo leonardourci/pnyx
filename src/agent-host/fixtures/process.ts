@@ -1,3 +1,5 @@
+import { spawn, type ChildProcess } from 'node:child_process'
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
@@ -15,6 +17,7 @@ type State = {
   input: HostedInput[]
   settings: string[]
   interrupts: number
+  turn?: string
   permission?: AskPermission
   emit?: ({ event }: { event: NativeEvent }) => void
   gate?: ReturnType<typeof deferred<void>>
@@ -111,6 +114,7 @@ const provider = (): Provider => ({
             for await (const message of input) {
               state.input.push(message)
               const turn = randomUUID()
+              state.turn = turn
               emit({
                 event: {
                   type: 'turn-started',
@@ -263,6 +267,7 @@ try {
               input: state.input,
               settings: state.settings,
               interrupts: state.interrupts,
+              turn: state.turn,
               answers: state.answers,
               valueMatched: state.valueMatched,
               context: state.context?.(),

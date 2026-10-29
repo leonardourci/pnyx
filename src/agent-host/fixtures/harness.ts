@@ -20,6 +20,7 @@ export type NativeStats = {
   input: HostedInput[]
   settings: string[]
   interrupts: number
+  turn?: string
   answers: number
   valueMatched: boolean
   context: string
