@@ -2,6 +2,7 @@ import { useEffect, useState, type ComponentProps } from 'react'
 import type { ModelOption } from '#workers/provider.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button, Select, type Option } from '#web-shared/ui/controls.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 
 // A picker that is a table cell: changed from what is saved, or holding a problem.
 export interface CellMark {
@@ -129,22 +130,36 @@ export function ModelPicker({
   connected: boolean
   onChange({ value }: { value: string }): void
 } & Look) {
-  if (error || (models && !value)) {
+  if (!value && (error || models)) {
     return <div className="picker-field"><small role="alert">{error || 'No models available.'}</small><Button disabled={!connected} onClick={retry}>Retry models</Button></div>
   }
 
-  if (!models || !value) {
+  if (!value || (!error && !models)) {
     return <small role="status">Loading models…</small>
   }
 
+  // A saved model stays visible and changeable when its harness's catalog cannot load.
   return (
-    <PickerField
-      label="Model"
-      value={value}
-      options={options}
-      disabled={disabled}
-      onChange={onChange}
-      {...look}
-    />
+    <span className="model-picker">
+      <PickerField
+        label="Model"
+        value={value}
+        options={options}
+        disabled={disabled}
+        onChange={onChange}
+        {...look}
+      />
+      {error && (
+        <Button
+          className="picker-retry"
+          aria-label="Retry models"
+          title={error}
+          disabled={!connected}
+          onClick={retry}
+        >
+          <Icon name="reset" size={14} />
+        </Button>
+      )}
+    </span>
   )
 }
