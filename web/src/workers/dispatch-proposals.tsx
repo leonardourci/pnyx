@@ -57,6 +57,8 @@ export function DispatchProposals({
 
   return (state.dispatchProposals ?? []).map(proposal => {
     const status = statuses.find(item => item.token === proposal.token)
+    const changes = proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : []
+    const name = proposal.kind === 'command' ? 'approval' : 'rule'
 
     return (
       <section key={proposal.token} className="settings-box" aria-label="Pending owner question">
@@ -68,7 +70,7 @@ export function DispatchProposals({
         {proposal.status === 'applying' && <p role="status">Applying… Dismiss hides this question without cancelling the action.</p>}
         {proposal.kind === 'dispatch' ? (
           <ul>
-            {(JSON.parse(proposal.before) as DispatchChange[]).map(change => (
+            {changes.map(change => (
               <li key={change.path}>
                 <code>{change.path}</code> {shown({ value: change.before })}
                 {' → '}
@@ -90,7 +92,7 @@ export function DispatchProposals({
               variant="primary"
               disabled={!connected || Boolean(busy) || Boolean(proposal.status)}
               onClick={() => void resolve({
-                name: proposal.kind === 'command' ? 'approval' : 'rule',
+                name,
                 token: proposal.token,
                 action: 'confirm',
               })}
@@ -100,7 +102,7 @@ export function DispatchProposals({
           <Button
             disabled={!connected || Boolean(busy)}
             onClick={() => void resolve({
-              name: proposal.kind === 'command' ? 'approval' : 'rule',
+              name,
               token: proposal.token,
               action: 'dismiss',
             })}
