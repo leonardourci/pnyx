@@ -2,15 +2,16 @@ import { IconRobot } from '@tabler/icons-react'
 import { TABLER_ICONS } from '#web-shared/ui/icons/tabler.ts'
 import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 
-// The identity files' text; identity.test.ts checks every registry entry has its file.
-const IDENTITY_FILES = import.meta.glob<string>(
+// The identity files' text; identity.test.ts checks every registry entry has its file. Only Vite has
+// import.meta.env and import.meta.glob, so Node tests that render a component get no identity icons.
+const IDENTITY_FILES: Record<string, string> = import.meta.env ? import.meta.glob<string>(
   './icons/identity/*.svg',
   {
     eager: true,
     query: '?raw',
     import: 'default',
   },
-)
+) : {}
 // Every identity file is one 512-unit path; a cut-out shape marks it even-odd.
 const PATH_DATA = / d="([^"]+)"/
 const EVEN_ODD = 'fill-rule="evenodd"'
