@@ -1460,3 +1460,158 @@ test(
     )
   },
 )
+
+test(
+  'a child operation ID collision refuses the whole real CLI document, including valid siblings',
+  t => {
+    const f = fixture({ t })
+    commands.task([
+      'create',
+      '--key',
+      'a',
+      '--title',
+      'A',
+    ])
+    commands.task([
+      'create',
+      '--key',
+      'b',
+      '--title',
+      'B',
+    ])
+    commands.task([
+      'brief',
+      'a',
+      '--brief',
+      'Original',
+      '--event-id',
+      'same-kind:op:0',
+    ])
+    commands.link([
+      'b',
+      '--url',
+      'https://example.com/proof',
+      '--event-id',
+      'other-kind:op:0',
+    ])
+    const log = readFileSync(
+      join(
+        f.dir,
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+    const snapshot = readFileSync(
+      join(
+        f.dir,
+        'snapshot.json',
+      ),
+      'utf8',
+    )
+    const document = JSON.stringify({
+      version: 1,
+      changes: [
+        {
+          op: 'task.brief',
+          task: 'a',
+          brief: 'Requested new content',
+        },
+        {
+          op: 'task.create',
+          key: 'sibling',
+          title: 'Must not exist',
+        },
+      ],
+    })
+    const same = spawnSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        'src/cli/pnyx-axi.ts',
+        'apply',
+        '--file',
+        '-',
+        '--event-id',
+        'same-kind',
+      ],
+      {
+        env: process.env,
+        input: document,
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(
+      same.status,
+      2,
+    )
+    assert.match(
+      same.stdout,
+      /0,"\/changes\/0\/op","IDEMPOTENCY_CONFLICT"/,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'snapshot.json',
+        ),
+        'utf8',
+      ),
+      snapshot,
+    )
+    const other = spawnSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        'src/cli/pnyx-axi.ts',
+        'apply',
+        '--file',
+        '-',
+        '--event-id',
+        'other-kind',
+      ],
+      {
+        env: process.env,
+        input: document,
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(
+      other.status,
+      2,
+    )
+    assert.match(
+      other.stdout,
+      /0,"\/changes\/0\/op","IDEMPOTENCY_CONFLICT"/,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          f.dir,
+          'snapshot.json',
+        ),
+        'utf8',
+      ),
+      snapshot,
+    )
+  },
+)

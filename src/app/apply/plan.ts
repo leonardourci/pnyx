@@ -168,12 +168,24 @@ export function planDocument({
         }))
       }
 
+      const operationId = `${id}:op:${index}`
       const operationMeta: Meta = {
         ...meta,
-        id: `${id}:op:${index}`,
+        id: operationId,
         reason: operation.reason,
       }
       field = 'op'
+
+      if (Object.hasOwn(
+        current.eventIds,
+        operationId,
+      )) {
+        throw new HydraError({
+          message: `event id ${operationId} already exists`,
+          code: 'IDEMPOTENCY_CONFLICT',
+          field: 'op',
+        })
+      }
 
       const cardId = `task-${createHash('sha256').update(`${hydraId}:${id}:${index}`)
         .digest('hex')
