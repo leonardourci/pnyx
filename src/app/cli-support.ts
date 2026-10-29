@@ -119,6 +119,7 @@ export function parse({
       options,
       allowPositionals: true,
       strict: true,
+      tokens: true,
     })
   } catch (error) {
     throw flagError({
@@ -133,6 +134,24 @@ export function parse({
       'VALIDATION_ERROR',
       [helpHint()],
     )
+  }
+
+  const seen = new Set<string>()
+
+  for (const token of parsed.tokens) {
+    if (token.kind !== 'option' || options[token.name]?.multiple) {
+      continue
+    }
+
+    if (seen.has(token.name)) {
+      throw new AxiError(
+        `repeated scalar flag --${token.name}`,
+        'VALIDATION_ERROR',
+        [helpHint()],
+      )
+    }
+
+    seen.add(token.name)
   }
 
   const values = parsed.values as Record<string, string | boolean | undefined>
