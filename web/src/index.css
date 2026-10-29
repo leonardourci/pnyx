@@ -356,7 +356,7 @@ h3 { font-weight: 600; }
 
 .action-label { display: inline-flex; min-width: 0; }
 
-.card-state .agent-activity { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.card-state .agent-activity { min-width: 0; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
 .card-state > :not(.agent-activity), .agent-activity > .working-dots { flex-shrink: 0; }
 
@@ -1187,7 +1187,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card:hover > .resize-y, .card:focus-within > .resize-y { opacity: 1; }
 .activity-asks { color: var(--color-gold); }
 .activity-asks-hydra { color: var(--color-slate); }
-.activity-done, .activity-merged { color: var(--color-green); }
+.activity-done { color: var(--color-green); }
 
 .activity-blocked { color: var(--color-red); }
 
@@ -1490,12 +1490,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* The updates list belongs to the Activity tab. */
 .card[data-tab="context"] > .detail { display: none; }
 
-/* In a narrow column the project moves to its own line instead of squeezing the status;
-   a name longer than the card shortens, with the full name in its text and tooltip. */
+/* The status word never shortens for the project: the badge wraps to its own line first. */
 .card-state { flex-wrap: wrap; row-gap: 4px; }
-
-.card-state .agent-activity { max-width: 100%; }
-
 .card-state > .tooltip-anchor:has(.project-label) { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; }
 .card .card-brief .text-preview { max-height: 8.4em; -webkit-line-clamp: 6; line-clamp: 6; }
 .task-editor { display: flex; flex-direction: column; gap: 6px; }
