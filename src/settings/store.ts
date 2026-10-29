@@ -165,19 +165,59 @@ const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
   ) => a.at.localeCompare(b.at))
   .at(-1)
 
-// Old per-Hydra values: each one comes from the Hydra that set it last, and an old Hide Done 0 meant off.
+type Legacy = 'doneAfterHours' | 'reviewMinutes' | 'helper'
+
+// A Hydra's last change to an old value; an old reset removed the value, so a removal counts as a change too.
+function lastChange({
+  events,
+  key,
+}: {
+  events: ConfiguredEvent[]
+  key: Legacy
+}): {
+  at: string
+  value: unknown
+} | undefined {
+  let previous: unknown
+  let change: {
+    at: string
+    value: unknown
+  } | undefined
+
+  for (const event of events) {
+    const value = event.data[key]
+
+    if (!isDeepStrictEqual(
+      value,
+      previous,
+    )) {
+      change = {
+        at: event.at,
+        value,
+      }
+    }
+
+    previous = value
+  }
+
+  return change
+}
+
+// Old per-Hydra values: each one comes from the Hydra that changed it last, and an old Hide Done 0 meant off.
 function migrate(): void {
   if (existsSync(settingsLogPath())) {
     return
   }
 
-  const events = hydraIds()
-    .flatMap(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
-  const views = events.filter((event): event is ViewEvent => event.type === 'board.view')
+  const logs = hydraIds().map(hydraId => readLog({ dir: hydraDir({ hydraId }) })?.events ?? [])
+  const views = logs.flat().filter((event): event is ViewEvent => event.type === 'board.view')
   const view = newest({ events: views })
-  const configs = events.filter((event): event is ConfiguredEvent => event.type === 'board.configured')
-  const lastSet = ({ key }: { key: 'doneAfterHours' | 'reviewMinutes' | 'helper' }) =>
-    newest({ events: configs.filter(event => event.data[key] !== undefined) })?.data
+  const changed = ({ key }: { key: Legacy }) => newest({
+    events: logs.flatMap(events => lastChange({
+      events: events.filter((event): event is ConfiguredEvent => event.type === 'board.configured'),
+      key,
+    }) ?? []),
+  })?.value
   const after = structuredClone(DEFAULT_SETTINGS)
 
   if (view) {
@@ -187,19 +227,19 @@ function migrate(): void {
     )
   }
 
-  const hours = lastSet({ key: 'doneAfterHours' })?.doneAfterHours
+  const hours = changed({ key: 'doneAfterHours' })
 
-  if (hours !== undefined) {
+  if (typeof hours === 'number') {
     after.doneAfterHours = hours === 0 ? 'off' : hours
   }
 
-  const minutes = lastSet({ key: 'reviewMinutes' })?.reviewMinutes
+  const minutes = changed({ key: 'reviewMinutes' })
 
-  if (minutes !== undefined) {
+  if (typeof minutes === 'number') {
     after.reviewMinutes = minutes
   }
 
-  const helper = lastSet({ key: 'helper' })?.helper
+  const helper = changed({ key: 'helper' }) as Settings['helper'] | false | undefined
 
   if (helper !== undefined) {
     after.helper = helper === false ? 'off' : helper

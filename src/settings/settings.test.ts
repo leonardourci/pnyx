@@ -7,6 +7,7 @@ import { commands } from '#app/cli.ts'
 import { commit } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraConfig } from '#hydra/config.ts'
+import type { HydraConfig } from '#hydra/model.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { decideView } from '#preferences/decisions.ts'
 import { hideDone } from '#tasks/retention.ts'
@@ -68,14 +69,17 @@ function legacyView({
 }
 
 // Writes a Hydra's own config the way releases before shared settings did.
+// drop removes a value, as an old reset to the default such as `hydra set --helper auto` did.
 function legacyConfig({
   hydraId,
   at,
   data,
+  drop = [],
 }: {
   hydraId: string
   at: string
   data: Record<string, unknown>
+  drop?: string[]
 }) {
   const meta = {
     at,
@@ -95,13 +99,13 @@ function legacyConfig({
       cardId: '$board',
       change: {
         type: 'board.configured',
-        data: {
+        data: Object.fromEntries(Object.entries({
           ...hydraConfig({
             state,
             id: hydraId,
           }),
           ...data,
-        },
+        }).filter(([key]) => !drop.includes(key))) as unknown as HydraConfig,
       },
     }),
   })
@@ -268,6 +272,50 @@ test(
     assert.equal(
       moved.revision,
       1,
+    )
+  },
+)
+
+test(
+  'an old reset to the default counts as the Hydra changing that value, so the newest change across Hydras wins',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    await commands.hydra([
+      'create',
+      'beta',
+    ])
+    legacyConfig({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      data: {
+        helper: false,
+        reviewMinutes: 5,
+      },
+    })
+    legacyConfig({
+      hydraId: 'beta',
+      at: '2026-01-15T00:00:00.000Z',
+      data: { reviewMinutes: 12 },
+    })
+    legacyConfig({
+      hydraId: 'alpha',
+      at: '2026-02-01T00:00:00.000Z',
+      data: { reviewMinutes: 5 },
+      drop: ['helper'],
+    })
+
+    const moved = await settings()
+    assert.equal(
+      moved.settings.helper,
+      'auto',
+    )
+    assert.equal(
+      moved.settings.reviewMinutes,
+      12,
     )
   },
 )
