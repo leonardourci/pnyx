@@ -426,38 +426,53 @@ test(
       tool_input: { command: 'sleep 600' },
       tool_use_id: 'toolu_quiet',
     })
-    const repeats = 16
-    const every = 20_000
-    const start = Date.now() - repeats * every
-    const at = ({ index }: { index: number }) => new Date(start + index * every).toISOString()
+    // Seconds into the stretch: a repeat every 20 s, one more at 310, then a Stop stamped 305 that
+    // arrives late, and the real Stop at 320.
+    const hooks = [
+      ...Array.from(
+        { length: 16 },
+        (
+          _,
+          index,
+        ) => ({
+          second: index * 20,
+          event: 'PreToolUse',
+        }),
+      ),
+      {
+        second: 310,
+        event: 'PreToolUse',
+      },
+      {
+        second: 305,
+        event: 'Stop',
+      },
+      {
+        second: 320,
+        event: 'Stop',
+      },
+    ]
+    const start = Date.now() - 330_000
 
-    for (let index = 0; index < repeats; index++) {
+    for (const [
+      index,
+      hook,
+    ] of hooks.entries()) {
       spoolWrite({
         hydraId: s.hydraId,
         entry: {
           v: 1,
           id: `hook-quiet-${index}`,
-          at: at({ index }),
+          at: new Date(start + hook.second * 1000).toISOString(),
           harness: 'claude',
-          event: 'PreToolUse',
-          payload: payload({ event: 'PreToolUse' }),
+          event: hook.event,
+          payload: payload({ event: hook.event }),
         },
       })
     }
 
-    spoolWrite({
-      hydraId: s.hydraId,
-      entry: {
-        v: 1,
-        id: 'hook-quiet-stop',
-        at: at({ index: repeats }),
-        harness: 'claude',
-        event: 'Stop',
-        payload: payload({ event: 'Stop' }),
-      },
-    })
-    const pushes = () => s.events().filter((event): event is PushedEvent => event.type === 'card.pushed'
-      && event.data.source?.objectId === session)
+    const pushes = () => s.events()
+      .filter((event): event is PushedEvent => event.type === 'card.pushed' && event.data.source?.objectId === session)
     await until({
       what: 'the worker\'s Stop to be logged after its quiet stretch',
       check: () => pushes().some(event => event.data.activity === 'finished'),
@@ -475,15 +490,18 @@ test(
         300,
         320,
       ],
-      'the repeats are logged once a minute, then the Stop',
+      'the repeats are logged once a minute; the late Stop is stale and the real one is logged',
     )
     assert.ok(
       times.slice(1).every((
         time,
         index,
-      ) => time - times[index]! <= OBSERVATION_HEARTBEAT_MS
-        && OBSERVATION_HEARTBEAT_MS < STALL_MS),
-      'the worker\'s last sign of life is never older than a heartbeat',
+      ) => time - times[index]! <= OBSERVATION_HEARTBEAT_MS),
+      'the worker\'s recorded sign of life is never older than a heartbeat',
+    )
+    assert.ok(
+      OBSERVATION_HEARTBEAT_MS < STALL_MS,
+      'so a quiet worker is never reported stalled',
     )
   },
 )
