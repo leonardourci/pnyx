@@ -1,5 +1,6 @@
 import { useEffect, useId, useState, type CSSProperties } from 'react'
 import { Input, useBusy } from './controls.tsx'
+import { sliderValue } from './slider-value.ts'
 
 // A number as a slider and a number box kept in step. The box also takes values past the slider's end, up to max.
 export function SliderField({
@@ -48,15 +49,22 @@ export function SliderField({
   const share = ({ at }: { at: number }) => `${(at - min) / (sliderMax - min) * 100}%`
   const tick = initial === undefined || initial > sliderMax ? undefined : share({ at: initial })
 
-  const commit = ({ next }: { next: number }) => {
-    if (!busy && Number.isFinite(next) && next >= min && next <= max && next !== value) {
+  const commit = ({ text }: { text: string }) => {
+    const next = sliderValue({
+      text,
+      value,
+      min,
+      max,
+    })
+
+    if (!busy && next !== undefined) {
       run({ save: () => save({ value: next }) })
     }
   }
 
   const release = () => {
     if (sliding !== undefined) {
-      commit({ next: sliding })
+      commit({ text: String(sliding) })
       setSliding(undefined)
     }
   }
@@ -85,7 +93,7 @@ export function SliderField({
         value={sliding === undefined ? draft : String(sliding)}
         onChange={event => setDraft(event.target.value)}
         onBlur={() => {
-          commit({ next: Number(draft) })
+          commit({ text: draft })
           setDraft(String(value))
         }}
         onKeyDown={event => {
