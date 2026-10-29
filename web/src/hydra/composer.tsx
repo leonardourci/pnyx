@@ -73,6 +73,9 @@ const select = ({
   focus < anchor ? 'backward' : 'forward',
 )
 
+// Icons beside the text of the composer's menu items.
+const MENU_ICON = 16
+
 const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
 // What the @ picker offers beyond this Hydra's own projects.
@@ -1684,7 +1687,7 @@ export function Composer({
                     close(); files.current?.click()
                   }}
                 >
-                  <Icon name="paperclip" size={16} />Insert files or images
+                  <Icon name="paperclip" size={MENU_ICON} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
@@ -1710,7 +1713,7 @@ export function Composer({
                     }
                   }}
                 >
-                  <Icon name="mention" size={16} />Mention
+                  <Icon name="mention" size={MENU_ICON} />Mention
                 </Button>
               </>
             )}

@@ -9,6 +9,8 @@ import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
 
+export const TASK_DRAG = 'application/pnyx-task'
+
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
   icon: column.role ?? (column.id.startsWith('custom:') ? 'custom' : column.id),
@@ -100,8 +102,6 @@ export const shownActivity = ({ card }: { card: Card }) =>
 
 // The card a dragged task goes above when dropped on `over`: `over` itself, or the
 // next card when dropped on its lower half. Undefined means the end of the column.
-export const TASK_DRAG = 'application/pnyx-task'
-
 export function dropBefore({
   cards,
   over,
