@@ -1,11 +1,12 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
+import { useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { KeyScope } from '#preferences/keyboard.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import type { Command } from '#web-app/connection.ts'
+import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import type { Command, Receipt } from '#web-app/connection.ts'
 import { focusElement, useKeyAction, useKeyboard, type ActionContext } from '#web-preferences/keyboard-registry.tsx'
 import { SETTINGS_SECTIONS } from '#web-settings/catalog.ts'
 import { SETTING_ICONS } from '#web-settings/settings-page.tsx'
@@ -17,17 +18,37 @@ import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
+import { askKey, askStart, askTargets, askMessage, type AskKey, type AskTarget } from './ask.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, FILTER_TYPES, hydraFilter, KIND_FILTERS, queryText, recentOnly, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
 import { oracleActions, type OracleAction } from './oracle-catalog.ts'
-import { FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
+import { AskPreview, FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
 import { oracleResults, type OracleResult } from './results.ts'
 
 const FOCUSABLE = 'a[href], button, input, textarea, [tabindex]'
 const SETTINGS_KIND = KIND_FILTERS.find(filter => filter.values.includes('setting'))!
 // The help key opens on the settings and actions that name the keyboard.
 const HELP_QUERY = 'keyboard'
+
+const ASK_BADGE = 'ask'
+const CONTEXT_BADGE = 'ask-context'
+
+// Opens the Oracle from elsewhere in the page.
+export interface OracleHandle {
+  // Ask mode, with the place it was opened from attached as context.
+  ask({ place }: { place: string }): void
+}
+
+interface Asking {
+  // The Hydra named with ask:<name>; without one, Enter shows the picker.
+  target?: string
+  context?: string
+  picking: boolean
+  picked?: string
+  sending: boolean
+  error?: string
+}
 
 interface Pressed {
   key: string
@@ -176,6 +197,10 @@ export function Oracle({
   createTask,
   createColumn,
   action,
+  hydras,
+  send,
+  openChat,
+  ref,
 }: {
   state: HydraState
   view: ViewPreferences
@@ -209,11 +234,24 @@ export function Oracle({
     id: string
     context: ActionContext
   }): boolean
+  // Every Hydra a request can go to, by display name.
+  hydras: AskTarget[]
+  send({
+    id,
+    text,
+  }: {
+    id: string
+    text: string
+  }): Promise<Receipt>
+  openChat({ id }: { id: string }): void
+  ref?: Ref<OracleHandle>
 }) {
   const {
     handlers,
     label: keys,
+    platform,
   } = useKeyboard()
+  const mod = platform === 'mac' ? '⌘' : 'Ctrl+'
   const shared = useSharedSettings()
   const remember = shared?.oracleRememberFilters === true
   const hydraBadge = hydraFilter({ hydra })
@@ -241,6 +279,10 @@ export function Oracle({
     inPreview,
     setInPreview,
   ] = useState(false)
+  const [
+    ask,
+    setAsk,
+  ] = useState<Asking | null>(null)
   const dialog = useRef<HTMLDialogElement>(null)
   const input = useRef<HTMLInputElement>(null)
   const preview = useRef<HTMLDivElement>(null)
@@ -266,8 +308,9 @@ export function Oracle({
   })
   // Badges keep only ids, so a renamed column or Hydra shows its new name and a deleted one drops out.
   const badges = badgeIds.flatMap(id => options.filter(option => option.id === id))
-  const token = filterToken({ query })
-  const text = queryText({ query })
+  // A request is not a search, so Ask mode reads no filters and sends no query.
+  const token = ask ? null : filterToken({ query })
+  const text = ask ? '' : queryText({ query })
   const terms = text.split(/\s+/).filter(Boolean)
   const found = useFoundCards({
     command,
@@ -285,7 +328,7 @@ export function Oracle({
     scope: origin.current.scope,
   }) : []
   const now = Date.now()
-  const groups = open ? oracleResults({
+  const groups = open && !ask ? oracleResults({
     state,
     hits: found.hits,
     projects,
@@ -314,9 +357,19 @@ export function Oracle({
   const current = results.find(result => result.id === selected)
   const menuFilter = menu.find(filter => filter.id === menuSelected)
   const optionId = ({ index }: { index: number }) => `${listId}-${index}`
-  const activeIndex = token
+  const targets = askTargets({
+    hydras,
+    current: hydra,
+  })
+  const targetIds = targets.map(target => target.id)
+  const askTarget = targets.find(target => target.id === ask?.target)
+  const pickedId = targetIds.find(id => id === ask?.picked) ?? targetIds[0]
+  const pickedTarget = targets.find(target => target.id === pickedId)
+  const resultIndex = token
     ? menu.findIndex(filter => filter.id === menuSelected)
     : results.findIndex(result => result.id === selected)
+  const askIndex = ask?.picking ? targetIds.findIndex(id => id === pickedId) : 0
+  const activeIndex = ask ? askIndex : resultIndex
   const activeDescendant = activeIndex >= 0 ? optionId({ index: activeIndex }) : undefined
   const recent = recentOnly({
     text,
@@ -345,36 +398,70 @@ export function Oracle({
     context,
     ids,
     text: opening,
+    asking,
   }: {
     context: ActionContext
     ids?: string[]
     text?: string
+    asking?: { place: string }
   }) => {
-    if (dialog.current?.open) {
+    const shown = dialog.current?.open === true
+
+    if (shown && !asking) {
       input.current?.focus()
 
       return true
     }
 
-    origin.current = context
-    const reset = !remember || ids !== undefined
+    const reset = !shown && (!remember || ids !== undefined)
+
+    if (!shown) {
+      origin.current = context
+    }
+
     // The palette renders before focusing, so keys typed right after the shortcut reach the input.
     flushSync(() => {
       setOpen(true)
+      setAsk(asking ? {
+        context: asking.place,
+        picking: false,
+        sending: false,
+      } : null)
 
       if (reset) {
         setBadgeIds(ids ?? [hydraBadge.id])
       }
 
-      if (opening !== undefined) {
+      if (asking) {
+        setQuery('')
+      } else if (opening !== undefined) {
         setQuery(opening)
       }
     })
-    dialog.current?.showModal()
+
+    if (!shown) {
+      dialog.current?.showModal()
+    }
+
     input.current?.focus(); input.current?.select()
 
     return true
   }
+
+  useImperativeHandle(
+    ref,
+    () => ({
+      ask: ({ place }) => {
+        const focused = document.activeElement
+        const target = focused instanceof HTMLElement ? focused : document.body
+
+        show({
+          context: contextOf({ target }),
+          asking: { place },
+        })
+      },
+    }),
+  )
 
   const close = ({ restore }: { restore: boolean }) => {
     waiting.current = null
@@ -520,7 +607,14 @@ export function Oracle({
 
   // The filter menu and the results each keep their own choice, for the query they were made for.
   const choice = ({ id }: { id: string }) => {
-    if (token) {
+    if (ask?.picking) {
+      setAsk({
+        ...ask,
+        picked: id,
+      })
+    } else if (ask) {
+      return
+    } else if (token) {
       setMenuChosen({
         key: menuKey,
         id,
@@ -639,7 +733,165 @@ export function Oracle({
     ],
   )
 
+  const sendAsk = async ({
+    to,
+    opening,
+  }: {
+    to?: AskTarget
+    opening: boolean
+  }) => {
+    if (!ask || !to || ask.sending || !query.trim()) {
+      return
+    }
+
+    const asked = ask
+    setAsk({
+      ...asked,
+      sending: true,
+      error: undefined,
+    })
+
+    try {
+      const receipt = await send({
+        id: to.id,
+        text: askMessage({
+          place: asked.context,
+          request: query,
+        }),
+      })
+
+      if (receipt.state !== 'queued') {
+        throw new Error(typeof receipt.detail === 'string' ? receipt.detail : `${to.name} did not take the request.`)
+      }
+    } catch (error) {
+      setAsk({
+        ...asked,
+        sending: false,
+        error: error instanceof Error ? error.message : String(error),
+      })
+
+      return
+    }
+
+    setAsk(null); setQuery('')
+    close({ restore: !opening })
+    notify({ text: `Sent to ${to.name}` })
+
+    if (opening) {
+      openChat({ id: to.id })
+    }
+  }
+
+  const askAct = ({ key }: { key: AskKey }) => {
+    if (!ask) {
+      return
+    }
+
+    switch (key) {
+      case 'leave':
+        setAsk(null)
+        break
+      case 'back':
+        setAsk({
+          ...ask,
+          picking: false,
+        })
+        break
+      case 'pick':
+        setAsk({
+          ...ask,
+          picking: true,
+          picked: undefined,
+        })
+        break
+      case 'up':
+      case 'down':
+        setAsk({
+          ...ask,
+          picked: movedId({
+            ids: targetIds,
+            current: pickedId,
+            step: key === 'down' ? 1 : -1,
+          }),
+        })
+        break
+      case 'send':
+      case 'send-open':
+        sendAsk({
+          to: ask.picking ? pickedTarget : askTarget,
+          opening: key === 'send-open',
+        })
+    }
+  }
+
+  const askInput = ({ event }: { event: KeyboardEvent<HTMLInputElement> }) => {
+    const key = askKey({
+      key: event.key,
+      mod: event.metaKey || event.ctrlKey,
+      composing: composing({ event: event.nativeEvent }),
+      picking: ask?.picking === true,
+      targeted: !!askTarget,
+      request: query,
+    })
+
+    if (!key) {
+      return
+    }
+
+    event.preventDefault(); event.stopPropagation()
+    askAct({ key })
+  }
+
+  // "ask " or "ask:<name> " at the start turns the field into a request; the rest is the request's text.
+  const type = ({ typed }: { typed: string }) => {
+    const start = ask ? null : askStart({
+      query: typed,
+      hydras: targets,
+    })
+
+    if (start) {
+      setAsk({
+        target: start.target?.id,
+        picking: false,
+        sending: false,
+      })
+      setQuery(start.request)
+
+      return
+    }
+
+    if (ask?.error) {
+      setAsk({
+        ...ask,
+        error: undefined,
+      })
+    }
+
+    setQuery(typed)
+  }
+
+  const removeBadge = ({ id }: { id: string }) => {
+    if (id === ASK_BADGE) {
+      setAsk(null)
+    } else if (id === CONTEXT_BADGE && ask) {
+      setAsk({
+        ...ask,
+        context: undefined,
+      })
+    } else {
+      setBadgeIds(ids => ids.filter(item => item !== id))
+    }
+
+    input.current?.focus()
+  }
+
   const inputKey = ({ event }: { event: KeyboardEvent<HTMLInputElement> }) => {
+    if (ask) {
+      askInput({ event })
+
+      return
+    }
+
     const pressed = {
       key: event.key,
       mod: event.metaKey || event.ctrlKey,
@@ -713,8 +965,24 @@ export function Oracle({
     kind: badge.type,
     icon: badge.icon,
   }))
+  const askBadges: SearchBadge[] = [
+    {
+      id: ASK_BADGE,
+      label: askTarget ? `Ask ${askTarget.name}` : 'Ask',
+      kind: 'ask',
+      icon: askTarget?.icon ?? HYDRA_MARK,
+    },
+    {
+      id: CONTEXT_BADGE,
+      label: ask?.context ?? '',
+      kind: 'context',
+      icon: 'settings',
+    },
+  ].filter(badge => badge.label)
+  const shownBadges = ask ? askBadges : searchBadges
   const countLabel = found.pending ? 'Searching…' : `${results.length} ${results.length === 1 ? 'result' : 'results'}`
-  const count = token ? 'Filters' : countLabel
+  const searchCount = token ? 'Filters' : countLabel
+  const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
   const nothing = recent ? 'No tasks yet.' : `Nothing matches.${widen}`
@@ -767,10 +1035,51 @@ export function Oracle({
   ))
   const emptyMenu = <p className="oracle-empty">No filter matches “{token?.text}” here. Esc drops it.</p>
   const emptyResults = <p className="oracle-empty">{nothing}</p>
-  const shownList = token ? menuList : resultList
+  const askRow = (
+    <Group label="Request">
+      <Option
+        id={optionId({ index: 0 })}
+        value={ASK_BADGE}
+        selected
+        icon={askTarget?.icon ?? HYDRA_MARK}
+        label={askTarget ? `Send to ${askTarget.name}` : 'Send to which Hydra?'}
+        terms={[]}
+        meta={askTarget ? `↵ sends · ${mod}↵ and opens its chat` : '↵ picks the Hydra'}
+        pick={() => askAct({ key: askTarget ? 'send' : 'pick' })}
+      />
+    </Group>
+  )
+  const pickList = (
+    <Group label="Send to which Hydra?">
+      {targets.map((
+        target,
+        index,
+      ) => (
+        <Option
+          key={target.id}
+          id={optionId({ index })}
+          value={target.id}
+          selected={target.id === pickedId}
+          icon={target.icon}
+          label={target.name}
+          terms={[]}
+          meta={target.id === hydra.id ? 'this Hydra' : ''}
+          pick={() => sendAsk({
+            to: target,
+            opening: false,
+          })}
+        />
+      ))}
+    </Group>
+  )
+  const askList = ask?.picking ? pickList : askRow
+  const searchList = token ? menuList : resultList
+  const shownList = ask ? [askList] : searchList
   // The previous results stay, dimmed, until the new query's answer arrives.
-  const dimmed = found.pending && !token
+  const dimmed = found.pending && !token && !ask
   const empty = token ? emptyMenu : emptyResults
+  const listLabel = token ? 'Filters' : 'Oracle results'
+  const searchPlaceholder = 'Search tasks, conversations, projects and settings; > filters; ask to ask a Hydra'
 
   const palette = (
     <dialog
@@ -795,11 +1104,11 @@ export function Oracle({
       <SearchBar
         label="Oracle"
         query={query}
-        setQuery={({ query }) => setQuery(query)}
-        badges={searchBadges}
-        removeBadge={({ id }) => setBadgeIds(ids => ids.filter(item => item !== id))}
+        setQuery={({ query }) => type({ typed: query })}
+        badges={shownBadges}
+        removeBadge={removeBadge}
         count={open ? count : undefined}
-        placeholder="Search tasks, conversations, projects and settings; > filters"
+        placeholder={ask ? 'Type what you want to ask' : searchPlaceholder}
         inputRef={input}
         combobox={{
           expanded: open,
@@ -815,7 +1124,7 @@ export function Oracle({
             id={listId}
             className="oracle-list"
             role="listbox"
-            aria-label={token ? 'Filters' : 'Oracle results'}
+            aria-label={ask ? 'Ask' : listLabel}
             data-pending={dimmed || undefined}
             onMouseMove={event => hover({
               x: event.clientX,
@@ -838,8 +1147,18 @@ export function Oracle({
               }
             }}
           >
+            {ask && (
+              <AskPreview
+                to={ask.picking ? pickedTarget : askTarget}
+                place={ask.context}
+                request={query}
+                picking={ask.picking}
+                sending={ask.sending}
+                error={ask.error}
+              />
+            )}
             {token && <FilterPreview filter={menuFilter} badges={badges} />}
-            {!token && current && (
+            {!ask && !token && current && (
               <ResultPreview
                 result={current}
                 state={state}

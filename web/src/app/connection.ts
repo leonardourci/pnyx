@@ -28,6 +28,8 @@ export function useHydra() {
   return {
     ...snapshot,
     command: connection.commandFor({ id: snapshot.navigation.hydraId }),
+    // Another Hydra's command, over the same connection; the Oracle sends requests to any Hydra.
+    commandFor: connection.commandFor,
     navigate: connection.navigate,
     createHydra: connection.create,
     retryHydra: connection.retry,

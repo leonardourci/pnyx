@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { Hit, Kind } from '#oracle/index.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -23,6 +24,7 @@ import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { cardState, columnLook, columnsFor } from '#web-tasks/view.ts'
+import { askMessage, type AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
 import type { OracleAction, OraclePanel } from './oracle-catalog.ts'
 import type { OracleResult } from './results.ts'
@@ -368,6 +370,68 @@ export function ResultPreview({
         <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[result.kind]}</Button>
         <p className="muted small">{hint}. Tab moves here; Esc, ⇧Tab or typing goes back to the bar.</p>
       </div>
+    </>
+  )
+}
+
+const askHint = ({
+  picking,
+  targeted,
+  mod,
+}: {
+  picking: boolean
+  targeted: boolean
+  mod: string
+}) => {
+  if (picking) {
+    return `↑ ↓ pick the Hydra · ↵ sends · ${mod}↵ sends and opens its chat · Esc goes back to the request`
+  }
+
+  if (!targeted) {
+    return '↵ picks the Hydra · Esc leaves Ask mode and keeps the text as a search'
+  }
+
+  return `↵ sends · ${mod}↵ sends and opens its chat · Esc leaves Ask mode and keeps the text as a search`
+}
+
+// The request exactly as Hydra will read it, with where it goes.
+export function AskPreview({
+  to,
+  place,
+  request,
+  picking,
+  sending,
+  error,
+}: {
+  to?: AskTarget
+  place?: string
+  request: string
+  picking: boolean
+  sending: boolean
+  error?: string
+}) {
+  const { platform } = useKeyboard()
+  const hint = askHint({
+    picking,
+    targeted: !!to,
+    mod: platform === 'mac' ? '⌘' : 'Ctrl+',
+  })
+  const empty = place ? `Type what you want to ask about ${place}.` : 'Type what you want to ask.'
+
+  return (
+    <>
+      <h3 className="oracle-preview-title"><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</h3>
+      {request.trim()
+        ? (
+          <p className="oracle-ask-message">{askMessage({
+            place,
+            request,
+          })}
+          </p>
+        )
+        : <p className="muted">{empty}</p>}
+      {error && <p className="oracle-ask-error" role="alert">{error}</p>}
+      <p className="muted small" role="status">{sending ? 'Sending…' : hint}</p>
     </>
   )
 }

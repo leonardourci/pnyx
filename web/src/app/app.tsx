@@ -1054,12 +1054,54 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
+  // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
+  const askHydra = ({
+    id,
+    text,
+  }: {
+    id: string
+    text: string
+  }) => hydra.commandFor({ id })({
+    name: 'hydra',
+    args: [
+      'send',
+      `--text=${text}`,
+      '--event-id',
+      crypto.randomUUID(),
+    ],
+  })
+
+  const openChat = async ({ id }: { id: string }) => {
+    if (id === navigation.hydraId) {
+      openHydra()
+
+      return
+    }
+
+    try {
+      await navigate({
+        url: new URL(
+          `/hydra/${encodeURIComponent(id)}/`,
+          location.href,
+        ).href,
+      })
+      requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   // The Oracle names the Hydra as its list does, never by its id.
   const oracleHydra = {
     id: navigation.hydraId,
     name: shownHydra ? hydraTitle(shownHydra) : 'Hydra',
     icon: shownHydra?.icon ?? HYDRA_MARK,
   }
+  const askTargets = edits.hydras.map(h => ({
+    id: h.id,
+    name: hydraTitle(h),
+    icon: h.icon ?? HYDRA_MARK,
+  }))
   const opening = navigation.hydras.find(h => h.id === loading)
   const currentHydra = shownHydra
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
@@ -1142,6 +1184,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               createTask={createTask}
               createColumn={createColumn}
               action={keyboard.onAction}
+              hydras={askTargets}
+              send={askHydra}
+              openChat={openChat}
             />
           )}
         >
