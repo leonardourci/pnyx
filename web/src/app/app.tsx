@@ -992,7 +992,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })))
 
   // Add project asks Hydra in the composer; for another Hydra it opens that Hydra first.
-  const addProject = ({ id }: { id: string }) => {
+  const addProject = async ({ id }: { id: string }) => {
     if (id === navigation.hydraId) {
       setPage('hydra'); setProjectRequest(true)
 
@@ -1007,7 +1007,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       'add-project',
       '1',
     )
-    void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
+
+    try {
+      await navigate({ url: url.href })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
   }
 
   return (

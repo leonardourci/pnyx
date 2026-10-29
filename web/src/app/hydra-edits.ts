@@ -56,7 +56,7 @@ export function useHydraEdits({
   ))
 
   const edit = useCallback(
-    ({
+    async ({
       id,
       name,
       icon,
@@ -80,18 +80,21 @@ export function useHydraEdits({
           icon,
         },
       }))
-      void command({
-        name: 'hydras',
-        args: [
-          'edit',
-          id,
-          name === hydra.name ? '' : name,
-          icon === iconOf({ hydra }) ? '' : icon,
-        ],
-      }).catch((error: Error) => {
+
+      try {
+        await command({
+          name: 'hydras',
+          args: [
+            'edit',
+            id,
+            name === hydra.name ? '' : name,
+            icon === iconOf({ hydra }) ? '' : icon,
+          ],
+        })
+      } catch (error) {
         drop({ id })
-        notify({ text: error.message })
-      })
+        notify({ text: (error as Error).message })
+      }
     },
     [
       hydras,
