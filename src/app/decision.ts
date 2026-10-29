@@ -1,16 +1,52 @@
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraState, HydraEvent, Decision, SourceRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
-import { sessionId } from '#workers/session-attachments.ts'
+import { observedBefore, sameSource } from '#tasks/events.ts'
 import type { Meta } from './command-meta.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
 import { checkRevision, strip } from '#tasks/push-rules.ts'
 import { reduce } from './reducer.ts'
 
-// A push that only moves an observation's time is logged once per heartbeat, which keeps a quiet
-// worker's lastSeen far inside STALL_MS; a push that changes anything else is always logged.
+// A push that only moves its source's observation time is logged once per heartbeat; any other change
+// is logged at once. A quiet worker's lastSeen lags its newest observation by at most this, well inside STALL_MS.
 export const OBSERVATION_HEARTBEAT_MS = 60_000
+
+// ponytail: kept in memory, so a restart forgets skipped observations and an older one drained from the
+// spool after it can still apply; persist the newest per source if that ever matters.
+const skippedObservations = new Map<string, SourceRef>()
+
+const observationKey = ({
+  cardId,
+  source,
+}: {
+  cardId: string
+  source: SourceRef
+}) => [
+  cardId,
+  source.adapter,
+  source.instanceId,
+  source.objectId,
+].join('\0')
+
+// An observation older than a repeat skipped for this card's source is stale, as it would be had the repeat been logged.
+export function behindSkipped({
+  cardId,
+  source,
+}: {
+  cardId: string
+  source: SourceRef
+}): boolean {
+  const skipped = skippedObservations.get(observationKey({
+    cardId,
+    source,
+  }))
+
+  return !!skipped && observedBefore({
+    source,
+    known: skipped,
+  })
+}
 
 const untimedRefs = ({ refs }: { refs: SourceRef[] }) => refs.map(ref => ({
   ...ref,
@@ -37,17 +73,19 @@ const untimedSessions = ({ sessions }: { sessions: HydraState['sessions'] }) => 
 )
 
 const heartbeatDue = ({
-  state,
   card,
+  source,
   at,
 }: {
-  state: HydraState
   card: Card
+  source: SourceRef
   at: string
 }) => {
-  const session = card.agent && state.sessions?.[sessionId({ agent: card.agent })]
-  const seen = session?.lastSeen || card.updatedAt
-  const quietFor = Date.parse(at) - Date.parse(seen)
+  const logged = card.sourceRefs.find(ref => sameSource({
+    a: ref,
+    b: source,
+  }))?.observedAt ?? card.updatedAt
+  const quietFor = Date.parse(source.observedAt ?? at) - Date.parse(logged)
 
   return Number.isNaN(quietFor) || quietFor >= OBSERVATION_HEARTBEAT_MS
 }
@@ -103,17 +141,41 @@ export function decided({
     state.sessions,
     reduced.sessions,
   )
-  const onlyObservedLater = event.type === 'card.pushed' && isDeepStrictEqual(
+
+  if (unchanged) {
+    return { skipped: 'unchanged' }
+  }
+
+  const source = event.type === 'card.pushed' ? event.data.source : undefined
+
+  if (!source || heartbeatDue({
+    card,
+    source,
+    at: event.at,
+  })) {
+    return { event }
+  }
+
+  const sameCard = isDeepStrictEqual(
     untimedCard({ card: before }),
     untimedCard({ card: after }),
-  ) && isDeepStrictEqual(
+  )
+  const sameSessions = isDeepStrictEqual(
     untimedSessions({ sessions: state.sessions }),
     untimedSessions({ sessions: reduced.sessions }),
-  ) && !heartbeatDue({
-    state,
-    card,
-    at: event.at,
-  })
+  )
 
-  return unchanged || onlyObservedLater ? { skipped: 'unchanged' } : { event }
+  if (sameCard && sameSessions) {
+    skippedObservations.set(
+      observationKey({
+        cardId: card.id,
+        source,
+      }),
+      source,
+    )
+
+    return { skipped: 'unchanged' }
+  }
+
+  return { event }
 }

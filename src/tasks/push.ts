@@ -8,7 +8,7 @@ import { projectLabel } from '#projects/labels.ts'
 import { parseAutoTitle, parseAttention, findCard, pushedValue } from './push-rules.ts'
 import { parseAgent, mergeSettings, parseTerminal, parseSource } from '#workers/sessions.ts'
 import { wouldCycle, isStaleSource } from './events.ts'
-import { decided } from '#app/decision.ts'
+import { behindSkipped, decided } from '#app/decision.ts'
 
 export function decidePush({
   state,
@@ -172,10 +172,13 @@ export function decidePush({
   const source = input.source === undefined ? undefined : parseSource({ value: input.source })
   const card = state.cards[cardId]
 
-  if (source && isStaleSource({
+  if (source && (isStaleSource({
     card,
     source,
-  })) {
+  }) || behindSkipped({
+    cardId,
+    source,
+  }))) {
     return { skipped: 'stale' }
   }
 
