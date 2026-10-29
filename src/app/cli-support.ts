@@ -120,6 +120,7 @@ export function parse({
       options,
       allowPositionals: true,
       strict: true,
+      tokens: true,
     })
   } catch (error) {
     throw flagError({
@@ -134,6 +135,24 @@ export function parse({
       'VALIDATION_ERROR',
       [helpHint()],
     )
+  }
+
+  const seen = new Set<string>()
+
+  for (const token of parsed.tokens) {
+    if (token.kind !== 'option' || options[token.name]?.multiple) {
+      continue
+    }
+
+    if (seen.has(token.name)) {
+      throw new AxiError(
+        `repeated scalar flag --${token.name}`,
+        'VALIDATION_ERROR',
+        [helpHint()],
+      )
+    }
+
+    seen.add(token.name)
   }
 
   const values = parsed.values as Record<string, string | boolean | undefined>
@@ -641,6 +660,7 @@ export function summary({ event }: { event: HydraEvent }): string {
   const undo = event.undoes ? `undo ${event.undoes}: ` : ''
 
   switch (event.type) {
+    case 'apply.recorded': return `Applied local changes: ${event.id}`
     case 'session.compaction': return event.data.kind === 'status' ? `Compaction ${event.data.operation.state}${event.data.operation.error ? `: ${event.data.operation.error}` : ''}` : `Compaction ${event.data.kind}`
     case 'pnyx.upgrade': return `Upgrade ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'task.source.registered': return `External source ${event.data.source.id} registered`

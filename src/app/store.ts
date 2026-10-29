@@ -14,8 +14,17 @@ export interface HydraSnapshot {
   tornBytes: number
 }
 
-export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
-  const dir = hydraDir({ hydraId })
+export function loadHydra({
+  hydraId,
+  migrate = true,
+}: {
+  hydraId: string
+  migrate?: boolean
+}): HydraSnapshot {
+  const dir = hydraDir({
+    hydraId,
+    migrate,
+  })
   const snap = readSnapshot({ dir })
   let log = snap ? readLog({
     dir,
@@ -40,8 +49,19 @@ export function loadHydra({ hydraId }: { hydraId: string }): HydraSnapshot {
 }
 
 // A Hydra exists once its log does; a bare folder, such as one a config write made, does not count.
-export function requireHydra({ hydraId }: { hydraId: string }): void {
-  if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({ dir: hydraDir({ hydraId }) }))) {
+export function requireHydra({
+  hydraId,
+  migrate = true,
+}: {
+  hydraId: string
+  migrate?: boolean
+}): void {
+  if (hydraId !== DEFAULT_HYDRA && !existsSync(logPath({
+    dir: hydraDir({
+      hydraId,
+      migrate,
+    }),
+  }))) {
     throw new HydraError({
       message: `unknown Hydra: ${hydraId}`,
       code: 'NOT_FOUND',
@@ -50,8 +70,17 @@ export function requireHydra({ hydraId }: { hydraId: string }): void {
   }
 }
 
-export function loadTail({ hydraId }: { hydraId: string }): HydraSnapshot {
-  const loaded = loadHydra({ hydraId })
+export function loadTail({
+  hydraId,
+  migrate = true,
+}: {
+  hydraId: string
+  migrate?: boolean
+}): HydraSnapshot {
+  const loaded = loadHydra({
+    hydraId,
+    migrate,
+  })
 
   if (loaded.tornBytes > 0) {
     throw new HydraError({

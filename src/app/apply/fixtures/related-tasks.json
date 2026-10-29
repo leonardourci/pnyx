@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "changes": [
+    { "op": "task.create", "as": "research", "key": "research", "title": "Research export", "brief": "Compare formats" },
+    { "op": "task.create", "as": "build", "key": "build", "title": "Build export" },
+    { "op": "task.depend", "task": "$build", "on": ["$research"] },
+    { "op": "task.brief", "task": "$build", "brief": "Use the research findings" },
+    { "op": "task.status", "task": "$research", "status": "working", "note": "Comparing formats" },
+    { "op": "link", "task": "$research", "url": "https://example.com/formats" }
+  ]
+}
