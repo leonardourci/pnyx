@@ -21,6 +21,10 @@ import { PR_COMMANDS, attend, observe, type HookEnvelope } from './observe.ts'
 import { readEvents } from '#app/event-log.ts'
 import { spoolWrite } from '#app/spool.ts'
 import { spoolFiles } from '#store/storage.ts'
+import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
+import { decidePush } from '#tasks/push.ts'
+import { harvestTranscripts } from './harvest.ts'
 
 const ROOT = join(
   import.meta.dirname,
@@ -867,6 +871,234 @@ test(
       context({ cwd: sibling }).trim(),
       '',
       'a folder whose name only starts with the project\'s is outside it',
+    )
+  },
+)
+
+const REPEAT_SESSION = 'repeat-session'
+
+// One Claude hook event of the repeat session, stamped `second` seconds past noon and ingested at once.
+const hookAt = ({
+  second,
+  event,
+  transcript = '/work/home/.claude/projects/-work-repo/repeat-session.jsonl',
+  prompt,
+}: {
+  second: number
+  event: string
+  transcript?: string
+  prompt?: string
+}) => {
+  const payload: Record<string, unknown> = {
+    session_id: REPEAT_SESSION,
+    transcript_path: transcript,
+    cwd: '/work/repo',
+    permission_mode: 'default',
+    effort: 'high',
+    hook_event_name: event,
+    tool_name: 'Bash',
+    tool_input: { command: 'ls' },
+    tool_use_id: 'toolu_repeat',
+  }
+
+  if (prompt) {
+    payload.prompt = prompt
+  }
+
+  spoolWrite({
+    hydraId: 'default',
+    entry: {
+      v: 1,
+      id: `hook-repeat-${event}-${second}`,
+      at: `2026-10-29T12:00:${String(second).padStart(
+        2,
+        '0',
+      )}.000Z`,
+      harness: 'claude',
+      event,
+      payload,
+    },
+  })
+  ingestSpool({ hydraId: 'default' })
+}
+
+const repeatEvents = () => readEvents({ hydraId: 'default' })
+  .filter(event => event.type === 'card.pushed' || event.type === 'card.observed')
+  .map(event => `${event.type} ${event.at.slice(
+    17,
+    19,
+  )}`)
+
+const repeatCard = () => Object.values(loadHydra({ hydraId: 'default' }).state.cards)
+  .find(card => card.agent?.sessionId === REPEAT_SESSION)!
+
+test(
+  'a hook report that repeats the last one is logged as its new observation time; one with new content is logged in full',
+  () => {
+    process.env.PNYX_HOME = sandbox().home
+    hookAt({
+      second: 0,
+      event: 'UserPromptSubmit',
+      prompt: 'Initial request',
+    })
+    hookAt({
+      second: 20,
+      event: 'UserPromptSubmit',
+      prompt: 'Initial request',
+    })
+    hookAt({
+      second: 30,
+      event: 'UserPromptSubmit',
+      prompt: 'New constraint: preserve diagnostics',
+    })
+    assert.deepEqual(
+      repeatEvents(),
+      [
+        'card.pushed 00',
+        'card.observed 20',
+        'card.pushed 30',
+      ],
+    )
+    assert.match(
+      JSON.stringify(readEvents({ hydraId: 'default' }).at(-1)),
+      /New constraint: preserve diagnostics/,
+      'the second prompt stays in history though the card keeps its first title',
+    )
+
+    const card = repeatCard()
+    const facts = withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => decidePush({
+        state: writer.state,
+        key: card.key,
+        input: {
+          activity: 'working',
+          source: {
+            ...card.sourceRefs[0],
+            observedAt: '2026-10-29T12:00:40.000Z',
+          },
+        },
+        meta: {
+          actor: 'hook:claude',
+          id: 'new-facts',
+          at: '2026-10-29T12:00:40.000Z',
+          reason: 'New diagnostic finding',
+          details: 'The upstream API returned 503.',
+        },
+      }),
+    })
+    assert.equal(
+      'event' in facts && facts.event.type,
+      'card.pushed',
+      'a push with a new reason and details is logged in full',
+    )
+  },
+)
+
+test(
+  'a late older hook event stays stale in a new process after the newer repeat was logged compactly',
+  () => {
+    process.env.PNYX_HOME = sandbox().home
+    hookAt({
+      second: 0,
+      event: 'PreToolUse',
+    })
+    hookAt({
+      second: 30,
+      event: 'PreToolUse',
+    })
+    spoolWrite({
+      hydraId: 'default',
+      entry: {
+        v: 1,
+        id: 'hook-repeat-late-stop',
+        at: '2026-10-29T12:00:25.000Z',
+        harness: 'claude',
+        event: 'Stop',
+        payload: {
+          session_id: REPEAT_SESSION,
+          transcript_path: '/work/home/.claude/projects/-work-repo/repeat-session.jsonl',
+          cwd: '/work/repo',
+          permission_mode: 'default',
+          hook_event_name: 'Stop',
+        },
+      },
+    })
+    execFileSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        '--input-type=module',
+        '-e',
+        'const { ingestSpool } = await import(\'#integrations/hooks/ingest.ts\'); ingestSpool({ hydraId: \'default\' })',
+      ],
+      {
+        cwd: ROOT,
+        env: process.env,
+      },
+    )
+    assert.deepEqual(
+      repeatEvents(),
+      [
+        'card.pushed 00',
+        'card.observed 30',
+      ],
+    )
+    assert.equal(
+      repeatCard().sessionActivity,
+      'working',
+    )
+  },
+)
+
+test(
+  'a transcript record older than a compactly logged hook cannot replace the hook\'s live effort',
+  () => {
+    const { home } = sandbox()
+    process.env.PNYX_HOME = home
+    const transcript = join(
+      home,
+      'repeat-session.jsonl',
+    )
+    hookAt({
+      second: 0,
+      event: 'PreToolUse',
+      transcript,
+    })
+    hookAt({
+      second: 30,
+      event: 'PreToolUse',
+      transcript,
+    })
+    writeFileSync(
+      transcript,
+      `${JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-10-29T12:00:20.000Z',
+        effort: 'low',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-5-5',
+          content: [
+            {
+              type: 'text',
+              text: 'Working on it.',
+            },
+          ],
+        },
+      })}\n`,
+    )
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => harvestTranscripts({
+        writer,
+        cardIds: [repeatCard().id],
+        at: '2026-10-29T12:00:40.000Z',
+      }),
+    })
+    assert.equal(
+      repeatCard().settings?.effort,
+      'high',
     )
   },
 )
