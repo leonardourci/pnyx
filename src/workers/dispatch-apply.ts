@@ -428,6 +428,47 @@ export function proposalStatus({ state }: { state: HydraState }): ProposalStatus
     })
 }
 
+function saveProposal({
+  proposal,
+  id,
+  changes,
+  meta,
+}: {
+  proposal: DispatchProposal
+  id: string
+  changes: DispatchChange[]
+  meta: Meta
+}): void {
+  const document = lockedDocument()
+  const problem = proposalProblem({
+    document,
+    proposal,
+  })
+
+  if (problem) {
+    throw new HydraError({
+      message: problem,
+      code: 'CONFLICT',
+      help: ['Dismiss it and ask Hydra to propose the change again'],
+    })
+  }
+
+  commitChange({
+    entry: {
+      v: 1,
+      id,
+      at: meta.at,
+      actor: meta.actor,
+      reason: proposal.summary,
+      changes,
+      document: mergePatch({
+        target: document,
+        patch: JSON.parse(proposal.value),
+      }) as DispatchDocument,
+    },
+  })
+}
+
 export function resolveProposal({
   hydraId,
   action,
@@ -479,34 +520,17 @@ export function resolveProposal({
           }
         }
 
-        const document = lockedDocument()
-        const problem = proposalProblem({
-          document,
-          proposal,
-        })
+        const id = `proposal-${token}`
 
-        if (problem) {
-          throw new HydraError({
-            message: problem,
-            code: 'CONFLICT',
-            help: ['Dismiss it and ask Hydra to propose the change again'],
+        // A confirm whose save landed before recording the resolution failed only records it on retry.
+        if (!readChanges().some(entry => entry.id === id)) {
+          saveProposal({
+            proposal,
+            id,
+            changes,
+            meta,
           })
         }
-
-        commitChange({
-          entry: {
-            v: 1,
-            id: `proposal-${token}`,
-            at: meta.at,
-            actor: meta.actor,
-            reason: proposal.summary,
-            changes,
-            document: mergePatch({
-              target: document,
-              patch: JSON.parse(proposal.value),
-            }) as DispatchDocument,
-          },
-        })
       }
 
       withWriter({

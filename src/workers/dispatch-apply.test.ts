@@ -1138,6 +1138,75 @@ test(
 )
 
 test(
+  'a confirm whose save landed but whose resolution was not recorded only records it when retried',
+  () => {
+    lab()
+    const { token } = rule({
+      args: [
+        'propose',
+        'set',
+        'build',
+        '--effort',
+        'low',
+        '--actor',
+        'hydra',
+      ],
+    }) as { token: string }
+    const confirm = () => rule({
+      args: [
+        'confirm',
+        token,
+        '--confirm',
+        token,
+      ],
+    })
+    const events = join(
+      hydraDir({ hydraId: 'lab' }),
+      'events.jsonl',
+    )
+    chmodSync(
+      events,
+      0o400,
+    )
+
+    try {
+      assert.throws(
+        confirm,
+        { code: 'EACCES' },
+      )
+    } finally {
+      chmodSync(
+        events,
+        0o600,
+      )
+    }
+
+    assert.equal(
+      confirm().state,
+      'confirmed',
+    )
+    const {
+      document,
+      revision,
+    } = show()
+    assert.deepEqual(
+      [
+        document.rules.build?.candidates[0]?.effort,
+        revision,
+      ],
+      [
+        'low',
+        1,
+      ],
+    )
+    assert.deepEqual(
+      rule({ args: ['list'] }).proposals,
+      [],
+    )
+  },
+)
+
+test(
   'an error an older Pnyx saved still reads, and a patch may fix it but not add another',
   () => {
     const { file } = lab()
