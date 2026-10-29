@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
+import { ATTACHMENT_NAME, imageLine, shownImageNames } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
@@ -77,7 +77,7 @@ function MessageImage({
 
 // The chip keeps the image's place in the sentence; the image itself shows under the text, named like its chip.
 export function MessageImages({ text }: { text: string }) {
-  const stored = [...imageNames({ text })].flatMap(([
+  const stored = [...shownImageNames({ text })].flatMap(([
     path,
     name,
   ]) => {

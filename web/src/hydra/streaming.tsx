@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
-import { imageNames } from '#hydra/images.ts'
-import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
+import { shownImageNames } from '#hydra/images.ts'
+import { MarkdownBlocks, markdown } from './markdown.tsx'
+import { RichText } from '#web-shared/ui/rich-text.tsx'
 import {
   EDGE,
   arrivalRate,
@@ -14,7 +15,7 @@ import {
   type Block,
 } from '#web-shared/ui/reveal.ts'
 
-type MarkdownProps = ComponentProps<typeof Markdown>
+type MarkdownProps = Omit<ComponentProps<typeof RichText>, 'images'>
 
 export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 const FRAME = 1000 / 60
@@ -65,7 +66,7 @@ export function MessageText({
       streaming={!!streaming}
       decorations={decorations}
     />
-  ) : <Markdown {...props} />
+  ) : <RichText {...props} images={false} />
 }
 
 type Reveal = {
@@ -438,7 +439,7 @@ function StreamedText({
   const host = useRef<HTMLDivElement>(null)
   const state = useRef<Reveal | null>(null)
   const images = useMemo(
-    () => imageNames({ text }),
+    () => shownImageNames({ text }),
     [text],
   )
 

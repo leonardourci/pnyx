@@ -1,12 +1,11 @@
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
-import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
+import { Fragment, memo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { IMAGE, imageLine, imageNames } from '#hydra/images.ts'
+import { SHOWN_IMAGE } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
-import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
-import { prepareChatTokens } from './chat-tokens.ts'
+import { ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
@@ -68,7 +67,7 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   }
 }
 
-type TaskLink = {
+export type TaskLink = {
   openTask?({ id }: { id: string }): void
   columnLook?({ id }: { id: string }): {
     icon: string
@@ -93,17 +92,35 @@ const withImages = ({
 }: {
   text: string
   images?: Map<string, string>
-}): ReactNode => text.split(IMAGE).map((
-  part,
-  n,
-) => n % 2 ? (
-  <Sourced key={n} markdown={imageLine({ path: part })}>
-    <ImageChip
-      path={part}
-      label={images?.get(part) ?? 'Image'}
-    />
-  </Sourced>
-) : <ChatTokenText key={n} text={part} />)
+}): ReactNode => {
+  const parts: ReactNode[] = []
+  let end = 0
+
+  for (const match of text.matchAll(SHOWN_IMAGE)) {
+    const path = match[1] ?? match[2]!
+    parts.push(
+      <ChatTokenText
+        key={end}
+        text={text.slice(
+          end,
+          match.index,
+        )}
+      />,
+      <Sourced key={`${match.index}:image`} markdown={match[0]}>
+        <ImageChip
+          path={path}
+          label={images?.get(path) ?? 'Image'}
+        />
+      </Sourced>,
+    )
+    end = match.index + match[0].length
+  }
+
+  return [
+    ...parts,
+    <ChatTokenText key={end} text={text.slice(end)} />,
+  ]
+}
 
 const inline = ({
   tokens,
@@ -303,7 +320,7 @@ type Render = {
   base?: number
 }
 
-type BlockWrap = ({
+export type BlockWrap = ({
   index,
   offset,
   quote,
@@ -320,7 +337,7 @@ type Blocks = {
 } & TaskLink
 
 // blockCount in reveal.ts mirrors every `block` call made here.
-const renderBlocks = ({
+export const renderBlocks = ({
   text,
   tokens,
   offset: start = 0,
@@ -498,77 +515,3 @@ const renderBlocks = ({
 
 // Memoized, so a streamed reply's completed blocks skip the typing frames between pushes.
 export const MarkdownBlocks = memo(renderBlocks)
-
-export const Markdown = memo(function Markdown({
-  text,
-  block,
-  openTask,
-  columnLook,
-}: {
-  text: string
-  block?: BlockWrap
-} & TaskLink) {
-  const context = useContext(ChatTokensContext)
-  const prepared = useMemo(
-    () => prepareChatTokens({
-      text,
-      suggestions: context.suggestions ?? [],
-    }),
-    [
-      text,
-      context.suggestions,
-    ],
-  )
-  const tokens = useMemo(
-    () => {
-      const tokens = markdown.lexer(prepared.text)
-      markdown.walkTokens(
-        tokens,
-        // eslint-disable-next-line pnyx/object-params -- Marked owns this callback signature.
-        token => {
-          token.raw = prepared.restore({ text: token.raw })
-
-          if ('href' in token) {
-            token.href = prepared.restore({ text: token.href })
-          }
-
-          if (token.type === 'code' && token.lang) {
-            token.lang = prepared.restore({ text: token.lang })
-          }
-        },
-      )
-
-      return tokens
-    },
-    [prepared],
-  )
-  const images = useMemo(
-    () => imageNames({ text }),
-    [text],
-  )
-
-  return (
-    <ChatTokensContext.Provider
-      value={{
-        ...context,
-        tokens: prepared,
-      }}
-    >
-      <div className="markdown">{renderBlocks({
-        text,
-        tokens,
-        block: block ? ({
-          quote,
-          ...props
-        }) => block({
-          ...props,
-          quote: prepared.restore({ text: quote }),
-        }) : undefined,
-        openTask,
-        columnLook,
-        images,
-      })}
-      </div>
-    </ChatTokensContext.Provider>
-  )
-})
