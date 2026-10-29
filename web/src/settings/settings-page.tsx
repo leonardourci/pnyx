@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from 'react'
+import { useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
@@ -6,12 +6,12 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { About } from '#web-app/about.tsx'
 import { KeyboardSettings } from '#web-preferences/keyboard-settings.tsx'
-import { Button, Switch } from '#web-shared/ui/controls.tsx'
+import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
-import { SliderField } from '#web-shared/ui/slider-field.tsx'
+import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { AskHydra } from './ask-hydra.tsx'
 import { changedIds, resetPatch } from './changed.ts'
@@ -58,13 +58,17 @@ function TextSize({
   label: string
 }) {
   return (
-    <SliderField
+    <NumberField
       label={label}
       value={view[id]}
       min={VIEW_SIZE_LIMITS[id].min}
       max={VIEW_SIZE_LIMITS[id].max}
-      unit="px"
-      initial={DEFAULT_VIEW[id]}
+      step={1}
+      slider={{
+        max: VIEW_SIZE_LIMITS[id].max,
+        initial: DEFAULT_VIEW[id],
+        unit: 'px',
+      }}
       onChange={({ value }) => save({ patch: { [id]: value } })}
     />
   )
@@ -82,15 +86,16 @@ function ColumnWidths({
       {columns.map(column => (
         <div className="setting-labeled" key={column.id}>
           <span>{column.title}</span>
-          <SliderField
+          <NumberField
             label={`${column.title} width`}
             value={view.defaultColumnWidths[column.id] ?? DEFAULT_COLUMN_WIDTH}
-            min={VIEW_SIZE_LIMITS.hydraWidth.min}
+            min={VIEW_SIZE_LIMITS.columnWidth.min}
             max={WIDTH_MAX}
-            sliderMax={WIDTH_SLIDER_MAX}
-            step={8}
-            unit="px"
-            initial={DEFAULT_COLUMN_WIDTH}
+            slider={{
+              max: WIDTH_SLIDER_MAX,
+              initial: DEFAULT_COLUMN_WIDTH,
+              unit: 'px',
+            }}
             onChange={({ value }) => save({
               patch: { defaultColumnWidths: { [column.id]: value } },
             })}
@@ -101,24 +106,41 @@ function ColumnWidths({
   )
 }
 
-function ResetWidths({ command }: { command: Command }) {
+function ResetWidths({
+  command,
+  notify,
+}: {
+  command: Command
+  notify({ text }: { text: string }): void
+}) {
+  const reset = async () => {
+    try {
+      await command({
+        name: 'layout',
+        args: [
+          'reset',
+          '--all',
+          '--event-id',
+          crypto.randomUUID(),
+        ],
+      })
+
+      return true
+    } catch (error) {
+      notify({ text: error instanceof Error ? error.message : String(error) })
+
+      return false
+    }
+  }
+
   return (
     <InlineConfirm
-      label="Reset every Hydra"
+      label="Reset dragged widths in every Hydra"
+      trigger="Reset every Hydra"
       action="Reset widths"
       message="Every Hydra’s columns and chat go back to the widths above."
       disabled={false}
-      confirm={async () => {
-        await command({
-          name: 'layout',
-          args: [
-            'reset',
-            '--all',
-          ],
-        })
-
-        return true
-      }}
+      confirm={reset}
     />
   )
 }
@@ -129,12 +151,14 @@ function Control({
   view,
   save,
   command,
+  notify,
   upgrade,
   startUpgrade,
 }: Saving & {
   entry: CatalogEntry
   state: HydraState
   command: Command
+  notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
 }): ReactNode {
@@ -185,27 +209,28 @@ function Control({
       return <ColumnWidths state={state} view={view} save={save} />
     case 'defaultHydraWidth':
       return (
-        <SliderField
+        <NumberField
           label={entry.label}
           value={view.defaultHydraWidth}
           min={VIEW_SIZE_LIMITS.hydraWidth.min}
           max={WIDTH_MAX}
-          sliderMax={WIDTH_SLIDER_MAX}
-          step={8}
-          unit="px"
-          initial={DEFAULT_VIEW.defaultHydraWidth}
+          slider={{
+            max: WIDTH_SLIDER_MAX,
+            initial: DEFAULT_VIEW.defaultHydraWidth,
+            unit: 'px',
+          }}
           onChange={({ value }) => save({ patch: { defaultHydraWidth: value } })}
         />
       )
     case 'resetWidths':
-      return <ResetWidths command={command} />
+      return <ResetWidths command={command} notify={notify} />
     case 'lastMessageOnCards':
     case 'focusMode':
     case 'toolDetails':
     case 'thinkingDetails':
       return toggle({ key: entry.id })
     case 'keyboard':
-      return <KeyboardSettings prefs={view.keyboard} save={save} />
+      return <KeyboardSettings embedded prefs={view.keyboard} save={save} />
     case 'version':
       return <About upgrade={upgrade} startUpgrade={startUpgrade} />
     default:
@@ -232,6 +257,7 @@ function Empty({ search }: { search({ query }: { query: string }): void }) {
 
 export function SettingsPage({
   state,
+  connected,
   view,
   save,
   command,
@@ -240,6 +266,7 @@ export function SettingsPage({
   startUpgrade,
 }: Saving & {
   state: HydraState
+  connected: boolean
   command: Command
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
@@ -260,9 +287,9 @@ export function SettingsPage({
     setOnlyChanged,
   ] = useState(false)
   const [
-    context,
-    setContext,
-  ] = useState('Settings')
+    asking,
+    setAsking,
+  ] = useState<string>()
   const changed = changedIds({ view })
   const found = searchSettings({ query })
     .filter(match => !onlyChanged || changed.has(match.entry.id))
@@ -295,33 +322,34 @@ export function SettingsPage({
     .filter(item => shown.some(match => match.entry.section === item.id))
 
   const askAbout = ({ label }: { label: string }) => {
-    setContext(`Settings › ${label}`)
+    setAsking(label)
     ask.current?.focus()
   }
 
-  useEffect(
-    () => {
-      const slash = (event: KeyboardEvent) => {
-        const typing = event.target instanceof HTMLElement && event.target.closest('input, textarea, [contenteditable=true]')
+  const clearFilters = () => {
+    setQuery('')
+    setSection(undefined)
+    setOnlyChanged(false)
+  }
 
-        if (event.key === '/' && !typing && !event.metaKey && !event.ctrlKey) {
-          event.preventDefault()
-          search.current?.focus()
-        }
-      }
+  // While Settings is open, the search action focuses its own search instead of the Oracle's.
+  useKeyAction({
+    id: 'search',
+    handler: () => {
+      search.current?.focus()
 
-      window.addEventListener(
-        'keydown',
-        slash,
-      )
-
-      return () => window.removeEventListener(
-        'keydown',
-        slash,
-      )
+      return true
     },
-    [],
-  )
+  })
+
+  if (!connected) {
+    return (
+      <section className="settings-page" aria-label="Settings">
+        <h1>Settings</h1>
+        <p role="status" className="muted">Waiting for connection…</p>
+      </section>
+    )
+  }
 
   return (
     <section className="settings-page" aria-label="Settings">
@@ -339,9 +367,7 @@ export function SettingsPage({
           onKeyDown={({ event }) => {
             if (event.key === 'Escape' && filtering) {
               event.preventDefault()
-              setQuery('')
-              setSection(undefined)
-              setOnlyChanged(false)
+              clearFilters()
             }
           }}
         />
@@ -370,7 +396,6 @@ export function SettingsPage({
           {shown.filter(match => match.entry.section === item.id).map(match => (
             <SettingRow
               key={match.entry.id}
-              id={match.entry.id}
               icon={ICONS[match.entry.id] ?? 'settings'}
               label={match.entry.label}
               description={match.entry.description}
@@ -389,6 +414,7 @@ export function SettingsPage({
                 view={view}
                 save={save}
                 command={command}
+                notify={notify}
                 upgrade={upgrade}
                 startUpgrade={startUpgrade}
               />
@@ -396,12 +422,19 @@ export function SettingsPage({
           ))}
         </section>
       ))}
-      {!shown.length && <Empty search={({ query }) => setQuery(query)} />}
+      {!shown.length && (
+        <Empty
+          search={({ query }) => {
+            clearFilters()
+            setQuery(query)
+          }}
+        />
+      )}
       <AskHydra
         command={command}
         notify={notify}
-        context={context}
-        clearContext={() => setContext('Settings')}
+        section={asking}
+        clearSection={() => setAsking(undefined)}
         inputRef={ask}
       />
     </section>

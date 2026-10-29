@@ -7,14 +7,15 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 export function AskHydra({
   command,
   notify,
-  context,
-  clearContext,
+  section,
+  clearSection,
   inputRef,
 }: {
   command: Command
   notify({ text }: { text: string }): void
-  context: string
-  clearContext(): void
+  // The section an Ask Hydra button named; none means all of Settings.
+  section?: string
+  clearSection(): void
   inputRef?: Ref<HTMLTextAreaElement>
 }) {
   const [
@@ -26,9 +27,14 @@ export function AskHydra({
     setSending,
   ] = useState(false)
   const message = text.trim()
-  const scoped = context !== 'Settings'
+  const context = section ? `Settings › ${section}` : 'Settings'
 
+  // A form action, so React awaits the send; it reports its own errors.
   const send = async () => {
+    if (!message || sending) {
+      return
+    }
+
     setSending(true)
 
     try {
@@ -42,7 +48,7 @@ export function AskHydra({
         ],
       })
       setText('')
-      clearContext()
+      clearSection()
       notify({ text: 'Sent to Hydra’s chat.' })
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : String(error) })
@@ -52,20 +58,10 @@ export function AskHydra({
   }
 
   return (
-    <form
-      className="ask-hydra"
-      aria-label="Ask Hydra"
-      onSubmit={event => {
-        event.preventDefault()
-
-        if (message && !sending) {
-          void send()
-        }
-      }}
-    >
+    <form className="ask-hydra" aria-label="Ask Hydra" action={send}>
       <span className="ask-hydra-context">
         <Icon name="hydra" size={16} />{context}
-        {scoped && <Button aria-label="Ask about all of Settings" onClick={clearContext}><Icon name="close" size={12} /></Button>}
+        {section && <Button aria-label="Ask about all of Settings" onClick={clearSection}><Icon name="close" size={12} /></Button>}
       </span>
       <Textarea
         ref={inputRef}

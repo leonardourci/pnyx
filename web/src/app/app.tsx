@@ -322,6 +322,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         url.searchParams.delete('add-project')
       }
 
+      // ?settings opens Settings once; leaving it and reloading returns to the Hydra.
+      url.searchParams.delete('settings')
+
       const project = url.searchParams.get('open-project')
 
       if (project !== null) {
@@ -1332,6 +1335,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           {page === 'settings' && (
             <SettingsPage
               state={state}
+              connected={connected}
               view={view}
               save={save}
               command={command}

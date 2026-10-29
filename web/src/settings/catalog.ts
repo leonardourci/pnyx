@@ -1,29 +1,24 @@
-// Every setting the Settings page shows, with the words a search finds it by, for the Oracle to read too.
+// Every setting the Settings page shows, with the words a search finds it by; the Oracle will move to this list.
 export const SETTINGS_SECTIONS = [
   {
     id: 'appearance',
     label: 'Appearance',
-    icon: 'image',
   },
   {
     id: 'layout',
     label: 'Layout',
-    icon: 'task-card',
   },
   {
     id: 'cards',
     label: 'Cards and chat',
-    icon: 'comments',
   },
   {
     id: 'keyboard',
     label: 'Keyboard',
-    icon: 'terminal',
   },
   {
     id: 'about',
     label: 'About',
-    icon: 'version',
   },
 ] as const
 

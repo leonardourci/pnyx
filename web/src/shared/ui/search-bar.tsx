@@ -5,7 +5,6 @@ import { badgeKey } from './search-badges.ts'
 export interface SearchBadge {
   id: string
   label: string
-  icon?: string
   // A badge's kind picks its color, as the Oracle colors scopes, kinds and columns apart.
   kind?: string
 }
@@ -21,7 +20,6 @@ function Badge({
 }) {
   return (
     <span className="search-badge" data-kind={badge.kind} data-marked={marked || undefined}>
-      {badge.icon && <Icon name={badge.icon} size={14} />}
       {badge.label}
       <button
         type="button"
@@ -36,7 +34,7 @@ function Badge({
   )
 }
 
-// The one search bar: the Oracle's eye, filter badges inside the field, the query and a result count.
+// The Oracle's eye, filter badges inside the field, the query and a result count; Settings and the Oracle share it.
 export function SearchBar({
   label,
   query,

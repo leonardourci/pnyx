@@ -5,6 +5,16 @@ import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { IdentityCredits } from '#web-shared/ui/icons/identity-credits.tsx'
 import { checkedDay } from '#web-upgrade/upgrade-hint.tsx'
 
+function upgradeStatus({ upgrade }: { upgrade?: UpgradeStatus }): string {
+  if (!upgrade) {
+    return 'Not checked for upgrades yet.'
+  }
+
+  const checked = `checked ${checkedDay({ at: upgrade.checkedAt })} at ${clock({ at: upgrade.checkedAt })}`
+
+  return upgrade.available ? `A newer Pnyx is available, ${checked}.` : `Up to date, ${checked}.`
+}
+
 function Version({
   upgrade,
   startUpgrade,
@@ -13,13 +23,10 @@ function Version({
   startUpgrade(): void
 }) {
   const build = document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content
-  const checked = upgrade && `checked ${checkedDay({ at: upgrade.checkedAt })} at ${clock({ at: upgrade.checkedAt })}`
-  const status = !upgrade ? 'Not checked for upgrades yet.'
-    : upgrade.available ? `A newer Pnyx is available, ${checked}.` : `Up to date, ${checked}.`
 
   return (
     <div className="about-version">
-      <p>Build <code>{build || 'unknown'}</code>. {status}</p>
+      <p>Build <code>{build || 'unknown'}</code>. {upgradeStatus({ upgrade })}</p>
       {upgrade?.available && <Button variant="primary" onClick={startUpgrade}>Upgrade</Button>}
     </div>
   )
