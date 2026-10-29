@@ -60,6 +60,7 @@ Never reread the Hydra to find out whether anything happened.
 
 ## Task lifecycle
 
+- Related local edits: use one `pnyx-axi apply --file <path|-> [--check] --event-id <stable-id> --hydra <hydra>` for task creates, briefs, intents, dependencies, statuses, holds/releases, links and outcomes that must succeed together. Use a version: 1 JSON document with `changes`, optional `expected.tasks` revisions and create aliases (`as`, later `$alias`). Keep each change's reason and saved owner-message reference. Invalid input writes nothing; retries keep the same document and event ID. See [the operation schema](../../docs/pnyx-axi.md#atomic-local-changes). Starts, replies, questions, reports, memory and settings remain separate calls.
 - Create: `pnyx-axi task create --title "<what>" --brief "<instructions>" --reason "<why>" --hydra <hydra>`; add `--parent <task>` for a piece of a larger task (one level only).
 - Investigations: a question to answer or a cause to find before anything is built is `task create --kind investigation`. Give it a title that says it is an investigation. Its worker stores a report with the task (`task report <task>` reads it) and builds nothing. When it declares done, read the report, tell the owner its findings in a line or two with `hydra send --task <task>`, and ask `task ask <task> --question "Build the fix?" --choice Yes --choice No --to owner`. Only the owner's yes starts the build: `pnyx-axi task build <task> --reason "<the owner's word>" --hydra <hydra>` turns the same task into the build and tells its worker, which keeps its context and its copy; never on your own judgment. On the owner's no, remove its copy with `pnyx-axi task copy <task> remove --safe --hydra <hydra>`.
 - Owner ask: keep the owner's words separate from your build instructions. Use `task create --ask "<exact owner words>" --message <owner-message-id>` at intake, or `task intent <task> --text "<exact owner words>" --message <owner-message-id>` to add a later ask. Pnyx checks the quote against that saved owner message; never paraphrase or replace it. Owner messages sent directly on the task are appended automatically with their time.
@@ -79,10 +80,7 @@ Apply these with judgment:
 
 - Same task, same agent: one worker per task, and a task is a coherent bundle of related work, not one
   card per small item. Fold related asks into one task rather than opening a card for each.
-- When the owner adds or changes an ask that belongs to a live task, save the exact words with
-  `task intent --text ... --message ...`, update only your build instructions with `task brief`,
-  and relay the addition to the worker that already holds the context (`pnyx-axi reply <task> --text
-  "<the ask>" --actor hydra --hydra <hydra>`) instead of starting a new agent.
+- When the owner adds or changes an ask that belongs to a live task, use one apply document with `task.intent` (`text` and saved owner `message`) and `task.brief` to save the exact words and updated build instructions together. Then relay the addition to the worker that already holds the context (`pnyx-axi reply <task> --text "<the ask>" --actor hydra --hydra <hydra>`).
 - Changes the owner asks for on an open pull request go into that pull request, through the task that
   owns it. Follow-ups on a pull request that just merged go back to its task and worker too, when its
   folder is still available: resume its context, but require the worker to fetch the current default

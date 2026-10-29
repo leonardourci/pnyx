@@ -9,6 +9,7 @@
 - [Projects and landing](#projects)
 - [Run the server](#run)
 - [Task records](#task-records)
+- [Atomic local changes](#atomic-local-changes)
 - [Memory](#memory)
 - [Steering inbox and external sources](#steering-inbox-and-external-sources)
 - [Starting workers and Hydra](#starting-workers-and-hydra)
@@ -180,7 +181,55 @@ Set a reminder by telling Hydra “remind me about this tomorrow” or using a c
 
 Columns carry an executable placement rule and a description, available through `column list` and set with `column create --description "<when and why>"` or `column describe <id> --description "<when and why>"`. `column rule <id> --when "<fact>[,<fact>]" --reason "<why>"` replaces a rule after confirmation. Commas mean AND, repeated `--when` options mean OR, and `!fact` means NOT; the first matching column in display order wins. `column rule <id> --clear --reason "<why>"` makes it manual only. Rules use worker state (`worker:none|working|checks|blocked|hydra|paused|ended`), `owner-question`, `held`, pull request state and checks (`pr:none|draft|open|pending|green|red|merged|closed`), `kind:build|investigation`, `done`, `reminder-due`, and `queued` behind a worker. A custom Research column before In progress can use `--when "kind:investigation,!done,!held,!owner-question,!reminder-due"`. New custom columns start manual only. `column list` and the digest print every rule. `column resize <id> --width <pixels>` and `hydra resize --width <pixels>` persist widths. `layout show` reports overrides and stored defaults (380 pixels per column, 480 for Hydra); `layout reset` restores those widths while preserving other preferences.
 
-### Memory
+### Atomic local changes
+
+Use one apply document when related task changes must succeed together:
+
+```sh
+pnyx-axi apply --file changes.json --check --hydra work
+pnyx-axi apply --file changes.json --event-id export-plan-1 --hydra work
+pnyx-axi apply --file - --check --hydra work < changes.json
+```
+
+```json
+{
+  "version": 1,
+  "expected": {"tasks": {"existing-task-id-or-key": 7}},
+  "changes": [
+    {"op": "task.create", "as": "research", "title": "Research export", "kind": "investigation", "reason": "Compare the formats before building"},
+    {"op": "task.brief", "task": "existing-task-id-or-key", "brief": "Use the research findings", "reason": "Keep the instructions current"},
+    {"op": "task.depend", "task": "existing-task-id-or-key", "on": ["$research"]}
+  ]
+}
+```
+
+The top-level fields are exactly `version` (currently `1`), optional `expected` and a nonempty `changes` array. `expected` contains only `tasks`, a map from existing task IDs or keys to their expected non-negative integer revisions. These revisions refer to the state before the document; several changes to the same task need only one entry. Unrelated events do not conflict. Applying revalidates against current state under the writer lock.
+
+Every operation accepts an optional nonempty `reason`. Required fields appear in bold below. Text fields are strings; brief and note may be empty. `task`, `parent` and each `on` reference name an existing task ID/key in this Hydra, or `$alias` from an earlier successful create in this document. `as` must be unique and match `[a-zA-Z][a-zA-Z0-9_-]*`. Forward aliases are refused.
+
+| `op` | Fields besides `op` and `reason` |
+| --- | --- |
+| `task.create` | **`title`**, optional `as`, `key`, `project`, `brief`, `folder`, `kind` (`build` or `investigation`), `hold` (boolean), `parent`, `column`, `ask`, `message` |
+| `task.brief` | **`task`**, **`brief`** (empty clears it) |
+| `task.intent` | **`task`**, **`text`**, optional `message` (saved owner-message ID) |
+| `task.depend`, `task.undepend` | **`task`**, **`on`** (nonempty array of task references) |
+| `task.status` | **`task`**, **`status`** (`working`, `needs_you`, `paused`, `blocked`, `done`), optional `note`, `until` (ISO time or relative time), `hold` (boolean) |
+| `task.hold` | **`task`**; `reason` is required |
+| `task.release` | **`task`**, **`message`** (owner message newer than the hold); `reason` is required |
+| `link` | **`task`**, **`url`** (HTTP/S), optional `kind` (`github_pr`, `linear`, `url`), `number` (digit string), `title`, `state` (`open`, `merged`, `closed`), `remove` (boolean) |
+| `outcome` | **`task`**, either `state` (`done`, `failed`, `cancelled`) or `clear: true`; optional `note` when setting a state |
+
+Create has the same project, parent, column and owner-ask validation as `task create`. `message` on create requires `ask`. Hydra must give a reason for creates, briefs and intents, and quote saved owner messages exactly for owner asks. Discussion holds and prerequisites remain owner/Hydra operations. A release requires the owner's newer saved message. Status `until` and `hold` apply only to `paused` and cannot be combined. Done declarations retain report-review and landing gates and are checked again against the resulting document. A recorded outcome remains distinct from proof that work landed. Removing a link cannot also change its metadata; clearing an outcome cannot also set its note. Unknown or meaningless fields are refused.
+
+`--check` returns `applied: false`, `check: true`, resolved aliases, watched `base` revisions, resulting `revisions`, per-operation results and the full before/after task `diff`. It does no maintenance, creates no Hydra folders and writes no log or snapshot. Generated task IDs in a preview are provisional unless the same `--event-id` is supplied when checking and applying. A preview grants no approval and applying rechecks the complete document. Validation errors exit 2 with `applied: false` and an `errors` table containing zero-based `operation`, JSON-pointer `path`, `code` and `reason`; independent errors are collected. File/JSON errors use `/file`.
+
+A successful apply returns `applied: true` and appends one `log.transaction` record containing every event, including automatic declarations, question reconciliation and lifecycle moves. The reader exposes the ordinary child events to history, subscriptions and deterministic replay. A torn record exposes none of its events; `repair` preserves and skips the incomplete tail, as for a torn ordinary event. Snapshots remain derived. All requested changes and their receipt become durable together. This log format requires a version of Pnyx that supports apply.
+
+Keep one `--event-id` and the same document when retrying an uncertain apply. An identical retry returns the original aliases and resulting revisions with `duplicate: true`, even after later edits. Reusing the ID with different document contents or actor returns `IDEMPOTENCY_CONFLICT`. Even an unchanged document retains its retry identity. Correct mistakes with a new apply document: `undo` refuses individual events belonging to a transaction, and there is no whole-batch undo.
+
+This command covers one Hydra's local task events only. Worker starts/messages, queues, memory, columns, view/layout, Hydra/project settings, dispatch rules, merges and other external effects are unsupported and fail before writing. Short commands for the covered changes use the same planners. Scalar flags cannot repeat, and these task commands reject irrelevant flags: for example `task rename --brief` and `task create --on` fail instead of reporting an incomplete success. Use `task brief` or apply to change a brief.
+
+## Memory
 
 Owner memory is Pnyx-wide: every Hydra's full digest prints it. It holds the owner's preferences under the key `preferences` and general learnings under `learnings`, through `owner memory list`, `owner memory set --key <short-name> --text "<document>"` and `owner memory forget --key <short-name>`, within 24000 characters. It lives in `$PNYX_HOME/owner/memory.jsonl` (by default `~/.pnyx/owner/`), an append-only log that keeps every replacement and removal. Saves take `--if-revision <n>` from `owner memory list`, so a save made from an older read is refused rather than replacing another Hydra's save. The first run of this version moves each Hydra's `preferences` and `learnings` there, merging lines that repeat, and forgets them in the Hydra, whose event log keeps the old text; a Hydra that cannot be moved keeps them in its digest and the next read retries.
 
