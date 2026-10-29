@@ -1477,14 +1477,18 @@ export function Composer({
               }
 
               // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
-              if (mention && folderPath && folders?.listing && e.key === 'Tab'
+              // An item the owner moved to with the arrows is picked as usual.
+              const fromTop = picked <= 0
+              const listing = mention && folderPath && fromTop ? folders?.listing : undefined
+              const completed = listing && completePath({
+                typed: folderPath,
+                listing,
+              })
+
+              if (e.key === 'Tab' && mention && (completed || (typedFolder && fromTop))
                 && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 e.preventDefault()
                 e.stopPropagation()
-                const completed = completePath({
-                  typed: folderPath,
-                  listing: folders.listing,
-                })
 
                 if (typedFolder) {
                   chooseMention({ item: typedFolder })
