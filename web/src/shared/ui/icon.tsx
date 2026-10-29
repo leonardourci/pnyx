@@ -66,11 +66,9 @@ export function Icon({
         height={size}
         viewBox="0 0 512 512"
         fill="currentColor"
-        {...identity.stroke ? {
-          stroke: 'currentColor',
-          strokeWidth: identity.stroke,
-          strokeLinejoin: 'round',
-        } : {}}
+        stroke="currentColor"
+        strokeWidth={identity.stroke}
+        strokeLinejoin="round"
       ><path d={identity.path} />
       </svg>
     )
