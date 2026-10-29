@@ -343,6 +343,10 @@ export async function sendReply({
     throw invalid({ message: 'a question\'s answer cannot be combined with --answer, a key, a setting or --resolve-key' })
   }
 
+  if (request.ask?.fromMessage && request.text.trim() && /^\//.test(request.text.trimStart())) {
+    throw invalid({ message: 'a question relay takes a message, not a native command' })
+  }
+
   const meta = (): Meta => ({
     at: new Date().toISOString(),
     actor: request.actor ?? 'cli',
@@ -366,12 +370,69 @@ export async function sendReply({
         })
       }
 
+      const reply = request.id ?? `r${writer.state.seq + 1}`
+      const known = card.replies?.find(receipt => receipt.id === reply)
+
+      const differentQuestion = request.ask && known?.answers !== request.ask.id
+      const recordedSource = known?.decision?.fromMessage?.id
+      const differentSource = request.ask && recordedSource !== request.ask.fromMessage
+
+      if (known?.accepted && (differentQuestion || differentSource)) {
+        throw new HydraError({
+          message: 'this reply key belongs to a different question or owner message',
+          code: 'CONFLICT',
+        })
+      }
+
+      if (known?.accepted && (keyed || answer || request.setting || request.taskMessage)) {
+        throw invalid({ message: 'a saved owner answer can only retry its original message' })
+      }
+
+      const currentAnswer = card.asks?.some(ask => ask.id === known?.answers
+        && ask.answered === known?.id)
+
+      if (known?.accepted && !currentAnswer) {
+        throw new HydraError({
+          message: 'the recorded answer was undone or replaced; do not resend it',
+          code: 'ASK_CLOSED',
+        })
+      }
+
+      const checkedUndelivered = known?.accepted && request.ask?.undelivered
+        && (known.state === 'queued' || known.state === 'delivery_unknown')
+
+      if (known && known.state !== 'failed' && !checkedUndelivered) {
+        return {
+          card: card.id,
+          reply,
+          state: known.state,
+          resend: false,
+        }
+      }
+
+      let built: ReturnType<typeof askAnswer> | undefined
+
+      if (request.ask && !known?.accepted) {
+        built = askAnswer({
+          card,
+          state: writer.state,
+          fromMessage: request.ask.fromMessage,
+          id: request.ask.id,
+          actor: request.actor ?? 'cli',
+          choice: request.ask.choice,
+          text: request.ask.text,
+          undelivered: request.ask.undelivered,
+        })
+      }
+
+      const accepted = Boolean(built?.decision.fromMessage)
+      const retained = known?.accepted === true
       const found = replyRoute({
         card,
         homes,
       })
 
-      if ('reason' in found) {
+      if ('reason' in found && !accepted && !retained) {
         const home = card.sourceRefs.find(r => r.adapter === 'firstmate')?.instanceId
 
         if (home && found.reason.includes('not configured')) {
@@ -387,10 +448,11 @@ export async function sendReply({
         })
       }
 
-      const route = found.route
+      const route = 'route' in found ? found.route : undefined
+      const routeDetail = 'reason' in found ? found.reason : undefined
 
       const key = request.key
-      const unpressable = key && inputReason({
+      const unpressable = key && route && inputReason({
         kind: route.kind,
         input: { key },
       })
@@ -402,14 +464,14 @@ export async function sendReply({
         })
       }
 
-      if (request.control && route.kind !== 'firstmate' && waiting({ card })) {
+      if (request.control && route?.kind !== 'firstmate' && waiting({ card })) {
         throw new HydraError({
           message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`,
           code: 'SESSION_WAITING',
         })
       }
 
-      if (route.kind === 'firstmate') {
+      if (route?.kind === 'firstmate') {
         if (!TASK_ID.test(route.task)) {
           throw new HydraError({
             message: `card ${card.id} has no reply route`,
@@ -426,44 +488,27 @@ export async function sendReply({
         throw invalid({ message: '--resolve-key answers Firstmate decisions; this card replies through its agent session' })
       }
 
-      const reply = request.id ?? `r${writer.state.seq + 1}`
-      const known = card.replies?.find(r => r.id === reply)
-
-      if (known && known.state !== 'failed') {
-        return {
-          card: card.id,
-          reply,
-          state: known.state,
-          route,
-          resend: false,
-        }
-      }
-
       const entered = resolveSkillReferences({
         text: request.text,
         provider: card.agent?.provider,
       })
-      const nativeCommand = route.kind !== 'firstmate' && /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
+      const nativeCommand = route?.kind !== 'firstmate' && /^\/[a-zA-Z][\w:-]*(?:\s|$)/.test(entered.trimStart())
       const control = Boolean(request.control || request.key || request.setting || nativeCommand)
       let text = entered
       let keys: KeyStep[] | undefined
       let answers: string | undefined
       let answerDecision: RepliedEvent['data']['decision']
 
-      if (request.ask) {
-        const built = askAnswer({
-          card,
-          state: writer.state,
-          fromMessage: request.ask.fromMessage,
-          id: request.ask.id,
-          actor: request.actor ?? 'cli',
-          choice: request.ask.choice,
-          text: request.ask.text,
-          undelivered: request.ask.undelivered,
-        })
-        text = built.text
-        answers = request.ask.id
+      if (built) {
+        text = request.text.trim() ? entered : built.text
+        answers = built.decision.questionId
         answerDecision = built.decision
+      }
+
+      if (retained) {
+        text = known.text ?? ''
+        answers = known.answers
+        answerDecision = known.decision
       }
 
       if (answer) {
@@ -553,11 +598,15 @@ export async function sendReply({
         }
       }
 
-      const context = !request.control && !request.key && !answer
+      let context = !request.control && !request.key && !answer
         ? mentionContext({
           state: writer.state,
           text: request.text,
         }) : ''
+
+      if (retained) {
+        context = known.context ?? ''
+      }
 
       // A retry after a failed send queues again, so every attempt has its own receipts.
       const ordinary = !control && !request.taskMessage && !answers && !resolveKey
@@ -566,11 +615,12 @@ export async function sendReply({
         reply,
         resumes,
         state: 'queued' as const,
-        route: routeName({
+        route: route ? routeName({
           route,
           control: request.control,
-        }),
+        }) : 'none',
         text,
+        accepted: accepted || undefined,
         ...(context ? { context } : {}),
         ...(request.taskMessage ? { taskMessage: true } : {}),
         ...(control ? { control: true } : {}),
@@ -579,11 +629,11 @@ export async function sendReply({
         ...(answers ? { answers } : {}),
       }
       const payload = [
-        request.ask ? text : entered,
+        request.ask || retained ? text : entered,
         context,
       ].filter(Boolean).join('\n\n')
-      const nativeCompact = route.kind === 'pnyx' && compactCommand({ text: payload })
-      const steering = !nativeCompact && route.kind !== 'firstmate' && card.id !== HYDRA_CARD && !card.automaticTask
+      const nativeCompact = route?.kind === 'pnyx' && compactCommand({ text: payload })
+      const steering = !nativeCompact && route?.kind !== 'firstmate' && card.id !== HYDRA_CARD && !card.automaticTask
         && !control && !answers && !resolveKey
         ? reply : undefined
 
@@ -615,6 +665,7 @@ export async function sendReply({
         reply,
         state: 'queued' as ReplyState,
         route,
+        routeDetail,
         resend: true,
         control,
         steering,
@@ -622,6 +673,7 @@ export async function sendReply({
         keys,
         answers,
         decision: answerDecision,
+        accepted: accepted || retained,
         resumes,
         text: payload,
       }
@@ -647,7 +699,12 @@ export async function sendReply({
   } = queued
   let outcome: Delivery
 
-  if (queued.steering && route.kind !== 'pnyx') {
+  if (!route) {
+    outcome = {
+      state: 'failed',
+      detail: `no reply route: ${queued.routeDetail}`,
+    }
+  } else if (queued.steering && route.kind !== 'pnyx') {
     const notice = await notifySteering({
       hydraId,
       card,
@@ -688,12 +745,13 @@ export async function sendReply({
         drainSpool({ writer })
         const data = {
           reply,
-          route: routeName({
+          route: route ? routeName({
             route,
             control: request.control,
-          }),
+          }) : 'none',
           ...outcome,
           resumes: queued.resumes,
+          accepted: queued.accepted || undefined,
           ...(queued.control ? { control: true } : {}),
           ...(request.taskMessage ? { taskMessage: true } : {}),
           ...(queued.decision ? { decision: queued.decision } : {}),
@@ -738,6 +796,9 @@ export const reply = guard({
       json: { type: 'string' },
       seen: { type: 'string' },
       'task-message': { type: 'boolean' },
+      question: { type: 'string' },
+      'from-message': { type: 'string' },
+      choice: { type: 'string' },
     }
     const {
       values,
@@ -752,6 +813,20 @@ export const reply = guard({
       value: positionals[0],
       what: 'card id',
     })
+
+    const question = values.question as string | undefined
+    const fromMessage = values['from-message'] as string | undefined
+    const choice = values.choice as string | undefined
+
+    if (question !== undefined || fromMessage !== undefined || choice !== undefined) {
+      if (!question || !fromMessage) {
+        throw invalid({ message: '--question and --from-message are required together' })
+      }
+
+      if (values.answer !== undefined || values['resolve-key'] !== undefined || values['task-message']) {
+        throw invalid({ message: '--question cannot be combined with --answer, --resolve-key or --task-message' })
+      }
+    }
 
     if (values['task-message'] && (values.answer !== undefined || values['resolve-key'] !== undefined)) {
       throw invalid({ message: '--task-message takes context text; answer requests with reply --answer or --resolve-key' })
@@ -823,6 +898,12 @@ export const reply = guard({
         text: text!,
         homes: (values.home as string[] | undefined) ?? [],
         actor: meta({ values }).actor,
+        reason: meta({ values }).reason,
+        ask: question ? {
+          id: question,
+          fromMessage,
+          choice,
+        } : undefined,
         ...(values['idempotency-key'] ? { id: values['idempotency-key'] as string } : {}),
         ...(values['resolve-key'] ? { resolveKey: values['resolve-key'] as string } : {}),
         ...(answer ? { answer } : {}),
@@ -1157,7 +1238,14 @@ A setting the session has not reported yet is confirmed by its next hook or turn
 `
 
 export const REPLY_HELP = `usage: pnyx-axi reply <id> --text <text> | --file <file|-> [--home <path>]... [--resolve-key <key>] [--idempotency-key <key>] [--task-message]
+       pnyx-axi reply <task> --question <question> --from-message <owner-message> [--choice Go|Hold|Merge] --text <relay> [--idempotency-key <key>]
        pnyx-axi reply <id> --answer <request key> --json <answer> [--seen <request id>] [--idempotency-key <key>]
+--question records an owner answer and its outgoing relay together before attempting delivery. Hydra
+must name an owner message newer than the question; Go/Hold and Merge/Hold also take --choice.
+The source words stay separate from --text. Failed, queued or unknown delivery does not reopen the
+question. Retry a failed delivery with the same key to preserve its saved answer and relay.
+--question cannot be combined with --answer, --resolve-key or --task-message. Ordinary replies do
+not answer task questions.
 A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME set; its home must
 be passed with --home, and --resolve-key answers that open decision.
 --task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)

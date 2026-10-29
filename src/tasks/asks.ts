@@ -329,9 +329,21 @@ async function answerCommand({
     },
   })
 
+  let help = [DELIVERY_HELP[receipt.state] ?? 'Delivery is uncertain: check the worker’s session; if the answer never arrived, repeat with --undelivered']
+
+  if (fromMessage) {
+    help = [`Answer recorded; delivery ${receipt.state}. Delivery does not change the saved decision.`]
+
+    if (receipt.state === 'failed') {
+      help.push(`Retry with reply ${card.id} --text "Resend saved answer" --idempotency-key ${receipt.reply}`)
+    } else if (receipt.state !== 'delivered') {
+      help.push(`Check the worker's session. Only if it never arrived, repeat task answer with --event-id ${receipt.reply} --undelivered`)
+    }
+  }
+
   return {
     ...receipt,
-    help: [DELIVERY_HELP[receipt.state] ?? 'Delivery is uncertain: check the worker’s session; if the answer never arrived, repeat with --undelivered'],
+    help,
   }
 }
 
