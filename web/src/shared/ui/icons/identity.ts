@@ -1,4 +1,5 @@
-// Identity icons: game-icons.net silhouettes (CC BY 3.0) for Hydras, the default columns and some composer controls.
+// Identity icons: game-icons.net silhouettes (CC BY 3.0), plus a few drawn for Pnyx, for Hydras, the default columns
+// and some composer controls.
 // Plain data, so Node tests can read it; icon.tsx loads the files. Settings › About credits every author listed here.
 export type IdentityKind = 'hydra' | 'column' | 'control'
 
@@ -15,6 +16,8 @@ export interface IdentityIcon {
 }
 
 const GAME_ICONS_LICENSE = 'CC BY 3.0'
+// Icons drawn for Pnyx are under the repository's own license and need no credit line.
+export const PNYX_AUTHOR = 'Pnyx'
 
 export const IDENTITY_ICONS: IdentityIcon[] = [
   {
@@ -358,9 +361,9 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     id: 'oracle',
     label: 'Oracle',
     file: 'oracle.svg',
-    author: 'Delapouite',
-    license: GAME_ICONS_LICENSE,
-    source: 'https://game-icons.net/1x1/delapouite/all-seeing-eye.html',
+    author: PNYX_AUTHOR,
+    license: 'Apache-2.0',
+    source: 'https://github.com/leonardourci/pnyx/blob/main/web/src/shared/ui/icons/identity/oracle.svg',
     kind: 'control',
   },
   {
