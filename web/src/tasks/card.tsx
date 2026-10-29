@@ -58,8 +58,15 @@ function ContextIndex({
     section: string
   }) => {
     event.stopPropagation()
-    event.currentTarget.closest('.card-panel')?.querySelector<HTMLElement>(section)
-      ?.scrollIntoView({ block: 'start' })
+    const panel = event.currentTarget.closest('.card-panel')
+    const target = panel?.querySelector(section)
+
+    if (!panel || !target) {
+      return
+    }
+
+    // Only the panel scrolls; scrollIntoView would also move the column and the Hydra.
+    panel.scrollTop += target.getBoundingClientRect().top - panel.getBoundingClientRect().top
   }
 
   return (
