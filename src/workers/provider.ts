@@ -87,7 +87,7 @@ export type InputReceipt = {
 export type AnswerReceipt = {
   answerId: string
   permission: string
-  phase: 'received' | 'submitted' | 'aborted' | 'failed'
+  phase: 'received' | 'submitted' | 'aborted' | 'failed' | 'unknown'
 }
 export type NativePermission = {
   id: string
@@ -179,9 +179,12 @@ export interface HostedSession {
   run({
     input,
     permission,
+    observe,
   }: {
     input: AsyncIterable<HostedInput>
     permission: AskPermission
+    // Runs before bounded viewer queues. A failure reason stops the native owner.
+    observe?({ event }: { event: HostedEvent }): string | void
   }): AsyncIterable<HostedEvent>
   // Returning from an attachment only removes that reader; close owns native shutdown.
   attach(): AsyncIterable<HostedEvent>

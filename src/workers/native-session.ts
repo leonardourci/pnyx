@@ -83,6 +83,9 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   const confirmed = new Map<string, string>()
   let structured: unknown, usage: Omit<HostedUsage, 'type'> | undefined
   let outcome: TurnOutcome | undefined, started = false, ended = false
+  let finishing = false
+  let observe: (({ event }: { event: HostedEvent }) => string | void) | undefined
+  let stopError: Error | undefined
   let failure: Error | undefined
   const readers = new Set<{
     queue: HostedEvent[]
@@ -91,6 +94,21 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   }>()
 
   const broadcast = ({ event }: { event: HostedEvent }) => {
+    const stop = observe?.({ event })
+
+    if (stop && !stopError) {
+      stopError = new Error(stop)
+      queueMicrotask(() => {
+        try {
+          native.close()
+        } catch {
+          stopError = new Error('Native close failed after output retention exhausted')
+        } finally {
+          finish({ error: stopError })
+        }
+      })
+    }
+
     for (const reader of readers) {
       if (reader.queue.length >= MAX_PENDING_EVENTS) {
         reader.error = new Error('The native session reader fell behind; attach again and read its snapshot')
@@ -183,7 +201,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   }
 
   const emit = ({ event }: { event: NativeEvent }) => {
-    if (ended) {
+    if (ended || stopError && !finishing) {
       return
     }
 
@@ -308,9 +326,11 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
   }
 
   const finish = ({ error }: { error?: Error }) => {
-    if (ended) {
+    if (ended || finishing) {
       return
     }
+
+    finishing = true
 
     if (work.runningTurns.length) {
       complete({
@@ -356,6 +376,7 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
 
     broadcast({ event })
     ended = true
+    finishing = false
   }
 
   const attach = (): AsyncIterableIterator<HostedEvent> => {
@@ -467,12 +488,14 @@ export function nativeSession({ native }: { native: NativeSession }): HostedSess
     run({
       input,
       permission,
+      observe: sink,
     }) {
       if (started) {
         throw new Error('The native session is already running; attach another reader instead')
       }
 
       started = true
+      observe = sink
       const stream = attach()
 
       const messages = async function* () {
