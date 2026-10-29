@@ -19,13 +19,22 @@ const flag = ({
   args.some(arg => arg === name || arg.startsWith(`${name}=`))
 
 // What only the owner may change: what agents may run, which logins they use, Hydra's own prompts and the installed Pnyx.
-// Hydra may create the missing shared config (rule init never overwrites) and read the setup check.
+// Hydra may create the missing config (rule init never overwrites), check or propose a dispatch patch and read the setup check.
 const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
   agent: ({ args }) => args[1] === 'mode',
   rule: ({ args }) => !([
     'list',
+    'show',
+    'schema',
+    'init',
     'propose',
-  ].includes(args[0] ?? 'list') || (args[0] === 'init' && args.includes('--shared'))),
+  ].includes(args[0] ?? 'list') || (args[0] === 'apply' && (flag({
+    args,
+    name: '--check',
+  }) || flag({
+    args,
+    name: '--propose',
+  })))),
   account: ({ args }) => ![
     'list',
     'propose',
