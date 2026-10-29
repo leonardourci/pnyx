@@ -67,9 +67,11 @@ export function HydraChat({
   projectSetup,
   openTask,
   action,
+  taskActions,
 }: {
   projectSetup?: ReactNode
   action?: CurrentAction
+  taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
   queue: HydraQueue
   state: HydraState
@@ -578,7 +580,11 @@ export function HydraChat({
     route: true,
     watching: 'unknown',
   }
-  const references = useTaskReferences({ state })
+  const references = useTaskReferences({
+    state,
+    actions: taskActions,
+    connected,
+  })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
