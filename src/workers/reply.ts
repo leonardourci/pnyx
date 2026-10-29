@@ -1162,7 +1162,8 @@ A Firstmate task card replies through its home's bin/fm-send.sh, with FM_HOME se
 be passed with --home, and --resolve-key answers that open decision.
 --task-message also queues the text for Hydra with its task reference and returns both route receipts; without an agent, only Hydra is addressed. An agent Pnyx runs (task start)
 gets an inbox notice from the Hydra's server after the instruction is persisted. Pending IDs survive
-a stopped server and replay on worker opening or resumption until acknowledged. Native tasks reached
+a stopped server and replay on worker opening or resumption until read or explicitly acknowledged.
+A worker inbox read records receipt and stops reminders; acknowledgements never mean work is complete. Native tasks reached
 through Paseo also receive inbox notices through its agent API. A terminal task receives a notice
 only with a verified live process and empty tmux composer. Drafts and permission prompts defer it;
 other terminal backends report uncertainty without typing. Timed recovery allows three notifications
