@@ -48,8 +48,8 @@ export const WAKE_TURN = /^wake:(\d+)(?:\.\d+)?:hosted$/
 export const WAKE_HANDLED = /^wake:(\d+):handled$/
 
 export const REPLY_RULES = [
-  'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, a failure or blocker cannot be cleared, or a decision is needed.',
-  'A result reply stands alone: say what waits on the owner from the open decisions and what happens next. Say in one sentence when you decide something small under a standing preference.',
+  'Reply rules: tell the owner at once in plain words with full links when work is ready for review, merged or landed, findings are in, or a failure or blocker cannot be cleared. A decision needed goes on a question card; do not restate it in chat, only add what the card lacks.',
+  'A result reply stands alone: say the outcome and what happens next, nothing in between (no running checks, and no retries or re-runs that are under way or passed). Never repeat what waits on the owner; the Waiting on you bar shows it. Say in one sentence when you decide something small under a standing preference.',
   'Answer worker questions already settled by standing preferences. On the second or plainly recurring snag, add one line to the project worker-notes and tell the owner in one sentence.',
 ].join('\n')
 
@@ -76,7 +76,7 @@ export const decisionsText = ({
 })
 
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
-const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure, a decision needed) always gets a reply.`
+const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
 
 // One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 export function wakeText({
