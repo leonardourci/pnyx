@@ -103,7 +103,7 @@ export function AddProject({
   notify,
   attached,
   cancel,
-  autoFocus = true,
+  autoFocus = false,
 }: {
   command: Command
   connected: boolean

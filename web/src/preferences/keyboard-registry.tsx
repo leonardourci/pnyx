@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useRef, type ReactNode } from 'react'
 import { CARET_HOST, CARET_KEY } from '#web-hydra/caret.ts'
+import { composing } from '#web-shared/ime.ts'
 import { bindingsFor, characterBinding, emptyProgress, keyLabel, resolveKey, type KeyboardPreferences, type KeyPlatform, type KeyScope } from '#preferences/keyboard.ts'
 
 export interface ActionContext {
@@ -87,7 +88,7 @@ export function KeyboardProvider({
         const target = event.target instanceof HTMLElement ? event.target : document.body
 
         if (!hints && target instanceof HTMLInputElement && target.type === 'search' && event.key === 'Escape') {
-          if (event.isComposing) {
+          if (composing({ event })) {
             return
           }
 
@@ -137,7 +138,6 @@ export function KeyboardProvider({
           return
         }
 
-        // Safari sends the Enter that commits an IME candidate after compositionend, marked only by keyCode 229.
         const result = resolveKey({
           event: {
             key: event.key,
@@ -148,7 +148,7 @@ export function KeyboardProvider({
             shiftKey: event.shiftKey,
             repeat: event.repeat,
             defaultPrevented: event.defaultPrevented,
-            isComposing: event.isComposing || event.keyCode === 229,
+            isComposing: composing({ event }),
             altGraph: event.getModifierState('AltGraph'),
           },
           context: {
