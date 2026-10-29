@@ -88,11 +88,7 @@ test(
     assert.deepEqual(
       served({ route: `attachments/${attachment}` }),
       {
-        file: join(
-          dir,
-          'attachments',
-          attachment,
-        ),
+        body: Buffer.from('png'),
         type: 'image/png',
         stored: true,
       },
@@ -100,10 +96,7 @@ test(
     assert.deepEqual(
       served({ route: 'copies/pnyx-1/.lavish/icons/alts%20crop.png' }),
       {
-        file: join(
-          shots,
-          'alts crop.png',
-        ),
+        body: Buffer.from('png'),
         type: 'image/png',
         stored: false,
       },
@@ -127,6 +120,16 @@ test(
       served({ route: 'copies/..%2F..%2F..%2Fsecret.png' }),
       undefined,
       'an encoded climb out of the copies folder',
+    )
+    assert.equal(
+      served({ route: 'copies/pnyx-1/missing.png' }),
+      undefined,
+      'a missing file',
+    )
+    assert.equal(
+      served({ route: 'copies/%E0%A4%A.png' }),
+      undefined,
+      'a malformed escape',
     )
     assert.equal(
       served({ route: 'attachments/notes.png' }),

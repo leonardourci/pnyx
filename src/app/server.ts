@@ -36,7 +36,7 @@ import { paseoConversation, type PaseoConversation } from '#integrations/paseo/t
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
@@ -1500,36 +1500,34 @@ export async function mountOwnedHydra({
         })
       }
 
-      try {
-        const served = hydraImageFile({
-          dir,
-          route: image,
-        })
+      const served = hydraImageFile({
+        dir,
+        route: image,
+      })
 
-        if (!served) {
-          throw new Error('not an image this Hydra serves')
-        }
-
-        return void res.writeHead(
-          200,
-          {
-            'content-type': served.type,
-            'x-content-type-options': 'nosniff',
-            // A stored attachment never changes; an image in a task copy can.
-            'cache-control': served.stored ? 'private, max-age=31536000, immutable' : 'private, no-cache',
-          },
-        )
-          .end(readFileSync(served.file))
-      } catch {
+      if (!served) {
         return reply({
           res,
           status: 404,
           body: {
-            error: 'attachment not found',
+            error: 'image not found',
             code: 'NOT_FOUND',
           },
         })
       }
+
+      return void res.writeHead(
+        200,
+        {
+          'content-type': served.type,
+          'x-content-type-options': 'nosniff',
+          // A task copy's bytes come from its repository, so they never run as a page.
+          'content-security-policy': "default-src 'none'; sandbox",
+          // A stored attachment never changes; an image in a task copy can.
+          'cache-control': served.stored ? 'private, max-age=31536000, immutable' : 'private, no-cache',
+        },
+      )
+        .end(served.body)
     }
 
     if (path === '/folders') {
