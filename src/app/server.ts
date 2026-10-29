@@ -63,6 +63,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
+import type { NativeProviders } from './native-provider.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
@@ -150,6 +151,7 @@ export async function mountOwnedHydra({
   catalogLocations,
   query,
   spawnCodex,
+  native,
   wakeDelay,
   stallDelay,
   busyDelay,
@@ -172,6 +174,7 @@ export async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  native?: NativeProviders
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -1380,6 +1383,7 @@ export async function mountOwnedHydra({
     hydraId,
     query,
     spawnCodex,
+    native: native?.providers,
     wakeDelay,
     stallDelay,
     busyDelay,
