@@ -171,3 +171,120 @@ export function DeleteItem({
     </div>
   ) : <Button data-menu-keep disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>
 }
+
+// A right-click menu: opens at the pointer (or under the focused row from the keyboard) with the same items a row offers.
+export function ContextMenu({
+  label,
+  at,
+  close,
+  children,
+}: {
+  label: string
+  at: {
+    x: number
+    y: number
+  }
+  close(): void
+  children: ReactNode
+}) {
+  const menu = useRef<HTMLDivElement>(null)
+  useLayoutEffect(
+    () => {
+      const element = menu.current
+
+      if (!element) {
+        return
+      }
+
+      element.showPopover()
+      element.style.left = `${Math.max(
+        8,
+        Math.min(
+          at.x,
+          innerWidth - element.offsetWidth - 8,
+        ),
+      )}px`
+      element.style.top = `${Math.max(
+        8,
+        Math.min(
+          at.y,
+          innerHeight - element.offsetHeight - 8,
+        ),
+      )}px`
+      element.querySelector<HTMLElement>('button:not(:disabled)')?.focus()
+    },
+    [at],
+  )
+  useEffect(
+    () => {
+      const outside = (event: PointerEvent) => {
+        if (!menu.current?.contains(event.target as Node)) {
+          close()
+        }
+      }
+
+      document.addEventListener(
+        'pointerdown',
+        outside,
+      )
+
+      return () => document.removeEventListener(
+        'pointerdown',
+        outside,
+      )
+    },
+    [close],
+  )
+
+  return (
+    <div
+      className="menu-items context-menu"
+      role="menu"
+      aria-label={label}
+      ref={menu}
+      popover="manual"
+      onKeyDown={event => {
+        if (event.key === 'Escape') {
+          event.stopPropagation(); close()
+        }
+      }}
+      onClick={e => {
+        const button = (e.target as Element).closest('button')
+
+        if (button && !button.hasAttribute('data-menu-keep')) {
+          close()
+        }
+      }}
+    >{children}
+    </div>
+  )
+}
+
+// Where a menu opens: at the pointer for a right-click, under the row for the menu key or Shift+F10.
+export const menuPoint = ({
+  event,
+}: {
+  event: {
+    clientX?: number
+    clientY?: number
+    currentTarget: Element
+  }
+}) => {
+  const box = event.currentTarget.getBoundingClientRect()
+
+  return event.clientX ? {
+    x: event.clientX,
+    y: event.clientY ?? box.bottom,
+  } : {
+    x: box.left + 12,
+    y: box.bottom,
+  }
+}
+
+export const opensMenu = ({ event }: {
+  event: {
+    key: string
+    shiftKey: boolean
+  }
+}) =>
+  event.key === 'ContextMenu' || (event.shiftKey && event.key === 'F10')
