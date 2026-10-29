@@ -95,6 +95,9 @@ interface TurnPlan {
   text: string
   reply?: string
   hold?: boolean
+  // Claude only: native messages sent ahead of the recorded turn, as Claude Code sends compaction statuses; a held plan waits between them.
+  before?: SDKMessage[]
+  after?: SDKMessage[]
 }
 
 // A plan answers only the Hydra that was current when it was made, so flows never share plans.
@@ -109,6 +112,8 @@ function plannedTurns({ hydra }: { hydra(): string }) {
       text,
       reply,
       hold,
+      before,
+      after,
     }: TurnPlan) => {
       let release = () => {}
       const wait = new Promise<void>(resolve => {
@@ -118,6 +123,8 @@ function plannedTurns({ hydra }: { hydra(): string }) {
         text,
         reply,
         hold,
+        before,
+        after,
         hydra: hydra(),
         wait,
       })
@@ -241,6 +248,24 @@ export function replayClaude({ hydra }: { hydra(): string }) {
           env: session.env,
         })
         const answer = plan?.reply ?? reply
+
+        for (const native of plan?.before ?? []) {
+          yield {
+            ...native,
+            session_id: id,
+          }
+        }
+
+        if (plan?.after) {
+          await plan.wait
+
+          for (const native of plan.after) {
+            yield {
+              ...native,
+              session_id: id,
+            }
+          }
+        }
 
         for (const recorded of claudeRecording.turn) {
           if (recorded.type === 'assistant') {
