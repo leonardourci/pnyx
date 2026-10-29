@@ -1,4 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
+import { composing } from '#web-shared/ime.ts'
 
 export interface ResultRow {
   id: string
@@ -132,7 +133,7 @@ export function ResultGrid({
       aria-label={label}
       className="oracle-results"
       onKeyDownCapture={e => {
-        if (e.nativeEvent.isComposing) {
+        if (composing({ event: e.nativeEvent })) {
           return
         }
 
@@ -147,7 +148,7 @@ export function ResultGrid({
         }
       }}
       onKeyDown={e => {
-        if (e.nativeEvent.isComposing || e.altKey || e.ctrlKey || e.metaKey) {
+        if (composing({ event: e.nativeEvent }) || e.altKey || e.ctrlKey || e.metaKey) {
           return
         }
 
