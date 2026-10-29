@@ -500,6 +500,38 @@ export function createHost({
   }
 
   const releasingCompact = new Set<string>()
+  // After a result the agent may compact again at once, so held input waits until it moves on, or for one deadline.
+  const settlingCompactions = new Map<string, NodeJS.Timeout>()
+
+  const compactionBusy = ({ card }: { card?: Card }) => Boolean(activeCompaction({ card }))
+    || Boolean(card && settlingCompactions.has(card.id))
+
+  const settleCompaction = ({
+    card,
+    settling,
+  }: {
+    card: string
+    settling: boolean
+  }) => {
+    const moved = settlingCompactions.has(card) && !settling
+    clearTimeout(settlingCompactions.get(card))
+    settlingCompactions.delete(card)
+
+    if (settling) {
+      settlingCompactions.set(
+        card,
+        setTimeout(
+          () => settleCompaction({
+            card,
+            settling: false,
+          }),
+          compactionDelay,
+        ).unref(),
+      )
+    } else if (moved) {
+      releaseCompact({ card })
+    }
+  }
 
   const sessionOwner = ({
     state,
@@ -571,7 +603,7 @@ export function createHost({
         void (async () => {
           const card = loadHydra({ hydraId }).state.cards[id]
 
-          if (!card || activeCompaction({ card })) {
+          if (!card || compactionBusy({ card })) {
             return
           }
 
@@ -586,7 +618,7 @@ export function createHost({
               return
             }
 
-            if (activeCompaction({ card: loadHydra({ hydraId }).state.cards[id] })) {
+            if (compactionBusy({ card: loadHydra({ hydraId }).state.cards[id] })) {
               return
             }
 
@@ -659,7 +691,7 @@ export function createHost({
             const current = loadHydra({ hydraId }).state.cards[id]
 
             if (advanced && current?.compaction?.inputs.length
-              && !activeCompaction({ card: current })) {
+              && !compactionBusy({ card: current })) {
               releaseCompact({ card: id })
             }
           })
@@ -1528,7 +1560,7 @@ export function createHost({
             continue
           }
 
-          // A session runs one compaction at a time, so every signal joins its running operation: Claude Code repeats its start every 30 seconds under a new id, and a manual /compact opens its operation before the provider's first signal.
+          // A session runs one compaction at a time, so every signal joins its running operation, as a manual /compact opens its operation before the provider's first signal.
           const known = compactionIds.get(activity.id)
           const mapped = current.compaction?.operations.find(operation => operation.id === known)
 
@@ -1562,10 +1594,29 @@ export function createHost({
           })
 
           if (activity.state !== 'running') {
-            releaseCompact({ card: current.id })
+            settleCompaction({
+              card: current.id,
+              settling: true,
+            })
           }
 
           continue
+        }
+
+        // Claude Code can start another compaction right after a result, so held input waits until the agent moves on.
+        if (activity === 'finished' || typeof activity !== 'string' && [
+          'text',
+          'tool',
+          'thinking',
+        ].includes(activity.type)) {
+          const owner = compactOwner()
+
+          if (owner && settlingCompactions.has(owner.id)) {
+            settleCompaction({
+              card: owner.id,
+              settling: false,
+            })
+          }
         }
 
         if (typeof activity !== 'string' && activity.type === 'usage') {
@@ -4931,7 +4982,10 @@ export function createHost({
       clearInterval(stallTimer)
       controller.abort()
 
-      for (const timer of compactionDeadlines.values()) {
+      for (const timer of [
+        ...compactionDeadlines.values(),
+        ...settlingCompactions.values(),
+      ]) {
         clearTimeout(timer)
       }
 
