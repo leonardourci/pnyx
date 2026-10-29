@@ -8,6 +8,7 @@ import { elapsedTime } from '#web-shared/time.ts'
 import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
 
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
@@ -132,7 +133,7 @@ export function cardState({
   now,
 }: {
   card: Card
-  hours?: number
+  hours?: DoneAfterHours
   now: number
 }): CardStatus {
   const status = cardStatus({ card })

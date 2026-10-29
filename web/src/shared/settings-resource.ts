@@ -128,6 +128,18 @@ export function createSettingsResource<State, Patch>({
 
   return {
     snapshot: () => snapshot,
+    // A state the server pushed; it counts like a read, so an older one never replaces a newer.
+    receive({ state }: { state: State }) {
+      const current = resource.snapshot().confirmed
+
+      if (current === null || !newer || newer({
+        current,
+        next: state,
+      })) {
+        resource.confirm({ state })
+        publish()
+      }
+    },
     // eslint-disable-next-line pnyx/object-params -- React useSyncExternalStore subscription contract.
     subscribe(listener: () => void) {
       listeners.add(listener)

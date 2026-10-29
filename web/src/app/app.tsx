@@ -35,6 +35,9 @@ import { Column } from '#web-tasks/column.tsx'
 import { HydraCard } from '#web-tasks/card.tsx'
 import { Detail } from '#web-tasks/detail.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
+import { useSharedSettings, saveSharedSettings } from '#web-settings/shared-settings.ts'
+import { pickView } from '#settings/settings.ts'
+import { isSharedViewKey } from '#settings/model.ts'
 
 const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
@@ -471,7 +474,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ],
   )
   const pendingScroll = useRef(restored.scroll)
-  const view = viewFor({ state })
+  const shared = useSharedSettings()
+  const view = viewFor({
+    state,
+    settings: shared && pickView({ view: shared }),
+  })
   const lookup = pnyxLookup({ state })
   const references = useTaskReferences({ state })
   useEffect(
@@ -556,28 +563,43 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [title],
   )
+  // Keys every Hydra shares go to the settings store; the rest stay with this board's view.
   const save = useCallback(
-    ({ patch }: { patch: unknown }) => command({
-      name: 'view',
-      args: [
-        'set',
-        '--json',
-        JSON.stringify(patch),
-        '--if-revision',
-        String(state.viewRevision ?? 0),
-        '--event-id',
-        crypto.randomUUID(),
-      ],
-    }).then(
-      () => {
+    async ({ patch }: { patch: Record<string, unknown> }) => {
+      const entries = Object.entries(patch)
+      const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
+      const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
+
+      try {
+        if (Object.keys(sharedPatch).length) {
+          await saveSharedSettings({
+            command,
+            patch: sharedPatch,
+          })
+        }
+
+        if (Object.keys(boardPatch).length) {
+          await command({
+            name: 'view',
+            args: [
+              'set',
+              '--json',
+              JSON.stringify(boardPatch),
+              '--if-revision',
+              String(state.viewRevision ?? 0),
+              '--event-id',
+              crypto.randomUUID(),
+            ],
+          })
+        }
+
         return true
-      },
-      e => {
-        notify({ text: e.message })
+      } catch (error) {
+        notify({ text: (error as Error).message })
 
         return false
-      },
-    ),
+      }
+    },
     [
       command,
       notify,
@@ -1178,7 +1200,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     key={item.key}
                                     card={item}
                                     labelColors={state.labelColors}
-                                    doneAfterHours={state.config?.doneAfterHours}
+                                    doneAfterHours={shared?.doneAfterHours}
                                     notify={notify}
                                     latest={latest[item.id]}
                                     action={actions[item.id]}

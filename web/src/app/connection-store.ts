@@ -7,6 +7,7 @@ import { emptyHydra, reduce } from '#app/reducer.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
+import { sharedSettings } from '#web-settings/shared-settings.ts'
 import type { HydraSummary } from '#app/server-hydras.ts'
 import type { HydraQueue } from '#hydra/wakes.ts'
 import type { LatestMessage, ThreadPage } from '#hydra/transcripts-read.ts'
@@ -1029,6 +1030,13 @@ export function createHydraConnection() {
       updateHydras({ rows: message.hydras })
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
+    } else if (message.type === 'settings') {
+      sharedSettings().receive({
+        state: {
+          settings: message.settings,
+          revision: message.revision,
+        },
+      })
     } else if ('id' in message && message.id) {
       if (message.type !== 'error' && Array.isArray(message.hydras)) {
         updateHydras({ rows: message.hydras as HydraSummary[] })

@@ -32,6 +32,7 @@ import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import { ActionBubble } from '#web-hydra/action-bubble.tsx'
 import type { PnyxLookup } from '#web-hydra/pnyx-action.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
 
 const OPEN_SHARE = 0.5
 
@@ -129,7 +130,7 @@ export function HydraCard({
   action?: CurrentAction
   lookup: PnyxLookup
   labelColors?: SavedLabelColor[]
-  doneAfterHours?: number
+  doneAfterHours?: DoneAfterHours
   notify({ text }: { text: string }): void
   latest?: LatestMessage
   selected: boolean
