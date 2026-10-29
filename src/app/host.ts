@@ -1,3 +1,5 @@
+import { agentInput } from './agent-input.ts'
+import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '#tasks/dependencies.ts'
@@ -336,6 +338,7 @@ export function createHost({
       try {
         await host.hydra({
           text: message.text,
+          original: message.original,
           actor: message.actor,
           id: message.id,
         })
@@ -515,6 +518,7 @@ export function createHost({
             if (input.route === 'hydra') {
               await host.hydra({
                 text: input.text,
+                original: input.original,
                 actor: input.actor,
                 id: input.id,
                 release: input.accepted,
@@ -539,6 +543,7 @@ export function createHost({
               send({
                 card: id,
                 text: input.text,
+                original: input.original,
                 actor: input.actor,
                 ...(input.route === 'steering' ? { steering: input.id } : {
                   direct: true,
@@ -885,6 +890,7 @@ export function createHost({
   }
 
   const askPermission = ({
+    id: nativeId,
     key,
     entry,
     tool,
@@ -900,6 +906,7 @@ export function createHost({
     description?: string
     key: string
     entry: Live
+    id: string
   } & Pick<PermissionRequest, 'questions' | 'form'>): Promise<PermissionDecision> => {
     if (closing || signal.aborted) {
       return Promise.resolve({
@@ -923,6 +930,7 @@ export function createHost({
 
       const request: PermissionRequest = {
         id,
+        nativeId,
         session: key,
         tool,
         input,
@@ -1261,6 +1269,7 @@ export function createHost({
                 input: {
                   id: item.id ?? randomUUID(),
                   text: item.text,
+                  original: item.original,
                   actor: item.id ? loadHydra({ hydraId }).state.hydraMessages?.find(message => message.id === item.id)?.actor ?? 'pnyx' : 'pnyx',
                   route: card.id === HYDRA_CARD ? 'hydra' : 'direct',
                   accepted: card.id === HYDRA_CARD,
@@ -1353,12 +1362,59 @@ export function createHost({
             })
           }
 
-          yield item.id ? teachComments({
-            card: card.id,
-            id: item.id,
-            text: item.text,
-          }) : item.text
+          const original = item.original ?? item.text
+          let text = item.text
+
+          if (item.id) {
+            text = teachComments({
+              card: card.id,
+              id: item.id,
+              text: item.text,
+            })
+          }
+
+          yield agentInput({
+            id: item.id ?? randomUUID(),
+            text,
+            original,
+            hydras: join(
+              pnyxHome(),
+              'hydras',
+            ),
+          })
         }
+      }
+
+      const armIdle = () => {
+        clearTimeout(entry.idle)
+
+        if (!entry.session || entry.activity !== 'finished' || !nativeIdle({ work: entry.session.snapshot().work })) {
+          return
+        }
+
+        if (entry.stale) {
+          retire({
+            key,
+            entry,
+          })
+
+          return
+        }
+
+        entry.idle = setTimeout(
+          () => background({
+            name: 'idle agent cleanup',
+            run: () => {
+              if (entry.session && nativeIdle({ work: entry.session.snapshot().work })) {
+                retire({
+                  key,
+                  entry,
+                })
+              }
+            },
+          }),
+          IDLE_MS,
+        ).unref()
       }
 
       const compactionIds = new Map<string, string>()
@@ -1366,6 +1422,7 @@ export function createHost({
       for await (const activity of entry.session.run({
         input: input(),
         permission: ({
+          id,
           tool,
           input,
           signal,
@@ -1373,6 +1430,7 @@ export function createHost({
           questions,
           form,
         }) => askPermission({
+          id,
           key,
           entry,
           tool,
@@ -1491,6 +1549,15 @@ export function createHost({
         }
 
         if (typeof activity !== 'string' && activity.type === 'structured') {
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'work') {
+          armIdle()
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type !== 'text') {
           continue
         }
 
@@ -1692,23 +1759,7 @@ export function createHost({
               armWake()
             }
 
-            if (entry.stale) {
-              retire({
-                key,
-                entry,
-              })
-            } else {
-              entry.idle = setTimeout(
-                () => background({
-                  name: 'idle agent cleanup',
-                  run: () => retire({
-                    key,
-                    entry,
-                  }),
-                }),
-                IDLE_MS,
-              ).unref()
-            }
+            armIdle()
           }
         }
       }
@@ -1814,7 +1865,11 @@ export function createHost({
     const reassigned = running && (running.task !== card.id
       || running.generation !== card.steeringGeneration)
 
-    if (running && (reassigned || running.stale && running.activity !== 'working')) {
+    const staleIdle = running && running.stale && running.activity !== 'working'
+    const retireStale = staleIdle && running.session
+      && nativeIdle({ work: running.session.snapshot().work })
+
+    if (running && (reassigned || retireStale)) {
       running.replaced = true
       retire({
         key,
@@ -1855,6 +1910,7 @@ export function createHost({
   const send = ({
     card: ref,
     text,
+    original,
     actor,
     eventId,
     steering,
@@ -1864,6 +1920,7 @@ export function createHost({
   }: {
     card: string
     text: string
+    original?: string
     actor: string
     eventId?: string
     steering?: string
@@ -1975,6 +2032,7 @@ export function createHost({
       input: {
         id: steering ?? inputId ?? randomUUID(),
         text,
+        original,
         actor,
         route: steering ? 'steering' : 'direct',
       },
@@ -1989,6 +2047,7 @@ export function createHost({
     if (direct || card.id === HYDRA_CARD) {
       entry.input.push({
         text,
+        original,
         id: inputId,
       })
     } else {
@@ -3079,6 +3138,7 @@ export function createHost({
     hydraId,
     hydra: ({
       text,
+      original,
       actor,
       id,
       release = false,
@@ -3102,6 +3162,7 @@ export function createHost({
         message: {
           id,
           text,
+          original,
           actor,
           at: at(),
         },
@@ -3127,6 +3188,7 @@ export function createHost({
         input: {
           id,
           text,
+          original,
           actor,
           route: 'hydra',
           agent: requestedAgent,
@@ -3153,6 +3215,7 @@ export function createHost({
           input: {
             id,
             text,
+            original,
             actor,
             route: 'hydra',
             agent: requestedAgent,
@@ -3509,6 +3572,7 @@ export function createHost({
 
           entry.input.push({
             text: compactCommand({ text }) ? text : inputText + helperText,
+            original: original ?? text,
             id,
             agent: requestedAgent,
           })
