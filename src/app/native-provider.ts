@@ -117,6 +117,7 @@ export async function nativeProviders({
       allow,
       outputSchema,
       reattachOnly,
+      reattach,
     }) {
       const key = fingerprint({
         value: {
@@ -194,9 +195,19 @@ export async function nativeProviders({
         summary = current ?? previous.session
       }
 
+      if (reattach && (!binding || binding.instance !== client.ready.instance || !summary
+        || summary.nativeId !== agent?.sessionId)) {
+        fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'Retained completion ownership must be reconciled in its original native epoch',
+        })
+      }
+
+      const terminalReattachment = reattach && (summary?.phase === 'closed' || summary?.phase === 'failed')
+
       const recoveryReplay = summary?.phase === 'recovery_required' && summary.recovery !== undefined
 
-      if (summary?.phase === 'live' || recoveryReplay) {
+      if (summary?.phase === 'live' || terminalReattachment || recoveryReplay) {
         recovered = true
       } else if (summary && reattachOnly) {
         recovered = true
