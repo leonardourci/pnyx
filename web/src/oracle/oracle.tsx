@@ -7,7 +7,7 @@ import type { AgentConfig } from '#workers/model.ts'
 import { KEY_ACTIONS, bindingsFor } from '#preferences/keyboard.ts'
 import type { Hit } from '#oracle/index.ts'
 import { Button, Input, NumberField, Select, Switch } from '#web-shared/ui/controls.tsx'
-import { RichText } from '#web-shared/ui/rich-text.tsx'
+import { Markdown } from '#web-hydra/markdown.tsx'
 import { InlineTitle } from '#web-shared/ui/inline-title.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -541,7 +541,7 @@ export function Oracle({
         {hit.snippets.map((
           snippet,
           index,
-        ) => <RichText key={index} text={snippet.snippet} images={false} />)}
+        ) => <Markdown key={index} text={snippet.snippet} />)}
       </div>
     ),
   }))

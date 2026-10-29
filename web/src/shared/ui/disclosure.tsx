@@ -1,7 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { RichText } from './rich-text.tsx'
-import { attachmentSource } from '#web-hydra/attached-image.tsx'
-import { shownImageNames } from '#hydra/images.ts'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 
@@ -28,12 +26,9 @@ export function Disclosure({
 export function CollapsibleText({
   text,
   className = '',
-  images = true,
 }: {
   text: string
   className?: string
-  // A closed card stays compact: its image chips keep their thumbnails and the card opens to the rest.
-  images?: boolean
 }) {
   const [
       expanded,
@@ -43,9 +38,6 @@ export function CollapsibleText({
       setLong,
     ] = useState(false), id = useId()
   const preview = useRef<HTMLDivElement>(null)
-  // Folded text shows image chips; a picture the Hydra serves shows in its place once expanded.
-  const served = [...shownImageNames({ text }).keys()].some(path => attachmentSource({ path }))
-  const pictures = images && served
 
   useLayoutEffect(
     () => {
@@ -70,8 +62,8 @@ export function CollapsibleText({
 
   return (
     <div className={`collapsible-text ${className}`}>
-      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} images={expanded} /></div>
-      {(long || pictures || expanded) && (
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} /></div>
+      {(long || expanded) && (
         <Button
           contentEditable={false}
           className="show-more"
@@ -79,7 +71,7 @@ export function CollapsibleText({
           aria-controls={id}
           onClick={() => setExpanded(!expanded)}
         >
-          {expanded ? 'Show less' : pictures && !long ? 'Show images' : 'Show more'}
+          {expanded ? 'Show less' : 'Show more'}
         </Button>
       )}
     </div>

@@ -99,7 +99,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
   return (
     <div className="last-message">
       <strong>Current state</strong>
-      <CollapsibleText text={message.text} images={false} />
+      <CollapsibleText text={message.text} />
     </div>
   )
 }
@@ -612,7 +612,7 @@ export function HydraCard({
         {!selected && question && (
           <div className="card-question" aria-label="Task question">
             <strong className="eyebrow">{questionLabel}</strong>
-            <CollapsibleText text={question.text} images={false} />
+            <CollapsibleText text={question.text} />
             {answerSaved && <p className="muted small">{deliveryText}</p>}
             <Button
               variant="primary"

@@ -1,11 +1,12 @@
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
-import { Fragment, memo, type ReactNode } from 'react'
+import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { SHOWN_IMAGE, shownImagePath } from '#hydra/images.ts'
-import { ImageChip, ShownImage } from './attached-image.tsx'
+import { SHOWN_IMAGE, shownImageNames, shownImagePath } from '#hydra/images.ts'
+import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
-import { ChatTokenText, SkillToken } from './chat-token-text.tsx'
+import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
+import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
@@ -67,7 +68,7 @@ export function markdownHref({ href }: { href: string }): string | undefined {
   }
 }
 
-export type TaskLink = {
+type TaskLink = {
   openTask?({ id }: { id: string }): void
   columnLook?({ id }: { id: string }): {
     icon: string
@@ -86,6 +87,7 @@ function Sourced({
   return <span {...{ [CHIP_SOURCE]: markdown }}>{children}</span>
 }
 
+// An image shows as the composer shows it: a chip with its thumbnail, opening full size on click.
 const withImages = ({
   text,
   images,
@@ -108,7 +110,7 @@ const withImages = ({
         )}
       />,
       <Sourced key={`${match.index}:image`} markdown={source}>
-        <ShownImage
+        <ImageChip
           path={path}
           label={images?.get(path) ?? 'Image'}
         />
@@ -321,7 +323,7 @@ type Render = {
   base?: number
 }
 
-export type BlockWrap = ({
+type BlockWrap = ({
   index,
   offset,
   quote,
@@ -338,7 +340,7 @@ type Blocks = {
 } & TaskLink
 
 // blockCount in reveal.ts mirrors every `block` call made here.
-export const renderBlocks = ({
+const renderBlocks = ({
   text,
   tokens,
   offset: start = 0,
@@ -516,3 +518,77 @@ export const renderBlocks = ({
 
 // Memoized, so a streamed reply's completed blocks skip the typing frames between pushes.
 export const MarkdownBlocks = memo(renderBlocks)
+
+export const Markdown = memo(function Markdown({
+  text,
+  block,
+  openTask,
+  columnLook,
+}: {
+  text: string
+  block?: BlockWrap
+} & TaskLink) {
+  const context = useContext(ChatTokensContext)
+  const prepared = useMemo(
+    () => prepareChatTokens({
+      text,
+      suggestions: context.suggestions ?? [],
+    }),
+    [
+      text,
+      context.suggestions,
+    ],
+  )
+  const tokens = useMemo(
+    () => {
+      const tokens = markdown.lexer(prepared.text)
+      markdown.walkTokens(
+        tokens,
+        // eslint-disable-next-line pnyx/object-params -- Marked owns this callback signature.
+        token => {
+          token.raw = prepared.restore({ text: token.raw })
+
+          if ('href' in token) {
+            token.href = prepared.restore({ text: token.href })
+          }
+
+          if (token.type === 'code' && token.lang) {
+            token.lang = prepared.restore({ text: token.lang })
+          }
+        },
+      )
+
+      return tokens
+    },
+    [prepared],
+  )
+  const images = useMemo(
+    () => shownImageNames({ text }),
+    [text],
+  )
+
+  return (
+    <ChatTokensContext.Provider
+      value={{
+        ...context,
+        tokens: prepared,
+      }}
+    >
+      <div className="markdown">{renderBlocks({
+        text,
+        tokens,
+        block: block ? ({
+          quote,
+          ...props
+        }) => block({
+          ...props,
+          quote: prepared.restore({ text: quote }),
+        }) : undefined,
+        openTask,
+        columnLook,
+        images,
+      })}
+      </div>
+    </ChatTokensContext.Provider>
+  )
+})

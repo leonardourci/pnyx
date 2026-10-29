@@ -1,14 +1,13 @@
-import { createContext, useContext, useState } from 'react'
+import { useState } from 'react'
 import { createPortal } from 'react-dom'
 import { ATTACHMENT_NAME, imageLine, imageType } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
 // A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
-export function attachmentSource({ path }: { path: string }) {
+function attachmentSource({ path }: { path: string }) {
   const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
   const route = served?.[2]
@@ -178,41 +177,5 @@ export function ImageChip({
       />
       {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
     </>
-  )
-}
-
-// Whether shown text draws a picture in place of its chip; compact previews keep the chip.
-export const InlinePictures = createContext(true)
-
-// An image shows where it was written: the picture when the Hydra serves it, otherwise its chip.
-export function ShownImage({
-  path,
-  label,
-}: {
-  path: string
-  label: string
-}) {
-  const pictures = useContext(InlinePictures)
-  const [
-    failed,
-    setFailed,
-  ] = useState(false)
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-  const src = attachmentSource({ path })
-
-  if (!pictures || !src || failed) {
-    return <ImageChip path={path} label={label} />
-  }
-
-  return (
-    <span className="inline-image" contentEditable={false}>
-      <Button className="inline-image-open" title={`Show ${label}`} onClick={() => setOpen(true)}>
-        <img src={src} alt={label} onError={() => setFailed(true)} />
-      </Button>
-      {open && <ImageViewer path={path} label={label} close={() => setOpen(false)} />}
-    </span>
   )
 }
