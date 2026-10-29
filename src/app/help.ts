@@ -32,7 +32,8 @@ commands:
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
-  stop                                       Stop the running server
+  stop                                       Stop the application; native turns keep running
+  native status|drain|replace                Read host readiness or perform owner-only drained maintenance
   upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
@@ -235,7 +236,7 @@ task remind sets one reminder per task; use a future ISO timestamp with a timezo
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
 task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's
-Pnyx server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
+Pnyx native host connected to the server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts and
