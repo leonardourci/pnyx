@@ -19,6 +19,8 @@ const EVEN_ODD = 'fill-rule="evenodd"'
 const BOLD_STROKE = 16
 // Line icons draw this many screen pixels wide at every size, so a 14 px and a 24 px icon match in weight.
 const LINE_PX = 1.5
+// Identity files draw in a 512-unit box.
+const ICON_BOX = 512
 // Tabler draws in a 24-unit box.
 const TABLER_BOX = 24
 // The Fast toggle shows on and off by its color, so both draw the same figure. Codex's modes share Claude's figures.
@@ -37,10 +39,14 @@ export const identityGlyph = ({ name }: { name: string }) => {
     return undefined
   }
 
+  const span = ICON_BOX / (icon.scale ?? 1)
+  const inset = (ICON_BOX - span) / 2
+
   return {
     path,
     fillRule: file.includes(EVEN_ODD) ? 'evenodd' as const : 'nonzero' as const,
     stroke: icon.bold ? BOLD_STROKE : 0,
+    viewBox: `${inset} ${inset} ${span} ${span}`,
   }
 }
 
@@ -80,7 +86,7 @@ export function Icon({
         data-icon={name}
         width={size}
         height={size}
-        viewBox="0 0 512 512"
+        viewBox={identity.viewBox}
         fill="currentColor"
         stroke="currentColor"
         strokeWidth={identity.stroke}
