@@ -37,7 +37,7 @@
   --text-code: 13px;
 }
 
-:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-pad: calc((var(--chip-h) - 1.125em) / 2); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
+:root { --chat-end: 64px; --chat-line: 1.65; --chip-h: 1.375em; --chip-text: 1.125em; --chip-pad: calc((var(--chip-h) - var(--chip-text)) / 2); --block-gap: .75em; --comment-highlight-strength: 24%; --comment-emphasis-strength: 45%; --comment-fade-duration: 160ms; --comment-marker-duration: 140ms; --comment-highlight: color-mix(in srgb, var(--color-gold) var(--comment-highlight-strength), transparent); --comment-emphasis: color-mix(in srgb, var(--color-gold) var(--comment-emphasis-strength), transparent); --comment-jump-highlight: color-mix(in srgb, var(--color-gold) 48%, transparent); color-scheme: light; font-family: var(--font-sans); font-synthesis: none; letter-spacing: normal; background: var(--color-background); color: var(--color-ink); }
 
 :root[data-theme="dark"] { color-scheme: dark; --color-background: #0e0f11; --color-surface: #151619; --color-raised: #1d1e22; --color-hover: #292a30; --color-line: #303136; --color-subtle: #232429; --color-ink: #e9e6df; --color-muted: #a5a29c; --color-gold: #d5b678; --color-gold-line: #655333; --color-gold-wash: #27221a; --color-slate: #a5b0c4; --color-rose: #d8a1b8; --color-teal: #85c1bd; --color-coral: #dfad96; --color-blue: #94b5dc; --color-green: #91bba3; --color-purple: #bba4e2; --color-red: #dfaaa0; --color-shadow: #0008; --color-control: #77766f; --color-composer: #1d1e22; }
 @media (prefers-color-scheme: dark) {
@@ -1301,13 +1301,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
-/* A chip is one --chip-h box around the text's own line box (1.125em in the chat font), so it fits inside the line. */
+/* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
 .message .markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
 
 .message .markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
 
 /* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
-.message :is(.markdown, .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: 1.125em; }
+.message :is(.markdown, .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
