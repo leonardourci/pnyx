@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { matchingSuggestions } from '#hydra/suggestion-matches.ts'
+import { draftView } from './draft.ts'
+import { reference, taskMention } from '#hydra/mentions.ts'
 import { slashPrefix } from './view.ts'
 
 const suggestions = ({
@@ -100,6 +102,56 @@ test(
         cursor: 13,
       }),
       '/the chat',
+    )
+  },
+)
+
+test(
+  'slashes inside task and project chips cannot reopen a menu or replace the reference',
+  () => {
+    const task = draftView({
+      text: taskMention({
+        id: 't',
+        title: 'Fix /chat',
+      }) + ' ',
+    })
+    const project = draftView({
+      text: reference({
+        kind: 'project',
+        value: '/synthetic/project',
+        label: 'Project /chat',
+      }) + ' ',
+    })
+    assert.equal(
+      slashPrefix({
+        text: task.display,
+        cursor: task.display.length,
+        chips: task.chips,
+      }),
+      null,
+    )
+    assert.equal(
+      slashPrefix({
+        text: project.display,
+        cursor: project.display.length,
+        chips: project.chips,
+      }),
+      null,
+    )
+    assert.equal(
+      slashPrefix({
+        text: task.display + '/chat',
+        cursor: task.display.length + 5,
+        chips: task.chips,
+      }),
+      '/chat',
+    )
+    assert.equal(
+      slashPrefix({
+        text: '/help /chat',
+        cursor: 11,
+      }),
+      '/chat',
     )
   },
 )

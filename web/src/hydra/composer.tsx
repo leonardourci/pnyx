@@ -296,6 +296,7 @@ export function Composer({
     setPrefix(slashPrefix({
       text: shown.display,
       cursor,
+      chips: shown.chips,
     }))
     const found = mentionQuery({
       text: shown.display,
@@ -555,6 +556,7 @@ export function Composer({
     const query = slashPrefix({
       text: display,
       cursor,
+      chips: view.chips,
     })
 
     if (query === null || query !== prefix) {
@@ -1136,11 +1138,6 @@ export function Composer({
               }
 
               write(edit)
-              const shown = draftView({ text: edit.text }).display
-              setPrefix(slashPrefix({
-                text: shown,
-                cursor: edit.caret,
-              }))
               setActive(0)
               trackMention({
                 text: edit.text,

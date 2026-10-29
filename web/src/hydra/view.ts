@@ -13,13 +13,31 @@ export function safeLink({ link }: { link: Link }): string | undefined {
   }
 }
 
-export const slashPrefix = ({
+export function slashPrefix({
   text,
   cursor,
+  chips = [],
 }: {
   text: string
   cursor: number
-}) => /(?:^|\s)(\/[^@\r\n\u2060]*)$/u.exec(text.slice(
-  0,
-  cursor,
-))?.[1] ?? null
+  chips?: {
+    from: number
+    to: number
+  }[]
+}): string | null {
+  const before = text.slice(
+    0,
+    cursor,
+  )
+  const matches = [...before.matchAll(/(?:^|\s)(?=(\/[^@\r\n\u2060]*$))/gu)]
+  const query = matches.at(-1)?.[1]
+
+  if (query === undefined) {
+    return null
+  }
+
+  const start = cursor - query.length
+  const insideChip = chips.some(chip => chip.from <= start && start < chip.to)
+
+  return insideChip ? null : query
+}
