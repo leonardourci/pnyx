@@ -1,4 +1,3 @@
-import { commentInput } from '#workers/compaction/comments.ts'
 import { pendingSteering, steeringClaim } from './steering.ts'
 import { readFileSync } from 'node:fs'
 import { integer, meta, parse, required, COMMON, type Output } from '#app/cli-support.ts'
@@ -52,14 +51,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
       return {
         task: card.id,
         claim: steeringClaim({ card }) ?? 'none: no active worker',
-        messages: selected.length ? selected.map(message => ({
-          ...message,
-          text: commentInput({
-            card,
-            id: message.id,
-            text: message.text,
-          }),
-        })) : 'none: no pending steering',
+        messages: selected.length ? selected : 'none: no pending steering',
         pending: messages.filter(message => !message.ack).length,
       }
     }
