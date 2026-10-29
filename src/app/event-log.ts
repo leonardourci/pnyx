@@ -197,7 +197,7 @@ export function readLog({
 }
 
 // The tasks an event belongs to, under which an index lists it.
-export type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
+type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
 
 type Index = Map<string, HydraEvent[]>
 
@@ -292,7 +292,7 @@ export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent |
   }
 }
 
-// The parsed log, read on from where the last read stopped.
+// The parsed log, extended with the lines appended since the last read.
 function parsedLog({ hydraId }: { hydraId: string }) {
   const dir = hydraDir({ hydraId })
   let file: string
@@ -367,8 +367,8 @@ export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   return parsedLog({ hydraId })?.events.slice() ?? []
 }
 
-// The events `keys` files under `key`, oldest first, without copying or scanning the rest of the log.
-// The index is built on first use and grows with each read, so it always matches the log.
+// The events that `keys` lists under `key`, oldest first, without copying or scanning the rest of the log.
+// A live view: the index is built on first use and grows with each later read, so it always matches the log.
 export function indexedEvents({
   hydraId,
   keys,

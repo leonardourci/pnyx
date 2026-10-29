@@ -63,27 +63,28 @@ export const history = guard({
 
     const ref = values.card as string | undefined
     const workspace = values.workspace as string | undefined
-    // A card id the log already lists needs no Hydra state; a task key or a workspace filter does.
-    const listed = !!ref && indexedEvents({
+    // With --updates a card's index already holds just the events Updates shows.
+    const keys = values.updates ? updateTasks : historyTasks
+    const indexed = ({ key }: { key: string }) => indexedEvents({
       hydraId,
-      keys: historyTasks,
-      key: ref,
-    }).length > 0
-    const state = workspace || (ref && !listed) ? loadHydra({ hydraId }).state : undefined
+      keys,
+      key,
+    })
+    // A ref the log records as some event's own card is a card id and needs no Hydra state;
+    // a task key, an unknown ref or a workspace filter does.
+    const listed = !!ref && indexed({ key: ref }).some(e => e.cardId === ref)
+    const needsState = !!workspace || (!!ref && !listed)
+    const state = needsState ? loadHydra({ hydraId }).state : undefined
     const cardId = ref && state ? findCard({
       state,
       ref,
     }).id : ref
     // An outcome keeps the workspace it was recorded under; other events use the card's current one.
     const inWorkspace = ({ e }: { e: HydraEvent }) =>
-      (e.type === 'card.outcome' ? e.data.card.workspace : state!.cards[e.cardId]?.workspace) === workspace
+      (e.type === 'card.outcome' ? e.data.card.workspace : state?.cards[e.cardId]?.workspace) === workspace
 
-    // A card reads only its own index, which with --updates already holds just the events Updates shows.
-    const source = cardId ? indexedEvents({
-      hydraId,
-      keys: values.updates ? updateTasks : historyTasks,
-      key: cardId,
-    }) : readEvents({ hydraId })
+    const source = cardId ? indexed({ key: cardId }) : readEvents({ hydraId })
+    // The log's seq only grows, so the events before --before are a prefix.
     const end = before === undefined ? source.length : source.findLastIndex(e => e.seq < before) + 1
     const checksUpdates = values.updates && !cardId
     const matches = source.slice(

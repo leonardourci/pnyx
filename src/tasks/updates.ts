@@ -511,12 +511,18 @@ export function relevantUpdate({
 }
 
 // A Hydra chat message belongs to its task and to every task it names with a chip.
-const taggedTasks = ({ event }: { event: HydraEvent }) => event.type === 'hydra.message'
-  ? [
-    event.data.task ?? '',
-    ...taskMentions({ text: event.data.text }).map(mention => mention.id),
-  ].filter(Boolean)
-  : []
+const taggedTasks = ({ event }: { event: HydraEvent }): string[] => {
+  if (event.type !== 'hydra.message') {
+    return []
+  }
+
+  const mentioned = taskMentions({ text: event.data.text }).map(mention => mention.id)
+
+  return event.data.task ? [
+    event.data.task,
+    ...mentioned,
+  ] : mentioned
+}
 
 export function tagsTask({
   event,

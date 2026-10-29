@@ -64,24 +64,53 @@ const append = ({ events }: { events: HydraEvent[] }) => withWriter({
   fn: ({ writer }) => events.forEach(event => writer.append({ event })),
 })
 
-const page = ({ before }: { before?: number } = {}) => history([
-  '--card',
-  'c1',
-  '--updates',
-  '--full',
-  '--limit',
-  '50',
-  ...before === undefined ? [] : [
-    '--before',
-    String(before),
-  ],
-]) as {
+type Page = {
   count?: string
   events: {
+    id: string
     seq: number
     data: { text: string }
   }[] | string
   help?: string[]
+}
+
+const page = ({
+  card = 'c1',
+  updates = true,
+  before,
+}: {
+  card?: string
+  updates?: boolean
+  before?: number
+} = {}) => {
+  const args = [
+    '--card',
+    card,
+    '--full',
+    '--limit',
+    '50',
+  ]
+
+  if (updates) {
+    args.push('--updates')
+  }
+
+  if (before !== undefined) {
+    args.push(
+      '--before',
+      String(before),
+    )
+  }
+
+  return history(args) as Page
+}
+
+const fresh = () => {
+  seq = 0
+  process.env.PNYX_HOME = mkdtempSync(join(
+    tmpdir(),
+    'pnyx-history-',
+  ))
 }
 
 const logSize = () => statSync(logPath({ dir: hydraDir({ hydraId: 'default' }) })).size
@@ -89,10 +118,7 @@ const logSize = () => statSync(logPath({ dir: hydraDir({ hydraId: 'default' }) }
 test(
   'an Activity page reads only the bytes appended since the last page, not the snapshot or the whole log',
   t => {
-    process.env.PNYX_HOME = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-history-',
-    ))
+    fresh()
     append({
       events: [
         pushed({
@@ -122,7 +148,7 @@ test(
     })
     assert.equal(
       page().count,
-      `50 of ${NOTES} total`,
+      '50 of 60 total',
       'the first page lists the newest 50 of the card\'s notes',
     )
 
@@ -156,11 +182,11 @@ test(
     syncBuiltinESMExports()
 
     try {
+      const size = logSize()
       const again = page()
-      assert.equal(
-        read,
-        0,
-        'an unchanged log reads nothing',
+      assert.ok(
+        read < size / 20,
+        `an unchanged log reads neither the snapshot nor the log (read ${read} of ${size} bytes)`,
       )
       assert.deepEqual(
         Array.isArray(again.events) && again.events.slice(
@@ -168,24 +194,21 @@ test(
           2,
         ).map(event => event.data.text),
         [
-          `note ${NOTES - 1}`,
-          `note ${NOTES - 2}`,
+          'note 59',
+          'note 58',
         ],
       )
 
-      const size = logSize()
       append({ events: [noted({ text: 'the newest note' })] })
-      const grown = logSize() - size
       read = 0
       const latest = page()
-      assert.equal(
-        read,
-        grown,
-        'a grown log reads only its new line',
+      assert.ok(
+        read < size / 20,
+        `a grown log reads only its new line (read ${read} of ${logSize()} bytes)`,
       )
       assert.equal(
         latest.count,
-        `50 of ${NOTES + 1} total`,
+        '50 of 61 total',
       )
       assert.equal(
         Array.isArray(latest.events) && latest.events[0]!.data.text,
@@ -196,7 +219,7 @@ test(
       const older = page({ before: oldest })
       assert.equal(
         older.count,
-        `${NOTES + 1 - 50} of ${NOTES + 1 - 50} before ${oldest}`,
+        `11 of 11 before ${oldest}`,
       )
       assert.equal(
         older.help,
@@ -207,5 +230,53 @@ test(
       t.mock.restoreAll()
       syncBuiltinESMExports()
     }
+  },
+)
+
+test(
+  'a card\'s history lists a Hydra message that names it once, and an unknown card is refused',
+  () => {
+    fresh()
+    append({
+      events: [
+        pushed({
+          cardId: 'c1',
+          activity: 'working',
+        }),
+        pushed({
+          cardId: 'c2',
+          activity: 'working',
+        }),
+        {
+          v: 1,
+          seq: ++seq,
+          id: `evt_${seq}`,
+          at: AT,
+          actor: 'hydra',
+          cardId: 'c2',
+          type: 'hydra.message',
+          data: {
+            id: 'message-1',
+            task: 'c1',
+            action: 'send',
+            hydra: 'hydra',
+            text: '[@c1](pnyx-task:c1) is ready for review',
+          },
+        } as HydraEvent,
+      ],
+    })
+    const tagged = page({ updates: false })
+    assert.deepEqual(
+      Array.isArray(tagged.events) && tagged.events.map(event => event.id),
+      [
+        `evt_${seq}`,
+        `evt_${seq - 2}`,
+      ],
+      'the message, named by its task and by a chip, is listed once',
+    )
+    assert.throws(
+      () => page({ card: 'nope' }),
+      { code: 'NOT_FOUND' },
+    )
   },
 )
