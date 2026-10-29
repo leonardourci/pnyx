@@ -17,11 +17,15 @@ const PATH_DATA = / d="([^"]+)"/
 const EVEN_ODD = 'fill-rule="evenodd"'
 // Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
 const BOLD_STROKE = 16
-// The Fast toggle shows on and off by its color, so both draw the same lightning.
-const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
+// Line icons draw this many screen pixels wide at every size, so a 14 px and a 24 px icon match in weight.
+const LINE_PX = 1.5
+// Identity files draw in a 512-unit box.
+const ICON_BOX = 512
+// Tabler draws in a 24-unit box.
+const TABLER_BOX = 24
 
 export const identityGlyph = ({ name }: { name: string }) => {
-  const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
+  const icon = identityIcon({ id: name })
   const file = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
   const path = file?.match(PATH_DATA)?.[1]
 
@@ -29,10 +33,14 @@ export const identityGlyph = ({ name }: { name: string }) => {
     return undefined
   }
 
+  const span = ICON_BOX / (icon.scale ?? 1)
+  const inset = (ICON_BOX - span) / 2
+
   return {
     path,
     fillRule: file.includes(EVEN_ODD) ? 'evenodd' as const : 'nonzero' as const,
     stroke: icon.bold ? BOLD_STROKE : 0,
+    viewBox: `${inset} ${inset} ${span} ${span}`,
   }
 }
 
@@ -72,7 +80,7 @@ export function Icon({
         data-icon={name}
         width={size}
         height={size}
-        viewBox="0 0 512 512"
+        viewBox={identity.viewBox}
         fill="currentColor"
         stroke="currentColor"
         strokeWidth={identity.stroke}
@@ -115,5 +123,5 @@ export function Icon({
     name,
   ) && TABLER_ICONS[name]) || IconRobot
 
-  return <Mark aria-hidden="true" size={size} stroke={1.6} />
+  return <Mark aria-hidden="true" size={size} stroke={LINE_PX * TABLER_BOX / size} />
 }

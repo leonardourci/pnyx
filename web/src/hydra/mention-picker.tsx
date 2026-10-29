@@ -5,6 +5,8 @@ import type { ChipKind } from './draft.ts'
 export interface MentionItem extends PickerItem {
   kind: ChipKind
   insert: string
+  // The folder or clone URL a project item writes as plain text in an Add project request.
+  path?: string
 }
 
 export function MentionPicker({

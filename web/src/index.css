@@ -415,9 +415,15 @@ h3 { font-weight: 600; }
 
 .draft-chip { cursor: pointer; margin: 0 -.25em; padding: var(--chip-pad) .25em; box-decoration-break: clone; -webkit-box-decoration-break: clone; border-radius: 5px; background: var(--color-raised); box-shadow: inset 0 0 0 1px var(--color-line); }
 
+.draft-path { border-radius: 4px; background: var(--color-gold-wash); box-shadow: 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
+
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
-.draft-chip[data-kind=project], .draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
+.draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
+
+.draft-chip[data-kind=project] { cursor: pointer; }
+
+.draft-chip.reference[data-kind=slot] { cursor: pointer; color: var(--color-muted); font-style: italic; background: transparent; box-shadow: inset 0 0 0 1px var(--color-gold-line); }
 
 .draft-chip.reference:is([data-kind=column], [data-kind=task]), .chip.column-chip { color: var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent); }
 
@@ -1177,9 +1183,47 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydras-heading form .input { width: 100%; }
 .hydras-tree { min-height: 0; overflow-y: auto; }
 .hydra-row { display: flex; align-items: center; min-width: 0; }
+.hydra-branch.drop-before { box-shadow: inset 0 2px 0 var(--color-gold); }
+.hydra-branch.drop-after { box-shadow: inset 0 -2px 0 var(--color-gold); }
 .hydra-row > .button:first-child { flex: 0 0 25px; padding: 6px 2px; color: var(--color-muted); }
 .hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; padding: 7px 8px; font-size: var(--text-ui); }
 .hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hydra-row .hydra-name > .identity-icon { flex-shrink: 0; }
+
+.hydra-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+
+.hydra-row-spacer { flex: 0 0 25px; }
+
+.hydra-row > .hydra-name-editor { flex: 1; padding: 3px 0 3px 4px; }
+
+.hydra-name-editor { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+
+.hydra-name-field { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+
+.hydra-name-field .input { width: 100%; padding: 4px 8px; font-weight: 650; }
+
+.hydra-name-note { display: flex; justify-content: space-between; gap: 6px; color: var(--color-muted); font-size: var(--text-meta); }
+
+.hydra-name-note.error { color: var(--color-red); }
+
+.hydra-head .hydra-name-editor { flex: 1; max-width: 360px; }
+
+.hydra-head .hydra-name-field .input { font-size: var(--text-ui); }
+
+.hydra-head .hydra-title { min-width: 0; min-height: 0; padding: 2px 6px; margin-left: -6px; justify-content: flex-start; font-size: inherit; }
+
+.icon-picker > .button { min-height: 0; padding: 3px 4px; }
+
+.icon-picker .popover-panel { width: min(300px, calc(100vw - 16px)); padding: 6px; }
+
+.icon-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+
+.icon-grid > .button { height: 36px; min-height: 0; padding: 0; border: 1px solid transparent; }
+
+.icon-grid > .button[aria-selected=true] { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); }
+
+.hydra-empty-action { color: var(--color-gold); cursor: pointer; }
 .hydra-row > form { min-width: 0; }
 .hydra-row > form .input { width: 100%; }
 .hydra-projects { margin: 4px 0 12px 12px; padding-left: 10px; border-left: 1px solid var(--color-line); }
@@ -1223,9 +1267,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .composer-add > .button { width: 28px; height: 28px; padding: 0; justify-content: center; }
 
-.composer-add .popover-panel { width: 180px; padding: 5px; }
+.composer-add .popover-panel { width: max-content; padding: 5px; }
 
-.composer-add .popover-panel > .button { display: flex; width: 100%; justify-content: flex-start; }
+.composer-add .popover-panel > .button { display: flex; width: 100%; justify-content: flex-start; gap: 8px; white-space: nowrap; }
 
 .popover { position: relative; min-width: 0; }
 
@@ -1337,7 +1381,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-agent-pickers .select { min-width: 0; }
 
-.hydra-agent-pickers .select > .button > .identity-icon { width: 18px; height: 18px; color: var(--color-ink); }
+.hydra-agent-pickers .select > .button > svg:not(:last-child) { color: var(--color-ink); }
 
 .hydra-agent-pickers .fast-toggle { min-height: 26px; padding: 2px 6px; color: var(--color-muted); }
 

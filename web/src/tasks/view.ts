@@ -10,6 +10,8 @@ import { observedStatus, type ObservedStatus } from './observed-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
 
+export const TASK_DRAG = 'application/pnyx-task'
+
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
   icon: column.role ?? (column.id.startsWith('custom:') ? 'custom' : column.id),

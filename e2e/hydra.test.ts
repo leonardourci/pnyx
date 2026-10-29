@@ -731,6 +731,10 @@ test(
           '/upgrade',
           'Built-in',
         ],
+        [
+          '/add-project',
+          'Built-in',
+        ],
       ],
     )
     assert.equal(
@@ -777,6 +781,7 @@ test(
         '$inscribe',
         '$pnyx-set-up',
         '/upgrade',
+        '/add-project',
       ],
     )
   },
