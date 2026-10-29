@@ -3,7 +3,7 @@ import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
 import { SHOWN_IMAGE, shownImagePath } from '#hydra/images.ts'
-import { ImageChip } from './attached-image.tsx'
+import { ImageChip, ShownImage } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokenText, SkillToken } from './chat-token-text.tsx'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
@@ -108,7 +108,7 @@ const withImages = ({
         )}
       />,
       <Sourced key={`${match.index}:image`} markdown={source}>
-        <ImageChip
+        <ShownImage
           path={path}
           label={images?.get(path) ?? 'Image'}
         />

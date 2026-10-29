@@ -15,7 +15,7 @@ import {
   type Block,
 } from '#web-shared/ui/reveal.ts'
 
-type RichTextProps = Omit<ComponentProps<typeof RichText>, 'images'>
+type RichTextProps = ComponentProps<typeof RichText>
 
 export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 const FRAME = 1000 / 60
@@ -66,7 +66,7 @@ export function MessageText({
       streaming={!!streaming}
       decorations={decorations}
     />
-  ) : <RichText {...props} images={false} />
+  ) : <RichText {...props} />
 }
 
 type Reveal = {
