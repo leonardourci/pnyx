@@ -10,6 +10,7 @@ import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { appendJournal, readJournal } from '#store/journal.ts'
 import { candidateIssues, checkDispatch, fallbackAccount, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
 
 export type Harness = AgentConfig['harness']
@@ -226,47 +227,20 @@ function mirrored({ document }: { document: DispatchDocument }): boolean {
   })
 }
 
-export function readChanges(): ChangeEntry[] {
-  const path = changesPath()
+export const readChanges = () => readJournal<ChangeEntry>({
+  path: changesPath(),
+  readable: ({ entry }) => entry?.v === 1 && typeof entry.id === 'string',
+})
 
-  if (!existsSync(path)) {
-    return []
-  }
-
-  // A torn last line is a write cut short, so it was never saved; the complete lines before it still count.
-  return readFileSync(
-    path,
-    'utf8',
-  ).split('\n')
-    .slice(
-      0,
-      -1,
-    )
-    .filter(Boolean)
-    .flatMap(line => {
-      try {
-        return [JSON.parse(line) as ChangeEntry]
-      } catch {
-        return []
-      }
-    })
-}
-
-const committedDocument = () => readChanges().findLast(entry => entry.document)?.document
+// A copy, since the journal keeps the parsed entries for the next read.
+const committedDocument = () => structuredClone(readChanges()
+  .findLast(entry => entry.document)?.document)
 
 // The durable log line is the commit point: a failed append changes nothing, and the files follow it.
 export function commitChange({ entry }: { entry: ChangeEntry }): void {
-  privateDir({ dir: dirname(changesPath()) })
-  // A torn last line keeps its own line, so the new entry is never glued onto it.
-  const logged = existsSync(changesPath()) ? readFileSync(
-    changesPath(),
-    'utf8',
-  ) : ''
-  const torn = logged !== '' && !logged.endsWith('\n')
-  writeDurably({
+  appendJournal({
     path: changesPath(),
-    data: `${torn ? '\n' : ''}${JSON.stringify(entry)}\n`,
-    flag: 'a',
+    entry,
   })
 
   if (entry.document) {
@@ -474,14 +448,9 @@ export function mergeHydraFiles(): void {
   }
 
   const found = hydraFiles()
-  privateDir({ dir: dirname(changesPath()) })
 
   if (!found.length) {
-    writeDurably({
-      path: changesPath(),
-      data: '',
-      flag: 'a',
-    })
+    appendJournal({ path: changesPath() })
 
     return
   }

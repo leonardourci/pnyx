@@ -527,6 +527,63 @@ test(
 )
 
 test(
+  'an unreadable line inside the change log is reported and skipped, and the lines around it still count',
+  t => {
+    lab()
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'First wording',
+      ],
+    })
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'Second wording',
+      ],
+    })
+    const [
+      first,
+      second,
+    ] = readFileSync(
+      changesPath(),
+      'utf8',
+    ).split('\n')
+    writeFileSync(
+      changesPath(),
+      `${first}\nnot json\n${second}\n`,
+    )
+    const reported = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    const {
+      document,
+      revision,
+    } = show()
+    assert.deepEqual(
+      [
+        document.rules.build?.when,
+        revision,
+      ],
+      [
+        'Second wording',
+        2,
+      ],
+    )
+    assert.deepEqual(
+      reported.mock.calls.map(call => call.arguments),
+      [[`pnyx-axi: skipped 1 unreadable lines in ${changesPath()}`]],
+    )
+  },
+)
+
+test(
   'deleting every rule saves an empty rules object later reads keep, and the default list cannot be removed',
   () => {
     const { file } = lab()
