@@ -1,12 +1,12 @@
 import type { Card } from '#tasks/model.ts'
-import { answerPrompt } from '#workers/answers.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { InlinePermissions } from '#web-workers/permissions.tsx'
 import { InlineQuestions } from './questions.tsx'
 import { AskPanel } from './ask.tsx'
-import { openAsks, ownerQuestions, waitingPrompt } from '#tasks/questions.ts'
+import { ownerQuestions } from '#tasks/questions.ts'
 import type { Command } from '#web-app/connection.ts'
+import { genericPrompts } from './view.ts'
 
 export const hasTaskQuestion = ({ card }: { card: Card }) => ownerQuestions({ card }).length > 0
 
@@ -22,16 +22,8 @@ export function TaskQuestion({
   answer({ card }: { card: Card }): void
 }) {
   const permissions = card.permissions?.filter(request => request.status === 'pending') ?? []
-  const attention = card.attention.find(prompt => waitingPrompt({ prompt }))
-  const structured = card.attention.some(request => !request.answered && answerPrompt({
-    card,
-    request,
-  }))
-  const text = attention?.text
-  const asks = openAsks({
-    card,
-    audience: 'owner',
-  })
+  const asks = ownerQuestions({ card }).flatMap(question => question.ask ? [question.ask] : [])
+  const prompts = genericPrompts({ card })
 
   return (
     <div className="task-requests">
@@ -59,15 +51,15 @@ export function TaskQuestion({
           notify={notify}
         />
       ))}
-      {!permissions.length && !structured && !asks.length && text && (
-        <div className="pending-decision">
-          <CollapsibleText text={text} />
+      {prompts.map(question => (
+        <div key={question.attention!.key} className="pending-decision">
+          <CollapsibleText text={question.text} />
           <div className="pending-decision-actions">
             <span className="muted small">Awaiting your answer</span>
             <Button variant="surface" onClick={() => answer({ card })}>Answer</Button>
           </div>
         </div>
-      )}
+      ))}
     </div>
   )
 }

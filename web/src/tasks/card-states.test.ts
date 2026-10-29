@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra } from '#app/reducer.ts'
-import { cardState } from './view.ts'
+import { cardState, genericPrompts } from './view.ts'
+import { ownerQuestions } from '#tasks/questions.ts'
 import { cardFacts, placeCard } from '#tasks/columns.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
@@ -761,5 +762,83 @@ test(
         'needs_you',
       )
     }
+  },
+)
+
+test(
+  'every prompt the owner is counted for shows in Context, with Answer when it has no controls of its own',
+  () => {
+    const hook = ({ key }: { key: string }) => ({
+      kind: 'permission',
+      key,
+      blocking: true,
+      text: `Allow ${key}?`,
+    })
+    const card = ({
+      attention,
+      ...rest
+    }: Partial<Card>): Card => ({
+      ...task,
+      agent: {
+        provider: 'claude-code',
+        sessionId: 'test',
+      },
+      attention: attention ?? [],
+      ...rest,
+    })
+    const shown = ({ card }: { card: Card }) => genericPrompts({ card })
+      .map(question => question.text)
+
+    const withAsk = card({
+      attention: [hook({ key: 'hook:tool:Bash' })],
+      asks: [
+        {
+          id: 'ask-1',
+          at,
+          actor: 'hydra',
+          audience: 'owner',
+          question: 'Choose retention?',
+        },
+      ],
+    })
+    assert.equal(
+      ownerQuestions({ card: withAsk }).length,
+      2,
+    )
+    assert.deepEqual(
+      shown({ card: withAsk }),
+      ['Allow hook:tool:Bash?'],
+    )
+    assert.deepEqual(
+      shown({
+        card: card({
+          attention: [hook({ key: 'hook:tool:Bash' })],
+          permissions: [
+            {
+              id: 'perm-1',
+              session: 'claude-code:test',
+              tool: 'Edit',
+              input: {},
+              status: 'pending',
+            },
+          ],
+        }),
+      }),
+      ['Allow hook:tool:Bash?'],
+    )
+    assert.deepEqual(
+      shown({
+        card: card({
+          attention: [
+            hook({ key: 'hook:tool:Bash' }),
+            hook({ key: 'hook:tool:Write' }),
+          ],
+        }),
+      }),
+      [
+        'Allow hook:tool:Bash?',
+        'Allow hook:tool:Write?',
+      ],
+    )
   },
 )

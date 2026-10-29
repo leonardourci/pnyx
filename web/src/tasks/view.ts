@@ -6,6 +6,8 @@ import { liveTask, rankOf } from '#tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import { elapsedTime } from '#web-shared/time.ts'
 import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
+import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
+import { answerPrompt } from '#workers/answers.ts'
 
 // A column's icon and color come from its role; a custom column has its own icon.
 export const columnLook = ({ column }: { column: Pick<HydraColumn, 'id' | 'role'> }) => ({
@@ -192,3 +194,10 @@ export function expandedByColumn({
 
   return kept.reverse()
 }
+
+// Every waiting prompt without inline controls gets the generic Answer, whatever else waits.
+export const genericPrompts = ({ card }: { card: Card }): OwnerQuestion[] =>
+  ownerQuestions({ card }).filter(question => question.attention && !answerPrompt({
+    card,
+    request: question.attention,
+  }))
