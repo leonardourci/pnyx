@@ -44,14 +44,17 @@ export function CopyButton({
       data-copied={result === 'copied' || undefined}
       contentEditable={false}
       onMouseDown={event => event.preventDefault()}
-      onClick={event => {
+      onClick={async event => {
         // Inside a summary, a click would also fold the row.
         event.preventDefault()
         const writing = 'write' in copied ? copied.write() : navigator.clipboard.writeText(copied.text())
-        void writing.then(
-          () => setResult('copied'),
-          () => setResult('failed'),
-        )
+
+        try {
+          await writing
+          setResult('copied')
+        } catch {
+          setResult('failed')
+        }
       }}
     >
       <Icon name={result === 'copied' ? 'check' : 'copy'} size={14} />

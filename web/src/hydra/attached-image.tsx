@@ -112,13 +112,14 @@ async function asPng({ blob }: { blob: Blob }) {
   return canvas.convertToBlob({ type: 'image/png' })
 }
 
+async function pngOf({ src }: { src: string }) {
+  const response = await fetch(src)
+
+  return asPng({ blob: await response.blob() })
+}
+
 // Safari only accepts a clipboard item made during the click, so the image arrives as a promise inside it.
-const copyImage = ({ src }: { src: string }) => navigator.clipboard.write([
-  new ClipboardItem({
-    'image/png': fetch(src).then(response => response.blob())
-      .then(blob => asPng({ blob })),
-  }),
-])
+const copyImage = ({ src }: { src: string }) => navigator.clipboard.write([new ClipboardItem({ 'image/png': pngOf({ src }) })])
 
 // An image already on the page, as PNG data a copied selection can embed; nothing loads it for the copy.
 export function shownImageData({ path }: { path: string }) {
