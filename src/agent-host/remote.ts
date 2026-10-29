@@ -444,7 +444,7 @@ export async function remoteSession({
       return result.kind === 'commands' ? result.commands : []
     },
     close() {
-      call({
+      const closing = call({
         operation: {
           kind: 'close',
           expectedIdle: false,
@@ -452,9 +452,12 @@ export async function remoteSession({
       }).then(() => {
         summary.phase = 'closed'
       })
-        .catch(error => {
-          failure = error; wake.resolve()
-        })
+      // Callers that do not await shutdown still receive its failure through the reader.
+      closing.catch(error => {
+        failure = error; wake.resolve()
+      })
+
+      return closing
     },
   }
 

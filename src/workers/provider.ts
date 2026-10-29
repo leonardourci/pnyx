@@ -218,7 +218,7 @@ export interface HostedSession {
     description: string
     builtin?: boolean
   }[]>
-  close(): void
+  close(): void | Promise<void>
 }
 
 export interface ModelOption {
