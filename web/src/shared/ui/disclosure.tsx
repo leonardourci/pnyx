@@ -1,5 +1,6 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { RichText } from './rich-text.tsx'
+import { MessageImages } from '#web-hydra/attached-image.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 
@@ -26,9 +27,12 @@ export function Disclosure({
 export function CollapsibleText({
   text,
   className = '',
+  images = true,
 }: {
   text: string
   className?: string
+  // A closed card has no room for them; its image chips keep their thumbnails.
+  images?: boolean
 }) {
   const [
       expanded,
@@ -62,7 +66,7 @@ export function CollapsibleText({
 
   return (
     <div className={`collapsible-text ${className}`}>
-      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} /></div>
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} images={false} /></div>
       {(long || expanded) && (
         <Button
           contentEditable={false}
@@ -74,6 +78,8 @@ export function CollapsibleText({
           {expanded ? 'Show less' : 'Show more'}
         </Button>
       )}
+      {/* Images sit below the clamp, so a folded text never cuts one off. */}
+      {images && <MessageImages text={text} />}
     </div>
   )
 }
