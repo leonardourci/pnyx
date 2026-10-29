@@ -10,7 +10,7 @@ import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
-import type { CompactInput, CompactionChange } from '#workers/compaction/model.ts'
+import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
@@ -83,6 +83,11 @@ const RETRY_MS = [
   600_000,
 ]
 
+// A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
+const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
+// A deadline that could not record its failure, as when another writer holds the lock, tries again this soon.
+const COMPACTION_RETRY_MS = 1000
+
 export function createHost({
   hydraId,
   query,
@@ -95,6 +100,7 @@ export function createHost({
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
   pauseDelay = PAUSE_MS,
+  compactionDelay = COMPACTION_DEADLINE_MS,
   retryDelays = RETRY_MS,
   helperBound,
   upgradeRoot,
@@ -120,6 +126,7 @@ export function createHost({
   busyDelay?: number
   stallRepeatMax?: number
   pauseDelay?: number
+  compactionDelay?: number
   retryDelays?: number[]
   helperBound?: number
   // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
@@ -348,20 +355,87 @@ export function createHost({
     at,
   })
 
+  const compactionDeadlines = new Map<string, NodeJS.Timeout>()
+
   const compactChange = ({
     card,
     change,
   }: {
     card: string
     change: CompactionChange
-  }) => write({
-    fn: ({ writer }) => recordCompaction({
-      writer,
-      card,
-      change,
-      at: at(),
-    }),
-  })
+  }) => {
+    write({
+      fn: ({ writer }) => recordCompaction({
+        writer,
+        card,
+        change,
+        at: at(),
+      }),
+    })
+
+    if (change.kind === 'status') {
+      resetCompactionDeadline({ operation: change.operation })
+    }
+  }
+
+  // Each status of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
+  const resetCompactionDeadline = ({
+    operation,
+    delay = compactionDelay,
+  }: {
+    operation: Compaction
+    delay?: number
+  }) => {
+    clearTimeout(compactionDeadlines.get(operation.session))
+    compactionDeadlines.delete(operation.session)
+
+    if (operation.state !== 'running') {
+      return
+    }
+
+    compactionDeadlines.set(
+      operation.session,
+      setTimeout(
+        () => background({
+          name: 'compaction deadline',
+          run: () => {
+            compactionDeadlines.delete(operation.session)
+
+            if (closing) {
+              return
+            }
+
+            const { cards } = loadHydra({ hydraId }).state
+            const card = Object.values(cards).find(candidate => candidate.compaction?.operations
+              .some(known => known.id === operation.id && known.state === 'running'))
+
+            if (!card) {
+              return
+            }
+
+            compactChange({
+              card: card.id,
+              change: {
+                kind: 'status',
+                operation: {
+                  ...operation,
+                  state: 'failed',
+                  endedAt: at(),
+                  error: 'The agent stopped reporting this compaction before it finished',
+                },
+              },
+            })
+            releaseCompact({ card: card.id })
+          },
+          retry: () => resetCompactionDeadline({
+            operation,
+            delay: COMPACTION_RETRY_MS,
+          }),
+        }),
+        delay,
+      ).unref(),
+    )
+  }
 
   const holdCompact = ({
     card,
@@ -389,6 +463,38 @@ export function createHost({
   }
 
   const releasingCompact = new Set<string>()
+  // After a result the agent may compact again at once, so held input waits until it moves on, or for one deadline.
+  const settlingCompactions = new Map<string, NodeJS.Timeout>()
+
+  const compactionBusy = ({ card }: { card?: Card }) => Boolean(activeCompaction({ card }))
+    || Boolean(card && settlingCompactions.has(card.id))
+
+  const settleCompaction = ({
+    card,
+    settling,
+  }: {
+    card: string
+    settling: boolean
+  }) => {
+    const moved = settlingCompactions.has(card) && !settling
+    clearTimeout(settlingCompactions.get(card))
+    settlingCompactions.delete(card)
+
+    if (settling) {
+      settlingCompactions.set(
+        card,
+        setTimeout(
+          () => settleCompaction({
+            card,
+            settling: false,
+          }),
+          compactionDelay,
+        ).unref(),
+      )
+    } else if (moved) {
+      releaseCompact({ card })
+    }
+  }
 
   const sessionOwner = ({
     state,
@@ -460,7 +566,7 @@ export function createHost({
         void (async () => {
           const card = loadHydra({ hydraId }).state.cards[id]
 
-          if (!card || activeCompaction({ card })) {
+          if (!card || compactionBusy({ card })) {
             return
           }
 
@@ -475,7 +581,7 @@ export function createHost({
               return
             }
 
-            if (activeCompaction({ card: loadHydra({ hydraId }).state.cards[id] })) {
+            if (compactionBusy({ card: loadHydra({ hydraId }).state.cards[id] })) {
               return
             }
 
@@ -548,7 +654,7 @@ export function createHost({
             const current = loadHydra({ hydraId }).state.cards[id]
 
             if (advanced && current?.compaction?.inputs.length
-              && !activeCompaction({ card: current })) {
+              && !compactionBusy({ card: current })) {
               releaseCompact({ card: id })
             }
           })
@@ -1400,11 +1506,16 @@ export function createHost({
             continue
           }
 
-          const mapped = compactionIds.get(activity.id)
-          const matched = current?.compaction?.operations.find(operation => operation.id === mapped)
-          const previous = matched
-            ?? activeCompaction({ card: current })
-          const operation = previous && (activity.trigger === 'manual' || previous.id === activity.id) ? previous : {
+          // A session runs one compaction at a time, so every signal joins its running operation, as a manual /compact opens its operation before the provider's first signal.
+          const known = compactionIds.get(activity.id)
+          const mapped = current.compaction?.operations.find(operation => operation.id === known)
+
+          // A result after the deadline ended the operation changes nothing.
+          if (mapped && mapped.state !== 'running') {
+            continue
+          }
+
+          const operation = mapped ?? activeCompaction({ card: current }) ?? {
             id: activity.id,
             session: key,
             trigger: activity.trigger,
@@ -1429,10 +1540,29 @@ export function createHost({
           })
 
           if (activity.state !== 'running') {
-            releaseCompact({ card: current.id })
+            settleCompaction({
+              card: current.id,
+              settling: true,
+            })
           }
 
           continue
+        }
+
+        // Claude Code can start another compaction right after a result, so held input waits until the agent moves on.
+        if (activity === 'finished' || typeof activity !== 'string' && [
+          'text',
+          'tool',
+          'thinking',
+        ].includes(activity.type)) {
+          const owner = compactOwner()
+
+          if (owner && settlingCompactions.has(owner.id)) {
+            settleCompaction({
+              card: owner.id,
+              settling: false,
+            })
+          }
         }
 
         if (typeof activity !== 'string' && activity.type === 'usage') {
@@ -4817,6 +4947,13 @@ export function createHost({
       clearTimeout(retryTimer)
       clearInterval(stallTimer)
       controller.abort()
+
+      for (const timer of [
+        ...compactionDeadlines.values(),
+        ...settlingCompactions.values(),
+      ]) {
+        clearTimeout(timer)
+      }
 
       for (const [
         key,
