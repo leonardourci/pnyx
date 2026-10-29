@@ -24,7 +24,7 @@ import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { cardState, columnLook, columnsFor } from '#web-tasks/view.ts'
-import { askMessage, type AskTarget } from './ask.ts'
+import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
 import type { OracleAction, OraclePanel } from './oracle-catalog.ts'
 import type { OracleResult } from './results.ts'
@@ -397,14 +397,12 @@ const askHint = ({
 // The request exactly as Hydra will read it, with where it goes.
 export function AskPreview({
   to,
-  place,
   request,
   picking,
   sending,
   error,
 }: {
   to?: AskTarget
-  place?: string
   request: string
   picking: boolean
   sending: boolean
@@ -416,20 +414,13 @@ export function AskPreview({
     targeted: !!to,
     mod: platform === 'mac' ? '⌘' : 'Ctrl+',
   })
-  const empty = place ? `Type what you want to ask about ${place}.` : 'Type what you want to ask.'
 
   return (
     <>
       <h3 className="oracle-preview-title"><Icon name={to?.icon ?? HYDRA_MARK} size={16} />Request to {to?.name ?? 'a Hydra'}</h3>
       {request.trim()
-        ? (
-          <p className="oracle-ask-message">{askMessage({
-            place,
-            request,
-          })}
-          </p>
-        )
-        : <p className="muted">{empty}</p>}
+        ? <p className="oracle-ask-message">{request.trim()}</p>
+        : <p className="muted">Type what you want to ask.</p>}
       {error && <p className="oracle-ask-error" role="alert">{error}</p>}
       <p className="muted small" role="status">{sending ? 'Sending…' : hint}</p>
     </>

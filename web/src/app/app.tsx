@@ -24,7 +24,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { Panel } from './panel.tsx'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
-import { Oracle, type OracleHandle } from '#web-oracle/oracle.tsx'
+import { Oracle } from '#web-oracle/oracle.tsx'
 import { Hydras } from './hydras.tsx'
 import { useHydraEdits } from './hydra-edits.ts'
 import { useHydraFavicon } from './hydra-favicon.ts'
@@ -492,7 +492,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ],
   )
   const pendingScroll = useRef(restored.scroll)
-  const oracle = useRef<OracleHandle>(null)
   const shared = useSharedSettings()
   const view = viewFor({
     state,
@@ -1179,7 +1178,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               hydras={askTargets}
               send={askHydra}
               openChat={openChat}
-              ref={oracle}
             />
           )}
         >

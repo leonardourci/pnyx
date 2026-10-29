@@ -1118,7 +1118,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .search-badge[data-kind=project] { color: var(--color-teal); }
 .search-badge[data-kind=when] { color: var(--color-purple); }
 .search-badge[data-kind=ask] { background: var(--color-gold-wash); color: var(--color-gold); }
-.search-badge[data-kind=context] { color: var(--color-teal); }
 .oracle-ask-message { margin: 0; padding: 10px 12px; border: 1px solid var(--color-subtle); border-radius: 8px; background: var(--color-background); white-space: pre-wrap; overflow-wrap: anywhere; }
 .oracle-ask-error { color: var(--color-red); }
 @media (max-width: 760px) { .oracle-palette { margin-top: 12px; height: calc(100dvh - 24px); }.oracle-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }.oracle-list { border-right: 0; border-bottom: 1px solid var(--color-subtle); } }

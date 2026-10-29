@@ -1,4 +1,4 @@
-import { useEffect, useId, useImperativeHandle, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode, type Ref } from 'react'
+import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal, flushSync } from 'react-dom'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
@@ -18,7 +18,7 @@ import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
-import { askKey, askStart, askTargets, askMessage, type AskKey, type AskTarget } from './ask.ts'
+import { askKey, askStart, askTargets, type AskKey, type AskTarget } from './ask.ts'
 import { INPUT, moveFocus, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, FILTER_TYPES, hydraFilter, KIND_FILTERS, queryText, recentOnly, TYPE_LABELS, type Filter } from './filters.ts'
@@ -33,18 +33,10 @@ const SETTINGS_KIND = KIND_FILTERS.find(filter => filter.values.includes('settin
 const HELP_QUERY = 'keyboard'
 
 const ASK_BADGE = 'ask'
-const CONTEXT_BADGE = 'ask-context'
-
-// Opens the Oracle from elsewhere in the page.
-export interface OracleHandle {
-  // Ask mode, with the place it was opened from attached as context.
-  ask({ place }: { place: string }): void
-}
 
 interface Asking {
   // The Hydra named with ask:<name>; without one, Enter shows the picker.
   target?: string
-  context?: string
   picking: boolean
   picked?: string
   sending: boolean
@@ -201,7 +193,6 @@ export function Oracle({
   hydras,
   send,
   openChat,
-  ref,
 }: {
   state: HydraState
   view: ViewPreferences
@@ -245,7 +236,6 @@ export function Oracle({
     text: string
   }): Promise<Receipt>
   openChat({ id }: { id: string }): void
-  ref?: Ref<OracleHandle>
 }) {
   const {
     handlers,
@@ -404,70 +394,37 @@ export function Oracle({
     context,
     ids,
     text: opening,
-    asking,
   }: {
     context: ActionContext
     ids?: string[]
     text?: string
-    asking?: { place: string }
   }) => {
-    const shown = dialog.current?.open === true
-
-    if (shown && !asking) {
+    if (dialog.current?.open) {
       input.current?.focus()
 
       return true
     }
 
-    const reset = !shown && (!remember || ids !== undefined)
-
-    if (!shown) {
-      origin.current = context
-    }
-
+    origin.current = context
+    const reset = !remember || ids !== undefined
     // The palette renders before focusing, so keys typed right after the shortcut reach the input.
     flushSync(() => {
       setOpen(true)
-      setAsk(asking ? {
-        context: asking.place,
-        picking: false,
-        sending: false,
-      } : null)
+      setAsk(null)
 
       if (reset) {
         setBadgeIds(ids ?? [hydraBadge.id])
       }
 
-      if (asking) {
-        setQuery('')
-      } else if (opening !== undefined) {
+      if (opening !== undefined) {
         setQuery(opening)
       }
     })
-
-    if (!shown) {
-      dialog.current?.showModal()
-    }
-
+    dialog.current?.showModal()
     input.current?.focus(); input.current?.select()
 
     return true
   }
-
-  useImperativeHandle(
-    ref,
-    () => ({
-      ask: ({ place }) => {
-        const focused = document.activeElement
-        const target = focused instanceof HTMLElement ? focused : document.body
-
-        show({
-          context: contextOf({ target }),
-          asking: { place },
-        })
-      },
-    }),
-  )
 
   const close = ({ restore }: { restore: boolean }) => {
     waiting.current = null
@@ -831,10 +788,7 @@ export function Oracle({
     try {
       const receipt = await send({
         id: to.id,
-        text: askMessage({
-          place: asked.context,
-          request: query,
-        }),
+        text: query.trim(),
       })
 
       if (receipt.state !== 'queued') {
@@ -949,11 +903,6 @@ export function Oracle({
   const removeBadge = ({ id }: { id: string }) => {
     if (id === ASK_BADGE) {
       setAsk(null)
-    } else if (id === CONTEXT_BADGE && ask) {
-      setAsk({
-        ...ask,
-        context: undefined,
-      })
     } else {
       setBadgeIds(ids => ids.filter(item => item !== id))
     }
@@ -1068,13 +1017,7 @@ export function Oracle({
       kind: 'ask',
       icon: askTarget?.icon ?? HYDRA_MARK,
     },
-    {
-      id: CONTEXT_BADGE,
-      label: ask?.context ?? '',
-      kind: 'context',
-      icon: 'settings',
-    },
-  ].filter(badge => badge.label)
+  ]
   const shownBadges = ask ? askBadges : searchBadges
   const countLabel = found.pending ? 'Searching…' : `${results.length} ${results.length === 1 ? 'result' : 'results'}`
   const searchCount = token ? 'Filters' : countLabel
@@ -1256,7 +1199,6 @@ export function Oracle({
             {ask && (
               <AskPreview
                 to={ask.picking ? pickedTarget : askTarget}
-                place={ask.context}
                 request={query}
                 picking={ask.picking}
                 sending={ask.sending}

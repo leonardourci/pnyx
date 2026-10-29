@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { askKey, askMessage, askStart, askTargets } from './ask.ts'
+import { askKey, askStart, askTargets } from './ask.ts'
 
 const zeus = {
   id: 'lab',
@@ -94,7 +94,7 @@ test(
 )
 
 test(
-  'the picker lists the current Hydra first, and the place leads the message',
+  'the picker lists the current Hydra first',
   () => {
     assert.deepEqual(
       askTargets({
@@ -113,18 +113,6 @@ test(
       }),
       [zeus],
       'the current Hydra is a target before the Hydra list arrives',
-    )
-    assert.equal(
-      askMessage({
-        place: 'Settings › Appearance',
-        request: ' make the font bigger ',
-      }),
-      'About Settings › Appearance: make the font bigger',
-    )
-    assert.equal(
-      askMessage({ request: 'make the font bigger' }),
-      'make the font bigger',
-      'without its context badge the request goes alone',
     )
   },
 )

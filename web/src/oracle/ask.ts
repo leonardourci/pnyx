@@ -52,15 +52,6 @@ export const askTargets = ({
   ...hydras.filter(hydra => hydra.id !== current.id),
 ]
 
-// Hydra reads the place first, so it knows what the request is about.
-export const askMessage = ({
-  place,
-  request,
-}: {
-  place?: string
-  request: string
-}) => place ? `About ${place}: ${request.trim()}` : request.trim()
-
 export type AskKey = 'send' | 'send-open' | 'pick' | 'up' | 'down' | 'back' | 'leave'
 
 export function askKey({
