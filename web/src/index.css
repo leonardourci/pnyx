@@ -588,17 +588,11 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .keymap { border-top: 1px solid var(--color-line); }
 
-.keymap-row { padding: 12px 0; border-bottom: 1px solid var(--color-subtle); }
+.keymap-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--color-subtle); }
 
 .keymap-row strong { font-size: var(--text-ui); font-weight: 500; }
 
 .keymap-row .button { flex-shrink: 0; }
-
-.binding-editor { display: flex; flex-direction: column; gap: 8px; padding: 14px; margin-top: 12px; background: var(--color-background); border: 1px solid var(--color-line); border-radius: 6px; }
-
-.binding-editor .textarea { height: 80px; font-family: var(--font-mono); }
-
-.binding-editor p { margin: 0 0 6px; }
 
 .slash-menu .button { gap: 12px; text-align: left; }
 
@@ -1755,4 +1749,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .preview-board-column[data-dragged] { border-style: dashed; border-color: var(--color-muted); }
 .preview-board [data-marked] { outline: 2px solid var(--color-gold); outline-offset: -1px; }
 .preview-board-screen { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-red); opacity: .7; }
+.keymap-action { display: flex; flex-direction: column; min-width: 0; }
+.keymap-keys { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.keymap-key { display: inline-flex; align-items: center; gap: 2px; padding: 0 2px 0 6px; border: 1px solid var(--color-line); border-bottom-width: 2px; border-radius: 5px; background: var(--color-raised); }
+.keymap-key kbd { font-family: var(--font-mono); font-size: var(--text-meta); color: var(--color-ink); }
+.keymap-key button { display: inline-flex; padding: 2px; border: 0; border-radius: 3px; background: none; color: var(--color-muted); cursor: pointer; }
+.keymap-key button:hover:not(:disabled) { color: var(--color-red); }
+.keymap-key button:disabled { opacity: .35; cursor: default; }
+.keymap-add.button, .keymap-reset.button { min-height: 24px; padding: 0 6px; }
+.keymap-capture { padding: 1px 8px; border: 1px dashed var(--color-gold); border-radius: 5px; color: var(--color-gold); font-size: var(--text-meta); }
 

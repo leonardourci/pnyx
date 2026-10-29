@@ -1,7 +1,15 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
-import { Button, Input, Switch, Textarea, useBusy } from '#web-shared/ui/controls.tsx'
+import { Button, Input, Switch, useBusy } from '#web-shared/ui/controls.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
+
+const MODIFIERS = [
+  'Meta',
+  'Control',
+  'Shift',
+  'Alt',
+]
 
 export function KeyboardSettings({
   prefs,
@@ -17,12 +25,9 @@ export function KeyboardSettings({
       filter,
       setFilter,
     ] = useState(''), [
-      editing,
-      setEditing,
+      capturing,
+      setCapturing,
     ] = useState<string | null>(null), [
-      draft,
-      setDraft,
-    ] = useState(''), [
       error,
       setError,
     ] = useState(''), [
@@ -32,11 +37,11 @@ export function KeyboardSettings({
   useKeyAction({
     id: 'cancel',
     handler: ({ context: { scope } }) => {
-      if (scope !== 'navigation' || !editing || busy) {
+      if (scope !== 'navigation' || !capturing || busy) {
         return false
       }
 
-      setEditing(null); setError('')
+      setCapturing(null); setError('')
 
       return true
     },
@@ -71,12 +76,61 @@ export function KeyboardSettings({
 
     setError(''); run({
       save: async () => {
-        if (await save({ patch: { keyboard: { bindings } } })) {
-          setEditing(null)
-        }
+        await save({ patch: { keyboard: { bindings } } })
       },
     })
   }
+
+  // While a row waits for a key, the next key pressed is the new binding instead of running its action.
+  useEffect(
+    () => {
+      if (!capturing) {
+        return undefined
+      }
+
+      const take = (event: KeyboardEvent) => {
+        if (MODIFIERS.includes(event.key)) {
+          return
+        }
+
+        event.preventDefault(); event.stopPropagation()
+        setCapturing(null)
+
+        if (event.key === 'Escape') {
+          return
+        }
+
+        const key = `${event.metaKey || event.ctrlKey ? 'Mod+' : ''}${event.key.length === 1 ? event.key.toLowerCase() : event.key}`
+        const keys = bindingsFor({
+          prefs,
+          id: capturing,
+        })
+
+        if (!keys.includes(key)) {
+          persist({
+            bindings: {
+              [capturing]: [
+                ...keys,
+                key,
+              ],
+            },
+          })
+        }
+      }
+
+      window.addEventListener(
+        'keydown',
+        take,
+        true,
+      )
+
+      return () => window.removeEventListener(
+        'keydown',
+        take,
+        true,
+      )
+    },
+  )
 
   return (
     <section className="settings-box keyboard-settings" aria-label="Keyboard shortcuts">
@@ -100,81 +154,62 @@ export function KeyboardSettings({
       />
       {error && <p role="alert" className="gold">{error}</p>}
       <div className="keymap">
-        {KEY_ACTIONS.filter(a => a.label.toLowerCase().includes(filter.toLowerCase())).map(a => (
-          <div className="keymap-row" key={a.id}>
-            <div className="row between">
-              <span>
+        {KEY_ACTIONS.filter(a => a.label.toLowerCase().includes(filter.toLowerCase())).map(a => {
+          const keys = bindingsFor({
+            prefs,
+            id: a.id,
+          })
+          const customized = a.id in prefs.bindings
+
+          return (
+            <div className="keymap-row" key={a.id} data-capturing={capturing === a.id || undefined}>
+              <span className="keymap-action">
                 <strong>{a.label}</strong>
                 <small>{a.scopes.filter(s => s !== 'hints' && s !== 'overlay').join(' · ')}</small>
               </span>
-              <Button
-                disabled={busy}
-                aria-label={`Rebind ${a.label}`}
-                onClick={() => {
-                  setEditing(a.id); setDraft(bindingsFor({
-                    prefs,
-                    id: a.id,
-                  }).join('\n')); setError('')
-                }}
-              >
-                <kbd>{keyLabel({
-                  keys: bindingsFor({
-                    prefs,
-                    id: a.id,
-                  }),
-                  platform,
-                })}
-                </kbd>
-                <span className="muted">Edit</span>
-              </Button>
-            </div>
-            {editing === a.id && (
-              <form
-                className="binding-editor"
-                onSubmit={e => {
-                  e.preventDefault(); persist({
-                    bindings: {
-                      [a.id]: draft.split('\n').map(s => s.trim())
-                        .filter(Boolean),
-                    },
-                  })
-                }}
-              >
-                <label className="small" htmlFor={`binding-${a.id}`}>One binding per line</label>
-                <Textarea
-                  autoFocus
-                  id={`binding-${a.id}`}
-                  value={draft}
-                  rows={3}
-                  onChange={e => setDraft(e.target.value)}
-                  onKeyDown={e => {
-                    if (e.key === 'Escape' && !e.nativeEvent.isComposing && !busy) {
-                      setEditing(null); setError('')
-                    }
-                  }}
-                />
-                <p className="muted">Use Mod+Enter, ArrowDown, or a sequence like g s. Up to four alternatives. Leave empty to unbind. Mod means ⌘ on Mac and Ctrl elsewhere.</p>
-                <div className="row wrap">
-                  <Button type="submit" variant="primary" disabled={busy}>Save binding</Button>
+              <span className="keymap-keys">
+                {keys.map(key => (
+                  <span className="keymap-key" key={key}>
+                    <kbd>{keyLabel({
+                      keys: [key],
+                      platform,
+                    })}
+                    </kbd>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${key} from ${a.label}`}
+                      disabled={busy || keys.length < 2}
+                      title={keys.length < 2 ? 'An action keeps at least one key' : undefined}
+                      onClick={() => persist({ bindings: { [a.id]: keys.filter(k => k !== key) } })}
+                    ><Icon name="close" size={12} />
+                    </button>
+                  </span>
+                ))}
+                {capturing === a.id
+                  ? <span className="keymap-capture" role="status">Press a key… Esc cancels</span>
+                  : (
+                    <Button
+                      className="keymap-add"
+                      aria-label={`Add a key for ${a.label}`}
+                      disabled={busy}
+                      onClick={() => {
+                        setCapturing(a.id); setError('')
+                      }}
+                    ><Icon name="plus" size={14} />
+                    </Button>
+                  )}
+                {customized && (
                   <Button
+                    className="keymap-reset"
                     disabled={busy}
                     onClick={() => persist({ bindings: { [a.id]: null } })}
-                  >
-                    Reset action
+                  >Reset
                   </Button>
-                  <Button
-                    disabled={busy}
-                    onClick={() => {
-                      setEditing(null); setError('')
-                    }}
-                  >
-                    Cancel edit
-                  </Button>
-                </div>
-              </form>
-            )}
-          </div>
-        ))}
+                )}
+              </span>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
