@@ -80,7 +80,6 @@ export function uploadImage({
     for (const ended of [
       'error',
       'abort',
-      'timeout',
     ]) {
       request.addEventListener(
         ended,

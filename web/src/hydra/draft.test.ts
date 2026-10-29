@@ -255,7 +255,7 @@ test(
       failed,
       {
         text: 'here is what I see and tell me',
-        caret: 'here is what I see and tell me'.length,
+        caret: 30,
       },
     )
     assert.equal(

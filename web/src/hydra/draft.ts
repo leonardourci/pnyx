@@ -18,7 +18,7 @@ export const hasPendingImage = ({ text }: { text: string }) =>
 
 // An em space holds an icon's room in the textarea (a task chip has two); the chip draws icons over them.
 export const ICON_SPACE = '\u2003'
-const QUARTER_SPACE = '\u2005'
+export const QUARTER_SPACE = '\u2005'
 export const CHIP_SPACE = QUARTER_SPACE + QUARTER_SPACE
 const NO_BREAK_SPACE = '\u00A0'
 export const WORD_JOINER = '\u2060'
@@ -238,7 +238,7 @@ function displayOffset({
 }
 
 // A caret never rests inside a chip: it moves to the edge it was heading for.
-export function snapCaret({
+function snapCaret({
   view,
   offset,
   backward,

@@ -3,10 +3,14 @@ import { imagePaths } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
 import { CHIP_SOURCE } from './message-selection.ts'
 import { MESSAGE_CONTROLS } from './caret.ts'
+import { ICON_SPACE, QUARTER_SPACE, WORD_JOINER } from './draft.ts'
 
 // A task message's leading chip comes from its task id, not its text, so it is rebuilt from the chip.
 const CHIPS = `[${CHIP_SOURCE}], .message-lead [data-task-ref]`
-const ROOM = /[\u2003\u2005\u2060]/g
+const ROOM = new RegExp(
+  `[${ICON_SPACE}${QUARTER_SPACE}${WORD_JOINER}]`,
+  'g',
+)
 
 // innerText keeps the breaks between blocks but needs layout, so the copy is read off screen.
 function selectedText({
