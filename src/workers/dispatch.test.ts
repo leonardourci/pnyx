@@ -185,32 +185,32 @@ test(
       'create',
       'old',
     ])
-    writeShared({
-      value: {
-        main: 'claude:shared',
-        rules: {
-          hydra: {
-            when: 'Hydra',
-            candidates: [
-              {
-                harness: 'claude',
-                model: 'claude-opus-5-5',
-              },
-            ],
-          },
+    const shared = {
+      main: 'claude:shared',
+      rules: {
+        hydra: {
+          when: 'Hydra',
+          candidates: [
+            {
+              harness: 'claude',
+              model: 'claude-opus-5-5',
+            },
+          ],
         },
       },
-    })
+    }
+    const sharedAccounts = {
+      accounts: {
+        'claude:shared': {
+          provider: 'claude',
+          folder: root,
+        },
+      },
+    }
+    writeShared({ value: shared })
     writeShared({
       accounts: true,
-      value: {
-        accounts: {
-          'claude:shared': {
-            provider: 'claude',
-            folder: root,
-          },
-        },
-      },
+      value: sharedAccounts,
     })
 
     const own = ({
@@ -368,7 +368,24 @@ test(
     )
     assert.ok(existsSync(`${newest}.merged`))
     assert.ok(!existsSync(newest))
-    assert.ok(existsSync(`${configPath()}.before-merge`))
+    assert.ok(existsSync(join(
+      hydraDir({ hydraId: 'lab' }),
+      'accounts.json.merged',
+    )))
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        `${configPath()}.before-merge`,
+        'utf8',
+      )),
+      shared,
+    )
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        `${configPath({ accounts: true })}.before-merge`,
+        'utf8',
+      )),
+      sharedAccounts,
+    )
     own({
       hydraId: 'other',
       file: 'heads-dispatch.json',
@@ -1180,8 +1197,25 @@ test(
     const accountsFile = () => JSON.parse(readFileSync(
       configPath({ accounts: true }),
       'utf8',
-    )) as { accounts: Record<string, { folder: string }> }
-    const folders = () => Object.values(accountsFile().accounts).map(account => account.folder)
+    )) as unknown
+    const registry = ({
+      claude,
+      codex,
+    }: {
+      claude: string
+      codex: string
+    }) => ({
+      accounts: {
+        'claude:personal': {
+          provider: 'claude',
+          folder: claude,
+        },
+        'codex:personal': {
+          provider: 'codex',
+          folder: codex,
+        },
+      },
+    })
 
     try {
       for (const [
@@ -1237,8 +1271,11 @@ test(
           'lab',
         ])
         assert.deepEqual(
-          folders(),
-          expected,
+          accountsFile(),
+          registry({
+            claude: expected[0],
+            codex: expected[1],
+          }),
         )
       }
 
@@ -1264,8 +1301,15 @@ test(
         dispatch,
       )
       assert.deepEqual(
-        folders(),
-        ['~/.claude-mine'],
+        accountsFile(),
+        {
+          accounts: {
+            'claude:mine': {
+              provider: 'claude',
+              folder: '~/.claude-mine',
+            },
+          },
+        },
       )
     } finally {
       process.env.CLAUDE_CONFIG_DIR = join(

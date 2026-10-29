@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -7,6 +8,9 @@ import { test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { ApplyError } from '#app/apply/schema.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
+import { withWriter } from '#app/writer.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
 
@@ -235,7 +239,7 @@ test(
           'docs-1',
         ],
       }),
-      /already used with different contents/,
+      { code: 'IDEMPOTENCY_CONFLICT' },
     )
     assert.throws(
       () => rule({
@@ -245,7 +249,7 @@ test(
           patch,
         ],
       }),
-      /revision 1, not 0/,
+      { code: 'REVISION_CONFLICT' },
     )
     assert.throws(
       () => rule({
@@ -258,13 +262,13 @@ test(
           '0',
         ],
       }),
-      /revision 1, not 0/,
+      { code: 'REVISION_CONFLICT' },
     )
   },
 )
 
 test(
-  'single-candidate flags keep a rule’s fallbacks; an effort the harness lacks and an account an order names are refused',
+  'single-candidate flags keep a rule’s fallbacks, an effort the harness lacks is refused, and a removed account leaves every order',
   () => {
     lab()
     const template = readTemplate() as unknown as HeadsDispatch
@@ -302,12 +306,68 @@ test(
     failsWith({
       run: () => dispatchCommands.account([
         'remove',
-        'codex:test',
+        'claude:test',
         '--hydra',
         'lab',
       ]),
-      paths: ['/workers/codex/0'],
+      paths: ['/main'],
     })
+    dispatchCommands.account([
+      'remove',
+      'codex:test',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      effectiveDispatch().dispatch.workers.codex,
+      undefined,
+    )
+  },
+)
+
+test(
+  'a proposal checked against a revision confirms only the values it showed, keeping a later change to the same rule',
+  () => {
+    lab()
+    const { revision } = rule({ args: ['show'] }) as { revision: number }
+    const { token } = rule({
+      args: [
+        'propose',
+        'set',
+        'build',
+        '--effort',
+        'low',
+        '--if-revision',
+        String(revision),
+        '--actor',
+        'hydra',
+      ],
+    }) as { token: string }
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'Owner wording',
+      ],
+    })
+    rule({
+      args: [
+        'confirm',
+        token,
+        '--confirm',
+        token,
+      ],
+    })
+    const build = effectiveDispatch().dispatch.rules.build
+    assert.equal(
+      build?.when,
+      'Owner wording',
+    )
+    assert.equal(
+      build?.candidates[0]?.effort,
+      'low',
+    )
   },
 )
 
@@ -446,8 +506,312 @@ test(
       'dismissed',
     )
     assert.equal(
-      rules.build?.candidates[0]?.effort,
+      effectiveDispatch().dispatch.rules.build?.candidates[0]?.effort,
       'medium',
+    )
+    assert.deepEqual(
+      rule({ args: ['list'] }).proposals,
+      [],
+    )
+  },
+)
+
+test(
+  'a proposal that no longer checks, and one saved before proposals held patches, cannot be confirmed',
+  () => {
+    lab()
+    const account = ({ args }: { args: string[] }) => dispatchCommands.account([
+      ...args,
+      '--hydra',
+      'lab',
+    ])
+    account({
+      args: [
+        'set',
+        'codex:docs',
+        '--provider',
+        'codex',
+        '--folder',
+        '~/.codex-docs',
+      ],
+    })
+    const { token } = rule({
+      args: [
+        'propose',
+        'accounts',
+        '--main',
+        'codex:docs',
+        '--actor',
+        'hydra',
+      ],
+    }) as { token: string }
+    account({
+      args: [
+        'remove',
+        'codex:docs',
+      ],
+    })
+    assert.throws(
+      () => rule({
+        args: [
+          'confirm',
+          token,
+          '--confirm',
+          token,
+        ],
+      }),
+      /no longer checks/,
+    )
+    assert.equal(
+      effectiveDispatch().dispatch.main,
+      'claude:test',
+    )
+    withWriter({
+      hydraId: 'lab',
+      fn: ({ writer }) => {
+        const decision = hydraEvent({
+          state: writer.state,
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'hydra',
+          },
+          cardId: HYDRA_CARD,
+          change: {
+            type: 'hydra.dispatch-proposed',
+            data: {
+              token: 'old-proposal',
+              kind: 'rule',
+              shared: true,
+              before: '{}',
+              value: '{"default":[{"harness":"codex"}]}',
+              summary: 'Rule set default (shared)',
+            },
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
+    assert.equal(
+      (rule({ args: ['list'] }).proposals as {
+        token: string
+        outOfDate: boolean
+      }[])
+        .find(proposal => proposal.token === 'old-proposal')?.outOfDate,
+      true,
+    )
+    assert.throws(
+      () => rule({
+        args: [
+          'confirm',
+          'old-proposal',
+          '--confirm',
+          'old-proposal',
+        ],
+      }),
+      /out of date/,
+    )
+    assert.equal(
+      rule({
+        args: [
+          'dismiss',
+          'old-proposal',
+        ],
+      }).state,
+      'dismissed',
+    )
+    assert.deepEqual(
+      effectiveDispatch().dispatch.default,
+      [{ harness: 'claude' }],
+    )
+  },
+)
+
+test(
+  'an error an older Pnyx saved still reads, and a patch may fix it but not add another',
+  () => {
+    const { file } = lab()
+    const saved = JSON.parse(readFileSync(
+      configPath(),
+      'utf8',
+    )) as Record<string, unknown>
+    writeFileSync(
+      configPath(),
+      JSON.stringify({
+        ...saved,
+        rules: {
+          docs: {
+            when: 'Documentation',
+            candidates: [
+              {
+                harness: 'codex',
+                effort: 'max',
+              },
+            ],
+          },
+        },
+      }),
+    )
+    assert.equal(
+      effectiveDispatch().dispatch.rules.docs?.candidates[0]?.effort,
+      'max',
+    )
+    assert.match(
+      String(rule({ args: ['show'] }).issues),
+      /error \/rules\/docs\/candidates\/0\/effort/,
+    )
+    rule({
+      args: [
+        'apply',
+        '--file',
+        file({
+          value: {
+            version: 1,
+            patch: {
+              rules: {
+                review: {
+                  when: 'Review',
+                  candidates: [{ harness: 'claude' }],
+                },
+              },
+            },
+          },
+        }),
+      ],
+    })
+    failsWith({
+      run: () => rule({
+        args: [
+          'set',
+          'review',
+          '--effort',
+          'ultra',
+        ],
+      }),
+      paths: ['/rules/review/candidates/0/effort'],
+    })
+    rule({
+      args: [
+        'set',
+        'docs',
+        '--effort',
+        'xhigh',
+      ],
+    })
+    assert.deepEqual(
+      rule({ args: ['show'] }).issues,
+      [],
+    )
+  },
+)
+
+test(
+  'rule remove and rule accounts are patches through the same checks',
+  () => {
+    lab()
+    assert.throws(
+      () => rule({
+        args: [
+          'remove',
+          'default',
+        ],
+      }),
+      /default list cannot be removed/,
+    )
+    rule({
+      args: [
+        'remove',
+        'build',
+      ],
+    })
+    assert.equal(
+      effectiveDispatch().dispatch.rules.build,
+      undefined,
+    )
+    failsWith({
+      run: () => rule({
+        args: [
+          'accounts',
+          '--provider',
+          'claude',
+          '--order',
+          'codex:test',
+        ],
+      }),
+      paths: ['/workers/claude/0'],
+    })
+    failsWith({
+      run: () => rule({
+        args: [
+          'accounts',
+          '--provider',
+          'codex',
+          '--order',
+          'codex:test',
+          '--project',
+          'relative',
+        ],
+      }),
+      paths: ['/projects/relative'],
+    })
+    rule({
+      args: [
+        'accounts',
+        '--main',
+        'codex:test',
+      ],
+    })
+    assert.equal(
+      effectiveDispatch().dispatch.main,
+      'codex:test',
+    )
+  },
+)
+
+test(
+  'the CLI prints every problem of a refused patch read from stdin with its path, and exits 2',
+  () => {
+    lab()
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        'src/cli/pnyx-axi.ts',
+        'rule',
+        'apply',
+        '--file',
+        '-',
+        '--hydra',
+        'lab',
+      ],
+      {
+        env: process.env,
+        input: JSON.stringify({
+          version: 1,
+          patch: {
+            rules: {
+              build: {
+                candidates: [
+                  {
+                    harness: 'claude',
+                    effort: 'ultra',
+                  },
+                ],
+              },
+            },
+            main: 'claude:gone',
+          },
+        }),
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(
+      result.status,
+      2,
+    )
+    assert.match(
+      result.stdout,
+      /errors\[2\]\{operation,path,code,reason\}:\n {2}null,"\/rules\/build\/candidates\/0\/effort",[^\n]+\n {2}null,"\/main",/,
     )
   },
 )
