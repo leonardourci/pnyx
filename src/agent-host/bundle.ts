@@ -1,10 +1,49 @@
 import { createHash, randomUUID } from 'node:crypto'
-import { chmodSync, cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, closeSync, cpSync, existsSync, lstatSync, mkdirSync, openSync, readSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join, relative, resolve } from 'node:path'
 import { fail } from './protocol.ts'
 
 const MANIFEST = 'native-bundle.json'
 const FORMAT = 1
+const HASH_BYTES = 64 * 1024
+const hashBuffer = Buffer.allocUnsafe(HASH_BYTES)
+
+function fileDigest({ path }: { path: string }): string {
+  const fd = openSync(
+    path,
+    'r',
+  )
+  const digest = createHash('sha256')
+
+  try {
+    let bytes = readSync(
+      fd,
+      hashBuffer,
+      0,
+      HASH_BYTES,
+      null,
+    )
+
+    while (bytes > 0) {
+      digest.update(hashBuffer.subarray(
+        0,
+        bytes,
+      ))
+      bytes = readSync(
+        fd,
+        hashBuffer,
+        0,
+        HASH_BYTES,
+        null,
+      )
+    }
+
+    return digest.digest('hex')
+  } finally {
+    closeSync(fd)
+  }
+}
+
 export type Bundle = {
   format: number
   build: string
@@ -53,11 +92,12 @@ function contents({
         }),
       )
     } else if (item.isFile()) {
-      files[name] = createHash('sha256').update(readFileSync(join(
-        directory,
-        name,
-      )))
-        .digest('hex')
+      files[name] = fileDigest({
+        path: join(
+          directory,
+          name,
+        ),
+      })
     } else {
       fail({
         code: 'INVALID_BUNDLE',
