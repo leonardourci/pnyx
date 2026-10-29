@@ -8,6 +8,7 @@ import type { AgentConfig } from '#workers/model.ts'
 import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { readSettings } from '#settings/store.ts'
+import { HELPER_MODELS } from '#settings/model.ts'
 
 const NUDGES: WakeKind[] = [
   'turn ended',
@@ -44,11 +45,6 @@ const SCOPE_ACTIONS: Record<HelperScope, HelperAction[]> = {
   ],
 }
 
-// The lighter model auto picks on each harness, and the one a chosen harness starts from.
-export const HELPER_MODELS = {
-  claude: 'sonnet',
-  codex: 'gpt-6-luna',
-} as const
 export const HELPER_TASKS = 3
 export const HELPER_INPUT_CHARS = 24_000
 

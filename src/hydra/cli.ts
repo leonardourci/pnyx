@@ -38,7 +38,7 @@ import { upgradeCommand } from '#upgrade/model.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { HELPER_MODELS } from '#routine-helper/route.ts'
+import { HELPER_MODELS } from '#settings/model.ts'
 
 export async function home(): Promise<Output> {
   hideDone({ hydraId: DEFAULT_HYDRA })
