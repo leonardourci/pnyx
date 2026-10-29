@@ -2495,8 +2495,8 @@ export function createHost({
     state: HydraState
     after: number
   }) => {
-    const unread = updates.filter(update => (update.seq > after && update.seq <= wakeThrough)
-      || parked.has(update.seq))
+    const unread = updates.filter(update => !state.helper?.handled.includes(update.seq)
+      && ((update.seq > after && update.seq <= wakeThrough) || parked.has(update.seq)))
     const seqs = new Set(unread.map(update => update.seq))
     const routed = new Map(seqs.size ? readEvents({ hydraId })
       .filter(event => seqs.has(event.seq))
@@ -4819,8 +4819,17 @@ export function createHost({
 
     recover: async () => {
       if (native) {
-        for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
+        const state = loadHydra({ hydraId }).state
+
+        for (const card of Object.values(state.cards)) {
           if (card.agent?.host !== 'pnyx') {
+            continue
+          }
+
+          const key = sessionId({ agent: card.agent })
+          const hydraSession = state.config?.hydra.session
+
+          if (live.has(key) || (key === hydraSession && card.id !== HYDRA_CARD)) {
             continue
           }
 
