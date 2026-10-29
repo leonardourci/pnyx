@@ -30,21 +30,21 @@ export async function remoteSession({
   client: HostClient
   summary: Summary
   recovered: boolean
-  persistInput({ input }: { input: HostedInput }): HostedInput
+  persistInput({ input }: { input: HostedInput }): Promise<HostedInput>
   persistAnswer({
     permission,
     decision,
   }: {
     permission: string
     decision: PermissionDecision
-  }): string
+  }): Promise<string>
   completedAnswer({
     answerId,
     phase,
   }: {
     answerId: string
     phase: string
-  }): void
+  }): Promise<void>
 }): Promise<HostedSession> {
   const attached = checked({
     result: await client.call({
@@ -233,7 +233,7 @@ export async function remoteSession({
         return
       }
 
-      const answerId = persistAnswer({
+      const answerId = await persistAnswer({
         permission: request.id,
         decision,
       })
@@ -248,7 +248,7 @@ export async function remoteSession({
       })
 
       if (result.kind === 'answer') {
-        completedAnswer({
+        await completedAnswer({
           answerId,
           phase: result.receipt.phase,
         })
@@ -315,7 +315,7 @@ export async function remoteSession({
         }
 
         if (event.type === 'answer') {
-          completedAnswer({
+          await completedAnswer({
             answerId: event.receipt.answerId,
             phase: event.receipt.phase,
           })
@@ -388,7 +388,7 @@ export async function remoteSession({
             return
           }
 
-          const message = persistInput({ input: original })
+          const message = await persistInput({ input: original })
           await call({
             id: `${summary.ref.epoch}:input:${message.id}`,
             operation: {
