@@ -61,10 +61,24 @@ export function writeDurably({
       fd,
       0o600,
     )
-    writeSync(
-      fd,
-      typeof data === 'string' ? Buffer.from(data) : data,
-    )
+    const buffer = typeof data === 'string' ? Buffer.from(data) : data
+    let written = 0
+
+    while (written < buffer.length) {
+      const bytes = writeSync(
+        fd,
+        buffer,
+        written,
+        buffer.length - written,
+      )
+
+      if (bytes === 0) {
+        throw new Error(`write made no progress: ${path}`)
+      }
+
+      written += bytes
+    }
+
     fsyncSync(fd)
   } finally {
     closeSync(fd)
