@@ -207,7 +207,7 @@ const grants = ({ s }: { s: Scenario }) => s.events().flatMap(event => event.typ
 
 const finishes = ({ s }: { s: Scenario }) => s.events().flatMap(event => event.type === 'hydra.helper-finished' ? [event.data] : [])
 
-// The helper's next batch and main's next wake hold only the changes the server has read.
+// Helper batches and main wakes carry only queued writes; the server queues each as pages get it.
 async function serverRead({ s }: { s: Scenario }) {
   const seq = s.state().seq
   const page = await openPage({
