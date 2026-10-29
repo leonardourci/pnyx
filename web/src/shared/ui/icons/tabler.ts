@@ -9,6 +9,8 @@ import {
   IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerStopFilled, IconPlug, IconPlus,
   IconQuote, IconRobot, IconSearch, IconSettings, IconStar, IconTag, IconTerminal2, IconTestPipe,
   IconTool, IconUser, IconWorld, IconX,
+  IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
+  IconMoon, IconPalette, IconRefresh, IconSun, IconTypography,
 } from '@tabler/icons-react'
 
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
@@ -84,5 +86,18 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   plug: IconPlug,
   star: IconStar,
   terminal: IconTerminal2,
+  // Settings rows and the theme tiles.
+  theme: IconPalette,
+  'theme-system': IconDeviceDesktop,
+  'theme-light': IconSun,
+  'theme-dark': IconMoon,
+  'text-size': IconTypography,
+  columns: IconLayoutColumns,
+  'chat-width': IconLayoutSidebar,
+  reset: IconRefresh,
+  cards: IconCards,
+  focus: IconEyeOff,
+  keyboard: IconKeyboard,
+  about: IconInfoCircle,
 
 }
