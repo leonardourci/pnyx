@@ -76,7 +76,7 @@ export const decisionsText = ({
 })
 
 // Every change wake ends on this, so Hydra never mistakes a result for nothing to say.
-const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, failure) always gets a reply.`
+const QUIET_RULE = `If none of this needs the owner, reply only ${QUIET_REPLY}. A result (ready for review, merged, findings, or a failure or blocker you cannot clear, including a failed retry the owner must act on) always gets a reply.`
 
 // One check turn: why Hydra is woken, the reports that arrived since the last one, each in its own envelope, and the check that lists every other change.
 export function wakeText({
