@@ -373,9 +373,16 @@ export function settingsReceipt({ saved }: { saved: SettingsSave }): Output {
   }
 }
 
-export function effectiveView({ state }: { state: Pick<HydraState, 'view' | 'config'> }) {
+// A caller about to take a Hydra writer passes settings it read first, so the shared lock is never taken inside it.
+export function effectiveView({
+  state,
+  settings = readSettings().settings,
+}: {
+  state: Pick<HydraState, 'view' | 'config'>
+  settings?: Settings
+}) {
   return viewFor({
     state,
-    settings: pickView({ view: readSettings().settings }),
+    settings: pickView({ view: settings }),
   })
 }

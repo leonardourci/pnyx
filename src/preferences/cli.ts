@@ -156,6 +156,7 @@ export const layout = guard({
     }
 
     const m = meta({ values })
+    const { settings } = readSettings()
 
     const reset = ({ id }: { id: string }) => commit({
       hydraId: id,
@@ -166,7 +167,12 @@ export const layout = guard({
       },
       decide: ({ state }) => decideView({
         state,
-        patch: resetLayoutWidths({ view: effectiveView({ state }) }),
+        patch: resetLayoutWidths({
+          view: effectiveView({
+            state,
+            settings,
+          }),
+        }),
         meta: m,
       }),
     })
