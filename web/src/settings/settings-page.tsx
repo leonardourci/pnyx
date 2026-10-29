@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import type { Command } from '#web-app/connection.ts'
 import { About } from '#web-app/about.tsx'
 import { KeyboardSettings } from '#web-preferences/keyboard-settings.tsx'
@@ -15,6 +14,7 @@ import { SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { SliderField } from '#web-shared/ui/slider-field.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { AskHydra } from './ask-hydra.tsx'
+import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
 
 const ICONS: Record<string, string> = {
@@ -46,30 +46,6 @@ type Toggle = 'lastMessageOnCards' | 'focusMode' | 'toolDetails' | 'thinkingDeta
 interface Saving {
   view: ViewPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-}
-
-const differs = ({
-  value,
-  initial,
-}: {
-  value: unknown
-  initial: unknown
-}) => JSON.stringify(value) !== JSON.stringify(initial)
-
-const initialOf = ({ id }: { id: string }) => DEFAULT_SETTINGS[id as keyof typeof DEFAULT_SETTINGS]
-
-// Column widths count once any column differs, since the map also names columns the default does not.
-function changedIds({ view }: { view: ViewPreferences }): Set<string> {
-  const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => key !== 'defaultColumnWidths' && key in view && differs({
-    value: view[key as keyof ViewPreferences],
-    initial: initialOf({ id: key }),
-  })))
-
-  if (Object.values(view.defaultColumnWidths).some(width => width !== DEFAULT_COLUMN_WIDTH)) {
-    ids.add('defaultColumnWidths')
-  }
-
-  return ids
 }
 
 function TextSize({
@@ -400,7 +376,12 @@ export function SettingsPage({
               description={match.entry.description}
               terms={match.terms}
               changed={changed.has(match.entry.id)}
-              reset={() => save({ patch: { [match.entry.id]: initialOf({ id: match.entry.id }) } })}
+              reset={() => save({
+                patch: resetPatch({
+                  id: match.entry.id,
+                  view,
+                }),
+              })}
             >
               <Control
                 entry={match.entry}
