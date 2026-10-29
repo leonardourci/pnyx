@@ -1,3 +1,4 @@
+import { apply } from '#app/apply/cli.ts'
 import { AxiError } from 'axi-sdk-js'
 import { guard, COMMON, parse, integer, HISTORY_LIMIT, HISTORY_MAX, WRITE, meta, required, commit, type Options, type Output, summarize } from './cli-support.ts'
 import { taskCommand } from './task-cli.ts'
@@ -193,6 +194,7 @@ export const undo = guard({
 
 export const commands = supervisedCommands({
   commands: {
+    apply,
     layout,
     column: columnCommandHandler,
     hydra: hydraCommandHandler,

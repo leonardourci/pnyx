@@ -1,3 +1,4 @@
+import { formatApplyError } from '#app/apply/cli.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { approval } from '#app/confirmations.ts'
 import { dispatchCommands, DISPATCH_HELP } from '#workers/dispatch-cli.ts'
@@ -110,6 +111,7 @@ await runAxiCli({
   topLevelHelp: TOP_LEVEL_HELP,
   home,
   getCommandHelp: () => focused,
+  formatError: command === 'apply' ? formatApplyError : undefined,
   commands: Object.fromEntries(Object.entries(all).map(([
     name,
     run,

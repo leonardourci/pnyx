@@ -533,6 +533,11 @@ function apply({
 
   state.seq = event.seq
   state.eventIds[event.id] = event.seq
+
+  if (event.type === 'apply.recorded') {
+    return true
+  }
+
   applyLabelColors({
     state,
     colors: event.labelColors,

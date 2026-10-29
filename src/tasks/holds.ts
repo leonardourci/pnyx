@@ -54,6 +54,7 @@ export function decideHold({
   if (!reason) {
     throw new HydraError({
       message: 'pass --reason for the discussion hold or release',
+      field: 'reason',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -77,6 +78,7 @@ export function decideHold({
   if (!card.hold || !ownerMessage || !newer) {
     throw new HydraError({
       message: '--from-message must name the owner’s own message sent after the current hold',
+      field: 'message',
       code: 'VALIDATION_ERROR',
     })
   }

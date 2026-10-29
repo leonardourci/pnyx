@@ -28,7 +28,13 @@ const leasePath = ({
   `helper-lease-${encodeURIComponent(task)}.json`,
 )
 
-function readLease({ path }: { path: string }): Lease | undefined {
+function readLease({
+  path,
+  cleanup = true,
+}: {
+  path: string
+  cleanup?: boolean
+}): Lease | undefined {
   if (!existsSync(path)) {
     return undefined
   }
@@ -61,7 +67,9 @@ function readLease({ path }: { path: string }): Lease | undefined {
   })
 
   if (!lease.holders.length) {
-    rmSync(path)
+    if (cleanup) {
+      rmSync(path)
+    }
 
     return undefined
   }
@@ -106,6 +114,7 @@ export function guardTaskLease({
   actor: string
 }): void {
   const lease = readLease({
+    cleanup: false,
     path: leasePath({
       dir,
       task,

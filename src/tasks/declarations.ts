@@ -73,6 +73,7 @@ export function declareTask({
   if (until !== undefined && normalized !== 'paused') {
     throw new HydraError({
       message: '--until goes only with paused',
+      field: 'until',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -80,6 +81,7 @@ export function declareTask({
   if (hold && normalized !== 'paused') {
     throw new HydraError({
       message: '--hold goes only with paused',
+      field: 'hold',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -87,6 +89,7 @@ export function declareTask({
   if (hold && until !== undefined) {
     throw new HydraError({
       message: 'a hold has no end; use --hold or --until, not both',
+      field: 'hold',
       code: 'VALIDATION_ERROR',
     })
   }
