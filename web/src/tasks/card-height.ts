@@ -72,8 +72,8 @@ export function useCardHeight({
         let maximum = minimum
 
         for (const child of children) {
-          if (child.classList.contains('card-panel') && card.dataset.tab === 'context') {
-            // The Context tab scrolls, so it needs only a few lines to stay usable.
+          if (child.classList.contains('card-panel')) {
+            // A tab's body scrolls, so it needs only a few lines to stay usable.
             const full = naturalHeight({ element: child })
             minimum += Math.min(
               full,
@@ -94,29 +94,6 @@ export function useCardHeight({
             minimum += height
             maximum += height
           }
-        }
-
-        const detail = card.querySelector<HTMLElement>('.detail')
-
-        if (selected && detail && getComputedStyle(detail).display !== 'none') {
-          const updates = detail.querySelector<HTMLElement>('.task-updates')
-          const full = updates ? naturalHeight({ element: updates }) : 0
-          const other = rows({ element: detail }).filter(child => child !== updates)
-            .reduce(
-              (
-                height,
-                child,
-              ) => height + outerHeight({ element: child }),
-              0,
-            )
-          const frame = spacing({ element: detail })
-            + parseFloat(getComputedStyle(detail).marginTop)
-          + (parseFloat(getComputedStyle(card).rowGap) || 0) + other
-          minimum += frame + Math.min(
-            80,
-            full,
-          )
-          maximum += frame + full
         }
 
         const next = {
@@ -163,7 +140,7 @@ export function useCardHeight({
           subtree: true,
           characterData: true,
           attributes: true,
-          // A tab switch shows a panel and hides the updates list.
+          // A tab switch shows one panel and hides the other.
           attributeFilter: [
             'open',
             'hidden',

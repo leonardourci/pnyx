@@ -1411,7 +1411,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card-content { display: flex; flex-direction: column; gap: 7px; min-height: 0; overflow: hidden; flex: 1; }
 .card-content > :is(.card-labels, .card-state, .copy-warning, .reminder-label) { flex-shrink: 0; }
-.card.selected > .card-content { flex: none; }
 
 
 
@@ -1462,12 +1461,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .card-panel { display: flex; flex-direction: column; gap: 9px; min-width: 0; }
 
-/* A long question or Intent scrolls inside the card; the status, title and tabs stay in view. */
+/* A tab's body scrolls inside the card, however long it grows; the status, title and tabs stay in view. */
 .card .card-content > .card-panel { flex-shrink: 1; min-height: 0; overflow: auto; }
 
-.card.selected[data-tab="context"] > .card-content { flex: 1; }
+.card.selected .card-panel:not([hidden]) { flex: 1; }
 
-.card.selected[data-tab="context"] .card-panel:not([hidden]) { flex: 1; }
+/* The updates list grows with the Activity body, which scrolls as a whole. */
+.card-panel > .detail { flex: none; overflow: visible; }
 
 .card-index { display: flex; flex-wrap: wrap; align-items: center; gap: 2px 8px; color: var(--color-muted); font-size: var(--text-meta); }
 
@@ -1486,9 +1486,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-instructions-toggle svg { transition: transform 140ms ease; }
 
 .card-instructions-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
-
-/* The updates list belongs to the Activity tab. */
-.card[data-tab="context"] > .detail { display: none; }
 
 /* The status word never shortens for the project: the badge wraps to its own line first. */
 .card-state { flex-wrap: wrap; row-gap: 4px; }

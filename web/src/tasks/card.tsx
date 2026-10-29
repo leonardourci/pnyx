@@ -606,6 +606,7 @@ export function HydraCard({
                 connected={connected}
               />
               {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
+              {children}
             </div>
           </>
         )}
@@ -675,7 +676,6 @@ export function HydraCard({
           </>
         )}
       </div>
-      {children}
       <Resize
         label="Resize card"
         axis="y"
