@@ -65,7 +65,7 @@ test(
       )
     } finally {
       page.close()
-      // Every flow shares one Pnyx home, so the next flow starts from the defaults again.
+      // Every flow shares one Pnyx home, so the values this flow found are put back.
       await first.owner({
         args: [
           'settings',
