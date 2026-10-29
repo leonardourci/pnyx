@@ -20,14 +20,21 @@ const outerHeight = ({ element }: { element: HTMLElement }) => {
     + parseFloat(css.marginTop) + parseFloat(css.marginBottom)
 }
 
-const naturalHeight = ({ element }: { element: HTMLElement }) => spacing({ element })
-  + rows({ element }).reduce(
+const naturalHeight = ({ element }: { element: HTMLElement }) => {
+  const children = rows({ element })
+  const gap = parseFloat(getComputedStyle(element).rowGap) || 0
+
+  return spacing({ element }) + gap * Math.max(
+    0,
+    children.length - 1,
+  ) + children.reduce(
     (
       height,
       child,
     ) => height + outerHeight({ element: child }),
     0,
   )
+}
 
 export function useCardHeight({
   element,
@@ -65,8 +72,8 @@ export function useCardHeight({
         let maximum = minimum
 
         for (const child of children) {
-          if (child.classList.contains('card-panel')) {
-            // An open card's tab scrolls, so it needs only a few lines to stay usable.
+          if (child.classList.contains('card-panel') && card.dataset.tab === 'context') {
+            // The Context tab scrolls, so it needs only a few lines to stay usable.
             const full = naturalHeight({ element: child })
             minimum += Math.min(
               full,
@@ -91,7 +98,7 @@ export function useCardHeight({
 
         const detail = card.querySelector<HTMLElement>('.detail')
 
-        if (selected && detail) {
+        if (selected && detail && getComputedStyle(detail).display !== 'none') {
           const updates = detail.querySelector<HTMLElement>('.task-updates')
           const full = updates ? naturalHeight({ element: updates }) : 0
           const other = rows({ element: detail }).filter(child => child !== updates)
