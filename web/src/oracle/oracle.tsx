@@ -842,7 +842,6 @@ export function Oracle({
     askAct({ key })
   }
 
-  // "ask " or "ask:<name> " at the start turns the field into a request; the rest is the request's text.
   const type = ({ typed }: { typed: string }) => {
     const start = ask ? null : askStart({
       query: typed,

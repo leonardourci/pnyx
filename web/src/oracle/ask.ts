@@ -40,7 +40,7 @@ export function askStart({
   } : null
 }
 
-// The current Hydra first, even before the Hydra list has loaded, then the others in the list's order.
+// The current Hydra leads even before the Hydra list has loaded.
 export const askTargets = ({
   hydras,
   current,
@@ -52,7 +52,7 @@ export const askTargets = ({
   ...hydras.filter(hydra => hydra.id !== current.id),
 ]
 
-// The place an Ask came from leads the message, worded as the Settings page's Ask Hydra box did.
+// Hydra reads the place first, so it knows what the request is about.
 export const askMessage = ({
   place,
   request,
