@@ -868,6 +868,12 @@ function apply({
       }
       const decision = event.data.decision ?? previous?.decision
 
+      if (event.data.accepted || previous?.accepted) {
+        reply.accepted = true
+        reply.text = event.data.text ?? previous?.text
+        reply.context = event.data.context ?? previous?.context
+      }
+
       if (decision) {
         reply.decision = decision
       }
@@ -887,8 +893,8 @@ function apply({
       // A task shows its session's requests, which hooks read back from the
       // session's own card, so the answer is marked on all of them.
       if (answers && event.data.state === 'delivered') {
-        if (card.asks) {
-          card.asks = card.asks.map(a => (a.id === answers ? {
+        if (card.asks && !reply.accepted) {
+          card.asks = card.asks.map(a => (a.id === answers && !a.answered && !a.closed ? {
             ...a,
             answered: reply.id,
             answeredAt: event.at,

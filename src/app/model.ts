@@ -124,6 +124,7 @@ export type HydraChange = EventBase & (
     type: 'task.released'
     data: {
       hold: string
+      answers?: string
       message: AnswerMessage
     }
   }

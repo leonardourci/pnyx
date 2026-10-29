@@ -561,38 +561,75 @@ export function applyAsk({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  // Returns false so applyHydra still records the owner's answering message.
-  if (event.type === 'hydra.message') {
-    const card = event.data.answers && event.data.task ? state.cards[event.data.task] : undefined
+  let acceptance: {
+    card: string
+    ask: string
+    answer: string
+    choice?: string
+    source?: AnswerMessage
+    id: string
+  } | undefined
+
+  if (event.type === 'hydra.message' && event.data.answers && event.data.task) {
+    acceptance = {
+      card: event.data.task,
+      ask: event.data.answers,
+      answer: event.data.text,
+      choice: event.data.choice,
+      source: event.data.fromMessage,
+      id: event.id,
+    }
+  } else if (event.type === 'card.replied' && event.data.accepted && event.data.text !== undefined
+    && event.data.answers && event.data.decision) {
+    acceptance = {
+      card: event.cardId,
+      ask: event.data.answers,
+      answer: event.data.decision.answer,
+      choice: event.data.decision.choice,
+      source: event.data.decision.fromMessage,
+      id: event.data.reply,
+    }
+  } else if (event.type === 'task.released' && event.data.answers) {
+    acceptance = {
+      card: event.cardId,
+      ask: event.data.answers,
+      answer: event.data.message.text,
+      choice: 'Go',
+      source: event.data.message,
+      id: event.id,
+    }
+  }
+
+  if (acceptance) {
+    const accepted = acceptance
+    const card = state.cards[accepted.card]
 
     if (card?.asks) {
-      card.asks = card.asks.map(a => {
-        if (a.id !== event.data.answers) {
-          return a
+      card.asks = card.asks.map(ask => {
+        if (ask.id !== accepted.ask) {
+          return ask
         }
 
         const answered = {
-          ...a,
-          answered: event.id,
+          ...ask,
+          answered: accepted.id,
           answeredAt: event.at,
-          fromMessage: event.data.fromMessage,
+          fromMessage: accepted.source,
         }
 
-        if (event.data.choice !== undefined) {
-          answered.choice = event.data.choice
-        } else if (a.kind === 'merge' || a.kind === 'go') {
-          answered.choice = event.data.text
+        if (accepted.choice !== undefined) {
+          answered.choice = accepted.choice
+        } else if (ask.kind === 'merge' || ask.kind === 'go') {
+          answered.choice = accepted.answer
         }
 
-        if (a.kind === 'go' && answered.choice === 'Go' && card.hold?.id === a.hold?.id) {
+        if (ask.kind === 'go' && answered.choice === 'Go' && card.hold?.id === ask.hold?.id) {
           delete card.hold
         }
 
         return answered
       })
     }
-
-    return false
   }
 
   if (event.type !== 'task.asked' && event.type !== 'task.ask.escalated'
