@@ -48,6 +48,7 @@ const trace = ({
   }
 }
 
+let holdAnswers = false
 const call = native.client.call
 const acknowledge = native.client.acknowledge
 const completions = new Set<string>()
@@ -71,6 +72,10 @@ native.client.acknowledge = async ({ ...request }) => {
 }
 
 native.client.call = async ({ ...request }) => {
+  if (request.operation.kind === 'answer' && holdAnswers) {
+    await new Promise<void>(() => {})
+  }
+
   const holding = process.env.PNYX_FIXTURE_HOLD_INPUTS
   const holdInput = request.operation.kind === 'input'
     && (holding === 'true' || (holding === 'wake' && request.operation.input.id.startsWith('wake:')))
@@ -210,7 +215,10 @@ const providers = process.env.PNYX_FIXTURE_LOCAL === '1'
   : native.providers
 const server = await startServer({
   port: 0,
-  native: process.env.PNYX_FIXTURE_LOCAL === '1' ? { providers } : native,
+  native: {
+    ...native,
+    providers,
+  },
   query: forbidden,
   spawnCodex: forbidden,
   wakeDelay: 10,
@@ -227,6 +235,16 @@ process.on(
       id: string
       nativeId?: string
       text?: string
+    }
+
+    if (request.kind === 'hold-answer') {
+      holdAnswers = true
+      process.send?.({
+        id: request.id,
+        ok: true,
+      })
+
+      return
     }
 
     if (request.kind === 'trace') {

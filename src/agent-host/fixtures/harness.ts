@@ -147,7 +147,7 @@ export async function fixtureHost({
     textBytes,
     at,
   }: {
-    kind: 'stats' | 'event' | 'ask' | 'release' | 'stop' | 'burst' | 'completion-time'
+    kind: 'stats' | 'event' | 'ask' | 'ask-secret' | 'release' | 'stop' | 'burst' | 'completion-time'
     nativeId?: string
     event?: NativeEvent
     nextEvent?: NativeEvent

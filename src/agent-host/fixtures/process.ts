@@ -138,14 +138,22 @@ try {
             id: request.id,
             ok: true,
           })
-        } else if (request.kind === 'ask' && state?.permission) {
+        } else if ((request.kind === 'ask' || request.kind === 'ask-secret') && state?.permission) {
           const decision = await state.permission({
             id: 'native-ask',
             tool: 'Question',
             input: { prompt: 'Fixture question' },
+            questions: request.kind === 'ask-secret' ? [
+              {
+                question: 'Enter the fixture secret',
+                options: [],
+                secret: true,
+              },
+            ] : undefined,
             signal: new AbortController().signal,
           })
-          state.valueMatched = decision.behavior === 'allow' && decision.values?.password === request.expected
+          const value = decision.behavior === 'allow' ? (request.kind === 'ask-secret' ? decision.answers?.[0]?.[0] : decision.values?.password) : undefined
+          state.valueMatched = value === request.expected
           state.answers++
 
           if (request.submit !== false) {
