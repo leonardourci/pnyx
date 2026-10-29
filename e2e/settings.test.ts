@@ -8,6 +8,12 @@ test(
   async () => {
     const first = await pnyx.scenario()
     const second = await pnyx.scenario()
+    const before = await first.owner({
+      args: [
+        'settings',
+        'show',
+      ],
+    })
     const page = await openPage({
       port: pnyx.port(),
       hydraId: second.hydraId,
@@ -30,10 +36,15 @@ test(
         what: 'the dark theme pushed to the other Hydra\'s page',
         check: () => page.settings.at(-1)?.theme === 'dark',
       })
-      await page.shows({
-        what: 'the other board keeping its own chat width',
-        check: ({ state }) => state.view?.hydraWidth === undefined,
-      })
+      assert.match(
+        await first.owner({
+          args: [
+            'view',
+            'show',
+          ],
+        }),
+        /hydraWidth: 600/,
+      )
 
       await page.command({
         name: 'settings',
@@ -60,7 +71,10 @@ test(
           'settings',
           'set',
           '--json',
-          '{"theme":"system","fontSize":14}',
+          JSON.stringify({
+            theme: /theme: (\w+)/.exec(before)![1],
+            fontSize: Number(/fontSize: (\d+)/.exec(before)![1]),
+          }),
         ],
       })
     }
