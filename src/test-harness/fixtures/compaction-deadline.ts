@@ -9,9 +9,11 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { IDLE_MS } from '#workers/host.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
+import { settle } from '#test-harness/child-fixture.ts'
 
-const WAIT_MS = 5000
 const DEADLINE_MS = 60_000
+// The host releases held input on 20 ms polls of the mocked clock.
+const RELEASE_TICK_MS = 20
 const QUIET_HOST_MS = IDLE_MS * 10
 const hydraId = 'compaction-deadline'
 const native = claudeNative()
@@ -22,34 +24,33 @@ commands.hydra([
   hydraId,
 ])
 
-async function settle({
-  what,
-  check,
-}: {
-  what: string
-  check(): boolean
-}) {
-  const until = Date.now() + WAIT_MS
-
-  while (!check()) {
-    assert.ok(
-      Date.now() < until,
-      what,
-    )
-    await setImmediate()
-  }
-}
-
 const compaction = () => loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction
-const compacting = () => native.send({
+const status = ({ result }: { result?: 'success' }) => native.send({
   message: {
     type: 'system',
     subtype: 'status',
-    status: 'compacting',
+    status: result ? null : 'compacting',
+    ...(result ? { compact_result: result } : {}),
     uuid: randomUUID(),
     session_id: 'native',
   },
 })
+const finish = ({
+  input,
+  queued,
+}: {
+  input: number
+  queued: number
+}) => native.send({
+  message: {
+    ...recordedResult,
+    uuid: randomUUID(),
+    user_message_uuid: native.incoming[input]!.uuid,
+    queued_turn_count: queued,
+  },
+})
+const received = ({ text }: { text: string }) => native.incoming
+  .some(message => JSON.stringify(message).includes(text))
 
 const host = createHost({
   hydraId,
@@ -72,13 +73,9 @@ try {
     what: 'first native input',
     check: () => native.incoming.length === 1,
   })
-  native.send({
-    message: {
-      ...recordedResult,
-      uuid: randomUUID(),
-      user_message_uuid: native.incoming[0]!.uuid,
-      queued_turn_count: 0,
-    },
+  finish({
+    input: 0,
+    queued: 0,
   })
   await settle({
     what: 'first turn to finish',
@@ -94,7 +91,8 @@ try {
     what: 'the manual compaction to start',
     check: () => native.incoming.length === 2 && compaction()?.operations[0]?.state === 'running',
   })
-  compacting()
+  status({})
+  // The native fake counts a message delivered once the host asks for the next, so the host has handled it.
   await settle({
     what: 'the compaction status',
     check: () => native.delivered() === 2,
@@ -110,7 +108,7 @@ try {
   )
 
   mock.timers.tick(DEADLINE_MS - 1)
-  compacting()
+  status({})
   await settle({
     what: 'the repeated compaction status',
     check: () => native.delivered() === 3,
@@ -136,16 +134,66 @@ try {
     'The agent stopped reporting this compaction before it finished',
   )
 
-  for (let tick = 0; !native.incoming.some(message => JSON.stringify(message).includes('Held while compacting')); tick++) {
-    assert.ok(
-      tick < 1000,
-      'the held message reaches the agent',
-    )
-    mock.timers.tick(20)
-    await setImmediate()
-  }
+  await settle({
+    what: 'the held message to reach the agent',
+    check: () => received({ text: 'Held while compacting' }) && !compaction()?.inputs.length,
+    tick: RELEASE_TICK_MS,
+  })
 
-  console.log('A silent compaction failed at its deadline and released held input')
+  status({ result: 'success' })
+  await settle({
+    what: 'the late compaction result',
+    check: () => native.delivered() === 4,
+  })
+  assert.deepEqual(
+    compaction()?.operations.map(operation => operation.state),
+    ['failed'],
+    'a result after the deadline leaves the failed operation as it is',
+  )
+
+  finish({
+    input: 1,
+    queued: 1,
+  })
+  finish({
+    input: 2,
+    queued: 0,
+  })
+  await settle({
+    what: 'the compact and held turns to finish',
+    check: () => native.delivered() === 6
+      && loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+  })
+
+  await host.hydra({
+    id: 'unanswered',
+    text: '/compact',
+    actor: 'cli',
+  })
+  await settle({
+    what: 'a /compact the agent never answers to start',
+    check: () => native.incoming.length === 4 && compaction()?.operations[1]?.state === 'running',
+  })
+  await host.hydra({
+    id: 'held-again',
+    text: 'Held while unanswered',
+    actor: 'cli',
+  })
+  mock.timers.tick(DEADLINE_MS - 1)
+  // What that tick started finishes before the deadline, as it would on a real clock.
+  await setImmediate()
+  assert.equal(
+    compaction()?.operations[1]?.state,
+    'running',
+  )
+  mock.timers.tick(1)
+  await settle({
+    what: 'the unanswered compaction to fail and release its held message',
+    check: () => compaction()?.operations[1]?.state === 'failed' && received({ text: 'Held while unanswered' }),
+    tick: RELEASE_TICK_MS,
+  })
+
+  console.log('Silent and unanswered compactions failed at their deadline and released held input')
 } finally {
   host.close()
   mock.timers.reset()

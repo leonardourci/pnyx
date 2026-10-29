@@ -1,18 +1,13 @@
 import assert from 'node:assert/strict'
-import { execFile } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, rmSync } from 'node:fs'
-import { tmpdir } from 'node:os'
-import { join } from 'node:path'
 import { test } from 'node:test'
-import { promisify } from 'node:util'
 import type { SDKMessage } from '@anthropic-ai/claude-agent-sdk'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { runFixture } from '#test-harness/child-fixture.ts'
 import { until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
-const run = promisify(execFile)
-const FIXTURE_TIMEOUT_MS = 20_000
+const HELD = 'Held while compacting'
 
 // Claude Code sends `compacting` when a compaction starts and again every 30 seconds while it runs, each under a new uuid.
 const compacting = (): SDKMessage => ({
@@ -32,7 +27,7 @@ const compacted = (): SDKMessage => ({
   session_id: '',
 })
 
-// The owner sends /compact to a Hydra that has already answered once; the compaction holds after `before` until released.
+// Sends /compact to a Hydra that has answered once, holds it after `before` while the owner sends a message, and returns the operations once that message reaches Hydra.
 async function compact({
   s,
   before,
@@ -61,19 +56,18 @@ async function compact({
       what: 'the compaction to run',
       check: () => s.state().cards[HYDRA_CARD]?.compaction?.operations.some(operation => operation.state === 'running'),
     })
-    const held = 'Held while compacting'
     await s.owner({
       args: [
         'hydra',
         'send',
         '--text',
-        held,
+        HELD,
       ],
     })
     await until({
       what: 'the owner’s message to wait for the compaction',
       check: () => s.state().cards[HYDRA_CARD]?.compaction?.inputs
-        .some(input => input.text.includes(held)),
+        .some(input => input.text.includes(HELD)),
     })
   } finally {
     turn.release()
@@ -81,7 +75,7 @@ async function compact({
 
   await until({
     what: 'the held message to reach Hydra after the compaction',
-    check: () => s.received({ cwd: agent.cwd }).some(text => text.includes('Held while compacting'))
+    check: () => s.received({ cwd: agent.cwd }).some(text => text.includes(HELD))
       && !s.state().cards[HYDRA_CARD]?.compaction?.inputs.length,
   })
 
@@ -120,7 +114,7 @@ test(
 )
 
 test(
-  'a compaction that leads straight into another shows them one after the other, and held input arrives once both end',
+  'a compaction that leads straight into another shows them one after the other, and held input waits for the last',
   async () => {
     const s = await pnyx.scenario()
     const operations = await compact({
@@ -152,61 +146,24 @@ test(
         },
       ],
     )
-    assert.ok(operations[0]!.endedAt! <= operations[1]!.startedAt)
+    const changes = s.events().flatMap(event => event.type === 'session.compaction' ? [event.data] : [])
+    assert.ok(
+      changes.findLastIndex(change => change.kind === 'status' && change.operation.state === 'done')
+        < changes.findIndex(change => change.kind === 'taken'),
+      'the held message is taken only after the second compaction ends',
+    )
   },
 )
 
 test(
-  'a compaction its agent stops reporting fails at its deadline and releases held input',
+  'a compaction its agent stops reporting, or never answers, fails at its deadline and releases held input',
   async t => {
-    const root = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-compaction-deadline-',
-    ))
-    t.after(() => rmSync(
-      root,
-      {
-        recursive: true,
-        force: true,
-      },
-    ))
-    // Its clock belongs to the child, so advancing it cannot move other flows' timers.
-    const result = await run(
-      process.execPath,
-      [
-        '--conditions=source',
-        join(
-          import.meta.dirname,
-          '..',
-          'src',
-          'test-harness',
-          'fixtures',
-          'compaction-deadline.ts',
-        ),
-      ],
-      {
-        env: {
-          ...process.env,
-          HOME: root,
-          PNYX_HOME: join(
-            root,
-            'pnyx',
-          ),
-          CLAUDE_CONFIG_DIR: join(
-            root,
-            'claude',
-          ),
-          CODEX_HOME: join(
-            root,
-            'codex',
-          ),
-        },
-        timeout: FIXTURE_TIMEOUT_MS,
-      },
-    )
     assert.match(
-      result.stdout,
-      /A silent compaction failed at its deadline and released held input/,
+      await runFixture({
+        t,
+        name: 'compaction-deadline',
+      }),
+      /Silent and unanswered compactions failed at their deadline and released held input/,
     )
   },
 )
