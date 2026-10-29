@@ -13,7 +13,7 @@ import type { HelperChange } from '#routine-helper/state.ts'
 import { permissionEvent } from '#workers/permission-rules.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import type { Decision, HydraEvent, HydraState } from '#app/model.ts'
-import { until } from '#test-harness/harness.ts'
+import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 // Every helper prompt ends with its instructions, and every main wake with a closing wake block.
@@ -206,6 +206,24 @@ function workerSays({
 const grants = ({ s }: { s: Scenario }) => s.events().flatMap(event => event.type === 'hydra.helper-started' ? [event.data] : [])
 
 const finishes = ({ s }: { s: Scenario }) => s.events().flatMap(event => event.type === 'hydra.helper-finished' ? [event.data] : [])
+
+// The helper's next batch and main's next wake hold only the changes the server has read.
+async function serverRead({ s }: { s: Scenario }) {
+  const seq = s.state().seq
+  const page = await openPage({
+    port: pnyx.port(),
+    hydraId: s.hydraId,
+  })
+
+  try {
+    await page.shows({
+      what: 'the server to read the latest change',
+      check: ({ state }) => state.seq >= seq,
+    })
+  } finally {
+    page.close()
+  }
+}
 
 // Main's next owner turn shows no wake reached it in between.
 async function noWake({ s }: { s: Scenario }) {
@@ -557,6 +575,7 @@ test(
           'other',
         ],
       })
+      await serverRead({ s })
       first.release()
       await until({
         what: 'the helper to take the overflow and the other task',
@@ -892,6 +911,7 @@ test(
           }),
         ],
       })
+      await serverRead({ s })
       first.release()
       await until({
         what: 'main to relay the outcome with the task’s new change',

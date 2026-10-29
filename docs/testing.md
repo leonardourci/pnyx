@@ -48,6 +48,7 @@ test('…', async () => {
 Rules:
 
 - Wait with `until` (or `shows`) on something observable. No fixed sleeps, and no retries: a test that fails now and then is a bug. `until` stops on any value but `undefined` and `false`, so a count waits as `length > 0`.
+- The server reads each write on its own schedule, and cuts the helper's next batch and Hydra's next wake from what it has read. Release a held turn that must see a write only once the server has read it, for example when an open page shows the write's seq.
 - At most two heavy processes at once: the test process (which runs the server) and one awaited `pnyx-axi`. The Codex fake runs inside the test process.
 - Nothing outside the scenario's temporary folder: never run `pnyx-axi setup`, never a real agent, terminal or GitHub.
 
