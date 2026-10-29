@@ -1683,3 +1683,54 @@ test(
     )
   },
 )
+
+test(
+  'duplicate JSON members including escaped names are refused before any write',
+  t => {
+    const f = fixture({ t })
+    const input = '{"version":999,"version":1,"changes":[{"op":"task.brief","op":"task.create","title":"First","ti\\u0074le":"Second","key":"json-dupe"}],"changes":[{"op":"task.create","title":"Other","key":"other"}]}'
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--conditions=source',
+        'src/cli/pnyx-axi.ts',
+        'apply',
+        '--file',
+        '-',
+      ],
+      {
+        env: process.env,
+        input,
+        encoding: 'utf8',
+      },
+    )
+    assert.equal(
+      result.status,
+      2,
+    )
+    assert.match(
+      result.stdout,
+      /errors\[4\]/,
+    )
+    assert.match(
+      result.stdout,
+      /"\/version"/,
+    )
+    assert.match(
+      result.stdout,
+      /"\/changes\/0\/op"/,
+    )
+    assert.match(
+      result.stdout,
+      /"\/changes\/0\/title"/,
+    )
+    assert.match(
+      result.stdout,
+      /"\/changes"/,
+    )
+    assert.deepEqual(
+      readdirSync(f.root),
+      [],
+    )
+  },
+)

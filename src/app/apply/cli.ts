@@ -7,6 +7,7 @@ import { withWriter } from '#app/writer.ts'
 import { base } from '#app/command-meta.ts'
 import { transactionReceipt } from '#app/transactions.ts'
 import { parseDocument, ApplyError } from './schema.ts'
+import { parseApplyJson } from './json.ts'
 import { planDocument } from './plan.ts'
 
 function canonicalDocument({ value }: { value: unknown }): unknown {
@@ -60,8 +61,12 @@ export const apply = guard({
         file === '-' ? 0 : file,
         'utf8',
       )
-      input = JSON.parse(contents)
+      input = parseApplyJson({ contents })
     } catch (error) {
+      if (error instanceof ApplyError) {
+        throw error
+      }
+
       throw new ApplyError({
         errors: [
           {
