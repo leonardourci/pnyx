@@ -1413,7 +1413,7 @@ export function Composer({
 
                 if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && chosen)) {
                   e.preventDefault()
-                  fillGoal({ text: chosen ?? GOALS[0]! })
+                  fillGoal({ text: chosen ?? GOALS[0] })
 
                   return
                 }

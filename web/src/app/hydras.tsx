@@ -131,7 +131,7 @@ export function Hydras({
     ],
   )
 
-  const openHydra = ({
+  const openHydra = async ({
     id,
     path,
   }: {
@@ -150,18 +150,27 @@ export function Hydras({
       )
     }
 
-    void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
+    try {
+      await navigate({ url: url.href })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
   }
 
-  const create = ({
+  const create = async ({
     name,
     icon,
   }: HydraIdentity) => {
     setDrafting(null)
-    void createHydra({
-      name,
-      icon,
-    }).catch((error: Error) => notify({ text: error.message }))
+
+    try {
+      await createHydra({
+        name,
+        icon,
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
   }
 
   const openMenu = ({
@@ -187,16 +196,20 @@ export function Hydras({
     }
   }
 
-  const detach = ({ path }: { path: string }) => command({
-    name: 'project',
-    args: [
-      'remove',
-      path,
-    ],
-  }).then(
-    () => notify({ text: 'Project detached. Tasks and history stay.' }),
-    (error: Error) => notify({ text: error.message }),
-  )
+  const detach = async ({ path }: { path: string }) => {
+    try {
+      await command({
+        name: 'project',
+        args: [
+          'remove',
+          path,
+        ],
+      })
+      notify({ text: 'Project detached. Tasks and history stay.' })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
 
   return (
     <section className="hydras-panel" aria-label="Hydras">
@@ -335,7 +348,7 @@ export function Hydras({
       )}
       {menu?.kind === 'project' && (
         <ContextMenu label={`${menu.project.name} menu`} at={menu.at} close={closeMenu}>
-          <Button onClick={() => void copyPath({ path: menu.project.path })}>Copy path</Button>
+          <Button onClick={() => copyPath({ path: menu.project.path })}>Copy path</Button>
           {menu.hydra.id === current && (
             <DeleteItem
               label="Detach…"

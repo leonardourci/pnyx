@@ -16,7 +16,7 @@ export const GOALS = [
   'fix the failing tests',
   'pick up its open issues',
   'review its open pull requests',
-]
+] as const
 
 // The request goes on its own line under any draft, with the caret right after its @.
 export function withProjectRequest({ text }: { text: string }): {

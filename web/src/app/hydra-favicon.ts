@@ -15,9 +15,11 @@ export function useHydraFavicon({ icon = HYDRA_MARK }: { icon?: string }) {
       }
 
       let cancelled = false
-      // A tab icon that cannot load keeps Pnyx's own, so its failure is safe to drop.
-      void fetch(file).then(response => response.text())
-        .then(svg => {
+
+      const show = async () => {
+        try {
+          const svg = await (await fetch(file)).text()
+
           if (cancelled) {
             return
           }
@@ -33,8 +35,12 @@ export function useHydraFavicon({ icon = HYDRA_MARK }: { icon?: string }) {
             link.type = 'image/svg+xml'
             link.href = href
           }
-        })
-        .catch(() => {})
+        } catch {
+          // A tab icon that cannot load keeps Pnyx's own; nothing else depends on it.
+        }
+      }
+
+      show()
 
       return () => {
         cancelled = true
