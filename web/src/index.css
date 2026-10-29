@@ -1184,6 +1184,42 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-row > .button:first-child { flex: 0 0 25px; padding: 6px 2px; color: var(--color-muted); }
 .hydra-row .hydra-name { flex: 1; min-width: 0; justify-content: flex-start; overflow: hidden; padding: 7px 8px; font-size: var(--text-ui); }
 .hydra-row .hydra-name > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.hydra-row .hydra-name > .identity-icon { flex-shrink: 0; }
+
+.hydra-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 650; }
+
+.hydra-row-spacer { flex: 0 0 25px; }
+
+.hydra-row > .hydra-name-editor { flex: 1; padding: 3px 0 3px 4px; }
+
+.hydra-name-editor { display: flex; align-items: flex-start; gap: 6px; min-width: 0; }
+
+.hydra-name-field { display: flex; flex: 1; flex-direction: column; gap: 3px; min-width: 0; }
+
+.hydra-name-field .input { width: 100%; padding: 4px 8px; font-weight: 650; }
+
+.hydra-name-note { display: flex; justify-content: space-between; gap: 6px; color: var(--color-muted); font-size: var(--text-meta); }
+
+.hydra-name-note.error { color: var(--color-red); }
+
+.hydra-head .hydra-name-editor { flex: 1; max-width: 360px; }
+
+.hydra-head .hydra-name-field .input { font-size: var(--text-ui); }
+
+.hydra-head .hydra-title { min-width: 0; min-height: 0; padding: 2px 6px; margin-left: -6px; justify-content: flex-start; font-size: inherit; }
+
+.icon-picker > .button { min-height: 0; padding: 3px 4px; }
+
+.icon-picker .popover-panel { width: min(300px, calc(100vw - 16px)); padding: 6px; }
+
+.icon-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+
+.icon-grid > .button { height: 36px; min-height: 0; padding: 0; border: 1px solid transparent; }
+
+.icon-grid > .button[aria-selected=true] { border-color: var(--color-gold-line); background: var(--color-gold-wash); color: var(--color-gold); }
+
+.hydra-empty-action { color: var(--color-gold); cursor: pointer; }
 .hydra-row > form { min-width: 0; }
 .hydra-row > form .input { width: 100%; }
 .hydra-projects { margin: 4px 0 12px 12px; padding-left: 10px; border-left: 1px solid var(--color-line); }

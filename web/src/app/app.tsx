@@ -26,10 +26,12 @@ import { Panel } from './panel.tsx'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
 import { Oracle } from '#web-oracle/oracle.tsx'
 import { Hydras } from './hydras.tsx'
+import { useHydraEdits } from './hydra-edits.ts'
+import { useHydraFavicon } from './hydra-favicon.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
+import { HydraLabel } from '#web-hydra/hydra-title.tsx'
 import { HydraChat } from '#web-hydra/hydra-chat.tsx'
-import { AddProject } from '#web-projects/add-project.tsx'
 import { TaskReferencesProvider } from '#web-tasks/task-reference.tsx'
 import { Column } from '#web-tasks/column.tsx'
 import { HydraCard } from '#web-tasks/card.tsx'
@@ -285,10 +287,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     version: number
   } | null>(null)
   const taskFormVersion = useRef(0)
+  // Add project writes its request into Hydra's composer; another Hydra's request waits for that Hydra to open.
   const [
-    addingProject,
-    setAddingProject,
-  ] = useState(new URLSearchParams(location.search).has('projects'))
+    projectRequest,
+    setProjectRequest,
+  ] = useState(new URLSearchParams(location.search).has('add-project'))
   const [
     panel,
     setPanel,
@@ -311,8 +314,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     () => {
       const url = new URL(location.href)
 
-      if (url.searchParams.has('projects')) {
-        url.searchParams.delete('projects')
+      if (url.searchParams.has('add-project')) {
+        url.searchParams.delete('add-project')
       }
 
       const project = url.searchParams.get('open-project')
@@ -375,14 +378,19 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [],
   )
+  const edits = useHydraEdits({
+    hydras: navigation.hydras,
+    command,
+    notify,
+  })
   useEffect(
     () => {
-      if (addingProject && state.config?.hydra.kind === 'firstmate') {
-        notify({ text: 'Firstmate manages this Hydra’s projects.' }); setAddingProject(false)
+      if (projectRequest && state.config?.hydra.kind === 'firstmate') {
+        notify({ text: 'Firstmate manages this Hydra’s projects.' }); setProjectRequest(false)
       }
     },
     [
-      addingProject,
+      projectRequest,
       state.config?.hydra.kind,
       notify,
     ],
@@ -545,11 +553,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       .map(id => state.cards[id]).filter((item): item is Card =>
         !!item && !filteredCards.some(card => card.id === item.id)),
   ]
+  const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
   const title = pageTitle({
     cards: state.cards,
     selected,
     needsYou: columns.find(c => c.role === 'needs_you')?.id,
+    hydra: shownHydra && hydraTitle(shownHydra),
   })
+  useHydraFavicon({ icon: shownHydra?.icon })
   useEffect(
     () => {
       document.title = title
@@ -969,6 +980,32 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }
 
   const opening = navigation.hydras.find(h => h.id === loading)
+  const currentHydra = shownHydra
+  const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
+  const otherProjects = others.flatMap(h => h.projects.map(p => ({
+    name: p.name,
+    path: p.path,
+    hydra: hydraTitle(h),
+  })))
+
+  // Add project asks Hydra in the composer; for another Hydra it opens that Hydra first.
+  const addProject = ({ id }: { id: string }) => {
+    if (id === navigation.hydraId) {
+      setPage('hydra'); setProjectRequest(true)
+
+      return
+    }
+
+    const url = new URL(
+      `/hydra/${encodeURIComponent(id)}/`,
+      location.href,
+    )
+    url.searchParams.set(
+      'add-project',
+      '1',
+    )
+    void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
+  }
 
   return (
     <KeyboardProvider
@@ -1031,10 +1068,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         >
           <Hydras
             createHydra={hydra.createHydra}
+            editHydra={edits.edit}
             command={command}
             connected={connected}
             notify={notify}
-            hydras={navigation.hydras}
+            hydras={edits.hydras}
             current={navigation.hydraId}
             navigate={navigate}
             loading={!!loading}
@@ -1046,9 +1084,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             showHydra={() => {
               setPage('hydra'); filterProject({ path: '' })
             }}
-            addProject={() => {
-              setPage('hydra'); setAddingProject(true)
-            }}
+            addProject={addProject}
           />
         </Panel>
         <main
@@ -1057,7 +1093,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           data-hydra={navigation.hydraId}
           data-provisional={hydra.creating || undefined}
         >
-          {(loading || !loaded) && <p className="loading-status" role="status">{hydra.creating ? 'Creating Hydra' : `Loading ${opening ? hydraTitle(opening) : 'Hydra'}`}…</p>}
+          {(loading || !loaded) && (
+            <p className="loading-status" role="status">
+              {hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…
+            </p>
+          )}
           {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
           {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
           <PendingStatus
@@ -1071,16 +1111,23 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             <>
               <div className="hydra-page">
                 <HydraChat
-                  projectSetup={state.config?.hydra.kind !== 'firstmate' && (addingProject || (connected && !(state.projects ?? []).some(p => !p.detached))) ? (
-                    <AddProject
-                      autoFocus={addingProject}
-                      command={command}
-                      connected={connected}
-                      notify={notify}
-                      attached={() => setAddingProject(false)}
-                      cancel={addingProject ? () => setAddingProject(false) : undefined}
-                    />
-                  ) : undefined}
+                  identity={currentHydra && {
+                    name: currentHydra.name,
+                    icon: currentHydra.icon,
+                    taken: edits.hydras.filter(h => h.id !== currentHydra.id).map(h => h.name),
+                  }}
+                  editHydra={({
+                    name,
+                    icon,
+                  }) => edits.edit({
+                    id: navigation.hydraId,
+                    name,
+                    icon,
+                  })}
+                  addProject={() => addProject({ id: navigation.hydraId })}
+                  projectRequest={projectRequest}
+                  projectRequested={() => setProjectRequest(false)}
+                  otherProjects={otherProjects}
                   state={state}
                   liveThread={hydraThread}
                   action={actions[HYDRA_CARD]}
