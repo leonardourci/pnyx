@@ -15,7 +15,7 @@ import {
   type Block,
 } from '#web-shared/ui/reveal.ts'
 
-type MarkdownProps = Omit<ComponentProps<typeof RichText>, 'images'>
+type RichTextProps = Omit<ComponentProps<typeof RichText>, 'images'>
 
 export const REDUCED_MOTION = '(prefers-reduced-motion: reduce)'
 const FRAME = 1000 / 60
@@ -53,7 +53,7 @@ export function MessageText({
   streaming,
   decorations,
   ...props
-}: MarkdownProps & {
+}: RichTextProps & {
   streaming?: boolean
   // Selector for elements inside a block that are not message text.
   decorations: string
@@ -426,7 +426,7 @@ function StreamedText({
   block,
   openTask,
   columnLook,
-}: MarkdownProps & {
+}: RichTextProps & {
   streaming: boolean
   decorations: string
 }) {
