@@ -4,11 +4,11 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
-import { questions } from '#integrations/hooks/observe.ts'
+import { questions } from './native-prompts.ts'
 import type { HostedImage, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
-import { compactCommand } from '#workers/compaction/state.ts'
+import { compactCommand } from './compact-command.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>

@@ -2,7 +2,7 @@ import { sessionId } from '#workers/session-attachments.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 
-export const compactCommand = ({ text }: { text: string }) => /^\/compact(?:\s|$)/.test(text.trim())
+export { compactCommand } from '#workers/compact-command.ts'
 
 export const activeCompaction = ({ card }: { card?: Card }) => card?.agent
   ? card.compaction?.operations.findLast(operation => operation.state === 'running'
