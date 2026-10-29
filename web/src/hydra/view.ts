@@ -19,21 +19,7 @@ export const slashPrefix = ({
 }: {
   text: string
   cursor: number
-}) => /(?:^|\s)(\/[a-z0-9_.:-]*)$/i.exec(text.slice(
+}) => /(?:^|\s)(\/[^@\r\n\u2060]*)$/u.exec(text.slice(
   0,
   cursor,
 ))?.[1] ?? null
-export const slashMatches = ({
-  command,
-  prefix,
-}: {
-  command: string
-  prefix: string
-}) => command.replace(
-  /^[$/]/,
-  '',
-).toLowerCase()
-  .startsWith(prefix.replace(
-    /^\//,
-    '',
-  ).toLowerCase())
