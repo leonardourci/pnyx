@@ -9,8 +9,10 @@ import { boardReview, MINUTE_MS } from './review.ts'
 import { seenAt } from '#workers/presence.ts'
 import { taskMention } from './mentions.ts'
 import { hydraConfig } from './config.ts'
+import { readSettings } from '#settings/store.ts'
+import { DEFAULT_REVIEW_MINUTES } from '#settings/settings.ts'
 
-export const REVIEW_MS = 30 * MINUTE_MS
+export const REVIEW_MS = DEFAULT_REVIEW_MINUTES * MINUTE_MS
 const REVIEW_POLL_MS = 15_000
 
 function schedule({
@@ -101,7 +103,7 @@ export function startReviewTimer({
   const check = () => {
     try {
       const state = shared()
-      const minutes = state.config?.reviewMinutes ?? REVIEW_MS / MINUTE_MS
+      const minutes = readSettings().settings.reviewMinutes
       const last = state.hydraReview?.at
       const due = Math.max(
         last ? Date.parse(last) : started,
@@ -133,7 +135,7 @@ export function startReviewTimer({
         fn: ({ writer }) => {
           const current = writer.state
           const previous = current.hydraReview?.at
-          const cadence = (current.config?.reviewMinutes ?? REVIEW_MS / MINUTE_MS) * MINUTE_MS
+          const cadence = readSettings().settings.reviewMinutes * MINUTE_MS
           const deadline = (previous ? Date.parse(previous) : started) + cadence
 
           const unavailable = running({ state: current }) || !pnyxRunsHydra({ state: current })

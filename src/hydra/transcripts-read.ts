@@ -8,10 +8,11 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact, transcriptMessages } from '#oracle/text.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
-import { traces, viewFor } from '#preferences/view.ts'
+import { traces } from '#preferences/view.ts'
 import { taskReceipt } from './transcripts-task.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
+import { effectiveView } from '#settings/store.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -453,7 +454,7 @@ export function readThread(
   let earlierNative = false, emptyNativeCursor: string | undefined
   const path = threadPath({ card })
   const selected = traces({
-    view: viewFor({ state }),
+    view: effectiveView({ state }),
     card: card.id,
   })
   const tools = card.id !== HYDRA_CARD && selected.tools

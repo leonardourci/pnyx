@@ -3,6 +3,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { cardDoneDeadline, doneDeadline } from './retention-rules.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { readSettings } from '#settings/store.ts'
 
 export function hideDone({
   hydraId,
@@ -11,7 +12,11 @@ export function hideDone({
   hydraId: string
   at?: string
 }): number {
-  const deadline = doneDeadline({ state: loadHydra({ hydraId }).state })
+  const hours = readSettings().settings.doneAfterHours
+  const deadline = doneDeadline({
+    state: loadHydra({ hydraId }).state,
+    hours,
+  })
   const now = Date.parse(at)
 
   if (deadline === undefined || deadline > now) {
@@ -33,7 +38,7 @@ export function hideDone({
 
         const deadline = cardDoneDeadline({
           card,
-          hours: writer.state.config?.doneAfterHours,
+          hours,
         })
 
         if (deadline === undefined || deadline > now) {

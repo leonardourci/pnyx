@@ -7,6 +7,7 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { eventReasons, type WakeKind } from '#hydra/wake-reasons.ts'
 import type { PermissionRequest } from '#workers/model.ts'
+import { readSettings } from '#settings/store.ts'
 
 const NUDGES: WakeKind[] = [
   'turn ended',
@@ -57,13 +58,14 @@ export function helperAgent({
   main?: AgentConfig
 }): AgentConfig | undefined {
   const config = hydraConfig({ state })
+  const helper = readSettings().settings.helper
 
-  if (config.helper === false || config.hydra.kind !== 'agent') {
+  if (helper === 'off' || config.hydra.kind !== 'agent') {
     return undefined
   }
 
-  if (config.helper) {
-    return config.helper
+  if (helper !== 'auto') {
+    return helper
   }
 
   const harness = config.hydra.agent?.harness ?? main?.harness ?? 'claude'
