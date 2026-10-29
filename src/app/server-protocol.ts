@@ -25,6 +25,17 @@ export function commandBytes({
   })).byteLength
 }
 
+function cloningProject({
+  name,
+  args,
+}: {
+  name: string
+  args: string[]
+}): boolean {
+  return name === 'project' && args[0] === 'add'
+    && args.some(arg => arg === '--clone' || arg.startsWith('--clone='))
+}
+
 export function commandTimeout({
   name,
   args,
@@ -32,7 +43,10 @@ export function commandTimeout({
   name: string
   args: string[]
 }): number {
-  if (name === 'project' && args[0] === 'add' && args.includes('--clone')) {
+  if (cloningProject({
+    name,
+    args,
+  })) {
     return CLONE_TIMEOUT_MS + CLONE_CONFIRMATION_MS
   }
 
@@ -44,14 +58,21 @@ export function commandTimeout({
   ].includes(name) ? REPLY_COMMAND_TIMEOUT_MS : OWNER_COMMAND_TIMEOUT_MS
 }
 
-export const retryable = ({
+export function retryable({
   name,
   args,
 }: {
   name: string
   args: string[]
-}) =>
-  [
+}): boolean {
+  if (cloningProject({
+    name,
+    args,
+  })) {
+    return false
+  }
+
+  return [
     'reply',
     'task-message',
     'answer',
@@ -59,3 +80,4 @@ export const retryable = ({
     'hydra-agent',
   ].includes(name) || args.some(arg => arg === '--event-id' || arg.startsWith('--event-id='))
     || (name === 'hydras' && (args[0] === 'rename' || (args[0] === 'create' && !!args[2])))
+}
