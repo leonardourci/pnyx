@@ -84,8 +84,8 @@ const RETRY_MS = [
   600_000,
 ]
 
-// A running compaction that hears nothing from its agent this long has failed; Claude Code reports a live one every 30 seconds.
-const COMPACTION_MS = 10 * 60 * 1000
+// A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
+const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 
 export function createHost({
   hydraId,
@@ -99,7 +99,7 @@ export function createHost({
   busyDelay = BUSY_MS,
   stallRepeatMax = STALL_REPEAT_MAX_MS,
   pauseDelay = PAUSE_MS,
-  compactionDelay = COMPACTION_MS,
+  compactionDelay = COMPACTION_DEADLINE_MS,
   retryDelays = RETRY_MS,
   helperBound,
   upgradeRoot,
@@ -373,12 +373,12 @@ export function createHost({
     })
 
     if (change.kind === 'status') {
-      compactionDeadline({ operation: change.operation })
+      resetCompactionDeadline({ operation: change.operation })
     }
   }
 
-  // Each signal of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
-  const compactionDeadline = ({ operation }: { operation: Compaction }) => {
+  // Each status of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
+  const resetCompactionDeadline = ({ operation }: { operation: Compaction }) => {
     clearTimeout(compactionDeadlines.get(operation.session))
     compactionDeadlines.delete(operation.session)
 
@@ -399,8 +399,8 @@ export function createHost({
             }
 
             const { cards } = loadHydra({ hydraId }).state
-            const card = Object.values(cards).find(card => card.compaction?.operations
-              .some(item => item.id === operation.id && item.state === 'running'))
+            const card = Object.values(cards).find(candidate => candidate.compaction?.operations
+              .some(known => known.id === operation.id && known.state === 'running'))
 
             if (!card) {
               return
@@ -1516,10 +1516,16 @@ export function createHost({
             continue
           }
 
-          // One session compacts once at a time: Claude Code repeats its start every 30 seconds under a new id, and a manual request opened its operation before the provider's first signal.
-          const mapped = compactionIds.get(activity.id)
-          const operation = current.compaction?.operations.find(running => running.id === mapped)
-            ?? activeCompaction({ card: current }) ?? {
+          // A session runs one compaction at a time, so every signal joins its running operation: Claude Code repeats its start every 30 seconds under a new id, and a manual /compact opens its operation before the provider's first signal.
+          const known = compactionIds.get(activity.id)
+          const mapped = current.compaction?.operations.find(operation => operation.id === known)
+
+          // A result after the deadline ended the operation changes nothing.
+          if (mapped && mapped.state !== 'running') {
+            continue
+          }
+
+          const operation = mapped ?? activeCompaction({ card: current }) ?? {
             id: activity.id,
             session: key,
             trigger: activity.trigger,
@@ -4912,6 +4918,10 @@ export function createHost({
       clearTimeout(retryTimer)
       clearInterval(stallTimer)
       controller.abort()
+
+      for (const timer of compactionDeadlines.values()) {
+        clearTimeout(timer)
+      }
 
       for (const [
         key,
