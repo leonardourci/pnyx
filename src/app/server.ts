@@ -2049,11 +2049,17 @@ export async function mountOwnedHydra({
               icon: third || undefined,
             })
             reply()
+          } else if (action === 'move' && first && second && listHydras().some(b => b.id === first)) {
+            editHydra({
+              id: first,
+              position: Number(second),
+            })
+            reply()
           } else if (action === undefined) {
             reply()
           } else {
             throw new HydraError({
-              message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>] or edit <id> <name> [<icon>]',
+              message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
               code: 'VALIDATION_ERROR',
             })
           }

@@ -122,6 +122,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       ...WRITE,
       name: { type: 'string' },
       icon: { type: 'string' },
+      position: { type: 'string' },
       identity: { type: 'string' },
       session: { type: 'string' },
       firstmate: { type: 'string' },
@@ -300,6 +301,19 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         } else {
           data.icon = icon
         }
+      }
+
+      if (values.position !== undefined) {
+        const position = Number(String(values.position).trim())
+
+        if (!String(values.position).trim() || !Number.isFinite(position)) {
+          throw new HydraError({
+            message: '--position must be a number',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        data.position = position
       }
 
       if (values['done-after-hours'] !== undefined) {

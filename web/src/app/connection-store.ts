@@ -1341,6 +1341,8 @@ export function createHydraConnection() {
           id,
           name: creation.name,
           icon: creation.icon,
+          // Created now, so it sorts last until the server's summary arrives.
+          order: Date.now(),
           hydra: 'Hydra',
           projects: [],
           creationAttempt: creation.attempt,

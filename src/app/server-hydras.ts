@@ -26,6 +26,8 @@ export interface HydraSummary {
   id: string
   name: string
   icon?: string
+  // Position in the Hydra list: the set position, else creation time in ms.
+  order: number
   hydra: string
   projects: HydraProjectSummary[]
 }
@@ -92,7 +94,14 @@ export function listHydras(): HydraSummary[] {
 
     return summary
   })
+    .sort((
+      a,
+      b,
+    ) => a.order - b.order || a.id.localeCompare(b.id))
 }
+
+// A Hydra whose log has no readable first event sorts last.
+const createdAt = ({ id }: { id: string }) => Date.parse(readInitialEvent({ hydraId: id })?.at ?? '') || Number.MAX_SAFE_INTEGER
 
 function summarize({ id }: { id: string }): {
   summary: HydraSummary
@@ -144,6 +153,7 @@ function summarize({ id }: { id: string }): {
         ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
         name: config.name,
         icon: config.icon,
+        order: config.position ?? createdAt({ id }),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         projects,
       },
@@ -153,6 +163,7 @@ function summarize({ id }: { id: string }): {
       summary: {
         id,
         name: id,
+        order: Number.MAX_SAFE_INTEGER,
         hydra: 'could not be loaded',
         projects: [],
       },
@@ -229,10 +240,12 @@ export function editHydra({
   id,
   name,
   icon,
+  position,
 }: {
   id: string
   name?: string
   icon?: string
+  position?: number
 }): void {
   const args = [
     'set',
@@ -253,6 +266,13 @@ export function editHydra({
     args.push(
       '--icon',
       icon,
+    )
+  }
+
+  if (position !== undefined) {
+    args.push(
+      '--position',
+      String(position),
     )
   }
 
