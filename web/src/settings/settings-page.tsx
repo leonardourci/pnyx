@@ -10,11 +10,9 @@ import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
-import { AskHydra } from './ask-hydra.tsx'
 import { BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, ThemePreview } from './previews.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
@@ -44,29 +42,6 @@ const SUGGESTIONS = [
 ]
 
 type Toggle = 'lastMessageOnCards' | 'focusMode' | 'toolDetails' | 'thinkingDetails'
-
-// The owner is choosing how Settings hands a question to Hydra; this preview offers each entry until one is picked.
-type AskEntry = 'header' | 'row' | 'chat'
-const ASK_ENTRIES = [
-  {
-    value: 'header',
-    label: 'A · One button, composer under the search',
-  },
-  {
-    value: 'row',
-    label: 'B · On each setting',
-  },
-  {
-    value: 'chat',
-    label: 'C · Opens Hydra’s chat',
-  },
-]
-
-const askEntry = (): AskEntry => {
-  const asked = new URLSearchParams(location.search).get('ask')
-
-  return asked === 'row' || asked === 'chat' ? asked : 'header'
-}
 
 function Preview({
   entry,
@@ -323,7 +298,6 @@ export function SettingsPage({
   notify,
   upgrade,
   startUpgrade,
-  askInChat,
 }: Saving & {
   state: HydraState
   connected: boolean
@@ -331,14 +305,8 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
-  // Opens Hydra's chat with the text ready to finish and send.
-  askInChat({ text }: { text: string }): void
 }) {
   const search = useRef<HTMLInputElement>(null)
-  const [
-    entry,
-    setEntry,
-  ] = useState<AskEntry>(askEntry)
   const [
     query,
     setQuery,
@@ -351,10 +319,6 @@ export function SettingsPage({
     onlyChanged,
     setOnlyChanged,
   ] = useState(false)
-  const [
-    asking,
-    setAsking,
-  ] = useState<string>()
   const changed = changedIds({ view })
   const found = searchSettings({ query })
     .filter(match => !onlyChanged || changed.has(match.entry.id))
@@ -386,18 +350,6 @@ export function SettingsPage({
   const sections = SETTINGS_SECTIONS
     .filter(item => shown.some(match => match.entry.section === item.id))
 
-  const sectionLabel = SETTINGS_SECTIONS.find(item => item.id === section)?.label
-
-  const askFromHeader = () => {
-    if (entry === 'chat') {
-      askInChat({ text: `About Settings${sectionLabel ? ` › ${sectionLabel}` : ''}: ` })
-    } else {
-      setAsking(current => current === undefined ? sectionLabel ?? '' : undefined)
-    }
-  }
-
-  const stopAsking = () => setAsking(undefined)
-
   const clearFilters = () => {
     setQuery('')
     setSection(undefined)
@@ -425,23 +377,8 @@ export function SettingsPage({
 
   return (
     <section className="settings-page" aria-label="Settings">
-      <div className="settings-review-note" role="note">
-        <span>Preview: pick how Settings asks Hydra</span>
-        <Segmented
-          label="Ask Hydra entry"
-          value={entry}
-          options={ASK_ENTRIES}
-          onChange={({ value }) => {
-            setEntry(value as AskEntry)
-            setAsking(undefined)
-          }}
-        />
-      </div>
       <header className="settings-head">
-        <div className="settings-title">
-          <h1 data-settings-heading tabIndex={-1}>Settings</h1>
-          {entry !== 'row' && <Button className="settings-ask" aria-expanded={entry === 'header' ? asking !== undefined : undefined} onClick={askFromHeader}><Icon name="hydra" size={16} />Ask Hydra</Button>}
-        </div>
+        <h1 data-settings-heading tabIndex={-1}>Settings</h1>
         <SearchBar
           label="Search settings"
           query={query}
@@ -473,15 +410,6 @@ export function SettingsPage({
             Changed<span className="settings-chip-count">{changed.size}</span>
           </Button>
         </nav>
-        {entry === 'header' && asking !== undefined && (
-          <AskHydra
-            place="header"
-            command={command}
-            notify={notify}
-            section={asking || undefined}
-            done={stopAsking}
-          />
-        )}
       </header>
       {sections.map(item => (
         <section key={item.id} className="settings-section" aria-labelledby={`settings-${item.id}`}>
@@ -502,25 +430,13 @@ export function SettingsPage({
                   view,
                 }),
               })}
-              ask={entry === 'row' ? () => setAsking(current => current === match.entry.label ? undefined : match.entry.label) : undefined}
               preview={(
-                <>
-                  <Preview
-                    entry={match.entry}
-                    state={state}
-                    view={view}
-                    save={save}
-                  />
-                  {entry === 'row' && asking === match.entry.label && (
-                    <AskHydra
-                      place="row"
-                      command={command}
-                      notify={notify}
-                      section={match.entry.label}
-                      done={stopAsking}
-                    />
-                  )}
-                </>
+                <Preview
+                  entry={match.entry}
+                  state={state}
+                  view={view}
+                  save={save}
+                />
               )}
             >
               <Control

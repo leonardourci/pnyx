@@ -1716,18 +1716,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .search-badge-remove:hover { opacity: 1; background: var(--color-hover); }
 .settings-empty { text-align: center; padding: 40px 0; font-size: var(--text-body); }
 .settings-suggestion { min-height: 22px; padding: 0 4px; font-size: var(--text-body); color: var(--color-gold); }
-.ask-hydra-context { display: inline-flex; align-items: center; gap: 6px; height: var(--control-h); padding: 0 8px; border-radius: 6px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-detail); font-weight: 600; white-space: nowrap; }
-.ask-hydra textarea { flex: 1; min-height: var(--control-h); resize: none; border: 0; background: transparent; font-size: var(--text-body); padding: 6px 2px; }
-.ask-hydra > .button { min-height: var(--control-h); }
 .about { display: flex; flex-direction: column; gap: 8px; font-size: var(--text-body); }
 .about-version { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.ask-hydra { display: flex; align-items: flex-end; gap: 8px; padding: 8px 10px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-composer); }
-.ask-hydra[data-place=row] { grid-column: 1 / -1; }
-.settings-review-note { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; margin-top: 16px; padding: 8px 12px; border: 1px dashed var(--color-gold-line); border-radius: 8px; background: var(--color-gold-wash); color: var(--color-gold); font-size: var(--text-body); }
-.settings-title { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.settings-ask { min-height: var(--control-h); gap: 6px; font-size: var(--text-body); border: 1px solid var(--color-line); }
-.setting-ask { align-self: flex-start; min-height: 24px; gap: 4px; padding: 0 6px; font-size: var(--text-detail); opacity: 0; }
-.setting-row:hover .setting-ask, .setting-ask:focus-visible { opacity: 1; }
 .setting-preview { grid-column: 2 / -1; display: flex; flex-direction: column; gap: 6px; min-width: 0; }
 .setting-preview-box { border: 1px solid var(--color-subtle); background: var(--color-background); border-radius: 8px; padding: 10px; overflow: hidden; }
 .setting-preview-caption { font-size: var(--text-detail); color: var(--color-muted); }

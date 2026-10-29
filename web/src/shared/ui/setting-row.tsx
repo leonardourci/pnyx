@@ -35,7 +35,6 @@ export function SettingRow({
   terms = [],
   changed = false,
   reset,
-  ask,
   preview,
   children,
 }: {
@@ -46,8 +45,6 @@ export function SettingRow({
   terms?: string[]
   changed?: boolean
   reset?(): void
-  // Opens a question to Hydra about this setting.
-  ask?(): void
   // A live picture of what the setting changes, drawn under the control.
   preview?: ReactNode
   children: ReactNode
@@ -64,7 +61,6 @@ export function SettingRow({
         </span>
         <span className="setting-description"><Highlight text={description} terms={terms} /></span>
         {resettable && <Button className="setting-reset" onClick={reset}>Reset to default</Button>}
-        {ask && <Button className="setting-ask" onClick={ask}><Icon name="hydra" size={14} />Ask Hydra</Button>}
       </div>
       <div className="setting-control">{children}</div>
       {preview && <div className="setting-preview">{preview}</div>}
