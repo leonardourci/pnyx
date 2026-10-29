@@ -563,7 +563,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     },
     [title],
   )
-  // Keys every Hydra shares go to the settings store; the rest stay with this board's view.
   const save = useCallback(
     async ({ patch }: { patch: Record<string, unknown> }) => {
       const entries = Object.entries(patch)

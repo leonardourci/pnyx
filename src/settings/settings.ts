@@ -124,7 +124,6 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
   return helper
 }
 
-// Validates a patch against the current settings and returns the settings it produces.
 export function patchSettings({
   current,
   input,

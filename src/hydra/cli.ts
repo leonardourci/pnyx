@@ -126,7 +126,6 @@ const CONFIG_FLAGS = [
   'command-folder',
 ] as const
 
-// --done-after-hours, --review-minutes and --helper* write the settings every Hydra shares.
 function sharedSettingFlags({
   values,
   hydraId,

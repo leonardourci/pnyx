@@ -292,7 +292,6 @@ test(
       older.older,
       undefined,
     )
-    // Focus mode is a setting every Hydra shares, so it turns off in the settings store.
     saveSettings({
       patch: { focusMode: false },
       meta,

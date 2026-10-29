@@ -274,7 +274,6 @@ export function saveSettings({
   })
 }
 
-// A Hydra's view with the shared settings applied, for every server and CLI reader.
 export function effectiveView({ state }: { state: Pick<HydraState, 'view' | 'config'> }) {
   return viewFor({
     state,
