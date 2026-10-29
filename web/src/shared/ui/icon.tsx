@@ -2,7 +2,7 @@ import { IconRobot } from '@tabler/icons-react'
 import { TABLER_ICONS } from '#web-shared/ui/icons/tabler.ts'
 import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 
-// The identity files as built URLs; Vite fingerprints them and a missing file fails the build.
+// The identity files as built URLs; identity.test.ts checks every registry entry has its file.
 const IDENTITY_FILES = import.meta.glob<string>(
   './icons/identity/*.svg',
   {
