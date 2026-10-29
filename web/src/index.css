@@ -417,7 +417,11 @@ h3 { font-weight: 600; }
 
 .draft-chip.reference { background: var(--color-gold-wash); box-shadow: inset 0 0 0 1px var(--color-gold-line); color: var(--color-gold); }
 
-.draft-chip[data-kind=project], .draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
+.draft-chip[data-kind=file], .draft-chip[data-kind=column] { cursor: default; }
+
+.draft-chip[data-kind=project] { cursor: pointer; }
+
+.draft-chip.reference[data-kind=slot] { cursor: pointer; color: var(--color-muted); font-style: italic; background: transparent; box-shadow: inset 0 0 0 1px var(--color-gold-line); }
 
 .draft-chip.reference:is([data-kind=column], [data-kind=task]), .chip.column-chip { color: var(--column-color, var(--color-slate)); background: color-mix(in srgb, var(--column-color, var(--color-slate)) 12%, transparent); box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--column-color, var(--color-slate)) 45%, transparent); }
 
