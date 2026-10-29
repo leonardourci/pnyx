@@ -1,6 +1,7 @@
+import { payload } from '#agent-host/fixtures/bundle.ts'
 import assert from 'node:assert/strict'
-import { chmodSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { fork } from 'node:child_process'
 import { connectHost } from '#agent-host/client.ts'
 import { deferred } from '#agent-host/deferred.ts'
@@ -14,72 +15,6 @@ const ROOT = join(
   '..',
 )
 const PROCESS_MS = 5000
-
-function payload({ root }: { root: string }) {
-  const source = join(
-    root,
-    'payload',
-  )
-  cpSync(
-    join(
-      ROOT,
-      'src',
-      'agent-host',
-    ),
-    join(
-      source,
-      'src',
-      'agent-host',
-    ),
-    { recursive: true },
-  )
-
-  for (const file of [
-    'workers/claude.ts',
-    'workers/codex.ts',
-    'workers/native-session.ts',
-    'workers/native-work.ts',
-    'workers/native-prompts.ts',
-    'workers/compact-command.ts',
-    'workers/input.ts',
-    'workers/model.ts',
-    'workers/provider.ts',
-    'store/storage.ts',
-    'store/paths.ts',
-    'store/errors.ts',
-  ]) {
-    const destination = join(
-      source,
-      'src',
-      file,
-    )
-    mkdirSync(
-      dirname(destination),
-      { recursive: true },
-    )
-    cpSync(
-      join(
-        ROOT,
-        'src',
-        file,
-      ),
-      destination,
-    )
-  }
-
-  writeFileSync(
-    join(
-      source,
-      'package.json',
-    ),
-    JSON.stringify({
-      type: 'module',
-      imports: { '#*.ts': './src/*.ts' },
-    }),
-  )
-
-  return source
-}
 
 test(
   'a staged host and its provider dependency bytes survive rebuilding the source payload',

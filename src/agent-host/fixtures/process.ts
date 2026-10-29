@@ -34,6 +34,11 @@ try {
         emergencyBytes: 16000,
       } : undefined,
   })
+  host.closed.then(() => {
+    if (process.connected) {
+      process.disconnect()
+    }
+  })
   process.send?.({
     type: 'ready',
     socket: host.socket,
