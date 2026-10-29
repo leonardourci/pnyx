@@ -324,6 +324,14 @@ export function HydraCard({
     tabIndex: 0,
     className: 'card-panel',
   })
+  // Only the visible tab mounts, so a hidden Activity reads no history or report.
+  const showsContext = tab === 'context'
+  const showsActivity = tab === 'activity'
+  // The title opens the brief, which exists only while Activity shows; before that it controls the Activity panel.
+  const briefControl = showsActivity ? briefId : panelId({
+    prefix: tabsId,
+    id: 'activity',
+  })
 
   // The brief lives in Activity; the title still shows or hides it, opening the card first.
   const toggleBrief = () => {
@@ -429,10 +437,10 @@ export function HydraCard({
           {!editing && (
             <CardTitle
               title={card.title}
-              briefOpen={selected && tab === 'activity' && briefOpen}
+              briefOpen={selected && showsActivity && briefOpen}
               toggleBrief={toggleBrief}
               open={() => void open({ id: card.id })}
-              aria-controls={selected ? briefId : undefined}
+              aria-controls={selected ? briefControl : undefined}
               data-card={card.id}
               data-key-scope="hydra"
               tabIndex={tabIndex}
@@ -533,80 +541,88 @@ export function HydraCard({
               ]}
             />
             <div {...panel({ id: 'context' })}>
-              {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
-              {waiting.length > 0 && (card.intent || factual) && (
-                <ContextIndex
-                  questions={waiting.length}
-                  intent={!!card.intent}
-                  state={!!factual}
-                />
-              )}
-              {hasTaskQuestion({ card }) && (
-                <TaskQuestion
-                  card={card}
-                  command={command}
-                  notify={notify}
-                  answer={answer}
-                />
-              )}
-              {card.intent && (
-                <section className="card-section card-intent" aria-label="Intent">
-                  <h3 className="eyebrow">Intent</h3>
-                  <CollapsibleText text={card.intent} />
-                </section>
-              )}
-              {factual && (
-                <section className="card-section card-current-state" aria-label="Current state">
-                  <h3 className="eyebrow">Current state</h3>
-                  <CollapsibleText text={factual.text} />
-                  <p className="muted small">{stateSource}, {relativeTime({
-                    at: factual.at,
-                    now,
-                  })}
-                  </p>
-                </section>
-              )}
-              {labels}
-              <CardLinks links={card.links} expanded />
-              <ReminderLabel card={card} />
-            </div>
-            <div {...panel({ id: 'activity' })}>
-              {!!card.ask?.length && (
-                <section className="card-section" aria-label="Your words">
-                  <h3 className="eyebrow">Your words</h3>
-                  {card.ask.map(entry => (
-                    <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
-                      <CollapsibleText text={entry.text} />
-                      <p className="muted small">{relativeTime({
-                        at: entry.at,
+              {showsContext && (
+                <>
+                  {card.copy?.state === 'flagged' && <CollapsibleText className="copy-warning" text={card.copy.reason ?? ''} />}
+                  {waiting.length > 0 && (card.intent || factual) && (
+                    <ContextIndex
+                      questions={waiting.length}
+                      intent={!!card.intent}
+                      state={!!factual}
+                    />
+                  )}
+                  {hasTaskQuestion({ card }) && (
+                    <TaskQuestion
+                      card={card}
+                      command={command}
+                      notify={notify}
+                      answer={answer}
+                    />
+                  )}
+                  {card.intent && (
+                    <section className="card-section card-intent" aria-label="Intent">
+                      <h3 className="eyebrow">Intent</h3>
+                      <CollapsibleText text={card.intent} />
+                    </section>
+                  )}
+                  {factual && (
+                    <section className="card-section card-current-state" aria-label="Current state">
+                      <h3 className="eyebrow">Current state</h3>
+                      <CollapsibleText text={factual.text} />
+                      <p className="muted small">{stateSource}, {relativeTime({
+                        at: factual.at,
                         now,
                       })}
                       </p>
-                    </div>
-                  ))}
-                </section>
+                    </section>
+                  )}
+                  {labels}
+                  <CardLinks links={card.links} expanded />
+                  <ReminderLabel card={card} />
+                </>
               )}
-              <section className="card-instructions" aria-label="Instructions">
-                <Button
-                  className="quiet card-instructions-toggle"
-                  aria-expanded={briefOpen}
-                  aria-controls={briefId}
-                  onClick={() => setBriefOpen(value => !value)}
-                ><Icon name="chevron_right" size={13} />Hydra's instructions to the worker
-                </Button>
-                <div id={briefId} className="card-brief" hidden={!briefOpen}>
-                  {card.brief?.trim()
-                    ? <CollapsibleText text={card.brief} />
-                    : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
-                </div>
-              </section>
-              <TaskReport
-                card={card}
-                command={command}
-                connected={connected}
-              />
-              {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
-              {children}
+            </div>
+            <div {...panel({ id: 'activity' })}>
+              {showsActivity && (
+                <>
+                  {!!card.ask?.length && (
+                    <section className="card-section" aria-label="Your words">
+                      <h3 className="eyebrow">Your words</h3>
+                      {card.ask.map(entry => (
+                        <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
+                          <CollapsibleText text={entry.text} />
+                          <p className="muted small">{relativeTime({
+                            at: entry.at,
+                            now,
+                          })}
+                          </p>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                  <section className="card-instructions" aria-label="Instructions">
+                    <Button
+                      className="quiet card-instructions-toggle"
+                      aria-expanded={briefOpen}
+                      aria-controls={briefId}
+                      onClick={() => setBriefOpen(value => !value)}
+                    ><Icon name="chevron_right" size={13} />Hydra's instructions to the worker
+                    </Button>
+                    <div id={briefId} className="card-brief" hidden={!briefOpen}>
+                      {card.brief?.trim()
+                        ? <CollapsibleText text={card.brief} />
+                        : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
+                    </div>
+                  </section>
+                  <TaskReport
+                    card={card}
+                    command={command}
+                    connected={connected}
+                  />
+                  {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
+                  {children}
+                </>
+              )}
             </div>
           </>
         )}
