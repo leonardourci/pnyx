@@ -3,7 +3,8 @@ import { deferred } from './deferred.ts'
 import type { HostClient } from './client.ts'
 import type { Fact, Mutation, Result, Snapshot, Summary, ToClient } from './protocol.ts'
 import { fail } from './protocol.ts'
-import { eventClass } from '#workers/native-session.ts'
+import { HydraError } from '#store/errors.ts'
+import { eventClass, nativeIdle } from '#workers/native-session.ts'
 import type { AskPermission, HostedEvent, HostedSession, PermissionDecision, TurnOutcome } from '#workers/provider.ts'
 
 const MAX_PENDING = 2048
@@ -28,6 +29,7 @@ export async function remoteSession({
   context,
   readOnly = false,
   requireOutcome = readOnly,
+  appliedFact,
 }: {
   client: HostClient
   summary: Summary
@@ -42,6 +44,7 @@ export async function remoteSession({
     permission: string
     decision: PermissionDecision
   }): Promise<string>
+  appliedFact?({ fact }: { fact: Fact }): Promise<void>
   completedAnswer({
     answerId,
     phase,
@@ -322,6 +325,7 @@ export async function remoteSession({
       return
     }
 
+    await appliedFact?.({ fact: current })
     const result = checked({
       result: await client.acknowledge({
         ref: summary.ref,
@@ -427,6 +431,42 @@ export async function remoteSession({
     replayed: () => replay.promise,
     refreshContext,
     applied,
+    async settle() {
+      await applied()
+      let requested = false
+
+      for await (const event of events()) {
+        if (typeof event === 'object' && [
+          'turn-ended',
+          'structured',
+          'permission',
+          'compaction',
+        ].includes(event.type)) {
+          fail({
+            code: 'UNAPPLIED_FACT',
+            message: 'Another native outcome requires application reconciliation before closing this session',
+          })
+        }
+
+        if (!requested && nativeIdle({ work: session.snapshot().work })) {
+          try {
+            await call({
+              operation: {
+                kind: 'close',
+                expectedIdle: true,
+              },
+            })
+            requested = true
+          } catch (error) {
+            if (!(error instanceof HydraError) || error.code !== 'DRAINING') {
+              throw error
+            }
+
+            requested = true
+          }
+        }
+      }
+    },
     fact: () => current ? {
       id: `${current.ref.epoch}:${current.seq}`,
       at: current.at,

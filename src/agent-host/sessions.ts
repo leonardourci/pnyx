@@ -1,7 +1,7 @@
 import { HydraError } from '#store/errors.ts'
 import { deferred } from './deferred.ts'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readdirSync, readFileSync } from 'node:fs'
+import { existsSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { privateDir } from '#store/storage.ts'
 import { eventClass, nativeIdle } from '#workers/native-session.ts'
@@ -12,7 +12,7 @@ import { serial } from './serial.ts'
 import { verifiedBootChange } from './boot.ts'
 import { endGroup, nativeGroup } from './groups.ts'
 import { PROTOCOL, CAPABILITIES, fail } from './protocol.ts'
-import type { AnswerReceipt, Grant, Mutation, Operation, PendingPermission, ProviderId, Result, Scope, SessionRef, Summary, ToClient, ToHost } from './protocol.ts'
+import type { AnswerReceipt, Grant, Maintenance, Mutation, Operation, PendingPermission, ProviderId, Result, Scope, SessionRef, Summary, ToClient, ToHost } from './protocol.ts'
 
 const CONTROL_TIMEOUT_MS = 30000
 const MAX_SESSIONS = 64
@@ -37,6 +37,7 @@ type Session = {
   context: string
   uncertain: Set<string>
   abort: AbortController
+  operations: number
   incoming: HostedInput[]
   incomingBytes: number
   changed: ReturnType<typeof deferred<void>>
@@ -86,10 +87,24 @@ export async function hostSessions({
     directory,
     'ledger.json',
   )
-  const intact = !existsSync(ledgerPath)
+  const previous = existsSync(ledgerPath) ? JSON.parse(readFileSync(
+    ledgerPath,
+    'utf8',
+  )) as {
+    instance: string
+    clean?: boolean
+    predecessor?: string
+  } : undefined
+  const intact = !previous
+  const predecessor = previous?.clean ? previous.instance : previous?.predecessor
+  let drain: string | undefined, stopped = false
+  let queries = 0
   replaceFile({
     path: ledgerPath,
-    text: JSON.stringify({ instance }),
+    text: JSON.stringify({
+      instance,
+      predecessor,
+    }),
   })
   const recoveredSessions = new Set<string>()
   let uncertainOpening = false
@@ -107,6 +122,7 @@ export async function hostSessions({
     context: '',
     uncertain: new Set(),
     abort: new AbortController(),
+    operations: 0,
     incoming: [],
     incomingBytes: 0,
     changed: deferred<void>(),
@@ -185,6 +201,21 @@ export async function hostSessions({
     }
 
     const entry = make({ summary })
+
+    if (predecessor && [
+      'closed',
+      'failed',
+    ].includes(summary.phase) && entry.output.pending().length === 0) {
+      rmSync(
+        join(
+          root,
+          folder.name,
+        ),
+        { recursive: true },
+      )
+      continue
+    }
+
     summary.controllerRevision = 0
 
     if (summary.recovery || ![
@@ -237,7 +268,17 @@ export async function hostSessions({
     }
   }
 
+  const requireReady = () => {
+    if (drain || stopped) {
+      fail({
+        code: 'DRAINING',
+        message: 'Native maintenance has frozen new work and configuration; answers and targeted interrupts remain available',
+      })
+    }
+  }
+
   const admission = () => {
+    requireReady()
     const ownershipUnknown = recoveredSessions.size > 0 || uncertainOpening || [...sessions.values()].some(entry => entry.output.summary.phase === 'recovery_required')
 
     if (ownershipUnknown) {
@@ -300,6 +341,7 @@ export async function hostSessions({
       }
 
       entry.output.save()
+      ledger.closed({ ref: entry.output.summary.ref })
       entry.finished.resolve()
 
       for (const answer of entry.answers.values()) {
@@ -495,6 +537,13 @@ export async function hostSessions({
         code: 'SESSION_UNAVAILABLE',
         message: 'This native session cannot accept new work or controls',
       })
+    }
+
+    if (![
+      'answer',
+      'interrupt',
+    ].includes(operation.kind)) {
+      requireReady()
     }
 
     if (operation.kind === 'input') {
@@ -702,6 +751,112 @@ export async function hostSessions({
     return { kind: 'ok' }
   }
 
+  const maintenance = (): Maintenance => {
+    const blockers: Maintenance['blockers'] = []
+
+    if (queries || uncertainOpening || recoveredSessions.size > 0) {
+      blockers.push({ reasons: ['Native queries or uncertain ownership remain'] })
+    }
+
+    for (const entry of sessions.values()) {
+      const reasons: string[] = []
+      const summary = entry.output.summary
+      const terminal = summary.phase === 'closed' || summary.phase === 'failed'
+
+      if (entry.operations || entry.uncertain.size) {
+        reasons.push('Native controls are still settling')
+      }
+
+      if (entry.incoming.length) {
+        reasons.push('Admitted inputs remain queued')
+      }
+
+      if (entry.pending.size) {
+        reasons.push('Native permission answers remain pending')
+      }
+
+      const work = entry.native?.snapshot().work
+      const unresolvedTerminal = terminal && work && (work.unsettledInputs.length > 0 || work.runningTools.length > 0 || work.pendingControls.length > 0 || work.background.knowledge !== 'known' || work.background.tasks.length > 0)
+
+      if (unresolvedTerminal) {
+        reasons.push('An ended native session still has unresolved inputs, controls or background ownership')
+      }
+
+      if (!terminal && (!entry.native || !nativeIdle({ work: entry.native.snapshot().work }))) {
+        reasons.push('Native turns, inputs, tools, queue or background work are active or unknown')
+      }
+
+      if (entry.output.pending().length) {
+        reasons.push('Critical facts await application acknowledgement')
+      }
+
+      if (entry.output.retention() !== 'healthy') {
+        reasons.push('Critical retention needs reconciliation')
+      }
+
+      if (summary.phase === 'recovery_required') {
+        reasons.push('Native ownership requires recovery')
+      }
+
+      if (reasons.length) {
+        blockers.push({
+          ref: summary.ref,
+          reasons,
+        })
+      }
+    }
+
+    return {
+      mode: stopped ? 'stopped' : drain ? 'draining' : 'ready',
+      drain,
+      blockers,
+    }
+  }
+
+  const shutdown = async (): Promise<Result> => {
+    if (maintenance().blockers.length) {
+      return {
+        kind: 'maintenance',
+        status: maintenance(),
+      }
+    }
+
+    for (const entry of sessions.values()) {
+      if (entry.output.summary.phase !== 'live') {
+        continue
+      }
+
+      entry.abort.abort()
+      entry.changed.resolve()
+      await awaitNative({
+        entry,
+        action: async () => {
+          entry.native!.close(); await entry.finished.promise
+        },
+      })
+    }
+
+    const status = maintenance()
+
+    if (status.blockers.length) {
+      return {
+        kind: 'maintenance',
+        status,
+      }
+    }
+
+    replaceFile({
+      path: ledgerPath,
+      text: JSON.stringify({
+        instance,
+        clean: true,
+      }),
+    })
+    stopped = true
+
+    return { kind: 'shutdown' }
+  }
+
   return {
     ready(): Extract<ToClient, { type: 'ready' }> {
       return {
@@ -711,6 +866,8 @@ export async function hostSessions({
         build,
         capabilities: CAPABILITIES,
         hostControllerRevision: hostControl.revision,
+        maintenance: maintenance(),
+        predecessor,
         sessions: [...sessions.values()].map(entry => structuredClone(entry.output.summary)),
         ledger: intact ? 'intact' : 'recovery_required',
       }
@@ -724,29 +881,50 @@ export async function hostSessions({
       id: string
       operation: Operation
     }): Promise<Result> {
-      if (operation.kind === 'catalog') {
-        const provider = providers[operation.provider]
-        const models = await provider.models({
-          cwd: operation.cwd,
-          env: operation.environment,
-        })
-
+      if (operation.kind === 'status') {
         return {
-          kind: 'catalog',
-          models: await provider.defaults({
+          kind: 'maintenance',
+          status: maintenance(),
+        }
+      }
+
+      if (operation.kind === 'catalog') {
+        requireReady()
+        queries++
+
+        try {
+          const provider = providers[operation.provider]
+          const models = await provider.models({
             cwd: operation.cwd,
             env: operation.environment,
-            models,
-          }),
+          })
+
+          return {
+            kind: 'catalog',
+            models: await provider.defaults({
+              cwd: operation.cwd,
+              env: operation.environment,
+              models,
+            }),
+          }
+        } finally {
+          queries--
         }
       }
 
       if (operation.kind === 'commands') {
-        const native = find({ ref: operation.ref }).native
+        requireReady()
+        queries++
 
-        return {
-          kind: 'commands',
-          commands: await native?.commands?.() ?? [],
+        try {
+          const native = find({ ref: operation.ref }).native
+
+          return {
+            kind: 'commands',
+            commands: await native?.commands?.() ?? [],
+          }
+        } finally {
+          queries--
         }
       }
 
@@ -754,7 +932,7 @@ export async function hostSessions({
 
       if (operation.kind === 'attach') {
         scope = operation.scope
-      } else if (operation.kind === 'open') {
+      } else if (operation.kind === 'open' || operation.kind === 'drain' || operation.kind === 'shutdown') {
         scope = { kind: 'host' }
       } else {
         scope = {
@@ -773,167 +951,200 @@ export async function hostSessions({
         })
       }
 
-      return ledger.call({
-        id,
-        operation,
-        run: () => control.queue.run({
-          action: async () => {
-            if (operation.kind !== 'attach') {
-              authorize({
-                control,
-                token: operation.controller,
-                peer,
-              })
-            }
+      const target = scope.kind === 'session' && operation.kind !== 'attach' ? find({ ref: scope.ref }) : undefined
 
-            if (operation.kind === 'attach') {
-              if (scope.kind === 'session') {
-                // Failed persistence remains explicit in the baseline and must permit reconciliation.
-                await Promise.allSettled([find({ ref: scope.ref }).output.flush()])
-              }
+      if (target) {
+        target.operations++
+      }
 
-              if (control.revision !== operation.expectedRevision) {
-                return fail({
-                  code: 'STALE_REVISION',
-                  message: 'Another controller attached before this barrier',
+      try {
+        return await ledger.call({
+          id,
+          operation,
+          run: () => control.queue.run({
+            action: async () => {
+              if (operation.kind !== 'attach') {
+                authorize({
+                  control,
+                  token: operation.controller,
+                  peer,
+
                 })
               }
 
-              control.revision++
-              control.generation = randomUUID()
-              control.peer = peer.id
-              control.delivered.clear()
-
-              if (scope.kind === 'session') {
-                find({ ref: scope.ref }).output.summary.controllerRevision = control.revision
-              }
-
-              const grant: Grant = {
-                scope,
-                revision: control.revision,
-                generation: control.generation,
-              }
-
-              return {
-                kind: 'attached',
-                control: grant,
-              }
-            }
-
-            if (operation.kind !== 'open') {
-              return mutate({
-                entry: find({ ref: operation.ref }),
-                operation,
-                id,
-              })
-            }
-
-            admission()
-
-            if (sessions.size >= MAX_SESSIONS) {
-              return fail({
-                code: 'SESSION_LIMIT',
-                message: 'The native host reached its session limit',
-              })
-            }
-
-            const entry = make({
-              summary: {
-                ref: {
-                  id: randomUUID(),
-                  epoch: randomUUID(),
-                },
-                provider: operation.options.provider,
-                phase: 'opening',
-                boot,
-                controllerRevision: 0,
-              },
-            })
-            sessions.set(
-              entry.output.summary.ref.id,
-              entry,
-            )
-            const options = operation.options
-            entry.context = options.context ?? ''
-            const nativeOptions: Parameters<Provider['open']>[0] = {
-              cwd: options.cwd,
-              settings: options.settings,
-              env: options.environment,
-              signal: entry.abort.signal,
-              instructions: options.instructions,
-              outputSchema: options.outputSchema,
-              allow: options.allow,
-              context: () => entry.context,
-              ownProcess({ pid }) {
-                const group = nativeGroup({ pid })
-                const summary = entry.output.summary
-                const groups = summary.groups ?? []
-
-                const recorded = groups.some(known => known.id === group.id
-                  && known.start === group.start)
-
-                if (recorded) {
-                  return
+              if (operation.kind === 'attach') {
+                if (scope.kind === 'session') {
+                  // Failed persistence remains explicit in the baseline and must permit reconciliation.
+                  await Promise.allSettled([find({ ref: scope.ref }).output.flush()])
                 }
 
-                if (groups.length >= MAX_GROUPS) {
-                  fail({
-                    code: 'OWNERSHIP_LIMIT',
-                    message: 'The native session reached its process-group limit',
+                if (control.revision !== operation.expectedRevision) {
+                  return fail({
+                    code: 'STALE_REVISION',
+                    message: 'Another controller attached before this barrier',
                   })
                 }
 
-                summary.groups = [
-                  ...groups,
-                  group,
-                ]
-                entry.output.save()
-              },
-            }
+                control.revision++
+                control.generation = randomUUID()
+                control.peer = peer.id
+                control.delivered.clear()
 
-            if (options.resume) {
-              nativeOptions.agent = {
-                provider: options.provider,
-                sessionId: options.resume.nativeId,
-                transcriptPath: options.resume.path,
-                resume: true,
+                if (scope.kind === 'session') {
+                  find({ ref: scope.ref }).output.summary.controllerRevision = control.revision
+                }
+
+                const grant: Grant = {
+                  scope,
+                  revision: control.revision,
+                  generation: control.generation,
+                }
+
+                return {
+                  kind: 'attached',
+                  control: grant,
+                }
               }
-            }
 
-            try {
-              await awaitNative({
-                entry,
-                action: async () => {
-                  entry.native = await providers[options.provider].open(nativeOptions)
-                  entry.output.summary.nativeId = entry.native.id
-                  entry.output.summary.path = entry.native.path
+              if (operation.kind === 'drain') {
+                drain ??= randomUUID()
 
-                  if (entry.output.summary.phase === 'opening') {
-                    entry.output.summary.phase = 'live'
-                  }
+                return {
+                  kind: 'maintenance',
+                  status: maintenance(),
+                }
+              }
 
-                  entry.output.save()
-                  start({ entry })
+              if (operation.kind === 'shutdown') {
+                if (!drain || operation.drain !== drain || stopped) {
+                  fail({
+                    code: 'STALE_DRAIN',
+                    message: 'Use the current native drain barrier',
+                  })
+                }
+
+                return shutdown()
+              }
+
+              if (operation.kind !== 'open') {
+                return mutate({
+                  entry: find({ ref: operation.ref }),
+                  operation,
+                  id,
+                })
+              }
+
+              admission()
+
+              if (sessions.size >= MAX_SESSIONS) {
+                return fail({
+                  code: 'SESSION_LIMIT',
+                  message: 'The native host reached its session limit',
+                })
+              }
+
+              const entry = make({
+                summary: {
+                  ref: {
+                    id: randomUUID(),
+                    epoch: randomUUID(),
+                  },
+                  provider: operation.options.provider,
+                  phase: 'opening',
+                  boot,
+                  controllerRevision: 0,
                 },
               })
-            } catch {
-              uncertainOpening = true
-              entry.output.summary.phase = 'recovery_required'
-              entry.output.save()
+              sessions.set(
+                entry.output.summary.ref.id,
+                entry,
+              )
+              const options = operation.options
+              entry.context = options.context ?? ''
+              const nativeOptions: Parameters<Provider['open']>[0] = {
+                cwd: options.cwd,
+                settings: options.settings,
+                env: options.environment,
+                signal: entry.abort.signal,
+                instructions: options.instructions,
+                outputSchema: options.outputSchema,
+                allow: options.allow,
+                context: () => entry.context,
+                ownProcess({ pid }) {
+                  const group = nativeGroup({ pid })
+                  const summary = entry.output.summary
+                  const groups = summary.groups ?? []
+  
+                  const recorded = groups.some(known => known.id === group.id
+                    && known.start === group.start)
+  
+                  if (recorded) {
+                    return
+                  }
+  
+                  if (groups.length >= MAX_GROUPS) {
+                    fail({
+                      code: 'OWNERSHIP_LIMIT',
+                      message: 'The native session reached its process-group limit',
+                    })
+                  }
+  
+                  summary.groups = [
+                    ...groups,
+                    group,
+                  ]
+                  entry.output.save()
+                },
+              }
 
-              return fail({
-                code: 'OPEN_UNKNOWN',
-                message: 'Native open failed; reconcile ownership before another admission',
-              })
-            }
+              if (options.resume) {
+                nativeOptions.agent = {
+                  provider: options.provider,
+                  sessionId: options.resume.nativeId,
+                  transcriptPath: options.resume.path,
+                  resume: true,
+                }
+              }
 
-            return {
-              kind: 'opened',
-              session: structuredClone(entry.output.summary),
-            }
-          },
-        }),
-      })
+              try {
+                await awaitNative({
+                  entry,
+                  action: async () => {
+                    entry.native = await providers[options.provider].open(nativeOptions)
+                    entry.output.summary.nativeId = entry.native.id
+                    entry.output.summary.path = entry.native.path
+
+                    if (entry.output.summary.phase === 'opening') {
+                      entry.output.summary.phase = 'live'
+                    }
+
+                    entry.output.save()
+                    start({ entry })
+                  },
+                })
+              } catch {
+                uncertainOpening = true
+                entry.output.summary.phase = 'recovery_required'
+                entry.output.save()
+
+                return fail({
+                  code: 'OPEN_UNKNOWN',
+                  message: 'Native open failed; reconcile ownership before another admission',
+                })
+              }
+
+              return {
+                kind: 'opened',
+                session: structuredClone(entry.output.summary),
+              }
+            },
+          }),
+        })
+      } finally {
+        if (target) {
+          target.operations--
+        }
+      }
     },
     result({ id }: { id: string }) {
       return ledger.lookup({ id })

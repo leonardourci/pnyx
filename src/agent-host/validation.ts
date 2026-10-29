@@ -79,7 +79,13 @@ export function readFrame({ text }: { text: string }): ToHost {
     const scope = object({ value: op?.scope })
     const options = object({ value: op?.options })
 
-    if (op?.kind === 'attach' && scope) {
+    if (op?.kind === 'status') {
+      valid = true
+    } else if (op?.kind === 'drain') {
+      valid = name({ value: op.controller })
+    } else if (op?.kind === 'shutdown') {
+      valid = name({ value: op.controller }) && name({ value: op.drain }) && op.when === 'quiescent'
+    } else if (op?.kind === 'attach' && scope) {
       valid = integer({ value: op.expectedRevision }) && (scope.kind === 'host'
         || scope.kind === 'session' && ref({ value: scope.ref }))
     } else if (op?.kind === 'open' && options) {

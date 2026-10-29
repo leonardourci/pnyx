@@ -9,7 +9,7 @@ export const CAPABILITIES = [
   'critical-outbox',
   'live-owners',
   'volatile-inputs',
-]
+  'quiescent-maintenance',]
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 export const MAX_SOCKET_BYTES = 2 * MAX_FRAME_BYTES
 export type ProviderId = 'claude-code' | 'codex'
@@ -84,7 +84,26 @@ export type Mutation = {
     expectedIdle: boolean
   }
 )
+export type Maintenance = {
+  mode: 'ready' | 'draining' | 'stopped'
+  drain?: string
+  blockers: {
+    ref?: SessionRef
+    reasons: string[]
+  }[]
+}
 export type Operation = Mutation
+  | { kind: 'status' }
+  | {
+    kind: 'drain'
+    controller: string
+  }
+  | {
+    kind: 'shutdown'
+    controller: string
+    drain: string
+    when: 'quiescent'
+  }
   | {
     kind: 'attach'
     scope: Scope
@@ -111,9 +130,14 @@ export type AnswerReceipt = {
   phase: 'received' | 'submitted' | 'aborted' | 'failed' | 'unknown'
 }
 export type Result = {
-  kind: 'attached'
-  control: Grant
+  kind: 'maintenance'
+  status: Maintenance
 }
+  | { kind: 'shutdown' }
+  | {
+    kind: 'attached'
+    control: Grant
+  }
   | {
     kind: 'opened'
     session: Summary
@@ -208,6 +232,8 @@ export type ToClient = {
   build: string
   capabilities: string[]
   hostControllerRevision: number
+  maintenance: Maintenance
+  predecessor?: string
   sessions: Summary[]
   ledger: 'intact' | 'recovery_required'
 }

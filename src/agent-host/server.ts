@@ -8,6 +8,7 @@ import type { Provider } from '#workers/provider.ts'
 import type { ProviderId, ToClient } from './protocol.ts'
 import { CAPABILITIES, MAX_FRAME_BYTES, MAX_SOCKET_BYTES, PROTOCOL, errorResult, fail } from './protocol.ts'
 import type { OutputLimits } from './output.ts'
+import { deferred } from './deferred.ts'
 import { readFrame } from './validation.ts'
 
 const HANDSHAKE_MS = 5000
@@ -52,6 +53,7 @@ export async function serveAgentHost({
     throw error
   }
 
+  const closed = deferred<void>()
   const sockets = new Set<Socket>()
   const server = createServer(socket => {
     sockets.add(socket)
@@ -172,13 +174,30 @@ export async function serveAgentHost({
         result = errorResult({ error })
       }
 
-      send({
-        frame: {
+      if (result.kind === 'shutdown') {
+        const wire = `${JSON.stringify({
           type: 'reply',
           id: frame.id,
           result,
-        },
-      })
+        })}\n`
+        socket.write(
+          wire,
+          () => {
+            closing = close()
+            closing.catch(() => {
+              process.exitCode = 1
+            })
+          },
+        )
+      } else {
+        send({
+          frame: {
+            type: 'reply',
+            id: frame.id,
+            result,
+          },
+        })
+      }
     }
 
     socket.on(
@@ -291,11 +310,13 @@ export async function serveAgentHost({
 
       await new Promise<void>(resolve => server.close(() => resolve()))
       claim.release()
+      closed.resolve()
     }
   }
 
   return {
     socket: claim.socket,
+    closed: closed.promise,
     close() {
       if (!closing) {
         closing = close()

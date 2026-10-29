@@ -1,9 +1,10 @@
 import { deferred } from './deferred.ts'
 import { createHash } from 'node:crypto'
-import type { Operation, Result } from './protocol.ts'
+import type { Operation, Result, SessionRef } from './protocol.ts'
 import { errorResult, fail } from './protocol.ts'
 
 const MAX_REQUESTS = 10000
+const CONTROL_RESERVE = 1000
 
 function ordered({ value }: { value: unknown }): unknown {
   if (Array.isArray(value)) {
@@ -84,7 +85,9 @@ export function requestLedger({ intact }: { intact: boolean }) {
         return previous.pending
       }
 
-      if (entries.size >= MAX_REQUESTS) {
+      const admission = operation.kind === 'open' || operation.kind === 'input'
+
+      if (entries.size >= MAX_REQUESTS + (admission ? 0 : CONTROL_RESERVE)) {
         fail({
           code: 'LEDGER_FULL',
           message: 'The request ledger is full; reconcile before admitting more work',
@@ -111,6 +114,13 @@ export function requestLedger({ intact }: { intact: boolean }) {
       completion.resolve(entry.result)
 
       return entry.result
+    },
+    closed({ ref }: { ref: SessionRef }) {
+      for (const entry of entries.values()) {
+        if (entry.result?.kind === 'opened' && entry.result.session.ref.id === ref.id && entry.result.session.ref.epoch === ref.epoch) {
+          entry.result.session.phase = 'closed'
+        }
+      }
     },
     update({
       id,
