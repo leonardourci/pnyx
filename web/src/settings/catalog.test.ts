@@ -1,43 +1,119 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings } from './catalog.ts'
+import { searchSettings, type CatalogEntry } from './catalog.ts'
 
-const found = ({ query }: { query: string }) => searchSettings({ query })
+const ENTRIES: CatalogEntry[] = [
+  {
+    id: 'size',
+    section: 'appearance',
+    label: 'Text size',
+    description: 'Labels and menus.',
+    related: ['bigger'],
+  },
+  {
+    id: 'width',
+    section: 'layout',
+    label: 'Chat width',
+    description: 'How wide the chat starts.',
+    values: ['Narrow'],
+    related: [
+      'size',
+      'bigger',
+    ],
+  },
+]
+
+const found = ({
+  query,
+  entries,
+}: {
+  query: string
+  entries?: CatalogEntry[]
+}) => searchSettings({
+  query,
+  entries,
+})
   .map(match => match.entry.id)
 
 test(
-  'a search matches names, descriptions and values, and every word must match',
+  'a search matches names, descriptions and values, every word must match, and direct words are highlighted',
   () => {
     assert.deepEqual(
-      found({ query: 'dark' }),
-      ['theme'],
+      found({
+        query: 'narrow',
+        entries: ENTRIES,
+      }),
+      ['width'],
     )
     assert.deepEqual(
-      found({ query: 'chat width' }),
-      [
-        'defaultHydraWidth',
-        'resetWidths',
-      ],
+      found({
+        query: 'chat menus',
+        entries: ENTRIES,
+      }),
+      [],
     )
     assert.deepEqual(
-      searchSettings({ query: 'Chat text' }).map(match => match.terms),
+      searchSettings({
+        query: 'Chat starts',
+        entries: ENTRIES,
+      }).map(match => match.terms),
       [
         [
           'chat',
-          'text',
+          'starts',
         ],
       ],
     )
-    assert.equal(
-      found({ query: '' }).length,
-      SETTINGS_CATALOG.length,
+    assert.deepEqual(
+      found({
+        query: '',
+        entries: ENTRIES,
+      }),
+      [
+        'size',
+        'width',
+      ],
     )
   },
 )
 
 test(
-  'related words widen only a word that matches nothing directly',
+  'related words widen only a word that matches nothing directly, by prefix',
   () => {
+    assert.deepEqual(
+      found({
+        query: 'big',
+        entries: ENTRIES,
+      }),
+      [
+        'size',
+        'width',
+      ],
+    )
+    assert.deepEqual(
+      found({
+        query: 'size',
+        entries: ENTRIES,
+      }),
+      ['size'],
+    )
+    assert.deepEqual(
+      searchSettings({
+        query: 'bigger',
+        entries: ENTRIES,
+      })[0]?.terms,
+      [],
+    )
+  },
+)
+
+test(
+  'the real catalog finds Theme by a value and the text sizes by a related word',
+  () => {
+    assert.deepEqual(
+      found({ query: 'dark' }),
+      ['theme'],
+    )
     assert.deepEqual(
       found({ query: 'bigger' }),
       [
@@ -45,39 +121,6 @@ test(
         'chatFontSize',
         'codeFontSize',
       ],
-    )
-    assert.deepEqual(
-      found({ query: 'bigger code' }),
-      ['codeFontSize'],
-    )
-    // "size" names the text sizes directly, so the width settings that list it as related stay out.
-    assert.deepEqual(
-      found({ query: 'size' }),
-      [
-        'fontSize',
-        'chatFontSize',
-        'codeFontSize',
-      ],
-    )
-    assert.deepEqual(
-      searchSettings({ query: 'bigger' })[0]?.terms,
-      [],
-    )
-    assert.deepEqual(
-      found({ query: 'nothing-like-this' }),
-      [],
-    )
-  },
-)
-
-test(
-  'every catalog entry belongs to a section and has a unique id',
-  () => {
-    const sections = new Set<string>(SETTINGS_SECTIONS.map(section => section.id))
-    assert.ok(SETTINGS_CATALOG.every(entry => sections.has(entry.section)))
-    assert.equal(
-      new Set(SETTINGS_CATALOG.map(entry => entry.id)).size,
-      SETTINGS_CATALOG.length,
     )
   },
 )

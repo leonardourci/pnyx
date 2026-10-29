@@ -1,4 +1,4 @@
-// Every setting the Settings page shows, with the words a search finds it by. The Oracle reads the same list.
+// Every setting the Settings page shows, with the words a search finds it by, for the Oracle to read too.
 export const SETTINGS_SECTIONS = [
   {
     id: 'appearance',
