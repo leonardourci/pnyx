@@ -259,8 +259,7 @@ export function editHydra({
   commands.hydra(args)
 }
 
-// Once at start: a Hydra still named after its id, or not named at all, takes a Greek name and icon.
-// A Firstmate Hydra keeps its home's name, and an unreadable Hydra is left for opening to report.
+// A Firstmate Hydra keeps its home's name; an unreadable Hydra is left for opening to report.
 export function nameUnnamedHydras(): void {
   withRegistryLock({
     fn: () => {

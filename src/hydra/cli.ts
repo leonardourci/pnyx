@@ -414,7 +414,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   })
 }
 
-// Names of every other Hydra, so a new one picks an unused name. An unreadable Hydra counts as none: a repeated name is harmless.
+// An unreadable Hydra counts as none: a repeated name is harmless.
 export function otherHydraNames({ id }: { id: string }): string[] {
   return hydraIds().filter(other => other !== id)
     .flatMap(other => {
