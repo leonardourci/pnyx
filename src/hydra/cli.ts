@@ -38,6 +38,9 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
+import { readSettings, saveSettings } from '#settings/store.ts'
+import type { Settings } from '#settings/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
 
 export async function home(): Promise<Output> {
   hideDone({ hydraId: DEFAULT_HYDRA })
@@ -111,6 +114,85 @@ export async function home(): Promise<Output> {
   }
 
   return out
+}
+
+// The flags that change this Hydra's own config; the rest of hydra set are shared settings.
+const CONFIG_FLAGS = [
+  'name',
+  'identity',
+  'session',
+  'firstmate',
+  'command',
+  'command-folder',
+] as const
+
+// --done-after-hours, --review-minutes and --helper* write the settings every Hydra shares.
+function sharedSettingFlags({
+  values,
+  hydraId,
+}: {
+  values: Record<string, string | boolean | undefined>
+  hydraId: string
+}): Partial<Settings> | undefined {
+  const patch: Partial<Settings> = {}
+  const done = values['done-after-hours']
+
+  if (done !== undefined) {
+    const raw = String(done).trim()
+    const hours = Number(raw)
+
+    if (raw !== 'off' && (!raw || !Number.isFinite(hours) || hours < 0 || hours > MAX_DONE_HOURS)) {
+      throw new HydraError({
+        message: `--done-after-hours takes off or hours from 0 to ${MAX_DONE_HOURS} (0 hides Done cards right away)`,
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    patch.doneAfterHours = raw === 'off' ? 'off' : hours
+  }
+
+  if (values['review-minutes'] !== undefined) {
+    const raw = String(values['review-minutes']).trim()
+
+    if (!raw) {
+      throw new HydraError({
+        message: '--review-minutes takes a number of minutes (0 turns reviews off)',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    patch.reviewMinutes = Number(raw)
+  }
+
+  if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
+    const current = readSettings().settings.helper
+    const agent = typeof current === 'object' ? current : undefined
+    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
+
+    if (harness === 'off' || harness === 'auto') {
+      patch.helper = harness
+    } else if (harness === 'claude' || harness === 'codex') {
+      const previous = agent?.harness === harness ? agent : undefined
+      const effort = values['helper-effort'] ?? previous?.effort
+      const helper: AgentConfig = {
+        harness,
+        model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
+      }
+
+      if (effort !== undefined) {
+        helper.effort = String(effort)
+      }
+
+      patch.helper = helper
+    } else {
+      throw new HydraError({
+        message: '--helper takes auto, off, claude or codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+  }
+
+  return Object.keys(patch).length ? patch : undefined
 }
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
@@ -206,6 +288,29 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   }
 
   const m = meta({ values })
+  const shared = sharedSettingFlags({
+    values,
+    hydraId: id,
+  })
+  const saved = shared ? saveSettings({
+    patch: shared,
+    meta: {
+      ...m,
+      ifRevision: undefined,
+    },
+  }) : undefined
+  const configFlags = CONFIG_FLAGS.some(flag => values[flag] !== undefined)
+
+  if (saved && action === 'set' && !configFlags) {
+    return saved.skipped ? {
+      event: `none: ${saved.skipped}`,
+      settingsRevision: saved.revision,
+    } : {
+      changed: saved.entry!.after,
+      settingsRevision: saved.revision,
+      help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
+    }
+  }
 
   return commit({
     hydraId: id,
@@ -276,65 +381,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         id,
         name: String(values.name ?? current.name),
         hydra,
-      }
-
-      if (values['done-after-hours'] !== undefined) {
-        const raw = String(values['done-after-hours']).trim()
-        const hours = Number(raw)
-
-        if (!raw || !Number.isFinite(hours) || hours < 0 || hours > MAX_DONE_HOURS) {
-          throw new HydraError({
-            message: `--done-after-hours must be a number from 0 to ${MAX_DONE_HOURS} (0 keeps Done cards visible)`,
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        data.doneAfterHours = hours
-      }
-
-      if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
-        const harness = values.helper ?? (current.helper && current.helper.harness) ?? current.hydra.agent?.harness ?? 'claude'
-
-        if (harness === 'off') {
-          data.helper = false
-        } else if (harness === 'auto') {
-          delete data.helper
-        } else if (harness === 'claude' || harness === 'codex') {
-          let previous: Exclude<typeof current.helper, false>
-
-          if (current.helper && current.helper.harness === harness) {
-            previous = current.helper
-          }
-
-          data.helper = {
-            harness,
-            model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
-          }
-          const effort = values['helper-effort'] ?? previous?.effort
-
-          if (effort !== undefined) {
-            data.helper.effort = String(effort)
-          }
-        } else {
-          throw new HydraError({
-            message: '--helper takes auto, off, claude or codex',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-      }
-
-      if (values['review-minutes'] !== undefined) {
-        const minutes = Number(values['review-minutes'])
-
-        if (!String(values['review-minutes']).trim() || !Number.isFinite(minutes) || minutes < 0
-          || minutes * 60_000 > 2_147_483_647) {
-          throw new HydraError({
-            message: '--review-minutes must be a non-negative number within the timer range (0 turns reviews off)',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        data.reviewMinutes = minutes
       }
 
       delete data.command
