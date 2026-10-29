@@ -14,6 +14,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { changesPath, configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
+import type { ProposalStatus } from './dispatch-apply.ts'
 
 type Receipt = Record<string, unknown>
 
@@ -857,6 +858,21 @@ test(
         'codex:docs',
       ],
     })
+    assert.deepEqual(
+      (rule({ args: ['list'] }).proposals as ProposalStatus[]).map(({
+        outOfDate,
+        reason,
+      }) => ({
+        outOfDate,
+        reason,
+      })),
+      [
+        {
+          outOfDate: true,
+          reason: 'This proposal no longer checks: /main codex:docs is not a registered account',
+        },
+      ],
+    )
     assert.throws(
       () => rule({
         args: [

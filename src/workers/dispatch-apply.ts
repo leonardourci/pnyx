@@ -355,23 +355,59 @@ export interface ProposalStatus {
   token: string
   summary: string
   changes: DispatchChange[]
+  // Set, with its reason, once the proposal can only be dismissed.
   outOfDate: boolean
+  reason?: string
 }
 
 // Proposals from before dispatch became one patchable document carry whole files, so they can only be dismissed.
+function proposalProblem({
+  document,
+  proposal,
+}: {
+  document: DispatchDocument
+  proposal: DispatchProposal
+}): string | undefined {
+  if (proposal.kind !== 'dispatch' || outOfDate({
+    document,
+    changes: JSON.parse(proposal.before) as DispatchChange[],
+  })) {
+    return 'This proposal is out of date: heads dispatch changed since Hydra proposed it'
+  }
+
+  const errors = newErrors({
+    before: document,
+    after: mergePatch({
+      target: document,
+      patch: JSON.parse(proposal.value),
+    }) as DispatchDocument,
+  })
+
+  return errors.length ? `This proposal no longer checks: ${errors.map(found => `${found.path} ${found.problem}`).join('; ')}` : undefined
+}
+
 export function proposalStatus({ state }: { state: HydraState }): ProposalStatus[] {
   const document = readDocument()
 
   return (state.dispatchProposals ?? []).filter(proposal => proposal.kind !== 'command')
-    .map(proposal => ({
-      token: proposal.token,
-      summary: proposal.summary,
-      changes: proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : [],
-      outOfDate: proposal.kind !== 'dispatch' || outOfDate({
+    .map(proposal => {
+      const reason = proposalProblem({
         document,
-        changes: JSON.parse(proposal.before) as DispatchChange[],
-      }),
-    }))
+        proposal,
+      })
+      const status: ProposalStatus = {
+        token: proposal.token,
+        summary: proposal.summary,
+        changes: proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : [],
+        outOfDate: reason !== undefined,
+      }
+
+      if (reason) {
+        status.reason = reason
+      }
+
+      return status
+    })
 }
 
 export function resolveProposal({
@@ -428,30 +464,14 @@ export function resolveProposal({
         }
 
         const document = lockedDocument()
-
-        if (proposal.kind !== 'dispatch' || outOfDate({
+        const problem = proposalProblem({
           document,
-          changes,
-        })) {
-          throw new HydraError({
-            message: 'This proposal is out of date: heads dispatch changed since Hydra proposed it',
-            code: 'CONFLICT',
-            help: ['Dismiss it and ask Hydra to propose the change again'],
-          })
-        }
-
-        const after = mergePatch({
-          target: document,
-          patch: JSON.parse(proposal.value),
-        }) as DispatchDocument
-        const errors = newErrors({
-          before: document,
-          after,
+          proposal,
         })
 
-        if (errors.length) {
+        if (problem) {
           throw new HydraError({
-            message: `This proposal no longer checks: ${errors.map(found => `${found.path} ${found.problem}`).join('; ')}`,
+            message: problem,
             code: 'CONFLICT',
             help: ['Dismiss it and ask Hydra to propose the change again'],
           })
@@ -465,7 +485,10 @@ export function resolveProposal({
             actor: meta.actor,
             reason: proposal.summary,
             changes,
-            document: after,
+            document: mergePatch({
+              target: document,
+              patch: JSON.parse(proposal.value),
+            }) as DispatchDocument,
           },
         })
       }
