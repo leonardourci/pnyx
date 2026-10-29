@@ -315,15 +315,6 @@ export const IDENTITY_ICONS: IdentityIcon[] = [
     kind: 'column',
   },
   {
-    id: 'stop',
-    label: 'Stop',
-    file: 'stop.svg',
-    author: 'Lorc',
-    license: GAME_ICONS_LICENSE,
-    source: 'https://game-icons.net/1x1/lorc/hand.html',
-    kind: 'control',
-  },
-  {
     id: 'mode',
     label: 'Permission mode',
     file: 'mode.svg',
