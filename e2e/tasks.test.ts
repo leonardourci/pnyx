@@ -6,7 +6,7 @@ import { taskReadiness } from '#tasks/dependencies.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { boardReview } from '#hydra/review.ts'
 import type { HydraState } from '#app/model.ts'
-import { cardStatus, currentState, statusLabel } from '#tasks/card-status.ts'
+import { cardStatus, currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -682,11 +682,30 @@ test(
 )
 
 test(
-  'a card carries the Intent Hydra wrote, follows the worker\'s newest words and asks you to merge',
+  'a card carries its Intent, follows the worker\'s newest words and asks you to merge',
   async () => {
     const s = await pnyx.scenario()
     const app = await s.project({ name: 'card-context-app' })
     const goal = 'You want unknown pages to go to their Hydra\'s home instead of breaking the page.'
+    const create = ({ value }: { value: string }) => [
+      'task',
+      'create',
+      '--title',
+      'Refused goal',
+      '--goal',
+      value,
+    ]
+
+    for (const value of [
+      ' \n ',
+      'x'.repeat(4001),
+    ]) {
+      assert.equal(
+        await s.ownerRefused({ args: create({ value }) }),
+        'VALIDATION_ERROR',
+      )
+    }
+
     await s.owner({
       args: [
         'task',
@@ -712,6 +731,16 @@ test(
         what: 'the Intent on the card',
         check: ({ state }) => card({ state })?.goal === goal,
       })
+      assert.match(
+        await s.owner({
+          args: [
+            'task',
+            'show',
+            'redirect',
+          ],
+        }),
+        /goal: .*unknown pages/,
+      )
       await s.owner({
         args: [
           'task',
@@ -735,6 +764,10 @@ test(
         what: 'the worker\'s note as the current state',
         check: ({ state }) => currentState({ card: card({ state })! })?.text === 'Checking what an unknown address does today.',
       })
+      const progress = {
+        text: 'Redirect built; opening the pull request next.',
+        source: 'progress',
+      }
       await worker.run({
         args: [
           'hydra',
@@ -744,12 +777,16 @@ test(
           '--kind',
           'progress',
           '--text',
-          'Redirect built; opening the pull request next.',
+          progress.text,
         ],
       })
       await page.shows({
         what: 'the newer progress report as the current state',
-        check: ({ state }) => currentState({ card: card({ state })! })?.source === 'progress',
+        check: ({ state }) => {
+          const said = currentState({ card: card({ state })! })
+
+          return said?.text === progress.text && said.source === progress.source
+        },
       })
       const url = s.pullRequest({
         number: 147,
@@ -768,11 +805,22 @@ test(
         what: 'the merge question reading Needs you',
         check: ({ state }) => {
           const task = card({ state })!
+          const merge = task.asks?.filter(ask => ask.kind === 'merge').map(ask => ask.id) ?? []
 
-          return task.asks?.some(ask => ask.kind === 'merge')
+          return merge.length === 1
+            && waitingQuestions({ card: task }).map(question => question.ask?.id)
+              .join() === merge.join()
             && statusLabel({ status: cardStatus({ card: task }) }) === 'Needs you'
         },
       })
+      assert.deepEqual(
+        currentState({ card: s.task({ key: 'redirect' }) }),
+        {
+          ...progress,
+          at: s.task({ key: 'redirect' }).progress!.at,
+        },
+        'a pull request link is not the task\'s state',
+      )
     } finally {
       page.close()
     }

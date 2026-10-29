@@ -6,6 +6,7 @@ import { openDecisions } from '#tasks/decisions.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 import { cardQuestion } from '#tasks/questions.ts'
+import { cardStatus, statusLabel } from '#tasks/card-status.ts'
 
 test(
   'a worker’s permission request waits on its task in Needs you until Hydra or the owner decides it once, the worker gets that decision and its answers, a Codex worker’s turn permissions grant only what it asked, and a restart expires what was left waiting',
@@ -376,6 +377,10 @@ test(
     assert.equal(
       cardQuestion({ card: s.task({ key: 'clean' }) })?.delivery?.decision?.answer,
       'Retain for 30 days.',
+    )
+    assert.equal(
+      statusLabel({ status: cardStatus({ card: s.task({ key: 'clean' }) }) }),
+      'Answer not sent',
     )
     await s.owner({
       args: [
