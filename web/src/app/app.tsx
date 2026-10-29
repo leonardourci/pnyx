@@ -1026,6 +1026,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
+  const askInChat = ({ text }: { text: string }) => {
+    setPage('hydra')
+    setDrafts(drafts => ({
+      ...drafts,
+      [HYDRA_CARD]: `${drafts[HYDRA_CARD] || ''}\n${text}`.trimStart(),
+    }))
+    requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
+  }
+
   const opening = navigation.hydras.find(h => h.id === loading)
   const currentHydra = shownHydra
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
@@ -1342,6 +1351,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
               notify={notify}
               upgrade={upgrade}
               startUpgrade={startUpgrade}
+              askInChat={askInChat}
             />
           )}
         </main>

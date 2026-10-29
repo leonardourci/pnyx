@@ -1,22 +1,22 @@
-import { useState, type Ref } from 'react'
+import { useState } from 'react'
 import type { Command } from '#web-app/connection.ts'
 import { Button, Textarea } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
-// A small composer pinned to the page's foot: the message goes to Hydra's chat, opened with the section it asks about.
+// A small composer that sends one message to Hydra's chat, opened with the setting or section it asks about.
 export function AskHydra({
+  place,
   command,
   notify,
   section,
-  clearSection,
-  inputRef,
+  done,
 }: {
+  place: 'header' | 'row'
   command: Command
   notify({ text }: { text: string }): void
-  // The section an Ask Hydra button named; none means all of Settings.
+  // The setting or section asked about; none means all of Settings.
   section?: string
-  clearSection(): void
-  inputRef?: Ref<HTMLTextAreaElement>
+  done(): void
 }) {
   const [
     text,
@@ -48,7 +48,7 @@ export function AskHydra({
         ],
       })
       setText('')
-      clearSection()
+      done()
       notify({ text: 'Sent to Hydra’s chat.' })
     } catch (error) {
       notify({ text: error instanceof Error ? error.message : String(error) })
@@ -58,20 +58,24 @@ export function AskHydra({
   }
 
   return (
-    <form className="ask-hydra" aria-label="Ask Hydra" action={send}>
-      <span className="ask-hydra-context">
-        <Icon name="hydra" size={16} />{context}
-        {section && <Button aria-label="Ask about all of Settings" onClick={clearSection}><Icon name="close" size={12} /></Button>}
-      </span>
+    <form
+      className="ask-hydra"
+      data-place={place}
+      aria-label="Ask Hydra"
+      action={send}
+    >
+      <span className="ask-hydra-context"><Icon name="hydra" size={16} />{context}</span>
       <Textarea
-        ref={inputRef}
+        autoFocus
         rows={1}
-        aria-label="Ask Hydra about settings"
-        placeholder="Ask Hydra to change a setting"
+        aria-label={`Ask Hydra about ${section ?? 'settings'}`}
+        placeholder="Ask Hydra to change or explain this"
         value={text}
         onChange={event => setText(event.target.value)}
         onKeyDown={event => {
-          if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
+          if (event.key === 'Escape') {
+            done()
+          } else if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
             event.preventDefault()
             event.currentTarget.form?.requestSubmit()
           }
@@ -84,6 +88,7 @@ export function AskHydra({
         disabled={!message || sending}
       ><Icon name="send" size={16} />
       </Button>
+      <Button aria-label="Close" onClick={done}><Icon name="close" size={14} /></Button>
     </form>
   )
 }

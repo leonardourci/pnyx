@@ -27,7 +27,7 @@ function Highlight({
   ) => index % 2 ? <mark key={index}>{part}</mark> : part)
 }
 
-// One setting: its icon, name, description and control, with a reset while it differs from its default.
+// One setting: its icon, name, description, control and live preview, with a reset while it differs from its default.
 export function SettingRow({
   icon,
   label,
@@ -35,6 +35,8 @@ export function SettingRow({
   terms = [],
   changed = false,
   reset,
+  ask,
+  preview,
   children,
 }: {
   icon: string
@@ -44,6 +46,10 @@ export function SettingRow({
   terms?: string[]
   changed?: boolean
   reset?(): void
+  // Opens a question to Hydra about this setting.
+  ask?(): void
+  // A live picture of what the setting changes, drawn under the control.
+  preview?: ReactNode
   children: ReactNode
 }) {
   const resettable = changed && reset
@@ -58,8 +64,10 @@ export function SettingRow({
         </span>
         <span className="setting-description"><Highlight text={description} terms={terms} /></span>
         {resettable && <Button className="setting-reset" onClick={reset}>Reset to default</Button>}
+        {ask && <Button className="setting-ask" onClick={ask}><Icon name="hydra" size={14} />Ask Hydra</Button>}
       </div>
       <div className="setting-control">{children}</div>
+      {preview && <div className="setting-preview">{preview}</div>}
     </div>
   )
 }
