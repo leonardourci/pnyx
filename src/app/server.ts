@@ -10,7 +10,8 @@ import { steeringToFollow } from '#workers/inbox-follow-up.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './save-receipts.ts'
-import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '#hydra/images.ts'
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
+import { hydraImageFile } from '#hydra/image-files.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from '#tasks/reminders.ts'
@@ -1479,10 +1480,10 @@ export async function mountOwnedHydra({
       })
     }
 
-    const attachment = /^\/attachments\/([^/]+)$/.exec(path)?.[1]
+    const image = /^\/((?:attachments|copies)\/.+)$/.exec(path)?.[1]
 
     // An <img> cannot send a header, so the page passes its token in the query, as for the WebSocket.
-    if (attachment !== undefined) {
+    if (image !== undefined) {
       if (!authorized({
         given: new URL(
           req.url ?? '/',
@@ -1500,25 +1501,25 @@ export async function mountOwnedHydra({
       }
 
       try {
-        if (!ATTACHMENT_NAME.test(attachment)) {
-          throw new Error('not an attachment')
-        }
-
-        const body = readFileSync(join(
+        const served = hydraImageFile({
           dir,
-          'attachments',
-          attachment,
-        ))
+          route: image,
+        })
+
+        if (!served) {
+          throw new Error('not an image this Hydra serves')
+        }
 
         return void res.writeHead(
           200,
           {
-            'content-type': imageType({ path: attachment })!,
+            'content-type': served.type,
             'x-content-type-options': 'nosniff',
-            'cache-control': 'private, max-age=31536000, immutable',
+            // A stored attachment never changes; an image in a task copy can.
+            'cache-control': served.stored ? 'private, max-age=31536000, immutable' : 'private, no-cache',
           },
         )
-          .end(body)
+          .end(readFileSync(served.file))
       } catch {
         return reply({
           res,
