@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -13,12 +13,16 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { HydraError } from '#store/errors.ts'
+import { withRegistryLock } from '#store/storage.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { changesPath, configPath, effectiveDispatch, readTemplate, type HeadsDispatch } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
 import type { ProposalStatus } from './dispatch-apply.ts'
 
 type Receipt = Record<string, unknown>
+
+// Well under the registry lock's 5 s wait, so a read that waited for the lock fails.
+const NO_WAIT_MS = 1000
 
 function lab() {
   const root = mkdtempSync(join(
@@ -524,6 +528,38 @@ test(
     assert.equal(
       show().document.rules.build?.when,
       'Second wording',
+    )
+  },
+)
+
+test(
+  'a read while another holder has the registry lock returns the logged document at once and leaves the files for later',
+  () => {
+    lab()
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'Logged wording',
+      ],
+    })
+    rmSync(configPath())
+    const started = performance.now()
+    const when = withRegistryLock({ fn: () => effectiveDispatch().dispatch.rules.build?.when })
+    assert.ok(performance.now() - started < NO_WAIT_MS)
+    assert.equal(
+      when,
+      'Logged wording',
+    )
+    assert.equal(
+      existsSync(configPath()),
+      false,
+    )
+    effectiveDispatch()
+    assert.equal(
+      dispatchFile().rules.build?.when,
+      'Logged wording',
     )
   },
 )
