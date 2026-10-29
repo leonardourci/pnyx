@@ -10,6 +10,8 @@ import { withRegistryLock } from '#store/storage.ts'
 import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { liveTask } from '#tasks/select.ts'
+import { pickName } from '#hydra/hydra-names.ts'
+import { otherHydraNames } from '#hydra/cli.ts'
 
 export interface HydraProjectSummary {
   name: string
@@ -23,6 +25,7 @@ export interface HydraSummary {
   identity?: string
   id: string
   name: string
+  icon?: string
   hydra: string
   projects: HydraProjectSummary[]
 }
@@ -140,6 +143,7 @@ function summarize({ id }: { id: string }): {
           seq,
         ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
         name: config.name,
+        ...(config.icon ? { icon: config.icon } : {}),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         projects,
       },
@@ -158,9 +162,11 @@ function summarize({ id }: { id: string }): {
 
 export function createHydra({
   name,
+  icon,
   attempt,
 }: {
   name: string
+  icon?: string
   attempt?: string
 }): string {
   return withRegistryLock({
@@ -189,8 +195,14 @@ export function createHydra({
       commands.hydra([
         'create',
         id,
-        '--name',
-        name,
+        ...(name ? [
+          '--name',
+          name,
+        ] : []),
+        ...(icon ? [
+          '--icon',
+          icon,
+        ] : []),
         '--actor',
         'web',
         ...(eventId ? [
@@ -204,20 +216,68 @@ export function createHydra({
   })
 }
 
-export function renameHydra({
+export function editHydra({
   id,
   name,
+  icon,
 }: {
   id: string
-  name: string
+  name?: string
+  icon?: string
 }): void {
   commands.hydra([
     'set',
     '--hydra',
     id,
-    '--name',
-    name,
+    ...(name ? [
+      '--name',
+      name,
+    ] : []),
+    ...(icon ? [
+      '--icon',
+      icon,
+    ] : []),
     '--actor',
     'web',
   ])
+}
+
+// Once at start: a Hydra still named after its id, or not named at all, takes a Greek name and icon.
+// A Firstmate Hydra keeps its home's name, and an unreadable Hydra is left for opening to report.
+export function nameUnnamedHydras(): void {
+  withRegistryLock({
+    fn: () => {
+      for (const id of hydraIds()) {
+        const config = readableConfig({ id })
+
+        if (!config || config.hydra.kind === 'firstmate' || (config.name.trim() && config.name !== id)) {
+          continue
+        }
+
+        const picked = pickName({ taken: otherHydraNames({ id }) })
+        commands.hydra([
+          'set',
+          '--hydra',
+          id,
+          '--name',
+          picked.name,
+          '--icon',
+          picked.icon,
+          '--actor',
+          'pnyx',
+        ])
+      }
+    },
+  })
+}
+
+function readableConfig({ id }: { id: string }) {
+  try {
+    return hydraConfig({
+      state: loadHydra({ hydraId: id }).state,
+      id,
+    })
+  } catch {
+    return undefined
+  }
 }

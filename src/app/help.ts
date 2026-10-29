@@ -62,12 +62,14 @@ Owner message references and existing authority, discussion-hold, report and lan
 No worker starts, messages, memory, settings or external effects. Correct a batch with another apply;
 undo refuses its individual events. See docs/pnyx-axi.md for the full operation schema and examples.
 `,
-  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--identity <identity>] [--session <session>] [--firstmate <home>]
+  hydra: `usage: pnyx-axi hydra create <id> [--name <name>] [--icon <icon>] [--identity <identity>] [--session <session>] [--firstmate <home>]
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>] [--review-minutes <n>]
+pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>] [--review-minutes <n>]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
+hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
+At start the server names, once, every Hydra still called by its id or by no name; a Firstmate Hydra keeps its home's name.
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
