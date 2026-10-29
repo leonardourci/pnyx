@@ -39,3 +39,11 @@ The application retains small native binding and permission metadata, without a 
 Reattachment republishes the current context digest. Input, compaction and application state changes refresh that digest without changing an admitted payload. Replayed turn outcomes keep their original turn identity when copying tagged replies to task history.
 
 Helper recovery can attach to retained old-incarnation facts without opening a provider or submitting input. It applies the original terminal outcome before acknowledging its facts and releasing the batch lease. A batch with no retained terminal outcome keeps its lease and requires ownership reconciliation; new helper batches wait while the host has unresolved native owners.
+
+## Native maintenance
+
+`pnyx-axi native status` reads the host's native-work and critical-ack blockers. Owner-only `native drain` freezes every new open and input, including steering. Answers, targeted interrupts, watch, result lookup and application acknowledgements remain available. Settings, context and ordinary close are refused during drain.
+
+`pnyx-axi native replace` stages and validates this build before draining. Previously admitted inputs must all settle, native background and control ownership must be known idle, and the app must durably apply every critical fact. Closing idle handles creates final lifecycle facts; the old transport remains alive until those are acknowledged too. Rerun the command to check the barrier again. There is no timeout that forces replacement. A stale host controller cannot authorize shutdown.
+
+After the clean owner exits, replacement selects the candidate bundle and updates only the native service. A readiness failure restores the previous bundle; both copied dependency trees stay available. App startup observes a saved maintenance marker during the swap. The app restarts after replacement or rollback to reconnect. A native host crash preserves the conservative recovery refusal, and never counts as a clean maintenance handoff.
