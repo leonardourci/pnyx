@@ -120,6 +120,12 @@ export interface OwnerAsk {
   message?: string
 }
 
+export interface TaskProgress {
+  text: string
+  at: string
+  actor: string
+}
+
 export interface TaskHold {
   id: string
   at: string
@@ -139,6 +145,10 @@ export interface Card {
   // Derived transcript totals sent to the browser; never used as Hydra state.
   spend?: TaskSpend
   brief?: string
+  // Shown on the card as its Intent.
+  goal?: string
+  // The worker's newest progress report, which the card shows beside its status notes.
+  progress?: TaskProgress
   initialPrompt?: string
   project?: string
   kind?: TaskKind

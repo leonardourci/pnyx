@@ -308,6 +308,7 @@ export function applyHydra({
       key,
       title,
       ...(project ? { project } : {}),
+      ...(event.data.goal ? { goal: event.data.goal } : {}),
       ...(brief !== undefined ? {
         brief,
         initialPrompt: brief,
@@ -481,6 +482,12 @@ export function applyHydra({
             message: event.id,
           },
         ]
+      } else if (event.data.kind === 'progress') {
+        card.progress = {
+          text: event.data.text,
+          at: event.at,
+          actor: event.actor,
+        }
       }
 
       card.revision++
