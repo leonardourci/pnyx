@@ -44,9 +44,11 @@ export function AttachedImage({ path }: { path: string }) {
 // An image that no longer loads leaves only its chip in the sentence.
 function MessageImage({
   path,
+  src,
   name,
 }: {
   path: string
+  src: string
   name: string
 }) {
   const [
@@ -57,9 +59,8 @@ function MessageImage({
     open,
     setOpen,
   ] = useState(false)
-  const src = attachmentSource({ path })
 
-  if (failed || !src) {
+  if (failed) {
     return null
   }
 
@@ -76,7 +77,20 @@ function MessageImage({
 
 // The chip keeps the image's place in the sentence; the image itself shows under the text, named like its chip.
 export function MessageImages({ text }: { text: string }) {
-  const stored = [...imageNames({ text })].filter(([path]) => attachmentSource({ path }))
+  const stored = [...imageNames({ text })].flatMap(([
+    path,
+    name,
+  ]) => {
+    const src = attachmentSource({ path })
+
+    return src ? [
+      {
+        path,
+        src,
+        name,
+      },
+    ] : []
+  })
 
   if (!stored.length) {
     return null
@@ -84,10 +98,7 @@ export function MessageImages({ text }: { text: string }) {
 
   return (
     <div className="message-images" contentEditable={false}>
-      {stored.map(([
-        path,
-        name,
-      ]) => <MessageImage key={path} path={path} name={name} />)}
+      {stored.map(image => <MessageImage key={image.path} {...image} />)}
     </div>
   )
 }
