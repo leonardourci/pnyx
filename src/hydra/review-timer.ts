@@ -135,7 +135,7 @@ export function startReviewTimer({
         fn: ({ writer }) => {
           const current = writer.state
           const previous = current.hydraReview?.at
-          const cadence = readSettings().settings.reviewMinutes * MINUTE_MS
+          const cadence = minutes * MINUTE_MS
           const deadline = (previous ? Date.parse(previous) : started) + cadence
 
           const unavailable = running({ state: current }) || !pnyxRunsHydra({ state: current })
