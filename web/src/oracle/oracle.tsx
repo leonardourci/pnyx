@@ -19,6 +19,7 @@ import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 import { askKey, askStart, askTargets, askMessage, type AskKey, type AskTarget } from './ask.ts'
+import { INPUT, moveFocus, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, FILTER_TYPES, hydraFilter, KIND_FILTERS, queryText, recentOnly, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
@@ -298,6 +299,11 @@ export function Oracle({
     x: number
     y: number
   } | null>(null)
+  // The preview control with focus and the controls around it then, so focus can move on if that control goes away.
+  const focused = useRef<{
+    control: HTMLElement
+    before: HTMLElement[]
+  } | null>(null)
   const listId = useId()
 
   const columns = columnsFor({ state })
@@ -523,10 +529,26 @@ export function Oracle({
     }
   }
 
+  // The preview's Tab stops in document order: enabled, shown, and not a roving item another one stands for.
   const previewControls = () => [...preview.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []]
-    .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled'))
+    .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.checkVisibility())
 
-  const focusPreview = () => previewControls()[0]?.focus()
+  const focusStop = ({ to }: { to: HTMLElement | typeof INPUT }) => {
+    if (to === INPUT) {
+      focused.current = null
+      setInPreview(false)
+      input.current?.focus()
+    } else {
+      to.focus()
+    }
+  }
+
+  // A setting's own control comes before its Reset to default, which sits first in the row.
+  const focusPreview = () => {
+    const controls = previewControls()
+    const first = controls.find(control => control.closest('.setting-control')) ?? controls[0]
+    first?.focus()
+  }
 
   const chooseSetting = ({
     result,
@@ -664,9 +686,6 @@ export function Oracle({
         }
 
         break
-      case 'preview':
-        focusPreview()
-        break
       case 'commit':
         commit({ filter: menuFilter })
         break
@@ -722,6 +741,68 @@ export function Oracle({
       }
     },
     [found.pending],
+  )
+  // A focused control that unmounts or is disabled would leave focus nowhere the keyboard can leave, so it moves on.
+  useEffect(
+    () => {
+      const node = preview.current
+
+      if (!open || !node) {
+        return
+      }
+
+      const observer = new MutationObserver(() => {
+        const last = focused.current
+
+        if (!last) {
+          return
+        }
+
+        const controls = previewControls()
+        const active = document.activeElement
+
+        if (controls.includes(last.control)) {
+          last.before = controls
+
+          return
+        }
+
+        if (active instanceof HTMLElement && active !== last.control && controls.includes(active)) {
+          focused.current = {
+            control: active,
+            before: controls,
+          }
+
+          return
+        }
+
+        focusStop({
+          to: recoverFocus({
+            before: last.before,
+            controls,
+            lost: last.control,
+          }),
+        })
+      })
+      observer.observe(
+        node,
+        {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: [
+            'disabled',
+            'tabindex',
+            'hidden',
+            'class',
+            'style',
+          ],
+        },
+      )
+
+      return () => observer.disconnect()
+    },
+    [open],
   )
   useEffect(
     () => {
@@ -933,19 +1014,34 @@ export function Oracle({
     }
   }
 
-  // Esc and ⇧Tab from the first control go back to the bar, and a typed character carries on the query there.
+  // Tab and ⇧Tab always follow the palette's own order, so the browser never picks a stop outside it.
+  const cycleFocus = ({ event }: { event: KeyboardEvent<HTMLDialogElement> }) => {
+    const controls = previewControls()
+    const control = controls.find(item => item === event.target)
+
+    event.preventDefault(); event.stopPropagation()
+    focusStop({
+      to: moveFocus({
+        controls,
+        from: control ?? INPUT,
+        move: event.shiftKey ? 'previous' : 'next',
+      }),
+    })
+  }
+
+  // Esc goes back to the bar from any control, once a control that had a popup or edit open has closed it and kept the key.
+  // A typed character carries on the query there.
   const previewKey = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
-    if (event.nativeEvent.defaultPrevented || composing({ event: event.nativeEvent })) {
+    if (composing({ event: event.nativeEvent })) {
       return
     }
 
     const { target } = event
-    const backTab = event.key === 'Tab' && event.shiftKey && target === previewControls()[0]
     const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
     const plain = !event.metaKey && !event.ctrlKey && !event.altKey
-    const typed = event.key.length === 1 && event.key !== ' ' && plain && !field
+    const typed = event.key.length === 1 && event.key !== ' ' && plain && !field && !event.nativeEvent.defaultPrevented
 
-    if (event.key !== 'Escape' && !backTab && !typed) {
+    if (event.key !== 'Escape' && !typed) {
       return
     }
 
@@ -955,7 +1051,13 @@ export function Oracle({
       setQuery(value => value + event.key)
     }
 
-    input.current?.focus()
+    focusStop({
+      to: moveFocus({
+        controls: previewControls(),
+        from: INPUT,
+        move: 'escape',
+      }),
+    })
   }
 
   const searchBadges: SearchBadge[] = badges.map(badge => ({
@@ -1090,7 +1192,9 @@ export function Oracle({
         event.preventDefault(); close({ restore: true })
       }}
       onKeyDown={event => {
-        if (event.key === 'Escape' && !event.nativeEvent.defaultPrevented && !composing({ event: event.nativeEvent })) {
+        if (event.key === 'Tab' && !composing({ event: event.nativeEvent })) {
+          cycleFocus({ event })
+        } else if (event.key === 'Escape' && !event.nativeEvent.defaultPrevented && !composing({ event: event.nativeEvent })) {
           event.preventDefault(); event.stopPropagation(); close({ restore: true })
         }
       }}
@@ -1139,9 +1243,17 @@ export function Oracle({
             role="region"
             aria-label="Preview"
             onKeyDown={event => previewKey({ event })}
-            onFocus={() => setInPreview(true)}
+            onFocus={event => {
+              setInPreview(true)
+              focused.current = {
+                control: event.target,
+                before: previewControls(),
+              }
+            }}
             onBlur={event => {
-              if (!event.currentTarget.contains(event.relatedTarget)) {
+              // Removing the focused control blurs with no new target; the observer moves focus on then.
+              if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {
+                focused.current = null
                 setInPreview(false)
               }
             }}

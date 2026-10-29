@@ -1,4 +1,4 @@
-export type PaletteKey = 'wait' | 'up' | 'down' | 'open' | 'open-elsewhere' | 'preview' | 'commit' | 'drop-filter' | 'clear' | 'close'
+export type PaletteKey = 'wait' | 'up' | 'down' | 'open' | 'open-elsewhere' | 'commit' | 'drop-filter' | 'clear' | 'close'
 
 export const WAITING_KEYS = [
   'Enter',
@@ -52,11 +52,11 @@ export function paletteKey({
     return 'up'
   }
 
-  if (key === 'Enter') {
-    return mod ? 'open-elsewhere' : 'open'
+  if (key !== 'Enter') {
+    return null
   }
 
-  return key === 'Tab' && !shift ? 'preview' : null
+  return mod ? 'open-elsewhere' : 'open'
 }
 
 function menuKey({

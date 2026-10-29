@@ -131,11 +131,11 @@ test(
 )
 
 test(
-  'Tab moves into the preview, typing stays in the field, and no key acts while an IME is composing',
+  'Tab is left to the palette’s focus cycle, typing stays in the field, and no key acts while an IME is composing',
   () => {
     assert.equal(
       press({ key: 'Tab' }),
-      'preview',
+      null,
     )
     assert.equal(
       press({
