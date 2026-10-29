@@ -165,8 +165,7 @@ const newest = <T extends { at: string }>({ events }: { events: T[] }) => events
   ) => a.at.localeCompare(b.at))
   .at(-1)
 
-// Settings used to belong to each Hydra. The first read takes the view from the Hydra whose view changed
-// last, and each other value from the last Hydra config that set it; old Hide Done 0 meant keep visible.
+// Old per-Hydra values: each one comes from the Hydra that set it last, and an old Hide Done 0 meant off.
 function migrate(): void {
   if (existsSync(settingsLogPath())) {
     return
