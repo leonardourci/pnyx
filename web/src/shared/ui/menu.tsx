@@ -172,7 +172,6 @@ export function DeleteItem({
   ) : <Button data-menu-keep disabled={disabled} onClick={() => setAsking(true)}>{label}</Button>
 }
 
-// A right-click menu: opens at the pointer (or under the focused row from the keyboard) with the same items a row offers.
 export function ContextMenu({
   label,
   at,
@@ -260,7 +259,6 @@ export function ContextMenu({
   )
 }
 
-// Where a menu opens: at the pointer for a right-click, under the row for the menu key or Shift+F10.
 export const menuPoint = ({
   event,
 }: {

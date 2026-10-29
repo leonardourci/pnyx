@@ -238,7 +238,6 @@ function displayOffset({
   return offset - shift
 }
 
-// Where a source offset shows in the textarea, for placing the caret after an edit.
 export const displayAt = ({
   text,
   offset,

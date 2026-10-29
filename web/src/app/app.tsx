@@ -287,7 +287,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     version: number
   } | null>(null)
   const taskFormVersion = useRef(0)
-  // Add project writes its request into Hydra's composer; another Hydra's request waits for that Hydra to open.
+  // Another Hydra's Add project request waits in the URL until that Hydra opens.
   const [
     projectRequest,
     setProjectRequest,
@@ -988,7 +988,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     hydra: hydraTitle(h),
   })))
 
-  // Add project asks Hydra in the composer; for another Hydra it opens that Hydra first.
   const addProject = async ({ id }: { id: string }) => {
     if (id === navigation.hydraId) {
       setPage('hydra'); setProjectRequest(true)

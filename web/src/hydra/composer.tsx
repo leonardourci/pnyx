@@ -73,8 +73,7 @@ const select = ({
 
 const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
-// Folders the @ picker offers beyond this Hydra's projects: other Hydras' projects, folders agents worked in,
-// typed paths, and a pasted git URL to clone.
+// What the @ picker offers beyond this Hydra's own projects.
 function folderSuggestions({
   query,
   typed,
@@ -557,7 +556,6 @@ export function Composer({
     setMention(null); element.focus()
   }
 
-  // Writes an Add project request under the draft and opens the project and folder picker at its @.
   const requestProject = ({ text }: { text: string }) => {
     const edit = withProjectRequest({ text })
     write(edit)
@@ -652,7 +650,6 @@ export function Composer({
       })
       setGoal(-1); input.current?.focus()
     } else if (chip.kind === 'project') {
-      // A picked project or folder opens the picker again in its place, to change it.
       const edit = replaceDisplay({
         text: draft,
         from: chip.from,
