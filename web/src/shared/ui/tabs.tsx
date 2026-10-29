@@ -1,5 +1,10 @@
 import { useRef, type KeyboardEvent, type ReactNode } from 'react'
 
+const STEPS: Record<string, number> = {
+  ArrowRight: 1,
+  ArrowLeft: -1,
+}
+
 export interface Tab {
   id: string
   label: ReactNode
@@ -28,19 +33,17 @@ export function Tabs({
   select,
   prefix,
   label,
-  className = '',
 }: {
   tabs: Tab[]
   selected: string
   select({ id }: { id: string }): void
   prefix: string
   label: string
-  className?: string
 }) {
   const list = useRef<HTMLDivElement>(null)
 
   const move = ({ event }: { event: KeyboardEvent }) => {
-    const step = event.key === 'ArrowRight' ? 1 : event.key === 'ArrowLeft' ? -1 : 0
+    const step = STEPS[event.key]
 
     if (!step) {
       return
@@ -59,7 +62,7 @@ export function Tabs({
   return (
     <div
       ref={list}
-      className={`tabs ${className}`}
+      className="tabs"
       role="tablist"
       aria-label={label}
     >

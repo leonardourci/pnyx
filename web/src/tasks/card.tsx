@@ -510,7 +510,6 @@ export function HydraCard({
         {selected && (
           <>
             <Tabs
-              className="card-tabs"
               prefix={tabsId}
               label="Card sections"
               selected={tab}
