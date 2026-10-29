@@ -260,11 +260,23 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   if (action === 'show') {
     const state = loadHydra({ hydraId: id }).state
 
+    const hydra = structuredClone(hydraConfig({
+      state,
+      id,
+    }))
+    // Hide Done, review cadence and the helper are shared now; a Hydra's own copy is no longer read.
+    delete hydra.doneAfterHours
+    delete hydra.reviewMinutes
+    delete hydra.helper
+    const shared = readSettings().settings
+
     return {
-      hydra: hydraConfig({
-        state,
-        id,
-      }),
+      hydra,
+      settings: {
+        doneAfterHours: shared.doneAfterHours,
+        reviewMinutes: shared.reviewMinutes,
+        helper: shared.helper,
+      },
       projects: projectRows({ state }),
       revision: state.configRevision ?? 0,
     }
