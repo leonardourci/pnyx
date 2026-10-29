@@ -1,99 +1,39 @@
-import {
-  IconAdjustments, IconAlertCircle, IconAlertTriangle, IconArrowDown, IconArrowFork,
-  IconArrowRight, IconArrowUpRight, IconBolt, IconBoltFilled, IconBook, IconBrandGit,
-  IconBrandGithub, IconBulb, IconCalendar, IconCheck, IconChevronDown, IconChevronRight,
-  IconCircleArrowUp, IconCircleCheck, IconClipboardList, IconClock, IconCode, IconCopy, IconCpu,
-  IconCube,
-  IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye, IconEyeCheck, IconFileText,
-  IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer, IconHourglass, IconLink,
-  IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize, IconMessage,
-  IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil, IconPencilCheck,
-  IconPhoto, IconPinnedFilled, IconPlayerPause, IconPlayerPlay, IconPlayerStopFilled, IconPlug,
-  IconPlus, IconQuote, IconRobot, IconSearch, IconSend, IconSettings, IconShield, IconTag,
-  IconStar, IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
-} from '@tabler/icons-react'
+import { IconRobot } from '@tabler/icons-react'
+import { TABLER_ICONS } from '#web-shared/ui/icons/tabler.ts'
+import { identityIcon } from '#web-shared/ui/icons/identity.ts'
 
-const icons: Record<string, typeof IconRobot> = {
-  search: IconSearch,
-  upgrade: IconCircleArrowUp,
-  fix: IconTool,
-  close: IconX,
-  settings: IconSettings,
-  queued: IconClock,
-  needs_you: IconAlertTriangle,
-  in_progress: IconPlayerPlay,
-  review: IconEye,
-  done: IconCircleCheck,
-  parked: IconPlayerPause,
-  agent: IconRobot,
-  tool: IconCode,
-  thinking: IconBulb,
-  send: IconSend,
-  parent: IconArrowFork,
-  'task-card': IconCalendar,
-  link: IconLink,
-  paperclip: IconPaperclip,
-  github: IconBrandGithub,
-  github_pr: IconGitPullRequest,
-  model: IconCpu,
-  effort: IconGauge,
-  mode: IconShield,
-  fast: IconBolt,
-  'fast-on': IconBoltFilled,
-  pinned: IconPinnedFilled,
-  // What each permission mode lets the agent do on its own.
-  'mode-plan': IconMap,
-  'mode-untrusted': IconLock,
-  'mode-default': IconMessageQuestion,
-  'mode-on-request': IconMessageQuestion,
-  'mode-acceptEdits': IconPencilCheck,
-  'mode-auto': IconEyeCheck,
-  'mode-never': IconLockOpen,
-  'mode-bypassPermissions': IconLockOpen,
-  context: IconMaximize,
-  client: IconDeviceDesktop,
-  version: IconTag,
-  approval: IconCheck,
-  sandbox: IconCube,
-  collaboration: IconClipboardList,
-  summary: IconList,
-  plus: IconPlus,
-  minus: IconMinus,
-  more: IconDots,
-  chevron_down: IconChevronDown,
-  chevron_right: IconChevronRight,
-  check: IconCheck,
-  arrow_down: IconArrowDown,
-  external: IconArrowUpRight,
-  reminder: IconClock,
-  custom: IconAdjustments,
-  clone: IconGitFork,
-  comment: IconMessagePlus,
-  comments: IconMessage,
-  quote: IconQuote,
-  copy: IconCopy,
-  stop: IconPlayerStopFilled,
-  image: IconPhoto,
-  file: IconFileText,
-  project: IconFolder,
-  task: IconClipboardList,
-  error: IconAlertCircle,
-  you: IconUser,
-  decision: IconExclamationCircle,
-  moved: IconArrowRight,
-  renamed: IconPencil,
-  edit: IconPencil,
-  test: IconTestPipe,
-  lint: IconListCheck,
-  build: IconHammer,
-  git: IconBrandGit,
-  world: IconWorld,
-  wait: IconHourglass,
-  plug: IconPlug,
-  skill: IconBook,
-  star: IconStar,
-  terminal: IconTerminal2,
+// The identity files' text; identity.test.ts checks every registry entry has its file. Only Vite has
+// import.meta.env and import.meta.glob, so Node tests that render a component get no identity icons.
+const IDENTITY_FILES: Record<string, string> = import.meta.env ? import.meta.glob<string>(
+  './icons/identity/*.svg',
+  {
+    eager: true,
+    query: '?raw',
+    import: 'default',
+  },
+) : {}
+// Every identity file is one 512-unit path; a cut-out shape marks it even-odd.
+const PATH_DATA = / d="([^"]+)"/
+const EVEN_ODD = 'fill-rule="evenodd"'
+// Thin glyphs get an outline in their own color, in 512 units: about half a pixel at 16 px.
+const BOLD_STROKE = 16
+// The Fast toggle shows on and off by its color, so both draw the same lightning.
+const IDENTITY_ALIASES: Record<string, string> = { 'fast-on': 'fast' }
 
+export const identityGlyph = ({ name }: { name: string }) => {
+  const icon = identityIcon({ id: IDENTITY_ALIASES[name] ?? name })
+  const file = icon && IDENTITY_FILES[`./icons/identity/${icon.file}`]
+  const path = file?.match(PATH_DATA)?.[1]
+
+  if (!icon || !file || !path) {
+    return undefined
+  }
+
+  return {
+    path,
+    fillRule: file.includes(EVEN_ODD) ? 'evenodd' as const : 'nonzero' as const,
+    stroke: icon.bold ? BOLD_STROKE : 0,
+  }
 }
 
 // Brand marks from Simple Icons 16.35.0 (https://simpleicons.org,
@@ -105,24 +45,14 @@ const brands: Record<string, string> = {
   codex: 'M22.2819 9.8211a5.9847 5.9847 0 0 0-.5157-4.9108 6.0462 6.0462 0 0 0-6.5098-2.9A6.0651 6.0651 0 0 0 4.9807 4.1818a5.9847 5.9847 0 0 0-3.9977 2.9 6.0462 6.0462 0 0 0 .7427 7.0966 5.98 5.98 0 0 0 .511 4.9107 6.051 6.051 0 0 0 6.5146 2.9001A5.9847 5.9847 0 0 0 13.2599 24a6.0557 6.0557 0 0 0 5.7718-4.2058 5.9894 5.9894 0 0 0 3.9977-2.9001 6.0557 6.0557 0 0 0-.7475-7.0729zm-9.022 12.6081a4.4755 4.4755 0 0 1-2.8764-1.0408l.1419-.0804 4.7783-2.7582a.7948.7948 0 0 0 .3927-.6813v-6.7369l2.02 1.1686a.071.071 0 0 1 .038.052v5.5826a4.504 4.504 0 0 1-4.4945 4.4944zm-9.6607-4.1254a4.4708 4.4708 0 0 1-.5346-3.0137l.142.0852 4.783 2.7582a.7712.7712 0 0 0 .7806 0l5.8428-3.3685v2.3324a.0804.0804 0 0 1-.0332.0615L9.74 19.9502a4.4992 4.4992 0 0 1-6.1408-1.6464zM2.3408 7.8956a4.485 4.485 0 0 1 2.3655-1.9728V11.6a.7664.7664 0 0 0 .3879.6765l5.8144 3.3543-2.0201 1.1685a.0757.0757 0 0 1-.071 0l-4.8303-2.7865A4.504 4.504 0 0 1 2.3408 7.872zm16.5963 3.8558L13.1038 8.364 15.1192 7.2a.0757.0757 0 0 1 .071 0l4.8303 2.7913a4.4944 4.4944 0 0 1-.6765 8.1042v-5.6772a.79.79 0 0 0-.407-.667zm2.0107-3.0231l-.142-.0852-4.7735-2.7818a.7759.7759 0 0 0-.7854 0L9.409 9.2297V6.8974a.0662.0662 0 0 1 .0284-.0615l4.8303-2.7866a4.4992 4.4992 0 0 1 6.6802 4.66zM8.3065 12.863l-2.02-1.1638a.0804.0804 0 0 1-.038-.0567V6.0742a4.4992 4.4992 0 0 1 7.3757-3.4537l-.142.0805L8.704 5.459a.7948.7948 0 0 0-.3927.6813zm1.0976-2.3654l2.602-1.4998 2.6069 1.4998v2.9994l-2.5974 1.4997-2.6067-1.4997Z',
 }
 
-const EFFORTS = [
-  'low',
-  'medium',
-  'high',
-  'xhigh',
-  'max',
-]
-const effortLevel = ({ name }: { name: string }) => name.startsWith('effort-')
-  ? EFFORTS.indexOf(name.slice('effort-'.length)) : -1
-
 export const hasIcon = ({ name }: { name: string }) =>
   Object.hasOwn(
-    icons,
+    TABLER_ICONS,
     name,
   ) || Object.hasOwn(
     brands,
     name,
-  ) || effortLevel({ name }) >= 0
+  ) || !!identityGlyph({ name })
 
 export function Icon({
   name,
@@ -131,16 +61,24 @@ export function Icon({
   name: string
   size?: number
 }) {
-  if (name === 'hydra') {
+  const identity = identityGlyph({ name })
+
+  // Inline vectors, not CSS masks: Chrome rasterizes a mask image before scaling it, which blurs the edges.
+  if (identity) {
     return (
-      <span
+      <svg
         aria-hidden="true"
-        className="hydra-icon"
-        style={{
-          width: size,
-          height: size,
-        }}
-      />
+        className={name === 'hydra' ? 'identity-icon hydra-icon' : 'identity-icon'}
+        data-icon={name}
+        width={size}
+        height={size}
+        viewBox="0 0 512 512"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth={identity.stroke}
+        strokeLinejoin="round"
+      ><path d={identity.path} fillRule={identity.fillRule} />
+      </svg>
     )
   }
 
@@ -172,40 +110,10 @@ export function Icon({
     )
   }
 
-  // An effort level draws as five rising bars, lit up to that level.
-  const level = effortLevel({ name })
-
-  if (level >= 0) {
-    return (
-      <svg
-        aria-hidden="true"
-        width={size}
-        height={size}
-        viewBox="0 0 24 24"
-        fill="currentColor"
-      >
-        {EFFORTS.map((
-          effort,
-          index,
-        ) => (
-          <rect
-            key={effort}
-            x={2 + index * 4.2}
-            y={18 - index * 3.5}
-            width={3.4}
-            height={4 + index * 3.5}
-            rx={1}
-            opacity={index > level ? 0.3 : 1}
-          />
-        ))}
-      </svg>
-    )
-  }
-
   const Mark = (Object.hasOwn(
-    icons,
+    TABLER_ICONS,
     name,
-  ) && icons[name]) || IconRobot
+  ) && TABLER_ICONS[name]) || IconRobot
 
   return <Mark aria-hidden="true" size={size} stroke={1.6} />
 }

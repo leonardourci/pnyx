@@ -245,7 +245,7 @@ export function HydraAgent({
             },
           })}
         >
-          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={15} />
+          <Icon name={agent.fast ? 'fast-on' : 'fast'} size={18} />
         </Button>
       </Tooltip>
     </div>

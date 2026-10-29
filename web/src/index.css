@@ -1152,7 +1152,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 [data-label-color="rose"] { --label-color: var(--color-rose); }
 [data-label-color="teal"] { --label-color: var(--color-teal); }
 [data-label-color="coral"] { --label-color: var(--color-coral); }
-.hydra-icon { display: inline-block; flex-shrink: 0; background: currentColor; mask: url("/icons/hydra-lorc.svg") center / contain no-repeat; }
+.identity-icon { flex-shrink: 0; overflow: visible; }
 .about summary { cursor: pointer; }
 .about a { text-decoration: underline; }
 
@@ -1163,7 +1163,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .left-panel .brand { display: flex; align-items: center; gap: 10px; padding: 0 9px; }
 .offline { color: var(--color-red); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
 .left-panel .oracle { flex: 0 0 auto; width: 100%; min-width: 0; max-width: none; order: 0; }
-.left-panel .oracle > svg { position: absolute; left: 9px; color: var(--color-muted); pointer-events: none; }
+.left-panel .oracle > .identity-icon { position: absolute; left: 9px; color: var(--color-muted); pointer-events: none; }
 .left-panel .oracle > .input { padding-left: 30px; font-size: var(--text-ui); background: var(--color-background); }
 .left-panel .oracle-results { left: 0; right: auto; top: calc(100% + 5px); width: min(360px, calc(100vw - 28px)); }
 .left-panel nav { display: flex; flex-direction: column; gap: 2px; }
@@ -1336,6 +1336,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .hydra-agent-pickers .select-menu { position: absolute; top: auto; bottom: calc(100% + 5px); }
 
 .hydra-agent-pickers .select { min-width: 0; }
+
+.hydra-agent-pickers .select > .button > .identity-icon { width: 18px; height: 18px; color: var(--color-ink); }
 
 .hydra-agent-pickers .fast-toggle { min-height: 26px; padding: 2px 6px; color: var(--color-muted); }
 
