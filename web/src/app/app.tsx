@@ -569,28 +569,32 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
       const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
 
-      try {
-        if (Object.keys(sharedPatch).length) {
-          await saveSharedSettings({
-            command,
-            patch: sharedPatch,
-          })
-        }
+      const writes = []
 
-        if (Object.keys(boardPatch).length) {
-          await command({
-            name: 'view',
-            args: [
-              'set',
-              '--json',
-              JSON.stringify(boardPatch),
-              '--if-revision',
-              String(state.viewRevision ?? 0),
-              '--event-id',
-              crypto.randomUUID(),
-            ],
-          })
-        }
+      if (Object.keys(sharedPatch).length) {
+        writes.push(saveSharedSettings({
+          command,
+          patch: sharedPatch,
+        }))
+      }
+
+      if (Object.keys(boardPatch).length) {
+        writes.push(command({
+          name: 'view',
+          args: [
+            'set',
+            '--json',
+            JSON.stringify(boardPatch),
+            '--if-revision',
+            String(state.viewRevision ?? 0),
+            '--event-id',
+            crypto.randomUUID(),
+          ],
+        }))
+      }
+
+      try {
+        await Promise.all(writes)
 
         return true
       } catch (error) {
