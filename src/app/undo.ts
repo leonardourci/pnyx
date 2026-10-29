@@ -311,7 +311,7 @@ export function decideUndo({
     throw notUndoable({ message: `${target.id} records a note harvested from ${target.data.source} and cannot be undone` })
   }
 
-  if (target.type === 'card.pushed' && target.data.source) {
+  if ((target.type === 'card.pushed' && target.data.source) || target.type === 'card.observed') {
     throw notUndoable({ message: `${target.id} records a source observation and cannot be undone` })
   }
 

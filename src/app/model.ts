@@ -4,7 +4,7 @@ import type { HydraProject, TaskCopy } from '#projects/model.ts'
 import type { FirstmateRecord } from '#integrations/firstmate/model.ts'
 import type { ReportCall } from '#investigations/model.ts'
 import type { Column, HydraColumn } from '#tasks/columns-model.ts'
-import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '#tasks/model.ts'
+import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
 import type { HydraConfig, HydraMessage, HydraStatus, ChatEvent } from '#hydra/model.ts'
@@ -288,6 +288,7 @@ export type HydraEvent =
   | ExternalSourceEvent
   | SteeringEvent
   | PushedEvent
+  | ObservedEvent
   | MovedEvent
   | LinkedEvent
   | OutcomeEvent
@@ -317,6 +318,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.steering.handled',
   'task.steering.recovery',
   'card.pushed',
+  'card.observed',
   'card.moved',
   'card.linked',
   'card.outcome',
