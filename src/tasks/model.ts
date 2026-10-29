@@ -270,6 +270,15 @@ export type PushedEvent = EventBase & {
   }
 }
 
+// A push that repeats `of`, its source's last full push, apart from the observation time: only the new time is logged.
+export type ObservedEvent = EventBase & {
+  type: 'card.observed'
+  data: {
+    source: SourceRef
+    of: string
+  }
+}
+
 // rank places the card in its new column; beforeRank keeps the old one for undo.
 // A null column comes only from older logs and leaves the column as it is.
 export type MovedEvent = EventBase & {

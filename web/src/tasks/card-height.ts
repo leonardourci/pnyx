@@ -1,6 +1,8 @@
 import { useLayoutEffect, useState, type RefObject } from 'react'
 
 const PANEL_MINIMUM = 120
+// A tab still reading its first content keeps the card's last bounds, so the card never shrinks to a loading line and grows back.
+const LOADING = '.card-panel:not([hidden]) :is(.task-updates, .task-report)[aria-busy="true"]'
 
 const spacing = ({ element }: { element: HTMLElement }) => {
   const css = getComputedStyle(element)
@@ -63,6 +65,10 @@ export function useCardHeight({
       }
 
       const measure = () => {
+        if (card.querySelector(LOADING)) {
+          return
+        }
+
         const children = rows({ element: content })
         const gap = parseFloat(getComputedStyle(content).rowGap) || 0
         let minimum = spacing({ element: card }) + gap * Math.max(
@@ -145,6 +151,7 @@ export function useCardHeight({
             'open',
             'hidden',
             'data-tab',
+            'aria-busy',
           ],
         },
       )

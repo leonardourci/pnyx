@@ -17,7 +17,6 @@ import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import { focusElement, KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
 import { openTaskCard, afterTaskLayout, afterSteadyLayout, scrollTask } from '#web-tasks/scroll-task.ts'
-import { loadUpdates } from '#web-tasks/updates-cache.ts'
 import { argument } from '#web-tasks/optimistic.ts'
 import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
 import { lockedColumn } from '#tasks/column-rules.ts'
@@ -760,14 +759,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       return false
     }
 
-    // The list loads while the card scrolls into place and opens.
-    if (connected) {
-      void loadUpdates({
-        command,
-        id,
-      })
-    }
-
     const controller = new AbortController()
     const { signal } = controller
     pendingOpen.current = controller
@@ -780,7 +771,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           signal,
         })
 
-        return !!card?.querySelector('.task-updates')
+        return !!card?.querySelector(VISIBLE_TAB_PANEL)
       }
 
       if (!await afterTaskLayout({ signal })) {
@@ -809,13 +800,13 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         return false
       }
 
-      const updates = element.querySelector<HTMLElement>('.task-updates')
+      const panel = element.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
 
       if (focusPanel) {
-        element.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)?.focus({ preventScroll: true })
+        panel?.focus({ preventScroll: true })
       }
 
-      return !!updates && element.isConnected && !signal.aborted
+      return !!panel && element.isConnected && !signal.aborted
     } finally {
       if (pendingOpen.current === controller) {
         pendingOpen.current = null; setRevealing(null)

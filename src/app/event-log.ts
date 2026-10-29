@@ -249,12 +249,43 @@ export function readLog({
   }
 }
 
+// The tasks an event belongs to, under which an index lists it.
+type EventKeys = ({ event }: { event: HydraEvent }) => readonly string[]
+
+type Index = Map<string, HydraEvent[]>
+
 // ponytail: the log only grows, so the server keeps every parsed event (65 MB of heap for a 45 MB log); index offsets per card if that is too much.
 const parsed = new Map<string, {
   file: string
   events: HydraEvent[]
   end: number
+  indexes: Map<EventKeys, Index>
 }>()
+
+const addToIndex = ({
+  index,
+  keys,
+  events,
+}: {
+  index: Index
+  keys: EventKeys
+  events: HydraEvent[]
+}) => {
+  for (const event of events) {
+    for (const key of keys({ event })) {
+      const listed = index.get(key)
+
+      if (listed) {
+        listed.push(event)
+      } else {
+        index.set(
+          key,
+          [event],
+        )
+      }
+    }
+  }
+}
 
 export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent | null {
   let fd: number
@@ -321,7 +352,8 @@ export function readInitialEvent({ hydraId }: { hydraId: string }): HydraEvent |
   }
 }
 
-export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
+// The parsed log, extended with the lines appended since the last read.
+function parsedLog({ hydraId }: { hydraId: string }) {
   const dir = hydraDir({ hydraId })
   let file: string
 
@@ -335,14 +367,10 @@ export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
   } catch {
     parsed.delete(dir)
 
-    return []
+    return undefined
   }
 
   const cached = parsed.get(dir)
-  let log: {
-    events: HydraEvent[]
-    end: number
-  } | null = null
 
   if (cached?.file === file) {
     try {
@@ -350,28 +378,88 @@ export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
         dir,
         from: cached.end,
       })
-      log = next && {
-        events: cached.events.concat(next.events),
-        end: next.end,
+
+      if (next) {
+        // Pushed one by one: a long tail would overflow a spread's argument limit.
+        for (const event of next.events) {
+          cached.events.push(event)
+        }
+
+        cached.end = next.end
+
+        for (const [
+          keys,
+          index,
+        ] of cached.indexes) {
+          addToIndex({
+            index,
+            keys,
+            events: next.events,
+          })
+        }
+
+        return cached
       }
     } catch {
       // A repair marker for a line before `end` needs the whole log.
     }
   }
 
-  log ??= readLog({ dir }) ?? {
+  const log = readLog({ dir }) ?? {
     events: [],
     end: 0,
   }
+  const entry = {
+    file,
+    events: log.events,
+    end: log.end,
+    indexes: new Map<EventKeys, Index>(),
+  }
   parsed.set(
     dir,
-    {
-      file,
-      ...log,
-    },
+    entry,
   )
 
-  return log.events.slice()
+  return entry
+}
+
+export function readEvents({ hydraId }: { hydraId: string }): HydraEvent[] {
+  return parsedLog({ hydraId })?.events.slice() ?? []
+}
+
+// The events that `keys` lists under `key`, oldest first, without copying or scanning the rest of the log.
+// A live view: the index is built on first use and grows with each later read, so it always matches the log.
+export function indexedEvents({
+  hydraId,
+  keys,
+  key,
+}: {
+  hydraId: string
+  keys: EventKeys
+  key: string
+}): readonly HydraEvent[] {
+  const log = parsedLog({ hydraId })
+
+  if (!log) {
+    return []
+  }
+
+  let index = log.indexes.get(keys)
+
+  if (!index) {
+    index = new Map()
+    addToIndex({
+      index,
+      keys,
+      events: log.events,
+    })
+    log.indexes.set(
+      keys,
+      index,
+    )
+  }
+
+  return index.get(key) ?? []
 }
 
 // Complete events at or after byte `offset`, and the offset just past them.

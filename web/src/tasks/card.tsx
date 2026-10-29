@@ -324,6 +324,13 @@ export function HydraCard({
     tabIndex: 0,
     className: 'card-panel',
   })
+  // Activity mounts only while it shows, so a hidden one reads no history or report; Context stays mounted to keep draft answers.
+  const showsActivity = tab === 'activity'
+  // The title opens the brief, which exists only while Activity shows; before that it controls the Activity panel.
+  const briefControl = showsActivity ? briefId : panelId({
+    prefix: tabsId,
+    id: 'activity',
+  })
 
   // The brief lives in Activity; the title still shows or hides it, opening the card first.
   const toggleBrief = () => {
@@ -429,10 +436,10 @@ export function HydraCard({
           {!editing && (
             <CardTitle
               title={card.title}
-              briefOpen={selected && tab === 'activity' && briefOpen}
+              briefOpen={selected && showsActivity && briefOpen}
               toggleBrief={toggleBrief}
               open={() => void open({ id: card.id })}
-              aria-controls={selected ? briefId : undefined}
+              aria-controls={selected ? briefControl : undefined}
               data-card={card.id}
               data-key-scope="hydra"
               tabIndex={tabIndex}
@@ -571,42 +578,46 @@ export function HydraCard({
               <ReminderLabel card={card} />
             </div>
             <div {...panel({ id: 'activity' })}>
-              {!!card.ask?.length && (
-                <section className="card-section" aria-label="Your words">
-                  <h3 className="eyebrow">Your words</h3>
-                  {card.ask.map(entry => (
-                    <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
-                      <CollapsibleText text={entry.text} />
-                      <p className="muted small">{relativeTime({
-                        at: entry.at,
-                        now,
-                      })}
-                      </p>
+              {showsActivity && (
+                <>
+                  {!!card.ask?.length && (
+                    <section className="card-section" aria-label="Your words">
+                      <h3 className="eyebrow">Your words</h3>
+                      {card.ask.map(entry => (
+                        <div key={`${entry.at}-${entry.message ?? ''}`} className="card-owner-words">
+                          <CollapsibleText text={entry.text} />
+                          <p className="muted small">{relativeTime({
+                            at: entry.at,
+                            now,
+                          })}
+                          </p>
+                        </div>
+                      ))}
+                    </section>
+                  )}
+                  <section className="card-instructions" aria-label="Instructions">
+                    <Button
+                      className="quiet card-instructions-toggle"
+                      aria-expanded={briefOpen}
+                      aria-controls={briefId}
+                      onClick={() => setBriefOpen(value => !value)}
+                    ><Icon name="chevron_right" size={13} />Hydra's instructions to the worker
+                    </Button>
+                    <div id={briefId} className="card-brief" hidden={!briefOpen}>
+                      {card.brief?.trim()
+                        ? <CollapsibleText text={card.brief} />
+                        : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
                     </div>
-                  ))}
-                </section>
+                  </section>
+                  <TaskReport
+                    card={card}
+                    command={command}
+                    connected={connected}
+                  />
+                  {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
+                  {children}
+                </>
               )}
-              <section className="card-instructions" aria-label="Instructions">
-                <Button
-                  className="quiet card-instructions-toggle"
-                  aria-expanded={briefOpen}
-                  aria-controls={briefId}
-                  onClick={() => setBriefOpen(value => !value)}
-                ><Icon name="chevron_right" size={13} />Hydra's instructions to the worker
-                </Button>
-                <div id={briefId} className="card-brief" hidden={!briefOpen}>
-                  {card.brief?.trim()
-                    ? <CollapsibleText text={card.brief} />
-                    : <p className="muted">{card.automaticTask ? 'Automatic tasks have no brief.' : 'No brief yet. The pencil adds one.'}</p>}
-                </div>
-              </section>
-              <TaskReport
-                card={card}
-                command={command}
-                connected={connected}
-              />
-              {card.launch?.dispatch && <CollapsibleText className="muted small" text={card.launch.dispatch} />}
-              {children}
             </div>
           </>
         )}

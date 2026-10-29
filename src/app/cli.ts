@@ -5,8 +5,8 @@ import { taskCommand } from './task-cli.ts'
 import { EVENT_TYPES, type HydraEvent } from './model.ts'
 import { loadHydra } from './store.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { readEvents } from './event-log.ts'
-import { tagsTask, showsUpdate } from '#tasks/updates.ts'
+import { indexedEvents, readEvents } from './event-log.ts'
+import { historyTasks, showsUpdate, updateTasks } from '#tasks/updates.ts'
 import { decideUndo } from './undo.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { layout, view } from '#preferences/cli.ts'
@@ -62,30 +62,41 @@ export const history = guard({
       )
     }
 
-    const { state } = loadHydra({ hydraId })
-    const cardId = values.card ? findCard({
-      state,
-      ref: values.card as string,
-    }).id : undefined
+    const ref = values.card as string | undefined
     const workspace = values.workspace as string | undefined
+    // With --updates a card's index already holds just the events Updates shows.
+    const keys = values.updates ? updateTasks : historyTasks
+    const indexed = ({ key }: { key: string }) => indexedEvents({
+      hydraId,
+      keys,
+      key,
+    })
+    // A ref the log records as some event's own card is a card id and needs no Hydra state;
+    // a task key, an unknown ref or a workspace filter does.
+    const listed = !!ref && indexed({ key: ref }).some(e => e.cardId === ref)
+    const needsState = !!workspace || (!!ref && !listed)
+    const state = needsState ? loadHydra({ hydraId }).state : undefined
+    const cardId = ref && state ? findCard({
+      state,
+      ref,
+    }).id : ref
     // An outcome keeps the workspace it was recorded under; other events use the card's current one.
     const inWorkspace = ({ e }: { e: HydraEvent }) =>
-      (e.type === 'card.outcome' ? e.data.card.workspace : state.cards[e.cardId]?.workspace) === workspace
+      (e.type === 'card.outcome' ? e.data.card.workspace : state?.cards[e.cardId]?.workspace) === workspace
 
-    const tagged = new Set(cardId ? [cardId] : [])
-    const matches = readEvents({ hydraId })
-      .filter(e => (before === undefined || e.seq < before)
-        && (!cardId || e.cardId === cardId || tagsTask({
-          event: e,
-          ids: tagged,
-        })))
-      .filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
-        && (!values.updates || showsUpdate({ event: e })))
-      .reverse()
-    const page = matches.slice(
+    const source = cardId ? indexed({ key: cardId }) : readEvents({ hydraId })
+    // The log's seq only grows, so the events before --before are a prefix.
+    const end = before === undefined ? source.length : source.findLastIndex(e => e.seq < before) + 1
+    const checksUpdates = values.updates && !cardId
+    const matches = source.slice(
       0,
-      limit,
-    )
+      end,
+    ).filter(e => (!type || e.type === type) && (!workspace || inWorkspace({ e }))
+      && (!checksUpdates || showsUpdate({ event: e })))
+    const page = matches.slice(Math.max(
+      0,
+      matches.length - limit,
+    )).reverse()
 
     if (page.length === 0) {
       return { events: 'none: no matching events' }

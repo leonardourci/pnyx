@@ -243,8 +243,10 @@ export function observeSession({
     sourceRefs: [],
   }
 
-  if (event.type === 'card.pushed') {
-    if (event.data.agent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
+  if (event.type === 'card.pushed' || event.type === 'card.observed') {
+    const pushedAgent = event.type === 'card.pushed' ? event.data.agent : undefined
+
+    if (pushedAgent?.host === 'pnyx' && session.launch?.via !== 'pnyx') {
       session.launch = {
         via: 'pnyx',
         at: event.at,

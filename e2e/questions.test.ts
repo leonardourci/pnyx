@@ -464,6 +464,17 @@ test(
       ],
     })
     const report = s.task({ key: 'report' }).report!
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'report',
+          'report',
+        ],
+      }),
+      /The cache is slow/,
+      'the stored report reads back',
+    )
     assert.equal(
       await worker.refused({
         args: [

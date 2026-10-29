@@ -722,6 +722,8 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'card.pushed':
       return `${undo}${Object.keys(event.data).filter(k => k !== 'key' && k !== 'before')
         .join(' ') || 'no fields'}`
+    case 'card.observed':
+      return `observed again, as ${event.data.of}`
     case 'card.moved':
       return `${undo}${event.data.before ?? 'none'} -> ${event.data.after ?? 'none'}`
     case 'card.linked': {

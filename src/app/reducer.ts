@@ -808,7 +808,24 @@ function apply({
       return false
     }
 
-    if (event.type === 'card.moved') {
+    if (event.type === 'card.observed') {
+      const { source } = event.data
+
+      if (isStaleSource({
+        card,
+        source,
+      })) {
+        return false
+      }
+
+      card.sourceRefs = [
+        ...card.sourceRefs.filter(r => !sameSource({
+          a: r,
+          b: source,
+        })),
+        source,
+      ]
+    } else if (event.type === 'card.moved') {
       if (event.data.after) {
         card.column = event.data.after
       }

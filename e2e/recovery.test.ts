@@ -9,6 +9,7 @@ import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { snapshotPath } from '#store/storage.ts'
+import { spoolWrite } from '#app/spool.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -404,5 +405,110 @@ test(
     await settled()
     // The server loaded the new task, so the mock sees its loads and the quiet wait above was real.
     assert.ok(loads > idle)
+  },
+)
+
+test(
+  'a quiet hooked worker repeating itself logs each observation compactly, so it never looks stalled, and a late older event stays stale after a restart',
+  async () => {
+    const s = await pnyx.scenario()
+    const session = crypto.randomUUID()
+    const start = Date.now() - 330_000
+    const hook = ({
+      second,
+      event,
+    }: {
+      second: number
+      event: string
+    }) => spoolWrite({
+      hydraId: s.hydraId,
+      entry: {
+        v: 1,
+        id: `hook-quiet-${event}-${second}`,
+        at: new Date(start + second * 1000).toISOString(),
+        harness: 'claude',
+        event,
+        payload: {
+          session_id: session,
+          transcript_path: `/work/home/.claude/projects/-work-repo/${session}.jsonl`,
+          cwd: '/work/repo',
+          permission_mode: 'default',
+          hook_event_name: event,
+          tool_name: 'Bash',
+          tool_input: { command: 'sleep 600' },
+          tool_use_id: 'toolu_quiet',
+        },
+      },
+    })
+    const logged = () => s.events()
+      .filter(event => (event.type === 'card.pushed' || event.type === 'card.observed')
+        && event.data.source?.objectId === session)
+      .map(event => ({
+        type: event.type,
+        second: (Date.parse(event.at) - start) / 1000,
+      }))
+    const lastSeen = () => Object.values(s.state().sessions ?? {})
+      .find(agent => agent.agent.sessionId === session)?.lastSeen
+
+    for (let second = 0; second <= 300; second += 20) {
+      hook({
+        second,
+        event: 'PreToolUse',
+      })
+    }
+
+    await until({
+      what: 'every repeat to be logged',
+      check: () => logged().length === 16,
+    })
+    assert.deepEqual(
+      logged(),
+      [
+        {
+          type: 'card.pushed',
+          second: 0,
+        },
+        ...Array.from(
+          { length: 15 },
+          (
+            _,
+            index,
+          ) => ({
+            type: 'card.observed',
+            second: (index + 1) * 20,
+          }),
+        ),
+      ],
+      'the first report is logged in full and each repeat as its observation time',
+    )
+    assert.equal(
+      lastSeen(),
+      new Date(start + 300_000).toISOString(),
+      'the worker\'s last sign of life is its newest observation',
+    )
+
+    await pnyx.restart()
+    hook({
+      second: 290,
+      event: 'Stop',
+    })
+    hook({
+      second: 320,
+      event: 'Stop',
+    })
+    await until({
+      what: 'the worker\'s Stop to be logged',
+      check: () => logged().at(-1)?.second === 320,
+    })
+    assert.deepEqual(
+      logged().slice(16),
+      [
+        {
+          type: 'card.pushed',
+          second: 320,
+        },
+      ],
+      'the Stop stamped before the newest repeat is stale across the restart',
+    )
   },
 )

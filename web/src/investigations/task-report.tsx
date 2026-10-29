@@ -4,7 +4,10 @@ import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import type { Command } from '#web-app/connection.ts'
 
-// A task's stored investigation report, read when its card opens.
+// Reports already read, by report id, for the life of the page, so switching back to Activity shows one at once.
+const reports = new Map<string, string>()
+
+// A task's stored investigation report, read when its card's Activity tab first shows it.
 export function TaskReport({
   card,
   command,
@@ -14,19 +17,31 @@ export function TaskReport({
   command: Command
   connected: boolean
 }) {
+  const stored = card.report?.id
   const [
     report,
     setReport,
-  ] = useState<string | null>(null)
+  ] = useState<string | null>(() => (stored ? reports.get(stored) : undefined) ?? null)
   const [
     error,
     setError,
   ] = useState('')
-  const stored = card.report?.id
 
   useEffect(
     () => {
-      if (!stored || !connected) {
+      if (!stored) {
+        return
+      }
+
+      const kept = reports.get(stored)
+
+      if (kept !== undefined) {
+        setReport(kept)
+
+        return
+      }
+
+      if (!connected) {
         return
       }
 
@@ -42,8 +57,14 @@ export function TaskReport({
             ],
           })
 
+          const text = String(receipt.report)
+          reports.set(
+            stored,
+            text,
+          )
+
           if (active) {
-            setReport(String(receipt.report))
+            setReport(text)
           }
         } catch (failure) {
           if (active) {
@@ -71,8 +92,10 @@ export function TaskReport({
     return null
   }
 
+  const loading = connected && report === null && !error
+
   return (
-    <section className="task-report" aria-label="Report">
+    <section className="task-report" aria-label="Report" aria-busy={loading}>
       <strong className="eyebrow">Report</strong>
       <span className="muted small">Stored {relativeTime({
         at: card.report.at,

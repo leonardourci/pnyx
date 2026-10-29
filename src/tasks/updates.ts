@@ -511,6 +511,19 @@ export function relevantUpdate({
 }
 
 // A Hydra chat message belongs to its task and to every task it names with a chip.
+const taggedTasks = ({ event }: { event: HydraEvent }): string[] => {
+  if (event.type !== 'hydra.message') {
+    return []
+  }
+
+  const mentioned = taskMentions({ text: event.data.text }).map(mention => mention.id)
+
+  return event.data.task ? [
+    event.data.task,
+    ...mentioned,
+  ] : mentioned
+}
+
 export function tagsTask({
   event,
   ids,
@@ -518,9 +531,20 @@ export function tagsTask({
   event: HydraEvent
   ids: Set<string>
 }): boolean {
-  return event.type === 'hydra.message'
-    && (ids.has(event.data.task ?? '') || taskMentions({ text: event.data.text }).some(mention => ids.has(mention.id)))
+  return taggedTasks({ event }).some(id => ids.has(id))
 }
+
+// Every task whose history lists the event: its own card and the tasks it tags.
+export const historyTasks = ({ event }: { event: HydraEvent }): string[] => [
+  ...new Set([
+    event.cardId,
+    ...taggedTasks({ event }),
+  ]),
+]
+
+// The tasks whose Updates list shows the event.
+export const updateTasks = ({ event }: { event: HydraEvent }): string[] =>
+  showsUpdate({ event }) ? historyTasks({ event }) : []
 
 // Whether the event adds or changes a row in its task's Updates list.
 export function showsUpdate({ event }: { event: HydraEvent }): boolean {

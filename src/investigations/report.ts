@@ -10,7 +10,8 @@ import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ReportCall } from './model.ts'
 import { TASK_KINDS, type Card, type TaskKind } from '#tasks/model.ts'
-import { readEvents } from '#app/event-log.ts'
+import { indexedEvents } from '#app/event-log.ts'
+import { historyTasks } from '#tasks/updates.ts'
 
 // Big enough for a long written investigation, small enough to keep each log line readable.
 export const REPORT_MAX_CHARS = 100_000
@@ -118,7 +119,11 @@ export function readReport({
   }
 
   const id = card.report.id
-  const event = readEvents({ hydraId }).find(e => e.id === id)
+  const event = indexedEvents({
+    hydraId,
+    keys: historyTasks,
+    key: card.id,
+  }).findLast(e => e.id === id)
 
   return event?.type === 'task.report' ? event.data.text : undefined
 }

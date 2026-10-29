@@ -124,6 +124,7 @@ export function TaskUpdates({
       className="task-updates"
       role="region"
       aria-label="Task updates"
+      aria-busy={loading}
       tabIndex={0}
     >
       <div className="task-updates-head">
