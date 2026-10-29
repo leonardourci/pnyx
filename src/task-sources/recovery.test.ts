@@ -144,7 +144,12 @@ test(
         assert.ok(request.text)
         notifications.push(request.text)
 
-        return { state: 'delivered' }
+        return {
+          card: id,
+          reply: messageId,
+          state: 'delivered',
+          sent: true,
+        }
       },
     })
     t.after(() => runner.close())
