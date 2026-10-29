@@ -131,11 +131,11 @@ export function HydraCard({
   open({
     id,
     pointer,
-    focusUpdates,
+    focusPanel,
   }: {
     id: string
     pointer?: boolean
-    focusUpdates?: boolean
+    focusPanel?: boolean
   }): Promise<boolean>
   onEdit(): void
   recoverSelection({ id }: { id: string }): void
@@ -183,7 +183,7 @@ export function HydraCard({
     if (!isSelected.current) {
       void open({
         id: card.id,
-        focusUpdates: false,
+        focusPanel: false,
       })
     }
   }
@@ -326,7 +326,7 @@ export function HydraCard({
     if (!isSelected.current) {
       void open({
         id: card.id,
-        focusUpdates: false,
+        focusPanel: false,
       })
     }
   }

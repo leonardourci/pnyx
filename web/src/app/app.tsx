@@ -37,8 +37,7 @@ import { HydraCard } from '#web-tasks/card.tsx'
 import { Detail } from '#web-tasks/detail.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
-// An open card's visible tab, which takes focus when the card opens.
-const OPEN_PANEL = '.card-panel:not([hidden])'
+const VISIBLE_TAB_PANEL = '.card-panel:not([hidden])'
 
 export function App() {
   const hydra = useHydra()
@@ -196,7 +195,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     }
 
     const element = document.querySelector<HTMLElement>(`.card[data-task="${CSS.escape(id)}"].selected`)
-    const panel = element?.querySelector<HTMLElement>(OPEN_PANEL)
+    const panel = element?.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
 
     if (panel) {
       pendingFocus.current = null
@@ -728,7 +727,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       focus: false,
     }),
     settle: () => afterTaskLayout({ signal }),
-    opened: ({ element }) => element.querySelector<HTMLElement>(OPEN_PANEL)
+    opened: ({ element }) => element.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)
       ?.focus({ preventScroll: true }),
     align: async ({ element }) => await afterSteadyLayout({
       element,
@@ -743,11 +742,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const open = async ({
     id,
     pointer = false,
-    focusUpdates = true,
+    focusPanel = true,
   }: {
     id: string
     pointer?: boolean
-    focusUpdates?: boolean
+    focusPanel?: boolean
   }): Promise<boolean> => {
     cancelOpen(); pendingFocus.current = null
 
@@ -812,8 +811,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
 
       const updates = element.querySelector<HTMLElement>('.task-updates')
 
-      if (focusUpdates) {
-        element.querySelector<HTMLElement>(OPEN_PANEL)?.focus({ preventScroll: true })
+      if (focusPanel) {
+        element.querySelector<HTMLElement>(VISIBLE_TAB_PANEL)?.focus({ preventScroll: true })
       }
 
       return !!updates && element.isConnected && !signal.aborted
@@ -1204,7 +1203,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                     open={({
                                       id,
                                       pointer,
-                                      focusUpdates,
+                                      focusPanel,
                                     }) => {
                                       if (expandedIds.includes(id)) {
                                         close({ id })
@@ -1215,7 +1214,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                       return open({
                                         id,
                                         pointer,
-                                        focusUpdates,
+                                        focusPanel,
                                       })
                                     }}
                                     command={command}
