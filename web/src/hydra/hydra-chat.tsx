@@ -791,7 +791,6 @@ export function HydraChat({
       />
       <Composer
         compacting={Boolean(compacting)}
-        serverComments={hosted}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false

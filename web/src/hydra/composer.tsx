@@ -131,7 +131,6 @@ export function Composer({
   meter,
   stop,
   compacting = false,
-  serverComments = true,
   focusAbove,
 }: {
   card: string
@@ -155,7 +154,6 @@ export function Composer({
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
-  serverComments?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
 }) {
@@ -461,32 +459,9 @@ export function Composer({
     key: card,
     hydraId,
   }))
-  const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
-  const [
-    taught,
-    setTaught,
-  ] = useState(false)
-  useEffect(
-    () => {
-      if (serverComments) {
-        return
-      }
-
-      try {
-        setTaught(localStorage.getItem(commentKey) === 'sent')
-      } catch {
-        setTaught(false)
-      }
-    },
-    [
-      commentKey,
-      serverComments,
-    ],
-  )
   const outgoing = commentReply({
     draft,
     comments,
-    firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const imagesLoading = hasPendingImage({ text: outgoing })
@@ -801,17 +776,6 @@ export function Composer({
       } | undefined
 
       if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        if (!serverComments && (commented || taken?.comments.length)) {
-          setTaught(true)
-
-          try {
-            localStorage.setItem(
-              commentKey,
-              'sent',
-            )
-          } catch { /* Storage can be disabled. */ }
-        }
-
         attempt.current = null
       } else {
         problem = receipt?.state === 'delivery_unknown'
@@ -1390,7 +1354,6 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
-                    firstComment: !serverComments && !taught,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'
