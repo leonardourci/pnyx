@@ -309,7 +309,6 @@ export function applyHydra({
       key,
       title,
       ...(project ? { project } : {}),
-      ...(event.data.goal ? { goal: event.data.goal } : {}),
       ...(brief !== undefined ? {
         brief,
         initialPrompt: brief,
@@ -347,6 +346,10 @@ export function applyHydra({
 
     if (kind === 'investigation') {
       state.cards[event.cardId]!.kind = kind
+    }
+
+    if (event.data.goal) {
+      state.cards[event.cardId]!.goal = event.data.goal
     }
 
     state.keys[key] = event.cardId
