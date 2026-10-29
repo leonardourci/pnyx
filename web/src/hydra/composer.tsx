@@ -119,7 +119,8 @@ function folderSuggestions({
     ]
   }
 
-  const candidates = otherProjects.map(project => ({
+  // A typed path lists only what is under it; other Hydras' projects would match any path.
+  const candidates = (typedPath ? [] : otherProjects).map(project => ({
     ...project,
     detail: `In ${project.hydra}`,
   }))
@@ -690,7 +691,6 @@ export function Composer({
     const slots = view.chips.filter(chip => chip.kind === 'slot')
     const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
     const slot = onCaret ?? slots.find(chip => chip.from >= caret)
-
 
     if (slot) {
       write(replaceDisplay({
@@ -1554,7 +1554,7 @@ export function Composer({
               }
 
               // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
-              // An item the owner moved to with the arrows is picked as usual.
+              // Tab with nothing to complete leaves the path as typed; an item moved to with the arrows is picked as usual.
               const fromTop = picked <= 0
               const listing = mention && folderPath && fromTop ? folders?.listing : undefined
               const completed = listing && completePath({
@@ -1562,7 +1562,7 @@ export function Composer({
                 listing,
               })
 
-              if (e.key === 'Tab' && mention && (completed || (typedFolder && fromTop))
+              if (e.key === 'Tab' && mention && folderPath && fromTop
                 && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
                 e.preventDefault()
                 e.stopPropagation()
