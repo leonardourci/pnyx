@@ -22,7 +22,7 @@ type Confirmation = {
   }[]
 }
 
-function useFolders({
+export function useFolders({
   path,
   repository,
   connected,

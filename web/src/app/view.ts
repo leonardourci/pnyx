@@ -7,14 +7,17 @@ export function pageTitle({
   cards,
   selected = null,
   needsYou = 'needs_you',
+  hydra = 'Hydra',
 }: {
   cards: HydraState['cards']
   selected?: string | null
   needsYou?: string
+  // The Hydra's own name, shown when no task is open.
+  hydra?: string
 }): string {
   const count = Object.values(cards)
     .filter(c => liveTask({ card: c }) && c.column === needsYou).length
-  const label = (selected && cards[selected]?.title) || 'Hydra'
+  const label = (selected && cards[selected]?.title) || hydra
 
   return `${count > 0 ? `(${count}) ` : ''}${label} · Pnyx`
 }

@@ -14,7 +14,7 @@ import { useCardHeight } from './card-height.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { projectTitle } from '#web-projects/view.ts'
-import { cardState } from './view.ts'
+import { cardState, TASK_DRAG } from './view.ts'
 import { currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
@@ -33,6 +33,7 @@ import { ActionBubble } from '#web-hydra/action-bubble.tsx'
 import type { PnyxLookup } from '#web-hydra/pnyx-action.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
+import { draggableItem } from '#web-shared/ui/drag.ts'
 
 const OPEN_SHARE = 0.5
 
@@ -374,19 +375,12 @@ export function HydraCard({
           })
         }
       }}
-      draggable={connected && !selected && !reminding && !editing}
-      onDragStart={e => {
-        if (e.target instanceof Element && e.target.closest('button, .resize, form')) {
-          e.preventDefault()
-
-          return
-        }
-
-        e.stopPropagation(); e.dataTransfer.setData(
-          'application/pnyx-task',
-          card.id,
-        )
-      }}
+      {...draggableItem({
+        type: TASK_DRAG,
+        id: card.id,
+        enabled: connected && !selected && !reminding && !editing,
+        skip: 'button, .resize, form',
+      })}
     >
       <div className="card-content">
         <div className="card-state">

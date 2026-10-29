@@ -643,7 +643,7 @@ export function Oracle({
         }
       }}
     >
-      <Icon name="search" size={15} />
+      <Icon name="oracle" size={15} />
       <Input
         ref={input}
         aria-label="Oracle"

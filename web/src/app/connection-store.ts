@@ -29,6 +29,7 @@ interface Creation {
   attempt: string
   from: string
   name: string
+  icon?: string
   refusal?: {
     message: string
     code: string
@@ -1347,6 +1348,9 @@ export function createHydraConnection() {
         patch: {
           id,
           name: creation.name,
+          icon: creation.icon,
+          // Created now, so it sorts last until the server's summary arrives.
+          order: Date.now(),
           hydra: 'Hydra',
           projects: [],
           creationAttempt: creation.attempt,
@@ -1396,15 +1400,21 @@ export function createHydraConnection() {
 
     publish()
 
+    const args = [
+      'create',
+      creation.name,
+      creation.attempt,
+    ]
+
+    if (creation.icon) {
+      args.push(creation.icon)
+    }
+
     try {
       const receipt = await command({
         scope: scopeFor({ id: creation.from }),
         name: 'hydras',
-        args: [
-          'create',
-          creation.name,
-          creation.attempt,
-        ],
+        args,
         creation: creation.attempt,
       })
       const outcome = receipt.creation as { hydraId: string }
@@ -1440,11 +1450,18 @@ export function createHydraConnection() {
     }
   }
 
-  const create = ({ name = '' }: { name?: string } = {}) => attemptCreation({
+  const create = ({
+    name,
+    icon,
+  }: {
+    name: string
+    icon: string
+  }) => attemptCreation({
     creation: {
       attempt: crypto.randomUUID(),
       from: selection().id,
       name,
+      icon,
     },
     choose: true,
     push: true,
