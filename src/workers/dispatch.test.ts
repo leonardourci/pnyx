@@ -323,34 +323,30 @@ test(
 )
 
 test(
-  'a genuine spendPriority tie stops the start and names every tied candidate',
+  'on a spendPriority tie or with every quota unknown, the first listed candidate starts',
   () => {
     const current = config(), quota = () => reading({
       remaining: 50,
       priority: 0.4,
     })
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota,
-      }),
-      (error: Error & { code?: string }) =>
-        error.code === 'DISPATCH_TIE' && /claude\/opus on claude:work, codex\/gpt-6\.1-sol on codex:work tie at spendPriority 0\.4/.test(error.message),
+    const tied = chooseCandidate({
+      config: current,
+      rule: 'build',
+      quota,
+    })
+    assert.equal(
+      tied.provider,
+      'claude',
     )
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota,
-      }),
-      (error: Error & { help?: string[] }) => /Pick one with --harness claude\|codex/.test(error.help?.[0] ?? ''),
+    assert.match(
+      tied.reason,
+      /tie at spendPriority 0\.4; first listed candidate/,
     )
+    current.dispatch.rules.build!.candidates.reverse()
     assert.equal(
       chooseCandidate({
         config: current,
         rule: 'build',
-        harness: 'codex',
         quota,
       }).provider,
       'codex',
@@ -362,17 +358,21 @@ test(
       },
       {
         harness: 'claude',
-        model: 'sonnet',
+        model: 'opus',
       },
     ]
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota: () => ({ auth: 'unknown' }),
-      }),
-      (error: Error & { help?: string[] }) =>
-        /all have unknown quota/.test(error.message) && /split rule build/.test(error.help?.[0] ?? ''),
+    const unknown = chooseCandidate({
+      config: current,
+      rule: 'build',
+      quota: () => ({ auth: 'unknown' }),
+    })
+    assert.equal(
+      unknown.candidate.model,
+      'sonnet',
+    )
+    assert.match(
+      unknown.reason,
+      /quota unknown; first listed candidate/,
     )
   },
 )
@@ -467,7 +467,7 @@ test(
     current.dispatch.rules.build!.candidates = [
       {
         harness: 'claude',
-        model: 'opus',
+        model: 'sonnet',
       },
     ]
     const chosen = chooseCandidate({
@@ -571,7 +571,7 @@ test(
 )
 
 test(
-  'unknown and stale quotas are usable and recorded as unknown, but never chosen between',
+  'unknown and stale quotas are usable and recorded as unknown, and list order chooses between them',
   () => {
   // readQuota drops a stale account window, so only the stale model row is left.
     for (const quota of [
@@ -602,13 +602,13 @@ test(
         chosen.reason,
         /0%/,
       )
-      assert.throws(
-        () => chooseCandidate({
+      assert.equal(
+        chooseCandidate({
           config: config(),
           rule: 'build',
           quota,
-        }),
-        /no single best candidate.*all have unknown quota/,
+        }).candidate.model,
+        'opus',
       )
     }
   },

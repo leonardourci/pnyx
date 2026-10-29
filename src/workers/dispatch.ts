@@ -372,9 +372,6 @@ const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
   return typeof score === 'number' && Number.isFinite(score) ? score : undefined
 }
 
-const named = ({ choice }: { choice: Omit<DispatchChoice, 'reason'> }) =>
-  `${choice.provider}/${choice.override?.model ?? choice.candidate.model ?? 'default'} on ${choice.account}`
-
 const described = ({ override }: { override?: Override }) => Object.entries(override ?? {})
   .map(([
     key,
@@ -382,7 +379,7 @@ const described = ({ override }: { override?: Override }) => Object.entries(over
   ]) => `${key} ${value === true ? 'on' : value === false ? 'off' : value}`)
   .join(', ')
 
-// Known spendPriority ranks first and unknown quota after it; a tie or several unranked choices stop the start.
+// Known spendPriority ranks first and unknown quota after it; list order breaks a tie.
 export function chooseCandidate({
   config,
   rule = 'default',
@@ -584,21 +581,11 @@ export function chooseCandidate({
     })
   }
 
-  if (tied.length > 1) {
-    const harnesses = [...new Set(tied.map(c => c.choice.provider))]
-    throw new HydraError({
-      message: `rule ${rule} has no single best candidate; start stopped: ${tied.map(c => named({ choice: c.choice })).join(', ')} ${best ? `tie at spendPriority ${best.priority}` : 'all have unknown quota'}; ${[...evidence].sort().join('; ')}`,
-      code: 'DISPATCH_TIE',
-      help: [
-        harnesses.length > 1
-          ? `Pick one with --harness ${harnesses.join('|')}, or ask the owner; Pnyx never chooses between equal candidates`
-          : `Ask the owner to split rule ${rule} or narrow it to one candidate; Pnyx never chooses between equal candidates`,
-      ],
-    })
-  }
-
+  // Candidates are tried in list order, so on a tie or with no known quota the first listed starts.
   const chosen = (best ?? tied[0]!).choice
-  const how = ownerOverride ? 'owner override; quota does not veto an explicit choice' : best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
+  const how = ownerOverride ? 'owner override; quota does not veto an explicit choice'
+    : tied.length > 1 ? `${best ? `tie at spendPriority ${best.priority}` : 'quota unknown'}; first listed candidate`
+      : best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
   const changed = described({ override: chosen.override })
 
   return {
