@@ -1,12 +1,9 @@
 import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
-import type { AgentConfig } from '#workers/model.ts'
+import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
-
-// The same characters the dispatch config accepts for a harness's model or effort flag.
-const AGENT_FLAG = /^[\w.:/[\]-]{1,100}$/
 
 export const DEFAULT_REVIEW_MINUTES = 30
 // setTimeout's limit, which the review timer schedules with.
@@ -108,7 +105,10 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
     return invalid({ detail: 'helper harness is claude or codex' })
   }
 
-  if (!AGENT_FLAG.test(agent.model) || (agent.effort !== undefined && (typeof agent.effort !== 'string' || !AGENT_FLAG.test(agent.effort)))) {
+  const modelReadable = AGENT_FLAG.test(agent.model)
+  const effortReadable = agent.effort === undefined || (typeof agent.effort === 'string' && AGENT_FLAG.test(agent.effort))
+
+  if (!modelReadable || !effortReadable) {
     return invalid({ detail: 'helper model and effort take characters a harness flag accepts' })
   }
 

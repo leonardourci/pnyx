@@ -7,6 +7,9 @@ import type { Column } from '#tasks/columns-model.ts'
 
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.
+// The characters a harness's model, effort or mode flag can take.
+export const AGENT_FLAG = /^[\w.:/[\]-]{1,100}$/
+
 export const REPLY_STATES = [
   'queued',
   'delivered',
