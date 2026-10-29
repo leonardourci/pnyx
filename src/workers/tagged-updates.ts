@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { appendNote } from '#integrations/hooks/harvest.ts'
 import { ownerActor } from '#app/actors.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -19,6 +20,8 @@ export function copyTagged({
   at: string
 }) {
   const tagged = new Set<string>()
+  // Two turns can finish in the same millisecond, so `at` alone would let the second reply's note look like a duplicate.
+  const turn = randomUUID()
 
   texts.flatMap(text => taggedParagraphs({ text })).forEach((
     paragraph,
@@ -38,7 +41,7 @@ export function copyTagged({
         kind: 'context',
         source: 'hydra',
         text: redact({ text: paragraph.text }),
-        ref: `hydra-reply:${at}:${index}`,
+        ref: `hydra-reply:${turn}:${index}`,
       },
       at,
     })

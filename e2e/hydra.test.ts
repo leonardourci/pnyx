@@ -22,7 +22,9 @@ const finished = async ({
   const agent = await s.agent({ hydra: true })
   await until({
     what: `Hydra to finish turn ${turns}`,
+    // A finished state can still be the previous turn's while the next prompt is already received, so wait for its turn to end too.
     check: () => s.received({ cwd: agent.cwd }).length === turns
+      && s.answered({ cwd: agent.cwd }) === turns
       && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
   })
 }
