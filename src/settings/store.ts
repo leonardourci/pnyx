@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, statSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import type { HydraEvent, HydraState } from '#app/model.ts'
@@ -11,7 +11,8 @@ import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
-import { privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { withRegistryLock } from '#store/storage.ts'
+import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 
@@ -21,44 +22,10 @@ export const settingsLogPath = () => join(
   'events.jsonl',
 )
 
-function readEntries(): SettingsEntry[] {
-  let text = ''
-
-  try {
-    text = readFileSync(
-      settingsLogPath(),
-      'utf8',
-    )
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
-      throw error
-    }
-  }
-
-  // A torn last line is a write cut short; the complete lines before it still count.
-  const lines = text.split('\n').slice(
-    0,
-    -1,
-  )
-    .filter(Boolean)
-  const entries = lines.flatMap(line => {
-    try {
-      const entry = JSON.parse(line) as SettingsEntry
-      const readable = entry?.v === 1 && typeof entry.after === 'object' && entry.after !== null
-
-      return readable ? [entry] : []
-    } catch {
-      return []
-    }
-  })
-  const skipped = lines.length - entries.length
-
-  if (skipped) {
-    console.error(`pnyx-axi: skipped ${skipped} unreadable lines in ${settingsLogPath()}`)
-  }
-
-  return entries
-}
+const readEntries = () => readJournal<SettingsEntry>({
+  path: settingsLogPath(),
+  readable: ({ entry }) => entry?.v === 1 && typeof entry.after === 'object' && entry.after !== null,
+})
 
 export interface SettingsRead {
   settings: Settings
@@ -83,40 +50,23 @@ function fold({ entries }: { entries: SettingsEntry[] }): SettingsRead {
   }
 }
 
-let cache: {
-  key: string
+let folded: {
+  entries: SettingsEntry[]
   read: SettingsRead
 } | undefined
 
+// The journal returns the same entries until the log changes, so their fold is reused until then.
 function readFolded(): SettingsRead {
-  const path = settingsLogPath()
-  const stat = existsSync(path) ? statSync(path) : undefined
-  const key = `${path}:${stat?.size ?? -1}:${stat?.mtimeMs ?? 0}`
+  const entries = readEntries()
 
-  if (cache?.key !== key) {
-    cache = {
-      key,
-      read: fold({ entries: readEntries() }),
+  if (folded?.entries !== entries) {
+    folded = {
+      entries,
+      read: fold({ entries }),
     }
   }
 
-  return cache.read
-}
-
-function writeLine({ line }: { line: string }): void {
-  const path = settingsLogPath()
-  privateDir({ dir: dirname(path) })
-  const size = existsSync(path) ? statSync(path).size : 0
-  // A torn last line keeps its own line, so the new entry is never glued onto it.
-  const torn = size > 0 && !readFileSync(
-    path,
-    'utf8',
-  ).endsWith('\n')
-  writeDurably({
-    path,
-    data: `${torn ? '\n' : ''}${line}`,
-    flag: 'a',
-  })
+  return folded.read
 }
 
 function append({
@@ -151,7 +101,10 @@ function append({
     entry.reason = meta.reason
   }
 
-  writeLine({ line: `${JSON.stringify(entry)}\n` })
+  appendJournal({
+    path: settingsLogPath(),
+    entry,
+  })
 
   return entry
 }
@@ -249,7 +202,7 @@ function migrate(): void {
     after,
     DEFAULT_SETTINGS,
   )) {
-    writeLine({ line: '' })
+    appendJournal({ path: settingsLogPath() })
 
     return
   }
