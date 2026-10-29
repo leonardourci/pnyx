@@ -26,6 +26,11 @@ export const SETTINGS_SECTIONS = [
     icon: 'model',
   },
   {
+    id: 'dispatch',
+    label: 'Heads dispatch',
+    icon: 'dispatch',
+  },
+  {
     id: 'keyboard',
     label: 'Keyboard',
     icon: 'keyboard',
@@ -236,6 +241,26 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'codex',
       'claude',
       'fast',
+    ],
+  },
+  {
+    id: 'headsDispatch',
+    section: 'dispatch',
+    label: 'Heads dispatch',
+    description: 'Which agent and which login each worker gets. Changes are checked before they save, and Hydra’s proposed changes wait for your Confirm.',
+    related: [
+      'rules',
+      'workers',
+      'agents',
+      'models',
+      'effort',
+      'permissions',
+      'candidates',
+      'accounts',
+      'logins',
+      'quota',
+      'proposals',
+      'routing',
     ],
   },
   {

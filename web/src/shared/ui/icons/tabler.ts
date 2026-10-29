@@ -1,5 +1,6 @@
 import {
-  IconAlertCircle, IconArrowDown, IconArrowFork, IconArrowRight, IconArrowUpRight, IconAt,
+  IconAlertCircle, IconArrowDown, IconArrowFork, IconArrowRight, IconArrowsSplit2, IconArrowUpRight,
+  IconAt,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
   IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
   IconCopy, IconCpu, IconCube, IconDeviceDesktop, IconDots, IconExclamationCircle, IconEye,
@@ -102,4 +103,5 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   about: IconInfoCircle,
   helper: IconSparkles,
   workers: IconUsers,
+  dispatch: IconArrowsSplit2,
 }

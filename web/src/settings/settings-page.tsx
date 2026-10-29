@@ -19,6 +19,7 @@ import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
@@ -36,6 +37,7 @@ const ICONS: Record<string, string> = {
   focusMode: 'focus',
   toolDetails: 'tool',
   thinkingDetails: 'thinking',
+  headsDispatch: 'dispatch',
   keyboard: 'keyboard',
   version: 'about',
   doneAfterHours: 'done',
@@ -328,6 +330,8 @@ function Control({
             .catch((error: Error) => notify({ text: error.message }))}
         />
       )
+    case 'headsDispatch':
+      return <DispatchSettings state={state} command={command} notify={notify} />
     case 'keyboard':
       return <KeyboardSettings embedded prefs={view.keyboard} save={save} />
     case 'version':

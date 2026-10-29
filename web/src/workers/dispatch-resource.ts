@@ -2,6 +2,7 @@ import { useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
 import type { ProposalStatus } from '#workers/dispatch-apply.ts'
+import { canonical, mergePatch, type DispatchDocument } from '#workers/dispatch-check.ts'
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
 import { installationScope } from '#web-shared/installation.ts'
 
@@ -67,6 +68,64 @@ export function dispatchSettings() {
   if (!resource) {
     resource = createDispatch({ scope })
     dispatches.set(
+      scope,
+      resource,
+    )
+  }
+
+  return resource
+}
+
+// The editable document as rule show prints it; a write is the merge patch rule apply takes.
+export interface SavedDispatch {
+  document: DispatchDocument
+  revision: number
+}
+
+type DispatchPatch = Record<string, unknown>
+
+const documents = new Map<string, ReturnType<typeof createDocument>>()
+
+function createDocument({ scope }: { scope: string }) {
+  return createSettingsResource<SavedDispatch, DispatchPatch>({
+    scope,
+    project: ({
+      state,
+      patch,
+    }) => state && {
+      document: mergePatch({
+        target: state.document,
+        patch,
+      }) as DispatchDocument,
+      revision: state.revision + 1,
+    },
+    represented: ({
+      state,
+      patch,
+    }) => canonical({
+      value: mergePatch({
+        target: state.document,
+        patch,
+      }),
+    }) === canonical({ value: state.document }),
+    read: ({ receipt }) => typeof receipt.revision === 'number' && 'document' in receipt ? {
+      document: receipt.document as DispatchDocument,
+      revision: receipt.revision,
+    } : undefined,
+    newer: ({
+      current,
+      next,
+    }) => next.revision >= current.revision,
+  })
+}
+
+export function dispatchDocument() {
+  const scope = installationScope({ resource: 'dispatch-document' })
+  let resource = documents.get(scope)
+
+  if (!resource) {
+    resource = createDocument({ scope })
+    documents.set(
       scope,
       resource,
     )
