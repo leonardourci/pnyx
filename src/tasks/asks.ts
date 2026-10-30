@@ -165,6 +165,7 @@ async function answerHydra({
         choice,
         question,
         fromMessage: source,
+        liftsHold,
       } = askAnswer({
         card,
         state,
@@ -193,6 +194,7 @@ async function answerHydra({
             ].join('\n'),
             answers: id,
             fromMessage: source,
+            liftsHold,
             ...(choice ? { choice } : {}),
             hydra: hydraConfig({
               state,
@@ -520,7 +522,7 @@ export function askCommand({
   hydraId,
   meta: given,
 }: {
-  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question'
+  action: 'ask' | 'answer' | 'escalate' | 'close-question' | 'reopen-question' | 'reask'
   positionals: string[]
   values: Values
   hydraId: string
@@ -532,12 +534,12 @@ export function askCommand({
     what: 'task id',
   })
 
-  if (action === 'close-question' || action === 'reopen-question') {
+  if (action === 'close-question' || action === 'reopen-question' || action === 'reask') {
     return commit({
       hydraId,
       meta: m,
       intent: {
-        type: action === 'reopen-question' ? 'task.ask.reopened' : 'task.ask.closed',
+        type: action === 'close-question' ? 'task.ask.closed' : 'task.ask.reopened',
         card: ref,
       },
       decide: ({ state }) => decideAskClosure({
@@ -549,6 +551,7 @@ export function askCommand({
         }),
         evidence: text({ value: values.evidence }),
         reopen: action === 'reopen-question',
+        reask: action === 'reask',
         answer: text({ value: values.answer }),
         meta: m,
       }),

@@ -405,6 +405,9 @@ export const askWording = ({ ask }: { ask: Ask }) => ({
   context: ask.escalated?.context ?? ask.context,
 })
 
+const answeredMergeHold = ({ ask }: { ask: Ask }) =>
+  ask.kind === 'merge' && ask.audience === 'owner' && ask.choice === 'Hold' && !!ask.answered && !ask.closed
+
 export function askAnswer({
   card,
   id,
@@ -431,6 +434,7 @@ export function askAnswer({
     question: string
     answer: string
     choice?: string
+    liftsHold?: string
   }
 } {
   const ask = findAsk({
@@ -457,7 +461,7 @@ export function askAnswer({
   if (fromMessage !== undefined) {
     const message = state?.hydraMessages?.find(message => message.id === fromMessage)
     const ownerMessage = message && ownerActor({ actor: message.actor }) && message.action === 'send'
-    const askedAt = ask.escalated?.at ?? ask.at
+    const askedAt = ask.reaskedAt ?? ask.escalated?.at ?? ask.at
     const newer = message && Date.parse(message.at) > Date.parse(askedAt)
 
     if (actor !== HYDRA_ACTOR || ask.audience !== 'owner') {
@@ -487,12 +491,6 @@ export function askAnswer({
     })
   }
 
-  closed({
-    card,
-    ask,
-    undelivered,
-  })
-
   const options = ask.options ?? []
   const picked = choice?.trim()
   const index = picked === undefined ? undefined
@@ -515,6 +513,24 @@ export function askAnswer({
 
   if (ask.kind === 'merge' && !label && note !== 'Merge' && note !== 'Hold') {
     throw invalid({ message: 'answer a merge question with --choice Merge or Hold; --from-message also needs that choice' })
+  }
+
+  const heldMerge = answeredMergeHold({ ask })
+  const liftsHold = heldMerge && actor === HYDRA_ACTOR && !!source && label === 'Merge'
+
+  const newerThanHold = source && ask.answeredAt
+    && Date.parse(source.at) > Date.parse(ask.answeredAt)
+
+  if (liftsHold && !newerThanHold) {
+    throw invalid({ message: 'the owner’s message must be newer than the Hold answer' })
+  }
+
+  if (!liftsHold) {
+    closed({
+      card,
+      ask,
+      undelivered,
+    })
   }
 
   if (ask.kind === 'go') {
@@ -551,6 +567,7 @@ export function askAnswer({
       answer: note ?? label!,
       ...(label ? { choice: label } : {}),
       fromMessage: source,
+      liftsHold: label === 'Merge' ? ask.mergeHold?.answered ?? ask.answered : undefined,
     },
   }
 }
@@ -618,6 +635,15 @@ export function applyAsk({
           fromMessage: accepted.source,
         }
 
+        if (ask.kind === 'merge' && ask.choice === 'Hold' && ask.answered) {
+          answered.mergeHold = {
+            answered: ask.answered,
+            answeredAt: ask.answeredAt,
+            fromMessage: ask.fromMessage,
+            choice: ask.choice,
+          }
+        }
+
         if (accepted.choice !== undefined) {
           answered.choice = accepted.choice
         } else if (ask.kind === 'merge' || ask.kind === 'go') {
@@ -676,6 +702,32 @@ export function applyAsk({
       }
 
       const reopened = { ...a }
+
+      if (event.data.reask) {
+        reopened.mergeHold = {
+          answered: a.answered,
+          answeredAt: a.answeredAt,
+          fromMessage: a.fromMessage,
+          choice: a.choice,
+        }
+        reopened.reaskedAt = event.at
+      } else if (a.mergeHold) {
+        delete reopened.fromMessage
+        Object.assign(
+          reopened,
+          a.mergeHold,
+        )
+
+        if (!reopened.fromMessage) {
+          delete reopened.fromMessage
+        }
+
+        delete reopened.mergeHold
+        delete reopened.reaskedAt
+
+        return reopened
+      }
+
       delete reopened.answered
       delete reopened.answeredAt
       delete reopened.fromMessage
@@ -884,6 +936,7 @@ export function decideAskClosure({
   id,
   evidence,
   reopen,
+  reask,
   answer,
   meta,
 }: {
@@ -892,6 +945,7 @@ export function decideAskClosure({
   id: string
   evidence?: string
   reopen?: boolean
+  reask?: boolean
   answer?: string
   meta: Meta
 }): Decision {
@@ -903,6 +957,30 @@ export function decideAskClosure({
     card,
     id,
   })
+
+  if (reask) {
+    if (!meta.reason?.trim()) {
+      throw invalid({ message: 're-asking a merge Hold needs --reason' })
+    }
+
+    if (meta.actor !== HYDRA_ACTOR || !ask.answered || !answeredMergeHold({ ask })) {
+      throw invalid({ message: 'only Hydra can re-ask an answered merge Hold' })
+    }
+
+    return hydraEvent({
+      state,
+      cardId: card.id,
+      meta,
+      change: {
+        type: 'task.ask.reopened',
+        data: {
+          ask: id,
+          answer: ask.answered,
+          reask: true,
+        },
+      },
+    })
+  }
 
   if (reopen) {
     const currentAnswer = ask.fromMessage && ask.answered && ask.answered === answer && !ask.closed
