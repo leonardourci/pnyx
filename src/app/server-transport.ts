@@ -80,6 +80,10 @@ type ServerPayload =
   }
   | { type: 'pong' }
   | {
+    type: 'checking'
+    id: string
+  }
+  | {
     type: 'thread'
     thread: ThreadPage
   }

@@ -169,6 +169,7 @@ export async function openPage({
   const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}`)
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
+  const checking: string[] = []
   const queues: HydraQueue[] = []
   const upgrades: UpgradeStatus[] = []
   ws.on(
@@ -176,7 +177,9 @@ export async function openPage({
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'upgrade') {
+      if (message.type === 'checking') {
+        checking.push(message.id)
+      } else if (message.type === 'upgrade') {
         upgrades.push(message.upgrade)
       } else if (message.type === 'hydraQueue') {
         queues.push(message.queue)
@@ -211,6 +214,7 @@ export async function openPage({
   let next = 0
 
   return {
+    checking,
     queues,
     upgrades,
     shows: <T>({
