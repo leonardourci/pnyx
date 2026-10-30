@@ -693,14 +693,15 @@ export function Oracle({
   }
 
   const move = ({ step }: { step: number }) => {
-    stepped.current = true
+    const current = token ? menuSelected : selected
     const id = movedId({
       ids: token ? menuIds : results.map(result => result.id),
-      current: token ? menuSelected : selected,
+      current,
       step,
     })
 
-    if (id) {
+    if (id && id !== current) {
+      stepped.current = true
       choice({ id })
     }
   }
@@ -1110,8 +1111,12 @@ export function Oracle({
         tag: target.tagName,
         type: target instanceof HTMLInputElement ? target.type : undefined,
         role: target.getAttribute('role'),
+        expanded: target.getAttribute('aria-expanded') === 'true',
+        popup: ![
+          null,
+          'false',
+        ].includes(target.getAttribute('aria-haspopup')),
       }),
-      popup: target.getAttribute('aria-expanded') === 'true',
     })
 
     if (to === PASS) {

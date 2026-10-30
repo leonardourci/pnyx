@@ -44,8 +44,8 @@ export function recoverFocus<T>({
   return after.find(control => controls.includes(control)) ?? INPUT
 }
 
-// These controls use ← → themselves: a slider's value, a text field's caret, a radio group's option.
-export type ControlKind = 'slider' | 'text' | 'radio' | 'other'
+// ← → move a slider, a caret or a radio group's option, and an open popup such as a Select's menu keeps every arrow.
+export type ControlKind = 'popup' | 'slider' | 'text' | 'radio' | 'other'
 
 const NOT_TEXT = [
   'checkbox',
@@ -63,12 +63,22 @@ export function controlKind({
   tag,
   type = '',
   role,
+  expanded = false,
+  popup = false,
 }: {
   tag: string
   type?: string
   role?: string | null
+  expanded?: boolean
+  // The control declares a popup with aria-haspopup.
+  popup?: boolean
 }): ControlKind {
   const name = tag.toLowerCase()
+
+  // An expanded disclosure, such as "Show fewer", is not a popup and leaves the arrows to the palette.
+  if (expanded && (popup || role === 'combobox')) {
+    return 'popup'
+  }
 
   if (role === 'radio' || (name === 'input' && type === 'radio')) {
     return 'radio'
@@ -98,16 +108,13 @@ export function arrowFocus<T>({
   from,
   key,
   kind,
-  popup = false,
 }: {
   controls: T[]
   from: T
   key: string
   kind: ControlKind
-  // The focused control has its own popup open, such as a Select's menu.
-  popup?: boolean
 }): T | typeof INPUT | typeof PASS {
-  if (popup) {
+  if (kind === 'popup') {
     return PASS
   }
 
@@ -145,9 +152,9 @@ export const enterPreview = <T>({
   own: T[]
 }): T | undefined => own[0] ?? controls[0]
 
-export const SCROLL_BUFFER = 2
+const SCROLL_BUFFER = 2
 
-export interface Row {
+interface Row {
   // From the top of the scrolled content.
   top: number
   height: number
@@ -188,7 +195,7 @@ export function bufferedScroll({
       )]!
 
       return {
-        top: first === 0 ? 0 : rows[first]!.top,
+        top: first === 0 && keep > 0 ? 0 : rows[first]!.top,
         bottom: last.top + last.height,
       }
     },

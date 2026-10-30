@@ -281,18 +281,15 @@ const arrows = ({
   controls,
   from,
   key,
-  popup = false,
 }: {
   controls: Control[]
   from: string
   key: string
-  popup?: boolean
 }) => arrowFocus({
   controls: controls.map(control => control.name),
   from,
   key,
   kind: controls.find(control => control.name === from)!.kind,
-  popup,
 })
 
 const button = ({ name }: { name: string }): Control => ({
@@ -301,7 +298,7 @@ const button = ({ name }: { name: string }): Control => ({
 })
 
 test(
-  'only sliders, text fields and radio groups keep ← and → for themselves',
+  'only sliders, text fields and radio groups keep ← and → for themselves, and only an open popup keeps every arrow',
   () => {
     const kinds = [
       [
@@ -361,6 +358,29 @@ test(
         {
           tag: 'BUTTON',
           role: 'combobox',
+        },
+        'other',
+      ],
+      [
+        {
+          tag: 'BUTTON',
+          role: 'combobox',
+          expanded: true,
+        },
+        'popup',
+      ],
+      [
+        {
+          tag: 'BUTTON',
+          expanded: true,
+          popup: true,
+        },
+        'popup',
+      ],
+      [
+        {
+          tag: 'BUTTON',
+          expanded: true,
         },
         'other',
       ],
@@ -483,7 +503,14 @@ test(
 test(
   'an open popup keeps every arrow until it closes',
   () => {
-    const controls = [button({ name: 'How work lands' })]
+    const controls: Control[] = [
+      {
+        name: 'How work lands',
+        kind: 'popup',
+      },
+      button({ name: 'Show fewer' }),
+      button({ name: 'Open task' }),
+    ]
 
     for (const key of [
       'ArrowUp',
@@ -496,11 +523,20 @@ test(
           controls,
           from: 'How work lands',
           key,
-          popup: true,
         }),
         PASS,
       )
     }
+
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Show fewer',
+        key: 'ArrowDown',
+      }),
+      'Open task',
+      'an expanded disclosure is no popup, so ↓ still moves on',
+    )
   },
 )
 
@@ -753,6 +789,37 @@ test(
       }),
       list[11]!.top + 30 - 100,
       'one row each side fits in 100 px, two do not',
+    )
+  },
+)
+
+test(
+  'a lone control far down the pane, such as Open chat under long matches, comes into view instead of the pane jumping to its top',
+  () => {
+    const lone = [
+      {
+        top: 900,
+        height: 30,
+      },
+    ]
+
+    assert.equal(
+      bufferedScroll({
+        scrollTop: 0,
+        viewport: 400,
+        rows: lone,
+        index: 0,
+      }),
+      530,
+    )
+    assert.equal(
+      bufferedScroll({
+        scrollTop: 530,
+        viewport: 400,
+        rows: lone,
+        index: 0,
+      }),
+      530,
     )
   },
 )
