@@ -295,3 +295,49 @@ test(
     assert.ok(resource.snapshot().intents.every(intent => intent.stage === 'confirmed'))
   },
 )
+
+test(
+  'a post-save read can supersede an accepted preview without trusting a pre-save read',
+  async () => {
+    const resource = createSettingsResource<string, string>({
+      scope: 'test:accepted-superseded',
+      project: ({ patch }) => patch,
+      represented: ({
+        state,
+        patch,
+      }) => state === patch,
+      read: ({ receipt }) => typeof receipt.value === 'string' ? receipt.value : undefined,
+    })
+    resource.receive({ state: 'old' })
+    const stale = deferred<Record<string, unknown>>()
+    const reading = resource.refresh({
+      command: async () => stale.promise,
+      name: 'rule',
+      args: ['list'],
+    })
+    await resource.write({
+      command: async () => ({ revision: 1 }),
+      name: 'rule',
+      args: ['set'],
+      patch: 'mine',
+      targets: ['model'],
+    })
+    assert.equal(
+      resource.snapshot().view,
+      'mine',
+    )
+    const recovering = resource.refresh({
+      command: async () => ({ value: 'someone else' }),
+      name: 'rule',
+      args: ['list'],
+    })
+    stale.resolve({ value: { value: 'old' } })
+    await recovering
+    await reading
+    assert.equal(
+      resource.snapshot().view,
+      'someone else',
+    )
+    assert.ok(resource.snapshot().intents.every(intent => intent.stage === 'confirmed'))
+  },
+)

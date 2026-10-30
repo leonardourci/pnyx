@@ -54,6 +54,7 @@ export function createSettingsResource<State, Patch>({
   let failedWrite: string | undefined
   let generation = 0
   let refreshing: Promise<void> | undefined
+  let refreshGeneration = -1
   const queues = new Map<string, Promise<void>>()
 
   const readSnapshot = () => {
@@ -88,11 +89,12 @@ export function createSettingsResource<State, Patch>({
     name: string
     args: string[]
   }) => {
-    if (refreshing) {
+    if (refreshing && refreshGeneration === generation) {
       return refreshing
     }
 
     const version = generation
+    refreshGeneration = version
 
     const run = async () => {
       try {
@@ -112,6 +114,17 @@ export function createSettingsResource<State, Patch>({
             resource.confirm({ state })
           }
 
+          if (state !== undefined) {
+            for (const intent of resource.snapshot().intents) {
+              if (intent.stage === 'accepted') {
+                resource.accept({
+                  id: intent.id,
+                  complete: true,
+                })
+              }
+            }
+          }
+
           readError = ''
         }
       } catch (failure) {
@@ -119,7 +132,10 @@ export function createSettingsResource<State, Patch>({
           readError = failure instanceof Error ? failure.message : String(failure)
         }
       } finally {
-        refreshing = undefined
+        if (refreshGeneration === version) {
+          refreshing = undefined
+        }
+
         publish()
       }
     }
