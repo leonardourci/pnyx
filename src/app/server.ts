@@ -34,7 +34,8 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { search as oracleSearch, updateIndex } from '#oracle/index.ts'
+import { indexedThrough, search as oracleSearch } from '#oracle/index.ts'
+import { indexRuns } from '#oracle/index-runs.ts'
 import { replyRoute } from '#workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
@@ -113,6 +114,34 @@ const COMMAND_WORKER = join(
 const REPLY_WORKER_TIMEOUT_MS = 130_000
 const OWNER_WRITE_RETRY_MS = 100
 const OWNER_WRITE_RETRY_MAX_MS = 1000
+// node:sqlite is synchronous, so the Oracle index catches up in a child as well.
+const INDEX_WORKER = join(
+  import.meta.dirname,
+  '..',
+  'oracle',
+  import.meta.url.endsWith('.ts') ? 'index-process.ts' : 'index-process.js',
+)
+// A first build of a long history takes seconds; this only ends a stuck one.
+const INDEX_WORKER_TIMEOUT_MS = 10 * 60_000
+
+// A worker entry that fails knowingly prints { error: { message, code, help } }.
+function workerError({ stdout }: { stdout: string }): {
+  message: string
+  code: string
+  help?: string[]
+} | undefined {
+  try {
+    const known = JSON.parse(stdout).error
+
+    if (typeof known?.message === 'string' && typeof known.code === 'string') {
+      return known
+    }
+  } catch {
+    // Not JSON: the worker failed before it could say why.
+  }
+
+  return undefined
+}
 
 export async function mountOwnedHydra({
   hydraId,
@@ -686,6 +715,7 @@ export async function mountOwnedHydra({
 
   const transcriptChanged = ({ path }: { path: string }) => {
     touchPath({ path })
+    historyIndex.changed()
 
     for (const map of threadSubscriptions) {
       for (const [
@@ -967,6 +997,11 @@ export async function mountOwnedHydra({
     }
 
     offset = read.end
+
+    if (read.events.length) {
+      historyIndex.changed()
+    }
+
     hydrasChanged()
     agents.reconcile({ state })
     followHome()
@@ -988,7 +1023,7 @@ export async function mountOwnedHydra({
   let scheduled = false
 
   // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
-  // The value says whether shutdown may kill the worker: only a follow, which the next run repeats.
+  // The value says whether shutdown may kill the worker: a follow or an index catch-up, which the next run repeats.
   const workers = new Map<ChildProcess, boolean>()
 
   const startWorker = ({
@@ -1043,13 +1078,38 @@ export async function mountOwnedHydra({
     )
     workers.set(
       child,
-      args[0] === 'inbox-follow',
+      args[0] === 'inbox-follow' || file === INDEX_WORKER,
     )
     child.once(
       'close',
       () => workers.delete(child),
     )
   }
+
+  // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
+  const historyIndex = indexRuns({
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => startWorker({
+      file: INDEX_WORKER,
+      timeout: INDEX_WORKER_TIMEOUT_MS,
+      args: [hydraId],
+      done: ({
+        error,
+        stdout,
+      }) => {
+        if (!error) {
+          return resolve(undefined)
+        }
+
+        const failure = workerError({ stdout }) ?? {
+          message: error.message,
+          code: 'UNKNOWN',
+        }
+        console.error(`pnyx oracle index: ${failure.message}`)
+        resolve(failure)
+      },
+    })),
+  })
+  historyIndex.changed()
 
   const runWorker = ({ args }: { args: string[] }) => new Promise<{ stdout: string }>((
     resolve,
@@ -1972,18 +2032,45 @@ export async function mountOwnedHydra({
             highlight: false,
           }
 
-          updateIndex({ hydraId })
-          send({
-            ws,
-            message: {
-              type: 'receipt',
-              id,
-              ...oracleSearch({
-                hydraId,
-                query,
-              }),
-            },
-          })
+          // Never rejects, so nothing is lost by not awaiting it.
+          const answer = async () => {
+            try {
+              const indexed = indexedThrough({ hydraId })
+              const behind = indexed === null || indexed < state.seq
+
+              if (behind) {
+                const failure = await historyIndex.ready()
+
+                if (failure) {
+                  return fail({
+                    error: `Oracle index could not catch up: ${failure.message}`,
+                    code: failure.code,
+                  })
+                }
+              } else {
+                historyIndex.changed()
+              }
+
+              send({
+                ws,
+                message: {
+                  type: 'receipt',
+                  id,
+                  ...oracleSearch({
+                    hydraId,
+                    query,
+                  }),
+                },
+              })
+            } catch (error) {
+              fail({
+                error: (error as Error).message,
+                code: error instanceof HydraError ? error.code : 'UNKNOWN',
+              })
+            }
+          }
+
+          answer()
         } else if (name === 'hydra-agent') {
           if (args.length !== 1) {
             throw new HydraError({
@@ -2345,19 +2432,9 @@ export async function mountOwnedHydra({
               kick()
 
               if (error) {
-                let known: {
-                  message?: unknown
-                  code?: unknown
-                  help?: string[]
-                } | undefined
+                const known = workerError({ stdout })
 
-                try {
-                  known = JSON.parse(stdout).error
-                } catch {
-                  known = undefined
-                }
-
-                if (typeof known?.message === 'string' && typeof known.code === 'string') {
+                if (known) {
                   fail({
                     error: known.message,
                     code: known.code,
@@ -2628,6 +2705,7 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    historyIndex.stop()
 
     for (const timer of writeRetries) {
       clearTimeout(timer)
