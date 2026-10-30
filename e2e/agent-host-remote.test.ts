@@ -1144,3 +1144,240 @@ test(
     )
   },
 )
+
+test(
+  'an idle native host restart reconnects the same running application before opening new work',
+  async t => {
+    const app = await fixtureApplication({ t })
+    const application = await app.start()
+    assert.equal(
+      (await app.host.stats()).length,
+      0,
+    )
+    app.host.child.kill('SIGKILL')
+    await app.host.exited
+    const replacement = await fixtureHost({
+      t,
+      directory: app.root,
+    })
+    const observer = await replacement.connect()
+    const expected = observer.ready.instance
+    observer.detach()
+    await until({
+      check: async () => {
+        const status = await application.control({ kind: 'connection' }) as {
+          available: boolean
+          instance: string
+        }
+
+        return status.available && status.instance === expected
+      },
+    })
+    await app.cli({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Use the reconnected native owner.',
+      ],
+    })
+    await until({ check: async () => (await replacement.stats()).some(state => state.input.some(input => input.text.includes('Use the reconnected native owner.'))) })
+    assert.equal(
+      application.child.exitCode,
+      null,
+    )
+    assert.equal(
+      application.child.signalCode,
+      null,
+    )
+    assert.equal(
+      (await replacement.stats()).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a lost native input reply reconnects the running application without repeating the admitted input',
+  async t => {
+    const { loseInputReply } = await import('#agent-host/fixtures/socket-proxy.ts')
+    const app = await fixtureApplication({ t })
+    const proxy = await loseInputReply({
+      directory: app.root,
+      text: 'Lose this input receipt.',
+      holdAttach: true,
+    })
+    t.after(proxy.close)
+    const application = await app.start({ traceOpens: true })
+    await app.cli({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.cli({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Wake peer',
+        '--key',
+        'wake-peer',
+        '--folder',
+        app.folder,
+      ],
+    })
+    await app.cli({
+      args: [
+        'task',
+        'start',
+        'wake-peer',
+        '--via',
+        'pnyx',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+        '--folder',
+        app.folder,
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Lose this input receipt.',
+      ],
+    })
+    await until({ check: proxy.dropped })
+    await until({ check: proxy.attached })
+    await app.cli({
+      args: [
+        'task',
+        'status',
+        'wake-peer',
+        'blocked',
+        '--note',
+        'Needs main while it reconnects.',
+      ],
+    })
+    await until({
+      check: async () => {
+        const result = await application.control({ kind: 'trace' }) as {
+          traces: {
+            kind: string
+            details: { actor?: string }
+          }[]
+        }
+
+        return result.traces.filter(event => event.kind === 'open-start' && event.details.actor === 'hydra').length >= 3
+      },
+    })
+    proxy.release()
+    type Trace = {
+      kind: string
+      details: {
+        attempt?: number
+        actor?: string
+        nativeId?: string
+        error?: string
+      }
+    }
+
+    const readTrace = async () => {
+      const result = await application.control({ kind: 'trace' }) as { traces: Trace[] }
+
+      return result.traces
+    }
+
+    await until({
+      check: async () => {
+        const events = await readTrace()
+        const reopening = events.filter(event => event.kind === 'open-start'
+          && event.details.actor === 'hydra' && event.details.nativeId)
+
+        const ended = new Set(events.filter(event => event.kind === 'open-end'
+          || event.kind === 'open-failed').map(event => event.details.attempt))
+
+        return reopening.every(open => ended.has(open.details.attempt))
+      },
+    })
+    const completedOpens = await readTrace()
+    assert.deepEqual(
+      completedOpens.filter(event => event.kind === 'open-failed'),
+      [],
+    )
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'A second input after reconciliation.',
+      ],
+    })
+
+    try {
+      await until({ check: async () => (await app.host.stats()).some(state => state.input.some(input => input.text.includes('A second input after reconciliation.'))) })
+    } catch (error) {
+      t.diagnostic(JSON.stringify(await application.control({ kind: 'trace' })))
+      t.diagnostic(app.errors())
+      throw error
+    }
+
+    const states = await app.host.stats()
+    const hydra = states.find(state => state.input.some(input => input.text.includes('Lose this input receipt.')))!
+    assert.equal(
+      states.length,
+      2,
+    )
+    assert.equal(
+      hydra.input.filter(input => input.text.includes('Lose this input receipt.')).length,
+      1,
+    )
+    assert.equal(
+      hydra.input.filter(input => input.text.includes('A second input after reconciliation.')).length,
+      1,
+    )
+    assert.equal(
+      application.child.exitCode,
+      null,
+    )
+    assert.equal(
+      application.child.signalCode,
+      null,
+    )
+  },
+)

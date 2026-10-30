@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { nativeProviders } from '#app/native-provider.ts'
 import { fixtureProvider, states } from './provider.ts'
 import { performance } from 'node:perf_hooks'
@@ -17,6 +18,36 @@ const measurements: {
   operation: string
   ms: number
 }[] = []
+const opening = new AsyncLocalStorage<number>()
+let openAttempt = 0
+const traces: {
+  kind: string
+  details: unknown
+}[] = []
+const tracing = process.env.PNYX_TEST_VERBOSE === '1' || process.env.PNYX_FIXTURE_TRACE_OPENS === 'true'
+
+const trace = ({
+  kind,
+  details,
+}: {
+  kind: string
+  details: unknown
+}) => {
+  if (tracing) {
+    traces.push({
+      kind,
+      details,
+    })
+  }
+
+  if (process.env.PNYX_TEST_VERBOSE === '1') {
+    console.error(
+      kind,
+      JSON.stringify(details),
+    )
+  }
+}
+
 const call = native.client.call
 const acknowledge = native.client.acknowledge
 const completions = new Set<string>()
@@ -54,7 +85,39 @@ native.client.call = async ({ ...request }) => {
   }
 
   const started = performance.now()
-  const result = await call(request)
+  trace({
+    kind: 'rpc-start',
+    details: {
+      open: opening.getStore(),
+      id: request.id,
+      kind: request.operation.kind,
+      session: 'ref' in request.operation ? request.operation.ref : undefined,
+    },
+  })
+  let result
+
+  try {
+    result = await call(request)
+    trace({
+      kind: 'rpc-end',
+      details: {
+        open: opening.getStore(),
+        id: request.id,
+        result,
+      },
+    })
+  } catch (error) {
+    trace({
+      kind: 'rpc-failed',
+      details: {
+        open: opening.getStore(),
+        id: request.id,
+        error: String(error),
+      },
+    })
+    throw error
+  }
+
   measurements.push({
     operation: request.operation.kind,
     ms: performance.now() - started,
@@ -63,7 +126,7 @@ native.client.call = async ({ ...request }) => {
   return result
 }
 
-if (process.env.PNYX_TEST_VERBOSE === '1') {
+if (tracing) {
   for (const [
     provider,
     adapter,
@@ -72,36 +135,41 @@ if (process.env.PNYX_TEST_VERBOSE === '1') {
 
     adapter.open = async ({ ...options }) => {
       const actor = options.env.PNYX_ACTOR
-      console.error(
-        'fixture application open',
-        process.pid,
-        provider,
-        actor,
-        options.agent?.sessionId,
-      )
-      const session = await open(options)
-      console.error(
-        'fixture application bound',
-        actor,
-        session.id,
-        session.remote,
-        session.recovered,
-      )
-      const run = session.run
+      const attempt = ++openAttempt
+      trace({
+        kind: 'open-start',
+        details: {
+          attempt,
+          provider,
+          actor,
+          nativeId: options.agent?.sessionId,
+          caller: new Error().stack,
+        },
+      })
+      let session
 
-      session.run = ({ ...options }) => {
-        const stream = run(options)
-
-        return (async function* () {
-          for await (const event of stream) {
-            console.error(
-              'fixture application event',
-              actor,
-              typeof event === 'string' ? event : event.type,
-            )
-            yield event
-          }
-        })()
+      try {
+        session = await opening.run(
+          attempt,
+          () => open(options),
+        )
+        trace({
+          kind: 'open-end',
+          details: {
+            attempt,
+            nativeId: session.id,
+            recovered: session.recovered,
+          },
+        })
+      } catch (error) {
+        trace({
+          kind: 'open-failed',
+          details: {
+            attempt,
+            error: String(error),
+          },
+        })
+        throw error
       }
 
       return session
@@ -121,7 +189,7 @@ const providers = process.env.PNYX_FIXTURE_LOCAL === '1'
   : native.providers
 const server = await startServer({
   port: 0,
-  native: { providers },
+  native: process.env.PNYX_FIXTURE_LOCAL === '1' ? { providers } : native,
   query: forbidden,
   spawnCodex: forbidden,
   wakeDelay: 10,
@@ -138,6 +206,25 @@ process.on(
       id: string
       nativeId?: string
       text?: string
+    }
+
+    if (request.kind === 'trace') {
+      process.send?.({
+        id: request.id,
+        traces,
+      })
+
+      return
+    }
+
+    if (request.kind === 'connection') {
+      process.send?.({
+        id: request.id,
+        available: native.client.available(),
+        instance: native.client.ready.instance,
+      })
+
+      return
     }
 
     if (request.kind === 'metrics') {
