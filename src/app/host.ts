@@ -2448,6 +2448,8 @@ export function createHost({
   const helperBatchesPresented = new Set<string>()
   const helper = createRoutineHelper({
     hydraId,
+    canOffer: () => !native || Object.values(native)
+      .every(provider => provider.canOpen?.() !== false),
     provider: ({ harness }) => providers[harness === 'claude' ? 'claude-code' : 'codex'],
     environment: ({
       harness,

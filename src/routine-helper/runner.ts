@@ -156,6 +156,7 @@ export function createRoutineHelper({
   bound = TURN_MS,
   agentFor,
   deadline,
+  canOffer = () => true,
 }: {
   hydraId: string
   provider({ harness }: { harness: 'claude' | 'codex' }): Provider
@@ -167,6 +168,7 @@ export function createRoutineHelper({
     actor: string
   }): NodeJS.ProcessEnv
   context(): string
+  canOffer?(): boolean
   changed(): void
   handback({
     id,
@@ -397,7 +399,13 @@ export function createRoutineHelper({
     })
   }
 
-  const run = async ({ batch }: { batch: HelperBatch }) => {
+  const run = async ({
+    batch,
+    reattachOnly = false,
+  }: {
+    batch: HelperBatch
+    reattachOnly?: boolean
+  }) => {
     const actor = `helper:${batch.id}`
     const releases: (() => void)[] = []
     let cancelDeadline = () => {}
@@ -486,6 +494,7 @@ export function createRoutineHelper({
           context,
           allow: ['pnyx-axi'],
           signal,
+          reattachOnly,
         })
 
         if (signal.aborted) {
@@ -659,6 +668,15 @@ export function createRoutineHelper({
         outcomesReady()
       }
     } catch (error) {
+      if (remote && error instanceof HydraError && error.code === 'RECOVERY_REQUIRED') {
+        console.error(
+          'pnyx-axi helper retained ownership requires reconciliation:',
+          error.message,
+        )
+
+        return
+      }
+
       if (closed && active?.remote) {
         return
       }
@@ -771,7 +789,7 @@ export function createRoutineHelper({
       seqs: number[]
       once?: string[]
     }): Promise<boolean> {
-      if (closed || busy || !tasks.length) {
+      if (closed || busy || !tasks.length || !canOffer()) {
         return false
       }
 
@@ -837,7 +855,10 @@ export function createRoutineHelper({
           busy = true
           background({
             name: 'helper reattachment',
-            run: () => run({ batch }),
+            run: () => run({
+              batch,
+              reattachOnly: true,
+            }),
           })
           continue
         }
