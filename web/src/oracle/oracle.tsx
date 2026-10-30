@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
 import { createPortal, flushSync } from 'react-dom'
+import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -222,6 +223,7 @@ function Group({
 
 export function Oracle({
   state,
+  cardActions,
   view,
   command,
   connected,
@@ -246,6 +248,7 @@ export function Oracle({
   openChat,
 }: {
   state: HydraState
+  cardActions?: Record<string, CurrentAction>
   view: ViewPreferences
   command: Command
   connected: boolean
@@ -389,6 +392,7 @@ export function Oracle({
     hits: found.hits,
     projects,
     actions,
+    cardActions,
     hydra,
     text,
     badges,

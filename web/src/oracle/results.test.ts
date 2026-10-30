@@ -258,7 +258,7 @@ test(
 )
 
 test(
-  'a query groups projects, server task hits, the Hydra chat as one conversation, then settings and actions',
+  'a query groups projects, server task hits then the board’s own matches, the Hydra chat as one conversation, then settings and actions',
   () => {
     const groups = listed({ text: 'deploy' })
 
@@ -271,8 +271,27 @@ test(
     )
     assert.deepEqual(
       groups[0]![1],
-      ['task:old'],
-      'tasks come from the server hits, and a hidden card stays out',
+      [
+        'task:old',
+        'task:fresh',
+      ],
+      'the server hit leads, the board’s own title match follows, and a hidden card stays out',
+    )
+    assert.deepEqual(
+      listed({
+        text: 'no worker',
+        found: [],
+      }),
+      [
+        [
+          'Tasks',
+          [
+            'task:fresh',
+            'task:old',
+          ],
+        ],
+      ],
+      'tasks are found by the status their badge shows, which the index does not hold',
     )
     assert.deepEqual(
       groups[1]![1],
@@ -355,8 +374,11 @@ test(
           option({ id: 'when:today' }),
         ],
       }).map(([label]) => label),
-      ['Conversations'],
-      'the old task falls outside Today, and the chat matched today',
+      [
+        'Tasks',
+        'Conversations',
+      ],
+      'the old task falls outside Today, while the fresh task and the chat are from today',
     )
   },
 )

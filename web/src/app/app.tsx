@@ -1159,6 +1159,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
           oracle={(
             <Oracle
               state={state}
+              cardActions={actions}
               view={view}
               command={command}
               connected={connected}

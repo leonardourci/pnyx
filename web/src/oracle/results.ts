@@ -1,10 +1,12 @@
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Hit } from '#oracle/index.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
+import { filterCards } from '#web-tasks/view.ts'
 import { searchSettings, SETTINGS_CATALOG, type SettingsMatch } from '#web-settings/catalog.ts'
 import { nameMatches, passes, type Candidate, type Filter, type FilterToken } from './filters.ts'
 import { matchesCommand, oraclePanels, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
@@ -183,6 +185,7 @@ export function oracleResults({
   hits,
   projects,
   actions,
+  cardActions,
   hydra,
   text,
   badges,
@@ -192,6 +195,8 @@ export function oracleResults({
   hits: Hit[]
   projects: HydraProjectSummary[]
   actions: OracleAction[]
+  // What each task's worker is doing now, which its status badge shows.
+  cardActions?: Record<string, CurrentAction>
   hydra: Hydra
   text: string
   badges: Filter[]
@@ -200,12 +205,28 @@ export function oracleResults({
   const words = text.toLowerCase().split(/\s+/)
     .filter(Boolean)
   const visible = hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card]!.hidden))
-  const tasks = text
-    ? visible.filter(hit => hit.kind !== 'hydra').map(hit => taskResult({
-      card: state.cards[hit.card]!,
-      hit,
+  const found = new Set(visible.map(hit => hit.card))
+  // The board's own match finds what the index doesn't hold, such as a status badge's text or a card's key.
+  const onBoard = text ? filterCards({
+    state,
+    workspace: '',
+    tag: '',
+    query: text,
+    actions: cardActions,
+  }).filter(card => card.id !== HYDRA_CARD && !found.has(card.id))
+    .map(card => taskResult({
+      card,
       hydra,
-    }))
+    })) : []
+  const tasks = text
+    ? [
+      ...visible.filter(hit => hit.kind !== 'hydra').map(hit => taskResult({
+        card: state.cards[hit.card]!,
+        hit,
+        hydra,
+      })),
+      ...onBoard,
+    ]
     : recentCards({ state }).map(card => taskResult({
       card,
       hydra,
