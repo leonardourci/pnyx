@@ -13,7 +13,7 @@ test(
       ['Next card'],
     )
     assert.ok(labels({ query: 'board' }).includes('Previous card'))
-    assert.ok(labels({ query: 'mod+k' }).includes('Focus Oracle'))
+    assert.ok(labels({ query: 'mod+k' }).includes('Open or close the Oracle'))
     assert.deepEqual(
       labels({ query: 'nothing like this' }),
       [],
@@ -23,9 +23,9 @@ test(
       keyActionsMatching({ query: '   ' }).length,
     )
 
-    const [focusOracle] = keyActionsMatching({ query: 'focus oracle' })
+    const [palette] = keyActionsMatching({ query: 'open close oracle' })
     assert.equal(
-      groupOf({ action: focusOracle! }),
+      groupOf({ action: palette! }),
       'Everywhere',
     )
   },
