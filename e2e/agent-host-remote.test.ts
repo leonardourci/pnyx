@@ -410,13 +410,17 @@ for (const harness of [
     'late',
     'host-crash',
     'host-crash-uncertain',
+    'reboot',
   ] as const) {
     test(
       result === 'host-crash-uncertain'
         ? `${harness} helper preserves an unresolved host-crash batch and its lease`
         : `${harness} helper recovers ${result} completion and releases its outage lease`,
       async t => {
-        const app = await fixtureApplication({ t })
+        const app = await fixtureApplication({
+          t,
+          boot: result === 'reboot' ? '11111111-1111-4111-8111-111111111111' : undefined,
+        })
         const {
           cli,
           folder,
@@ -495,6 +499,7 @@ for (const harness of [
         await until({ check: async () => (await host.stats()).some(state => state.input.some(input => input.text.includes('Granted tasks:'))) })
         const helper = (await host.stats()).find(state => state.input.some(input => input.text.includes('Granted tasks:')))!
         assert.ok(helper)
+        const main = (await host.stats()).find(state => state.input.some(input => input.text.includes('Hold this main turn')))!
         const original = new Map((await host.stats()).map(state => [
           state.id,
           state.input.map(input => input.id),
@@ -559,7 +564,7 @@ for (const harness of [
           })
         }
 
-        const hostLost = result === 'host-crash' || result === 'host-crash-uncertain'
+        const hostLost = result === 'host-crash' || result === 'host-crash-uncertain' || result === 'reboot'
 
         if (hostLost) {
           const observer = await host.connect()
@@ -578,6 +583,7 @@ for (const harness of [
           host = await fixtureHost({
             t,
             directory: app.root,
+            boot: result === 'reboot' ? '22222222-2222-4222-8222-222222222222' : undefined,
           })
         }
 
@@ -726,6 +732,37 @@ for (const harness of [
           t.diagnostic(app.errors())
           t.diagnostic(JSON.stringify(await host.stats()))
           throw error
+        }
+
+        if (result === 'reboot') {
+          await until({
+            check: async () => {
+              const current = (await host.stats()).find(state => state.id === main.id)
+
+              return current !== undefined && current.input.length > 0
+            },
+          })
+          const resumed = (await host.stats()).find(state => state.id === main.id)!
+          assert.ok(resumed.input.every(input => input.id !== main.input[0]!.id))
+          const workerId = app.state().cards[batch.tasks[0]!]!.agent!.sessionId
+          await until({
+            check: async () => {
+              const states = await host.stats()
+
+              return states.some(state => state.id === workerId && state.input.length > 0)
+            },
+          })
+          const response = await fetch(`http://127.0.0.1:${second.port}/health`)
+          assert.equal(
+            (await response.json()).native.state,
+            'ready',
+          )
+          assert.equal(
+            app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
+            1,
+          )
+
+          return
         }
 
         if (hostLost || lostAfterCommit) {
