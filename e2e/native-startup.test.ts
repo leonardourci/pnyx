@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
@@ -8,6 +8,9 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { ensureNativeHost, nativePaths } from '#setup/native-host.ts'
 import { withWriter } from '#app/writer.ts'
+import { startServer } from '#app/server-daemon.ts'
+import { infoPath } from '#app/server-state.ts'
+import { loadHydra } from '#app/store.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { processStart } from '#agent-host/discovery.ts'
 import { until } from '#agent-host/fixtures/harness.ts'
@@ -22,50 +25,6 @@ test(
       'state',
     )
     const paths = nativePaths()
-    withWriter({
-      hydraId: 'default',
-      create: true,
-      fn: ({ writer }) => {
-        writer.append({
-          event: {
-            v: EVENT_VERSION,
-            seq: writer.state.seq + 1,
-            id: 'interrupted-session',
-            at: '2026-10-30T00:00:00.000Z',
-            actor: 'pnyx',
-            cardId: 'task',
-            type: 'card.pushed',
-            data: {
-              key: 'codex:interrupted',
-              title: 'Interrupted worker',
-              activity: 'working',
-              agent: {
-                provider: 'codex',
-                sessionId: 'interrupted',
-                host: 'pnyx',
-              },
-            },
-          },
-        })
-        writer.append({
-          event: {
-            v: EVENT_VERSION,
-            seq: writer.state.seq + 1,
-            id: 'interrupted-helper',
-            at: '2026-10-30T00:00:01.000Z',
-            actor: 'pnyx',
-            cardId: '$hydra',
-            type: 'hydra.helper-started',
-            data: {
-              id: 'interrupted-helper',
-              tasks: ['task'],
-              prompt: '',
-              seqs: [],
-            },
-          },
-        })
-      },
-    })
     t.after(async () => {
       if (existsSync(join(
         paths.directory,
@@ -108,13 +67,155 @@ test(
         },
       )
     })
-    const started = performance.now()
-    const first = await ensureNativeHost({
-      source: join(
-        import.meta.dirname,
-        '..',
+    const source = join(
+      import.meta.dirname,
+      '..',
+    )
+    const legacy = join(
+      process.env.PNYX_HOME,
+      'boards',
+      'legacy',
+    )
+    mkdirSync(
+      legacy,
+      { recursive: true },
+    )
+    writeFileSync(
+      join(
+        legacy,
+        'server.lock',
       ),
+      JSON.stringify({ pid: process.pid }),
+    )
+    writeFileSync(
+      join(
+        legacy,
+        'server.json',
+      ),
+      JSON.stringify({ pid: process.pid }),
+    )
+    await assert.rejects(
+      ensureNativeHost({ source }),
+      { code: 'NATIVE_MIGRATION_BUSY' },
+    )
+    assert.equal(
+      existsSync(paths.selected),
+      false,
+    )
+    rmSync(
+      legacy,
+      { recursive: true },
+    )
+    const previous = await startServer({ port: 0 })
+
+    try {
+      await assert.rejects(
+        ensureNativeHost({ source }),
+        { code: 'NATIVE_MIGRATION_BUSY' },
+      )
+      assert.equal(
+        existsSync(paths.selected),
+        false,
+      )
+    } finally {
+      await previous.close()
+    }
+
+    const serverPath = infoPath({ hydraId: 'default' })
+    writeFileSync(
+      serverPath,
+      JSON.stringify({ pid: null }),
+    )
+    await assert.rejects(
+      ensureNativeHost({ source }),
+      { code: 'RECOVERY_REQUIRED' },
+    )
+    assert.equal(
+      existsSync(paths.selected),
+      false,
+    )
+    const exitedPid = Number(execFileSync(
+      process.execPath,
+      [
+        '-e',
+        'process.stdout.write(String(process.pid))',
+      ],
+      { encoding: 'utf8' },
+    ))
+    writeFileSync(
+      serverPath,
+      JSON.stringify({ pid: exitedPid }),
+    )
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: 'interrupted-session',
+            at: '2026-10-30T00:00:00.000Z',
+            actor: 'pnyx',
+            cardId: 'task',
+            type: 'card.pushed',
+            data: {
+              key: 'codex:interrupted',
+              title: 'Interrupted worker',
+              activity: 'working',
+              agent: {
+                provider: 'codex',
+                sessionId: 'interrupted',
+                host: 'pnyx',
+              },
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: 'interrupted-helper',
+            at: '2026-10-30T00:00:01.000Z',
+            actor: 'pnyx',
+            cardId: '$hydra',
+            type: 'hydra.helper-started',
+            data: {
+              id: 'interrupted-helper',
+              tasks: ['task'],
+              prompt: '',
+              seqs: [],
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: 'upgrade-restarting',
+            at: '2026-10-30T00:00:02.000Z',
+            actor: 'pnyx',
+            cardId: '$hydra',
+            type: 'pnyx.upgrade',
+            data: {
+              id: 'upgrade',
+              state: 'restarting',
+              folder: source,
+              queuedAt: '2026-10-30T00:00:00.000Z',
+              steps: [
+                {
+                  step: 'restart',
+                  state: 'running',
+                  seconds: 0,
+                },
+              ],
+            },
+          },
+        })
+      },
     })
+    const started = performance.now()
+    const first = await ensureNativeHost({ source })
     t.after(first.detach)
     const startupMs = performance.now() - started
     const owned = JSON.parse(readFileSync(
@@ -207,5 +308,26 @@ test(
       )).bundle,
       selected,
     )
+    const restarted = await startServer({
+      native: second,
+      port: 0,
+    })
+
+    try {
+      const health = await fetch(new URL(
+        'health',
+        restarted.url,
+      ))
+      assert.equal(
+        health.status,
+        200,
+      )
+      assert.equal(
+        loadHydra({ hydraId: 'default' }).state.upgrades?.[0]?.state,
+        'done',
+      )
+    } finally {
+      await restarted.close()
+    }
   },
 )
