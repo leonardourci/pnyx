@@ -644,6 +644,14 @@ for (const harness of [
           }
 
           if (lostAfterCommit) {
+            await cli({
+              args: [
+                'hydra',
+                'set',
+                '--helper',
+                'off',
+              ],
+            })
             host.child.kill('SIGKILL')
             await host.exited
             host = await fixtureHost({
