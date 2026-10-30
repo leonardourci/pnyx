@@ -256,7 +256,7 @@ export async function remoteSession({
   client.watch({ ref: summary.ref })
   await started.promise
 
-  if (readOnly && summary.recovery !== 'boot_changed' && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
+  if (readOnly && summary.recovery === undefined && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
     detach()
     fail({
       code: 'RECOVERY_REQUIRED',

@@ -76,7 +76,7 @@ export async function nativeProviders({
     owns: ({ agent }) => inventory.some(session => {
       const same = session.provider === provider && session.nativeId === agent.sessionId
 
-      return same && (session.phase === 'live' || session.phase === 'recovery_required' && session.recovery === 'boot_changed')
+      return same && (session.phase === 'live' || session.phase === 'recovery_required' && session.recovery !== undefined)
     }),
     async models({
       cwd,
@@ -173,9 +173,9 @@ export async function nativeProviders({
         summary = current ?? previous.session
       }
 
-      const rebootReplay = summary?.phase === 'recovery_required' && summary.recovery === 'boot_changed'
+      const recoveryReplay = summary?.phase === 'recovery_required' && summary.recovery !== undefined
 
-      if (summary?.phase === 'live' || rebootReplay) {
+      if (summary?.phase === 'live' || recoveryReplay) {
         recovered = true
       } else if (summary && reattachOnly) {
         recovered = true
@@ -264,7 +264,7 @@ export async function nativeProviders({
         summary,
         recovered,
         context,
-        readOnly: rebootReplay || reattachOnly && summary.phase !== 'live',
+        readOnly: recoveryReplay || reattachOnly && summary.phase !== 'live',
         async persistAnswer({
           permission,
           decision,
