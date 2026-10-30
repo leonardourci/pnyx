@@ -3,7 +3,7 @@ import { HydraError } from '#store/errors.ts'
 import { hydraDir, DEFAULT_HYDRA } from './home-migration.ts'
 import { readSnapshot } from './snapshot.ts'
 import { readLog, type LogRead } from './event-log.ts'
-import { emptyHydra, replay } from './reducer.ts'
+import { emptyHydra, replayOwned } from './reducer.ts'
 import { existsSync } from 'node:fs'
 import { logPath } from '#store/storage.ts'
 
@@ -39,7 +39,7 @@ export function loadHydra({
 
   return {
     dir,
-    state: replay({
+    state: replayOwned({
       state: start,
       events: log.events,
     }),

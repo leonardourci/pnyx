@@ -296,7 +296,18 @@ function updateRow({
     case 'card.replied': {
       const reply = data as RepliedEvent['data']
 
-      return reply.state === 'delivered' && reply.decision ? {
+      if (reply.accepted && reply.text === undefined) {
+        return {
+          kind: 'status',
+          state: `Answer delivery ${reply.state.replace(
+            '_',
+            ' ',
+          )}`,
+          note: reply.detail ?? '',
+        }
+      }
+
+      return (reply.accepted || reply.state === 'delivered') && reply.decision ? {
         kind: 'decision',
         state: 'Decision',
         note: '',

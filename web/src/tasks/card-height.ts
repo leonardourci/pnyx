@@ -53,6 +53,8 @@ export function useCardHeight({
     minimum: 0,
     maximum: Number.MAX_SAFE_INTEGER,
     available: 0,
+    // One line of the shown text, so a closed card shows whole lines.
+    line: 0,
   })
   useLayoutEffect(
     () => {
@@ -76,6 +78,7 @@ export function useCardHeight({
           children.length - 1,
         )
         let maximum = minimum
+        let shownLine = 0
 
         for (const child of children) {
           if (child.classList.contains('card-panel')) {
@@ -88,8 +91,10 @@ export function useCardHeight({
             maximum += full
           } else if (child.classList.contains('card-rest')) {
             const update = child.querySelector<HTMLElement>('.last-message')
+            const text = update?.querySelector<HTMLElement>('.text-preview') ?? update
             const full = naturalHeight({ element: child })
-            const line = update ? parseFloat(getComputedStyle(update).lineHeight) : full
+            const line = text ? parseFloat(getComputedStyle(text).lineHeight) : full
+            shownLine = text ? line : shownLine
             minimum += child.querySelector('form') ? full : Math.min(
               full,
               line,
@@ -104,6 +109,7 @@ export function useCardHeight({
 
         const next = {
           measured: true,
+          line: shownLine,
           minimum: Math.ceil(minimum),
           maximum: Math.ceil(Math.max(
             minimum,
@@ -113,7 +119,7 @@ export function useCardHeight({
         }
         setBounds(old => old.measured && old.minimum === next.minimum
           && old.maximum === next.maximum
-          && old.available === next.available ? old : next)
+          && old.available === next.available && old.line === next.line ? old : next)
       }
 
       let frame = 0

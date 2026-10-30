@@ -1,3 +1,4 @@
+import type { NativeWork } from '#workers/provider.ts'
 import { redact } from '#oracle/text.ts'
 
 export const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
@@ -18,6 +19,7 @@ export interface ToolCall {
 
 // The agent's latest calls, made together; done once each has its result back.
 export interface CurrentAction {
+  work?: NativeWork
   thinking?: boolean
   calls: ToolCall[]
   at?: string

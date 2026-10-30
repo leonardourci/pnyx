@@ -1,6 +1,6 @@
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
 import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
-import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'
+import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
 import { checkBudget, OWNER_DOCUMENTS, OWNER_MEMORY_BUDGET, type Memory } from './budgets.ts'
@@ -15,7 +15,7 @@ import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/sto
 interface OwnerLog {
   memory: Memory
   revision: number
-  archived: Learning[]
+  archived: ArchivedLine[]
   // A line that does not parse; reads skip it, writes refuse until someone inspects the log.
   corrupt: boolean
 }
@@ -35,16 +35,22 @@ function readLog(): OwnerLog {
     corrupt,
   } = readOwnerEntries()
   const memory: Memory = Object.create(null) as Memory
-  const archived: Learning[] = []
+  let archived: ArchivedLine[] = []
   let revision = 0
 
   for (const entry of entries) {
     revision = entry.seq
 
-    const retired = memory.learnings?.lines?.find(line => line.text === entry.learning?.archive)
-
-    if (retired) {
-      archived.push(retired)
+    // A line moved to a project lives on there.
+    if (!entry.projectMove) {
+      archived = archiveRemoved({
+        archived,
+        key: entry.key,
+        before: memory[entry.key]?.text ?? null,
+        after: entry.after,
+        at: entry.at,
+        reason: entry.reason,
+      })
     }
 
     if (entry.after === null) {
@@ -338,7 +344,7 @@ export function ownerMemory(): Memory {
   return readLog().memory
 }
 
-export function ownerArchive(): Learning[] {
+export function ownerArchive(): ArchivedLine[] {
   return readLog().archived
 }
 

@@ -183,6 +183,7 @@ export function HydraChat({
   otherProjects,
   openTask,
   action,
+  taskActions,
 }: {
   // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
   identity?: {
@@ -203,6 +204,7 @@ export function HydraChat({
     hydra: string
   }[]
   action?: CurrentAction
+  taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
   queue: HydraQueue
   state: HydraState
@@ -712,7 +714,11 @@ export function HydraChat({
     route: true,
     watching: 'unknown',
   }
-  const references = useTaskReferences({ state })
+  const references = useTaskReferences({
+    state,
+    actions: taskActions,
+    connected,
+  })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
@@ -934,7 +940,6 @@ export function HydraChat({
       />
       <Composer
         compacting={Boolean(compacting)}
-        serverComments={hosted}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
