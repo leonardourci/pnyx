@@ -52,6 +52,7 @@ export function taskTimeline({
   // Firstmate reuses a decision key, the default one most of all: a question after its answer is a new decision.
   const rounds = new Map<string, number>()
   const answered = new Set<string>()
+  const reasked = new Set<string>()
   let intent = ''
   let lastWords = ''
 
@@ -59,6 +60,10 @@ export function taskTimeline({
     a,
     b,
   ) => a.seq - b.seq)) {
+    if (event.type === 'task.ask.reopened' && event.data?.reask) {
+      reasked.add(String(event.data.ask))
+    }
+
     const row = relevantUpdate({
       event,
       columns,
@@ -93,6 +98,19 @@ export function taskTimeline({
       update.decision = {
         ...row.decision,
         questionId: update.id,
+      }
+    }
+
+    const followsReask = reasked.has(row.decision?.questionId ?? '')
+
+    if (row.decision && (row.decision.liftsHold || (followsReask && row.decision.answer))) {
+      const original = updates.get(row.decision.questionId ?? '')?.decision
+      const answerId = event.type === 'card.replied' ? event.data?.reply : event.id
+      update.id = `${row.decision.questionId}:answer:${answerId}`
+      update.decision = {
+        ...original,
+        ...row.decision,
+        question: original?.question ?? row.decision.question,
       }
     }
 
