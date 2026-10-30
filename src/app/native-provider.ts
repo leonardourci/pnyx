@@ -244,6 +244,7 @@ export async function nativeProviders({
         client,
         summary,
         recovered,
+        context,
         async persistAnswer({
           permission,
           decision,

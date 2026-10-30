@@ -25,10 +25,12 @@ export async function remoteSession({
   recovered,
   persistAnswer,
   completedAnswer,
+  context,
 }: {
   client: HostClient
   summary: Summary
   recovered: boolean
+  context?(): string
   persistAnswer({
     permission,
     decision,
@@ -63,6 +65,8 @@ export async function remoteSession({
   }
 
   const controller = attached.control.generation
+  let publishedContext: string | undefined
+  let contextWrite = Promise.resolve()
   let baseline: Snapshot | undefined
   const started = deferred<void>(), replay = deferred<void>()
   let boundary = 0, through = 0, detached = false, failure: Error | undefined
@@ -94,6 +98,36 @@ export async function remoteSession({
       },
     }),
   })
+
+  const refreshContext = async () => {
+    const text = context?.()
+
+    if (text === undefined || text === publishedContext) {
+      return contextWrite
+    }
+
+    publishedContext = text
+    contextWrite = contextWrite.catch(() => {}).then(async () => {
+      try {
+        await call({
+          operation: {
+            kind: 'context',
+            text,
+          },
+        })
+      } catch (error) {
+        if (publishedContext === text) {
+          publishedContext = undefined
+        }
+
+        throw error
+      }
+    })
+
+    return contextWrite
+  }
+
+  await refreshContext()
 
   const enqueue = ({
     event,
@@ -309,6 +343,10 @@ export async function remoteSession({
       const { event } = next
 
       if (typeof event === 'object') {
+        if (event.type === 'compaction') {
+          await refreshContext()
+        }
+
         if (event.type === 'permission') {
           decide({ request: event.request })
         }
@@ -356,6 +394,7 @@ export async function remoteSession({
     id: summary.nativeId!,
     path: summary.path,
     replayed: () => replay.promise,
+    refreshContext,
     applied,
     fact: () => current ? {
       id: `${current.ref.epoch}:${current.seq}`,
@@ -399,6 +438,7 @@ export async function remoteSession({
           }
 
           const message = original
+          await refreshContext()
           await call({
             id: `${summary.ref.epoch}:input:${message.id}`,
             operation: {

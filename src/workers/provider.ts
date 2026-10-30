@@ -180,6 +180,7 @@ export interface HostedSession {
   incarnation?: string
   recovered?: boolean
   replayed?(): Promise<void>
+  refreshContext?(): Promise<void>
   fact?(): {
     id: string
     at: string

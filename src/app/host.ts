@@ -4824,6 +4824,15 @@ export function createHost({
     reconcile: ({ state }) => {
       syncCompactions({ state })
 
+      for (const entry of live.values()) {
+        if (entry.session?.refreshContext) {
+          background({
+            name: 'native context refresh',
+            run: entry.session.refreshContext,
+          })
+        }
+      }
+
       for (const [
         id,
         waiting,
