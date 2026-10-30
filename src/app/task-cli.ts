@@ -823,7 +823,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
     })
   }
 
-  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question') {
+  if (action === 'ask' || action === 'answer' || action === 'escalate' || action === 'close-question' || action === 'reopen-question' || action === 'reask') {
     return askCommand({
       action,
       positionals,

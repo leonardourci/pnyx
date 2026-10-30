@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import fs, { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
@@ -8,7 +9,7 @@ import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { followPullRequests } from '#tasks/delivery/follow.ts'
 import { refreshProject } from '#projects/refresh.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
-import { git, until } from '#test-harness/harness.ts'
+import { git, openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 const change = ({
@@ -1390,5 +1391,319 @@ test(
         }
       },
     })
+  },
+)
+
+test(
+  'a newer owner message lifts a merge Hold for one PR, Undo restores it, and green checks still gate merging',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'held-merge-app' })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review these pull requests.' }) })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Held change',
+        '--key',
+        'held',
+        '--project',
+        app,
+      ],
+    })
+    const url = s.pullRequest({
+      number: 281,
+      checks: '0 passed, 1 failed, 1 total',
+    })
+    const other = s.pullRequest({ number: 282 })
+    await s.owner({
+      args: [
+        'link',
+        'held',
+        '--url',
+        url,
+      ],
+    })
+    await s.owner({
+      args: [
+        'link',
+        'held',
+        '--url',
+        other,
+      ],
+    })
+    const ask = await until({
+      what: 'the held PR merge question',
+      check: () => s.task({ key: 'held' }).asks?.find(a => a.url === url),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'held',
+        ask.id,
+        '--choice',
+        'Hold',
+      ],
+    })
+    const held = s.task({ key: 'held' }).asks?.find(a => a.id === ask.id)
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'merge',
+          'held',
+          '--url',
+          url,
+        ],
+      }),
+      'FORBIDDEN',
+    )
+    await s.chat({ text: 'Merge PR #281 now.' })
+    const message = s.state().hydraMessages?.findLast(m => m.text === 'Merge PR #281 now.' && m.actor === 'cli')
+    assert.ok(message)
+    await hydra.run({
+      args: [
+        'task',
+        'answer',
+        'held',
+        ask.id,
+        '--from-message',
+        message.id,
+        '--choice',
+        'Merge',
+        '--reason',
+        'The owner now says to merge this pull request',
+      ],
+    })
+    const approved = s.task({ key: 'held' }).asks?.find(a => a.id === ask.id)
+    assert.equal(
+      approved?.fromMessage?.text,
+      'Merge PR #281 now.',
+    )
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'history',
+          'held',
+        ],
+      }),
+      /Hydra lifted Hold.*Merge PR #281 now/,
+    )
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'merge',
+          'held',
+          '--url',
+          other,
+        ],
+      }),
+      'FORBIDDEN',
+    )
+    assert.match(
+      (await hydra.refusal({
+        args: [
+          'task',
+          'merge',
+          'held',
+          '--url',
+          url,
+        ],
+      })).error!,
+      /checks are red/,
+    )
+    assert.ok(approved?.answered)
+    await s.owner({
+      args: [
+        'task',
+        'reopen-question',
+        'held',
+        ask.id,
+        '--answer',
+        approved.answered,
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'held' }).asks?.find(a => a.id === ask.id)?.answered,
+      held?.answered,
+    )
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'merge',
+          'held',
+          '--url',
+          url,
+        ],
+      }),
+      'FORBIDDEN',
+    )
+    await hydra.run({
+      args: [
+        'task',
+        'answer',
+        'held',
+        ask.id,
+        '--from-message',
+        message.id,
+        '--choice',
+        'Merge',
+        '--reason',
+        'The owner now says to merge this pull request',
+      ],
+    })
+    s.pullRequest({
+      number: 281,
+      checks: '1 passed, 0 failed, 1 total',
+    })
+    await hydra.run({
+      args: [
+        'task',
+        'merge',
+        'held',
+        '--url',
+        url,
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'held' }).links.find(l => l.url === url)?.state,
+      'merged',
+    )
+    assert.equal(
+      s.merges({ number: 281 }),
+      1,
+    )
+    assert.equal(
+      s.merges({ number: 282 }),
+      0,
+    )
+  },
+)
+
+test(
+  'Hydra re-asks a held merge in chat and on the card, and a fresh owner Merge answer grants approval',
+  async () => {
+    const s = await pnyx.scenario()
+    const app = await s.project({ name: 'reasked-merge-app' })
+    const hydra = s.as({ agent: await s.chat({ text: 'Review this held pull request again.' }) })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Revisit held change',
+        '--key',
+        'held',
+        '--project',
+        app,
+      ],
+    })
+    const url = s.pullRequest({ number: 283 })
+    await s.owner({
+      args: [
+        'link',
+        'held',
+        '--url',
+        url,
+      ],
+    })
+    const ask = await until({
+      what: 'the ready merge question',
+      check: () => s.task({ key: 'held' }).asks?.find(a => a.url === url),
+    })
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'held',
+        ask.id,
+        '--choice',
+        'Hold',
+      ],
+    })
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'reask',
+          'held',
+          ask.id,
+        ],
+      }),
+      'VALIDATION_ERROR',
+    )
+    await hydra.run({
+      args: [
+        'task',
+        'reask',
+        'held',
+        ask.id,
+        '--reason',
+        'Ask the owner again before merging',
+      ],
+    })
+    assert.equal(
+      s.task({ key: 'held' }).column,
+      s.column({ role: 'needs_you' }),
+    )
+    assert.equal(
+      s.task({ key: 'held' }).asks?.find(a => a.id === ask.id)?.answered,
+      undefined,
+    )
+    assert.equal(
+      await hydra.refused({
+        args: [
+          'task',
+          'merge',
+          'held',
+        ],
+      }),
+      'FORBIDDEN',
+    )
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      const answer = await page.command({
+        name: 'task',
+        args: [
+          'answer',
+          s.task({ key: 'held' }).id,
+          ask.id,
+          '--choice',
+          'Merge',
+          '--event-id',
+          randomUUID(),
+        ],
+      })
+      assert.equal(
+        answer.answered,
+        ask.id,
+      )
+      await hydra.run({
+        args: [
+          'task',
+          'merge',
+          'held',
+        ],
+      })
+      assert.equal(
+        s.task({ key: 'held' }).links[0]?.state,
+        'merged',
+      )
+      assert.equal(
+        s.merges({ number: 283 }),
+        1,
+      )
+    } finally {
+      page.close()
+    }
   },
 )

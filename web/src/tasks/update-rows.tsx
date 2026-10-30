@@ -275,7 +275,7 @@ function Decision({
 
   return (
     <>
-      <UpdateLine kind="decision" at={update.at} title={many ? `${count} decisions` : 'Decision'} />
+      <UpdateLine kind="decision" at={update.at} title={many ? `${count} decisions` : update.state} />
       <ol className="decision-list">
         {update.decision && (
           <li key={update.id}>
