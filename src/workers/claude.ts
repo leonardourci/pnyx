@@ -271,8 +271,16 @@ export function claudeProvider({
             },
           )
 
+          // The SDK's custom process contract leaves stderr consumption to the caller.
+          child.stderr.resume()
+
           if (child.pid !== undefined) {
-            ownProcess({ pid: child.pid })
+            try {
+              ownProcess({ pid: child.pid })
+            } catch (error) {
+              child.kill('SIGKILL')
+              throw error
+            }
           }
 
           return child

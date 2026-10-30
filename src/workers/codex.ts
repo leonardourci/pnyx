@@ -958,7 +958,12 @@ export function codexProvider({
       })
 
       if (child.pid !== undefined) {
-        ownProcess?.({ pid: child.pid })
+        try {
+          ownProcess?.({ pid: child.pid })
+        } catch (error) {
+          child.kill('SIGKILL')
+          throw error
+        }
       }
 
       const rpc = connection({ child })
