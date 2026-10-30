@@ -16,7 +16,7 @@ import { SkillBadge } from '#web-hydra/skill-badge.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
 import { ImageThumb, ImageViewer } from '#web-hydra/attached-image.tsx'
 import { AttachmentCard } from '#web-hydra/attachment-card.tsx'
-import { slashPrefix } from '#web-hydra/view.ts'
+import { slashPrefix, slashState, type SlashState } from '#web-hydra/view.ts'
 import { completePath } from '#web-hydra/path-completion.ts'
 import { GOALS, mentionText, REQUEST_HEAD, requestPaths, withProjectRequest } from '#web-hydra/project-request.ts'
 import { checkImages, pastedImages, uploadImage } from '#web-hydra/image-upload.ts'
@@ -364,9 +364,13 @@ export function ComposerField({
     otherProjects,
   } = useComposerSources()
   const [
-    prefix,
-    setPrefix,
-  ] = useState<string | null>(null)
+    slash,
+    setSlash,
+  ] = useState<SlashState>({
+    prefix: null,
+    dismissed: null,
+  })
+  const prefix = slash.prefix
   const [
     active,
     setActive,
@@ -540,6 +544,15 @@ export function ComposerField({
     matches.length - 1,
   )
 
+  const dismissSlash = () => {
+    const cursor = input.current?.selectionStart ?? display.length
+    const dismissed = prefix === null ? slash.dismissed : cursor - prefix.length
+    setSlash({
+      prefix: null,
+      dismissed,
+    })
+  }
+
   // A chip's own @ never starts a new mention.
   const trackMention = ({
     text,
@@ -549,10 +562,11 @@ export function ComposerField({
     cursor: number
   }) => {
     const shown = draftView({ text })
-    setPrefix(slashPrefix({
+    setSlash(previous => slashState({
       text: shown.display,
       cursor,
       chips: shown.chips,
+      dismissed: previous.dismissed,
     }))
     const found = mentionQuery({
       text: shown.display,
@@ -883,13 +897,13 @@ export function ComposerField({
     })
 
     if (query === null || query !== prefix) {
-      setPrefix(null)
+      dismissSlash()
 
       return
     }
 
     if (projectRequests && item?.kind === 'command' && item.command === ADD_PROJECT_COMMAND) {
-      setPrefix(null); setActive(0)
+      dismissSlash(); setActive(0)
       requestProject({
         text: replaceDisplay({
           text: draft,
@@ -908,7 +922,7 @@ export function ComposerField({
       to: cursor,
       insert: `${command} `,
     }))
-    setPrefix(null); setActive(0); input.current?.focus()
+    dismissSlash(); setActive(0); input.current?.focus()
   }
 
   const insertBlock = ({ block }: { block: string }) => {
@@ -1112,7 +1126,7 @@ export function ComposerField({
   }
 
   const closePickers = () => {
-    setMention(null); setPrefix(null); setActive(0)
+    setMention(null); dismissSlash(); setActive(0)
   }
 
   const startMention = () => {
@@ -1135,7 +1149,7 @@ export function ComposerField({
     setMention({
       start: edit.caret - 1,
       query: '',
-    }); setMentionActive(0); setPrefix(null)
+    }); setMentionActive(0); dismissSlash()
   }
 
   useImperativeHandle(
@@ -1460,7 +1474,7 @@ export function ComposerField({
             if ((mention || catalogOpen) && dismissEmptyPicker
             && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
               setMention(null)
-              setPrefix(null)
+              dismissSlash()
 
               return
             }
@@ -1483,7 +1497,7 @@ export function ComposerField({
 
               if (e.key === 'Escape') {
                 setMention(null)
-                setPrefix(null)
+                dismissSlash()
               } else if (e.key === 'Enter' || e.key === 'Tab') {
                 if (mention && matches[index]) {
                   chooseMention({ item: matches[index] })
@@ -1530,7 +1544,7 @@ export function ComposerField({
 
             if (e.key === 'Tab') {
               setMention(null)
-              setPrefix(null); setActive(0)
+              dismissSlash(); setActive(0)
             }
 
             onKeyDown?.({ event: e })
