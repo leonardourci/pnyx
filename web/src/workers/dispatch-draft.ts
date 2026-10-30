@@ -23,7 +23,11 @@ export type Draft = Omit<DispatchDocument, 'rules'> & { rules: DraftRule[] }
 export type RuleAt = number | 'default'
 
 const candidateList = ({ value }: { value: unknown }) => Array.isArray(value)
-  && value.every(item => asRecord({ value: item }))
+  && value.every(item => {
+    const candidate = asRecord({ value: item })
+
+    return candidate?.harness === 'claude' || candidate?.harness === 'codex'
+  })
 
 // Only a document whose rules and default are candidate lists fits the table; anything else stays in the JSON view.
 export function toDraft({ document }: { document: unknown }): Draft | undefined {

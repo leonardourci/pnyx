@@ -305,3 +305,32 @@ test(
     )
   },
 )
+
+test(
+  'a JSON candidate with an unknown harness stays in JSON instead of opening a broken model picker',
+  () => {
+    assert.equal(
+      toDraft({
+        document: {
+          ...SAVED,
+          default: [{ harness: 'unknown' }],
+        },
+      }),
+      undefined,
+    )
+    assert.equal(
+      toDraft({
+        document: {
+          ...SAVED,
+          rules: {
+            broken: {
+              when: 'Build',
+              candidates: [{}],
+            },
+          },
+        },
+      }),
+      undefined,
+    )
+  },
+)

@@ -732,7 +732,6 @@ function jsonIssues({
   return checkDispatch({ document })
 }
 
-// Settings' heads dispatch: Hydra's pending proposals, the rules table or its JSON, and the read-only accounts.
 export function DispatchSettings({
   state,
   command,
@@ -819,7 +818,7 @@ export function DispatchSettings({
     const next = toDraft({ document })
 
     if (!next) {
-      notify({ text: 'Fix the JSON first: the table needs rules with candidate lists and a default list' })
+      notify({ text: 'Fix the JSON first: the table needs rules and a default list with Claude Code or Codex candidates' })
 
       return
     }
