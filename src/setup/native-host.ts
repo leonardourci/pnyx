@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
+import { appendFileSync, closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, realpathSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { nativeProviders } from '#app/native-provider.ts'
@@ -167,6 +167,27 @@ export async function ensureNativeHost({
   source: string
 }) {
   const paths = nativePaths()
+  await startNativeHost({
+    source,
+    paths,
+  })
+
+  return nativeProviders({
+    ...paths,
+    reconnect: () => startNativeHost({
+      source,
+      paths,
+    }),
+  })
+}
+
+async function startNativeHost({
+  source,
+  paths,
+}: {
+  source: string
+  paths: ReturnType<typeof nativePaths>
+}) {
   const connect = () => connectHost({
     socket: join(
       paths.directory,
@@ -186,7 +207,7 @@ export async function ensureNativeHost({
     const client = await connect()
     client.detach()
 
-    return await nativeProviders(paths)
+    return
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
 
@@ -256,6 +277,22 @@ export async function ensureNativeHost({
         'error',
         error => process.stderr.write(`Native host start failed: ${error.message}\n`),
       )
+      child.once(
+        'exit',
+        (
+          code,
+          signal,
+        ) => {
+          try {
+            appendFileSync(
+              paths.log,
+              `${new Date().toISOString()} Native host ${child.pid} exited code=${code} signal=${signal}\n`,
+            )
+          } catch (error) {
+            process.stderr.write(`Native host exit log failed: ${String(error)}\n`)
+          }
+        },
+      )
       child.unref()
     } finally {
       closeSync(log)
@@ -267,7 +304,10 @@ export async function ensureNativeHost({
 
   while (Date.now() < deadline) {
     try {
-      return await nativeProviders(paths)
+      const client = await connect()
+      client.detach()
+
+      return
     } catch (error) {
       last = error
       const code = (error as NodeJS.ErrnoException).code
