@@ -14,9 +14,8 @@ import { useCardHeight, useTypingGrowth } from './card-height.ts'
 import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
-import { projectTitle } from '#web-projects/view.ts'
 import { cardState, TASK_DRAG } from './view.ts'
-import { currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
+import { currentState, waitingQuestions } from '#tasks/card-status.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
 import { hasTaskQuestion, TaskQuestion } from './task-question.tsx'
@@ -25,9 +24,9 @@ import { Resize } from '#web-shared/ui/resize.tsx'
 
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { WorkingDots } from '#web-hydra/streaming.tsx'
 import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
+import { CardState } from './card-state.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
@@ -274,8 +273,6 @@ export function HydraCard({
     action,
     now,
   })
-  const working = status.kind === 'working'
-  const statusText = statusLabel({ status })
   const tint = labelColors?.find(entry => entry.label === card.project)
     ?? labelColors?.find(entry => card.tags.includes(entry.label))
   const said = currentState({ card })
@@ -286,7 +283,6 @@ export function HydraCard({
     at: said.at,
   } : !card.tracking && latest?.role === 'assistant' ? latest : undefined
 
-  const created = card.createdAt || card.statusLog?.[0]?.at
   const waiting = waitingQuestions({ card })
   // A question whose answer is still on its way shows only when nothing else waits.
   const question = waiting[0] ?? ownerQuestions({ card })[0]
@@ -396,29 +392,13 @@ export function HydraCard({
       })}
     >
       <div className="card-content">
-        <div className="card-state">
-          <Tooltip content={status.details}>
-            <span className={`agent-activity activity-${status.kind}`} aria-label={statusText}>
-              {working ? <WorkingDots /> : <i aria-hidden="true" />}
-              {statusText}
-            </span>
-          </Tooltip>
-          <Tooltip content={created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'}>
-            <time className="card-since" dateTime={status.at || card.updatedAt} tabIndex={0}>
-              {relativeTime({
-                at: status.at || card.updatedAt,
-                now,
-              })}
-            </time>
-          </Tooltip>
-          {card.project && (
-            <Label
-              project
-              label={card.project}
-              text={projectTitle({ project: card.project })}
-              colors={labelColors}
-            />
-          )}
+        <CardState
+          card={card}
+          status={status}
+          now={now}
+          labelColors={labelColors}
+          tooltips
+        >
           {card.agent && (
             <Tooltip
               content={<AgentDetails card={card} />}
@@ -428,8 +408,7 @@ export function HydraCard({
               </span>
             </Tooltip>
           )}
-
-        </div>
+        </CardState>
         <div className="card-title-row">
           {!editing && (
             <CardTitle

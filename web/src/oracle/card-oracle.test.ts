@@ -14,15 +14,28 @@ const hit = ({ card }: { card: string }): Hit => ({
 function fixture({ t }: { t: TestContext }) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
   const asked: Search[] = []
-  const answers: { reply({ hits }: { hits: Hit[] }): void }[] = []
+  const answers: {
+    reply({ hits }: { hits: Hit[] }): void
+    fail(): void
+  }[] = []
   const shown: string[] = []
+  const failed: string[] = []
   const schedule = searchSchedule({
     find: ({ search }) => {
       asked.push(search)
 
-      return new Promise(resolve => answers.push({ reply: ({ hits }) => resolve(hits) }))
+      return new Promise((
+        resolve,
+        reject,
+      ) => answers.push({
+        reply: ({ hits }) => resolve(hits),
+        fail: () => reject(new Error('The Hydra server is not answering')),
+      }))
     },
-    show: ({ key }) => shown.push(key),
+    show: ({
+      key,
+      failed: failure,
+    }) => (failure ? failed : shown).push(key),
   })
   // Answers resolve on microtasks; setImmediate is not mocked.
   const settle = () => new Promise(resolve => setImmediate(resolve))
@@ -32,6 +45,7 @@ function fixture({ t }: { t: TestContext }) {
     asked,
     answers,
     shown,
+    failed,
     settle,
   }
 }
@@ -144,6 +158,50 @@ test(
         text: 'deploy',
         workspace: 'ops',
       },
+    )
+  },
+)
+
+test(
+  'a failed search still answers its query, with no hits, while a failed refresh keeps the results shown',
+  async t => {
+    const f = fixture({ t })
+    f.schedule.query({
+      search: {
+        text: 'deploy',
+        workspace: '',
+      },
+    })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[0]!.fail()
+    await f.settle()
+    assert.deepEqual(
+      f.failed,
+      ['deploy\n'],
+      'the query is answered, so Enter and the arrows stop waiting for it',
+    )
+
+    f.schedule.query({
+      search: {
+        text: 'billing',
+        workspace: '',
+      },
+    })
+    t.mock.timers.tick(SEARCH_DELAY)
+    f.answers[1]!.reply({ hits: [hit({ card: 'task-1' })] })
+    await f.settle()
+    f.schedule.changed()
+    t.mock.timers.tick(REFRESH_DELAY)
+    f.answers[2]!.fail()
+    await f.settle()
+    assert.deepEqual(
+      f.shown,
+      ['billing\n'],
+    )
+    assert.deepEqual(
+      f.failed,
+      ['deploy\n'],
+      'the refresh of an answered query failed, so its results stay',
     )
   },
 )

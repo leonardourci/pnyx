@@ -1,188 +1,106 @@
 import type { HydraState } from '#app/model.ts'
-import type { ViewPreferences } from '#preferences/model.ts'
-import { resetLayoutWidths, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import type { HydraColumn } from '#tasks/columns-model.ts'
+import { KEY_ACTIONS, type KeyScope } from '#preferences/keyboard.ts'
 
-export type OracleSetting = {
+// Keys that open, close or type into the Oracle itself are no use as its rows.
+const OWN_KEYS = [
+  'palette',
+  'search',
+  'help',
+  'cancel',
+  'send',
+]
+
+export type OracleAction = {
   id: string
   label: string
   words: string
-} & (
-  | {
-    type: 'toggle'
-    value: boolean
-    patch({ value }: { value: boolean }): unknown
-  }
-  | {
-    type: 'choice'
-    value: string
-    options: {
-      value: string
-      label: string
-    }[]
-    patch({ value }: { value: string }): unknown
-  }
-  | {
-    type: 'number'
-    value: number
-    min: number
-    max: number
-    patch({ value }: { value: number }): unknown
-  }
-)
+  does: string
+} & ({
+  run: 'task'
+  column: string
+} | { run: 'column' } | { run: 'ask' } | {
+  run: 'key'
+  key: string
+})
 
-export function oracleSettings({ view }: {
-  state: HydraState
-  view: ViewPreferences
-}): OracleSetting[] {
-  const numberKeys = [
-    [
-      'fontSize',
-      'UI font size',
-    ],
-    [
-      'chatFontSize',
-      'Chat font size',
-    ],
-    [
-      'codeFontSize',
-      'Code font size',
-    ],
-  ] as const
+export const ACTION_ICONS = {
+  task: 'plus',
+  column: 'plus',
+  ask: 'comments',
+  key: 'keyboard',
+} as const
 
+export interface OraclePanel {
+  id: string
+  label: string
+  words: string
+  panel: 'projects' | 'agents'
+}
+
+// The Projects and Agents blocks, which have no other place in the web app; their previews hold the whole block.
+export const oraclePanels = ({ state }: { state: HydraState }): OraclePanel[] => [
+  {
+    id: 'panel:projects',
+    label: 'Projects',
+    words: `folder attach clone detach landing command ${(state.projects ?? []).map(project => project.name).join(' ')}`,
+    panel: 'projects',
+  },
+  {
+    id: 'panel:agents',
+    label: 'Hydra identity and default model; heads dispatch rules',
+    words: `harness effort mode quota launch worker ${Object.keys(state.config?.agents ?? {}).join(' ')}`,
+    panel: 'agents',
+  },
+]
+
+export function oracleActions({
+  columns,
+  scope,
+}: {
+  columns: HydraColumn[]
+  scope: KeyScope
+}): OracleAction[] {
   return [
     {
-      id: 'theme',
-      label: 'Theme',
-      words: 'appearance dark light system night color',
-      type: 'choice',
-      value: view.theme,
-      options: [
-        'system',
-        'light',
-        'dark',
-      ].map(value => ({
-        value,
-        label: value,
-      })),
-      patch: ({ value }) => ({ theme: value }),
+      id: 'action:ask',
+      label: 'Ask a Hydra',
+      words: 'request message send',
+      does: 'Enter starts a request to a Hydra, as typing ask and a space does.',
+      run: 'ask',
     },
-    ...numberKeys.map(([
-      id,
-      label,
-    ]): OracleSetting => ({
-      id,
-      label,
-      words: 'reading text size zoom width height',
-      type: 'number',
-      value: view[id],
-      ...VIEW_SIZE_LIMITS[id],
-      patch: ({ value }) => ({ [id]: value }),
-    })),
-    ...([
-      [
-        'focusMode',
-        'Focus mode',
-        'hide tools thinking distraction quiet reading',
-      ],
-      [
-        'lastMessageOnCards',
-        'Current state on closed cards',
-        'preview latest reply cards current state',
-      ],
-      [
-        'toolDetails',
-        'Tool call details',
-        'tool calls expand traces',
-      ],
-      [
-        'thinkingDetails',
-        'Thinking details',
-        'reasoning expand traces',
-      ],
-    ] as const).map(([
-      id,
-      label,
-      words,
-    ]): OracleSetting => ({
-      id,
-      label,
-      words,
-      type: 'toggle',
-      value: view[id],
-      patch: ({ value }) => ({ [id]: value }),
+    ...columns.map((column): OracleAction => ({
+      id: `action:task:${column.id}`,
+      label: `New task in ${column.title}`,
+      words: 'create add card',
+      does: `Enter opens a new task form at the top of ${column.title}.`,
+      run: 'task',
+      column: column.id,
     })),
     {
-      id: 'characterShortcuts',
-      label: 'Character shortcuts',
-      words: 'keyboard keys typing',
-      type: 'toggle',
-      value: view.keyboard.characterShortcuts,
-      patch: ({ value }) => ({ keyboard: { characterShortcuts: value } }),
+      id: 'action:column',
+      label: 'New column',
+      words: 'create add layout',
+      does: 'Enter adds a column at the end of the Hydra and lets you name it.',
+      run: 'column',
     },
-
+    ...KEY_ACTIONS.filter(entry => !OWN_KEYS.includes(entry.id) && entry.scopes.includes(scope))
+      .map((entry): OracleAction => ({
+        id: `action:key:${entry.id}`,
+        label: entry.label,
+        words: 'keyboard shortcut action',
+        does: `Enter runs “${entry.label}” where you opened the Oracle, as its shortcut does.`,
+        run: 'key',
+        key: entry.id,
+      })),
   ]
 }
 
 const CONCEPTS = [
   [
-    'font',
-    'text',
-    'reading',
-    'letters',
-    'readability',
-  ],
-  [
-    'size',
-    'bigger',
-    'larger',
-    'smaller',
-    'zoom',
-    'resize',
-    'width',
-    'height',
-  ],
-  [
-    'theme',
-    'appearance',
-    'dark',
-    'light',
-    'night',
-  ],
-  [
-    'focus',
-    'quiet',
-    'distraction',
-    'concentrate',
-  ],
-  [
-    'thinking',
-    'reasoning',
-    'thoughts',
-  ],
-  [
-    'search',
-    'find',
-    'lookup',
-  ],
-  [
     'new',
     'create',
     'add',
-  ],
-  [
-    'remove',
-    'delete',
-    'discard',
-  ],
-  [
-    'rename',
-    'name',
-    'title',
-  ],
-  [
-    'reset',
-    'restore',
-    'defaults',
   ],
   [
     'keyboard',
@@ -190,20 +108,7 @@ const CONCEPTS = [
     'binding',
     'keys',
   ],
-  [
-    'hydra',
-    'assistant',
-    'orchestrator',
-  ],
 ]
-
-export const SHORTCUT_QUERY = '> shortcut'
-export const shortcutLabel = ({ label }: { label: string }) => `${label} shortcut`
-export const commandQuery = ({ query }: { query: string }) => query.trimStart().startsWith('>')
-const queryWords = ({ query }: { query: string }) => query.replace(
-  /^\s*>/,
-  '',
-).trim()
 
 export function matchesCommand({
   query,
@@ -212,12 +117,9 @@ export function matchesCommand({
   query: string
   text: string
 }): boolean {
-  const words = queryWords({ query }).toLowerCase()
-    .match(/[\p{L}\p{N}]+/gu) ?? []
+  const words = query.toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? []
   const haystack = text.toLowerCase()
 
   return words.every(word => haystack.includes(word)
     || CONCEPTS.some(group => group.includes(word) && group.some(term => haystack.includes(term))))
 }
-
-export const resetWidths = resetLayoutWidths

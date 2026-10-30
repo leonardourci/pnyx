@@ -62,43 +62,6 @@ export function filterCards({
     ) => rankOf({ card: a }) - rankOf({ card: b }) || a.id.localeCompare(b.id))
 }
 
-// The "Find a card" box: every card the filter above matches, in its order, then
-// the other cards the Hydra's search found, best first, within the same workspace
-// and tag filters.
-export function findBoxCards(
-  {
-    state,
-    workspace,
-    tag,
-    query,
-    actions,
-    meaning: found,
-  }: {
-    state: HydraState
-    workspace: string
-    tag: string
-    query: string
-    meaning: string[]
-    actions?: Record<string, CurrentAction>
-  },
-): Card[] {
-  const local = filterCards({
-    state,
-    workspace,
-    tag,
-    query,
-    actions,
-  })
-  const seen = new Set(local.map(c => c.id))
-
-  return [
-    ...local,
-    ...found.map(id => state.cards[id]).filter((c): c is Card =>
-      !!c && liveTask({ card: c }) && !seen.has(c.id)
-    && (!workspace || c.workspace === workspace) && (!tag || c.tags.includes(tag))),
-  ]
-}
-
 export function visibleParent({
   card,
   visible,

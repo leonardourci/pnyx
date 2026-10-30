@@ -19,7 +19,7 @@ import { BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, Cod
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
 
-const ICONS: Record<string, string> = {
+export const SETTING_ICONS: Record<string, string> = {
   theme: 'theme',
   fontSize: 'text-size',
   chatFontSize: 'comment',
@@ -45,7 +45,8 @@ const SUGGESTIONS = [
 
 type Toggle = 'lastMessageOnCards' | 'focusMode' | 'toolDetails' | 'thinkingDetails'
 
-function Preview({
+// The setting's live picture, which the Settings page and the Oracle's preview share.
+export function SettingPreview({
   entry,
   state,
   view,
@@ -181,7 +182,7 @@ function ResetWidths({
   )
 }
 
-function Control({
+export function SettingControl({
   entry,
   state,
   view,
@@ -300,6 +301,7 @@ export function SettingsPage({
   notify,
   upgrade,
   startUpgrade,
+  initialQuery = '',
 }: Saving & {
   state: HydraState
   connected: boolean
@@ -307,12 +309,14 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
+  // The search the page opens with, such as a setting the Oracle sent here.
+  initialQuery?: string
 }) {
   const search = useRef<HTMLInputElement>(null)
   const [
     query,
     setQuery,
-  ] = useState('')
+  ] = useState(initialQuery)
   const [
     section,
     setSection,
@@ -425,7 +429,7 @@ export function SettingsPage({
           {shown.filter(match => match.entry.section === item.id).map(match => (
             <SettingRow
               key={match.entry.id}
-              icon={ICONS[match.entry.id] ?? 'settings'}
+              icon={SETTING_ICONS[match.entry.id] ?? 'settings'}
               label={match.entry.label}
               description={match.entry.description}
               terms={match.terms}
@@ -438,7 +442,7 @@ export function SettingsPage({
                 }),
               })}
               preview={(
-                <Preview
+                <SettingPreview
                   entry={match.entry}
                   state={state}
                   view={view}
@@ -446,7 +450,7 @@ export function SettingsPage({
                 />
               )}
             >
-              <Control
+              <SettingControl
                 entry={match.entry}
                 state={state}
                 view={view}

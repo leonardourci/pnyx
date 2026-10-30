@@ -2,7 +2,7 @@ import type { ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { Icon } from './icon.tsx'
 
-function Highlight({
+export function Highlight({
   text,
   terms,
 }: {
