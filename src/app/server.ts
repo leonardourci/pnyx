@@ -174,7 +174,7 @@ export async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: Pick<NativeProviders, 'providers'>
+  native?: Pick<NativeProviders, 'providers'> & Partial<Pick<NativeProviders, 'client'>>
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -1419,6 +1419,27 @@ export async function mountOwnedHydra({
     },
   })
 
+  let nativeRecovery = Promise.resolve()
+  const unwatchNative = native?.client?.subscribe({
+    receive: ({ frame }) => {
+      if (frame.type !== 'ready') {
+        return
+      }
+
+      nativeRecovery = nativeRecovery.then(async () => {
+        if (!closed) {
+          await agents.recover()
+          kick()
+        }
+      }).catch(error => {
+        console.error(
+          'pnyx-axi native reattachment:',
+          error,
+        )
+      })
+    },
+  })
+
   const sources = createSourceRunner({
     hydraId,
     changed: kick,
@@ -1460,10 +1481,14 @@ export async function mountOwnedHydra({
         })
       }
 
-      return readBody({ req }).then(body => hostRequest({
-        host: agents,
-        body,
-      }))
+      return readBody({ req }).then(async body => {
+        await nativeRecovery
+
+        return hostRequest({
+          host: agents,
+          body,
+        })
+      })
         .then(
           answer => reply({
             res,
@@ -2716,6 +2741,7 @@ export async function mountOwnedHydra({
     }
 
     writeRetries.clear()
+    unwatchNative?.()
     unwatchFile(
       eventsPath,
       kick,
@@ -2725,6 +2751,7 @@ export async function mountOwnedHydra({
       replyRun,
       followRun,
       joinWorkers(),
+      nativeRecovery,
     ])
     await sources.close()
     firstmate?.close()

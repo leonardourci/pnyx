@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Provider, PermissionDecision } from '#workers/provider.ts'
+import type { Provider, PermissionDecision, HostedSession } from '#workers/provider.ts'
 import type { ProviderId, Summary } from '#agent-host/protocol.ts'
 import { fail } from '#agent-host/protocol.ts'
-import { connectHost } from '#agent-host/client.ts'
+import { nativeConnection } from './native-connection.ts'
 import { checked, remoteSession } from '#agent-host/remote.ts'
 import { fingerprint } from '#agent-host/ledger.ts'
 import { durableWriter } from '#agent-host/durable.ts'
@@ -32,7 +32,9 @@ export async function nativeProviders({
   installation: string
 }) {
   privateDir({ dir: journal })
-  const client = await connectHost({
+  let controller = ''
+  let inventory: Summary[] = []
+  const client = await nativeConnection({
     socket: join(
       directory,
       'host.sock',
@@ -52,27 +54,31 @@ export async function nativeProviders({
       'live-owners',
       'volatile-inputs',
     ],
-  })
-  const claim = checked({
-    result: await client.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'attach',
-        scope: { kind: 'host' },
-        expectedRevision: client.ready.hostControllerRevision,
-      },
-    }),
-  })
+    attached: async ({ client: connection }) => {
+      const claim = checked({
+        result: await connection.call({
+          id: randomUUID(),
+          operation: {
+            kind: 'attach',
+            scope: { kind: 'host' },
+            expectedRevision: connection.ready.hostControllerRevision,
+          },
+        }),
+      })
 
-  if (claim.kind !== 'attached') {
-    throw new Error('Missing host controller')
-  }
+      if (claim.kind !== 'attached') {
+        throw new Error('Missing host controller')
+      }
 
+      controller = claim.control.generation
+      inventory = connection.ready.sessions
+    },
+  })
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
-  const inventory = client.ready.sessions
+  const openings = new Map<string, Promise<HostedSession>>()
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
-    canOpen: () => !inventory.some(session => session.phase === 'recovery_required'),
+    canOpen: () => client.available() && !inventory.some(session => session.phase === 'recovery_required'),
     owns: ({ agent }) => inventory.some(session => {
       const same = session.provider === provider && session.nativeId === agent.sessionId
 
@@ -145,7 +151,7 @@ export async function nativeProviders({
       if (!summary && reattachOnly && binding?.session) {
         const previous = binding.session.ref
         summary = inventory.find(session => session.ref.id === previous.id
-          && session.ref.epoch === previous.epoch)
+        && session.ref.epoch === previous.epoch)
       }
 
       if (reattachOnly && !summary) {
@@ -203,7 +209,7 @@ export async function nativeProviders({
             id: binding.request,
             operation: {
               kind: 'open',
-              controller: claim.control.generation,
+              controller,
               options: {
                 provider,
                 cwd,
@@ -314,12 +320,42 @@ export async function nativeProviders({
     },
   })
 
+  const adapters = {
+    'claude-code': provider({ provider: 'claude-code' }),
+    codex: provider({ provider: 'codex' }),
+  }
+
+  for (const [
+    name,
+    adapter,
+  ] of Object.entries(adapters)) {
+    const open = adapter.open
+
+    adapter.open = ({ ...options }) => {
+      const key = options.agent ? `${name}:${options.agent.sessionId}` : JSON.stringify([
+        name,
+        options.cwd,
+        options.env.PNYX_ACTOR ?? '',
+      ])
+      const pending = openings.get(key)
+
+      if (pending) {
+        return pending
+      }
+
+      const opening = open(options).finally(() => openings.delete(key))
+      openings.set(
+        key,
+        opening,
+      )
+
+      return opening
+    }
+  }
+
   return {
     client,
-    providers: {
-      'claude-code': provider({ provider: 'claude-code' }),
-      codex: provider({ provider: 'codex' }),
-    },
+    providers: adapters,
     detach: () => client.detach(),
   }
 }
