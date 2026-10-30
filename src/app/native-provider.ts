@@ -81,6 +81,19 @@ export async function nativeProviders({
   const listeners = new Set<() => void>()
   client.subscribe({
     receive({ frame }) {
+      if (frame.type === 'reply' && frame.result.kind === 'ok' && frame.result.session) {
+        const updated = frame.result.session
+        const current = inventory.find(session => session.ref.id === updated.ref.id
+          && session.ref.epoch === updated.ref.epoch)
+
+        if (current) {
+          Object.assign(
+            current,
+            updated,
+          )
+        }
+      }
+
       if (frame.type === 'host-status') {
         status = nativeStatus({
           readiness: frame.status,

@@ -1444,7 +1444,9 @@ export async function mountOwnedHydra({
   let nativeRecovery = Promise.resolve()
   const unwatchNative = native?.client?.subscribe({
     receive: ({ frame }) => {
-      if (frame.type !== 'ready') {
+      const ready = frame.type === 'ready' || frame.type === 'host-status' && frame.status.state === 'ready'
+
+      if (!ready) {
         return
       }
 
