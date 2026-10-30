@@ -1,3 +1,6 @@
+import { AxiError } from 'axi-sdk-js'
+import { nonblockingLocks } from '#store/storage.ts'
+import { commandTimeout, retryable } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -39,10 +42,7 @@ import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, w
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
-import { AxiError } from 'axi-sdk-js'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
-import { integrationsCommand } from '#integrations/cli.ts'
-import { browserCommand } from './server-browser.ts'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -58,11 +58,11 @@ import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
-import { createHydra, listHydras, renameHydra } from './server-hydras.ts'
+import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
-import { commands, RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
+import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
 import { readBytes, readBody, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
@@ -104,7 +104,13 @@ const REPLY_WORKER = join(
   'workers',
   import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
 )
+const COMMAND_WORKER = join(
+  import.meta.dirname,
+  import.meta.url.endsWith('.ts') ? 'command-process.ts' : 'command-process.js',
+)
 const REPLY_WORKER_TIMEOUT_MS = 130_000
+const OWNER_WRITE_RETRY_MS = 100
+const OWNER_WRITE_RETRY_MAX_MS = 1000
 
 export async function mountOwnedHydra({
   hydraId,
@@ -985,9 +991,13 @@ export async function mountOwnedHydra({
 
   const startWorker = ({
     args,
+    file = REPLY_WORKER,
+    timeout = REPLY_WORKER_TIMEOUT_MS,
     done,
   }: {
     args: string[]
+    file?: string
+    timeout?: number
     done: ({
       error,
       stdout,
@@ -996,15 +1006,29 @@ export async function mountOwnedHydra({
       stdout: string
     }) => void
   }) => {
+    if (closed) {
+      done({
+        error: new Error('Pnyx is shutting down'),
+        stdout: JSON.stringify({
+          error: {
+            message: 'Pnyx is shutting down',
+            code: 'UNAVAILABLE',
+          },
+        }),
+      })
+
+      return
+    }
+
     const child = execFile(
       process.execPath,
       [
         ...SOURCE_CONDITIONS,
-        REPLY_WORKER,
+        file,
         ...args,
       ],
       {
-        timeout: REPLY_WORKER_TIMEOUT_MS,
+        timeout,
         maxBuffer: MAX_BODY,
       },
       (
@@ -1609,10 +1633,31 @@ export async function mountOwnedHydra({
     read: Promise<Catalog>
   }>()
 
+  const writeRetries = new Set<ReturnType<typeof setTimeout>>()
+
   const runCommand = ({
     ws,
     message,
+    retryUntil,
+    retryAttempt,
+  }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
+    true,
+    () => attemptCommand({
+      ws,
+      message,
+      retryUntil,
+      retryAttempt,
+    }),
+  )
+
+  const attemptCommand = ({
+    ws,
+    message,
+    retryUntil,
+    retryAttempt = 0,
   }: {
+    retryAttempt?: number
+    retryUntil?: number
     ws: HydraClient
     message: {
       id?: unknown
@@ -1621,6 +1666,10 @@ export async function mountOwnedHydra({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
+    const deadline = retryUntil ?? Date.now() + commandTimeout({
+      name: String(message.name),
+      args: Array.isArray(message.args) ? message.args : [],
+    })
 
     const fail = ({
       error,
@@ -1631,6 +1680,70 @@ export async function mountOwnedHydra({
       code: string
       help?: string[]
     }) => {
+      if (code === 'LOCKED' && id && typeof message.name === 'string'
+        && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
+        try {
+          const receipt = savedReceipt({
+            command: {
+              type: 'command',
+              id,
+              name: message.name,
+              args: message.args,
+            },
+            state: loadHydra({ hydraId }).state,
+          })
+
+          if (receipt) {
+            send({
+              ws,
+              message: {
+                ...receipt,
+                type: 'receipt',
+                id,
+              },
+            })
+
+            return
+          }
+        } catch { /* An unreadable log leaves the save pending. */ }
+      }
+
+      const retrySafe = retryable({
+        name: String(message.name),
+        args: Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string') ? message.args : [],
+      })
+
+      if (code === 'LOCKED' && retrySafe && id && !closed && Date.now() < deadline) {
+        send({
+          ws,
+          message: {
+            type: 'checking',
+            id,
+          },
+        })
+        const timer = setTimeout(
+          () => {
+            writeRetries.delete(timer)
+
+            if (!closed) {
+              runCommand({
+                ws,
+                message,
+                retryUntil: deadline,
+                retryAttempt: retryAttempt + 1,
+              })
+            }
+          },
+          Math.min(
+            OWNER_WRITE_RETRY_MS * 2 ** retryAttempt,
+            OWNER_WRITE_RETRY_MAX_MS,
+          ),
+        )
+        writeRetries.add(timer)
+
+        return
+      }
+
       let saved: boolean | undefined
 
       if (id && typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
@@ -1965,6 +2078,7 @@ export async function mountOwnedHydra({
             action,
             first,
             second,
+            third,
           ] = args
           const reply = ({
             open,
@@ -1990,7 +2104,7 @@ export async function mountOwnedHydra({
           })
 
           if (action === 'create') {
-            if (args.length > 3 || (second !== undefined && !/^[a-zA-Z0-9._:-]{1,128}$/.test(second))) {
+            if (args.length > 4 || (second !== undefined && !/^[a-zA-Z0-9._:-]{1,128}$/.test(second))) {
               throw new HydraError({
                 message: 'Invalid Hydra creation attempt',
                 code: 'VALIDATION_ERROR',
@@ -2002,6 +2116,7 @@ export async function mountOwnedHydra({
                 0,
                 100,
               ) ?? '',
+              icon: third || undefined,
               attempt: second,
             })
             const opening = open({ id: created })
@@ -2037,20 +2152,27 @@ export async function mountOwnedHydra({
                 code: error instanceof HydraError ? error.code : 'UNKNOWN',
               }),
             )
-          } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
-            renameHydra({
+          } else if (action === 'edit' && first && (second?.trim() || third) && listHydras().some(b => b.id === first)) {
+            editHydra({
               id: first,
-              name: second.trim().slice(
+              name: second?.trim().slice(
                 0,
                 100,
               ),
+              icon: third || undefined,
+            })
+            reply()
+          } else if (action === 'move' && first && second && listHydras().some(b => b.id === first)) {
+            editHydra({
+              id: first,
+              position: Number(second),
             })
             reply()
           } else if (action === undefined) {
             reply()
           } else {
             throw new HydraError({
-              message: 'Hydras expects nothing, open <id>, create <name> or rename <id> <name>',
+              message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
               code: 'VALIDATION_ERROR',
             })
           }
@@ -2219,10 +2341,6 @@ export async function mountOwnedHydra({
             }) => {
               kick()
 
-              if (ws.readyState !== ws.OPEN) {
-                return
-              }
-
               if (error) {
                 let known: {
                   message?: unknown
@@ -2271,7 +2389,7 @@ export async function mountOwnedHydra({
       } catch (error) {
         fail({
           error: (error as Error).message,
-          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+          code: error instanceof HydraError || error instanceof AxiError ? error.code : 'UNKNOWN',
         })
       }
 
@@ -2305,33 +2423,40 @@ export async function mountOwnedHydra({
       'web',
     ]
 
-    const failed = ({ error }: { error: unknown }) => error instanceof AxiError
-      ? fail({
-        error: error.message,
-        code: error.code,
-        help: error.suggestions,
-      })
-      : fail({
-        error: (error as Error).message,
-        code: 'UNKNOWN',
-      })
+    startWorker({
+      file: COMMAND_WORKER,
+      timeout: commandTimeout({
+        name,
+        args,
+      }),
+      args: [
+        name,
+        ...args,
+        ...actor,
+        '--hydra',
+        hydraId,
+      ],
+      done: ({
+        error,
+        stdout,
+      }) => {
+        kick()
 
-    try {
-      const handler = name === 'integrations' ? integrationsCommand : commands[name as Exclude<(typeof CLI_COMMANDS)[number], 'integrations'>]
-      void Promise.resolve(browserCommand.run(
-        true,
-        () => handler([
-          ...args,
-          ...actor,
-          '--hydra',
-          hydraId,
-        ]),
-      )).then(
-        result => {
-          try {
-            pump()
-          } catch {
-            kick()
+        try {
+          const result = JSON.parse(stdout)
+
+          if (error) {
+            if (typeof result.error?.message === 'string' && typeof result.error.code === 'string') {
+              fail({
+                error: result.error.message,
+                code: result.error.code,
+                help: result.error.help,
+              })
+
+              return
+            }
+
+            throw error
           }
 
           send({
@@ -2342,12 +2467,14 @@ export async function mountOwnedHydra({
               id,
             },
           })
-        },
-        error => failed({ error }),
-      )
-    } catch (error) {
-      failed({ error })
-    }
+        } catch {
+          fail({
+            error: 'Command could not be confirmed; check history before sending again',
+            code: 'DELIVERY_UNKNOWN',
+          })
+        }
+      },
+    })
   }
 
   const connect = ({
@@ -2485,6 +2612,12 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+
+    for (const timer of writeRetries) {
+      clearTimeout(timer)
+    }
+
+    writeRetries.clear()
     unwatchFile(
       eventsPath,
       kick,

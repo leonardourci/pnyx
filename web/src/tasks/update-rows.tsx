@@ -66,7 +66,7 @@ const KINDS: Record<UpdateKind, {
 }
 
 const stateLabel = ({ state }: { state: string }) =>
-  state === 'needs_you' ? 'Needs you' : state.replace(
+  state === 'paused' ? 'Worker note' : state === 'needs_you' ? 'Needs you' : state.replace(
     /^./,
     c => c.toUpperCase(),
   )

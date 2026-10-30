@@ -1,4 +1,4 @@
-import { CLONE_TIMEOUT_MS } from '#projects/limits.ts'
+export { commandTimeout, retryable } from '#app/server-protocol.ts'
 
 export const reconnectDelay = ({ attempt }: { attempt: number }) =>
   Math.min(
@@ -8,39 +8,6 @@ export const reconnectDelay = ({ attempt }: { attempt: number }) =>
     ),
     10000,
   )
-export const retryable = ({
-  name,
-  args,
-}: {
-  name: string
-  args: string[]
-}) =>
-  [
-    'reply',
-    'task-message',
-    'answer',
-    'agent',
-    'hydra-agent',
-  ].includes(name) || (name === 'hydra' && args[0] === 'send' && args.includes('--event-id'))
-
-export function commandTimeout({
-  name,
-  args,
-}: {
-  name: string
-  args: string[]
-}): number {
-  if (name === 'project' && args[0] === 'add' && args.includes('--clone')) {
-    return CLONE_TIMEOUT_MS + 20_000
-  }
-
-  return [
-    'reply',
-    'task-message',
-    'answer',
-    'agent',
-  ].includes(name) ? 140000 : 60000
-}
 
 // A push carries only the cards that changed; null drops a card's value.
 export function withChanges<Value>({
