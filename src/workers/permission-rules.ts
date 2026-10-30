@@ -206,15 +206,32 @@ export function applyPermission({
 
     if ((!prior && event.data.status === 'pending') || (prior?.status === 'pending' && event.data.status !== 'pending' && prior.session === event.data.session)) {
       card.permissions = prior
-        ? requests.map(p => p.id === prior.id
-          ? {
+        ? requests.map(p => {
+          if (p.id !== prior.id) {
+            return p
+          }
+
+          const updated: PermissionRequest = {
             ...prior,
             status: event.data.status,
-            delivery: event.data.delivery,
-            ...(event.data.answers ? { answers: event.data.answers } : {}),
-            ...(event.data.values ? { values: event.data.values } : {}),
           }
-          : p)
+
+          if (event.data.delivery) {
+            updated.delivery = event.data.delivery
+          } else {
+            delete updated.delivery
+          }
+
+          if (event.data.answers) {
+            updated.answers = event.data.answers
+          }
+
+          if (event.data.values) {
+            updated.values = event.data.values
+          }
+
+          return updated
+        })
         : [
           ...requests,
           {
