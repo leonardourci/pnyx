@@ -1,4 +1,4 @@
-import { dispatchSettings } from './dispatch-resource.ts'
+import { dispatchDocument, dispatchSettings } from './dispatch-resource.ts'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -26,19 +26,24 @@ export const hydraDefault = ({
   [field]: value,
 })
 
-export function useHeadsDispatch({ command }: { command: Command }) {
-  const resource = dispatchSettings()
-  const snapshot = useSyncExternalStore(
-    resource.subscribe,
-    resource.snapshot,
-  )
+type Readable = Pick<ReturnType<typeof dispatchSettings>, 'refresh'>
+
+function useRefreshed({
+  resource,
+  command,
+  action,
+}: {
+  resource: Readable
+  command: Command
+  action: 'list' | 'show'
+}) {
   useEffect(
     () => {
       const refresh = () => {
         void resource.refresh({
           command,
           name: 'rule',
-          args: ['list'],
+          args: [action],
         })
       }
 
@@ -64,10 +69,42 @@ export function useHeadsDispatch({ command }: { command: Command }) {
       }
     },
     [
+      action,
       command,
       resource,
     ],
   )
+}
+
+export function useDispatchDocument({ command }: { command: Command }) {
+  const resource = dispatchDocument()
+  const snapshot = useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  )
+  useRefreshed({
+    resource,
+    command,
+    action: 'show',
+  })
+
+  return {
+    snapshot,
+    resource,
+  }
+}
+
+export function useHeadsDispatch({ command }: { command: Command }) {
+  const resource = dispatchSettings()
+  const snapshot = useSyncExternalStore(
+    resource.subscribe,
+    resource.snapshot,
+  )
+  useRefreshed({
+    resource,
+    command,
+    action: 'list',
+  })
 
   const saveHydra = async ({ patch }: { patch: Partial<AgentConfig> }) => {
     const args = [

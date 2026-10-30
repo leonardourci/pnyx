@@ -1,9 +1,10 @@
 import { useEffect, useState } from 'react'
-import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
-import { Button, Input, Switch, useBusy } from '#web-shared/ui/controls.tsx'
+import { bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
+import { Button, useBusy } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { capturedKey } from './key-capture.ts'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
+import { groupOf, keyActionsMatching } from './key-search.ts'
 
 const MODIFIERS = [
   'Meta',
@@ -12,20 +13,16 @@ const MODIFIERS = [
   'Alt',
 ]
 
-export function KeyboardSettings({
+export function KeyRows({
   prefs,
   save,
-  embedded = false,
+  query,
 }: {
   prefs: KeyboardPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
-  // Inside a setting row, which already names the section.
-  embedded?: boolean
+  query: string
 }) {
   const { platform } = useKeyboard(), [
-      filter,
-      setFilter,
-    ] = useState(''), [
       capturing,
       setCapturing,
     ] = useState<string | null>(null), [
@@ -133,85 +130,72 @@ export function KeyboardSettings({
     },
   )
 
-  return (
-    <section className="settings-box keyboard-settings" aria-label="Keyboard shortcuts">
-      <div className="row between">
-        {!embedded && (
-          <div>
-            <span className="eyebrow">MOVE THROUGH YOUR WORK</span>
-            <h2>Keyboard shortcuts</h2>
-          </div>
-        )}
-        <Button variant="surface" disabled={busy} onClick={() => persist({ bindings: null })}>Reset all bindings</Button>
-      </div>
-      <p className="muted">Bindings apply to every Hydra. Text fields keep normal typing; Enter adds a newline. Browsers may reserve some shortcuts; commands and the Settings button always remain available.</p>
-      <Switch label="Character shortcuts" checked={prefs.characterShortcuts} onChange={({ value: characterShortcuts }) => save({ patch: { keyboard: { characterShortcuts } } })} />
-      <Input
-        type="search"
-        aria-label="Filter shortcuts"
-        placeholder="Find an action…"
-        value={filter}
-        onChange={e => setFilter(e.target.value)}
-      />
-      {error && <p role="alert" className="gold">{error}</p>}
-      <div className="keymap">
-        {KEY_ACTIONS.filter(a => a.label.toLowerCase().includes(filter.toLowerCase())).map(a => {
-          const keys = bindingsFor({
-            prefs,
-            id: a.id,
-          })
-          const customized = a.id in prefs.bindings
+  const shown = keyActionsMatching({ query })
+  const groups = [...new Set(shown.map(action => groupOf({ action })))]
 
-          return (
-            <div className="keymap-row" key={a.id} data-capturing={capturing === a.id || undefined}>
-              <span className="keymap-action">
-                <strong>{a.label}</strong>
-                <small>{a.scopes.filter(s => s !== 'hints' && s !== 'overlay').join(' · ')}</small>
-              </span>
-              <span className="keymap-keys">
-                {keys.map(key => (
-                  <span className="keymap-key" key={key}>
-                    <kbd>{keyLabel({
-                      keys: [key],
-                      platform,
-                    })}
-                    </kbd>
-                    <button
-                      type="button"
-                      aria-label={`Remove ${key} from ${a.label}`}
-                      disabled={busy || keys.length < 2}
-                      title={keys.length < 2 ? 'An action keeps at least one key' : undefined}
-                      onClick={() => persist({ bindings: { [a.id]: keys.filter(k => k !== key) } })}
-                    ><Icon name="close" size={12} />
-                    </button>
-                  </span>
-                ))}
-                {capturing === a.id
-                  ? <span className="keymap-capture" role="status">Press a key… Esc cancels</span>
-                  : (
+  return (
+    <div className="keymap" aria-label="Keyboard shortcuts">
+      {error && <p role="alert" className="keymap-error">{error}</p>}
+      {groups.map(group => (
+        <div key={group} role="group" aria-label={group}>
+          <div className="keymap-group">{group}</div>
+          {shown.filter(action => groupOf({ action }) === group).map(a => {
+            const keys = bindingsFor({
+              prefs,
+              id: a.id,
+            })
+            const customized = a.id in prefs.bindings
+
+            return (
+              <div className="keymap-row" key={a.id} data-capturing={capturing === a.id || undefined}>
+                <span className="keymap-action">{a.label}</span>
+                <span className="keymap-keys">
+                  {keys.map(key => (
+                    <span className="keymap-key" key={key}>
+                      <kbd>{keyLabel({
+                        keys: [key],
+                        platform,
+                      })}
+                      </kbd>
+                      <button
+                        type="button"
+                        aria-label={`Remove ${key} from ${a.label}`}
+                        disabled={busy || keys.length < 2}
+                        title={keys.length < 2 ? 'An action keeps at least one key' : undefined}
+                        onClick={() => persist({
+                          bindings: { [a.id]: keys.filter(k => k !== key) },
+                        })}
+                      ><Icon name="close" size={12} />
+                      </button>
+                    </span>
+                  ))}
+                  {capturing === a.id
+                    ? <span className="keymap-capture" role="status">Press a key… Esc cancels</span>
+                    : (
+                      <Button
+                        className="keymap-add"
+                        aria-label={`Add a key for ${a.label}`}
+                        disabled={busy}
+                        onClick={() => {
+                          setCapturing(a.id); setError('')
+                        }}
+                      ><Icon name="plus" size={14} />
+                      </Button>
+                    )}
+                  {customized && (
                     <Button
-                      className="keymap-add"
-                      aria-label={`Add a key for ${a.label}`}
+                      className="keymap-reset"
                       disabled={busy}
-                      onClick={() => {
-                        setCapturing(a.id); setError('')
-                      }}
-                    ><Icon name="plus" size={14} />
+                      onClick={() => persist({ bindings: { [a.id]: null } })}
+                    >Reset
                     </Button>
                   )}
-                {customized && (
-                  <Button
-                    className="keymap-reset"
-                    disabled={busy}
-                    onClick={() => persist({ bindings: { [a.id]: null } })}
-                  >Reset
-                  </Button>
-                )}
-              </span>
-            </div>
-          )
-        })}
-      </div>
-    </section>
+                </span>
+              </div>
+            )
+          })}
+        </div>
+      ))}
+    </div>
   )
 }

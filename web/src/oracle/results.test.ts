@@ -471,7 +471,10 @@ test(
       [
         [
           'Settings and actions',
-          ['panel:agents'],
+          [
+            'setting:headsDispatch',
+            'panel:agents',
+          ],
         ],
       ],
     )

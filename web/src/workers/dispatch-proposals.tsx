@@ -7,15 +7,13 @@ import { DISPATCH_CHANGED, useHeadsDispatch } from './heads-dispatch.ts'
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? 'none' : JSON.stringify(value)
 
-export function DispatchProposals({
+export function useDispatchProposals({
   state,
   command,
-  connected,
   notify,
 }: {
   state: HydraState
   command: Command
-  connected: boolean
   notify({ text }: { text: string }): void
 }) {
   const [
@@ -55,10 +53,47 @@ export function DispatchProposals({
     }
   }
 
-  return (state.dispatchProposals ?? []).map(proposal => {
-    const status = statuses.find(item => item.token === proposal.token)
-    const changes = proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : []
-    const name = proposal.kind === 'command' ? 'approval' : 'rule'
+  const proposals = (state.dispatchProposals ?? []).map(proposal => ({
+    proposal,
+    status: statuses.find(item => item.token === proposal.token),
+    changes: proposal.kind === 'dispatch' ? JSON.parse(proposal.before) as DispatchChange[] : [],
+    name: proposal.kind === 'command' ? 'approval' as const : 'rule' as const,
+  }))
+
+  return {
+    proposals,
+    busy,
+    resolve,
+  }
+}
+
+export function DispatchProposals({
+  state,
+  command,
+  connected,
+  notify,
+}: {
+  state: HydraState
+  command: Command
+  connected: boolean
+  notify({ text }: { text: string }): void
+}) {
+  const {
+    proposals,
+    busy,
+    resolve,
+  } = useDispatchProposals({
+    state,
+    command,
+    notify,
+  })
+
+  return proposals.map(({
+    proposal,
+    status,
+    changes,
+    name,
+  }) => {
     const note = status?.reason
       ? `${status.reason}. Dismiss it and ask Hydra again.`
       : 'Hydra proposes this change. Confirm to apply it.'

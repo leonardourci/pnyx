@@ -1,9 +1,11 @@
+import { useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { Hit, Kind } from '#oracle/index.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
+import { viewFor } from '#preferences/view.ts'
 import { currentState } from '#tasks/card-status.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -13,12 +15,13 @@ import type { DoneAfterHours } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
+import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import type { SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
-import { SETTING_ICONS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
+import { SETTING_ICONS, SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { markdownText } from '#web-hydra/markdown.tsx'
@@ -243,6 +246,10 @@ function SettingResult({
   settings: SettingProps
 }) {
   const { entry } = match
+  const [
+    live,
+    setLive,
+  ] = useState<Record<string, unknown>>({})
   const shared = useSharedSettings() ?? DEFAULT_SETTINGS
   const {
     effective,
@@ -250,6 +257,31 @@ function SettingResult({
     error: dispatchError,
   } = useHeadsDispatch({ command: settings.command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const shownSettings = {
+    ...shared,
+    ...live,
+  }
+  const shownView = viewFor({
+    state,
+    settings: {
+      ...settings.view,
+      ...shownSettings,
+    },
+  })
+  const slide = ({
+    key,
+    value,
+  }: {
+    key: string
+    value?: unknown
+  }) => setLive(current => {
+    const rest = Object.fromEntries(Object.entries(current).filter(([name]) => name !== key))
+
+    return value === undefined ? rest : {
+      ...rest,
+      [key]: value,
+    }
+  })
 
   return (
     <SettingRow
@@ -268,13 +300,13 @@ function SettingResult({
           settings: shared,
         }),
       })}
-      preview={(
+      preview={SETTING_PREVIEWS.has(entry.id) && (
         <SettingPreview
           entry={entry}
           state={state}
-          view={settings.view}
+          view={shownView}
           save={settings.save}
-          settings={shared}
+          settings={shownSettings}
           rule={rule}
         />
       )}
@@ -283,11 +315,13 @@ function SettingResult({
         entry={entry}
         state={state}
         {...settings}
+        slide={slide}
         settings={shared}
         rule={rule}
         saveHydra={saveHydra}
         dispatchError={dispatchError}
       />
+      {entry.id === 'keyboard' && <KeyRows prefs={settings.view.keyboard} save={settings.save} query="" />}
     </SettingRow>
   )
 }

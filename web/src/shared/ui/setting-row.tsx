@@ -27,7 +27,6 @@ export function Highlight({
   ) => index % 2 ? <mark key={index}>{part}</mark> : part)
 }
 
-// One setting: its icon, name, description, control and live preview, with a reset while it differs from its default.
 export function SettingRow({
   icon,
   label,
@@ -35,6 +34,7 @@ export function SettingRow({
   terms = [],
   changed = false,
   reset,
+  resetTo,
   preview,
   children,
 }: {
@@ -45,24 +45,28 @@ export function SettingRow({
   terms?: string[]
   changed?: boolean
   reset?(): void
-  // A live picture of what the setting changes, drawn under the control.
+  // The default named on the reset link, such as 14 px.
+  resetTo?: string
+  // A live picture of what the setting changes.
   preview?: ReactNode
   children: ReactNode
 }) {
-  const resettable = changed && reset
-
   return (
-    <div className="setting-row">
-      <span className="setting-icon"><Icon name={icon} size={18} /></span>
-      <div className="setting-text">
-        <span className="setting-name">
-          <Highlight text={label} terms={terms} />
-          {changed && <span className="setting-changed">Changed</span>}
-        </span>
-        <span className="setting-description"><Highlight text={description} terms={terms} /></span>
-        {resettable && <Button className="setting-reset" onClick={reset}>Reset to default</Button>}
+    <div className="setting-row" data-changed={changed || undefined} data-preview={preview ? '' : undefined}>
+      <span className="setting-icon"><Icon name={icon} size={16} /></span>
+      <div className="setting-body">
+        <div className="setting-head">
+          <span className="setting-name"><Highlight text={label} terms={terms} /></span>
+          {changed && <span className="setting-changed">changed</span>}
+        </div>
+        <p className="setting-description"><Highlight text={description} terms={terms} /></p>
+        <div className="setting-control">{children}</div>
+        {changed && reset && (
+          <Button className="setting-reset" onClick={reset}>
+            <Icon name="reset" size={12} />Reset to default{resetTo ? ` (${resetTo})` : ''}
+          </Button>
+        )}
       </div>
-      <div className="setting-control">{children}</div>
       {preview && <div className="setting-preview">{preview}</div>}
     </div>
   )

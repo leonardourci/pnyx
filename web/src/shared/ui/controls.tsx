@@ -79,6 +79,7 @@ export function Switch({
   checked,
   onChange,
   quiet = false,
+  caption,
   disabled = false,
 }: {
   label: string
@@ -86,6 +87,8 @@ export function Switch({
   onChange({ value }: { value: boolean }): unknown
   // Leaves the visible name to the row around it; the switch keeps it as its accessible name.
   quiet?: boolean
+  // Short visible text beside the track, such as On, when the row around it already names the setting.
+  caption?: string
   disabled?: boolean
 }) {
   const [
@@ -106,7 +109,7 @@ export function Switch({
       <span className="switch-track">
         <span />
       </span>
-      {!quiet && label}
+      {caption ?? (!quiet && label)}
     </Button>
   )
 }
@@ -344,6 +347,7 @@ export function NumberField({
   step = 8,
   slider,
   onChange: save,
+  onSlide,
 }: {
   label: string
   value: number
@@ -357,10 +361,12 @@ export function NumberField({
     unit?: string
   }
   onChange({ value }: { value: number }): unknown
+  onSlide?({ value }: { value?: number }): void
 }) {
   if (slider) {
     return (
       <NumberSlider
+        onSlide={onSlide}
         label={label}
         value={value}
         min={min}
@@ -449,6 +455,7 @@ function NumberSlider({
   unit,
   initial,
   onChange: save,
+  onSlide,
 }: {
   label: string
   value: number
@@ -460,6 +467,8 @@ function NumberSlider({
   // The default, marked with a tick on the slider.
   initial?: number
   onChange({ value }: { value: number }): unknown
+  // The value under the thumb while it moves, then undefined once it is let go.
+  onSlide?({ value }: { value?: number }): void
 }) {
   const id = useId()
   const [
@@ -502,12 +511,13 @@ function NumberSlider({
     if (sliding !== undefined) {
       commit({ text: String(sliding) })
       setSliding(undefined)
+      onSlide?.({ value: undefined })
     }
   }
 
   return (
     <div className="slider-field" aria-busy={busy}>
-      <span className="slider-track" style={{ '--tick': tick } as CSSProperties} data-tick={tick ? '' : undefined}>
+      <span className="slider-track" style={{ '--fill': share({ at: shown }) } as CSSProperties}>
         <input
           type="range"
           aria-label={label}
@@ -515,30 +525,36 @@ function NumberSlider({
           max={sliderMax}
           step={step}
           value={shown}
-          onChange={event => setSliding(Number(event.target.value))}
+          onChange={event => {
+            setSliding(Number(event.target.value))
+            onSlide?.({ value: Number(event.target.value) })
+          }}
           onPointerUp={release}
           onKeyUp={release}
           onBlur={release}
         />
+        {tick && <span className="slider-tick" style={{ left: tick }} data-l="default" />}
       </span>
-      <Input
-        id={id}
-        className="slider-number"
-        aria-label={`${label} value`}
-        inputMode="numeric"
-        value={sliding === undefined ? draft : String(sliding)}
-        onChange={event => setDraft(event.target.value)}
-        onBlur={() => {
-          commit({ text: draft })
-          setDraft(String(value))
-        }}
-        onKeyDown={event => {
-          if (event.key === 'Enter') {
-            event.currentTarget.blur()
-          }
-        }}
-      />
-      {unit && <label htmlFor={id} className="slider-unit">{unit}</label>}
+      <span className="slider-box">
+        <Input
+          id={id}
+          className="slider-number"
+          aria-label={`${label} value`}
+          inputMode="numeric"
+          value={sliding === undefined ? draft : String(sliding)}
+          onChange={event => setDraft(event.target.value)}
+          onBlur={() => {
+            commit({ text: draft })
+            setDraft(String(value))
+          }}
+          onKeyDown={event => {
+            if (event.key === 'Enter') {
+              event.currentTarget.blur()
+            }
+          }}
+        />
+        {unit && <label htmlFor={id} className="slider-unit">{unit}</label>}
+      </span>
     </div>
   )
 }

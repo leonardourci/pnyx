@@ -1,9 +1,11 @@
 import { useRef } from 'react'
 import { useBusy } from './controls.tsx'
+import { Icon } from './icon.tsx'
 
 export interface SegmentedOption {
   value: string
   label: string
+  icon?: string
 }
 
 const STEPS: Record<string, number> = {
@@ -72,6 +74,7 @@ export function Segmented({
           tabIndex={index === chosen ? 0 : -1}
           onClick={() => choose({ index })}
         >
+          {option.icon && <Icon name={option.icon} size={14} />}
           {option.label}
         </button>
       ))}

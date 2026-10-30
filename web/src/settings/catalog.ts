@@ -9,6 +9,7 @@ export const SETTINGS_SECTIONS = [
     id: 'layout',
     label: 'Layout',
     icon: 'columns',
+    note: 'Defaults apply to every column you have not resized by dragging its edge.',
   },
   {
     id: 'cards',
@@ -24,18 +25,32 @@ export const SETTINGS_SECTIONS = [
     id: 'agent',
     label: 'Hydra’s default agent',
     icon: 'model',
+    note: 'The agent the orchestrator itself runs on, in every Hydra. Your workers do not use this; they follow Heads dispatch.',
+  },
+  {
+    id: 'dispatch',
+    label: 'Heads dispatch',
+    icon: 'dispatch',
+    note: 'Which agent and which login each worker gets. Changes are checked before they save, and Hydra’s suggested changes wait for your Confirm.',
   },
   {
     id: 'keyboard',
     label: 'Keyboard',
     icon: 'keyboard',
+    note: 'An action can have several keys. Press + on a row to add one, or ✕ on a key to drop it.',
   },
   {
     id: 'about',
     label: 'About',
     icon: 'about',
   },
-] as const
+] as const satisfies readonly {
+  id: string
+  label: string
+  icon: string
+  // A line under the heading that frames the whole section.
+  note?: string
+}[]
 
 export type SettingsSection = (typeof SETTINGS_SECTIONS)[number]['id']
 
@@ -64,7 +79,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'theme',
     section: 'appearance',
     label: 'Theme',
-    description: 'Follow the system, or always use the light or dark colors.',
+    description: 'System follows your computer’s light or dark setting.',
     values: [
       'System',
       'Light',
@@ -81,21 +96,21 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'fontSize',
     section: 'appearance',
     label: 'Interface text size',
-    description: 'Labels, cards, columns and menus.',
+    description: 'Cards and their tags, columns, menus and labels.',
     related: TEXT_SIZE,
   },
   {
     id: 'chatFontSize',
     section: 'appearance',
     label: 'Chat text size',
-    description: 'Messages in Hydra’s chat and in task conversations.',
+    description: 'Messages in Hydra’s chat and in task conversations. Task mentions, skills, commands, links and images scale with the text.',
     related: TEXT_SIZE,
   },
   {
     id: 'codeFontSize',
     section: 'appearance',
     label: 'Code text size',
-    description: 'Code blocks, commands and tool details.',
+    description: 'Code blocks, commands and diffs.',
     related: [
       ...TEXT_SIZE,
       'monospace',
@@ -104,8 +119,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'defaultColumnWidths',
     section: 'layout',
-    label: 'Column widths',
-    description: 'The width each column starts at in every Hydra. Dragging a column edge changes only that Hydra.',
+    label: 'Default column width',
+    description: 'Used by columns without a per-column override, in every Hydra. Open “Per column” to set an override.',
     related: [
       'wide',
       'narrow',
@@ -116,8 +131,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'defaultHydraWidth',
     section: 'layout',
-    label: 'Hydra chat width',
-    description: 'The width Hydra’s chat starts at in every Hydra.',
+    label: 'Default Hydra chat width',
+    description: 'The chat’s width until you drag it, and what Reset returns it to.',
     related: [
       'wide',
       'narrow',
@@ -128,8 +143,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'resetWidths',
     section: 'layout',
-    label: 'Reset dragged widths',
-    description: 'Return every Hydra’s columns and chat to the widths above.',
+    label: 'Dragged widths',
+    description: 'Return every Hydra’s columns and chat to the defaults above.',
     related: [
       'restore',
       'default',
@@ -140,7 +155,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'lastMessageOnCards',
     section: 'cards',
     label: 'Agent updates on cards',
-    description: 'Show each worker’s latest message on its card.',
+    description: 'Show each worker’s latest message at the bottom of its card.',
     related: [
       'preview',
       'status',
@@ -151,7 +166,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'focusMode',
     section: 'cards',
     label: 'Focus mode',
-    description: 'Show only messages in a conversation and hide tool calls and thinking.',
+    description: 'Hide tool calls and thinking so conversations read as messages only. A card can still show them on its own.',
     related: [
       'quiet',
       'clean',
@@ -161,8 +176,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'toolDetails',
     section: 'cards',
-    label: 'Tool details',
-    description: 'Open each tool call’s input and output by default.',
+    label: 'Tool call details',
+    description: 'Open tool rows so their input and output show without a click.',
     related: [
       'commands',
       'calls',
@@ -173,7 +188,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'thinkingDetails',
     section: 'cards',
     label: 'Thinking details',
-    description: 'Open each agent’s thinking by default.',
+    description: 'Open thinking rows so the reasoning shows without a click.',
     related: [
       'reasoning',
       'expand',
@@ -212,7 +227,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     label: 'Routine helper',
     description: 'A lighter agent that handles Hydra’s routine wakes, so the main Hydra spends its quota on your messages and decisions.',
     values: [
-      'Auto',
+      'Automatic',
       'Off',
       'Choose',
     ],
@@ -239,11 +254,32 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     ],
   },
   {
+    id: 'headsDispatch',
+    section: 'dispatch',
+    label: 'Heads dispatch',
+    description: 'Which agent and which login each worker gets. Changes are checked before they save, and Hydra’s proposed changes wait for your Confirm.',
+    related: [
+      'rules',
+      'workers',
+      'agents',
+      'models',
+      'effort',
+      'permissions',
+      'candidates',
+      'accounts',
+      'logins',
+      'quota',
+      'proposals',
+      'routing',
+    ],
+  },
+  {
     id: 'keyboard',
     section: 'keyboard',
-    label: 'Keyboard shortcuts',
-    description: 'The keys for each action, including single-character shortcuts.',
+    label: 'Character shortcuts',
+    description: 'Single-letter keys such as j and k. Text fields always keep normal typing.',
     related: [
+      'keyboard',
       'keys',
       'hotkeys',
       'bindings',

@@ -5,7 +5,7 @@ import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { ModelPicker, PickerField, useModels } from './agent-picker.tsx'
+import { ModelPicker, PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 
 // The composer's control icons, one size so they read alike.
@@ -66,6 +66,7 @@ export function AgentPickers({
   onResolved,
   startsWith,
   fields = ALL_FIELDS,
+  marks,
 }: {
   agent: AgentConfig
   // Values the agent falls back to when it names none, such as its rule's.
@@ -81,6 +82,8 @@ export function AgentPickers({
   startsWith?({ field }: { field: 'model' | 'effort' | 'mode' }): PickerDefault
   // The pickers shown beside the model; the routine helper has no permissions or Fast mode.
   fields?: readonly (typeof ALL_FIELDS)[number][]
+  // Set when each picker is a cell of a table, such as Settings' heads dispatch rules.
+  marks?: Partial<Record<'model' | 'effort' | 'mode' | 'fast', CellMark>>
 }) {
   const controls = harnessControls({
     provider: agent.harness === 'claude' ? 'claude-code' : 'codex',
@@ -161,6 +164,7 @@ export function AgentPickers({
           })))}
         disabled={!connected}
         connected={connected}
+        mark={marks?.model}
         onChange={({ value }) => {
           const [
             harness,
@@ -217,6 +221,7 @@ export function AgentPickers({
             value={value ?? ''}
             options={options}
             disabled={!connected || !catalog.models}
+            mark={marks?.[field]}
             onChange={({ value }) => onChange({
               next: {
                 ...agent,
@@ -231,6 +236,7 @@ export function AgentPickers({
         <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
           <Button
             className="fast-toggle"
+            data-changed={marks?.fast?.changed || undefined}
             aria-label="Fast mode"
             aria-pressed={agent.fast === true}
             disabled={!connected}

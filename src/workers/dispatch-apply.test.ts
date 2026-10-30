@@ -1582,3 +1582,192 @@ test(
     )
   },
 )
+
+test(
+  'rule apply takes the envelope inline with --json, as the page sends it, and refuses both sources or bad JSON',
+  () => {
+    const { file } = lab()
+    const envelope = JSON.stringify({
+      version: 1,
+      expected: { revision: 0 },
+      patch: { default: [{ harness: 'codex' }] },
+    })
+    const saved = rule({
+      args: [
+        'apply',
+        '--json',
+        envelope,
+        '--event-id',
+        'page-1',
+      ],
+    })
+    assert.equal(
+      saved.revision,
+      1,
+    )
+    assert.deepEqual(
+      effectiveDispatch().dispatch.default,
+      [{ harness: 'codex' }],
+    )
+    assert.equal(
+      rule({
+        args: [
+          'apply',
+          '--json',
+          envelope,
+          '--event-id',
+          'page-1',
+        ],
+      }).duplicate,
+      true,
+    )
+    assert.throws(
+      () => rule({
+        args: [
+          'apply',
+          '--json',
+          envelope,
+          '--file',
+          file({ value: {} }),
+        ],
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--json',
+          '{"version":1,',
+        ],
+      }),
+      paths: ['/json'],
+    })
+  },
+)
+
+test(
+  'rule now names the candidate each rule would start from current quota, for the saved document or a draft',
+  () => {
+    lab()
+    const { accounts } = effectiveDispatch()
+    const quota = ({
+      folder,
+      priority,
+    }: {
+      folder: string
+      priority: number
+    }) => writeFileSync(
+      join(
+        folder,
+        'quota.json',
+      ),
+      JSON.stringify({
+        provider: {
+          quotaSemantics: {
+            effectiveAvailability: [
+              {
+                scope: 'all_models',
+                status: 'known',
+                effectivePercentRemaining: 50,
+                selection: {
+                  status: 'known',
+                  spendPriority: priority,
+                },
+              },
+            ],
+          },
+        },
+      }),
+    )
+    quota({
+      folder: accounts['claude:test']!.folder,
+      priority: 1,
+    })
+    quota({
+      folder: accounts['codex:test']!.folder,
+      priority: 5,
+    })
+    rule({
+      args: [
+        'set',
+        'build',
+        '--when',
+        'Builds',
+        '--candidates',
+        '[{"harness":"claude"},{"harness":"codex"}]',
+      ],
+    })
+    const now = ({ args = [] }: { args?: string[] } = {}) => (rule({
+      args: [
+        'now',
+        ...args,
+      ],
+    }).now as {
+      rule: string
+      candidate?: number
+      account?: string
+    }[]).filter(({ rule }) => [
+      'default',
+      'build',
+    ].includes(rule))
+      .map(({
+        rule,
+        candidate,
+        account,
+      }) => ({
+        rule,
+        candidate,
+        account,
+      }))
+
+    assert.deepEqual(
+      now(),
+      [
+        {
+          rule: 'default',
+          candidate: 0,
+          account: 'claude:test',
+        },
+        {
+          rule: 'build',
+          candidate: 1,
+          account: 'codex:test',
+        },
+      ],
+    )
+
+    const draft = show().document
+    draft.rules.build!.candidates = [{ harness: 'claude' }]
+    draft.workers = { claude: [] }
+    assert.deepEqual(
+      now({
+        args: [
+          '--json',
+          JSON.stringify(draft),
+        ],
+      }),
+      [
+        {
+          rule: 'default',
+          candidate: undefined,
+          account: undefined,
+        },
+        {
+          rule: 'build',
+          candidate: undefined,
+          account: undefined,
+        },
+      ],
+    )
+    assert.throws(
+      () => now({
+        args: [
+          '--json',
+          '{"rules":',
+        ],
+      }),
+      { code: 'VALIDATION_ERROR' },
+    )
+  },
+)

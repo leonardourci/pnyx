@@ -1047,16 +1047,16 @@ export function createHydraConnection() {
         },
       })
     } else if ('id' in message && message.id) {
-      if (message.type === 'receipt' && Array.isArray(message.hydras)) {
-        updateHydras({ rows: message.hydras as HydraSummary[] })
-      }
-
       const request = requests.get(message.id)
 
       if (!request || request.scope !== scope) {
         publish(); flush()
 
         return
+      }
+
+      if (request.name === 'hydras' && message.type === 'receipt' && Array.isArray(message.hydras)) {
+        updateHydras({ rows: message.hydras as HydraSummary[] })
       }
 
       const waitingOnLock = message.type === 'error' && message.code === 'LOCKED' && request.retry

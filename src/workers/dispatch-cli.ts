@@ -8,6 +8,8 @@ import { withRegistryLock } from '#store/storage.ts'
 import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
 import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
 import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
+import { startsNow } from './dispatch.ts'
+import { storedOffers } from './model-catalog.ts'
 
 const OPTIONS = {
   ...WRITE,
@@ -24,6 +26,7 @@ const OPTIONS = {
   project: { type: 'string' },
   folder: { type: 'string' },
   file: { type: 'string' },
+  json: { type: 'string' },
   check: { type: 'boolean' },
   propose: { type: 'boolean' },
 } as const
@@ -180,10 +183,20 @@ function withoutAccount({
   }
 }
 
-function readPatchFile({ file }: { file: string }): unknown {
+// A terminal reads the envelope from a file or stdin; the page, which has neither, sends it inline.
+function readEnvelope({ values }: { values: Values }): unknown {
+  if (values.file !== undefined && values.json !== undefined) {
+    return invalid({ message: 'Use --file or --json, not both' })
+  }
+
+  const file = values.json === undefined ? required({
+    value: values.file as string | undefined,
+    what: '--file <path|-> or --json <envelope>',
+  }) : undefined
+
   try {
     return parseApplyJson({
-      contents: readFileSync(
+      contents: file === undefined ? String(values.json) : readFileSync(
         file === '-' ? 0 : file,
         'utf8',
       ),
@@ -197,13 +210,25 @@ function readPatchFile({ file }: { file: string }): unknown {
       errors: [
         {
           operation: null,
-          path: '/file',
+          path: file === undefined ? '/json' : '/file',
           code: 'VALIDATION_ERROR',
           reason: error instanceof Error ? error.message : String(error),
         },
       ],
       help: DISPATCH_HELP_LINE,
     })
+  }
+}
+
+function parsedDocument({ json }: { json?: string }): unknown {
+  if (json === undefined) {
+    return undefined
+  }
+
+  try {
+    return JSON.parse(json) as unknown
+  } catch {
+    return invalid({ message: '--json must be a heads dispatch document; run `pnyx-axi rule schema`' })
   }
 }
 
@@ -307,14 +332,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'apply') {
-    const envelope = parseEnvelope({
-      value: readPatchFile({
-        file: required({
-          value: values.file as string | undefined,
-          what: '--file <path|->',
-        }),
-      }),
-    })
+    const envelope = parseEnvelope({ value: readEnvelope({ values }) })
 
     return applyDispatch({
       hydraId,
@@ -324,6 +342,18 @@ function ruleCommand({ args }: { args: string[] }): Output {
       proposeIt: Boolean(values.propose),
       summary: `Apply heads dispatch changes to ${Object.keys(envelope.patch).join(', ')}`,
     })
+  }
+
+  if (action === 'now') {
+    return {
+      now: startsNow({
+        config: effectiveDispatch({
+          document: parsedDocument({ json: values.json as string | undefined }),
+        }),
+        offers: storedOffers(),
+      }),
+      help: ['Each candidate takes the first account in its harness order with quota left; the highest known spendPriority starts, and a tie or unknown quota starts the first listed'],
+    }
   }
 
   if (action === 'init') {
@@ -378,7 +408,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
   }
 
   if (action !== 'set' && action !== 'remove') {
-    return invalid({ message: 'Use rule list, show, schema, apply, init, set, remove or accounts' })
+    return invalid({ message: 'Use rule list, show, schema, now, apply, init, set, remove or accounts' })
   }
 
   const key = checkedName({
@@ -493,7 +523,8 @@ export const dispatchCommands = {
 }
 export const DISPATCH_HELP = {
   rule: `usage: pnyx-axi rule list|show|schema|init
-pnyx-axi rule apply --file <patch.json|-> [--check] [--propose] [--if-revision <revision>] [--event-id <id>]
+pnyx-axi rule now [--json '<document>']
+pnyx-axi rule apply --file <patch.json|-> | --json '<envelope>' [--check] [--propose] [--if-revision <revision>] [--event-id <id>]
 pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>'
 pnyx-axi rule set <name> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
 pnyx-axi rule propose set|remove|accounts <same arguments>
@@ -501,7 +532,8 @@ pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name>
 pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
 Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders; every section but main is required. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
-rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra proposes outside bypass.
+rule now shows which candidate of each rule would start right now from current quota, for the saved document or the one --json gives; each login's reading is kept for a minute.
+rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}} from a file, stdin or --json, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra proposes outside bypass.
 set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
   account: `usage: pnyx-axi account list
 pnyx-axi account set <name> --provider claude|codex --folder <login folder>
