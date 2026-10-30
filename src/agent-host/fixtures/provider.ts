@@ -2,6 +2,7 @@ import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import { deferred } from '#agent-host/deferred.ts'
+import { imageBytes } from '#workers/input.ts'
 import { nativeSession, type NativeEvent } from '#workers/native-session.ts'
 import type { AskPermission, HostedInput, Provider } from '#workers/provider.ts'
 
@@ -12,6 +13,7 @@ type State = {
   input: HostedInput[]
   settings: string[]
   interrupts: number
+  materializedBytes: number
   turn?: string
   permission?: AskPermission
   emit?: ({ event }: { event: NativeEvent }) => void
@@ -50,6 +52,7 @@ export const fixtureProvider = (): Provider => ({
       input: [],
       settings: [],
       interrupts: 0,
+      materializedBytes: 0,
       answers: 0,
       context,
     }
@@ -121,6 +124,10 @@ export const fixtureProvider = (): Provider => ({
                   state.id,
                   message.id,
                 )
+              }
+
+              for (const image of message.images) {
+                state.materializedBytes += imageBytes({ image }).toString('base64').length
               }
 
               state.input.push(message)
