@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { serveAgentHost } from '#agent-host/server.ts'
 import { deferred } from '#agent-host/deferred.ts'
 import { errorResult } from '#agent-host/protocol.ts'
+import { kernelBootIdentity } from '#agent-host/boot.ts'
 import { nativeSession, type NativeEvent } from '#workers/native-session.ts'
 import type { AskPermission, HostedInput, Provider } from '#workers/provider.ts'
 
@@ -30,9 +31,10 @@ const provider = (): Provider => ({
   async open({
     context,
     settings,
+    agent,
   }) {
     const state: State = {
-      id: randomUUID(),
+      id: agent?.sessionId ?? randomUUID(),
       closed: false,
       input: [],
       settings: [],
@@ -147,6 +149,13 @@ try {
     directory,
     installation,
     build: 'fixture',
+    bootIdentity: () => {
+      if (process.env.FIXTURE_BOOT === undefined) {
+        return kernelBootIdentity()
+      }
+
+      return process.env.FIXTURE_BOOT || undefined
+    },
     controlTimeout: process.env.FIXTURE_TIMEOUT === '1' ? 50 : undefined,
     providers: {
       'claude-code': provider(),

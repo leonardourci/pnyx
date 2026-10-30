@@ -41,12 +41,14 @@ export async function fixtureHost({
   directory,
   slowControls = false,
   entry,
+  boot,
 }: {
   t: TestContext
   pressure?: boolean
   directory?: string
   slowControls?: boolean
   entry?: string
+  boot?: string | null
 }) {
   const root = directory ?? realpathSync(mkdtempSync('/tmp/pnyx-host-'))
   const installation = 'fixture-installation'
@@ -66,6 +68,7 @@ export async function fixtureHost({
         ...process.env,
         PNYX_HOME: root,
         HOME: root,
+        FIXTURE_BOOT: boot === null ? '' : boot,
         FIXTURE_PRESSURE: pressure ? '1' : '0',
         FIXTURE_TIMEOUT: slowControls ? '1' : '0',
       },
