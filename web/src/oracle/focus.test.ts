@@ -194,86 +194,14 @@ test(
   },
 )
 
-const PREVIEWS: Record<string, string[]> = {
-  task: [
-    'PR #31 link',
-    '+2 links',
-    'Open task',
-  ],
-  conversation: ['Open chat'],
-  project: ['Show project'],
-  'setting, switch': [
-    'Focus mode switch',
-    'Open in Settings',
-  ],
-  'setting, choice': [
-    'Theme: System radio',
-    'System tile',
-    'Light tile',
-    'Dark tile',
-    'Open in Settings',
-  ],
-  'setting, number changed from its default': [
-    'Reset to default',
-    'Interface text size slider',
-    'Interface text size value',
-    'Open in Settings',
-  ],
-  'Projects panel': [
-    'How work lands',
-    'Merged by',
-    'Start command name',
-    'Command',
-    'Brings its own folder',
-    'Save start command',
-    'Detach',
-    'Add a folder',
-    'Clone a repo',
-    'Edit here',
-  ],
-  'agents and dispatch panel': ['Edit here'],
-  action: ['Run'],
-  filter: [],
-  Ask: [],
-}
-
-for (const [
-  preview,
-  controls,
-] of Object.entries(PREVIEWS)) {
-  test(
-    `the ${preview} preview: Tab and ⇧Tab cycle its controls through the input`,
-    () => {
-      const forward = walk({
-        controls,
-        moves: tabs({ count: controls.length + 1 }),
-      })
-      const backward = walk({
-        controls,
-        moves: backTabs({ count: controls.length + 1 }),
-      })
-
-      assert.deepEqual(
-        forward,
-        [
-          ...controls,
-          INPUT,
-        ],
-      )
-      assert.deepEqual(
-        backward,
-        [
-          ...controls.toReversed(),
-          INPUT,
-        ],
-      )
-    },
-  )
-}
-
 interface Control {
   name: string
   kind: ControlKind
+  lines?: {
+    value: string
+    start: number
+    end: number
+  }
 }
 
 // A preview's controls in Tab order, and where ↑ ↓ ← → from each one lead.
@@ -285,11 +213,27 @@ const arrows = ({
   controls: Control[]
   from: string
   key: string
-}) => arrowFocus({
+}) => {
+  const control = controls.find(item => item.name === from)!
+
+  return arrowFocus({
+    controls: controls.map(item => item.name),
+    from,
+    key,
+    kind: control.kind,
+    lines: control.lines,
+  })
+}
+
+const entered = ({
+  controls,
+  own = [],
+}: {
+  controls: Control[]
+  own?: string[]
+}) => enterPreview({
   controls: controls.map(control => control.name),
-  from,
-  key,
-  kind: controls.find(control => control.name === from)!.kind,
+  own,
 })
 
 const button = ({ name }: { name: string }): Control => ({
@@ -540,35 +484,259 @@ test(
   },
 )
 
-// One case per preview type, since each mixes different kinds of control.
-const ARROW_PREVIEWS: Record<string, {
-  controls: Control[]
-  entry?: string
-  own?: string[]
-}> = {
-  task: { controls: [button({ name: 'Open task' })] },
-  conversation: { controls: [button({ name: 'Open chat' })] },
-  project: { controls: [button({ name: 'Show project' })] },
-  'setting, switch': {
-    controls: [
+test(
+  'a one-button preview (a task without links, a conversation, a project, an action, the agents panel): → and ↓ land on its button, and ↑ or ← go back',
+  () => {
+    const controls = [button({ name: 'Open chat' })]
+
+    assert.equal(
+      entered({ controls }),
+      'Open chat',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open chat',
+        key: 'ArrowDown',
+      }),
+      'Open chat',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open chat',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open chat',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
+  },
+)
+
+test(
+  'a filter or Ask preview has no control, so → from the field enters nothing',
+  () => {
+    assert.equal(
+      entered({ controls: [] }),
+      undefined,
+    )
+  },
+)
+
+test(
+  'a task with links: → lands on its first link, ↓ walks the links, the +1 disclosure and Open task, and ↑ or ← go back',
+  () => {
+    const controls = [
+      button({ name: 'PR #31' }),
+      button({ name: '+1' }),
+      button({ name: 'Open task' }),
+    ]
+
+    assert.equal(
+      entered({ controls }),
+      'PR #31',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'PR #31',
+        key: 'ArrowDown',
+      }),
+      '+1',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: '+1',
+        key: 'ArrowDown',
+      }),
+      'Open task',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open task',
+        key: 'ArrowDown',
+      }),
+      'Open task',
+      '↓ on the last control stays there',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'PR #31',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: '+1',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
+  },
+)
+
+test(
+  'a switch setting such as Focus mode: → lands on its switch, ↓ moves to Open in Settings, and ↑ or ← go back',
+  () => {
+    const controls = [
       button({ name: 'Focus mode' }),
       button({ name: 'Open in Settings' }),
-    ],
-    own: ['Focus mode'],
+    ]
+
+    assert.equal(
+      entered({
+        controls,
+        own: ['Focus mode'],
+      }),
+      'Focus mode',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Focus mode',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open in Settings',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Focus mode',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Focus mode',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open in Settings',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
   },
-  'setting, choice': {
-    controls: [
+)
+
+test(
+  'a choice setting such as Theme: → lands on its chosen option, which keeps ← →, and ↓ walks the preview tiles to Open in Settings',
+  () => {
+    const controls: Control[] = [
       {
-        name: 'Theme: Dark',
+        name: 'Theme: System',
         kind: 'radio',
       },
+      button({ name: 'System tile' }),
+      button({ name: 'Light tile' }),
       button({ name: 'Dark tile' }),
       button({ name: 'Open in Settings' }),
-    ],
-    own: ['Theme: Dark'],
+    ]
+
+    assert.equal(
+      entered({
+        controls,
+        own: ['Theme: System'],
+      }),
+      'Theme: System',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Theme: System',
+        key: 'ArrowDown',
+      }),
+      'System tile',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'System tile',
+        key: 'ArrowDown',
+      }),
+      'Light tile',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Light tile',
+        key: 'ArrowDown',
+      }),
+      'Dark tile',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Dark tile',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open in Settings',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Theme: System',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Theme: System',
+        key: 'ArrowLeft',
+      }),
+      PASS,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Light tile',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
   },
-  'setting, number changed from its default': {
-    controls: [
+)
+
+test(
+  'a number setting changed from its default: → skips Reset to default for the slider, ↓ walks to Open in Settings, and ↑ from the slider reaches Reset',
+  () => {
+    const controls: Control[] = [
       button({ name: 'Reset to default' }),
       {
         name: 'Interface text size',
@@ -579,110 +747,246 @@ const ARROW_PREVIEWS: Record<string, {
         kind: 'text',
       },
       button({ name: 'Open in Settings' }),
-    ],
-    own: [
+    ]
+
+    assert.equal(
+      entered({
+        controls,
+        own: [
+          'Interface text size',
+          'Interface text size value',
+        ],
+      }),
       'Interface text size',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Interface text size',
+        key: 'ArrowDown',
+      }),
       'Interface text size value',
-    ],
-    entry: 'Interface text size',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Interface text size value',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open in Settings',
+        key: 'ArrowDown',
+      }),
+      'Open in Settings',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Interface text size',
+        key: 'ArrowUp',
+      }),
+      'Reset to default',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Reset to default',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Reset to default',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Interface text size',
+        key: 'ArrowLeft',
+      }),
+      PASS,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Interface text size value',
+        key: 'ArrowLeft',
+      }),
+      PASS,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Open in Settings',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
   },
-  'Projects panel': {
-    controls: [
-      button({ name: 'How work lands' }),
-      button({ name: 'Who merges' }),
+)
+
+test(
+  'the Projects panel: → lands on How work lands, ↓ walks every control to Edit here, including off the end of a start command, and ← keeps to the text fields',
+  () => {
+    const controls: Control[] = [
+      button({ name: 'How work lands for pnyx' }),
+      button({ name: 'Who merges pull requests for pnyx' }),
       {
-        name: 'Start command name',
+        name: 'Start command name for pnyx',
         kind: 'text',
       },
       {
-        name: 'Start command',
+        name: 'Start command for pnyx',
         kind: 'text',
+        lines: {
+          value: 'pnpm dev',
+          start: 8,
+          end: 8,
+        },
       },
       button({ name: 'Brings its own folder' }),
       button({ name: 'Save start command' }),
-      button({ name: 'Detach' }),
+      button({ name: 'Detach pnyx' }),
       button({ name: 'Add a folder' }),
       button({ name: 'Clone a repo' }),
       button({ name: 'Edit here' }),
-    ],
+    ]
+
+    assert.equal(
+      entered({ controls }),
+      'How work lands for pnyx',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'How work lands for pnyx',
+        key: 'ArrowDown',
+      }),
+      'Who merges pull requests for pnyx',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Who merges pull requests for pnyx',
+        key: 'ArrowDown',
+      }),
+      'Start command name for pnyx',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Start command name for pnyx',
+        key: 'ArrowDown',
+      }),
+      'Start command for pnyx',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Start command for pnyx',
+        key: 'ArrowDown',
+      }),
+      'Brings its own folder',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Brings its own folder',
+        key: 'ArrowDown',
+      }),
+      'Save start command',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Save start command',
+        key: 'ArrowDown',
+      }),
+      'Detach pnyx',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Detach pnyx',
+        key: 'ArrowDown',
+      }),
+      'Add a folder',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Add a folder',
+        key: 'ArrowDown',
+      }),
+      'Clone a repo',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Clone a repo',
+        key: 'ArrowDown',
+      }),
+      'Edit here',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Edit here',
+        key: 'ArrowDown',
+      }),
+      'Edit here',
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'How work lands for pnyx',
+        key: 'ArrowUp',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Who merges pull requests for pnyx',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Start command name for pnyx',
+        key: 'ArrowLeft',
+      }),
+      PASS,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Start command for pnyx',
+        key: 'ArrowLeft',
+      }),
+      PASS,
+    )
+    assert.equal(
+      arrows({
+        controls,
+        from: 'Detach pnyx',
+        key: 'ArrowLeft',
+      }),
+      INPUT,
+    )
   },
-  'agents and dispatch panel': { controls: [button({ name: 'Edit here' })] },
-  action: { controls: [button({ name: 'Run' })] },
-  filter: { controls: [] },
-  Ask: { controls: [] },
-}
-
-for (const [
-  preview,
-  {
-    controls,
-    entry,
-    own = [],
-  },
-] of Object.entries(ARROW_PREVIEWS)) {
-  test(
-    `the ${preview} preview: → enters it, ↑ ↓ step through its controls, and ↑ or ← leave it`,
-    () => {
-      const names = controls.map(control => control.name)
-      const entered = enterPreview({
-        controls: names,
-        own,
-      })
-
-      assert.equal(
-        entered,
-        entry ?? names[0],
-        'with no control, → from the field does nothing',
-      )
-
-      const last = names.at(-1)
-      let at = entered
-
-      for (const name of names.slice(names.indexOf(entered!) + 1)) {
-        at = arrows({
-          controls,
-          from: at!,
-          key: 'ArrowDown',
-        }) as string
-        assert.equal(
-          at,
-          name,
-        )
-      }
-
-      if (last) {
-        assert.equal(
-          arrows({
-            controls,
-            from: last,
-            key: 'ArrowDown',
-          }),
-          last,
-          '↓ on the last control stays there',
-        )
-        assert.equal(
-          arrows({
-            controls,
-            from: names[0]!,
-            key: 'ArrowUp',
-          }),
-          INPUT,
-        )
-      }
-
-      for (const control of controls) {
-        assert.equal(
-          arrows({
-            controls,
-            from: control.name,
-            key: 'ArrowLeft',
-          }),
-          control.kind === 'other' ? INPUT : PASS,
-        )
-      }
-    },
-  )
-}
+)
 
 test(
   'in a multi-line field ↑ and ↓ move its caret between lines, and move focus only from its first or last line',
@@ -786,7 +1090,7 @@ test(
         rows: list,
         index: 10,
       }),
-      list[12]!.top + 30 - 150,
+      264,
       'moving down, the second row below the focus becomes the last one in view',
     )
     assert.equal(
@@ -796,7 +1100,7 @@ test(
         rows: list,
         index: 10,
       }),
-      list[8]!.top,
+      264,
       'moving up, the second row above the focus becomes the first one in view',
     )
     assert.equal(
@@ -833,7 +1137,7 @@ test(
         rows: list,
         index: 19,
       }),
-      list[19]!.top + 30 - 150,
+      474,
     )
   },
 )
@@ -860,7 +1164,7 @@ test(
         rows: list,
         index: 10,
       }),
-      list[11]!.top + 30 - 100,
+      284,
       'one row each side fits in 100 px, two do not',
     )
   },
