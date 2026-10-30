@@ -46,6 +46,7 @@ export interface HydraMessage {
   answers?: string
   fromMessage?: AnswerMessage
   choice?: string
+  liftsHold?: string
   at: string
   actor: string
   hydra: string
