@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
 import { nativeProviders } from '#app/native-provider.ts'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
 import { fixtureHost, until } from '#agent-host/fixtures/harness.ts'
 
@@ -53,6 +53,18 @@ for (const provider of [
 
       const reading = consume()
       await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+      const bindingPath = join(
+        options.journal,
+        readdirSync(options.journal)[0]!,
+      )
+      const saved = JSON.parse(readFileSync(
+        bindingPath,
+        'utf8',
+      ))
+      assert.equal(
+        'inputs' in saved,
+        false,
+      )
       const nativeId = session.id
       session.detach!()
       await reading
@@ -76,11 +88,30 @@ for (const provider of [
         },
       })
       t.after(() => resumed.detach!())
+      assert.equal(
+        resumed.accepted?.({ id: 'message-1' }),
+        true,
+      )
+      assert.equal(
+        resumed.accepted?.({ id: 'not-yet-admitted' }),
+        false,
+      )
       const replay: unknown[] = []
 
       const observer = async () => {
         for await (const event of resumed.run({
-          input: (async function* () {})(),
+          input: (async function* () {
+            yield {
+              id: 'message-1',
+              text: 'regenerated context differs',
+              images: [],
+            }
+            yield {
+              id: 'not-yet-admitted',
+              text: 'new logged intent',
+              images: [],
+            }
+          })(),
           permission: async () => ({
             behavior: 'deny',
             message: 'fixture',
@@ -92,7 +123,7 @@ for (const provider of [
 
       const next = observer()
       await resumed.replayed!()
-      await until({ check: () => JSON.stringify(replay).includes('still alive') })
+      await until({ check: async () => JSON.stringify(replay).includes('still alive') && (await host.stats())[0]!.input.length === 2 })
       assert.equal(
         (await host.stats()).length,
         1,
@@ -101,9 +132,12 @@ for (const provider of [
         (await host.stats())[0]!.closed,
         false,
       )
-      assert.equal(
-        (await host.stats())[0]!.input.length,
-        1,
+      assert.deepEqual(
+        (await host.stats())[0]!.input.map(input => input.id),
+        [
+          'message-1',
+          'not-yet-admitted',
+        ],
       )
       assert.equal(
         resumed.id,
