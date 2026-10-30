@@ -705,14 +705,19 @@ export function summary({ event }: { event: HydraEvent }): string {
     case 'task.declared': return `${declaredState({ declaration: event.data })}: ${event.data.note}`
     case 'task.asked': return `Asked ${event.data.audience === 'owner' ? 'the owner' : 'Hydra'} (${event.data.id}): ${event.data.question}`
     case 'task.ask.closed': return `Closed ${event.data.ask}: ${event.data.reason} (${event.data.evidence})`
-    case 'task.ask.reopened': return `Reopened ${event.data.ask}`
+    case 'task.ask.reopened': return `${event.data.reask ? 'Hydra re-asked' : 'Reopened'} ${event.data.ask}`
     case 'task.ask.escalated': return `Escalated ${event.data.ask} to the owner${event.data.question ? `: ${event.data.question}` : ''}`
     case 'task.launched': return `Started through ${event.data.via} in ${event.data.folder ?? 'unknown folder'}`
     case 'task.mirrored': return `Mirrored Firstmate task ${event.data.task}`
     case 'hydra.dispatch-proposed': return `Proposed dispatch change: ${event.data.summary}`
     case 'hydra.dispatch-progress': return `Owner question ${event.data.status}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.dispatch-resolved': return `Dispatch proposal ${event.data.action}`
-    case 'hydra.message': return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.message':
+      if (event.data.liftsHold) {
+        return `Hydra lifted Hold on ${event.data.answers}: ${event.data.text}`
+      }
+
+      return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`

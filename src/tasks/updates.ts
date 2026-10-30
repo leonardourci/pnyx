@@ -39,6 +39,7 @@ export interface UpdateDecision {
   actor: string
   reason?: string
   choice?: string
+  liftsHold?: string
   ask?: {
     from?: string
     to?: Ask['audience']
@@ -309,7 +310,7 @@ function updateRow({
 
       return (reply.accepted || reply.state === 'delivered') && reply.decision ? {
         kind: 'decision',
-        state: 'Decision',
+        state: reply.decision.liftsHold ? 'Hydra lifted Hold' : 'Decision',
         note: '',
         decision: {
           ...reply.decision,
@@ -351,7 +352,7 @@ function updateRow({
     }
     case 'task.ask.reopened': return {
       kind: 'status',
-      state: 'Question reopened',
+      state: data.reask ? 'Hydra asked again' : 'Question reopened',
       note: String(data.ask),
     }
     case 'task.ask.escalated': return {
@@ -410,6 +411,10 @@ function updateRow({
           actor: data.fromMessage ? 'You' : decisionActor({ actor: event.actor }),
         }
 
+        if (typeof data.liftsHold === 'string') {
+          decision.liftsHold = data.liftsHold
+        }
+
         if (typeof data.choice === 'string') {
           decision.choice = data.choice
         }
@@ -420,7 +425,7 @@ function updateRow({
 
         return {
           kind: 'decision',
-          state: 'Decision',
+          state: data.liftsHold ? 'Hydra lifted Hold' : 'Decision',
           note: '',
           decision,
         }

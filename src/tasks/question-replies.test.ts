@@ -10,13 +10,13 @@ import { readEvents } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { reply } from '#workers/reply.ts'
+import { reply, sendReply } from '#workers/reply.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { acquireLock } from '#store/storage.ts'
 import { decidePush } from './push.ts'
 import { findCard } from './push-rules.ts'
-import { cardQuestion, openAsks, ownerQuestions } from './questions.ts'
+import { answerDelivery, cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
 import { ownerGates } from './owner-gates.ts'
 import { relevantUpdate } from './updates.ts'
 
@@ -27,7 +27,7 @@ type Change = {
   [Kind in HydraEvent['type']]: Pick<Extract<HydraEvent, { type: Kind }>, 'type' | 'data'>
 }[HydraEvent['type']]
 
-type Mode = 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
+type Mode = 'held' | 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
 
 async function lab({ t }: { t: TestContext }) {
   const root = mkdtempSync(join(
@@ -50,6 +50,14 @@ async function lab({ t }: { t: TestContext }) {
   delete process.env.PNYX_STEERING_WORKER
   let releaseLock: (() => void) | undefined
   let mode: Mode = 'delivered'
+  let releaseHeld = () => {}
+  let notifyHeld = () => {}
+  const heldDelivery = new Promise<void>(resolve => {
+    releaseHeld = resolve
+  })
+  const deliveryStarted = new Promise<void>(resolve => {
+    notifyHeld = resolve
+  })
   const received: {
     card: string
     text: string
@@ -339,6 +347,11 @@ async function lab({ t }: { t: TestContext }) {
 
     received.push(body)
 
+    if (mode === 'held') {
+      notifyHeld()
+      await heldDelivery
+    }
+
     if (mode === 'failed' || mode === 'failed-record-error') {
       if (mode === 'failed-record-error') {
         releaseLock = acquireLock({
@@ -385,6 +398,7 @@ async function lab({ t }: { t: TestContext }) {
     response.end(JSON.stringify(current.hold ? { deferred: true } : { accepted: true }))
   })
   t.after(async () => {
+    releaseHeld()
     releaseLock?.()
     await new Promise<void>(resolve => server.close(() => resolve()))
 
@@ -445,6 +459,8 @@ async function lab({ t }: { t: TestContext }) {
     ask,
     relay,
     received,
+    deliveryStarted,
+    releaseHeld: () => releaseHeld(),
     mode: ({ value }: { value: Mode }) => {
       mode = value
     },
@@ -1731,6 +1747,936 @@ test(
     assert.equal(
       l.card({ ref }).asks?.[0]?.answered,
       'worker-lost-receipt',
+    )
+  },
+)
+
+test(
+  'Hydra lifts a merge Hold from the owner’s later message and Undo restores Hold',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'later-merge' })
+    const question = 'synthetic-held-merge'
+    const url = 'https://github.com/synthetic/question-lab/pull/281'
+    l.event({
+      ref,
+      change: {
+        type: 'task.asked',
+        data: {
+          id: question,
+          audience: 'owner',
+          kind: 'merge',
+          question: 'Review and merge PR #281?',
+          url,
+          options: [
+            { label: 'Merge' },
+            { label: 'Hold' },
+          ],
+        },
+      },
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Hold',
+      ],
+      actor: 'web',
+    })
+    const held = l.card({ ref }).asks?.[0]
+    assert.ok(held?.answered)
+    const message = l.chat({
+      ref,
+      text: 'Merge PR #281 now.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        message,
+        '--choice',
+        'Merge',
+      ],
+    })
+    const approved = l.card({ ref }).asks?.[0]
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url,
+      })?.id,
+      question,
+    )
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: 'https://github.com/synthetic/question-lab/pull/282',
+      }),
+      undefined,
+    )
+    assert.equal(
+      approved?.choice,
+      'Merge',
+    )
+    assert.equal(
+      approved?.fromMessage?.text,
+      'Merge PR #281 now.',
+    )
+    assert.ok(approved?.answered)
+    await l.task({
+      args: [
+        'reopen-question',
+        ref,
+        question,
+        '--answer',
+        approved.answered,
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url,
+      }),
+      undefined,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      held.answered,
+    )
+    assert.deepEqual(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks,
+      l.card({ ref }).asks,
+    )
+  },
+)
+
+async function heldMerge({ t }: { t: TestContext }) {
+  const l = await lab({ t })
+  const ref = await l.create({ key: 'merge-refusals' })
+  const question = 'synthetic-merge-hold'
+  l.event({
+    ref,
+    at: '2026-10-01T10:00:00.000Z',
+    change: {
+      type: 'task.asked',
+      data: {
+        id: question,
+        audience: 'owner',
+        kind: 'merge',
+        question: 'Review and merge PR #281?',
+        url: 'https://github.com/synthetic/question-lab/pull/281',
+        options: [
+          { label: 'Merge' },
+          { label: 'Hold' },
+        ],
+      },
+    },
+  })
+  await l.task({
+    args: [
+      'answer',
+      ref,
+      question,
+      '--choice',
+      'Hold',
+    ],
+    actor: 'web',
+  })
+  const held = l.card({ ref }).asks?.[0]
+  assert.ok(held?.answeredAt)
+  assert.ok(held.answered)
+
+  return {
+    l,
+    ref,
+    question,
+    held,
+  }
+}
+
+test(
+  'a held merge refuses older, equal, missing and non-owner sources without changing Hold',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    const old = l.chat({
+      ref,
+      at: '2026-10-01T10:01:00.000Z',
+      text: 'Merge PR #281.',
+    })
+    const equal = l.chat({
+      ref,
+      at: held.answeredAt,
+      text: 'Merge PR #281.',
+    })
+    const worker = l.chat({
+      ref,
+      actor: `worker:${ref}`,
+      text: 'Merge PR #281.',
+    })
+    const hydra = l.chat({
+      ref,
+      actor: 'hydra',
+      text: 'Merge PR #281.',
+    })
+    const system = l.chat({
+      ref,
+      actor: 'pnyx',
+      text: 'Merge PR #281.',
+    })
+    const source = l.chat({
+      ref,
+      text: 'Merge PR #281.',
+    })
+    const before = readEvents({ hydraId }).length
+
+    for (const message of [
+      old,
+      equal,
+      worker,
+      hydra,
+      system,
+      'missing-message',
+    ]) {
+      await assert.rejects(
+        l.task({
+          args: [
+            'answer',
+            ref,
+            question,
+            '--from-message',
+            message,
+            '--choice',
+            'Merge',
+          ],
+        }),
+        /owner’s (?:message must be newer than the Hold answer|own message)/,
+      )
+    }
+
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+      }),
+      /owner's own answer/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--from-message',
+          source,
+        ],
+      }),
+      /merge question with --choice Merge or Hold/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--from-message',
+          source,
+          '--choice',
+          'Hold',
+        ],
+      }),
+      /already answered/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+          '--undelivered',
+        ],
+        actor: 'web',
+      }),
+      /already answered/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--from-message',
+          source,
+          '--choice',
+          'Merge',
+        ],
+        actor: `worker:${ref}`,
+      }),
+      /agent cannot answer/,
+    )
+    assert.equal(
+      readEvents({ hydraId }).length,
+      before,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      held.answered,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+  },
+)
+
+test(
+  'Hydra can re-ask a merge Hold, but only a fresh owner answer approves it',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    const oldSource = l.chat({
+      ref,
+      at: held.answeredAt,
+      text: 'Merge PR #281.',
+    })
+    await assert.rejects(
+      l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+        actor: `worker:${ref}`,
+      }),
+      /only Hydra/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+        actor: 'web',
+      }),
+      /only Hydra/,
+    )
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      undefined,
+    )
+    assert.equal(
+      ownerQuestions({ card: l.card({ ref }) }).length,
+      1,
+    )
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: held.url!,
+      }),
+      undefined,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--from-message',
+          oldSource,
+          '--choice',
+          'Merge',
+        ],
+      }),
+      /owner’s own message sent after the question/,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+      }),
+      /owner's own answer/,
+    )
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Hold',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: held.url!,
+      }),
+      undefined,
+    )
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--choice',
+        'Merge',
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: held.url!,
+      })?.id,
+      question,
+    )
+    await assert.rejects(
+      l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      }),
+      /answered merge Hold/,
+    )
+    assert.equal(
+      ownerQuestions({ card: l.card({ ref }) }).length,
+      0,
+    )
+  },
+)
+
+test(
+  'Undo a lifted merge restores the original quoted Hold and rejects a stale undo',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+    } = await heldMerge({ t })
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    const holdSource = l.chat({
+      ref,
+      text: 'Keep PR #281 on Hold.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        holdSource,
+        '--choice',
+        'Hold',
+      ],
+    })
+    const held = l.card({ ref }).asks?.[0]
+    assert.ok(held?.answered)
+    const source = l.chat({
+      ref,
+      at: '2099-01-01T00:00:00.000Z',
+      text: 'Merge PR #281.',
+    })
+    await l.task({
+      args: [
+        'answer',
+        ref,
+        question,
+        '--from-message',
+        source,
+        '--choice',
+        'Merge',
+      ],
+    })
+    const approved = l.card({ ref }).asks?.[0]
+    assert.ok(approved?.answered)
+    await assert.rejects(
+      l.task({
+        args: [
+          'reopen-question',
+          ref,
+          question,
+          '--answer',
+          held.answered,
+        ],
+        actor: 'web',
+      }),
+      /current answer/,
+    )
+    await l.task({
+      args: [
+        'reopen-question',
+        ref,
+        question,
+        '--answer',
+        approved.answered,
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      held.answered,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.fromMessage?.id,
+      holdSource,
+    )
+  },
+)
+
+test(
+  'the reply path lifts a merge Hold with the same owner-source checks and Undo',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    const old = l.chat({
+      ref,
+      at: held.answeredAt,
+      text: 'Merge PR #281.',
+    })
+    await assert.rejects(
+      l.relay({
+        ref,
+        question,
+        message: old,
+        choice: 'Merge',
+      }),
+      /newer than the Hold answer/,
+    )
+    const source = l.chat({
+      ref,
+      text: 'Merge PR #281.',
+    })
+    await l.relay({
+      ref,
+      question,
+      message: source,
+      choice: 'Merge',
+      text: 'The owner approved merging PR #281.',
+    })
+    const approved = l.card({ ref }).asks?.[0]
+    assert.equal(
+      approved?.choice,
+      'Merge',
+    )
+    assert.equal(
+      approved?.fromMessage?.id,
+      source,
+    )
+    assert.ok(approved?.answered)
+    await l.task({
+      args: [
+        'reopen-question',
+        ref,
+        question,
+        '--answer',
+        approved.answered,
+      ],
+      actor: 'web',
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      held.answered,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+  },
+)
+
+for (const mode of [
+  'queued',
+  'unknown',
+] as const) {
+  test(
+    `a re-asked merge ignores the previous Hold's ${mode} receipt`,
+    async t => {
+      const {
+        l,
+        ref,
+        question,
+      } = await heldMerge({ t })
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      const source = l.chat({
+        ref,
+        text: 'Keep this PR on Hold.',
+      })
+      l.mode({ value: mode })
+      await l.relay({
+        ref,
+        question,
+        message: source,
+        choice: 'Hold',
+        text: 'Keep this on Hold.',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Hold',
+      )
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      assert.equal(
+        answerDelivery({
+          card: l.card({ ref }),
+          question,
+        }),
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: l.card({ ref }) })[0]?.delivery,
+        undefined,
+      )
+      await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+        actor: 'web',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Merge',
+      )
+      assert.equal(
+        l.card({ ref }).replies?.length,
+        1,
+      )
+    },
+  )
+}
+
+test(
+  'late delivery of an unaccepted Hold cannot close a re-asked merge question',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'late-merge-hold' })
+    const question = 'synthetic-late-merge'
+    l.event({
+      ref,
+      change: {
+        type: 'task.asked',
+        data: {
+          id: question,
+          audience: 'owner',
+          kind: 'merge',
+          question: 'Review and merge PR #281?',
+          url: 'https://github.com/synthetic/question-lab/pull/281',
+          options: [
+            { label: 'Merge' },
+            { label: 'Hold' },
+          ],
+        },
+      },
+    })
+    l.mode({ value: 'held' })
+    const lateReply = sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Hold',
+        },
+      },
+    })
+
+    try {
+      await l.deliveryStarted
+      l.mode({ value: 'delivered' })
+      const source = l.chat({
+        ref,
+        text: 'Keep PR #281 on Hold for review.',
+      })
+      await sendReply({
+        hydraId,
+        request: {
+          card: ref,
+          text: 'The owner says to keep the PR on Hold.',
+          homes: [],
+          actor: 'hydra',
+          reason,
+          ask: {
+            id: question,
+            choice: 'Hold',
+            fromMessage: source,
+            undelivered: true,
+          },
+        },
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Hold',
+      )
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      l.releaseHeld()
+      const delivered = await lateReply
+      assert.equal(
+        delivered.state,
+        'delivered',
+      )
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.answered,
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: l.card({ ref }) }).length,
+        1,
+      )
+      const rebuilt = replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]
+      assert.ok(rebuilt)
+      assert.equal(
+        rebuilt.asks?.[0]?.answered,
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: rebuilt }).length,
+        1,
+      )
+      await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+        actor: 'web',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Merge',
+      )
+    } finally {
+      l.releaseHeld()
+      await lateReply
+    }
+  },
+)
+
+test(
+  'a current-round delivered Hold can be re-asked when the receipt omits its decision',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+    } = await heldMerge({ t })
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    l.mode({ value: 'queued' })
+    const receipt = await sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Hold',
+        },
+      },
+    })
+    assert.equal(
+      receipt.state,
+      'queued',
+    )
+    l.event({
+      ref,
+      change: {
+        type: 'card.replied',
+        data: {
+          reply: receipt.reply,
+          state: 'delivered',
+          route: 'pnyx',
+          answers: question,
+        },
+      },
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks?.[0]?.choice,
+      'Hold',
+    )
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    assert.equal(
+      ownerQuestions({ card: l.card({ ref }) }).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a current-round delivered Merge approves only its linked pull request',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    const receipt = await sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Merge',
+        },
+      },
+    })
+    assert.equal(
+      receipt.state,
+      'delivered',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Merge',
+    )
+    assert.ok(held.url)
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: held.url,
+      })?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: 'https://github.com/synthetic/question-lab/pull/282',
+      }),
+      undefined,
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks?.[0]?.choice,
+      'Merge',
     )
   },
 )
