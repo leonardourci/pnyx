@@ -6,9 +6,12 @@ import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
 export function KeyboardSettings({
   prefs,
   save,
+  embedded = false,
 }: {
   prefs: KeyboardPreferences
   save({ patch }: { patch: unknown }): Promise<boolean>
+  // Inside a setting row, which already names the section.
+  embedded?: boolean
 }) {
   const { platform } = useKeyboard(), [
       filter,
@@ -78,13 +81,15 @@ export function KeyboardSettings({
   return (
     <section className="settings-box keyboard-settings" aria-label="Keyboard shortcuts">
       <div className="row between">
-        <div>
-          <span className="eyebrow">MOVE THROUGH YOUR WORK</span>
-          <h2>Keyboard shortcuts</h2>
-        </div>
+        {!embedded && (
+          <div>
+            <span className="eyebrow">MOVE THROUGH YOUR WORK</span>
+            <h2>Keyboard shortcuts</h2>
+          </div>
+        )}
         <Button variant="surface" disabled={busy} onClick={() => persist({ bindings: null })}>Reset all bindings</Button>
       </div>
-      <p className="muted">Bindings follow this Hydra. Text fields keep normal typing; Enter adds a newline. Browsers may reserve the settings shortcut—Commands and the Settings button always remain available.</p>
+      <p className="muted">Bindings apply to every Hydra. Text fields keep normal typing; Enter adds a newline. Browsers may reserve some shortcuts; commands and the Settings button always remain available.</p>
       <Switch label="Character shortcuts" checked={prefs.characterShortcuts} onChange={({ value: characterShortcuts }) => save({ patch: { keyboard: { characterShortcuts } } })} />
       <Input
         type="search"

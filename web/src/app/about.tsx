@@ -1,11 +1,48 @@
+import type { UpgradeStatus } from '#upgrade/model.ts'
+import { clock } from '#web-hydra/chat.ts'
+import { Button } from '#web-shared/ui/controls.tsx'
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { IdentityCredits } from '#web-shared/ui/icons/identity-credits.tsx'
+import { checkedDay } from '#web-upgrade/upgrade-hint.tsx'
 
-export function About() {
+function upgradeStatus({ upgrade }: { upgrade?: UpgradeStatus }): string {
+  if (!upgrade) {
+    return 'Not checked for upgrades yet.'
+  }
+
+  const checked = `checked ${checkedDay({ at: upgrade.checkedAt })} at ${clock({ at: upgrade.checkedAt })}`
+
+  return upgrade.available ? `A newer Pnyx is available, ${checked}.` : `Up to date, ${checked}.`
+}
+
+function Version({
+  upgrade,
+  startUpgrade,
+}: {
+  upgrade?: UpgradeStatus
+  startUpgrade(): void
+}) {
+  const build = document.querySelector<HTMLMetaElement>('meta[name=pnyx-build]')?.content
+
   return (
-    <section className="settings-box about" aria-label="About Pnyx">
-      <h2>About Pnyx</h2>
+    <div className="about-version">
+      <p>Build <code>{build || 'unknown'}</code>. {upgradeStatus({ upgrade })}</p>
+      {upgrade?.available && <Button variant="primary" onClick={startUpgrade}>Upgrade</Button>}
+    </div>
+  )
+}
+
+export function About({
+  upgrade,
+  startUpgrade,
+}: {
+  upgrade?: UpgradeStatus
+  startUpgrade(): void
+}) {
+  return (
+    <section className="about" aria-label="About Pnyx">
       <p>Pnyx brings your agents and their work into a Hydra.</p>
+      <Version upgrade={upgrade} startUpgrade={startUpgrade} />
       <Disclosure title="License notices">
         <IdentityCredits />
         <p>GFS Neohellenic by the Greek Font Society is distributed under the <a href="/fonts/gfs-neohellenic/OFL.txt" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>.</p>

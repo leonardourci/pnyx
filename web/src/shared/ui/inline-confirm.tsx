@@ -4,12 +4,14 @@ import { Button, useBusy } from './controls.tsx'
 // A destructive action that asks in place before it runs. confirm resolves false to stay open.
 export function InlineConfirm({
   label,
+  trigger: triggerText = 'Delete',
   action,
   message,
   disabled,
   confirm,
 }: {
   label: string
+  trigger?: string
   action: string
   message: string
   disabled: boolean
@@ -45,7 +47,7 @@ export function InlineConfirm({
         disabled={disabled}
         onClick={() => setOpen(!open)}
       >
-        Delete
+        {triggerText}
       </Button>
       {open && (
         <div

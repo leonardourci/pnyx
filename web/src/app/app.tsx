@@ -5,6 +5,7 @@ import { useProjectsResource } from '#web-projects/project-resource.ts'
 import { storageKey } from '#web-hydra/outbox.ts'
 import { hydraViews, restoreView, readComments, savedComments, scrollers, type Restore } from './restore.ts'
 import { pageTitle, hydraTitle } from './view.ts'
+import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { expandedByColumn, columnsFor, findBoxCards } from '#web-tasks/view.ts'
 import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 import { TaskCreate, type TaskDraft } from '#web-tasks/task-create.tsx'
@@ -92,7 +93,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [
       page,
       setPage,
-    ] = useState('hydra'), [
+    ] = useState(() => new URLSearchParams(location.search).has('settings') || restored.page === 'settings' ? 'settings' : 'hydra'), [
       workspace,
       setWorkspace,
     ] = useState(''), [
@@ -320,6 +321,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       if (url.searchParams.has('add-project')) {
         url.searchParams.delete('add-project')
       }
+
+      // ?settings opens Settings once; leaving it and reloading returns to the Hydra.
+      url.searchParams.delete('settings')
 
       const project = url.searchParams.get('open-project')
 
@@ -564,8 +568,26 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       .map(id => state.cards[id]).filter((item): item is Card =>
         !!item && !filteredCards.some(card => card.id === item.id)),
   ]
+
+  const startUpgrade = async () => {
+    try {
+      await command({
+        name: 'hydra',
+        args: [
+          'send',
+          `--text=${UPGRADE_COMMAND}`,
+          '--event-id',
+          crypto.randomUUID(),
+        ],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const shownHydra = edits.hydras.find(h => h.id === navigation.hydraId)
   const title = pageTitle({
+    page,
     cards: state.cards,
     selected,
     needsYou: columns.find(c => c.role === 'needs_you')?.id,
@@ -1071,21 +1093,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             shown={panel}
             connected={connected}
             upgrade={upgrade}
-            startUpgrade={async () => {
-              try {
-                await command({
-                  name: 'hydra',
-                  args: [
-                    'send',
-                    `--text=${UPGRADE_COMMAND}`,
-                    '--event-id',
-                    crypto.randomUUID(),
-                  ],
-                })
-              } catch (error) {
-                notify({ text: (error as Error).message })
-              }
-            }}
+            startUpgrade={startUpgrade}
+            page={page}
+            navigate={({ page }) => setPage(page)}
             oracle={(
               <Oracle
                 selected={selected}
@@ -1334,6 +1344,18 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   </TaskReferencesProvider>
                 </div>
               </>
+            )}
+            {page === 'settings' && (
+              <SettingsPage
+                state={state}
+                connected={connected}
+                view={view}
+                save={save}
+                command={command}
+                notify={notify}
+                upgrade={upgrade}
+                startUpgrade={startUpgrade}
+              />
             )}
           </main>
           {notice && (
