@@ -123,6 +123,25 @@ const INDEX_WORKER = join(
 // A first build of a long history takes seconds; this only ends a stuck one.
 const INDEX_WORKER_TIMEOUT_MS = 10 * 60_000
 
+// A worker entry that fails knowingly prints { error: { message, code, help } }.
+function workerError({ stdout }: { stdout: string }): {
+  message: string
+  code: string
+  help?: string[]
+} | undefined {
+  try {
+    const known = JSON.parse(stdout).error
+
+    if (typeof known?.message === 'string' && typeof known.code === 'string') {
+      return known
+    }
+  } catch {
+    // Not JSON: the worker failed before it could say why.
+  }
+
+  return undefined
+}
+
 export async function mountOwnedHydra({
   hydraId,
   url,
@@ -1065,10 +1084,11 @@ export async function mountOwnedHydra({
     )
   }
 
+  // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
   const historyIndex = indexRuns({
-    start: () => new Promise(resolve => {
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
       if (closed) {
-        return resolve()
+        return resolve(undefined)
       }
 
       const child = execFile(
@@ -1079,13 +1099,20 @@ export async function mountOwnedHydra({
           hydraId,
         ],
         { timeout: INDEX_WORKER_TIMEOUT_MS },
-        error => {
-          // The next change retries; a query that needed this catch-up searches what is there.
-          if (error) {
-            console.error(`pnyx oracle index: ${error.message}`)
+        (
+          error,
+          stdout,
+        ) => {
+          if (!error) {
+            return resolve(undefined)
           }
 
-          resolve()
+          const failure = workerError({ stdout }) ?? {
+            message: error.message,
+            code: 'UNKNOWN',
+          }
+          console.error(`pnyx oracle index: ${failure.message}`)
+          resolve(failure)
         },
       )
       workers.set(
@@ -2025,7 +2052,14 @@ export async function mountOwnedHydra({
               const behind = !index?.current || index.builtThrough < state.seq
 
               if (behind) {
-                await historyIndex.ready()
+                const failure = await historyIndex.ready()
+
+                if (failure) {
+                  return fail({
+                    error: `Oracle index could not catch up: ${failure.message}`,
+                    code: failure.code,
+                  })
+                }
               } else {
                 historyIndex.changed()
               }
@@ -2411,19 +2445,9 @@ export async function mountOwnedHydra({
               kick()
 
               if (error) {
-                let known: {
-                  message?: unknown
-                  code?: unknown
-                  help?: string[]
-                } | undefined
+                const known = workerError({ stdout })
 
-                try {
-                  known = JSON.parse(stdout).error
-                } catch {
-                  known = undefined
-                }
-
-                if (typeof known?.message === 'string' && typeof known.code === 'string') {
+                if (known) {
                   fail({
                     error: known.message,
                     code: known.code,

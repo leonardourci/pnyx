@@ -5,8 +5,14 @@ import { INDEX_DELAY_MS, indexRuns } from './index-runs.ts'
 // Catch-ups that finish only when the test says so, on mocked timers.
 function fixture({ t }: { t: TestContext }) {
   t.mock.timers.enable({ apis: ['setTimeout'] })
-  const finishes: { finish(): void }[] = []
-  const start = () => new Promise<void>(resolve => finishes.push({ finish: () => resolve() }))
+  const finishes: {
+    finish(): void
+    fail({ error }: { error: string }): void
+  }[] = []
+  const start = () => new Promise<string | undefined>(resolve => finishes.push({
+    finish: () => resolve(undefined),
+    fail: ({ error }) => resolve(error),
+  }))
   const runs = indexRuns({ start })
   // Runs settle on microtasks; setImmediate is not mocked.
   const settle = () => new Promise(resolve => setImmediate(resolve))
@@ -115,6 +121,30 @@ test(
     assert.equal(
       answered,
       true,
+    )
+  },
+)
+
+test(
+  'a query gets the error of the catch-up it waited for, not of one that started before it',
+  async t => {
+    const f = fixture({ t })
+    const first = f.runs.ready()
+    f.finishes[0]!.fail({ error: 'database is locked' })
+    assert.equal(
+      await first,
+      'database is locked',
+    )
+
+    f.runs.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    const second = f.runs.ready()
+    f.finishes[1]!.finish()
+    await f.settle()
+    f.finishes[2]!.fail({ error: 'disk I/O error' })
+    assert.equal(
+      await second,
+      'disk I/O error',
     )
   },
 )

@@ -213,6 +213,27 @@ export async function openPage({
   })
   let next = 0
 
+  const ask = ({
+    name,
+    args,
+  }: {
+    name: string
+    args: string[]
+  }) => {
+    const id = `page-${next++}`
+    ws.send(JSON.stringify({
+      type: 'command',
+      id,
+      name,
+      args,
+    }))
+
+    return until({
+      what: `the answer to ${name} ${args.join(' ')}`,
+      check: () => answers.get(id),
+    })
+  }
+
   return {
     checking,
     queues,
@@ -235,16 +256,9 @@ export async function openPage({
       name: string
       args: string[]
     }) => {
-      const id = `page-${next++}`
-      ws.send(JSON.stringify({
-        type: 'command',
-        id,
+      const answer = await ask({
         name,
         args,
-      }))
-      const answer = await until({
-        what: `the answer to ${name} ${args.join(' ')}`,
-        check: () => answers.get(id),
       })
       assert.equal(
         answer.type,
@@ -253,6 +267,26 @@ export async function openPage({
       )
 
       return answer as Record<string, unknown>
+    },
+    // A command the server refuses; resolves with its error and fails on a receipt.
+    refusal: async ({
+      name,
+      args,
+    }: {
+      name: string
+      args: string[]
+    }) => {
+      const answer = await ask({
+        name,
+        args,
+      })
+      assert.equal(
+        answer.type,
+        'error',
+        JSON.stringify(answer),
+      )
+
+      return answer as Extract<ServerMessage, { type: 'error' }>
     },
     close: () => ws.close(),
   }

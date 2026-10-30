@@ -1,14 +1,14 @@
-// Events within this long fold into one catch-up, so a busy Hydra starts one every few seconds.
+// A change waits this long for others to fold into the same catch-up.
 export const INDEX_DELAY_MS = 5000
 
 // One catch-up at a time; changes during one fold into a single follow-up. start never rejects.
-export function indexRuns({ start }: { start(): Promise<void> }) {
-  let running: Promise<void> | null = null
+export function indexRuns<Outcome>({ start }: { start(): Promise<Outcome> }) {
+  let running: Promise<Outcome> | null = null
   let again = false
   let waiting: ReturnType<typeof setTimeout> | undefined
   let stopped = false
 
-  const run = (): Promise<void> => {
+  const run = (): Promise<Outcome> => {
     clearTimeout(waiting)
     waiting = undefined
 
@@ -42,8 +42,8 @@ export function indexRuns({ start }: { start(): Promise<void> }) {
         INDEX_DELAY_MS,
       )
     },
-    // Resolves after a catch-up that started after this call; a running one may predate the change.
-    async ready(): Promise<void> {
+    // The outcome of a catch-up that started after this call; a running one may predate the change.
+    async ready(): Promise<Outcome> {
       if (!running) {
         return run()
       }
@@ -51,9 +51,11 @@ export function indexRuns({ start }: { start(): Promise<void> }) {
       const current = running
       again = true
       await current
-      // The end of current started the follow-up asked for above.
-      await running
+
+      // The end of current started the follow-up asked for above, unless stop() came first.
+      return running ?? run()
     },
+    // Ends background runs only; start decides what a ready() after it gets.
     stop() {
       stopped = true
       clearTimeout(waiting)
