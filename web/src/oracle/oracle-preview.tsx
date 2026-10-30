@@ -21,7 +21,7 @@ import type { SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
-import { SETTING_ICONS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
+import { SETTING_ICONS, SETTING_PREVIEWS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { markdownText } from '#web-hydra/markdown.tsx'
@@ -300,7 +300,7 @@ function SettingResult({
           settings: shared,
         }),
       })}
-      preview={(
+      preview={SETTING_PREVIEWS.has(entry.id) && (
         <SettingPreview
           entry={entry}
           state={state}

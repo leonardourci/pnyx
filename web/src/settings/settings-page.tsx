@@ -54,7 +54,7 @@ const UNITS: Record<string, string> = {
   doneAfterHours: 'h',
   reviewMinutes: 'min',
 }
-const PREVIEWED = new Set([
+export const SETTING_PREVIEWS = new Set([
   'theme',
   'fontSize',
   'chatFontSize',
@@ -729,7 +729,7 @@ export function SettingsPage({
                     }),
                   })}
                   resetTo={resetTo({ id: match.entry.id })}
-                  preview={PREVIEWED.has(match.entry.id) && (
+                  preview={SETTING_PREVIEWS.has(match.entry.id) && (
                     <SettingPreview
                       entry={match.entry}
                       state={state}
