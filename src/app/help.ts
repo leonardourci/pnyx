@@ -93,10 +93,11 @@ pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
 Standing worker instructions are included verbatim in every new worker header.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
+Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor and inscribe-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
-pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
+pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
+--inscribe starts after the saved inscribe-cursor (the whole history when none is saved) and adds task briefs and the owner's words on tasks.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>
@@ -116,7 +117,7 @@ one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
-Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
+Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
 Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,
@@ -144,6 +145,7 @@ pnyx-axi task create --title <title> [--project <name|path>] [--ask <text>] [--m
 pnyx-axi task depend|undepend <id> --on <prerequisite> [--on <prerequisite> ...]
 pnyx-axi task hold <id> --reason <topic>
 pnyx-axi task release <id> --from-message <owner-message-id> --reason <why>
+Release records Go for the open go question bound to the hold, if any; the source must also postdate that question.
 Held cards stay in Backlog, marked Talking. Start, build, queue and continue refuse until the owner gives the go.
 pnyx-axi task owner-ask <id> --text <owner-words> [--message <owner-message-id>]
 pnyx-axi task brief <id> [--brief <text>] [--intent <text>] [--reason <text>] [--details <text>]
@@ -174,10 +176,11 @@ pnyx-axi task source read <task> <source-id> [--all]
 pnyx-axi task source handled <task> <source-id> <sequence> --session <session> --generation <n>
 pnyx-axi task source stop <task> <source-id>
 pnyx-axi task inbox enqueue <task> <message-id> --text <text> | --file <path|-> [--source <source>] [--reply <reply-id>]
-pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome incorporated|blocked --note <why>]
+pnyx-axi task inbox ack <task> <message-id> --session <session> --generation <number> [--outcome read|incorporated|blocked --note <why>]
 pnyx-axi task inbox notify <task> <message-id> --session <session> --generation <number> --attempt <attempt-id> --result delivered|unknown|failed|deferred
-Inbox reads return the active session/generation claim and pending instructions in order. Acknowledge the oldest instruction after incorporating it.
-A blocked acknowledgement requires --note; it records why incorporation could not proceed. Delivery receipts never mark an instruction handled.
+Worker inbox reads return pending instructions in order and record read acknowledgements, stopping reminders. Owner and Hydra inspection is read-only.
+An ack means read, never completed work. The default outcome is read; legacy incorporated/blocked outcomes remain accepted (blocked requires --note).
+Reads return the active session/generation claim. Report progress and blockers through task status, and questions through task ask. Use read --all for recovery history.
 Inbox writes deduplicate message/attempt IDs and reject --event-id and --if-revision.
 pnyx-axi task build <id>
 Turns an investigation with a stored report into its build; its worker keeps the context and starts a fresh branch. Owner, or Hydra on the owner's word.
@@ -189,8 +192,8 @@ and never while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
-Sends the answer to the task's worker and resolves the question once it is delivered. Hydra answers questions asked of it, or records an owner answer with --from-message <id>, quoting an owner message newer than the question.
-An answer still being sent or of unknown delivery holds the question; after checking that it never arrived, --undelivered answers (or escalates) again.
+Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
+Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
 pnyx-axi task escalate <task> <question> [--question <owner-facing text>] [--context <text>] [--undelivered] --reason <text>

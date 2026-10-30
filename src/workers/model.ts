@@ -93,6 +93,9 @@ export interface Attention {
 
 // A reply's latest receipt. The text stays in the log, on its queued event.
 export interface Reply {
+  accepted?: boolean
+  text?: string
+  context?: string
   decision?: RepliedEvent['data']['decision']
   id: string
   state: ReplyState
@@ -120,7 +123,7 @@ export interface SteeringAck {
   at: string
   actor: string
   claim: SteeringClaim
-  outcome: 'incorporated' | 'blocked'
+  outcome: 'read' | 'incorporated' | 'blocked'
   note?: string
 }
 

@@ -1,5 +1,5 @@
 import { taskMention } from '#hydra/mentions.ts'
-import { imagePaths } from '#hydra/images.ts'
+import { shownImageNames } from '#hydra/images.ts'
 import { shownImageData } from './attached-image.tsx'
 import { CHIP_SOURCE } from './message-selection.ts'
 import { MESSAGE_CONTROLS } from './caret.ts'
@@ -26,16 +26,6 @@ function selectedText({
   // What a native copy leaves out, being unselectable, goes from this one too.
   host.querySelectorAll(MESSAGE_CONTROLS).forEach(element => element.remove())
 
-  // Per message (none when the copy sits inside one): an image copies its token unless its own chip is copied too.
-  const occurrence = ({ element }: { element: Element }) =>
-    `${element.closest('[data-entry-id]')?.getAttribute('data-entry-id')} ${element.getAttribute(CHIP_SOURCE)}`
-  const inSentence = new Set([...host.querySelectorAll(`[${CHIP_SOURCE}]:not(.message-image)`)]
-    .map(chip => occurrence({ element: chip })))
-  host.querySelectorAll(`.message-image[${CHIP_SOURCE}]`).forEach(image => {
-    if (inSentence.has(occurrence({ element: image }))) {
-      image.remove()
-    }
-  })
   host.querySelectorAll(CHIPS).forEach(element => element.replaceWith(chip({ element })))
 
   // The leading chip goes where it shows: at the start of the message's first paragraph.
@@ -216,7 +206,7 @@ export function copyMessageChips({
   const marked = selectedText({
     range,
     chip: ({ element }) => {
-      const path = imagePaths({ text: element.getAttribute(CHIP_SOURCE) ?? '' })[0]
+      const path = [...shownImageNames({ text: element.getAttribute(CHIP_SOURCE) ?? '' }).keys()][0]
 
       return path ? embedded.image({
         path,

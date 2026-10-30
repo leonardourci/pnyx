@@ -15,8 +15,10 @@ export function MentionPicker({
   active,
   choose,
   anchor,
+  query,
 }: {
   id: string
+  query: string
   anchor: RefObject<HTMLTextAreaElement | null>
   matches: MentionItem[]
   active: number
@@ -25,6 +27,7 @@ export function MentionPicker({
   return (
     <SuggestionPicker
       id={id}
+      query={query}
       matches={matches.map(item => ({
         ...item,
         icons: item.icons ?? [item.kind],

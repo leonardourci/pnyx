@@ -14,7 +14,8 @@ import { isHelper, guardTaskLease } from '#routine-helper/leases.ts'
 import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
-import { reduce } from './reducer.ts'
+import { replayOwned } from './reducer.ts'
+import { preimage, type PreimageObserver } from './preimage.ts'
 import { reconcileAsks } from '#tasks/questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
@@ -116,6 +117,7 @@ export function withWriter<T>({
         state,
         dir,
         hydraId,
+        owned: true,
         transaction: transaction?.id,
         onAppend: ({ event }) => {
           if (transaction) {
@@ -186,18 +188,21 @@ export function withWriter<T>({
 
 export function eventWriter({
   state: initial,
+  owned = false,
   dir,
   hydraId,
   transaction,
   onAppend,
 }: {
   state: HydraState
+  owned?: boolean
   dir: string
   hydraId: string
   transaction?: string
   onAppend({ event }: { event: HydraEvent }): void
 }): Writer {
-  let state = initial
+  const state = owned ? initial : structuredClone(initial)
+  const observers = new Set<PreimageObserver>()
   const writer: Writer = {
     dir,
     get state() {
@@ -316,72 +321,82 @@ export function eventWriter({
       }
 
       onAppend({ event })
-      const before = state
-      state = reduce({
+      const {
+        before,
+        release,
+      } = preimage({
         state,
-        event,
+        observers,
+        change: ({ state: draft }) => replayOwned({
+          state: draft,
+          events: [event],
+        }),
       })
 
-      if (!effects) {
-        return
-      }
-
-      for (const question of reconcileAsks({
-        state,
-        event,
-      })) {
-        writer.append({ event: question })
-      }
-
-      for (const declaration of operationDeclarations({
-        before,
-        state,
-        event,
-      })) {
-        const declared = declareTask({
-          state,
-          ref: declaration.cardId,
-          status: declaration.status,
-          note: declaration.note,
-          until: declaration.until,
-          waitingFor: declaration.waitingFor,
-          restores: declaration.restores,
-          meta: {
-            id: `${event.id}:${declaration.cardId}:declaration`,
-            at: event.at,
-            actor: 'pnyx',
-          },
-        })
-
-        if ('event' in declared) {
-          writer.append({ event: declared.event })
+      try {
+        if (!effects) {
+          return
         }
-      }
 
-      // A task's explicit lifecycle change moves its card, as its own event in the same write.
-      for (const move of lifecycleMoves({
-        before,
-        state,
-        event,
-      })) {
-        const moved = decideMove({
+        for (const question of reconcileAsks({
           state,
-          ref: move.cardId,
-          column: move.column,
-          meta: {
-            id: lifecycleMoveId({
-              event: event.id,
-              cardId: move.cardId,
-            }),
-            at: event.at,
-            actor: 'pnyx',
-            reason: move.reason,
-          },
-        })
-
-        if ('event' in moved) {
-          writer.append({ event: moved.event })
+          event,
+        })) {
+          writer.append({ event: question })
         }
+
+        for (const declaration of operationDeclarations({
+          before,
+          state,
+          event,
+        })) {
+          const declared = declareTask({
+            state,
+            ref: declaration.cardId,
+            status: declaration.status,
+            note: declaration.note,
+            until: declaration.until,
+            waitingFor: declaration.waitingFor,
+            restores: declaration.restores,
+            meta: {
+              id: `${event.id}:${declaration.cardId}:declaration`,
+              at: event.at,
+              actor: 'pnyx',
+            },
+          })
+
+          if ('event' in declared) {
+            writer.append({ event: declared.event })
+          }
+        }
+
+        // A task's explicit lifecycle change moves its card, as its own event in the same write.
+        for (const move of lifecycleMoves({
+          before,
+          state,
+          event,
+        })) {
+          const moved = decideMove({
+            state,
+            ref: move.cardId,
+            column: move.column,
+            meta: {
+              id: lifecycleMoveId({
+                event: event.id,
+                cardId: move.cardId,
+              }),
+              at: event.at,
+              actor: 'pnyx',
+              reason: move.reason,
+            },
+          })
+
+          if ('event' in moved) {
+            writer.append({ event: moved.event })
+          }
+        }
+      } finally {
+        release()
       }
     },
   }

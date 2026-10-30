@@ -1,4 +1,3 @@
-import { COMMENT_NOTE } from '#workers/compaction/comments.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import type { HydraMessage, HydraStatus } from '#hydra/model.ts'
 import { hydraDelivery, QUIET_REPLY, reportActor } from '#hydra/hydra.ts'
@@ -29,6 +28,7 @@ export function hydraMessages({
     ' ',
   )
   const recorded: ThreadEntry[] = [], replaced = new Set<ThreadEntry>()
+  const rewritten = new Map<ThreadEntry, ThreadEntry>()
   const ownCopies = new Map(transcript.filter(entry => ownMessage({ entry })).map(entry => [
     entry,
     normalized(entry),
@@ -79,12 +79,20 @@ export function hydraMessages({
             hidden: true,
           })
         }
-      } else if (normalized(entry!) !== normalized({ text: shown })) {
-        replaced.add(entry!)
-        recorded.push({
+      } else if (message.task || normalized(entry!) !== normalized({ text: shown })) {
+        const copy: ThreadEntry = {
           ...entry!,
           text: shown,
-        })
+        }
+
+        if (message.task) {
+          copy.task = message.task
+        }
+
+        rewritten.set(
+          entry!,
+          copy,
+        )
       }
     } else if (!report) {
       recorded.push({
@@ -101,7 +109,7 @@ export function hydraMessages({
 
   return [
     ...recorded,
-    ...transcript.filter(entry => !replaced.has(entry)),
+    ...transcript.filter(entry => !replaced.has(entry)).map(entry => rewritten.get(entry) ?? entry),
   ]
 }
 
@@ -259,31 +267,36 @@ export function keepStreamedKeys<Entry extends ThreadEntry>({
   } : entry)
 }
 
-export { COMMENT_NOTE } from '#workers/compaction/comments.ts'
-
 const markdownQuote = ({ text }: { text: string }) => text.split('\n')
-  .map(line => `> ${line}`)
+  .map(line => `> ${line}`.trimEnd())
   .join('\n')
 
-const numberedComment = ({
+// A comment line that would read as a quote or heading is escaped, so it can't pass for the format.
+const commentLines = ({ text }: { text: string }) => text.split('\n')
+  .map(line => line.replace(
+    /^(\s*)(>|#)/,
+    '$1\\$2',
+  ))
+  .join('\n')
+
+// A short quote's paragraph follows it as a nested quote, so the quote stays every `>` line before the comment.
+const quotedComment = ({
   comment,
   number,
 }: {
   comment: ChatComment
   number: number
 }) => {
-  const parts = [`${number}. ${markdownQuote({ text: comment.quote })}`]
   const paragraph = commentContext({ comment })
-
-  if (paragraph) {
-    parts.push(`Paragraph:\n\n${markdownQuote({ text: paragraph })}`)
-  }
-
-  return [
-    ...parts,
-    comment.text.trim(),
+  const quote = markdownQuote({ text: comment.quote })
+  const words = [
+    commentLines({ text: comment.text.trim() }),
     ...comment.images ?? [],
-  ].filter(Boolean).join('\n\n')
+  ].filter(Boolean).join('\n')
+
+  const quoted = paragraph ? `${quote}\n>\n${markdownQuote({ text: markdownQuote({ text: paragraph }) })}` : quote
+
+  return `### Comment ${number}\n${quoted}\n\n${words}`
 }
 
 export function orderedComments({ comments }: { comments: ChatComment[] }) {
@@ -342,42 +355,32 @@ export function groupComments({ comments }: { comments: ChatComment[] }) {
 export function commentReply({
   draft,
   comments,
-  firstComment = false,
 }: {
   draft: string
   comments: ChatComment[]
-  firstComment?: boolean
 }): string {
-  const ordered = orderedComments({ comments })
-  const numbers = new Map(ordered.map((
-    comment,
-    index,
-  ) => [
-    comment.id,
-    index + 1,
-  ]))
   const replies = groupComments({
-    comments: ordered.filter(comment => sendableComment({ comment })),
+    comments: comments.filter(comment => sendableComment({ comment })),
   })
 
   if (!replies.size) {
     return draft
   }
 
-  const sections = firstComment ? [COMMENT_NOTE] : []
-
-  for (const [
+  const sections = [...replies].map(([
     time,
     items,
-  ] of replies) {
-    const numbered = items.map(comment => numberedComment({
-      comment,
-      number: numbers.get(comment.id)!,
-    }))
-    sections.push(`## Comments on your reply from ${time}\n\n${numbered.join('\n\n')}`)
-  }
+  ]) => `## Comments on your reply from ${time}\n\n${items.map((
+    comment,
+    index,
+  ) => quotedComment({
+    comment,
+    number: index + 1,
+  })).join('\n\n')}`)
 
-  sections.push(`## Message\n\n${draft}`)
+  if (draft.trim()) {
+    sections.push(`## Message\n${draft}`)
+  }
 
   return sections.join('\n\n')
 }

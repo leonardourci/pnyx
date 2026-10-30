@@ -382,7 +382,7 @@ Project memory is shared by normalized git remote (canonical path without a remo
 List prints default-branch source hashes, changed files and the fingerprint required when saving a profile.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 Use memory save at the end of inscribe; --used "<exact lines, newline-separated>" with --reason refreshes used lines and advances only the others.
-Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
+Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed from preferences, learnings or standing worker instructions, with the date and reason of that change.
 Preferences and learnings persist independently of profile refreshes. Writes accept --reason, --event-id and --if-revision.
 
 pnyx-axi project add <path> [--landing pr|branch] [--merge owner|hydra] [--hydra <id>]
