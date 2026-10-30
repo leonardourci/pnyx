@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { Hit, Kind } from '#oracle/index.ts'
@@ -98,6 +99,8 @@ function TaskPreview({
   card,
   hit,
   state,
+  action,
+  connected,
   terms,
   doneAfterHours,
   now,
@@ -105,6 +108,8 @@ function TaskPreview({
   card: Card
   hit?: Hit
   state: HydraState
+  action?: CurrentAction
+  connected: boolean
   terms: string[]
   doneAfterHours?: DoneAfterHours
   now: number
@@ -112,6 +117,9 @@ function TaskPreview({
   const status = cardState({
     card,
     hours: doneAfterHours,
+    connected,
+    state,
+    action,
     now,
   })
   const said = currentState({ card })
@@ -318,6 +326,7 @@ const hints = ({ mod }: { mod: string }): Record<OracleResult['kind'], string> =
 export function ResultPreview({
   result,
   state,
+  cardActions,
   terms,
   doneAfterHours,
   connected,
@@ -326,6 +335,7 @@ export function ResultPreview({
 }: {
   result: OracleResult
   state: HydraState
+  cardActions: Record<string, CurrentAction>
   terms: string[]
   doneAfterHours?: DoneAfterHours
   connected: boolean
@@ -347,6 +357,8 @@ export function ResultPreview({
           card={result.card}
           hit={result.hit}
           state={state}
+          action={cardActions[result.card.id]}
+          connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
           now={now}
@@ -356,6 +368,8 @@ export function ResultPreview({
         <TaskPreview
           card={card}
           state={state}
+          action={cardActions[card.id]}
+          connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
           now={now}

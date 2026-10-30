@@ -196,7 +196,7 @@ export function oracleResults({
   projects: HydraProjectSummary[]
   actions: OracleAction[]
   // What each task's worker is doing now, which its status badge shows.
-  cardActions?: Record<string, CurrentAction>
+  cardActions: Record<string, CurrentAction>
   hydra: Hydra
   text: string
   badges: Filter[]

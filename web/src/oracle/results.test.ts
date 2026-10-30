@@ -131,6 +131,7 @@ const listed = ({
   hits: found,
   projects: [project],
   actions,
+  cardActions: {},
   hydra,
   text,
   badges,

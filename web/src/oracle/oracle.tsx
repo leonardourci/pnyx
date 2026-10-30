@@ -248,7 +248,7 @@ export function Oracle({
   openChat,
 }: {
   state: HydraState
-  cardActions?: Record<string, CurrentAction>
+  cardActions: Record<string, CurrentAction>
   view: ViewPreferences
   command: Command
   connected: boolean
@@ -1403,6 +1403,7 @@ export function Oracle({
               <ResultPreview
                 result={shownResult}
                 state={state}
+                cardActions={cardActions}
                 terms={terms}
                 doneAfterHours={shared?.doneAfterHours}
                 connected={connected}
