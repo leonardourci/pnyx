@@ -580,7 +580,6 @@ export function savedDocument(): DispatchDocument {
   return committedDocument() ?? files
 }
 
-// The saved document, or another one such as an unsaved draft, as starts read it.
 export function effectiveDispatch({
   document = savedDocument(),
 }: { document?: unknown } = {}): EffectiveDispatch {

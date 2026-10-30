@@ -220,7 +220,6 @@ function readEnvelope({ values }: { values: Values }): unknown {
   }
 }
 
-// rule now --json takes a whole document, such as the page's unsaved draft.
 function parsedDocument({ json }: { json?: string }): unknown {
   if (json === undefined) {
     return undefined

@@ -656,7 +656,6 @@ const keptQuota: ReadQuota = ({ account }) => {
   return reading
 }
 
-// Which candidate of each rule a start would pick right now; a rule that cannot start says why.
 export function startsNow({
   config,
   offers,
