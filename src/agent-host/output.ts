@@ -248,7 +248,6 @@ export function output({
       await lastWrite
       await delivery
     },
-    compact: persist,
     through: () => sequence,
     retention: () => retention,
     canAdmit: () => retention === 'healthy' && durableBytes < limits.criticalBytes,
