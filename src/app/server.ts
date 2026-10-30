@@ -33,7 +33,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { paseoHistory, PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { indexStatus, search as oracleSearch } from '#oracle/index.ts'
+import { indexedThrough, search as oracleSearch } from '#oracle/index.ts'
 import { indexRuns } from '#oracle/index-runs.ts'
 import { replyRoute } from '#workers/reply-route.ts'
 import { paseoConversation, type PaseoConversation } from '#integrations/paseo/thread.ts'
@@ -2031,8 +2031,8 @@ export async function mountOwnedHydra({
           // Never rejects, so nothing is lost by not awaiting it.
           const answer = async () => {
             try {
-              const index = indexStatus({ hydraId })
-              const behind = !index?.current || index.builtThrough < state.seq
+              const indexed = indexedThrough({ hydraId })
+              const behind = indexed === null || indexed < state.seq
 
               if (behind) {
                 const failure = await historyIndex.ready()

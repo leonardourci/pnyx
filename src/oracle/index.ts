@@ -1158,3 +1158,31 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
     db.close()
   }
 }
+
+// The last event seq indexed, without indexStatus's full counts; null when missing or from another version.
+export function indexedThrough({ hydraId }: { hydraId: string }): number | null {
+  const path = searchPath({ hydraId })
+
+  if (!existsSync(path)) {
+    return null
+  }
+
+  const db = openReader({ path })
+
+  try {
+    if (!isCurrent({ db })) {
+      return null
+    }
+
+    const events = db.prepare('SELECT seq FROM cursors WHERE source = ?').get(EVENTS) as { seq: number } | undefined
+
+    // A first build commits its tables before its events.
+    if (!events) {
+      return 0
+    }
+
+    return events.seq
+  } finally {
+    db.close()
+  }
+}
