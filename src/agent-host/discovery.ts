@@ -5,6 +5,7 @@ import { chmodSync, closeSync, existsSync, fstatSync, fsyncSync, lstatSync, mkdi
 import { join } from 'node:path'
 import { privateDir, writeDurably } from '#store/storage.ts'
 import { fail } from './protocol.ts'
+import { kernelBootIdentity, verifiedBootChange } from './boot.ts'
 
 const SOCKET_PATH_BYTES = 100
 const PROBE_MS = 5000
@@ -46,9 +47,11 @@ const alive = ({ pid }: { pid: number }) => {
 export function claimHost({
   directory,
   installation,
+  bootIdentity = kernelBootIdentity,
 }: {
   directory: string
   installation: string
+  bootIdentity?(): string | undefined
 }) {
   if (existsSync(directory) && lstatSync(directory).isSymbolicLink()) {
     fail({
@@ -110,7 +113,9 @@ export function claimHost({
     })
   }
 
+  const boot = bootIdentity()
   const record = JSON.stringify({
+    boot,
     instance: randomUUID(),
     pid: process.pid,
     start,
@@ -133,6 +138,7 @@ export function claimHost({
       pid: number
       start: string
       installation: string
+      boot?: string
     }
     let saved: string
 
@@ -162,7 +168,12 @@ export function claimHost({
       })
     }
 
-    if (alive({ pid: previous.pid })) {
+    const rebooted = verifiedBootChange({
+      before: previous.boot,
+      after: boot,
+    })
+
+    if (!rebooted && alive({ pid: previous.pid })) {
       return fail({
         code: 'ALREADY_RUNNING',
         message: 'A live process still holds the native host claim',
@@ -185,7 +196,7 @@ export function claimHost({
       if (readFileSync(
         lock,
         'utf8',
-      ) !== saved || alive({ pid: previous.pid })) {
+      ) !== saved || !rebooted && alive({ pid: previous.pid })) {
         return fail({
           code: 'STARTING',
           message: 'Native host ownership changed during discovery',
@@ -273,6 +284,7 @@ export function claimHost({
     return {
       socket,
       token,
+      boot,
       release,
       bound() {
         socketInode = lstatSync(socket).ino

@@ -9,6 +9,7 @@ import type { HostedEvent, HostedInput, HostedSession, PermissionDecision, Provi
 import { output, replaceFile, type Output, type OutputLimits } from './output.ts'
 import { requestLedger, fingerprint } from './ledger.ts'
 import { serial } from './serial.ts'
+import { verifiedBootChange } from './boot.ts'
 import { PROTOCOL, CAPABILITIES, fail } from './protocol.ts'
 import type { AnswerReceipt, Grant, Mutation, Operation, PendingPermission, ProviderId, Result, Scope, SessionRef, Summary, ToClient, ToHost } from './protocol.ts'
 
@@ -58,12 +59,14 @@ export function hostSessions({
   build,
   limits,
   controlTimeout = CONTROL_TIMEOUT_MS,
+  boot,
 }: {
   directory: string
   providers: Record<ProviderId, Provider>
   build: string
   limits?: OutputLimits
   controlTimeout?: number
+  boot?: string
 }) {
   const instance = randomUUID()
   const sessions = new Map<string, Session>()
@@ -86,7 +89,8 @@ export function hostSessions({
     path: ledgerPath,
     text: JSON.stringify({ instance }),
   })
-  let recoveredSessions = false, uncertainOpening = false
+  const recoveredSessions = new Set<string>()
+  let uncertainOpening = false
 
   const make = ({ summary }: { summary: Summary }): Session => ({
     output: output({
@@ -109,6 +113,19 @@ export function hostSessions({
     answers: new Map(),
     finished: deferred<void>(),
   })
+
+  const finishRecovery = ({ entry }: { entry: Session }) => {
+    const summary = entry.output.summary
+
+    if (summary.recovery !== 'boot_changed' || entry.output.pending().length > 0
+      || entry.output.retention() !== 'healthy') {
+      return
+    }
+
+    summary.phase = 'closed'
+    entry.output.save()
+    recoveredSessions.delete(summary.ref.id)
+  }
 
   for (const folder of readdirSync(
     root,
@@ -149,6 +166,15 @@ export function hostSessions({
       })
     }
 
+    delete summary.recovery
+
+    if (verifiedBootChange({
+      before: summary.boot,
+      after: boot,
+    })) {
+      summary.recovery = 'boot_changed'
+    }
+
     const entry = make({ summary })
     summary.controllerRevision = 0
 
@@ -164,7 +190,8 @@ export function hostSessions({
       summary.ref.id,
       entry,
     )
-    recoveredSessions = true
+    recoveredSessions.add(summary.ref.id)
+    finishRecovery({ entry })
   }
 
   const ledger = requestLedger({ intact })
@@ -202,7 +229,7 @@ export function hostSessions({
   }
 
   const admission = () => {
-    const ownershipUnknown = recoveredSessions || uncertainOpening || [...sessions.values()].some(entry => entry.output.summary.phase === 'recovery_required')
+    const ownershipUnknown = recoveredSessions.size > 0 || uncertainOpening || [...sessions.values()].some(entry => entry.output.summary.phase === 'recovery_required')
 
     if (ownershipUnknown) {
       fail({
@@ -809,6 +836,7 @@ export function hostSessions({
                 },
                 provider: operation.options.provider,
                 phase: 'opening',
+                boot,
                 controllerRevision: 0,
               },
             })
@@ -908,7 +936,15 @@ export function hostSessions({
       })
       await accepted.persisted
 
-      return { kind: 'ok' }
+      if (entry.output.summary.recovery === 'boot_changed' && entry.output.pending().length === 0) {
+        await entry.output.compact()
+        finishRecovery({ entry })
+      }
+
+      return {
+        kind: 'ok',
+        session: structuredClone(entry.output.summary),
+      }
     },
     watch({
       peer,

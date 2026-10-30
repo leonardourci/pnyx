@@ -231,6 +231,7 @@ export function output({
 
   return {
     summary: session,
+    compact: persist,
     pending: ({ persisted = false }: { persisted?: boolean } = {}) =>
       structuredClone(facts.filter(fact =>
         !persisted || !durableEvent({ event: fact.event }) || fact.seq <= persistedThrough)),

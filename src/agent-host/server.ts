@@ -2,6 +2,7 @@ import { createServer, type Socket } from 'node:net'
 import { randomUUID, timingSafeEqual, createHash } from 'node:crypto'
 import { chmodSync } from 'node:fs'
 import { claimHost } from './discovery.ts'
+import { kernelBootIdentity } from './boot.ts'
 import { hostSessions } from './sessions.ts'
 import type { Provider } from '#workers/provider.ts'
 import type { ProviderId, ToClient } from './protocol.ts'
@@ -20,6 +21,7 @@ export async function serveAgentHost({
   providers,
   limits,
   controlTimeout,
+  bootIdentity = kernelBootIdentity,
 }: {
   directory: string
   installation: string
@@ -27,10 +29,12 @@ export async function serveAgentHost({
   providers: Record<ProviderId, Provider>
   limits?: OutputLimits
   controlTimeout?: number
+  bootIdentity?(): string | undefined
 }) {
   const claim = claimHost({
     directory,
     installation,
+    bootIdentity,
   })
   let sessions: ReturnType<typeof hostSessions>
 
@@ -41,6 +45,7 @@ export async function serveAgentHost({
       build,
       limits,
       controlTimeout,
+      boot: claim.boot,
     })
   } catch (error) {
     claim.release()

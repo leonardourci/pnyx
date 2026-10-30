@@ -26,6 +26,8 @@ export type Grant = {
   revision: number
 }
 export type Summary = {
+  boot?: string
+  recovery?: 'boot_changed'
   ref: SessionRef
   provider: ProviderId
   nativeId?: string
@@ -122,7 +124,10 @@ export type Result = {
     kind: 'answer'
     receipt: AnswerReceipt
   }
-  | { kind: 'ok' }
+  | {
+    kind: 'ok'
+    session?: Summary
+  }
   | {
     kind: 'catalog'
     models: ModelOption[]
