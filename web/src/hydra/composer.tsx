@@ -375,6 +375,7 @@ export function Composer({
     setUploads,
   ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
+  const chipOccurrences = new Map<string, number>()
   const display = view.display
   const paths = requestPaths({ display })
   const mirrored = view.chips.length > 0 || paths.length > 0
@@ -1689,6 +1690,20 @@ export function Composer({
                   to: chip.from,
                   paths,
                 })
+                const identity = JSON.stringify([
+                  chip.kind,
+                  chip.attached,
+                  chip.value,
+                ])
+                const occurrence = chipOccurrences.get(identity) ?? 0
+                chipOccurrences.set(
+                  identity,
+                  occurrence + 1,
+                )
+                const key = JSON.stringify([
+                  identity,
+                  occurrence,
+                ])
 
                 const skill = chip.kind === 'skill' ? readSkillReference({
                   value: chip.value,
@@ -1728,7 +1743,7 @@ export function Composer({
                 }
 
                 return (
-                  <Fragment key={chip.start}>
+                  <Fragment key={key}>
                     {before}
                     <span className="draft-token" data-from={chip.from} data-to={chip.to}>
                       {CHIP_SPACE}{token}{CHIP_SPACE}
