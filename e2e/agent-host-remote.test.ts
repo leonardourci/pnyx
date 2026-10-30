@@ -347,6 +347,7 @@ test(
     session.detach!()
     first.child.kill('SIGKILL')
     await first.exited
+    initial.detach()
 
     for (const owner of Object.values(owners)) {
       assert.equal(
