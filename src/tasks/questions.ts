@@ -591,6 +591,22 @@ export function askAnswer({
   }
 }
 
+export function applyAskChoice({
+  ask,
+  choice,
+  answer,
+}: {
+  ask: Ask
+  choice?: string
+  answer?: string
+}): void {
+  if (choice !== undefined) {
+    ask.choice = choice
+  } else if ((ask.kind === 'merge' || ask.kind === 'go') && answer !== undefined) {
+    ask.choice = answer
+  }
+}
+
 export function applyAsk({
   state,
   event,
@@ -663,11 +679,11 @@ export function applyAsk({
           }
         }
 
-        if (accepted.choice !== undefined) {
-          answered.choice = accepted.choice
-        } else if (ask.kind === 'merge' || ask.kind === 'go') {
-          answered.choice = accepted.answer
-        }
+        applyAskChoice({
+          ask: answered,
+          choice: accepted.choice,
+          answer: accepted.answer,
+        })
 
         if (ask.kind === 'go' && answered.choice === 'Go' && card.hold?.id === ask.hold?.id) {
           delete card.hold

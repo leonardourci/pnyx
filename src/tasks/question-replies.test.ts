@@ -10,7 +10,7 @@ import { readEvents } from '#app/event-log.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { reply } from '#workers/reply.ts'
+import { reply, sendReply } from '#workers/reply.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { acquireLock } from '#store/storage.ts'
@@ -27,7 +27,7 @@ type Change = {
   [Kind in HydraEvent['type']]: Pick<Extract<HydraEvent, { type: Kind }>, 'type' | 'data'>
 }[HydraEvent['type']]
 
-type Mode = 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
+type Mode = 'held' | 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
 
 async function lab({ t }: { t: TestContext }) {
   const root = mkdtempSync(join(
@@ -50,6 +50,14 @@ async function lab({ t }: { t: TestContext }) {
   delete process.env.PNYX_STEERING_WORKER
   let releaseLock: (() => void) | undefined
   let mode: Mode = 'delivered'
+  let releaseHeld = () => {}
+  let notifyHeld = () => {}
+  const heldDelivery = new Promise<void>(resolve => {
+    releaseHeld = resolve
+  })
+  const deliveryStarted = new Promise<void>(resolve => {
+    notifyHeld = resolve
+  })
   const received: {
     card: string
     text: string
@@ -339,6 +347,11 @@ async function lab({ t }: { t: TestContext }) {
 
     received.push(body)
 
+    if (mode === 'held') {
+      notifyHeld()
+      await heldDelivery
+    }
+
     if (mode === 'failed' || mode === 'failed-record-error') {
       if (mode === 'failed-record-error') {
         releaseLock = acquireLock({
@@ -385,6 +398,7 @@ async function lab({ t }: { t: TestContext }) {
     response.end(JSON.stringify(current.hold ? { deferred: true } : { accepted: true }))
   })
   t.after(async () => {
+    releaseHeld()
     releaseLock?.()
     await new Promise<void>(resolve => server.close(() => resolve()))
 
@@ -445,6 +459,8 @@ async function lab({ t }: { t: TestContext }) {
     ask,
     relay,
     received,
+    deliveryStarted,
+    releaseHeld: () => releaseHeld(),
     mode: ({ value }: { value: Mode }) => {
       mode = value
     },
@@ -2404,3 +2420,263 @@ for (const mode of [
     },
   )
 }
+
+test(
+  'late delivery of an unaccepted Hold cannot close a re-asked merge question',
+  async t => {
+    const l = await lab({ t })
+    const ref = await l.create({ key: 'late-merge-hold' })
+    const question = 'synthetic-late-merge'
+    l.event({
+      ref,
+      change: {
+        type: 'task.asked',
+        data: {
+          id: question,
+          audience: 'owner',
+          kind: 'merge',
+          question: 'Review and merge PR #281?',
+          url: 'https://github.com/synthetic/question-lab/pull/281',
+          options: [
+            { label: 'Merge' },
+            { label: 'Hold' },
+          ],
+        },
+      },
+    })
+    l.mode({ value: 'held' })
+    const lateReply = sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Hold',
+        },
+      },
+    })
+
+    try {
+      await l.deliveryStarted
+      l.mode({ value: 'delivered' })
+      const source = l.chat({
+        ref,
+        text: 'Keep PR #281 on Hold for review.',
+      })
+      await sendReply({
+        hydraId,
+        request: {
+          card: ref,
+          text: 'The owner says to keep the PR on Hold.',
+          homes: [],
+          actor: 'hydra',
+          reason,
+          ask: {
+            id: question,
+            choice: 'Hold',
+            fromMessage: source,
+            undelivered: true,
+          },
+        },
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Hold',
+      )
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      l.releaseHeld()
+      const delivered = await lateReply
+      assert.equal(
+        delivered.state,
+        'delivered',
+      )
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.answered,
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: l.card({ ref }) }).length,
+        1,
+      )
+      const rebuilt = replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]
+      assert.ok(rebuilt)
+      assert.equal(
+        rebuilt.asks?.[0]?.answered,
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: rebuilt }).length,
+        1,
+      )
+      await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+        actor: 'web',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Merge',
+      )
+    } finally {
+      l.releaseHeld()
+      await lateReply
+    }
+  },
+)
+
+test(
+  'a current-round delivered Hold can be re-asked when the receipt omits its decision',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+    } = await heldMerge({ t })
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    l.mode({ value: 'queued' })
+    const receipt = await sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Hold',
+        },
+      },
+    })
+    assert.equal(
+      receipt.state,
+      'queued',
+    )
+    l.event({
+      ref,
+      change: {
+        type: 'card.replied',
+        data: {
+          reply: receipt.reply,
+          state: 'delivered',
+          route: 'pnyx',
+          answers: question,
+        },
+      },
+    })
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Hold',
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks?.[0]?.choice,
+      'Hold',
+    )
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    assert.equal(
+      ownerQuestions({ card: l.card({ ref }) }).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a current-round delivered Merge approves only its linked pull request',
+  async t => {
+    const {
+      l,
+      ref,
+      question,
+      held,
+    } = await heldMerge({ t })
+    await l.task({
+      args: [
+        'reask',
+        ref,
+        question,
+      ],
+    })
+    const receipt = await sendReply({
+      hydraId,
+      request: {
+        card: ref,
+        text: '',
+        homes: [],
+        actor: 'web',
+        ask: {
+          id: question,
+          choice: 'Merge',
+        },
+      },
+    })
+    assert.equal(
+      receipt.state,
+      'delivered',
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      l.card({ ref }).asks?.[0]?.choice,
+      'Merge',
+    )
+    assert.ok(held.url)
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: held.url,
+      })?.answered,
+      receipt.reply,
+    )
+    assert.equal(
+      mergeApproval({
+        card: l.card({ ref }),
+        url: 'https://github.com/synthetic/question-lab/pull/282',
+      }),
+      undefined,
+    )
+    assert.equal(
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId }),
+      }).cards[ref]?.asks?.[0]?.choice,
+      'Merge',
+    )
+  },
+)
