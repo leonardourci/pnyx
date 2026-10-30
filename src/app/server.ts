@@ -714,6 +714,7 @@ export async function mountOwnedHydra({
 
   const transcriptChanged = ({ path }: { path: string }) => {
     touchPath({ path })
+    historyIndex.changed()
 
     for (const map of threadSubscriptions) {
       for (const [
