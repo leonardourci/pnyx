@@ -1,4 +1,5 @@
 import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -240,6 +241,7 @@ export function claudeProvider({
       outputSchema,
       allow,
       context,
+      ownProcess,
     }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
@@ -247,6 +249,36 @@ export function claudeProvider({
         session: id,
         folder: env.CLAUDE_CONFIG_DIR,
       })
+      let spawnProcess: Options['spawnClaudeCodeProcess']
+
+      if (ownProcess) {
+        spawnProcess = ({
+          command,
+          args,
+          cwd,
+          env,
+          signal,
+        }) => {
+          const child = spawn(
+            command,
+            args,
+            {
+              cwd,
+              env,
+              signal,
+              detached: true,
+              stdio: 'pipe',
+            },
+          )
+
+          if (child.pid !== undefined) {
+            ownProcess({ pid: child.pid })
+          }
+
+          return child
+        }
+      }
+
       let running: ReturnType<QueryFn> | undefined
       let closed = false, interrupted = false
 
@@ -317,6 +349,7 @@ export function claudeProvider({
             options: {
               cwd,
               includePartialMessages: true,
+              spawnClaudeCodeProcess: spawnProcess,
               ...(outputSchema ? {
                 outputFormat: {
                   type: 'json_schema',

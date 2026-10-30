@@ -12,9 +12,11 @@ import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTo
 export type SpawnCodex = ({
   cwd,
   env,
+  detached,
 }: {
   cwd: string
   env: NodeJS.ProcessEnv
+  detached?: boolean
 }) => ChildProcessWithoutNullStreams
 
 type ObjectValue = Record<string, unknown>
@@ -833,6 +835,7 @@ export function codexProvider({
   spawnCodex = ({
     cwd,
     env,
+    detached,
   }) => spawn(
     'codex',
     [
@@ -844,6 +847,7 @@ export function codexProvider({
       cwd,
       env,
       stdio: 'pipe',
+      detached,
     },
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {
@@ -940,18 +944,24 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
+      ownProcess,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
         resolve(): void
         reject({ error }: { error: unknown }): void
       } | undefined
-      const rpc = connection({
-        child: spawnCodex({
-          cwd,
-          env,
-        }),
+      const child = spawnCodex({
+        cwd,
+        env,
+        detached: ownProcess !== undefined,
       })
+
+      if (child.pid !== undefined) {
+        ownProcess?.({ pid: child.pid })
+      }
+
+      const rpc = connection({ child })
 
       const close = () => {
         deferredInterrupt?.reject({ error: new Error('The Codex session closed before it could be interrupted') })

@@ -258,6 +258,7 @@ export interface Provider {
     outputSchema,
     allow,
     context,
+    ownProcess,
   }: {
     cwd: string
     instructions?: string
@@ -270,5 +271,6 @@ export interface Provider {
     settings: AgentSettings
     env: NodeJS.ProcessEnv
     signal: AbortSignal
+    ownProcess?({ pid }: { pid: number }): void
   }): Promise<HostedSession>
 }
