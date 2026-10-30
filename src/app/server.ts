@@ -1021,7 +1021,7 @@ export async function mountOwnedHydra({
   let scheduled = false
 
   // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
-  // The value says whether shutdown may kill the worker: only a follow, which the next run repeats.
+  // The value says whether shutdown may kill the worker: a follow or an index catch-up, which the next run repeats.
   const workers = new Map<ChildProcess, boolean>()
 
   const startWorker = ({
@@ -1076,7 +1076,7 @@ export async function mountOwnedHydra({
     )
     workers.set(
       child,
-      args[0] === 'inbox-follow',
+      args[0] === 'inbox-follow' || file === INDEX_WORKER,
     )
     child.once(
       'close',
@@ -1086,44 +1086,26 @@ export async function mountOwnedHydra({
 
   // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
   const historyIndex = indexRuns({
-    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
-      if (closed) {
-        return resolve(undefined)
-      }
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => startWorker({
+      file: INDEX_WORKER,
+      timeout: INDEX_WORKER_TIMEOUT_MS,
+      args: [hydraId],
+      done: ({
+        error,
+        stdout,
+      }) => {
+        if (!error) {
+          return resolve(undefined)
+        }
 
-      const child = execFile(
-        process.execPath,
-        [
-          ...SOURCE_CONDITIONS,
-          INDEX_WORKER,
-          hydraId,
-        ],
-        { timeout: INDEX_WORKER_TIMEOUT_MS },
-        (
-          error,
-          stdout,
-        ) => {
-          if (!error) {
-            return resolve(undefined)
-          }
-
-          const failure = workerError({ stdout }) ?? {
-            message: error.message,
-            code: 'UNKNOWN',
-          }
-          console.error(`pnyx oracle index: ${failure.message}`)
-          resolve(failure)
-        },
-      )
-      workers.set(
-        child,
-        true,
-      )
-      child.once(
-        'close',
-        () => workers.delete(child),
-      )
-    }),
+        const failure = workerError({ stdout }) ?? {
+          message: error.message,
+          code: 'UNKNOWN',
+        }
+        console.error(`pnyx oracle index: ${failure.message}`)
+        resolve(failure)
+      },
+    })),
   })
   historyIndex.changed()
 
