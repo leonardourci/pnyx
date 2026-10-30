@@ -1,4 +1,8 @@
 import { nativeStatus, type NativeStatus } from './native-status.ts'
+import { HydraError } from '#store/errors.ts'
+import { deferred } from '#agent-host/deferred.ts'
+import type { ToClient } from '#agent-host/protocol.ts'
+import type { HostClient } from '#agent-host/client.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
@@ -11,6 +15,8 @@ import { fingerprint } from '#agent-host/ledger.ts'
 import { durableWriter } from '#agent-host/durable.ts'
 import { privateDir } from '#store/storage.ts'
 
+const SNAPSHOT_MS = 5000
+
 type Binding = {
   request: string
   instance: string
@@ -22,10 +28,12 @@ export async function nativeProviders({
   directory,
   journal,
   installation,
+  reconnect,
 }: {
   directory: string
   journal: string
   installation: string
+  reconnect?(): Promise<void>
 }) {
   privateDir({ dir: journal })
   let controller = ''
@@ -36,6 +44,7 @@ export async function nativeProviders({
       'host.sock',
     ),
     installation,
+    reconnect,
     token: readFileSync(
       join(
         directory,
@@ -69,6 +78,15 @@ export async function nativeProviders({
 
       controller = claim.control.generation
       inventory = connection.ready.sessions
+
+      for (const summary of inventory) {
+        if (summary.phase === 'recovery_required') {
+          await settleClosedEnds({
+            client: connection,
+            summary,
+          })
+        }
+      }
     },
   })
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
@@ -128,6 +146,48 @@ export async function nativeProviders({
 
       return same && (session.phase === 'live' || session.phase === 'recovery_required' && session.recovery !== undefined)
     }),
+    recovering({
+      cwd,
+      env,
+    }) {
+      if (!client.available()) {
+        return undefined
+      }
+
+      const candidates = inventory.filter(session => session.provider === provider
+        && session.phase === 'recovery_required' && session.recovery !== undefined)
+
+      if (candidates.length === 0) {
+        return undefined
+      }
+
+      const { binding } = readBinding({
+        provider,
+        cwd,
+        env,
+        journal,
+      })
+      const previous = binding?.session
+
+      if (!previous || previous.provider !== provider) {
+        return undefined
+      }
+
+      const summary = candidates.find(session => session.ref.id === previous.ref.id
+        && session.ref.epoch === previous.ref.epoch)
+
+      if (!summary?.nativeId || summary.nativeId !== previous.nativeId) {
+        return undefined
+      }
+
+      return {
+        provider,
+        sessionId: summary.nativeId,
+        cwd,
+        host: 'pnyx',
+        transcriptPath: summary.path,
+      }
+    },
     async models({
       cwd,
       env,
@@ -159,21 +219,14 @@ export async function nativeProviders({
       reattachOnly,
       reattach,
     }) {
-      const key = fingerprint({
-        value: {
-          provider,
-          cwd,
-          actor: env.PNYX_ACTOR ?? '',
-        },
-      })
-      const path = join(
+      const stored = readBinding({
+        provider,
+        cwd,
+        env,
         journal,
-        `${key}.json`,
-      )
-      let binding: Binding | undefined = existsSync(path) ? JSON.parse(readFileSync(
-        path,
-        'utf8',
-      )) : undefined
+      })
+      const path = stored.path
+      let binding = stored.binding
       let writer = writers.get(path)
 
       if (!writer) {
@@ -199,12 +252,14 @@ export async function nativeProviders({
       }
 
       const save = () => writer!.write({ text: () => JSON.stringify(binding) })
-      let summary = agent && inventory.findLast(session =>
-        session.provider === provider && session.nativeId === agent.sessionId)
+      const matching = inventory.filter(session =>
+        session.provider === provider && session.nativeId === agent?.sessionId)
+      let summary = agent && (matching.find(session => session.phase === 'recovery_required')
+        ?? matching.findLast(session => session.phase === 'live') ?? matching.at(-1))
       let recovered = false
       const retained = reattachOnly || reattach
 
-      if (!summary && retained && binding?.session) {
+      if (retained && binding?.session) {
         const previous = binding.session.ref
         summary = inventory.find(session => session.ref.id === previous.id
         && session.ref.epoch === previous.epoch)
@@ -266,7 +321,7 @@ export async function nativeProviders({
           message: 'The native session has uncertain ownership',
         })
       } else {
-        if (client.ready.sessions.some(session => session.phase === 'recovery_required')) {
+        if (inventory.some(session => session.phase === 'recovery_required')) {
           fail({
             code: 'RECOVERY_REQUIRED',
             message: 'Old native ownership must be reconciled before cold resume',
@@ -438,4 +493,115 @@ function deliveryPhase({ result }: { result: Result }): string {
   }
 
   return 'unknown'
+}
+
+async function settleClosedEnds({
+  client,
+  summary,
+}: {
+  client: HostClient
+  summary: Summary
+}) {
+  const baseline = deferred<Extract<ToClient, { type: 'snapshot' }>>()
+  const unsubscribe = client.subscribe({
+    receive: ({ frame }) => {
+      if (frame.type === 'snapshot' && frame.ref.id === summary.ref.id && frame.ref.epoch === summary.ref.epoch) {
+        baseline.resolve(frame)
+      }
+    },
+  })
+  let timeout: ReturnType<typeof setTimeout> | undefined
+
+  try {
+    const attached = checked({
+      result: await client.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'attach',
+          scope: {
+            kind: 'session',
+            ref: summary.ref,
+          },
+          expectedRevision: summary.controllerRevision,
+        },
+      }),
+    })
+
+    if (attached.kind !== 'attached') {
+      throw new Error('Missing session controller')
+    }
+
+    summary.controllerRevision = attached.control.revision
+    timeout = setTimeout(
+      () => baseline.reject(new HydraError({
+        code: 'RECOVERY_REQUIRED',
+        message: 'The retained native epoch could not be inspected',
+      })),
+      SNAPSHOT_MS,
+    )
+
+    client.watch({ ref: summary.ref })
+    const snapshot = await baseline.promise
+    const onlyClosedEnds = snapshot.pendingFacts.every(fact =>
+      typeof fact.event === 'object' && fact.event.type === 'ended' && fact.event.reason === 'closed')
+    const last = snapshot.pendingFacts.at(-1)
+
+    if (!onlyClosedEnds || !last || snapshot.snapshot.retention !== 'healthy') {
+      return
+    }
+
+    const result = checked({
+      result: await client.acknowledge({
+        ref: summary.ref,
+        controller: attached.control.generation,
+        through: last.seq,
+      }),
+    })
+
+    if (result.kind === 'ok' && result.session) {
+      Object.assign(
+        summary,
+        result.session,
+      )
+    }
+  } finally {
+    clearTimeout(timeout)
+    unsubscribe()
+  }
+}
+
+function readBinding({
+  provider,
+  cwd,
+  env,
+  journal,
+}: {
+  provider: ProviderId
+  cwd: string
+  env: NodeJS.ProcessEnv
+  journal: string
+}): {
+  path: string
+  binding: Binding | undefined
+} {
+  const key = fingerprint({
+    value: {
+      provider,
+      cwd,
+      actor: env.PNYX_ACTOR ?? '',
+    },
+  })
+  const path = join(
+    journal,
+    `${key}.json`,
+  )
+  const binding: Binding | undefined = existsSync(path) ? JSON.parse(readFileSync(
+    path,
+    'utf8',
+  )) : undefined
+
+  return {
+    path,
+    binding,
+  }
 }

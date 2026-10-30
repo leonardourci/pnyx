@@ -421,19 +421,54 @@ export async function remoteSession({
     replayed: () => replay.promise,
     refreshContext,
     applied,
-    async settle({ through: completion } = {}) {
-      let completed = true
+    async settle({
+      through: completion,
+      applyOutcome,
+    } = {}) {
+      const sequenceFor = ({ fact }: { fact: string }) => {
+        const sequence = Number(fact.slice(summary.ref.epoch.length + 1))
 
-      if (completion) {
-        const sequence = Number(completion.slice(summary.ref.epoch.length + 1))
-
-        if (!completion.startsWith(`${summary.ref.epoch}:`) || !Number.isSafeInteger(sequence)
+        if (!fact.startsWith(`${summary.ref.epoch}:`) || !Number.isSafeInteger(sequence)
           || sequence <= 0 || sequence > viewThrough || baseline?.retention !== 'healthy') {
           fail({
             code: 'RECOVERY_REQUIRED',
             message: 'The retained completion fact cannot be reconciled in this native epoch',
           })
         }
+
+        return sequence
+      }
+
+      const appliedThrough = completion ? sequenceFor({ fact: completion }) : 0
+
+      if (applyOutcome) {
+        const pending = queue.filter(item => item.fact && item.fact.seq > appliedThrough
+          && typeof item.event === 'object' && item.event.type === 'turn-ended')
+
+        if (pending.length > 1) {
+          fail({
+            code: 'UNAPPLIED_FACT',
+            message: 'Several retained native outcomes require separate reconciliation',
+          })
+        }
+
+        const retained = pending[0]
+
+        if (retained?.fact && typeof retained.event === 'object' && retained.event.type === 'turn-ended') {
+          const fact = `${retained.fact.ref.epoch}:${retained.fact.seq}`
+          sequenceFor({ fact })
+          await applyOutcome({
+            outcome: retained.event.outcome,
+            fact,
+          })
+          completion = fact
+        }
+      }
+
+      let completed = true
+
+      if (completion) {
+        const sequence = sequenceFor({ fact: completion })
 
         completed = !queue.some(item => item.fact?.seq === sequence)
       }

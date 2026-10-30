@@ -55,6 +55,14 @@ const completions = new Set<string>()
 
 native.client.subscribe({
   receive: ({ frame }) => {
+    if (frame.type === 'snapshot') {
+      for (const fact of frame.pendingFacts) {
+        if (fact.event.type === 'turn-ended') {
+          completions.add(`${fact.ref.id}:${fact.seq}`)
+        }
+      }
+    }
+
     if (frame.type === 'event' && typeof frame.event === 'object' && frame.event.type === 'turn-ended') {
       completions.add(`${frame.ref.id}:${frame.seq}`)
     }
@@ -63,6 +71,14 @@ native.client.subscribe({
 
 native.client.acknowledge = async ({ ...request }) => {
   const completion = completions.has(`${request.ref.id}:${request.through}`)
+
+  if (process.env.PNYX_FIXTURE_CRASH_COMPLETION_ACKS === 'true' && completion) {
+    process.kill(
+      process.pid,
+      'SIGKILL',
+    )
+    await new Promise<void>(() => {})
+  }
 
   if (process.env.PNYX_FIXTURE_HOLD_COMPLETION_ACKS === 'true' && completion) {
     await new Promise<void>(() => {})

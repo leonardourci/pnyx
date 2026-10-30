@@ -187,7 +187,19 @@ export interface HostedSession {
     at: string
   } | undefined
   applied?(): Promise<void>
-  settle?({ through }?: { through?: string }): Promise<void>
+  settle?({
+    through,
+    applyOutcome }
+  ?: {
+    through?: string
+    applyOutcome?({
+      outcome,
+      fact,
+    }: {
+      outcome: TurnOutcome
+      fact: string
+    }): Promise<void>
+  }): Promise<void>
   detach?(): void
   id: string
   path?: string
@@ -247,6 +259,13 @@ export interface Provider {
   canOpen?(): boolean
   remote?: true
   owns?({ agent }: { agent: AgentRef }): boolean
+  recovering?({
+    cwd,
+    env,
+  }: {
+    cwd: string
+    env: NodeJS.ProcessEnv
+  }): AgentRef | undefined
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({

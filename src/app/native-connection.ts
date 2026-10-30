@@ -10,11 +10,13 @@ export async function nativeConnection({
   token,
   capabilities,
   attached,
+  reconnect,
 }: {
   socket: string
   installation: string
   token: string
   capabilities: string[]
+  reconnect?(): Promise<void>
   attached({ client }: { client: HostClient }): Promise<void>
 }) {
   const readers = new Set<({ frame }: { frame: ToClient }) => void>()
@@ -24,11 +26,43 @@ export async function nativeConnection({
   let timer: ReturnType<typeof setTimeout> | undefined
 
   const connect = async () => {
-    const next = await connectHost({
+    const establish = () => connectHost({
       socket,
       installation,
       token,
       capabilities,
+    })
+
+    let next: HostClient
+
+    try {
+      next = await establish()
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
+      if (!reconnect || code !== 'ENOENT' && code !== 'ECONNREFUSED') {
+        throw error
+      }
+
+      if (stopped) {
+        return
+      }
+
+      await reconnect()
+
+      if (stopped) {
+        return
+      }
+
+      next = await establish()
+    }
+
+    const unwatchStatus = next.subscribe({
+      receive: ({ frame }) => {
+        if (frame.type === 'host-status') {
+          next.ready.readiness = frame.status
+        }
+      },
     })
 
     try {
@@ -36,6 +70,8 @@ export async function nativeConnection({
     } catch (error) {
       next.detach()
       throw error
+    } finally {
+      unwatchStatus()
     }
 
     if (stopped) {
@@ -80,10 +116,19 @@ export async function nativeConnection({
     }
 
     timer = setTimeout(
-      () => {
+      async () => {
         timer = undefined
-        // Reconnect only the transport; a rejected or ambiguous mutation is never retried here.
-        void connect().catch(schedule)
+
+        // Reconnect only the transport; an ambiguous mutation is never retried here.
+        try {
+          await connect()
+        } catch (error) {
+          console.error(
+            'Native host reconnect failed:',
+            error,
+          )
+          schedule()
+        }
       },
       RECONNECT_MS,
     ).unref()

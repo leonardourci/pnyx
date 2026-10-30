@@ -7,7 +7,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:f
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { AgentConfig, AgentRef, AgentSettings } from '#workers/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -15,6 +15,7 @@ import { background } from '#app/background.ts'
 import { replaceFile } from '#agent-host/output.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
 import { hydraDir } from '#app/home-migration.ts'
+import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { lockIsStale } from '#store/storage.ts'
@@ -24,6 +25,7 @@ import { releaseTask, taskLease } from './leases.ts'
 import { handbackId, type HelperBatch, type HelperChange, type HelperOutcome, type HelperUsage } from './state.ts'
 
 type Completion = {
+  id?: string
   change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
   tasks: string[]
   at?: string
@@ -305,12 +307,14 @@ export function createRoutineHelper({
   const append = ({
     change,
     at,
+    id: completionId,
   }: {
+    id?: string
     at?: string
     change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }>
   }) => {
-    const id = change.type === 'hydra.helper-finished'
-      ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
+    const id = completionId ?? (change.type === 'hydra.helper-finished'
+      ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`)
 
     try {
       withWriter({
@@ -352,6 +356,7 @@ export function createRoutineHelper({
   }
 
   const persistCompletion = async ({
+    id,
     change,
     tasks,
     at,
@@ -371,6 +376,7 @@ export function createRoutineHelper({
     replaceFile({
       path,
       text: JSON.stringify({
+        id,
         change,
         tasks,
         at,
@@ -379,6 +385,7 @@ export function createRoutineHelper({
     })
     await defer({
       run: () => append({
+        id,
         change,
         at,
       }),
@@ -835,7 +842,67 @@ export function createRoutineHelper({
           throw new Error('Missing native completion reconciliation')
         }
 
-        await session.settle({ through: native.fact })
+        await session.settle({
+          through: native.fact,
+          applyOutcome: completion.change.data.error ? async ({
+            outcome,
+            fact,
+          }) => {
+            const batch = completion.change.data.batch
+
+            if (outcome.inputIds.length !== 1 || outcome.inputIds[0] !== batch || outcome.status !== 'completed') {
+              throw new HydraError({
+                code: 'UNAPPLIED_FACT',
+                message: 'The retained native outcome does not complete this helper batch',
+              })
+            }
+
+            const started = originalBatch({
+              events: readEvents({ hydraId }),
+              batch,
+            })
+
+            const startedAt = Date.parse(started?.at ?? '')
+            const endedAt = Date.parse(outcome.at)
+
+            if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)
+              || endedAt < startedAt || endedAt > startedAt + bound) {
+              throw new HydraError({
+                code: 'UNAPPLIED_FACT',
+                message: 'The retained helper outcome has no valid original deadline',
+              })
+            }
+
+            let text = outcome.assistant.at(-1)?.text ?? outcome.result ?? ''
+
+            if (outcome.structured !== undefined) {
+              text = JSON.stringify(outcome.structured)
+            }
+
+            const outcomes = parseOutcomes({
+              text,
+              tasks: completion.tasks,
+            })
+            completion = {
+              ...completion,
+              id: `native:${fact}:helper-finished`,
+              at: outcome.at,
+              native: {
+                ...native,
+                fact,
+              },
+              change: {
+                type: 'hydra.helper-finished',
+                data: {
+                  batch,
+                  outcomes,
+                  usage: outcome.usage,
+                },
+              },
+            }
+            await persistCompletion(completion)
+          } : undefined,
+        })
       } finally {
         session.detach?.()
       }
@@ -859,6 +926,8 @@ export function createRoutineHelper({
       ),
       { force: true },
     )
+
+    return completion
   }
 
   return {
@@ -928,6 +997,82 @@ export function createRoutineHelper({
         }
       }
 
+      const history = readEvents({ hydraId })
+      const failures = history.filter(event => event.type === 'hydra.helper-finished')
+        .filter(event => event.data.error && event.id === `helper-finished:${event.data.batch}`)
+      const cwd = join(
+        hydraDir({ hydraId }),
+        'helper',
+      )
+
+      for (const failure of failures) {
+        const batch = failure.data.batch
+
+        if (pending.has(batch)) {
+          continue
+        }
+
+        const matches: NonNullable<Completion['native']>[] = []
+
+        for (const harness of [
+          'claude',
+          'codex',
+        ] as const) {
+          const agent = provider({ harness }).recovering?.({
+            cwd,
+            env: environment({
+              harness,
+              actor: `helper:${batch}`,
+            }),
+          })
+
+          if (agent) {
+            matches.push({
+              harness,
+              agent,
+            })
+          }
+        }
+
+        if (matches.length > 1) {
+          throw new HydraError({
+            code: 'RECOVERY_REQUIRED',
+            message: 'Several recovered native bindings claim the same helper batch',
+          })
+        }
+
+        const native = matches[0]
+
+        if (!native) {
+          continue
+        }
+
+        const started = originalBatch({
+          events: history,
+          batch,
+        })
+
+        if (!started || started.seq >= failure.seq) {
+          throw new HydraError({
+            code: 'RECOVERY_REQUIRED',
+            message: 'The recovered helper binding has no original batch',
+          })
+        }
+
+        pending.set(
+          batch,
+          {
+            tasks: started.data.tasks,
+            at: failure.at,
+            native,
+            change: {
+              type: 'hydra.helper-finished',
+              data: failure.data,
+            },
+          },
+        )
+      }
+
       const runs = Object.values(loadHydra({ hydraId }).state.helper?.runs ?? {})
 
       for (const batch of runs) {
@@ -951,9 +1096,9 @@ export function createRoutineHelper({
         const recorded = pending.get(batch.id)
 
         if (recorded) {
-          await reconcileCompletion({ completion: recorded })
+          const reconciled = await reconcileCompletion({ completion: recorded })
 
-          if (!closed && recorded.change.data.error) {
+          if (!closed && reconciled.change.data.error) {
             giveBack({ batch })
           }
 
@@ -1039,4 +1184,15 @@ export function createRoutineHelper({
       })
     },
   }
+}
+
+function originalBatch({
+  events,
+  batch,
+}: {
+  events: HydraEvent[]
+  batch: string
+}) {
+  return events.filter(event => event.type === 'hydra.helper-started')
+    .find(event => event.data.id === batch && event.id === `helper-started:${batch}`)
 }

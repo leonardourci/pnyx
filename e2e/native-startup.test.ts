@@ -25,7 +25,12 @@ test(
       'state',
     )
     const paths = nativePaths()
+    const connections: Awaited<ReturnType<typeof ensureNativeHost>>[] = []
     t.after(async () => {
+      for (const native of connections) {
+        native.detach()
+      }
+
       if (existsSync(join(
         paths.directory,
         'owner.json',
@@ -216,7 +221,7 @@ test(
     })
     const started = performance.now()
     const first = await ensureNativeHost({ source })
-    t.after(first.detach)
+    connections.push(first)
     const startupMs = performance.now() - started
     const owned = JSON.parse(readFileSync(
       join(
@@ -286,7 +291,7 @@ test(
         'a-new-app-build-that-is-not-loaded',
       ),
     })
-    t.after(second.detach)
+    connections.push(second)
     assert.equal(
       readFileSync(
         join(
@@ -300,6 +305,64 @@ test(
     assert.equal(
       second.client.ready.instance,
       first.client.ready.instance,
+    )
+    assert.equal(
+      JSON.parse(readFileSync(
+        paths.selected,
+        'utf8',
+      )).bundle,
+      selected,
+    )
+    process.kill(
+      owned.pid,
+      'SIGTERM',
+    )
+    await until({
+      check: () => !existsSync(join(
+        paths.directory,
+        'owner.json',
+      )),
+    })
+    await until({
+      check: () => second.client.available()
+        && second.client.ready.instance !== first.client.ready.instance,
+    })
+    assert.equal(
+      JSON.parse(readFileSync(
+        paths.selected,
+        'utf8',
+      )).bundle,
+      selected,
+    )
+    assert.match(
+      readFileSync(
+        paths.log,
+        'utf8',
+      ),
+      /SIGTERM/,
+    )
+    const replacement = JSON.parse(readFileSync(
+      join(
+        paths.directory,
+        'owner.json',
+      ),
+      'utf8',
+    ))
+    const replacementInstance = second.client.ready.instance
+    process.kill(
+      replacement.pid,
+      'SIGKILL',
+    )
+    await until({
+      check: () => second.client.available()
+        && second.client.ready.instance !== replacementInstance,
+    })
+    assert.match(
+      readFileSync(
+        paths.log,
+        'utf8',
+      ),
+      /signal=SIGKILL/,
     )
     assert.equal(
       JSON.parse(readFileSync(

@@ -14,6 +14,11 @@ const [
   ...extra
 ] = process.argv.slice(2)
 
+process.once(
+  'exit',
+  code => process.stderr.write(`${new Date().toISOString()} Native host ${process.pid} exit code=${code}\n`),
+)
+
 try {
   if (!bundle || !directory || !installation || extra.length) {
     fail({
@@ -43,17 +48,26 @@ try {
       codex: codexProvider({}),
     },
   })
-  const stop = () => host.close().catch(() => {
-    process.exitCode = 1
-  })
+  process.stderr.write(`${new Date().toISOString()} Native host ${process.pid} ready\n`)
+
+  const stop = ({ signal }: { signal: NodeJS.Signals }) => {
+    process.stderr.write(`${new Date().toISOString()} Native host ${process.pid} received ${signal}\n`)
+    host.close().catch(error => {
+      process.stderr.write(`Native host close failed: ${String(error)}\n`)
+      process.exitCode = 1
+    })
+  }
+
   process.once(
     'SIGTERM',
-    stop,
+    () => stop({ signal: 'SIGTERM' }),
   )
   process.once(
     'SIGINT',
-    stop,
+    () => stop({ signal: 'SIGINT' }),
   )
+  await host.closed
+  process.stderr.write(`${new Date().toISOString()} Native host ${process.pid} closed\n`)
 } catch (error) {
   const result = errorResult({ error })
   process.stderr.write(`${result.code}: ${result.message}\n`)

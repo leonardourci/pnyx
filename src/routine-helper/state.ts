@@ -85,33 +85,38 @@ export function applyHelper({
     }
   } else if (event.type === 'hydra.helper-finished') {
     const batch = helper.runs[event.data.batch]
-    const usage = event.data.usage
-    const total = helper.usage ?? {
-      batches: 0,
-      measuredBatches: 0,
-    }
-    total.batches++
+    const original = state.eventIds[`helper-finished:${event.data.batch}`]
+    const alreadyFinished = original !== undefined && original < event.seq
 
-    if (usage?.cost !== undefined) {
-      total.cost = (total.cost ?? 0) + usage.cost
-      total.measuredBatches++
-    }
+    if (!alreadyFinished) {
+      const usage = event.data.usage
+      const total = helper.usage ?? {
+        batches: 0,
+        measuredBatches: 0,
+      }
+      total.batches++
 
-    if (usage?.inputTokens !== undefined) {
-      total.inputTokens = (total.inputTokens ?? 0) + usage.inputTokens
-    }
+      if (usage?.cost !== undefined) {
+        total.cost = (total.cost ?? 0) + usage.cost
+        total.measuredBatches++
+      }
 
-    if (usage?.used !== undefined) {
-      total.used = usage.used
-    }
+      if (usage?.inputTokens !== undefined) {
+        total.inputTokens = (total.inputTokens ?? 0) + usage.inputTokens
+      }
 
-    if (usage?.window !== undefined) {
-      total.window = usage.window
-    }
+      if (usage?.used !== undefined) {
+        total.used = usage.used
+      }
 
-    helper.usage = total
-    helper.handled.push(...batch?.seqs ?? [])
-    helper.wakes.push(...batch?.once ?? [])
+      if (usage?.window !== undefined) {
+        total.window = usage.window
+      }
+
+      helper.usage = total
+      helper.handled.push(...batch?.seqs ?? [])
+      helper.wakes.push(...batch?.once ?? [])
+    }
 
     if (batch && event.data.error) {
       batch.error = event.data.error
