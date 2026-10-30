@@ -145,7 +145,7 @@ Memory has three layers, and each fact goes in the most specific one that fits. 
 
 - Owner memory is Pnyx-wide and every Hydra reads it (24000 characters): the owner's preferences (how they want things done, decisions that hold) under the key `preferences`, and general learnings about tools, workers and routes under `learnings`. Keep one line per entry and save the whole document: `pnyx-axi owner memory set --key preferences --text "<document>" --reason "<why>"`.
 - Project memory holds what is true of one project: its profile, the owner's preferences for it, its learnings and standing worker instructions (`project memory`, see `inscribe`). The `workers` document holds up to 1500 characters; Pnyx adds it verbatim after the Hydra-wide worker notes in every new worker header and posts a Pnyx chat line on each edit.
-- Hydra memory holds only what this Hydra needs (1500 characters): its scope, where it left off, its check cursor, each under its own key: `pnyx-axi hydra memory set --key scope --text "<text>" --reason "<why>" --hydra <hydra>`.
+- Hydra memory holds only what this Hydra needs (1500 characters): its `scope`, where it left off (`left-off`), its `check-cursor` and `inscribe-cursor`, each under its own key: `pnyx-axi hydra memory set --key scope --text "<text>" --reason "<why>" --hydra <hydra>`.
 - Save a new preference or learning when it comes up; task progress and conversations already have their own records.
 - Before a context reset, when the owner asks, or when the digest says a memory is nearly full, load `inscribe`.
 

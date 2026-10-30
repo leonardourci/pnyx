@@ -7,16 +7,18 @@ import { hydraConfig } from './config.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { failedChecks, pendingChecks, ranChecks } from '#tasks/delivery/model.ts'
-import { liveTask } from '#tasks/select.ts'
+import { liveTask, taskDone } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { mergeApproved, readyBacklog } from './wake-reasons.ts'
-import { taskMention } from './mentions.ts'
+import { taskMention, taskMentions } from './mentions.ts'
 
 export const MINUTE_MS = 60_000
 export const QUESTION_REMINDER_MS = 4 * 60 * MINUTE_MS
+const LEFT_OFF_STALE_DAYS = 7
+const LEFT_OFF_STALE_MS = LEFT_OFF_STALE_DAYS * 24 * 60 * MINUTE_MS
 
 export interface ReviewFlag {
-  kind: 'approved merge is green' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'prerequisite unmet'
+  kind: 'approved merge is green' | 'external blocker' | 'question reminder' | 'no live worker' | 'unwatched PR' | 'memory behind' | 'stale left-off' | 'prerequisite unmet'
   task: string
   detail: string
   reminder?: string
@@ -237,6 +239,38 @@ export function boardReview({
       task: HYDRA_CARD,
       detail: `Hydra memory cursor ${cursor} is behind log ${state.seq}; reconcile it after handling changes`,
     })
+  }
+
+  const leftOff = state.hydraMemory?.['left-off']
+
+  if (leftOff) {
+    // A missing id is a typo or another Hydra's task, so it never counts as finished.
+    const finished = ({ id }: { id: string }) => {
+      const card = state.cards[id]
+
+      if (!card) {
+        return false
+      }
+
+      return !liveTask({ card }) || taskDone({
+        state,
+        card,
+      })
+    }
+
+    const named = taskMentions({ text: leftOff.text })
+    const allDone = named.length > 0 && named.every(finished)
+    const old = now - Date.parse(leftOff.at) >= LEFT_OFF_STALE_MS
+
+    if (allDone || old) {
+      flags.push({
+        kind: 'stale left-off',
+        task: HYDRA_CARD,
+        detail: allDone
+          ? 'every task linked in Hydra memory `left-off` is done; rewrite or forget it'
+          : `Hydra memory \`left-off\` is over ${LEFT_OFF_STALE_DAYS} days old; rewrite or forget it`,
+      })
+    }
   }
 
   lines.push('Ready in Backlog (free worker slots: no configured limit):')

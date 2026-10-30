@@ -500,6 +500,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       after: { type: 'string' },
       limit: { type: 'string' },
       full: { type: 'boolean' },
+      inscribe: { type: 'boolean' },
       via: { type: 'string' },
       rule: { type: 'string' },
       harness: { type: 'string' },
@@ -654,10 +655,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] === 'messages') {
     const state = loadHydra({ hydraId }).state
+    const cursor = Number(state.hydraMemory?.['inscribe-cursor']?.text)
+    // With no saved cursor an inscribe sweep reads the whole history, so nothing said earlier is skipped.
+    const inscribeFrom = values.inscribe && Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0
     const after = integer({
       value: values.after,
       flag: '--after',
-    }) ?? 0
+    }) ?? inscribeFrom
     const limit = Math.min(
       integer({
         value: values.limit,
@@ -673,7 +677,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       })
     }
 
-    const events = readEvents({ hydraId }).filter((e): e is Extract<HydraEvent, { type: 'hydra.message' | 'task.reminder-due' }> => e.seq > after && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
+    const events = readEvents({ hydraId }).filter(e => e.seq > after
+      && (e.type === 'hydra.message' || e.type === 'task.reminder-due' || (values.inscribe && taskWords({ event: e }))))
     const page = events.slice(
       0,
       limit,
@@ -688,6 +693,23 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }).hydra.id,
       messages: page.length
         ? page.map(e => {
+          const words = taskWords({ event: e })
+
+          if (words) {
+            return values.full ? e : {
+              seq: e.seq,
+              id: e.id,
+              at: e.at,
+              actor: e.actor,
+              task: e.cardId,
+              ...words,
+            }
+          }
+
+          if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
+            throw new Error(`Unexpected ${e.type} in Hydra messages`)
+          }
+
           const data = e.type === 'task.reminder-due' ? e.data.message : e.data
 
           return values.full ? e : {
@@ -704,7 +726,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
         : `none: no messages after seq ${after}`,
       through,
-      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
+      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through}${values.inscribe ? ' --inscribe' : ''} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
     }
   }
 
@@ -884,3 +906,37 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 }
 
 export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+
+// The task records an inscribe sweep reads besides chat: a task's brief and the owner's own words on it.
+function taskWords({ event }: { event: HydraEvent }): {
+  action: string
+  text: string
+} | undefined {
+  if (event.type === 'task.created') {
+    const text = [
+      event.data.ask?.text,
+      event.data.brief,
+    ].filter(Boolean).join('\n\n')
+
+    return text ? {
+      action: 'task created',
+      text,
+    } : undefined
+  }
+
+  if (event.type === 'task.brief') {
+    return {
+      action: 'brief',
+      text: event.data.after,
+    }
+  }
+
+  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
+    return {
+      action: 'owner ask',
+      text: event.data.text,
+    }
+  }
+
+  return undefined
+}

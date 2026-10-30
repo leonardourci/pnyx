@@ -91,10 +91,11 @@ pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
 Standing worker instructions are included verbatim in every new worker header.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-Hydra memory holds only what this Hydra needs (its scope, where it left off, its check cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
+Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor and inscribe-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
-pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full]
+pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
+--inscribe starts after the saved inscribe-cursor (the whole history when none is saved) and adds task briefs and the owner's words on tasks.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>
@@ -114,7 +115,7 @@ one line per entry, and save each document whole. It holds ${OWNER_MEMORY_BUDGET
 Pass the revision list printed as --if-revision so a save made from an older read is refused instead of replacing another Hydra's save.
 New learning lines accept --kind for-now --until task:<hydra>/<task>|<PR URL>|version:<version>|date:YYYY-MM-DD.
 A memory save advances unused-save counts; --used "<exact lines, newline-separated>" and --reason record session evidence and refresh those lines.
-Confirm and archive take --text "<exact learning line>". List includes recoverable archived lines.
+Confirm and archive take --text "<exact learning line>". List shows every line a set, forget or archive removed, with the date and reason of that change; a line moved to a project is not listed.
 Move one learning atomically into project memory with owner memory move --project <name|path> --text "<exact learning line>".
 Every replacement and removal stays in $PNYX_HOME/owner/memory.jsonl (default ~/.pnyx).
 `,

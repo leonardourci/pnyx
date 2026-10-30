@@ -423,6 +423,61 @@ test(
 )
 
 test(
+  'a stale left-off wakes an idle Hydra once and adds no review while it stays unchanged',
+  async () => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'hydra',
+        'memory',
+        'set',
+        '--key',
+        'left-off',
+        '--text',
+        'Pick up the icon work.',
+      ],
+    })
+    const eightDays = 8 * 24 * 60 * 60 * 1000
+    let time = Date.now() + eightDays
+    let wakes = 0
+    const timer = startReviewTimer({
+      hydraId: s.hydraId,
+      now: () => time,
+      interval: () => () => {},
+      wake: () => wakes++,
+    })
+    const reviews = () => s.events().filter(event => event.type === 'hydra.review')
+
+    try {
+      time += REVIEW_MS
+      timer.check()
+      assert.match(
+        reviews().at(-1)?.data.block ?? '',
+        /stale left-off: Hydra memory `left-off` is over 7 days old/,
+      )
+      assert.equal(
+        wakes,
+        1,
+      )
+      time += REVIEW_MS
+      timer.check()
+      assert.deepEqual(
+        [
+          reviews().length,
+          wakes,
+        ],
+        [
+          1,
+          1,
+        ],
+      )
+    } finally {
+      timer.close()
+    }
+  },
+)
+
+test(
   'a due review with nothing to record takes no lock and waits a full period before it runs again',
   async t => {
     const s = await pnyx.scenario()
