@@ -213,7 +213,7 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'task.asked'
-    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage' | 'choice' | 'closed' | 'mergeHold' | 'reaskedAt'>
+    data: Omit<Ask, 'at' | 'actor' | 'escalated' | 'answered' | 'answeredAt' | 'fromMessage' | 'choice' | 'closed' | 'mergeHold' | 'reaskedAt' | 'answerRound'>
   }
   | {
     type: 'task.ask.closed'
