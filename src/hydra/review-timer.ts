@@ -65,12 +65,15 @@ function timedReview({
       flag.detail,
     ]))
   const previousFlags = new Set(state.hydraReview?.flags ?? [])
+  // An idle Hydra whose flags are unchanged, such as a stale `left-off`, has nothing to record.
+  const unchanged = flags.length === previousFlags.size
+    && flags.every(flag => previousFlags.has(flag))
 
   return {
     review,
     flags,
     previousFlags,
-    empty: !review.live && !flags.length && !previousFlags.size,
+    empty: !review.live && unchanged,
   }
 }
 

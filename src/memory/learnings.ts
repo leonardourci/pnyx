@@ -1,7 +1,7 @@
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
-import { hydraConfig } from '#hydra/config.ts'
+import { taskDone } from '#tasks/select.ts'
 
 export interface Learning {
   text: string
@@ -18,6 +18,14 @@ export interface LearningChange {
   save?: boolean
   used?: string
   archive?: string
+}
+
+// A line removed from a memory document; `at` and `reason` come from the change that removed it.
+export interface ArchivedLine {
+  key: string
+  text: string
+  at: string
+  reason?: string
 }
 
 export interface LearningConditions {
@@ -138,6 +146,40 @@ export function learningText({
   return confirmed !== undefined || change?.save ? before : after
 }
 
+const documentLines = ({ text }: { text: string | null }) => (text ?? '').split('\n').map(line => line.trim())
+  .filter(Boolean)
+
+// Every line a set, forget or archive drops stays listed until a later save brings it back.
+// ponytail: every removal adds an entry; show the newest few if `memory list` gets long.
+export function archiveRemoved({
+  archived,
+  key,
+  before,
+  after,
+  at,
+  reason,
+}: {
+  archived: ArchivedLine[]
+  key: string
+  before: string | null
+  after: string | null
+  at: string
+  reason?: string
+}): ArchivedLine[] {
+  const kept = new Set(documentLines({ text: after }))
+  const removed = documentLines({ text: before }).filter(line => !kept.has(line))
+
+  return [
+    ...archived.filter(line => line.key !== key || !kept.has(line.text)),
+    ...removed.map(text => ({
+      key,
+      text,
+      at,
+      reason,
+    })),
+  ]
+}
+
 export function dateLearnings({
   before = [],
   after,
@@ -246,11 +288,11 @@ export function learningConditions({ states }: {
     hydra,
     state,
   ] of Object.entries(states)) {
-    const doneColumns = hydraConfig({ state }).columns.filter(column => column.role === 'done')
-      .map(column => column.id)
-
     for (const card of Object.values(state.cards)) {
-      if (card.status?.state === 'done' || doneColumns.includes(card.column)) {
+      if (taskDone({
+        state,
+        card,
+      })) {
         doneTasks.push(`task:${hydra}/${card.id}`)
 
         if (card.key) {

@@ -479,7 +479,8 @@ function changesReadiness({
     case 'hydra.message':
       return Boolean(event.data.answers)
     case 'card.replied':
-      return event.data.state === 'delivered' && Boolean(event.data.answers || event.data.decision)
+      return event.data.accepted === true
+        || (event.data.state === 'delivered' && Boolean(event.data.answers || event.data.decision))
     case 'task.dependencies':
     case 'task.held':
     case 'task.released':

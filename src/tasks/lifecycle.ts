@@ -229,7 +229,10 @@ export function operationDeclarations({
   const deliveredReply = event.type === 'card.replied' && event.data.state === 'delivered'
   const answeredPermission = event.type === 'task.permission'
     && (event.data.status === 'allow' || event.data.status === 'deny')
-  const answeredQuestion = (event.type === 'hydra.message' && !!event.data.answers) || event.type === 'task.ask.closed'
+  const answeredQuestion = (event.type === 'hydra.message' && !!event.data.answers)
+    || (event.type === 'card.replied' && event.data.accepted === true)
+    || (event.type === 'task.released' && !!event.data.answers)
+    || event.type === 'task.ask.closed'
   const answered = deliveredReply || answeredPermission || answeredQuestion
   const waiting = card.status?.waitingFor
 

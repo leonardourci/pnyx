@@ -1,4 +1,5 @@
 import { Disclosure } from '#web-shared/ui/disclosure.tsx'
+import { IdentityCredits } from '#web-shared/ui/icons/identity-credits.tsx'
 
 export function About() {
   return (
@@ -6,7 +7,7 @@ export function About() {
       <h2>About Pnyx</h2>
       <p>Pnyx brings your agents and their work into a Hydra.</p>
       <Disclosure title="License notices">
-        <p><a href="https://game-icons.net/1x1/lorc/hydra.html" target="_blank" rel="noreferrer">Hydra by Lorc</a> is licensed under <a href="https://creativecommons.org/licenses/by/3.0/" target="_blank" rel="noreferrer">CC BY 3.0</a>. The original SVG is displayed as a theme-colored mask.</p>
+        <IdentityCredits />
         <p>GFS Neohellenic by the Greek Font Society is distributed under the <a href="/fonts/gfs-neohellenic/OFL.txt" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>.</p>
         <p>Inter by Rasmus Andersson is distributed under the <a href="/fonts/inter/OFL.txt" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>.</p>
         <p>JetBrains Mono is distributed under the <a href="/fonts/jetbrains-mono/OFL.txt" target="_blank" rel="noreferrer">SIL Open Font License 1.1</a>.</p>

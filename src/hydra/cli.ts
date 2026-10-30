@@ -18,11 +18,9 @@ import { canonical } from '#store/paths.ts'
 import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
+import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
-import { FILE_BLOCK } from './attachments.ts'
-import { REFERENCE, referenceLabel, mentionContext } from './mentions.ts'
-import { IMAGE, imageNames } from './images.ts'
-import type { Meta } from '#app/command-meta.ts'
+import { mentionContext } from './mentions.ts'
 import { decideView } from '#preferences/decisions.ts'
 import { memoryList, memoryChange } from '#memory/cli.ts'
 import { HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget } from '#memory/budgets.ts'
@@ -31,7 +29,7 @@ import { withWriter } from '#app/writer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { startHydra } from '#workers/start.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
+import { HYDRA_ACTOR } from '#app/actors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -194,6 +192,8 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     options: {
       ...WRITE,
       name: { type: 'string' },
+      icon: { type: 'string' },
+      position: { type: 'string' },
       identity: { type: 'string' },
       session: { type: 'string' },
       firstmate: { type: 'string' },
@@ -366,11 +366,49 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       }
 
       const command = values.command === undefined ? current.command : String(values.command).trim()
+      // A new Hydra without a name takes a Greek one and its icon; a Firstmate Hydra keeps its home's name.
+      const named = action === 'create' && values.name === undefined && !home && !state.config
+        ? pickName({ taken: otherHydraNames({ id }) })
+        : undefined
       const data: HydraConfig = {
         ...current,
         id,
-        name: String(values.name ?? current.name),
+        name: String(values.name ?? named?.name ?? current.name),
         hydra,
+      }
+
+      if (named) {
+        data.icon = named.icon
+      }
+
+      if (values.icon !== undefined) {
+        const icon = String(values.icon).trim()
+
+        if (!isHydraIcon({ icon })) {
+          throw new HydraError({
+            message: `--icon must be ${HYDRA_MARK} or one of: ${HYDRA_ICONS.join(', ')}`,
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        if (icon === HYDRA_MARK) {
+          delete data.icon
+        } else {
+          data.icon = icon
+        }
+      }
+
+      if (values.position !== undefined) {
+        const position = Number(String(values.position).trim())
+
+        if (!String(values.position).trim() || !Number.isFinite(position)) {
+          throw new HydraError({
+            message: '--position must be a number',
+            code: 'VALIDATION_ERROR',
+          })
+        }
+
+        data.position = position
       }
 
       delete data.command
@@ -452,130 +490,21 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   }
 }
 
-const HYDRA_NAME_MAX = 40
-
-export function hydraName({ text }: { text: string }): string | undefined {
-  const lines = text.replace(
-    FILE_BLOCK,
-    '',
-  ).replace(
-    new RegExp(
-      REFERENCE.source,
-      'g',
-    ),
-    (
-      _,
-      label: string,
-    ) => referenceLabel({ label }),
-  )
-    .split('\n')
-    .map(part => part.trim())
-  const index = lines.findIndex(part => part.replace(
-    IMAGE,
-    '',
-  ).trim())
-
-  if (index < 0) {
-    return undefined
-  }
-
-  const names = imageNames({ text })
-  const line = lines[index]!.replace(
-    IMAGE,
-    (
-      _,
-      path: string,
-    ) => names.get(path) ?? 'Image',
-  )
-
-  if (line.length <= HYDRA_NAME_MAX) {
-    return line
-  }
-
-  // An early space would leave a word or two, so the cut falls mid-word, never inside a surrogate pair.
-  const cut = line.slice(
-    0,
-    HYDRA_NAME_MAX + 1,
-  )
-  const space = cut.lastIndexOf(' ')
-  const end = space >= HYDRA_NAME_MAX / 2 ? space : HYDRA_NAME_MAX
-  const words = cut.slice(
-    0,
-    end,
-  ).replace(
-    /[\uD800-\uDBFF]$/,
-    '',
-  )
-    .replace(
-      /[\s,.;:!?-]+$/,
-      '',
-    )
-
-  return words ? `${words}…` : undefined
-}
-
-function nameHydra({
-  hydraId,
-  meta,
-  text,
-}: {
-  hydraId: string
-  meta: Meta
-  text: string
-}): void {
-  const name = hydraName({ text })
-
-  if (!name) {
-    return
-  }
-
-  // A retried message retries its naming under the same derived id.
-  const naming: Meta = {
-    at: meta.at,
-    actor: meta.actor,
-  }
-
-  if (meta.id) {
-    naming.id = `${meta.id}:name`
-  }
-
-  try {
-    commit({
-      hydraId,
-      meta: naming,
-      intent: {
-        type: 'board.configured',
-        card: '$board',
-      },
-      decide: ({
-        state,
-        meta,
-      }) => {
-        const config = hydraConfig({
-          state,
-          id: hydraId,
-        })
-
-        return config.name ? { skipped: 'unchanged' } : hydraEvent({
-          state,
-          meta,
-          cardId: '$board',
-          change: {
-            type: 'board.configured',
-            data: {
-              ...config,
-              name,
-            },
-          },
-        })
-      },
+// An unreadable Hydra counts as none: a repeated name is harmless.
+export function otherHydraNames({ id }: { id: string }): string[] {
+  return hydraIds().filter(other => other !== id)
+    .flatMap(other => {
+      try {
+        return [
+          hydraConfig({
+            state: loadHydra({ hydraId: other }).state,
+            id: other,
+          }).name,
+        ]
+      } catch {
+        return []
+      }
     })
-  } catch (error) {
-    // The message has landed; a busy log only delays the name to the owner's next message.
-    if (!(error instanceof HydraError && error.code === 'LOCKED')) {
-      throw error
-    }
-  }
 }
 
 function homeHydraId({ home }: { home: string }): string {
@@ -633,6 +562,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       after: { type: 'string' },
       limit: { type: 'string' },
       full: { type: 'boolean' },
+      inscribe: { type: 'boolean' },
       via: { type: 'string' },
       rule: { type: 'string' },
       harness: { type: 'string' },
@@ -787,10 +717,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] === 'messages') {
     const state = loadHydra({ hydraId }).state
+    const cursor = Number(state.hydraMemory?.['inscribe-cursor']?.text)
+    // With no saved cursor an inscribe sweep reads the whole history, so nothing said earlier is skipped.
+    const inscribeFrom = values.inscribe && Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0
     const after = integer({
       value: values.after,
       flag: '--after',
-    }) ?? 0
+    }) ?? inscribeFrom
     const limit = Math.min(
       integer({
         value: values.limit,
@@ -806,7 +739,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       })
     }
 
-    const events = readEvents({ hydraId }).filter((e): e is Extract<HydraEvent, { type: 'hydra.message' | 'task.reminder-due' }> => e.seq > after && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
+    const events = readEvents({ hydraId }).filter(e => e.seq > after
+      && (e.type === 'hydra.message' || e.type === 'task.reminder-due' || (values.inscribe && taskWords({ event: e }))))
     const page = events.slice(
       0,
       limit,
@@ -821,6 +755,23 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }).hydra.id,
       messages: page.length
         ? page.map(e => {
+          const words = taskWords({ event: e })
+
+          if (words) {
+            return values.full ? e : {
+              seq: e.seq,
+              id: e.id,
+              at: e.at,
+              actor: e.actor,
+              task: e.cardId,
+              ...words,
+            }
+          }
+
+          if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
+            throw new Error(`Unexpected ${e.type} in Hydra messages`)
+          }
+
           const data = e.type === 'task.reminder-due' ? e.data.message : e.data
 
           return values.full ? e : {
@@ -837,7 +788,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
         : `none: no messages after seq ${after}`,
       through,
-      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
+      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through}${values.inscribe ? ' --inscribe' : ''} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
     }
   }
 
@@ -978,14 +929,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     },
   })
 
-  if (!ref && ownerActor({ actor: m.actor })) {
-    nameHydra({
-      hydraId,
-      meta: m,
-      text: String(values.text),
-    })
-  }
-
   const config = hydraConfig({
     state: loadHydra({ hydraId }).state,
     id: hydraId,
@@ -1025,3 +968,37 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 }
 
 export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
+
+// The task records an inscribe sweep reads besides chat: a task's brief and the owner's own words on it.
+function taskWords({ event }: { event: HydraEvent }): {
+  action: string
+  text: string
+} | undefined {
+  if (event.type === 'task.created') {
+    const text = [
+      event.data.ask?.text,
+      event.data.brief,
+    ].filter(Boolean).join('\n\n')
+
+    return text ? {
+      action: 'task created',
+      text,
+    } : undefined
+  }
+
+  if (event.type === 'task.brief') {
+    return {
+      action: 'brief',
+      text: event.data.after,
+    }
+  }
+
+  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
+    return {
+      action: 'owner ask',
+      text: event.data.text,
+    }
+  }
+
+  return undefined
+}

@@ -78,6 +78,117 @@ test(
   },
 )
 
+test(
+  'the review flags a left-off once every task it links is finished, never for an unknown task, or once it is 7 days old',
+  () => {
+    const ALL_DONE = 'every task linked in Hydra memory `left-off` is done; rewrite or forget it'
+    const TOO_OLD = 'Hydra memory `left-off` is over 7 days old; rewrite or forget it'
+    const CHIPS = '[@Oracle redesign](pnyx-task:oracle) waits for [@Settings](pnyx-task:settings).'
+    const leftOffFlag = ({
+      cards,
+      text = CHIPS,
+      at = OLD,
+    }: {
+      cards: Card[]
+      text?: string
+      at?: string
+    }) => boardReview({
+      state: {
+        ...reviewState({ cards }),
+        hydraMemory: {
+          'left-off': {
+            text,
+            at,
+          },
+        },
+      },
+      now: NOW,
+    }).flags.find(flag => flag.kind === 'stale left-off')?.detail
+    const done = {
+      id: 'done',
+      at: OLD,
+      actor: 'worker',
+      state: 'done' as const,
+      note: 'Merged.',
+    }
+    const settingsDone = task({
+      id: 'settings',
+      status: done,
+    })
+
+    assert.equal(
+      leftOffFlag({
+        cards: [
+          task({ id: 'oracle' }),
+          settingsDone,
+        ],
+      }),
+      undefined,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [
+          task({
+            id: 'oracle',
+            status: done,
+          }),
+          settingsDone,
+        ],
+      }),
+      ALL_DONE,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [
+          task({
+            id: 'oracle',
+            column: 'done',
+          }),
+          settingsDone,
+        ],
+      }),
+      ALL_DONE,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [
+          task({
+            id: 'oracle',
+            hidden: true,
+          }),
+          settingsDone,
+        ],
+      }),
+      ALL_DONE,
+    )
+    assert.equal(
+      leftOffFlag({ cards: [settingsDone] }),
+      undefined,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [],
+        text: 'Waiting on the owner about icons.',
+      }),
+      undefined,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [task({ id: 'oracle' })],
+        at: '2026-10-17T12:00:01Z',
+      }),
+      undefined,
+    )
+    assert.equal(
+      leftOffFlag({
+        cards: [task({ id: 'oracle' })],
+        at: '2026-10-17T12:00:00Z',
+      }),
+      TOO_OLD,
+    )
+  },
+)
+
 let root = ''
 let previous: string | undefined
 let timer: ReturnType<typeof startReviewTimer> | undefined

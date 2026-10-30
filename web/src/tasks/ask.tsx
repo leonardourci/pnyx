@@ -4,7 +4,7 @@ import type { Ask, Card } from '#tasks/model.ts'
 import { answerDelivery, askWording } from '#tasks/questions.ts'
 import { Button, Textarea } from '#web-shared/ui/controls.tsx'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
-import { Markdown } from '#web-hydra/markdown.tsx'
+import { RichText } from '#web-shared/ui/rich-text.tsx'
 import type { Command } from '#web-app/connection.ts'
 
 const RECEIPT: Record<string, string> = {
@@ -101,11 +101,11 @@ export function AskPanel({
 
   return (
     <article className="ask ask-structured" aria-label="Question for you">
-      <div className="ask-headline"><Markdown text={question} /></div>
+      <div className="ask-headline"><RichText text={question} /></div>
       {failed && <p className="muted small">Answer saved. Delivery failed; send it again below.</p>}
       {/* The whole question shows at once: context and evidence are what the owner decides on. */}
-      {context && <div className="ask-context"><Markdown text={context} /></div>}
-      {ask.details && <div className="ask-details"><Markdown text={ask.details} /></div>}
+      {context && <div className="ask-context"><RichText text={context} /></div>}
+      {ask.details && <div className="ask-details"><RichText text={ask.details} /></div>}
       {question !== ask.question && <div className="decision-from">The worker asked:<CollapsibleText text={ask.question} /></div>}
       {!!options.length && (
         <div className="ask-options" role="group" aria-label="Choices">

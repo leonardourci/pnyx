@@ -198,6 +198,127 @@ test(
 )
 
 test(
+  'task suggestions find the owner example and rank title matches before prompt matches',
+  async () => {
+    const f = await fixture()
+
+    try {
+      const cards = [
+        {
+          ...f.referenced,
+          id: 'inside',
+          title: 'Rechat comment',
+          initialPrompt: '',
+        },
+        {
+          ...f.referenced,
+          id: 'owner',
+          title: 'Update the chat comment feature prompt',
+          initialPrompt: '',
+        },
+        {
+          ...f.referenced,
+          id: 'prefix',
+          title: 'Chat comment',
+          initialPrompt: '',
+        },
+        {
+          ...f.referenced,
+          id: 'prompt',
+          title: 'Other work',
+          initialPrompt: 'Discuss chat',
+        },
+      ]
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'thechat',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'chatfea',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'feature chat',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'fea chat',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'THE.CHAT',
+        }).map(({ card }) => card.id),
+        ['owner'],
+      )
+      assert.deepEqual(
+        matchingTasks({
+          cards,
+          query: 'chat',
+        }).map(({ card }) => card.id),
+        [
+          'prefix',
+          'owner',
+          'inside',
+          'prompt',
+        ],
+      )
+    } finally {
+      f.close()
+    }
+  },
+)
+
+test(
+  'fuzzy prompt highlights survive excerpt truncation',
+  async () => {
+    const f = await fixture()
+
+    try {
+      const matches = matchingTasks({
+        cards: [
+          {
+            ...f.referenced,
+            title: 'Other work',
+            initialPrompt: 'chat' + 'x'.repeat(500) + 'feature',
+          },
+        ],
+        query: 'chatfea',
+      })
+      assert.equal(
+        matches.length,
+        1,
+      )
+      assert.equal(
+        matches[0]?.excerptHighlights.map(({
+          from,
+          to,
+        }) => matches[0]?.excerpt.slice(
+          from,
+          to,
+        )).join(''),
+        'chat',
+      )
+    } finally {
+      f.close()
+    }
+  },
+)
+
+test(
   'only paragraphs and list items that start with a task chip are tagged, without the chip, and code blocks never tag',
   () => {
     const chip = ({ id }: { id: string }) => taskMention({

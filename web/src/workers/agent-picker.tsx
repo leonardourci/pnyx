@@ -3,7 +3,7 @@ import type { ModelOption } from '#workers/provider.ts'
 import type { Command } from '#web-app/connection.ts'
 import { Button, Select, type Option } from '#web-shared/ui/controls.tsx'
 
-type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault'>
+type Look = Pick<ComponentProps<typeof Select>, 'defaultValue' | 'onDefault' | 'iconSize'>
 
 export function PickerField({
   label,
@@ -31,7 +31,7 @@ export function PickerField({
         disabled={disabled || !!reason}
         onChange={onChange}
         {...look}
-        title={reason}
+        title={reason ?? label}
       />
       {reason && <small>{reason}</small>}
     </div>

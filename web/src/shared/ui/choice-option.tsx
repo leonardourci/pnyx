@@ -1,7 +1,8 @@
 import { useId, useMemo, type ReactNode } from 'react'
 import { Button } from './controls.tsx'
 import { CollapsibleText } from './disclosure.tsx'
-import { Markdown, markdownText } from '#web-hydra/markdown.tsx'
+import { markdownText } from '#web-hydra/markdown.tsx'
+import { RichText } from './rich-text.tsx'
 
 export function ChoiceOption({
   label,
@@ -38,7 +39,7 @@ export function ChoiceOption({
       </div>
       <div id={`${id}-details`} className="ask-option-details">
         {children && <span className="sr-only">Recommended. </span>}
-        {description && description !== label && <div className="ask-description"><Markdown text={description} /></div>}
+        {description && description !== label && <div className="ask-description"><RichText text={description} /></div>}
       </div>
     </div>
   )

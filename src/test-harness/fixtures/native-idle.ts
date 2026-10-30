@@ -3,7 +3,6 @@ import { randomUUID } from 'node:crypto'
 import { mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { mock } from 'node:test'
-import { setImmediate } from 'node:timers/promises'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
 import { loadHydra } from '#app/store.ts'
@@ -13,8 +12,8 @@ import { IDLE_MS } from '#workers/host.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
+import { settle } from '#test-harness/child-fixture.ts'
 
-const WAIT_MS = 5000
 const QUIET_HOST_MS = IDLE_MS * 10
 const hydraId = 'idle-fixture'
 const native = claudeNative()
@@ -24,24 +23,6 @@ commands.hydra([
   'create',
   hydraId,
 ])
-
-async function settle({
-  what,
-  check,
-}: {
-  what: string
-  check(): boolean
-}) {
-  const until = Date.now() + WAIT_MS
-
-  while (!check()) {
-    assert.ok(
-      Date.now() < until,
-      what,
-    )
-    await setImmediate()
-  }
-}
 
 const host = createHost({
   hydraId,

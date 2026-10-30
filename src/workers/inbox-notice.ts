@@ -31,5 +31,5 @@ export function steeringNotice({
   hydraId: string
   ids: string[]
 }): string {
-  return `Pnyx steering inbox has pending instruction IDs ${JSON.stringify(ids)}. Run \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\`, incorporate pending messages in order, then acknowledge each exact ID with the returned session and generation. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
+  return `Pnyx steering inbox has pending instruction IDs ${JSON.stringify(ids)}. Run \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\`, which records read acknowledgements and stops reminders. Apply the returned messages in order; report progress and blockers separately. An acknowledgement means read, never completed work. A repeated notice is not a new instruction. Do not repeat an effect already checkpointed.`
 }

@@ -58,7 +58,7 @@ Rules:
 
 After upgrading the Agent SDK (pinned to one exact version in `package.json`) or Codex, run `pnpm refresh-agent-fixtures`. It records one short real turn of each with your logins in a temporary folder, without your settings or hooks, and saves only what Pnyx reads.
 
-For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` that reaches an agent of the Hydra whose scenario made the plan, and replays the recording with the chosen reply. Another flow's agents never take it, even if it goes unused. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
+For a controlled turn, `pnyx.claude.plan({ text, reply, hold })` matches the next prompt ending in `text` that reaches an agent of the Hydra whose scenario made the plan, and replays the recording with the chosen reply. Another flow's agents never take it, even if it goes unused. A held turn streams its text and waits before the completed assistant message; call the returned `release()` in `finally`. `pnyx.claude.plan` also takes `before` and `after`: native messages, such as compaction statuses, sent ahead of the recorded turn; a held plan waits between them. `pnyx.codex.plan({ text, hold: true })` holds the recorded turn's output until released and accepts owner steering while it waits. These controls never start an outside agent.
 
 The flows:
 - `tasks.test.ts` covers a task's life, column rules and dependencies.
@@ -73,6 +73,7 @@ The flows:
 - `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves in-process ownership only.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
 - `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
+- `compaction.test.ts` covers compaction. Through the real CLI and server it sends Claude Code's repeated status during one long `/compact` and a compaction followed straight by another; an isolated child with a controlled clock checks that a silent or unanswered compaction fails at its deadline, even while another writer holds the lock, that late statuses keep its one operation, and that held input waits through a second compaction started after a pause. Each case releases the messages held during the compaction.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.
 
 The in-process provider contracts and their current limits are described in [Provider sessions](provider-sessions.md).
