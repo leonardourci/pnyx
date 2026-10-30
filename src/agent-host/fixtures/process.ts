@@ -1,4 +1,6 @@
 import { randomUUID } from 'node:crypto'
+import { spawn, type ChildProcess } from 'node:child_process'
+import { join } from 'node:path'
 import { serveAgentHost } from '#agent-host/server.ts'
 import { deferred } from '#agent-host/deferred.ts'
 import { errorResult } from '#agent-host/protocol.ts'
@@ -9,6 +11,7 @@ import type { AskPermission, HostedInput, Provider } from '#workers/provider.ts'
 type State = {
   id: string
   closed: boolean
+  tree?: ChildProcess
   input: HostedInput[]
   settings: string[]
   interrupts: number
@@ -32,6 +35,8 @@ const provider = (): Provider => ({
     context,
     settings,
     agent,
+    cwd,
+    ownProcess,
   }) {
     const state: State = {
       id: agent?.sessionId ?? randomUUID(),
@@ -42,6 +47,37 @@ const provider = (): Provider => ({
       answers: 0,
       context,
     }
+
+    if (settings.fixtureTree === '1') {
+      state.tree = spawn(
+        process.execPath,
+        [
+          '--conditions=source',
+          join(
+            import.meta.dirname,
+            'owned-tree.ts',
+          ),
+          cwd,
+        ],
+        {
+          detached: true,
+          stdio: 'ignore',
+        },
+      )
+
+      if (state.tree.pid !== undefined) {
+        try {
+          ownProcess?.({ pid: state.tree.pid })
+        } catch (error) {
+          process.kill(
+            -state.tree.pid,
+            'SIGKILL',
+          )
+          throw error
+        }
+      }
+    }
+
     states.set(
       state.id,
       state,
@@ -131,7 +167,22 @@ const provider = (): Provider => ({
           state.interrupts++
         },
         close() {
-          state.closed = true; state.gate?.resolve(); wake()
+          state.closed = true
+
+          if (state.tree?.pid) {
+            try {
+              process.kill(
+                -state.tree.pid,
+                'SIGKILL',
+              )
+            } catch (error) {
+              if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+                throw error
+              }
+            }
+          }
+
+          state.gate?.resolve(); wake()
         },
       },
     })

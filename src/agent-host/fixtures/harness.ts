@@ -239,9 +239,11 @@ export async function fixtureHost({
 export async function controlledSession({
   host,
   client,
+  settings = {},
 }: {
   host: Awaited<ReturnType<typeof fixtureHost>>
   client: HostClient
+  settings?: Record<string, string>
 }) {
   const claim = await client.call({
     id: randomUUID(),
@@ -256,7 +258,7 @@ export async function controlledSession({
   const options = {
     provider: 'claude-code' as const,
     cwd: host.root,
-    settings: {},
+    settings,
     environment: {},
     context: 'original',
   }
