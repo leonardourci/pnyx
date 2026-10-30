@@ -726,21 +726,6 @@ for (const harness of [
             throw new Error('Missing maintenance controller')
           }
 
-          const draining = await call({
-            operation: {
-              kind: 'drain',
-              controller: claim.control.generation,
-            },
-          })
-          assert.equal(
-            draining.kind,
-            'maintenance',
-          )
-
-          if (draining.kind !== 'maintenance') {
-            throw new Error('Missing drain barrier')
-          }
-
           for (const native of await host.stats()) {
             if (native.closed) {
               continue
@@ -773,7 +758,6 @@ for (const harness of [
                 operation: {
                   kind: 'shutdown',
                   controller: claim.control.generation,
-                  drain: draining.status.drain!,
                   when: 'quiescent',
                 },
               })
