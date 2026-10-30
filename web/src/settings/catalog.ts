@@ -279,6 +279,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     label: 'Character shortcuts',
     description: 'Single-letter keys such as j and k. Text fields always keep normal typing.',
     related: [
+      'keyboard',
       'keys',
       'hotkeys',
       'bindings',

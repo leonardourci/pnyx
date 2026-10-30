@@ -36,6 +36,13 @@ const found = ({
   .map(match => match.entry.id)
 
 test(
+  'the Oracle keyboard query finds the shortcut setting',
+  () => {
+    assert.ok(found({ query: 'keyboard' }).includes('keyboard'))
+  },
+)
+
+test(
   'a search matches names, descriptions and values, every word must match, and direct words are highlighted',
   () => {
     assert.deepEqual(
