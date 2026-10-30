@@ -3,6 +3,7 @@ import { errorResult } from '#agent-host/protocol.ts'
 import { kernelBootIdentity } from '#agent-host/boot.ts'
 import type { NativeEvent } from '#workers/native-session.ts'
 import { fixtureProvider as provider, states } from './provider.ts'
+import { socketMetrics } from './socket-metrics.ts'
 
 const [
   directory,
@@ -34,6 +35,13 @@ try {
         emergencyBytes: 16000,
       } : undefined,
   })
+  let timings: Awaited<ReturnType<typeof socketMetrics>> | undefined
+
+  // Measuring beside the host excludes application-side response scheduling stalls.
+  if (process.env.FIXTURE_METRICS === '1') {
+    timings = await socketMetrics({ path: host.socket })
+  }
+
   host.closed.then(() => {
     if (process.connected) {
       process.disconnect()
@@ -44,14 +52,22 @@ try {
     socket: host.socket,
   })
 
-  const stop = async () => {
+  const close = async () => {
+    await timings?.close()
     await host.close()
-    process.disconnect()
+  }
+
+  const stop = async () => {
+    await close()
+
+    if (process.connected) {
+      process.disconnect()
+    }
   }
 
   process.on(
     'disconnect',
-    () => host.close().catch(() => {
+    () => close().catch(() => {
       process.exitCode = 1
     }),
   )
@@ -77,6 +93,11 @@ try {
         if (request.kind === 'completion-time' && state) {
           state.completedAt = request.at
           process.send?.({ id: request.id })
+        } else if (request.kind === 'timings' && timings) {
+          process.send?.({
+            id: request.id,
+            timings: timings.read(),
+          })
         } else if (request.kind === 'stats') {
           process.send?.({
             id: request.id,

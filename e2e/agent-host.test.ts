@@ -16,6 +16,52 @@ const PRESSURE_FRAME_BYTES = 1024 * 1024
 const PRESSURE_EVENT_COUNT = 64
 
 test(
+  'host handling timings include an awaited provider control and its original request ID',
+  async t => {
+    const host = await fixtureHost({
+      t,
+      measure: true,
+    })
+    const client = await host.connect()
+    const session = await controlledSession({
+      host,
+      client,
+    })
+    const id = randomUUID()
+    const setting = client.call({
+      id,
+      operation: {
+        kind: 'set',
+        ref: session.ref,
+        controller: session.token,
+        setting: 'effort',
+        value: 'hold',
+      },
+    })
+    await until({ check: async () => (await host.stats())[0]?.settings.includes('effort=hold') })
+    assert.equal(
+      (await host.timings()).some(timing => timing.id === id),
+      false,
+    )
+    await host.control({
+      kind: 'release',
+      nativeId: session.nativeId,
+    })
+    assert.equal(
+      (await setting).kind,
+      'ok',
+    )
+    const timing = (await host.timings()).find(timing => timing.id === id)
+    assert.ok(timing)
+    assert.equal(
+      timing.operation,
+      'set',
+    )
+    assert.ok(Number.isFinite(timing.ms) && timing.ms >= 0)
+  },
+)
+
+test(
   'the native host deduplicates named calls and input manifests across reader detach',
   async t => {
     const host = await fixtureHost({ t })

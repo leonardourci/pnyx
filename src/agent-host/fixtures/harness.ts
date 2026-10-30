@@ -11,6 +11,7 @@ import { connectHost, type HostClient } from '#agent-host/client.ts'
 import type { NativeEvent } from '#workers/native-session.ts'
 import type { HostedInput } from '#workers/provider.ts'
 import type { ToClient } from '#agent-host/protocol.ts'
+import type { CallTiming } from './socket-metrics.ts'
 
 const WAIT_MS = 5000
 const SECOND_MS = 1000
@@ -47,6 +48,7 @@ export async function fixtureHost({
   boot,
   groups = false,
   built = false,
+  measure = false,
 }: {
   t: TestContext
   pressure?: boolean
@@ -56,6 +58,7 @@ export async function fixtureHost({
   boot?: string | null
   groups?: boolean
   built?: boolean
+  measure?: boolean
 }) {
   const root = directory ?? realpathSync(mkdtempSync('/tmp/pnyx-host-'))
   const installation = 'fixture-installation'
@@ -79,6 +82,7 @@ export async function fixtureHost({
         FIXTURE_GROUPS: groups ? '1' : '0',
         FIXTURE_PRESSURE: pressure ? '1' : '0',
         FIXTURE_TIMEOUT: slowControls ? '1' : '0',
+        FIXTURE_METRICS: measure ? '1' : '0',
       },
     },
   )
@@ -147,7 +151,7 @@ export async function fixtureHost({
     textBytes,
     at,
   }: {
-    kind: 'stats' | 'event' | 'ask' | 'ask-secret' | 'release' | 'stop' | 'burst' | 'completion-time'
+    kind: 'stats' | 'event' | 'ask' | 'ask-secret' | 'release' | 'stop' | 'burst' | 'completion-time' | 'timings'
     nativeId?: string
     event?: NativeEvent
     nextEvent?: NativeEvent
@@ -289,6 +293,12 @@ export async function fixtureHost({
     control,
     exited: exited.promise,
     stats: async () => (await control({ kind: 'stats' }) as { states: NativeStats[] }).states,
+    async timings() {
+      const response = await control({ kind: 'timings' }) as { timings: CallTiming[] }
+      assert.ok(Array.isArray(response.timings))
+
+      return response.timings
+    },
   }
 }
 
