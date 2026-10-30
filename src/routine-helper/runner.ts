@@ -15,6 +15,7 @@ import { background } from '#app/background.ts'
 import { replaceFile } from '#agent-host/output.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
 import { hydraDir } from '#app/home-migration.ts'
+import { readEvents } from '#app/event-log.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { lockIsStale } from '#store/storage.ts'
@@ -24,6 +25,7 @@ import { releaseTask, taskLease } from './leases.ts'
 import { handbackId, type HelperBatch, type HelperChange, type HelperOutcome, type HelperUsage } from './state.ts'
 
 type Completion = {
+  id?: string
   change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
   tasks: string[]
   at?: string
@@ -305,12 +307,14 @@ export function createRoutineHelper({
   const append = ({
     change,
     at,
+    id: completionId,
   }: {
+    id?: string
     at?: string
     change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }>
   }) => {
-    const id = change.type === 'hydra.helper-finished'
-      ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
+    const id = completionId ?? (change.type === 'hydra.helper-finished'
+      ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`)
 
     try {
       withWriter({
@@ -352,6 +356,7 @@ export function createRoutineHelper({
   }
 
   const persistCompletion = async ({
+    id,
     change,
     tasks,
     at,
@@ -371,6 +376,7 @@ export function createRoutineHelper({
     replaceFile({
       path,
       text: JSON.stringify({
+        id,
         change,
         tasks,
         at,
@@ -379,6 +385,7 @@ export function createRoutineHelper({
     })
     await defer({
       run: () => append({
+        id,
         change,
         at,
       }),
@@ -835,7 +842,65 @@ export function createRoutineHelper({
           throw new Error('Missing native completion reconciliation')
         }
 
-        await session.settle({ through: native.fact })
+        await session.settle({
+          through: native.fact,
+          applyOutcome: completion.change.data.error ? async ({
+            outcome,
+            fact,
+          }) => {
+            const batch = completion.change.data.batch
+
+            if (outcome.inputIds.length !== 1 || outcome.inputIds[0] !== batch || outcome.status !== 'completed') {
+              throw new HydraError({
+                code: 'UNAPPLIED_FACT',
+                message: 'The retained native outcome does not complete this helper batch',
+              })
+            }
+
+            const started = readEvents({ hydraId }).find(event =>
+              event.type === 'hydra.helper-started' && event.data.id === batch)
+
+            const startedAt = Date.parse(started?.at ?? '')
+            const endedAt = Date.parse(outcome.at)
+
+            if (!Number.isFinite(startedAt) || !Number.isFinite(endedAt)
+              || endedAt < startedAt || endedAt > startedAt + bound) {
+              throw new HydraError({
+                code: 'UNAPPLIED_FACT',
+                message: 'The retained helper outcome has no valid original deadline',
+              })
+            }
+
+            let text = outcome.assistant.at(-1)?.text ?? outcome.result ?? ''
+
+            if (outcome.structured !== undefined) {
+              text = JSON.stringify(outcome.structured)
+            }
+
+            const outcomes = parseOutcomes({
+              text,
+              tasks: completion.tasks,
+            })
+            completion = {
+              ...completion,
+              id: `native:${fact}:helper-finished`,
+              at: outcome.at,
+              native: {
+                ...native,
+                fact,
+              },
+              change: {
+                type: 'hydra.helper-finished',
+                data: {
+                  batch,
+                  outcomes,
+                  usage: outcome.usage,
+                },
+              },
+            }
+            await persistCompletion(completion)
+          } : undefined,
+        })
       } finally {
         session.detach?.()
       }
@@ -859,6 +924,8 @@ export function createRoutineHelper({
       ),
       { force: true },
     )
+
+    return completion
   }
 
   return {
@@ -951,9 +1018,9 @@ export function createRoutineHelper({
         const recorded = pending.get(batch.id)
 
         if (recorded) {
-          await reconcileCompletion({ completion: recorded })
+          const reconciled = await reconcileCompletion({ completion: recorded })
 
-          if (!closed && recorded.change.data.error) {
+          if (!closed && reconciled.change.data.error) {
             giveBack({ batch })
           }
 

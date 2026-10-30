@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { HostClient } from '#agent-host/client.ts'
 import { nativeProviders } from '#app/native-provider.ts'
-import { existsSync, readFileSync, readdirSync } from 'node:fs'
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
 import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
@@ -407,8 +407,13 @@ for (const harness of [
     'committed',
     'committed-host-crash',
     'committed-closed-host-crash',
+    'committed-pending-closed-host-crash',
     'malformed',
     'late',
+    'late-after-error',
+    'conflicting-after-error',
+    'expired-after-error',
+    'invalid-date-after-error',
     'host-crash',
     'host-crash-uncertain',
     'reboot',
@@ -520,6 +525,48 @@ for (const harness of [
           }),
           /Command failed/,
         )
+        const lateAfterError = result.endsWith('after-error')
+
+        if (lateAfterError) {
+          const pending = join(
+            app.home,
+            'hydras/default/helper-pending',
+          )
+          mkdirSync(
+            pending,
+            { recursive: true },
+          )
+          writeFileSync(
+            join(
+              pending,
+              `${batch.id}.json`,
+            ),
+            JSON.stringify({
+              tasks: batch.tasks,
+              change: {
+                type: 'hydra.helper-finished',
+                data: {
+                  batch: batch.id,
+                  outcomes: [],
+                  error: 'Input receipt failed before the native outcome',
+                },
+              },
+              native: {
+                harness,
+                agent: {
+                  provider: harness === 'codex' ? 'codex' : 'claude-code',
+                  sessionId: helper.id,
+                  cwd: join(
+                    app.home,
+                    'hydras/default/helper',
+                  ),
+                  host: 'pnyx',
+                },
+              },
+            }),
+          )
+        }
+
         const turn = helper.turn!
         const outcomes = {
           outcomes: [
@@ -542,11 +589,19 @@ for (const harness of [
           })
         }
 
-        if (result === 'late') {
+        if (result === 'late' || result === 'expired-after-error') {
           await host.control({
             kind: 'completion-time',
             nativeId: helper.id,
             at: new Date(Date.parse(batch.startedAt!) + 120_001).toISOString(),
+          })
+        }
+
+        if (result === 'invalid-date-after-error') {
+          await host.control({
+            kind: 'completion-time',
+            nativeId: helper.id,
+            at: 'invalid',
           })
         }
 
@@ -557,7 +612,7 @@ for (const harness of [
             event: {
               type: 'result',
               turn,
-              inputIds: [batch.id],
+              inputIds: result === 'conflicting-after-error' ? ['unrelated-input'] : [batch.id],
               status: 'completed',
               final: result === 'malformed' ? '{}' : JSON.stringify(outcomes),
               queued: 0,
@@ -588,9 +643,134 @@ for (const harness of [
           })
         }
 
+        if (lateAfterError) {
+          const observer = await host.connect()
+          const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+          const attached = await observer.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'attach',
+              scope: {
+                kind: 'session',
+                ref: summary.ref,
+              },
+              expectedRevision: summary.controllerRevision,
+            },
+          })
+          assert.ok(attached.kind === 'attached')
+          await observer.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'close',
+              ref: summary.ref,
+              controller: attached.control.generation,
+              expectedIdle: true,
+            },
+          })
+          const retained = await snapshot({
+            client: observer,
+            ref: summary.ref,
+          })
+          assert.equal(
+            retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'),
+            true,
+          )
+          assert.equal(
+            retained.pendingFacts.at(-1)!.event.type,
+            'ended',
+          )
+          observer.detach()
+          host.child.kill('SIGKILL')
+          await host.exited
+          host = await fixtureHost({
+            t,
+            directory: app.root,
+          })
+        }
+
+        if (lateAfterError && result !== 'late-after-error') {
+          await app.start()
+          const refusal = result === 'conflicting-after-error'
+            ? 'does not complete this helper batch' : 'no valid original deadline'
+          await until({ check: () => app.errors().includes(refusal) })
+          const observer = await host.connect()
+          const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+          const retained = await snapshot({
+            client: observer,
+            ref: summary.ref,
+          })
+          assert.equal(
+            retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'),
+            true,
+          )
+
+          return
+        }
+
+        if (result === 'late-after-error') {
+          await assert.rejects(app.start({ crashCompletionAcks: true }))
+          assert.equal(
+            app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.'),
+            true,
+          )
+          const recovered = await app.start()
+          await until({
+            check: () => !existsSync(join(
+              app.home,
+              'hydras/default/helper-pending',
+              `${batch.id}.json`,
+            )),
+          })
+          recovered.child.kill('SIGKILL')
+          await recovered.exited
+          const final = await app.start()
+          const response = await fetch(`http://127.0.0.1:${final.port}/health`)
+          assert.equal(
+            (await response.json()).native.state,
+            'ready',
+          )
+          const events = readFileSync(
+            join(
+              app.home,
+              'hydras/default/events.jsonl',
+            ),
+            'utf8',
+          ).trim()
+            .split('\n')
+            .map(line => JSON.parse(line))
+          const completed = events.filter(event => event.type === 'hydra.helper-finished' && event.data.batch === batch.id)
+          assert.equal(
+            completed.length,
+            2,
+          )
+          assert.equal(
+            completed[0].data.error,
+            'Input receipt failed before the native outcome',
+          )
+          assert.equal(
+            completed[1].data.outcomes[0].summary,
+            'Nudged once.',
+          )
+          assert.equal(
+            app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
+            1,
+          )
+          assert.equal(
+            app.state().helper!.usage!.batches,
+            1,
+          )
+          assert.equal(
+            (await host.stats()).some(state => state.id === helper.id),
+            false,
+          )
+
+          return
+        }
+
         const failed = result === 'malformed' || result === 'late'
         const committed = result.startsWith('committed')
         const lostAfterCommit = result === 'committed-host-crash' || result === 'committed-closed-host-crash'
+          || result === 'committed-pending-closed-host-crash'
         let second = await app.start({ holdHelperCompletion: committed })
 
         if (committed) {
@@ -602,7 +782,7 @@ for (const harness of [
           second.child.kill('SIGKILL')
           await second.exited
 
-          if (result === 'committed-closed-host-crash') {
+          if (result === 'committed-closed-host-crash' || result === 'committed-pending-closed-host-crash') {
             const observer = await host.connect()
             const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
             const attached = await observer.call({
@@ -621,11 +801,15 @@ for (const harness of [
               client: observer,
               ref: summary.ref,
             })
-            await observer.acknowledge({
-              ref: summary.ref,
-              controller: attached.control.generation,
-              through: pending.pendingFacts.at(-1)!.seq,
-            })
+
+            if (result === 'committed-closed-host-crash') {
+              await observer.acknowledge({
+                ref: summary.ref,
+                controller: attached.control.generation,
+                through: pending.pendingFacts.at(-1)!.seq,
+              })
+            }
+
             const closed = await observer.call({
               id: randomUUID(),
               operation: {
@@ -645,7 +829,7 @@ for (const harness of [
             })
             assert.equal(
               terminal.pendingFacts.some(fact => fact.event.type === 'turn-ended'),
-              false,
+              result === 'committed-pending-closed-host-crash',
             )
             observer.detach()
           }

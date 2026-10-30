@@ -129,11 +129,13 @@ export async function fixtureApplication({
   const start = async ({
     holdInputs = false,
     holdCompletionAcks = false,
+    crashCompletionAcks = false,
     traceOpens = false,
     holdHelperCompletion = false,
   }: {
     holdInputs?: boolean | 'wake'
     holdCompletionAcks?: boolean
+    crashCompletionAcks?: boolean
     traceOpens?: boolean
     holdHelperCompletion?: boolean
   } = {}) => {
@@ -158,6 +160,7 @@ export async function fixtureApplication({
           PNYX_FIXTURE_TRACE_OPENS: String(traceOpens),
           PNYX_FIXTURE_HOLD_INPUTS: String(holdInputs),
           PNYX_FIXTURE_HOLD_COMPLETION_ACKS: String(holdCompletionAcks),
+          PNYX_FIXTURE_CRASH_COMPLETION_ACKS: String(crashCompletionAcks),
         },
       },
     )
