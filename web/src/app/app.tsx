@@ -1052,17 +1052,22 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const askHydra = ({
     id,
     text,
+    event,
+    onChecking,
   }: {
     id: string
     text: string
+    event: string
+    onChecking(): void
   }) => hydra.commandFor({ id })({
     name: 'hydra',
     args: [
       'send',
       `--text=${text}`,
       '--event-id',
-      crypto.randomUUID(),
+      event,
     ],
+    onChecking,
   })
 
   const openChat = async ({ id }: { id: string }) => {

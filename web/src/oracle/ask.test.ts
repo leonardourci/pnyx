@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { askKey, askStart, askTargets, settledSend } from './ask.ts'
+import { askAttempt, askKey, askStart, askTargets, settledSend } from './ask.ts'
 
 const zeus = {
   id: 'lab',
@@ -261,6 +261,51 @@ test(
         opening: true,
       }),
       'open-chat',
+    )
+  },
+)
+
+test(
+  'sending the same request to the same Hydra again keeps its event id, and a new text or Hydra gets a new one',
+  () => {
+    const kept = {
+      id: 'event-1',
+      text: 'why is deploy slow',
+      to: 'lab',
+    }
+
+    assert.equal(
+      askAttempt({
+        kept,
+        text: 'why is deploy slow',
+        to: 'lab',
+      }).id,
+      'event-1',
+      'a retry after an unconfirmed send is delivered once',
+    )
+    assert.notEqual(
+      askAttempt({
+        kept,
+        text: 'why is deploy slower',
+        to: 'lab',
+      }).id,
+      'event-1',
+    )
+    assert.notEqual(
+      askAttempt({
+        kept,
+        text: 'why is deploy slow',
+        to: 'default',
+      }).id,
+      'event-1',
+    )
+    assert.notEqual(
+      askAttempt({
+        kept: null,
+        text: 'why is deploy slow',
+        to: 'lab',
+      }).id,
+      'event-1',
     )
   },
 )

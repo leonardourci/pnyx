@@ -427,12 +427,14 @@ export function AskPreview({
   request,
   picking,
   sending,
+  checking,
   error,
 }: {
   to?: AskTarget
   request: string
   picking: boolean
   sending: boolean
+  checking: boolean
   error?: string
 }) {
   const { platform } = useKeyboard()
@@ -441,6 +443,7 @@ export function AskPreview({
     targeted: !!to,
     mod: platform === 'mac' ? '⌘' : 'Ctrl+',
   })
+  const progress = checking ? 'Checking…' : 'Sending…'
 
   return (
     <>
@@ -449,7 +452,7 @@ export function AskPreview({
         ? <p className="oracle-ask-message">{request.trim()}</p>
         : <p className="muted">Type what you want to ask.</p>}
       {error && <p className="oracle-ask-error" role="alert">{error}</p>}
-      <p className="muted small" role="status">{sending ? 'Sending…' : hint}</p>
+      <p className="muted small" role="status">{sending ? progress : hint}</p>
     </>
   )
 }

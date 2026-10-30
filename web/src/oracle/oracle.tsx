@@ -19,7 +19,7 @@ import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
-import { askKey, askStart, askTargets, settledSend, type AskKey, type AskTarget } from './ask.ts'
+import { askAttempt, askKey, askStart, askTargets, settledSend, type AskAttempt, type AskKey, type AskTarget } from './ask.ts'
 import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus, PASS, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
@@ -41,6 +41,8 @@ interface Asking {
   picking: boolean
   picked?: string
   sending: boolean
+  // The send went out but its receipt has not come back yet.
+  checking?: boolean
   error?: string
 }
 
@@ -285,9 +287,13 @@ export function Oracle({
   send({
     id,
     text,
+    event,
+    onChecking,
   }: {
     id: string
     text: string
+    event: string
+    onChecking(): void
   }): Promise<Receipt>
   openChat({ id }: { id: string }): void
 }) {
@@ -339,10 +345,7 @@ export function Oracle({
   // The last Enter or arrow pressed while the query was still being answered, run once it is.
   const waiting = useRef<Pressed | null>(null)
   // The request being sent or last refused; opening, closing or leaving Ask mode drops it.
-  const attempt = useRef<{
-    text: string
-    to: string
-  } | null>(null)
+  const attempt = useRef<AskAttempt | null>(null)
   // Hover selects only when the pointer moves, so a list changing under a still pointer keeps the keyboard's choice.
   const pointer = useRef<{
     x: number
@@ -906,14 +909,16 @@ export function Oracle({
       return
     }
 
-    const sending = {
+    const sending = askAttempt({
+      kept: attempt.current,
       text,
       to: to.id,
-    }
+    })
     attempt.current = sending
     setAsk({
       ...ask,
       sending: true,
+      checking: false,
       error: undefined,
     })
 
@@ -923,6 +928,15 @@ export function Oracle({
       const receipt = await send({
         id: to.id,
         text,
+        event: sending.id,
+        onChecking: () => {
+          if (attempt.current === sending) {
+            setAsk(value => value && {
+              ...value,
+              checking: true,
+            })
+          }
+        },
       })
 
       if (receipt.state !== 'queued') {
@@ -947,6 +961,7 @@ export function Oracle({
         setAsk(value => value && {
           ...value,
           sending: false,
+          checking: false,
           error: problem,
         })
         break
@@ -1436,6 +1451,7 @@ export function Oracle({
                 request={query}
                 picking={ask.picking}
                 sending={ask.sending}
+                checking={ask.checking === true}
                 error={ask.error}
               />
             )}

@@ -93,6 +93,28 @@ export function askKey({
   return mod ? 'send-open' : 'send'
 }
 
+export interface AskAttempt {
+  // Pnyx records an event id once, so a retry with the same id replays the first receipt.
+  id: string
+  text: string
+  to: string
+}
+
+// A retry of the same request to the same Hydra keeps its event id, so the Hydra gets it once.
+export const askAttempt = ({
+  kept,
+  text,
+  to,
+}: {
+  kept: AskAttempt | null
+  text: string
+  to: string
+}): AskAttempt => kept?.text === text && kept.to === to ? kept : {
+  id: crypto.randomUUID(),
+  text,
+  to,
+}
+
 export type SettledSend = 'notify' | 'show-error' | 'close' | 'open-chat'
 
 // A request the owner has left, by closing the palette or leaving Ask mode, only notifies.
