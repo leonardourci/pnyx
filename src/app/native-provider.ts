@@ -265,6 +265,7 @@ export async function nativeProviders({
         recovered,
         context,
         readOnly: recoveryReplay || reattachOnly && summary.phase !== 'live',
+        requireOutcome: reattachOnly === true && summary.phase !== 'live',
         async persistAnswer({
           permission,
           decision,
