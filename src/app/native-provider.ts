@@ -14,10 +14,6 @@ type Binding = {
   request: string
   instance: string
   session?: Summary
-  applied?: Record<string, {
-    through: number
-    at: string
-  }>
   answers: Record<string, {
     permission: string
     secret: boolean
@@ -144,8 +140,14 @@ export async function nativeProviders({
         )
       }
 
-      if (binding && 'inputs' in binding) {
-        delete binding.inputs
+      if (binding) {
+        if ('inputs' in binding) {
+          delete binding.inputs
+        }
+
+        if ('applied' in binding) {
+          delete binding.applied
+        }
       }
 
       const save = () => writer!.write({ text: () => JSON.stringify(binding) })
@@ -322,14 +324,6 @@ export async function nativeProviders({
           await save()
 
           return id
-        },
-        async appliedFact({ fact }) {
-          active.applied ??= {}
-          active.applied[fact.ref.epoch] = {
-            through: fact.seq,
-            at: fact.at,
-          }
-          await save()
         },
         async completedAnswer({
 

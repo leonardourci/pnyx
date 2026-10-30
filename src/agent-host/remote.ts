@@ -29,7 +29,6 @@ export async function remoteSession({
   context,
   readOnly = false,
   requireOutcome = readOnly,
-  appliedFact,
 }: {
   client: HostClient
   summary: Summary
@@ -44,7 +43,6 @@ export async function remoteSession({
     permission: string
     decision: PermissionDecision
   }): Promise<string>
-  appliedFact?({ fact }: { fact: Fact }): Promise<void>
   completedAnswer({
     answerId,
     phase,
@@ -327,7 +325,6 @@ export async function remoteSession({
       return
     }
 
-    await appliedFact?.({ fact: current })
     const result = checked({
       result: await client.acknowledge({
         ref: summary.ref,
