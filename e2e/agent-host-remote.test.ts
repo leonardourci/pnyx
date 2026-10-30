@@ -602,7 +602,11 @@ for (const harness of [
           )
           const resumed = await host.stats()
           assert.ok(resumed.every(state => state.id !== helper.id))
-          assert.ok(resumed.every(state => state.input.every(input => !original.get(state.id)?.includes(input.id))))
+
+          for (const state of resumed) {
+            assert.ok(state.input.every(input => !original.get(state.id)?.includes(input.id)))
+          }
+
           await assert.rejects(
             cli({
               args: [
