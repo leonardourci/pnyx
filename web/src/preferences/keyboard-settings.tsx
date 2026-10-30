@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import { KEY_ACTIONS, bindingsFor, keyboardError, keyLabel, type KeyboardPreferences } from '#preferences/keyboard.ts'
 import { Button, Input, Switch, useBusy } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
+import { capturedKey } from './key-capture.ts'
 import { useKeyAction, useKeyboard } from './keyboard-registry.tsx'
 
 const MODIFIERS = [
@@ -100,7 +101,7 @@ export function KeyboardSettings({
           return
         }
 
-        const key = `${event.metaKey || event.ctrlKey ? 'Mod+' : ''}${event.key.length === 1 ? event.key.toLowerCase() : event.key}`
+        const key = capturedKey({ event })
         const keys = bindingsFor({
           prefs,
           id: capturing,
