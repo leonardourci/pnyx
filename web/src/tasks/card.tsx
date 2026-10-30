@@ -33,6 +33,8 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { draggableItem } from '#web-shared/ui/drag.ts'
 
 const OPEN_SHARE = 0.5
+// A closed card shows this many whole lines of its update beyond the one it always keeps.
+const CLOSED_EXTRA_LINES = 2
 
 const STATE_SOURCE = {
   note: "Worker's status note",
@@ -229,7 +231,8 @@ export function HydraCard({
     selected,
   })
   const saved = selected ? view.cardHeights[card.id] : view.closedCardHeights[card.id]
-  const defaultHeight = selected ? Math.round(bounds.available * OPEN_SHARE) : bounds.minimum + 44
+  const closedHeight = bounds.minimum + CLOSED_EXTRA_LINES * bounds.line
+  const defaultHeight = selected ? Math.round(bounds.available * OPEN_SHARE) : closedHeight
   const height = Math.max(
     bounds.minimum,
     Math.min(
