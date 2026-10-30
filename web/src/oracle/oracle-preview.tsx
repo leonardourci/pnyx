@@ -4,7 +4,7 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { Hit, Kind } from '#oracle/index.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { statusLabel, currentState } from '#tasks/card-status.ts'
+import { currentState } from '#tasks/card-status.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { Projects } from '#web-projects/projects.tsx'
@@ -13,17 +13,16 @@ import type { DoneAfterHours } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
-import { projectTitle } from '#web-projects/view.ts'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import type { SettingsMatch } from '#web-settings/catalog.ts'
 import { SETTING_ICONS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { Label } from '#web-shared/ui/label.tsx'
 import { markdownText } from '#web-hydra/markdown.tsx'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
+import { CardState } from '#web-tasks/card-state.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { cardState, columnLook, columnsFor } from '#web-tasks/view.ts'
 import type { AskTarget } from './ask.ts'
@@ -128,22 +127,12 @@ function TaskPreview({
   return (
     <>
       <div className="oracle-card">
-        <div className="card-state">
-          <span className={`agent-activity activity-${status.kind}`}><i aria-hidden="true" />{statusLabel({ status })}</span>
-          <time className="card-since" dateTime={status.at || card.updatedAt}>{relativeTime({
-            at: status.at || card.updatedAt,
-            now,
-          })}
-          </time>
-          {card.project && (
-            <Label
-              project
-              label={card.project}
-              text={projectTitle({ project: card.project })}
-              colors={state.labelColors}
-            />
-          )}
-        </div>
+        <CardState
+          card={card}
+          status={status}
+          now={now}
+          labelColors={state.labelColors}
+        />
         <h3 className="oracle-card-title"><Highlight text={card.title} terms={terms} /></h3>
         <ColumnOf state={state} card={card} />
         {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
