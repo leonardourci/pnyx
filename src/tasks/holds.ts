@@ -6,6 +6,7 @@ import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
+import { askAnswer, openAsks } from './questions.ts'
 
 export function requireUnheld({ card }: { card: Card }): void {
   if (card.hold) {
@@ -83,6 +84,19 @@ export function decideHold({
     })
   }
 
+  const question = openAsks({ card }).find(ask => ask.kind === 'go' && ask.hold?.id === card.hold?.id)
+
+  if (question) {
+    askAnswer({
+      state,
+      card,
+      id: question.id,
+      actor: HYDRA_ACTOR,
+      choice: 'Go',
+      fromMessage: source.id,
+    })
+  }
+
   return hydraEvent({
     state,
     meta,
@@ -91,6 +105,7 @@ export function decideHold({
       type: 'task.released',
       data: {
         hold: card.hold.id,
+        answers: question?.id,
         message: {
           id: source.id,
           text: source.text,

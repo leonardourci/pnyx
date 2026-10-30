@@ -128,7 +128,6 @@ test(
           emptyHydra,
           replay,
         }),
-        lookup: {} as never,
         notify: noop,
         selected: true,
         view: DEFAULT_VIEW,

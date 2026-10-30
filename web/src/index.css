@@ -844,13 +844,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .ask-option-pick:focus-visible { outline: none; }
 .ask-option:has(.ask-option-pick:hover) { background: var(--color-hover); }
 
-.ask-label { font-size: var(--text-meta); }
+.ask-label { font-size: var(--text-chat); line-height: var(--chat-line); }
 
-.ask-description { width: 100%; min-width: 0; font-size: var(--text-meta); color: var(--color-muted); }
-.ask-description .markdown { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; max-height: 1.4em; overflow: hidden; }
+.ask-description { width: 100%; min-width: 0; font-size: var(--text-chat); color: var(--color-muted); }
+.ask-description .markdown { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; line-clamp: 1; max-height: 1lh; overflow: hidden; }
 .ask-description .markdown p { display: inline; }
 /* A card shows its questions whole, at reading size: they are what the owner decides on. */
-.card :is(.ask .markdown, .ask-label, .ask-description) { font-size: var(--text-ui); }
 .card .ask-description .markdown { display: block; -webkit-line-clamp: none; line-clamp: none; max-height: none; }
 .card .ask-description .markdown p { display: block; }
 /* The Hydra keeps one viewport; each conversation and column owns its scrolling. */
@@ -1004,7 +1003,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.hydra-chat > :is(.composer, .send-error, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
+.hydra-chat > :is(.composer, .compaction-queue, .send-error, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
 
 .hydra-chat > .waiting-decisions { padding-inline: 0; }
 
@@ -1318,16 +1317,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .attached-image { display: inline-block; max-width: 100%; }
 .attached-image img { display: block; max-width: 100%; max-height: 240px; border: 1px solid var(--color-line); border-radius: 6px; }
 
-.message-images { display: flex; flex-wrap: wrap; gap: 8px; margin-top: var(--block-gap); font-size: var(--text-chat); }
-
-.message-image { display: grid; gap: 4px; justify-items: start; min-width: 0; margin: 0; }
-
-.message-image-open.button { min-height: 0; padding: 0; border: 0; border-radius: 6px; }
-
-.message-image img { display: block; height: 96px; width: auto; max-width: 100%; border: 1px solid var(--color-line); border-radius: 6px; }
-
-.message-image figcaption { color: var(--color-muted); font-size: var(--text-meta); line-height: 1; }
-
 .button.chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; min-height: 0; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-raised); font: inherit; font-size: .92em; vertical-align: baseline; }
 
 .attachment-card { position: relative; top: -.0625em; display: inline-flex; align-items: stretch; height: var(--chip-h); max-width: 100%; border: 1px solid var(--color-line); border-radius: .375em; background: var(--color-surface); color: var(--color-ink); font-family: var(--font-sans); line-height: 1; white-space: nowrap; vertical-align: middle; overflow: hidden; user-select: none; }
@@ -1338,9 +1327,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .attachment-card > .button:hover:not(:disabled) { background: var(--color-raised); }
 
-.card-slot { display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
+.card-slot { position: relative; display: grid; place-items: center; width: 1.625em; height: 1em; flex-shrink: 0; overflow: hidden; border-radius: .1875em; background: var(--color-raised); }
 
-.card-slot > img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Absolute, so the slot sets the size whatever the image's shape; contain shows it whole. */
+.card-slot > img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
 
 .card-slot > img[data-loading] { display: none; }
 
@@ -1362,12 +1352,12 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message.mine .attachment-card:not(.reference) { background: var(--color-background); }
 
 /* A chip is one --chip-h box around the text's own line box (--chip-text in the chat font), so it fits inside the line. */
-.message .markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
+.markdown .attachment-card { top: var(--chip-pad); vertical-align: text-bottom; }
 
-.message .markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
+.markdown :is(.chip.column-chip, .chip.reference-chip) { position: relative; top: var(--chip-pad); height: var(--chip-h); padding-block: 0; align-items: center; font-size: inherit; vertical-align: text-bottom; }
 
 /* A chip moves to the next line whole instead of breaking, and only a chip longer than a line wraps, inside its own box. */
-.message :is(.markdown, .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
+:is(.markdown, .message .message-lead) .draft-chip { display: inline-block; max-width: 100%; line-height: var(--chip-text); }
 
 .chip.reference-chip { display: inline-flex; padding: 1px 6px; border: 1px solid var(--color-gold-line); border-radius: 6px; color: var(--color-gold); }
 
@@ -1413,7 +1403,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-main > :not(time, .tooltip-anchor) { grid-column: 1 / -1; }
 .update-main > .update-title { grid-column: 1; grid-row: 1; }
 .update-main time { color: var(--color-muted); font-size: var(--text-meta); line-height: 22px; white-space: nowrap; }
-.card .markdown, .ask .markdown { font-size: var(--text-meta); font-weight: inherit; line-height: 1.4; }
+.card .markdown, .ask .markdown { font-weight: inherit; }
 
 .task-updates > ol > .update-row:not([data-update-group-end]):not(:has(.update-group-toggle[aria-expanded=false])) { border-bottom: 0; }
 .task-updates > ol > .update-row.update-group-continuation { padding-top: 0; }
@@ -1459,7 +1449,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .update-fold[open] .update-fold-chevron { transform: rotate(90deg); }
 @media (prefers-reduced-motion: reduce) { .update-fold-chevron { transition: none; } }
 .update-fold > .disclosure-body { display: grid; gap: 6px; padding: 6px 0 0 30px; }
-.text-preview { max-height: 4.5em; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
+/* Lines are the shown text's own, so the clamp cuts between lines, never through one. */
+.text-preview { max-height: 3lh; font-size: var(--text-chat); line-height: var(--chat-line); display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; line-clamp: 3; overflow: hidden; }
 .button.show-more { justify-self: start; min-height: 0; padding: 0; color: var(--color-gold); font-size: var(--text-meta); font-weight: 600; }
 
 .composer .select-menu { max-height: none; overflow: visible; scrollbar-width: none; }
@@ -1578,7 +1569,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* The status word never shortens for the project: the badge wraps to its own line first. */
 .card-state { flex-wrap: wrap; row-gap: 4px; }
 .card-state > .tooltip-anchor:has(.project-label) { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; }
-.card .card-brief .text-preview { max-height: 8.4em; -webkit-line-clamp: 6; line-clamp: 6; }
+.card .card-brief .text-preview { max-height: 6lh; -webkit-line-clamp: 6; line-clamp: 6; }
 .task-editor { display: flex; flex-direction: column; gap: 6px; }
 .task-editor .textarea { min-height: 96px; resize: vertical; font-size: var(--text-ui); }
 .task-editor > .row { flex-wrap: wrap; }
@@ -1621,11 +1612,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 :is(.card, .ask) .markdown .code-block pre { padding: 6px; font-size: inherit; line-height: 1.4; }
 :is(.card, .ask) .markdown :is(th, td) { padding: 3px 5px; }
 :is(.card, .ask) .markdown-table { margin-block: 4px; }
-:is(.card, .ask) .text-preview { max-height: 4.2em; font-size: var(--text-meta); }
 .card .task-report, .card .card-question { gap: 3px; padding: 6px 8px; }
 .card .task-updates > ol > li { padding-block: 5px; }
 .ask .decision-recommended { flex-shrink: 0; margin: 0; padding: 0 4px; font-size: .85em; }
-.ask .textarea { font-size: var(--text-ui); padding: 5px 7px; }
+.ask .textarea { font-size: var(--text-chat); line-height: var(--chat-line); padding: 5px 7px; }
 .ask .disclosure > summary { padding-block: 3px; }
 :is(.card, .ask) .markdown code { font-size: .95em; }
 .card .collapsible-text { min-width: 0; max-width: 100%; }
@@ -1770,3 +1760,5 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .preview-board [data-marked] { outline: 2px solid var(--color-gold); outline-offset: -1px; }
 .preview-board-screen { position: absolute; top: 0; bottom: 0; width: 2px; background: var(--color-red); opacity: .7; }
 
+
+.mention-menu mark { padding: 0; border-radius: 2px; color: inherit; background: var(--comment-emphasis); }

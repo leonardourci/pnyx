@@ -5,6 +5,7 @@ import { FILE_BLOCK } from './attachments.ts'
 export const IMAGE_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
 } as const
@@ -26,8 +27,34 @@ export const imageExtension = ({ type }: { type: string }) =>
 export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
+// Shown text also renders a bare absolute image path as an image chip; only tokens are sent as images.
+// A path with spaces is recognized quoted ("/My Shots/a.png") or shell-escaped (/My\ Shots/a.png),
+// since an unquoted space cannot be told from the sentence around it.
+export const SHOWN_IMAGE = new RegExp(
+  `\\[image: (\\/[^\\]\\n]+)\\]|"(\\/[^"\\n]+?\\.(?:${EXTENSIONS}))"|(?<![\\w/.:~-])(\\/(?:\\\\ |[^\\s\\[\\]<>"'\`])+?\\.(?:${EXTENSIONS}))(?![\\w/]|\\.\\w)`,
+  'g',
+)
+// Code and link targets render literally, so their paths get no chip and no number.
+const LITERAL = /^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1|`[^`\n]+`|\]\([^)\n]*\)/gm
+
 export const imagePaths = ({ text }: { text: string }) =>
   [...text.matchAll(IMAGE)].map(match => match[1]!)
+
+export const shownImagePath = ({ match }: { match: RegExpMatchArray }) => {
+  const [
+    , tokenPath,
+    quotedPath,
+    barePath,
+  ] = match
+
+  return {
+    path: (tokenPath ?? quotedPath ?? barePath!.replaceAll(
+      '\\ ',
+      ' ',
+    )),
+    bare: tokenPath === undefined,
+  }
+}
 
 export function imageNames({ text }: { text: string }): Map<string, string> {
   const names = new Map<string, string>()
@@ -42,6 +69,47 @@ export function imageNames({ text }: { text: string }): Map<string, string> {
       names.set(
         path,
         `Image ${names.size + 1}`,
+      )
+    }
+  }
+
+  return names
+}
+
+// A bare occurrence is named by its file even where the same path also appears as a numbered token.
+export const shownImageLabel = ({
+  match,
+  names,
+}: {
+  match: RegExpMatchArray
+  names?: Map<string, string>
+}) => {
+  const {
+    path,
+    bare,
+  } = shownImagePath({ match })
+
+  return bare ? path.slice(path.lastIndexOf('/') + 1) : names?.get(path) ?? 'Image'
+}
+
+// Tokens keep the composer's Image N numbers; a bare path is named by its file, like the path it shows.
+export function shownImageNames({ text }: { text: string }): Map<string, string> {
+  const shown = text.replace(
+    LITERAL,
+    '',
+  )
+  const names = imageNames({ text: shown })
+
+  for (const match of shown.matchAll(SHOWN_IMAGE)) {
+    const {
+      path,
+      bare,
+    } = shownImagePath({ match })
+
+    if (bare && !names.has(path)) {
+      names.set(
+        path,
+        path.slice(path.lastIndexOf('/') + 1),
       )
     }
   }

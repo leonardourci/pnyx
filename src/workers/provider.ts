@@ -51,6 +51,7 @@ export const mergeWindows = ({
 ]
 // A tool call the agent started, or its result arriving; while one runs the agent is busy, not quiet.
 export type HostedTool = {
+  tool?: string
   type: 'tool'
   id: string
   running: boolean

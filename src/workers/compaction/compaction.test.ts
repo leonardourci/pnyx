@@ -3,10 +3,9 @@ import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
 import { readStream } from '#test-harness/streams.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { needsCommentNote } from './comments.ts'
 
 test(
-  'compaction replay preserves outcomes and rejects stale comment-teaching epochs',
+  'compaction replay preserves outcomes and ignores comment notes from older logs',
   () => {
     let state = emptyHydra()
 
@@ -71,29 +70,19 @@ test(
       compact?.operations[0]?.state,
       'done',
     )
-    assert.equal(
-      compact?.commentEpoch,
-      'summary',
-    )
-    append({
-      data: {
-        kind: 'comments',
-        epoch: 'initial',
-      },
-    })
-    assert.equal(
-      state.cards.c1!.compaction?.taughtEpoch,
-      undefined,
-    )
     append({
       data: {
         kind: 'comments',
         epoch: 'claude-code:s1:summary',
+        message: 'm1',
       },
     })
-    assert.equal(
-      state.cards.c1!.compaction?.taughtEpoch,
-      'claude-code:s1:summary',
+    assert.deepEqual(
+      Object.keys(state.cards.c1!.compaction!).sort(),
+      [
+        'inputs',
+        'operations',
+      ],
     )
     append({
       data: {
@@ -111,24 +100,6 @@ test(
       state.cards.c1!.compaction?.operations[0]?.state,
       'done',
       'late starts cannot resurrect a terminal operation',
-    )
-    assert.equal(
-      needsCommentNote({
-        card: state.cards.c1!,
-        text: '## Comments on your reply from today',
-      }),
-      false,
-    )
-    state.cards.c1!.agent = {
-      provider: 'codex',
-      sessionId: 'fresh',
-    }
-    assert.equal(
-      needsCommentNote({
-        card: state.cards.c1!,
-        text: '## Comments on your reply from today',
-      }),
-      true,
     )
   },
 )

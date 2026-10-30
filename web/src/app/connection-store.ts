@@ -469,6 +469,7 @@ export function createHydraConnection() {
     scope.subscribed = true
     scope.subscription = crypto.randomUUID()
     scope.ready = false
+    scope.actions = {}
     send({
       message: {
         type: 'subscribe',
@@ -635,7 +636,7 @@ export function createHydraConnection() {
             outcome: 'unknown',
           })
 
-          if (request.saveId) {
+          if (request.saveId || (request.checking && request.retry)) {
             request.checking = true
             request.unconfirmed()
             request.sent = false
@@ -927,6 +928,7 @@ export function createHydraConnection() {
       scope.subscribed = false
     } else if (message.type === 'snapshot') {
       scope.resource.confirm({ state: message.state })
+      scope.actions = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
       scope.queue = emptyQueue()
@@ -1000,7 +1002,7 @@ export function createHydraConnection() {
         changes: message.messages,
       })
       scope.actions = withChanges({
-        current: scope.actions,
+        current: scope.ready ? scope.actions : {},
         changes: message.actions,
       })
       const wasReady = scope.ready
@@ -1039,7 +1041,7 @@ export function createHydraConnection() {
         },
       })
     } else if ('id' in message && message.id) {
-      if (message.type !== 'error' && Array.isArray(message.hydras)) {
+      if (message.type === 'receipt' && Array.isArray(message.hydras)) {
         updateHydras({ rows: message.hydras as HydraSummary[] })
       }
 
@@ -1047,6 +1049,16 @@ export function createHydraConnection() {
 
       if (!request || request.scope !== scope) {
         publish(); flush()
+
+        return
+      }
+
+      const waitingOnLock = message.type === 'error' && message.code === 'LOCKED' && request.retry
+
+      if (message.type === 'checking' || waitingOnLock) {
+        request.checking = true
+        request.unconfirmed()
+        publish()
 
         return
       }
@@ -1118,6 +1130,7 @@ export function createHydraConnection() {
 
     for (const scope of scopes.values()) {
       scope.ready = false; scope.subscribed = false; scope.subscription = null
+      scope.actions = {}
     }
 
     for (const request of requests.values()) {
