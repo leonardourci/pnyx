@@ -256,7 +256,7 @@ export async function remoteSession({
   client.watch({ ref: summary.ref })
   await started.promise
 
-  if (readOnly && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
+  if (readOnly && summary.recovery !== 'boot_changed' && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
     detach()
     fail({
       code: 'RECOVERY_REQUIRED',
@@ -318,13 +318,21 @@ export async function remoteSession({
       return
     }
 
-    checked({
+    const result = checked({
       result: await client.acknowledge({
         ref: summary.ref,
         controller,
         through: current.seq,
       }),
     })
+
+    if (result.kind === 'ok' && result.session) {
+      Object.assign(
+        summary,
+        result.session,
+      )
+    }
+
     through = current.seq
     known.delete(through)
 
@@ -406,6 +414,7 @@ export async function remoteSession({
 
   const session: HostedSession = {
     remote: true,
+    readOnly,
     incarnation: summary.ref.epoch,
     recovered,
     accepted: ({ id }) => recovered && admitted.has(id),

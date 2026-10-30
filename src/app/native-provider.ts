@@ -76,7 +76,7 @@ export async function nativeProviders({
     owns: ({ agent }) => inventory.some(session => {
       const same = session.provider === provider && session.nativeId === agent.sessionId
 
-      return same && session.phase === 'live'
+      return same && (session.phase === 'live' || session.phase === 'recovery_required' && session.recovery === 'boot_changed')
     }),
     async models({
       cwd,
@@ -138,7 +138,7 @@ export async function nativeProviders({
       }
 
       const save = () => writer!.write({ text: () => JSON.stringify(binding) })
-      let summary = agent && inventory.find(session =>
+      let summary = agent && inventory.findLast(session =>
         session.provider === provider && session.nativeId === agent.sessionId)
       let recovered = false
 
@@ -173,7 +173,9 @@ export async function nativeProviders({
         summary = current ?? previous.session
       }
 
-      if (summary?.phase === 'live') {
+      const rebootReplay = summary?.phase === 'recovery_required' && summary.recovery === 'boot_changed'
+
+      if (summary?.phase === 'live' || rebootReplay) {
         recovered = true
       } else if (summary && reattachOnly) {
         recovered = true
@@ -228,7 +230,7 @@ export async function nativeProviders({
         inventory.push(summary)
       }
 
-      if (!binding) {
+      if (!binding || !summary) {
         fail({
           code: 'RECOVERY_REQUIRED',
           message: 'The durable native binding is missing',
@@ -262,7 +264,7 @@ export async function nativeProviders({
         summary,
         recovered,
         context,
-        readOnly: reattachOnly && summary.phase !== 'live',
+        readOnly: rebootReplay || reattachOnly && summary.phase !== 'live',
         async persistAnswer({
           permission,
           decision,
