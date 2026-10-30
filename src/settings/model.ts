@@ -13,6 +13,7 @@ export const SHARED_VIEW_KEYS = [
   'thinkingDetails',
   'keyboard',
   'defaultHydraWidth',
+  'defaultColumnWidth',
   'defaultColumnWidths',
 ] as const
 

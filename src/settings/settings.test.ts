@@ -790,6 +790,98 @@ test(
 )
 
 test(
+  'the shared column fallback reaches other Hydras and future columns while preserving overrides',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'first',
+    ])
+    await commands.hydra([
+      'create',
+      'second',
+    ])
+    const first = hydraConfig({
+      state: loadHydra({ hydraId: 'first' }).state,
+      id: 'first',
+    }).columns[0]!.id
+    const second = hydraConfig({
+      state: loadHydra({ hydraId: 'second' }).state,
+      id: 'second',
+    }).columns[0]!.id
+    await commands.settings([
+      'set',
+      '--json',
+      '{"defaultColumnWidth":460}',
+    ])
+    assert.equal(
+      ((await show({ hydraId: 'first' })).view.defaultColumnWidths as Record<string, number>)[first],
+      460,
+    )
+    assert.equal(
+      ((await show({ hydraId: 'second' })).view.defaultColumnWidths as Record<string, number>)[second],
+      460,
+    )
+    await commands.column([
+      'create',
+      '--title',
+      'Future',
+      '--id',
+      'custom:future',
+      '--hydra',
+      'second',
+    ])
+    assert.equal(
+      ((await show({ hydraId: 'second' })).view.defaultColumnWidths as Record<string, number>)['custom:future'],
+      460,
+    )
+    await commands.settings([
+      'set',
+      '--json',
+      JSON.stringify({ defaultColumnWidths: { [first]: 510 } }),
+    ])
+    await commands.column([
+      'resize',
+      second,
+      '--width',
+      '650',
+      '--hydra',
+      'second',
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      '{"defaultColumnWidth":480}',
+    ])
+    assert.equal(
+      ((await show({ hydraId: 'first' })).view.defaultColumnWidths as Record<string, number>)[first],
+      510,
+    )
+    assert.equal(
+      ((await show({ hydraId: 'second' })).view.columnWidths as Record<string, number>)[second],
+      650,
+    )
+    await commands.layout([
+      'reset',
+      '--all',
+    ])
+    assert.equal(
+      ((await show({ hydraId: 'second' })).view.columnWidths as Record<string, number>)[second],
+      undefined,
+    )
+    await commands.settings([
+      'set',
+      '--json',
+      '{"defaultColumnWidth":490}',
+    ])
+    assert.equal(
+      ((await show({ hydraId: 'second' })).view.defaultColumnWidths as Record<string, number>)[second],
+      490,
+    )
+  },
+)
+
+test(
   'layout reset --all returns every Hydra to the shared default widths once',
   async () => {
     home()
