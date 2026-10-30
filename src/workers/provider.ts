@@ -187,7 +187,19 @@ export interface HostedSession {
     at: string
   } | undefined
   applied?(): Promise<void>
-  settle?({ through }?: { through?: string }): Promise<void>
+  settle?({
+    through,
+    applyOutcome }
+  ?: {
+    through?: string
+    applyOutcome?({
+      outcome,
+      fact,
+    }: {
+      outcome: TurnOutcome
+      fact: string
+    }): Promise<void>
+  }): Promise<void>
   detach?(): void
   id: string
   path?: string
