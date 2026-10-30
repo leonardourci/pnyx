@@ -38,6 +38,7 @@ function payload({ root }: { root: string }) {
     'workers/claude.ts',
     'workers/codex.ts',
     'workers/native-session.ts',
+    'workers/native-work.ts',
     'workers/native-prompts.ts',
     'workers/compact-command.ts',
     'workers/input.ts',
