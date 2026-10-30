@@ -7,6 +7,7 @@ export const CAPABILITIES = [
   'named-requests',
   'critical-outbox',
   'live-owners',
+  'volatile-inputs',
 ]
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 export const MAX_SOCKET_BYTES = 2 * MAX_FRAME_BYTES
@@ -151,6 +152,7 @@ export type EventFrame = {
 }
 export type Snapshot = {
   session: Summary
+  admittedInputIds: string[]
   native?: Omit<ReturnType<HostedSession['snapshot']>, 'answers' | 'outcome'> & { answers: AnswerReceipt[] }
   text: {
     id: string

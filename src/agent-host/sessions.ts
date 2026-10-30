@@ -14,6 +14,8 @@ import type { AnswerReceipt, Grant, Mutation, Operation, PendingPermission, Prov
 
 const CONTROL_TIMEOUT_MS = 30000
 const MAX_SESSIONS = 64
+const MAX_INPUTS = 9000
+const MAX_QUEUED_INPUT_BYTES = 16 * 1024 * 1024
 export type Peer = {
   id: string
   send({ frame }: { frame: ToClient }): boolean
@@ -33,6 +35,7 @@ type Session = {
   uncertain: Set<string>
   abort: AbortController
   incoming: HostedInput[]
+  incomingBytes: number
   changed: ReturnType<typeof deferred<void>>
   pending: Map<string, PendingPermission>
   inputs: Map<string, string>
@@ -99,6 +102,7 @@ export function hostSessions({
     uncertain: new Set(),
     abort: new AbortController(),
     incoming: [],
+    incomingBytes: 0,
     changed: deferred<void>(),
     pending: new Map(),
     inputs: new Map(),
@@ -276,7 +280,7 @@ export function hostSessions({
         const message = entry.incoming.shift()
 
         if (message) {
-          await entry.output.flush()
+          entry.incomingBytes -= Buffer.byteLength(JSON.stringify(message))
           yield message
           continue
         }
@@ -470,20 +474,24 @@ export function hostSessions({
       }
 
       if (!previous) {
+        const bytes = Buffer.byteLength(JSON.stringify(operation.input))
+
+        const full = entry.inputs.size >= MAX_INPUTS
+          || entry.incomingBytes + bytes > MAX_QUEUED_INPUT_BYTES
+
+        if (full) {
+          fail({
+            code: 'INPUT_LIMIT',
+            message: 'The live native input identity or queue limit was reached',
+          })
+        }
+
         entry.inputs.set(
           operation.input.id,
           inputHash,
         )
-        entry.output.publish({
-          event: {
-            type: 'input',
-            receipt: {
-              inputId: operation.input.id,
-              phase: 'queued',
-            },
-          },
-        })
         entry.incoming.push(structuredClone(operation.input))
+        entry.incomingBytes += bytes
         entry.changed.resolve()
       }
 
@@ -967,7 +975,10 @@ export function hostSessions({
           }
         }
 
-        const snapshot = entry.output.baseline({ native })
+        const snapshot = entry.output.baseline({
+          admittedInputIds: [...entry.inputs.keys()],
+          native,
+        })
 
         const accepted = peer.send({
           frame: {

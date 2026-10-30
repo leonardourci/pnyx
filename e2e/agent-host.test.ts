@@ -9,6 +9,7 @@ import { test } from 'node:test'
 import { fixtureHost, controlledSession, snapshot, until } from '#agent-host/fixtures/harness.ts'
 import type { ToClient } from '#agent-host/protocol.ts'
 import { MAX_FRAME_BYTES } from '#agent-host/protocol.ts'
+import { durableEvent } from '#agent-host/output.ts'
 
 const WAIT_MS = 5000
 const PRESSURE_FRAME_BYTES = 1024 * 1024
@@ -48,6 +49,16 @@ test(
       },
     })
     assert.ok(conflict.kind === 'error' && conflict.code === 'CONFLICTING_ID')
+    const outbox = join(
+      host.root,
+      'sessions',
+      session.ref.id,
+      'outbox.jsonl',
+    )
+    const savedBeforeInput = readFileSync(
+      outbox,
+      'utf8',
+    )
     const input = {
       id: randomUUID(),
       text: 'Hello',
@@ -74,6 +85,18 @@ test(
       'input',
     )
     await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    const admitted = await snapshot({
+      client,
+      ref: session.ref,
+    })
+    assert.ok(admitted.snapshot.admittedInputIds.includes(input.id))
+    assert.equal(
+      readFileSync(
+        outbox,
+        'utf8',
+      ),
+      savedBeforeInput,
+    )
     const repeatedInput = await client.call({
       id: randomUUID(),
       operation: send,
@@ -386,7 +409,7 @@ test(
 )
 
 test(
-  'acknowledged facts stay compacted across host loss while later facts keep their original envelopes',
+  'memory-only acknowledgements allow original fact identities to replay after host loss',
   async t => {
     const host = await fixtureHost({ t })
     const client = await host.connect()
@@ -447,7 +470,7 @@ test(
     })
     assert.deepEqual(
       restored.pendingFacts,
-      retained.pendingFacts,
+      baseline.pendingFacts,
     )
     assert.ok(restored.viewThrough >= applied.seq)
     await restarted.control({ kind: 'stop' })
@@ -522,6 +545,16 @@ test(
       ref: session.ref,
     })
     const original = completed.pendingFacts.find(fact => fact.event.type === 'turn-ended')!
+    await host.control({
+      kind: 'event',
+      nativeId: session.nativeId,
+      event: {
+        type: 'compaction',
+        id: 'retained-compact',
+        trigger: 'manual',
+        state: 'done',
+      },
+    })
     client.detach()
     await host.control({
       kind: 'event',
@@ -915,10 +948,19 @@ test(
       },
     })
     await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    await host.control({
+      kind: 'event',
+      nativeId: session.nativeId,
+      event: {
+        type: 'structured',
+        value: { result: 'retained before host loss' },
+      },
+    })
     const baseline = await snapshot({
       client,
       ref: session.ref,
     })
+    assert.ok(baseline.pendingFacts.some(fact => fact.event.type === 'structured'))
     await assert.rejects(
       fixtureHost({
         t,
@@ -951,7 +993,7 @@ test(
     })
     assert.deepEqual(
       restored.pendingFacts,
-      baseline.pendingFacts,
+      baseline.pendingFacts.filter(fact => durableEvent({ event: fact.event })),
     )
     assert.deepEqual(
       await restarted.stats(),
@@ -1664,7 +1706,7 @@ test(
 )
 
 test(
-  'an ambiguous answer has a durable value-free unknown receipt until native submission arrives',
+  'an ambiguous answer has a live value-free unknown receipt until native submission arrives',
   async t => {
     const host = await fixtureHost({
       t,

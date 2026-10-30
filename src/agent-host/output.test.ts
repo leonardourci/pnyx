@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync, statSync } from 'node:fs'
+import { mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { output } from './output.ts'
@@ -37,11 +37,8 @@ test(
     ]) {
       stream.publish({
         event: {
-          type: 'input',
-          receipt: {
-            inputId: id,
-            phase: 'queued',
-          },
+          type: 'structured',
+          value: id,
         },
       })
     }
@@ -85,7 +82,7 @@ test(
     assert.deepEqual(
       recovered.pending().map(fact => fact.event.type),
       [
-        'input',
+        'structured',
         'turn-ended',
         'ended',
       ],
@@ -118,16 +115,38 @@ test(
       )).mode & 0o777,
       0o600,
     )
+    const saved = readFileSync(
+      join(
+        directory,
+        'outbox.jsonl',
+      ),
+      'utf8',
+    )
+    const replayed = recovered.pending()
     await recovered.acknowledge({
       through: recovered.pending().at(-1)!.seq,
       delivered: new Set(recovered.pending().map(fact => fact.seq)),
     })
     assert.deepEqual(
+      recovered.pending(),
+      [],
+    )
+    assert.equal(
+      readFileSync(
+        join(
+          directory,
+          'outbox.jsonl',
+        ),
+        'utf8',
+      ),
+      saved,
+    )
+    assert.deepEqual(
       output({
         directory,
         session,
       }).pending(),
-      [],
+      replayed,
     )
   },
 )

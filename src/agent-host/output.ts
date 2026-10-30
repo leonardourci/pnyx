@@ -57,6 +57,16 @@ export function replaceFile({
   }
 }
 
+// Live admission and permission callbacks are reconstructed from the surviving owner, not its disk.
+export function durableEvent({ event }: { event: HostedEvent }): boolean {
+  return typeof event === 'object' && [
+    'turn-ended',
+    'structured',
+    'compaction',
+    'ended',
+  ].includes(event.type)
+}
+
 export function output({
   directory,
   session,
@@ -79,11 +89,10 @@ export function output({
   let durableBytes = 0, emergencyBytes = 0
   let lastWrite = Promise.resolve(), delivery = Promise.resolve()
   let degradedThrough = 0
+  let storageFailed = false
   const writer = durableWriter({ path })
   let retention: Snapshot['retention'] = 'healthy'
   let facts: Fact[] = []
-  const raw: EventFrame[] = []
-  let rawBytes = 0
   const text = new Map<string, string>()
   const tools = new Set<string>(), thinking = new Set<string>()
   let activity: Snapshot['activity']
@@ -165,7 +174,8 @@ export function output({
           through: sequence,
           acknowledged: requestedAck,
         })
-        const retained = facts.filter(fact => fact.seq > requestedAck)
+        const retained = facts.filter(fact =>
+          fact.seq > requestedAck && durableEvent({ event: fact.event }))
         const lines = retained.map(fact => JSON.stringify(fact))
 
         return `${[
@@ -175,6 +185,7 @@ export function output({
       },
     }).then(
       () => {
+        storageFailed = false
         persistedThrough = Math.max(
           persistedThrough,
           through,
@@ -198,6 +209,7 @@ export function output({
         }
       },
       error => {
+        storageFailed = true
         requestedAck = acknowledged
         degradedThrough = sequence
         emergencyBytes = facts.filter(fact => fact.seq > persistedThrough)
@@ -220,7 +232,8 @@ export function output({
   return {
     summary: session,
     pending: ({ persisted = false }: { persisted?: boolean } = {}) =>
-      structuredClone(facts.filter(fact => !persisted || fact.seq <= persistedThrough)),
+      structuredClone(facts.filter(fact =>
+        !persisted || !durableEvent({ event: fact.event }) || fact.seq <= persistedThrough)),
     flush: () => lastWrite,
     through: () => sequence,
     retention: () => retention,
@@ -263,19 +276,14 @@ export function output({
           }
 
           durableBytes += bytes
-          durable = persist()
+
+          if (durableEvent({ event })) {
+            durable = persist()
+          }
         } catch {
           degradedThrough = sequence
           emergencyBytes += bytes
           retention = emergencyBytes >= limits.emergencyBytes ? 'exhausted' : 'degraded'
-        }
-      } else {
-        raw.push(frame)
-        rawBytes += Buffer.byteLength(JSON.stringify(frame))
-
-        while (raw.length > limits.viewEvents || rawBytes > limits.viewBytes) {
-          const expired = raw.shift()!
-          rawBytes -= Buffer.byteLength(JSON.stringify(expired))
         }
       }
 
@@ -379,12 +387,33 @@ export function output({
         through,
       )
 
-      return persist()
+      acknowledged = requestedAck
+      facts = facts.filter(fact => fact.seq > acknowledged)
+      durableBytes = facts.reduce(
+        (
+          bytes,
+          fact,
+        ) => bytes + Buffer.byteLength(JSON.stringify(fact)) + 1,
+        0,
+      )
+
+      if (!storageFailed) {
+        retention = durableBytes < limits.criticalBytes ? 'healthy' : 'degraded'
+      }
+
+      return Promise.resolve()
     },
-    baseline({ native }: { native?: Snapshot['native'] }): Snapshot {
+    baseline({
+      native,
+      admittedInputIds = [],
+    }: {
+      native?: Snapshot['native']
+      admittedInputIds?: string[]
+    }): Snapshot {
       return structuredClone({
         session,
         native,
+        admittedInputIds,
         text: [...text].map(([
           id,
           value,
@@ -400,9 +429,7 @@ export function output({
       })
     },
     expired({ after }: { after: number }) {
-      const earliest = raw[0]?.seq ?? sequence + 1
-
-      return after < earliest - 1 && after < sequence
+      return after < sequence
     },
     subscribe({ listener }: { listener({ frame }: { frame: EventFrame }): void }) {
       listeners.add(listener)
