@@ -15,12 +15,14 @@ export async function fixtureApplication({
   groups = false,
   built = true,
   local = false,
+  measureNative = false,
 }: {
   t: TestContext
   boot?: string
   groups?: boolean
   built?: boolean
   local?: boolean
+  measureNative?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-app-'))
   const messages: string[] = []
@@ -46,6 +48,7 @@ export async function fixtureApplication({
     boot,
     groups,
     built,
+    measure: measureNative,
   })
   t.after(() => rmSync(
     root,

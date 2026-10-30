@@ -13,6 +13,9 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 const SAMPLES = 40
 const REQUEST_MS = 10000
 const IMAGE_BYTES = 1024 * 1024
+const CALL_P95_MS = 5
+const CALL_P99_MS = 10
+const VISIBLE_P95_ALLOWANCE_MS = 10
 const percentile = ({
   samples,
   percent,
@@ -48,6 +51,8 @@ test(
       concurrency: number
       page: ReturnType<typeof distribution>
       ipc: ReturnType<typeof distribution>
+      receipts: Record<string, ReturnType<typeof distribution>>
+      handling?: ReturnType<typeof distribution>
       permissionMs: number
       imageMs: number
       startupMs: number
@@ -64,6 +69,7 @@ test(
         const app = await fixtureApplication({
           t,
           local,
+          measureNative: !local,
         })
         const started = performance.now()
         const server = await app.start()
@@ -169,6 +175,13 @@ test(
           )
         })
 
+        const receipts: Record<string, number[]> = {
+          hydra: [],
+          'task-message': [],
+          agent: [],
+        }
+        let measuringReceipts = false
+
         const command = async ({
           name,
           args,
@@ -176,6 +189,7 @@ test(
           name: string
           args: string[]
         }) => {
+          const sent = performance.now()
           const id = randomUUID(), response = deferred<Record<string, unknown>>()
           pending.set(
             id,
@@ -198,6 +212,10 @@ test(
               'receipt',
               JSON.stringify(result),
             )
+
+            if (measuringReceipts) {
+              receipts[name]?.push(performance.now() - sent)
+            }
 
             return result
           } finally {
@@ -228,6 +246,8 @@ test(
             ],
           })))
         }
+
+        measuringReceipts = true
 
         for (let sample = 0; sample < SAMPLES; sample++) {
           await input({ text: `${sample} ${'x'.repeat(1024)}` })
@@ -265,6 +285,8 @@ test(
           page.push(performance.now() - sent)
           threads.length = 0
         }
+
+        measuringReceipts = false
 
         const attachments = join(
           app.home,
@@ -329,11 +351,34 @@ test(
           native.push(0)
         }
 
+        let handling: ReturnType<typeof distribution> | undefined
+
+        if (!local) {
+          const timings = await app.host.timings()
+          const calls = timings.filter(sample => sample.operation === 'input' || sample.operation === 'set')
+          assert.equal(
+            calls.length,
+            native.length,
+          )
+          handling = distribution({ samples: calls.map(sample => sample.ms) })
+        }
+
         rows.push({
           local,
           concurrency,
           page: distribution({ samples: page }),
           ipc: distribution({ samples: native }),
+          receipts: Object.fromEntries(Object.entries(receipts).filter(([
+            , samples,
+          ]) => samples.length > 0)
+            .map(([
+              name,
+              samples,
+            ]) => [
+              name,
+              distribution({ samples }),
+            ])),
+          handling,
           permissionMs,
           imageMs,
           startupMs,
@@ -352,18 +397,40 @@ test(
     ]) {
       const baseline = rows.find(row => row.local && row.concurrency === concurrency)!
       const remote = rows.find(row => !row.local && row.concurrency === concurrency)!
+      const calls = concurrency === 1 ? remote.ipc : remote.handling
+      assert.ok(calls)
+      const boundary = concurrency === 1 ? 'RPC' : 'host handling'
       assert.ok(
-        remote.ipc.p95 < 5,
-        `Warm native p95 ${remote.ipc.p95} ms at ${concurrency}`,
+        calls.p95 < CALL_P95_MS,
+        `Warm native ${boundary} p95 ${calls.p95} ms at ${concurrency}`,
       )
       assert.ok(
-        remote.ipc.p99 < 10,
-        `Warm native p99 ${remote.ipc.p99} ms at ${concurrency}`,
+        calls.p99 < CALL_P99_MS,
+        `Warm native ${boundary} p99 ${calls.p99} ms at ${concurrency}`,
       )
       assert.ok(
-        remote.page.p95 - baseline.page.p95 <= 10,
+        remote.page.p95 - baseline.page.p95 <= VISIBLE_P95_ALLOWANCE_MS,
         `Page p95 regression ${remote.page.p95 - baseline.page.p95} ms at ${concurrency}`,
       )
+
+      const commands = concurrency === 1 ? [
+        'hydra',
+        'agent',
+      ] : [
+        'hydra',
+        'task-message',
+        'agent',
+      ]
+
+      for (const name of commands) {
+        const receipts = remote.receipts[name]
+        const previous = baseline.receipts[name]
+        assert.ok(receipts && previous)
+        assert.ok(
+          receipts.p95 - previous.p95 <= VISIBLE_P95_ALLOWANCE_MS,
+          `${name} receipt p95 regression ${receipts.p95 - previous.p95} ms at ${concurrency}`,
+        )
+      }
     }
   },
 )
