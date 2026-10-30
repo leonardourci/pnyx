@@ -1893,10 +1893,7 @@ export async function mountOwnedHydra({
             ref: args[0],
           })
           const config = hydraConfig({ state })
-          const effective = effectiveDispatch({
-            hydraId,
-            state,
-          })
+          const effective = effectiveDispatch()
           const receiving = card.id === HYDRA_CARD
             ? config.hydra.agent?.harness
               ?? effective.dispatch.rules.hydra?.candidates[0]?.harness

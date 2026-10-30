@@ -1,17 +1,16 @@
-import { loadHydra } from '#app/store.ts'
 import assert from 'node:assert/strict'
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, utimesSync, writeFileSync } from 'node:fs'
 import { homedir, tmpdir } from 'node:os'
-import { join } from 'node:path'
+import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra } from '#app/reducer.ts'
-import { configPath, effectiveDispatch, onTemplate, parseDispatch, readTemplate, writeConfig, type EffectiveDispatch } from './dispatch-config.ts'
+import { configPath, effectiveDispatch, type EffectiveDispatch } from './dispatch-config.ts'
+import { hydraDir } from '#app/home-migration.ts'
+import { withWriter } from '#app/writer.ts'
+import { base } from '#app/command-meta.ts'
 import { accountEnvironment, chooseCandidate, chosenSettings, hostedOverride, overrideOf, validateChoice, type QuotaReading } from './dispatch.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
-import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
 import { commands } from '#app/cli.ts'
-
-const TEMPLATE_DISPATCH = parseDispatch({ value: readTemplate() })
 
 // Keeps the default-login fallback away from the real harness logins.
 const noLogin = join(
@@ -29,6 +28,37 @@ process.env.CODEX_HOME = join(
   noLogin,
   'codex',
 )
+
+function writeShared({
+  value,
+  accounts = false,
+}: {
+  value: unknown
+  accounts?: boolean
+}): void {
+  mkdirSync(
+    dirname(configPath({ accounts })),
+    { recursive: true },
+  )
+  writeFileSync(
+    configPath({ accounts }),
+    JSON.stringify(value),
+  )
+}
+
+function setLogin({
+  name,
+  value,
+}: {
+  name: string
+  value?: string
+}): void {
+  if (value === undefined) {
+    delete process.env[name]
+  } else {
+    process.env[name] = value
+  }
+}
 
 function config(): EffectiveDispatch {
   return {
@@ -144,102 +174,226 @@ function lab() {
 }
 
 test(
-  'sections inherit shared config; nonempty local sections replace whole sections',
+  'each Hydra’s own dispatch, accounts and old agents merge into the shared files once, newest last, and the shared Hydra pin wins',
   () => {
-    const {
-      root,
-      state,
-    } = lab()
-    fakeDispatch({ root })
-    writeConfig({
-      path: configPath({
-        hydraId: 'lab',
-        shared: true,
-      }),
-      value: TEMPLATE_DISPATCH,
-    })
-    writeConfig({
-      path: configPath({ hydraId: 'lab' }),
-      value: {
-        rules: {},
-        default: [],
-        workers: {},
-        projects: {},
-        main: '',
+    const { root } = lab()
+    commands.hydra([
+      'create',
+      'other',
+    ])
+    commands.hydra([
+      'create',
+      'old',
+    ])
+    const shared = {
+      main: 'claude:shared',
+      rules: {
+        hydra: {
+          when: 'Hydra',
+          candidates: [
+            {
+              harness: 'claude',
+              model: 'claude-opus-5-5',
+            },
+          ],
+        },
       },
+    }
+    const sharedAccounts = {
+      accounts: {
+        'claude:shared': {
+          provider: 'claude',
+          folder: root,
+        },
+      },
+    }
+    writeShared({ value: shared })
+    writeShared({
+      accounts: true,
+      value: sharedAccounts,
     })
-    let effective = effectiveDispatch({
-      hydraId: 'lab',
-      state,
-    })
-    assert.deepEqual(
-      effective.dispatch,
-      TEMPLATE_DISPATCH,
-    )
-    writeConfig({
-      path: configPath({ hydraId: 'lab' }),
+
+    const own = ({
+      hydraId,
+      file,
+      value,
+    }: {
+      hydraId: string
+      file: string
+      value: unknown
+    }) => {
+      const path = join(
+        hydraDir({ hydraId }),
+        file,
+      )
+      writeFileSync(
+        path,
+        JSON.stringify(value),
+      )
+
+      return path
+    }
+
+    const older = new Date(Date.now() - 60_000)
+
+    for (const path of [
+      own({
+        hydraId: 'lab',
+        file: 'heads-dispatch.json',
+        value: {
+          rules: {
+            docs: {
+              when: 'Documentation',
+              candidates: [{ harness: 'codex' }],
+            },
+            hydra: {
+              when: 'Hydra',
+              candidates: [{ harness: 'codex' }],
+            },
+          },
+          workers: { codex: ['codex:lab'] },
+          main: '',
+        },
+      }),
+      own({
+        hydraId: 'lab',
+        file: 'accounts.json',
+        value: {
+          accounts: {
+            'codex:lab': {
+              provider: 'codex',
+              folder: root,
+            },
+          },
+        },
+      }),
+    ]) {
+      utimesSync(
+        path,
+        older,
+        older,
+      )
+    }
+
+    const newest = own({
+      hydraId: 'other',
+      file: 'heads-dispatch.json',
       value: {
         rules: {
           docs: {
-            when: 'Documentation',
-            candidates: [{ harness: 'codex' }],
+            when: 'Docs, as the newest Hydra set them',
+            candidates: [{ harness: 'claude' }],
           },
         },
-        workers: { codex: ['codex:test'] },
+        default: [{ harness: 'codex' }],
       },
     })
-    effective = effectiveDispatch({
-      hydraId: 'lab',
-      state,
+    withWriter({
+      hydraId: 'old',
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            ...base({
+              state: writer.state,
+              meta: {
+                at: older.toISOString(),
+                actor: 'cli',
+              },
+              cardId: '$board',
+            }),
+            type: 'board.agents',
+            data: {
+              agents: {
+                review: {
+                  harness: 'claude',
+                  model: 'claude-sonnet-5-5',
+                  quota: 'high',
+                },
+              },
+              before: {},
+            },
+          },
+        })
+      },
     })
+    const {
+      dispatch,
+      accounts,
+    } = effectiveDispatch()
     assert.deepEqual(
-      Object.keys(effective.dispatch.rules),
-      ['docs'],
+      dispatch.rules,
+      {
+        hydra: {
+          when: 'Hydra',
+          candidates: [
+            {
+              harness: 'claude',
+              model: 'claude-opus-5-5',
+            },
+          ],
+        },
+        docs: {
+          when: 'Docs, as the newest Hydra set them',
+          candidates: [{ harness: 'claude' }],
+        },
+        review: {
+          when: 'Use for review work',
+          candidates: [
+            {
+              harness: 'claude',
+              model: 'claude-sonnet-5-5',
+            },
+          ],
+        },
+      },
     )
     assert.deepEqual(
-      effective.dispatch.default,
-      TEMPLATE_DISPATCH.default,
+      dispatch.default,
+      [{ harness: 'codex' }],
     )
-    assert.deepEqual(
-      effective.dispatch.workers,
-      { codex: ['codex:test'] },
-    )
-    writeConfig({
-      path: configPath({
-        hydraId: 'lab',
-        accounts: true,
-      }),
-      accounts: true,
-      value: { accounts: {} },
-    })
     assert.equal(
-      Object.keys(effectiveDispatch({
-        hydraId: 'lab',
-        state,
-      }).accounts).length,
-      2,
+      dispatch.main,
+      'claude:shared',
     )
-    writeConfig({
-      path: configPath({
-        hydraId: 'lab',
-        accounts: true,
-      }),
-      accounts: true,
-      value: {
-        accounts: {
-          only: {
-            provider: 'codex',
-            folder: root,
-          },
-        },
-      },
+    assert.deepEqual(
+      dispatch.workers,
+      { codex: ['codex:lab'] },
+    )
+    assert.deepEqual(
+      Object.keys(accounts).sort(),
+      [
+        'claude:shared',
+        'codex:lab',
+      ],
+    )
+    assert.ok(existsSync(`${newest}.merged`))
+    assert.ok(!existsSync(newest))
+    assert.ok(existsSync(join(
+      hydraDir({ hydraId: 'lab' }),
+      'accounts.json.merged',
+    )))
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        `${configPath()}.before-merge`,
+        'utf8',
+      )),
+      shared,
+    )
+    assert.deepEqual(
+      JSON.parse(readFileSync(
+        `${configPath({ accounts: true })}.before-merge`,
+        'utf8',
+      )),
+      sharedAccounts,
+    )
+    own({
+      hydraId: 'other',
+      file: 'heads-dispatch.json',
+      value: { default: [{ harness: 'claude' }] },
     })
     assert.deepEqual(
-      Object.keys(effectiveDispatch({
-        hydraId: 'lab',
-        state,
-      }).accounts),
-      ['only'],
+      effectiveDispatch().dispatch.default,
+      [{ harness: 'codex' }],
     )
   },
 )
@@ -323,34 +477,30 @@ test(
 )
 
 test(
-  'a genuine spendPriority tie stops the start and names every tied candidate',
+  'on a spendPriority tie or with every quota unknown, the first listed candidate starts',
   () => {
     const current = config(), quota = () => reading({
       remaining: 50,
       priority: 0.4,
     })
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota,
-      }),
-      (error: Error & { code?: string }) =>
-        error.code === 'DISPATCH_TIE' && /claude\/opus on claude:work, codex\/gpt-6\.1-sol on codex:work tie at spendPriority 0\.4/.test(error.message),
+    const tied = chooseCandidate({
+      config: current,
+      rule: 'build',
+      quota,
+    })
+    assert.equal(
+      tied.provider,
+      'claude',
     )
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota,
-      }),
-      (error: Error & { help?: string[] }) => /Pick one with --harness claude\|codex/.test(error.help?.[0] ?? ''),
+    assert.match(
+      tied.reason,
+      /tie at spendPriority 0\.4; first listed candidate/,
     )
+    current.dispatch.rules.build!.candidates.reverse()
     assert.equal(
       chooseCandidate({
         config: current,
         rule: 'build',
-        harness: 'codex',
         quota,
       }).provider,
       'codex',
@@ -358,21 +508,25 @@ test(
     current.dispatch.rules.build!.candidates = [
       {
         harness: 'claude',
-        model: 'opus',
+        model: 'sonnet',
       },
       {
         harness: 'claude',
-        model: 'sonnet',
+        model: 'opus',
       },
     ]
-    assert.throws(
-      () => chooseCandidate({
-        config: current,
-        rule: 'build',
-        quota: () => ({ auth: 'unknown' }),
-      }),
-      (error: Error & { help?: string[] }) =>
-        /all have unknown quota/.test(error.message) && /split rule build/.test(error.help?.[0] ?? ''),
+    const unknown = chooseCandidate({
+      config: current,
+      rule: 'build',
+      quota: () => ({ auth: 'unknown' }),
+    })
+    assert.equal(
+      unknown.candidate.model,
+      'sonnet',
+    )
+    assert.match(
+      unknown.reason,
+      /quota unknown; first listed candidate/,
     )
   },
 )
@@ -571,7 +725,7 @@ test(
 )
 
 test(
-  'unknown and stale quotas are usable and recorded as unknown, but never chosen between',
+  'unknown and stale quotas are usable and recorded as unknown, and list order chooses between them',
   () => {
   // readQuota drops a stale account window, so only the stale model row is left.
     for (const quota of [
@@ -602,13 +756,13 @@ test(
         chosen.reason,
         /0%/,
       )
-      assert.throws(
-        () => chooseCandidate({
+      assert.equal(
+        chooseCandidate({
           config: config(),
           rule: 'build',
           quota,
-        }),
-        /no single best candidate.*all have unknown quota/,
+        }).candidate.model,
+        'opus',
       )
     }
   },
@@ -894,7 +1048,7 @@ test(
     )
     assert.throws(
       () => overrideOf({ value: { fast: 'yes' } }),
-      /fast must be boolean/,
+      /fast must be true or false/,
     )
     assert.equal(
       overrideOf({ value: {} }),
@@ -930,10 +1084,7 @@ test(
 test(
   'with no registered accounts, dispatch falls back to the harnesses’ own logins',
   () => {
-    const {
-      root,
-      state,
-    } = lab()
+    const { root } = lab()
     const claude = join(
       root,
       'claude',
@@ -942,10 +1093,7 @@ test(
     process.env.CLAUDE_CONFIG_DIR = claude
 
     try {
-      const effective = effectiveDispatch({
-        hydraId: 'lab',
-        state,
-      })
+      const effective = effectiveDispatch()
       assert.deepEqual(
         effective.accounts,
         {
@@ -981,19 +1129,12 @@ test(
         }).folder,
         claude,
       )
-      writeConfig({
-        path: configPath({
-          hydraId: 'lab',
-          shared: true,
-        }),
+      writeShared({
         value: { main: 'claude:work' },
       })
       assert.throws(
         () => chooseCandidate({
-          config: effectiveDispatch({
-            hydraId: 'lab',
-            state,
-          }),
+          config: effectiveDispatch(),
           quota: () => ({ auth: 'unknown' }),
         }),
         /registered main account/,
@@ -1009,10 +1150,7 @@ test(
         'lab',
       ])
       assert.deepEqual(
-        Object.keys(effectiveDispatch({
-          hydraId: 'lab',
-          state,
-        }).accounts),
+        Object.keys(effectiveDispatch().accounts),
         ['claude:work'],
       )
     } finally {
@@ -1054,142 +1192,149 @@ test(
 )
 
 test(
-  'a Hydra dispatch file alone ends the template nudge',
+  'rule init takes login folders from CLAUDE_CONFIG_DIR and CODEX_HOME, keeps a file that exists and never replaces a saved document',
   () => {
-    lab()
-    const { state } = loadHydra({ hydraId: 'lab' })
-    writeConfig({
-      path: configPath({ hydraId: 'lab' }),
-      value: { default: [{ harness: 'codex' }] },
-    })
-    assert.equal(
-      onTemplate({
-        hydraId: 'lab',
-        state,
-      }),
-      false,
-    )
-  },
-)
-
-test(
-  'a Hydra pin is Pnyx-wide: it wins over another Hydra\'s copy and starts new Hydras',
-  () => {
-    lab()
-    commands.hydra([
-      'create',
-      'other',
-    ])
-    writeConfig({
-      path: configPath({ hydraId: 'other' }),
-      value: {
-        rules: {
-          hydra: {
-            when: 'Hydra',
-            candidates: [
-              {
-                harness: 'codex',
-                model: 'gpt-6-luna',
-              },
-            ],
-          },
+    const accountsFile = () => JSON.parse(readFileSync(
+      configPath({ accounts: true }),
+      'utf8',
+    )) as unknown
+    const registry = ({
+      claude,
+      codex,
+    }: {
+      claude: string
+      codex: string
+    }) => ({
+      accounts: {
+        'claude:personal': {
+          provider: 'claude',
+          folder: claude,
+        },
+        'codex:personal': {
+          provider: 'codex',
+          folder: codex,
         },
       },
     })
-    dispatchCommands.rule([
-      'set',
-      'hydra',
-      '--harness',
-      'claude',
-      '--model',
-      'claude-opus-5-5',
-      '--effort',
-      'high',
-      '--mode',
-      'plan',
-      '--fast',
-      'on',
-      '--hydra',
-      'lab',
-    ])
-    commands.hydra([
-      'create',
-      'fresh',
-    ])
-    const pin = {
-      harness: 'claude',
-      model: 'claude-opus-5-5',
-      effort: 'high',
-      mode: 'plan',
-      fast: true,
-    }
 
-    for (const hydraId of [
-      'lab',
-      'other',
-      'fresh',
-    ]) {
-      const effective = effectiveDispatch({
-        hydraId,
-        state: loadHydra({ hydraId }).state,
-      })
+    try {
+      for (const [
+        claude,
+        codex,
+        expected,
+      ] of [
+          [
+            undefined,
+            undefined,
+            [
+              '~/.claude',
+              '~/.codex',
+            ],
+          ],
+          [
+            '',
+            '',
+            [
+              '~/.claude',
+              '~/.codex',
+            ],
+          ],
+          [
+            '/logins/claude',
+            undefined,
+            [
+              '/logins/claude',
+              '~/.codex',
+            ],
+          ],
+          [
+            '/logins/claude',
+            '/logins/codex',
+            [
+              '/logins/claude',
+              '/logins/codex',
+            ],
+          ],
+        ] as const) {
+        lab()
+        setLogin({
+          name: 'CLAUDE_CONFIG_DIR',
+          value: claude,
+        })
+        setLogin({
+          name: 'CODEX_HOME',
+          value: codex,
+        })
+        dispatchCommands.rule([
+          'init',
+          '--hydra',
+          'lab',
+        ])
+        assert.deepEqual(
+          accountsFile(),
+          registry({
+            claude: expected[0],
+            codex: expected[1],
+          }),
+        )
+      }
+
+      const dispatch = readFileSync(
+        configPath(),
+        'utf8',
+      )
+      process.env.CLAUDE_CONFIG_DIR = '/logins/other'
+      dispatchCommands.rule([
+        'init',
+        '--hydra',
+        'lab',
+      ])
+      assert.equal(
+        readFileSync(
+          configPath(),
+          'utf8',
+        ),
+        dispatch,
+      )
       assert.deepEqual(
-        effective.dispatch.rules.hydra?.candidates,
-        [pin],
-        hydraId,
+        accountsFile(),
+        registry({
+          claude: '/logins/claude',
+          codex: '/logins/codex',
+        }),
+      )
+      lab()
+      const mine = {
+        accounts: {
+          'claude:mine': {
+            provider: 'claude',
+            folder: '~/.claude-mine',
+          },
+        },
+      }
+      writeShared({
+        accounts: true,
+        value: mine,
+      })
+      dispatchCommands.rule([
+        'init',
+        '--hydra',
+        'lab',
+      ])
+      assert.deepEqual(
+        accountsFile(),
+        mine,
+      )
+    } finally {
+      process.env.CLAUDE_CONFIG_DIR = join(
+        noLogin,
+        'claude',
+      )
+      process.env.CODEX_HOME = join(
+        noLogin,
+        'codex',
       )
     }
-  },
-)
-
-test(
-  'rule init leaves existing shared files byte-identical',
-  () => {
-    lab()
-    const dispatch = configPath({
-      hydraId: 'lab',
-      shared: true,
-    })
-    const accounts = configPath({
-      hydraId: 'lab',
-      shared: true,
-      accounts: true,
-    })
-    mkdirSync(
-      join(
-        dispatch,
-        '..',
-      ),
-      { recursive: true },
-    )
-    writeFileSync(
-      dispatch,
-      '{"main":"claude:mine"}',
-    )
-    writeFileSync(
-      accounts,
-      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
-    )
-    dispatchCommands.rule([
-      'init',
-      '--shared',
-      '--hydra',
-      'lab',
-    ])
-    assert.equal(
-      readFileSync(
-        dispatch,
-        'utf8',
-      ),
-      '{"main":"claude:mine"}',
-    )
-    assert.equal(
-      readFileSync(
-        accounts,
-        'utf8',
-      ),
-      '{"accounts":{"claude:mine":{"provider":"claude","folder":"~/.claude-mine"}}}',
-    )
   },
 )
 

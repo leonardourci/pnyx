@@ -18,7 +18,7 @@ Setup of hooks, skills and the login service changes user-wide configuration. If
 
 ## Rows
 
-- `config`: no local dispatch rules or account registry. Run `pnyx-axi rule init --shared --hydra <hydra> --reason "first-run setup"` yourself; it only creates missing files. It registers starter accounts using `CLAUDE_CONFIG_DIR` and `CODEX_HOME` from the command's environment when set, or the template's folders otherwise; any whose login folder is missing show up as `account:<name>` rows next time.
+- `config`: no local dispatch rules or account registry. Run `pnyx-axi rule init --hydra <hydra> --reason "first-run setup"` yourself; it saves the templates only when nothing is saved yet and keeps a file that exists. It registers starter accounts using `CLAUDE_CONFIG_DIR` and `CODEX_HOME` from the command's environment when set, or the template's folders otherwise; any whose login folder is missing show up as `account:<name>` rows next time.
 - `account:<name>`: a registered account's login folder does not exist. Ask the owner whether they use that account. If they do, they sign in with that folder; if not, run the `pnyx-axi account remove` command the row names so the owner confirms its removal.
 - `login:claude`, `login:codex`: the rules name a harness with no login. Ask the owner to sign in to it; Pnyx only stores login folders. When accounts are registered, the row also names an `account set` command: run it with the folder the owner signed in to, so the owner confirms it. If they do not use that harness, propose rules without it (`rule propose set`).
 - `hooks`: the reporting hooks are not installed for this Pnyx home. Run `pnyx-axi setup hooks --hydra <hydra>`; the owner confirms it. Codex then asks the owner to trust the new hooks once with `/hooks`.

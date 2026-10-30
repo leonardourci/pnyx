@@ -1,16 +1,16 @@
-import { saveOrPropose, resolveProposal } from './dispatch-proposals.ts'
-import { existsSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
-import { isDeepStrictEqual } from 'node:util'
 import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-support.ts'
-import { runsInBypass } from '#hydra/hydra-session.ts'
+import { ApplyError } from '#app/apply/schema.ts'
+import { parseApplyJson } from '#app/apply/json.ts'
 import { loadHydra, requireHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
-import { candidates, configPath, effectiveDispatch, HYDRA_RULE, invalid, legacyDispatch, name, parseAccounts, parseDispatch, onTemplate, readConfig, readTemplate, templateAccounts, templateRules, writeConfig, type Candidate, type Harness } from './dispatch-config.ts'
+import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
+import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
+import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
 
 const OPTIONS = {
   ...WRITE,
-  shared: { type: 'boolean' },
   when: { type: 'string' },
   candidates: { type: 'string' },
   harness: { type: 'string' },
@@ -23,7 +23,189 @@ const OPTIONS = {
   order: { type: 'string' },
   project: { type: 'string' },
   folder: { type: 'string' },
+  file: { type: 'string' },
+  check: { type: 'boolean' },
+  propose: { type: 'boolean' },
 } as const
+
+type Values = Record<string, string | boolean | undefined>
+
+const EXAMPLE = {
+  version: 1,
+  expected: { revision: 3 },
+  patch: {
+    rules: {
+      build: {
+        candidates: [
+          {
+            harness: 'claude',
+            model: 'claude-opus-5-5',
+            effort: 'high',
+          },
+          {
+            harness: 'codex',
+            model: 'gpt-6.1-sol',
+            effort: 'high',
+          },
+        ],
+      },
+      docs: null,
+    },
+    accounts: {
+      'codex:work': {
+        provider: 'codex',
+        folder: '~/.codex-work',
+      },
+    },
+    workers: { codex: ['codex:work'] },
+  },
+}
+
+function checkedName({ value }: { value: string }): string {
+  if (!NAME.test(value)) {
+    invalid({ message: NAME_RULE })
+  }
+
+  return value
+}
+
+function apply({
+  hydraId,
+  patch,
+  values,
+  propose,
+  summary,
+}: {
+  hydraId: string
+  patch: Record<string, unknown>
+  values: Values
+  propose: boolean
+  summary: string
+}): Output {
+  return applyDispatch({
+    hydraId,
+    envelope: {
+      version: 1,
+      patch,
+    },
+    meta: meta({ values }),
+    check: Boolean(values.check),
+    proposeIt: propose,
+    summary,
+  })
+}
+
+// Single-candidate flags edit a rule's first candidate and keep its fallbacks.
+function candidateList({
+  values,
+  existing,
+}: {
+  values: Values
+  existing: Candidate[]
+}): Candidate[] {
+  if (values.candidates !== undefined) {
+    try {
+      return candidates({ value: JSON.parse(String(values.candidates)) })
+    } catch {
+      return invalid({ message: '--candidates must be a JSON array of harness/model/effort candidates' })
+    }
+  }
+
+  const first = existing[0]
+  const harness = (values.harness ?? first?.harness ?? 'claude') as Harness
+  const agent: Candidate = first?.harness === harness ? structuredClone(first) : { harness }
+
+  for (const field of [
+    'model',
+    'effort',
+    'mode',
+  ] as const) {
+    if (values[field] === '') {
+      delete agent[field]
+    } else if (values[field] !== undefined) {
+      agent[field] = String(values[field])
+    }
+  }
+
+  if (values.fast === 'default') {
+    delete agent.fast
+  } else if (values.fast !== undefined) {
+    if (values.fast !== 'on' && values.fast !== 'off') {
+      invalid({ message: '--fast must be on, off or default' })
+    }
+
+    agent.fast = values.fast === 'on'
+  }
+
+  return [
+    agent,
+    ...existing.slice(1),
+  ]
+}
+
+// A removed account leaves every account order too; the main account still needs a new main first.
+function withoutAccount({
+  document,
+  name,
+}: {
+  document: DispatchDocument
+  name: string
+}): Record<string, unknown> {
+  const without = ({ order }: { order: AccountOrder }) => Object.fromEntries(Object.entries(order)
+    .filter(([
+      , names,
+    ]) => names?.includes(name))
+    .map(([
+      harness,
+      names,
+    ]) => {
+      const kept = names!.filter(item => item !== name)
+
+      return [
+        harness,
+        kept.length ? kept : null,
+      ]
+    }))
+
+  return {
+    accounts: { [name]: null },
+    workers: without({ order: document.workers }),
+    projects: Object.fromEntries(Object.entries(document.projects).map(([
+      path,
+      order,
+    ]) => [
+      path,
+      without({ order }),
+    ])),
+  }
+}
+
+function readPatchFile({ file }: { file: string }): unknown {
+  try {
+    return parseApplyJson({
+      contents: readFileSync(
+        file === '-' ? 0 : file,
+        'utf8',
+      ),
+    })
+  } catch (error) {
+    if (error instanceof ApplyError) {
+      throw error
+    }
+
+    throw new ApplyError({
+      errors: [
+        {
+          operation: null,
+          path: '/file',
+          code: 'VALIDATION_ERROR',
+          reason: error instanceof Error ? error.message : String(error),
+        },
+      ],
+      help: DISPATCH_HELP_LINE,
+    })
+  }
+}
 
 function ruleCommand({ args }: { args: string[] }): Output {
   const propose = args[0] === 'propose'
@@ -44,7 +226,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
     'remove',
     'accounts',
   ].includes(action)) {
-    return invalid({ message: 'Use rule propose set|remove|accounts with the change arguments' })
+    return invalid({ message: 'Use rule propose set|remove|accounts with the change arguments, or rule apply --propose' })
   }
 
   if (action === 'confirm' || action === 'dismiss') {
@@ -56,255 +238,192 @@ function ruleCommand({ args }: { args: string[] }): Output {
         what: 'proposal token',
       }),
       confirm: values.confirm as string | undefined,
-      values,
+      meta: meta({ values }),
     })
   }
 
-  const state = loadHydra({ hydraId }).state
-
   if (action === 'list') {
+    const { state } = loadHydra({ hydraId })
+    const help = [
+      'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
+      'Run `pnyx-axi rule show` for the editable document and its revision',
+    ]
+
+    if (onTemplate()) {
+      help.push(TEMPLATE_NUDGE)
+    }
+
     return {
       hydraId,
-      ...effectiveDispatch({
-        hydraId,
-        state,
-      }),
-      help: [
-        'Hydra chooses a rule; task start --rule <name> selects a usable candidate without downgrading',
-        ...(onTemplate({
-          hydraId,
-          state,
-        }) ? [TEMPLATE_NUDGE] : []),
-      ],
+      ...effectiveDispatch(),
+      proposals: proposalStatus({ state }),
+      help,
     }
   }
 
-  const editsHydraRule = (action === 'set' || action === 'remove') && positionals[1] === HYDRA_RULE
-  const shared = Boolean(values.shared) || editsHydraRule
-  const path = configPath({
-    hydraId,
-    shared,
-  })
+  if (action === 'show') {
+    // Both under the lock, so a patch built on this document never carries a newer revision.
+    const {
+      document,
+      revision,
+    } = withRegistryLock({
+      fn: () => ({
+        document: lockedDocument(),
+        revision: dispatchRevision(),
+      }),
+    })
 
-  if (!shared) {
-    requireHydra({ hydraId })
+    return {
+      revision,
+      document,
+      issues: dispatchIssues({ document }).map(found => `${found.level} ${found.path}: ${found.problem}`),
+      help: ['Change it with `pnyx-axi rule apply --file <patch.json> --check`, then without --check (Hydra: --propose)'],
+    }
   }
 
-  return withRegistryLock({
-    fn: () => {
-      const before = parseDispatch({ value: readConfig({ path }) })
-      const next = structuredClone(!shared && !existsSync(path)
-        ? {
-          ...legacyDispatch({ state }),
-          ...before,
-        } : before)
-      const inherited = shared
-        ? {
-          ...templateRules(),
-          workers: {},
-          projects: {},
-          ...before,
-        }
-        : effectiveDispatch({
-          hydraId,
-          state,
-        }).dispatch
-
-      if (action === 'migrate' || (action === 'init' && !shared)) {
-        const hydraMustPropose = meta({ values }).actor === 'hydra' && !runsInBypass({ hydraId })
-
-        if (propose || hydraMustPropose) {
-          return invalid({ message: 'Propose a rule set, remove or accounts change instead' })
-        }
-      }
-
-      if (action === 'init') {
-        const accountPath = configPath({
-          hydraId,
-          accounts: true,
-          shared,
-        })
-
-        if (!existsSync(path)) {
-          writeConfig({
-            path,
-            value: readTemplate(),
-          })
-        }
-
-        if (!existsSync(accountPath)) {
-          writeConfig({
-            path: accountPath,
-            value: templateAccounts(),
-            accounts: true,
-          })
-        }
-
-        return {
-          dispatch: path,
-          accounts: accountPath,
-          help: ['Edit login folders and remove accounts you do not use before starting workers; Pnyx stores no credentials'],
-        }
-      }
-
-      if (action === 'migrate') {
-        if (shared) {
-          invalid({ message: 'legacy agents belong to a Hydra; migrate without --shared' })
-        }
-
-        if (existsSync(path)) {
-          return { event: 'none: heads dispatch file already exists' }
-        }
-
-        writeConfig({
-          path,
-          value: legacyDispatch({ state }),
-        })
-
-        return { migrated: path }
-      }
-
-      if (action === 'accounts') {
-        if (values.main !== undefined) {
-          next.main = String(values.main)
-        }
-
-        if (values.provider !== undefined || values.order !== undefined) {
-          const provider = required({
-            value: values.provider as string | undefined,
-            what: '--provider',
-          })
-
-          if (provider !== 'claude' && provider !== 'codex') {
-            invalid({ message: '--provider must be claude or codex' })
-          }
-
-          const list = required({
-            value: values.order as string | undefined,
-            what: '--order (comma-separated account names)',
-          }).split(',')
-            .map(value => name({ value: value.trim() }))
-
-          if (values.project) {
-            const projects = inherited.projects
-            next.projects = Object.keys(next.projects ?? {}).length
-              ? next.projects ?? {} : structuredClone(projects)
-            const project = String(values.project)
-            next.projects[project] = {
-              ...next.projects[project],
-              [provider]: list,
-            }
-          } else {
-            next.workers = Object.keys(next.workers ?? {}).length
-              ? next.workers ?? {} : structuredClone(inherited.workers)
-            next.workers[provider as Harness] = list
-          }
-        }
-      } else if (action === 'set' || action === 'remove') {
-        const key = name({
-          value: required({
-            value: positionals[1],
-            what: 'rule name',
+  if (action === 'schema') {
+    return {
+      document: 'rules{<name>:{when,candidates[]}}, default[], main, workers{claude[],codex[]}, projects{<absolute path>:{claude[],codex[]}}, accounts{<name>:{provider,folder}}',
+      required: 'rules, workers, projects and accounts are objects that may be empty; default lists at least one candidate; main is optional',
+      names: 'main and account orders name registered accounts of the matching provider; with no registered accounts, only claude:default and codex:default, the harnesses\' own logins',
+      candidate: '{harness, model?, effort?, mode?, fast?}',
+      values: Object.fromEntries(HARNESSES.map(harness => [
+        harness,
+        {
+          effort: harnessValues({
+            harness,
+            setting: 'effort',
           }),
-        })
-        const effective = inherited
-        const rules = Object.keys(next.rules ?? {}).length
-          ? next.rules ?? {} : structuredClone(effective.rules)
+          mode: harnessValues({
+            harness,
+            setting: 'mode',
+          }),
+        },
+      ])),
+      apply: '{version:1, expected?:{revision}, patch}; patch is a JSON Merge Patch (RFC 7386): name only what changes, null removes a key, and a list replaces the whole list',
+      example: JSON.stringify(EXAMPLE),
+      help: ['Error paths point into the document the patch produces'],
+    }
+  }
 
-        if (action === 'remove') {
-          if (key === 'default') {
-            invalid({ message: 'the default list cannot be removed; set its candidates instead' })
-          }
-
-          delete rules[key]
-          next.rules = rules
-        } else {
-          const existing = key === 'default' ? effective.default : rules[key]?.candidates
-          let list: Candidate[]
-
-          if (values.candidates !== undefined) {
-            try {
-              list = candidates({ value: JSON.parse(String(values.candidates)) })
-            } catch {
-              return invalid({ message: '--candidates must be a JSON array of harness/model/effort candidates' })
-            }
-          } else {
-            const agent: Candidate = {
-              ...existing?.[0],
-              harness: (values.harness ?? existing?.[0]?.harness ?? 'claude') as Harness,
-            }
-
-            for (const field of [
-              'model',
-              'effort',
-              'mode',
-            ] as const) {
-              if (values[field] === '') {
-                delete agent[field]
-              } else if (values[field] !== undefined) {
-                agent[field] = String(values[field])
-              }
-            }
-
-            if (values.fast === 'default') {
-              delete agent.fast
-            } else if (values.fast !== undefined) {
-              if (values.fast !== 'on' && values.fast !== 'off') {
-                invalid({ message: '--fast must be on, off or default' })
-              }
-
-              agent.fast = values.fast === 'on'
-            }
-
-            list = candidates({ value: [agent] })
-          }
-
-          if (!list.length) {
-            invalid({ message: 'a rule needs at least one candidate' })
-          }
-
-          if (key === 'default') {
-            next.default = list
-          } else {
-            rules[key] = {
-              when: String(values.when ?? rules[key]?.when ?? `Use for ${key} work`),
-              candidates: list,
-            }
-            next.rules = rules
-          }
-        }
-      } else {
-        return invalid({ message: 'Use rule list, init, migrate, set, remove or accounts' })
-      }
-
-      if (isDeepStrictEqual(
-        before,
-        next,
-      )) {
-        return { event: 'none: unchanged' }
-      }
-
-      const proposal = saveOrPropose({
-        hydraId,
-        shared,
-        value: next,
-        values,
-        propose,
-        summary: `Rule ${action}${positionals[1] ? ` ${positionals[1]}` : ''}${shared ? ' (shared)' : ''}`,
-      })
-
-      if (proposal) {
-        return proposal
-      }
-
-      return {
-        saved: path,
-        ...effectiveDispatch({
-          hydraId,
-          state,
+  if (action === 'apply') {
+    const envelope = parseEnvelope({
+      value: readPatchFile({
+        file: required({
+          value: values.file as string | undefined,
+          what: '--file <path|->',
         }),
+      }),
+    })
+
+    return applyDispatch({
+      hydraId,
+      envelope,
+      meta: meta({ values }),
+      check: Boolean(values.check),
+      proposeIt: Boolean(values.propose),
+      summary: `Apply heads dispatch changes to ${Object.keys(envelope.patch).join(', ')}`,
+    })
+  }
+
+  if (action === 'init') {
+    return {
+      ...initConfig({ meta: meta({ values }) }),
+      help: ['Fix login folders and remove accounts you do not use with `pnyx-axi rule apply` before starting workers; Pnyx stores no credentials'],
+    }
+  }
+
+  requireHydra({ hydraId })
+  const document = savedDocument()
+
+  if (action === 'accounts') {
+    const patch: Record<string, unknown> = {}
+
+    if (values.main !== undefined) {
+      patch.main = String(values.main)
+    }
+
+    if (values.provider !== undefined || values.order !== undefined) {
+      const provider = required({
+        value: values.provider as string | undefined,
+        what: '--provider',
+      }) as Harness
+
+      if (!HARNESSES.includes(provider)) {
+        invalid({ message: '--provider must be claude or codex' })
       }
-    },
+
+      const order = {
+        [provider]: required({
+          value: values.order as string | undefined,
+          what: '--order (comma-separated account names)',
+        }).split(',')
+          .map(value => checkedName({ value: value.trim() })),
+      }
+
+      if (values.project) {
+        patch.projects = { [String(values.project)]: order }
+      } else {
+        patch.workers = order
+      }
+    }
+
+    return apply({
+      hydraId,
+      patch,
+      values,
+      propose,
+      summary: 'Rule accounts',
+    })
+  }
+
+  if (action !== 'set' && action !== 'remove') {
+    return invalid({ message: 'Use rule list, show, schema, apply, init, set, remove or accounts' })
+  }
+
+  const key = checkedName({
+    value: required({
+      value: positionals[1],
+      what: 'rule name',
+    }),
+  })
+
+  if (action === 'remove' && key === 'default') {
+    invalid({ message: 'the default list cannot be removed; set its candidates instead' })
+  }
+
+  const existing = key === 'default' ? document.default : document.rules[key]?.candidates ?? []
+  let patch: Record<string, unknown>
+
+  if (action === 'remove') {
+    patch = { rules: { [key]: null } }
+  } else if (key === 'default') {
+    patch = {
+      default: candidateList({
+        values,
+        existing,
+      }),
+    }
+  } else {
+    patch = {
+      rules: {
+        [key]: {
+          when: String(values.when ?? document.rules[key]?.when ?? `Use for ${key} work`),
+          candidates: candidateList({
+            values,
+            existing,
+          }),
+        },
+      },
+    }
+  }
+
+  return apply({
+    hydraId,
+    patch,
+    values,
+    propose,
+    summary: `Rule ${action} ${key}`,
   })
 }
 
@@ -321,87 +440,50 @@ function accountCommand({ args }: { args: string[] }): Output {
     positionals: 2,
   })
   const action = positionals[0] ?? 'list'
-  const state = loadHydra({ hydraId }).state
 
   if (action === 'list') {
     return {
       hydraId,
-      accounts: effectiveDispatch({
-        hydraId,
-        state,
-      }).accounts,
+      accounts: effectiveDispatch().accounts,
     }
   }
 
-  const path = configPath({
-    hydraId,
-    accounts: true,
-    shared: Boolean(values.shared),
+  requireHydra({ hydraId })
+  const key = checkedName({
+    value: required({
+      value: positionals[1],
+      what: 'account name',
+    }),
   })
 
-  if (!values.shared) {
-    requireHydra({ hydraId })
+  if (action !== 'set' && action !== 'remove') {
+    return invalid({ message: 'Use account list, set or remove' })
   }
 
-  return withRegistryLock({
-    fn: () => {
-      const file = parseAccounts({ value: readConfig({ path }) })
-
-      if (!Object.keys(file.accounts).length && !values.shared) {
-        const shared = configPath({
-          hydraId,
-          accounts: true,
-          shared: true,
-        })
-        file.accounts = parseAccounts({ value: readConfig({ path: shared }) }).accounts
-      }
-
-      const key = name({
-        value: required({
-          value: positionals[1],
-          what: 'account name',
+  const patch: Record<string, unknown> = action === 'remove' ? withoutAccount({
+    document: savedDocument(),
+    name: key,
+  }) : {
+    accounts: {
+      [key]: {
+        provider: required({
+          value: values.provider as string | undefined,
+          what: '--provider',
         }),
-      })
-
-      if (action === 'remove') {
-        delete file.accounts[key]
-      } else if (action === 'set') {
-        file.accounts[key] = {
-          provider: required({
-            value: values.provider as string | undefined,
-            what: '--provider',
-          }) as Harness,
-          folder: required({
-            value: values.folder as string | undefined,
-            what: '--folder',
-          }),
-        }
-      } else {
-        return invalid({ message: 'Use account list, set or remove' })
-      }
-
-      const proposal = saveOrPropose({
-        hydraId,
-        shared: Boolean(values.shared),
-        accounts: true,
-        value: file,
-        values,
-        propose,
-        summary: `Account ${action} ${key}${values.shared ? ' (shared)' : ''}`,
-      })
-
-      if (proposal) {
-        return proposal
-      }
-
-      return {
-        saved: path,
-        accounts: effectiveDispatch({
-          hydraId,
-          state,
-        }).accounts,
-      }
+        folder: required({
+          value: values.folder as string | undefined,
+          what: '--folder',
+        }),
+      },
     },
+  }
+
+  return apply({
+    hydraId,
+    patch,
+    values,
+    propose,
+    summary: `Account ${action} ${key}`,
   })
 }
 
@@ -410,18 +492,20 @@ export const dispatchCommands = {
   account: guard({ handler: accountCommand }),
 }
 export const DISPATCH_HELP = {
-  rule: `usage: pnyx-axi rule list|init|migrate [--shared]
-pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>' [--shared]
+  rule: `usage: pnyx-axi rule list|show|schema|init
+pnyx-axi rule apply --file <patch.json|-> [--check] [--propose] [--if-revision <revision>] [--event-id <id>]
+pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>'
 pnyx-axi rule set <name> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
 pnyx-axi rule propose set|remove|accounts <same arguments>
 pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
-pnyx-axi rule remove <name> [--shared]
-pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>] [--shared]
-rule init takes login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set, otherwise the template.
-Existing files are preserved. Empty sections inherit the shared file. The hydra rule, Hydra's own pinned agent, is Pnyx-wide: set and remove always write it to the shared file, where it wins over any Hydra's copy. Single-candidate flags replace a rule's candidate list. rule migrate preserves old agents as rules without changing the event log.`,
+pnyx-axi rule remove <name>
+pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <account,account>] [--project <absolute path>]
+Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders; every section but main is required. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
+rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}}, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra proposes outside bypass.
+set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
   account: `usage: pnyx-axi account list
-pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--shared]
+pnyx-axi account set <name> --provider claude|codex --folder <login folder>
 pnyx-axi account propose set|remove <same arguments>
-pnyx-axi account remove <name> [--shared]
-Only login folders are stored. Account order is set through rule accounts.`,
+pnyx-axi account remove <name>
+Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first. To remove the last account, rule apply one patch that also sets main to claude:default or codex:default.`,
 }

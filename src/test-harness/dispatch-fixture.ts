@@ -1,14 +1,8 @@
 import { chmodSync, mkdirSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { configPath, writeConfig } from '#workers/dispatch-config.ts'
+import { writeDocument } from '#workers/dispatch-config.ts'
 
-export function fakeDispatch({
-  root,
-  hydraId = 'lab',
-}: {
-  root: string
-  hydraId?: string
-}) {
+export function fakeDispatch({ root }: { root: string }) {
   const bin = join(
     root,
     'fake-bin',
@@ -60,14 +54,16 @@ else console.log(JSON.stringify({providers: [{provider, state: {status: 'fresh',
     0o755,
   )
   process.env.PATH = `${bin}:${process.env.PATH}`
-  writeConfig({
-    path: configPath({
-      hydraId,
-      accounts: true,
-      shared: true,
-    }),
-    accounts: true,
-    value: {
+  writeDocument({
+    document: {
+      rules: {},
+      main: 'claude:test',
+      default: [{ harness: 'claude' }],
+      workers: {
+        claude: ['claude:test'],
+        codex: ['codex:test'],
+      },
+      projects: {},
       accounts: {
         'claude:test': {
           provider: 'claude',
@@ -77,20 +73,6 @@ else console.log(JSON.stringify({providers: [{provider, state: {status: 'fresh',
           provider: 'codex',
           folder: codex,
         },
-      },
-    },
-  })
-  writeConfig({
-    path: configPath({
-      hydraId,
-      shared: true,
-    }),
-    value: {
-      main: 'claude:test',
-      default: [{ harness: 'claude' }],
-      workers: {
-        claude: ['claude:test'],
-        codex: ['codex:test'],
       },
     },
   })

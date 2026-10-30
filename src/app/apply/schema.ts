@@ -14,11 +14,17 @@ export interface ApplyIssue {
 
 export class ApplyError extends AxiError {
   readonly errors: ApplyIssue[]
-  constructor({ errors }: { errors: ApplyIssue[] }) {
+  constructor({
+    errors,
+    help = ['Run `pnyx-axi apply --help`'],
+  }: {
+    errors: ApplyIssue[]
+    help?: string[]
+  }) {
     super(
       'Apply validation failed; nothing written',
       'VALIDATION_ERROR',
-      ['Run `pnyx-axi apply --help`'],
+      help,
     )
     this.errors = errors
   }

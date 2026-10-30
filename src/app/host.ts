@@ -2322,10 +2322,7 @@ export function createHost({
       harness,
       actor,
     }) => {
-      const effective = effectiveDispatch({
-        hydraId,
-        state: loadHydra({ hydraId }).state,
-      })
+      const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
         harness,
@@ -2349,10 +2346,7 @@ export function createHost({
     bound: helperBound,
     agentFor: () => {
       const state = loadHydra({ hydraId }).state
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
-      })
+      const effective = effectiveDispatch()
       const main = state.config?.hydra.agent
         ?? effective.dispatch.rules.hydra?.candidates[0]
         ?? effective.dispatch.default[0]
@@ -3150,11 +3144,7 @@ export function createHost({
       }
     },
     async models({ harness }) {
-      const state = loadHydra({ hydraId }).state
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
-      })
+      const effective = effectiveDispatch()
       const main = harnessAccount({
         effective,
         harness,
@@ -3258,10 +3248,7 @@ export function createHost({
       }
 
       const queuedState = loadHydra({ hydraId }).state
-      const queuedDispatch = effectiveDispatch({
-        hydraId,
-        state: queuedState,
-      }).dispatch
+      const queuedDispatch = effectiveDispatch().dispatch
       const requestedAgent = selected ?? queuedState.config?.hydra.agent
         ?? queuedDispatch.rules.hydra?.candidates[0] ?? queuedDispatch.default[0]
         ?? { harness: 'claude' as const }
@@ -3363,10 +3350,7 @@ export function createHost({
             })
           }
 
-          const effective = effectiveDispatch({
-            hydraId,
-            state,
-          })
+          const effective = effectiveDispatch()
           const candidate = requestedAgent
             ?? effective.dispatch.rules.hydra?.candidates[0]
             ?? effective.dispatch.default[0]
@@ -3873,10 +3857,7 @@ export function createHost({
       }
 
       const harness: Harness = agent.provider === 'codex' ? 'codex' : 'claude'
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
-      })
+      const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
         harness,

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync } from 'node:fs'
+import { mkdtempSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -8,6 +8,7 @@ import { ownerOnly } from '#hydra/hydra-session.ts'
 import { dispatchCommands } from './dispatch-cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
+import { effectiveDispatch } from './dispatch-config.ts'
 
 function lab() {
   const root = mkdtempSync(join(
@@ -91,6 +92,70 @@ test(
     assert.equal(
       loadHydra({ hydraId: 'lab' }).state.dispatchProposals?.length,
       2,
+    )
+  },
+)
+
+test(
+  'Hydra checks and proposes a dispatch patch itself, and a plain apply is refused with nothing saved',
+  () => {
+    const { root } = lab()
+    const hydra = ownerOnly({
+      commands: {
+        ...commands,
+        ...dispatchCommands,
+      },
+      env: { PNYX_ACTOR: 'hydra' },
+    })
+    const patch = join(
+      root,
+      'patch.json',
+    )
+    writeFileSync(
+      patch,
+      JSON.stringify({
+        version: 1,
+        patch: { default: [{ harness: 'codex' }] },
+      }),
+    )
+    const apply = ({ flags }: { flags: string[] }) => hydra.rule([
+      'apply',
+      '--file',
+      patch,
+      ...flags,
+      '--actor',
+      'hydra',
+      '--hydra',
+      'lab',
+    ]) as Record<string, unknown>
+    const proposals = () => loadHydra({ hydraId: 'lab' }).state.dispatchProposals ?? []
+    assert.equal(
+      apply({ flags: ['--check'] }).applied,
+      false,
+    )
+    assert.equal(
+      proposals().length,
+      0,
+    )
+    assert.throws(
+      () => apply({ flags: [] }),
+      { code: 'OWNER_ONLY' },
+    )
+    assert.equal(
+      proposals().length,
+      0,
+    )
+    assert.equal(
+      apply({ flags: ['--propose'] }).confirmation,
+      'needed',
+    )
+    assert.deepEqual(
+      proposals().map(proposal => proposal.kind),
+      ['dispatch'],
+    )
+    assert.deepEqual(
+      effectiveDispatch().dispatch.default,
+      [{ harness: 'claude' }],
     )
   },
 )

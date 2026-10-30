@@ -1,13 +1,16 @@
 import { useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
 import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
+import type { ProposalStatus } from '#workers/dispatch-apply.ts'
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
 import { installationScope } from '#web-shared/installation.ts'
+
+export type DispatchView = EffectiveDispatch & { proposals?: ProposalStatus[] }
 
 const dispatches = new Map<string, ReturnType<typeof createDispatch>>()
 
 function createDispatch({ scope }: { scope: string }) {
-  return createSettingsResource<EffectiveDispatch, Partial<AgentConfig>>({
+  return createSettingsResource<DispatchView, Partial<AgentConfig>>({
     scope,
     project: ({
       state,
@@ -32,7 +35,10 @@ function createDispatch({ scope }: { scope: string }) {
             ...state.dispatch.rules,
             hydra: {
               when: rule?.when ?? 'Hydra',
-              candidates: [candidate],
+              candidates: [
+                candidate,
+                ...rule?.candidates.slice(1) ?? [],
+              ],
             },
           },
         },
@@ -50,7 +56,7 @@ function createDispatch({ scope }: { scope: string }) {
       ]) =>
         candidate[key as keyof AgentConfig] === value)
     },
-    read: ({ receipt }) => receipt as unknown as EffectiveDispatch,
+    read: ({ receipt }) => 'dispatch' in receipt ? receipt as unknown as DispatchView : undefined,
   })
 }
 

@@ -278,7 +278,8 @@ export type SessionEvent = EventBase & {
 
 export interface DispatchProposal {
   token: string
-  kind: 'rule' | 'account' | 'command'
+  // rule and account proposals hold whole files from before heads dispatch took patches.
+  kind: 'dispatch' | 'rule' | 'account' | 'command'
   shared: boolean
   before: string
   value: string

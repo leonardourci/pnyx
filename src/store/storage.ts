@@ -234,10 +234,19 @@ export function acquireLock({
   })
 }
 
-export function withRegistryLock<T>({ fn }: { fn(): T }): T {
+export function withRegistryLock<T>({
+  fn,
+  timeout,
+}: {
+  fn(): T
+  timeout?: number
+}): T {
   const dir = pnyxHome()
   privateDir({ dir })
-  const release = acquireLock({ dir })
+  const release = acquireLock({
+    dir,
+    timeout,
+  })
 
   try {
     return fn()

@@ -3,9 +3,9 @@ import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
 import type { PlanWindow } from './provider.ts'
-import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { StartOverride } from './model.ts'
+import { offered, ONE_MILLION } from './dispatch-check.ts'
 import { candidates as parseCandidates, defaultLogin, effectiveDispatch, loginFolder, loginVariable, type Account, type Candidate, type EffectiveDispatch, type Harness, type HeadsDispatch } from './dispatch-config.ts'
 
 interface EffectiveQuota {
@@ -215,9 +215,6 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
   }
 }
 
-// Claude Code takes a 1M-context suffix on any model it lists, such as opus[1m].
-const ONE_MILLION = /\[1m\]$/
-
 export const ruleCandidates = ({
   dispatch,
   rule = 'default',
@@ -352,28 +349,11 @@ function exhausted({ effective }: { effective?: EffectiveQuota }): boolean {
   return effective?.runway?.status === 'exhausted_now' || (effective?.status === 'known' && effective.effectivePercentRemaining !== undefined && effective.effectivePercentRemaining <= 0)
 }
 
-const offered = ({
-  harness,
-  model,
-  available,
-}: {
-  harness: Harness
-  model: string
-  available: string[]
-}) =>
-  available.includes(harness === 'claude' ? model.replace(
-    ONE_MILLION,
-    '',
-  ) : model)
-
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
   const score = row.selection?.status === 'known' ? row.selection.spendPriority : undefined
 
   return typeof score === 'number' && Number.isFinite(score) ? score : undefined
 }
-
-const named = ({ choice }: { choice: Omit<DispatchChoice, 'reason'> }) =>
-  `${choice.provider}/${choice.override?.model ?? choice.candidate.model ?? 'default'} on ${choice.account}`
 
 const described = ({ override }: { override?: Override }) => Object.entries(override ?? {})
   .map(([
@@ -382,7 +362,27 @@ const described = ({ override }: { override?: Override }) => Object.entries(over
   ]) => `${key} ${value === true ? 'on' : value === false ? 'off' : value}`)
   .join(', ')
 
-// Known spendPriority ranks first and unknown quota after it; a tie or several unranked choices stop the start.
+function howChosen({
+  ownerOverride,
+  tied,
+  best,
+}: {
+  ownerOverride: boolean
+  tied: number
+  best?: number
+}): string {
+  if (ownerOverride) {
+    return 'owner override; quota does not veto an explicit choice'
+  }
+
+  if (tied > 1) {
+    return `${best === undefined ? 'quota unknown' : `tie at spendPriority ${best}`}; first listed candidate`
+  }
+
+  return best === undefined ? 'only usable candidate; quota unknown' : 'selected by highest known spendPriority; unknown quota ranks below known'
+}
+
+// Known spendPriority ranks first and unknown quota after it; list order breaks a tie.
 export function chooseCandidate({
   config,
   rule = 'default',
@@ -436,7 +436,7 @@ export function chooseCandidate({
     throw new HydraError({
       message: 'heads dispatch needs a registered main account',
       code: 'NO_ACCOUNTS',
-      help: ['Run `pnyx-axi rule init --shared`, then edit the shared accounts and account order'],
+      help: ['Run `pnyx-axi rule init`, then set the accounts and account order with `pnyx-axi rule apply`'],
     })
   }
 
@@ -584,21 +584,12 @@ export function chooseCandidate({
     })
   }
 
-  if (tied.length > 1) {
-    const harnesses = [...new Set(tied.map(c => c.choice.provider))]
-    throw new HydraError({
-      message: `rule ${rule} has no single best candidate; start stopped: ${tied.map(c => named({ choice: c.choice })).join(', ')} ${best ? `tie at spendPriority ${best.priority}` : 'all have unknown quota'}; ${[...evidence].sort().join('; ')}`,
-      code: 'DISPATCH_TIE',
-      help: [
-        harnesses.length > 1
-          ? `Pick one with --harness ${harnesses.join('|')}, or ask the owner; Pnyx never chooses between equal candidates`
-          : `Ask the owner to split rule ${rule} or narrow it to one candidate; Pnyx never chooses between equal candidates`,
-      ],
-    })
-  }
-
   const chosen = (best ?? tied[0]!).choice
-  const how = ownerOverride ? 'owner override; quota does not veto an explicit choice' : best ? 'selected by highest known spendPriority; unknown quota ranks below known' : 'only usable candidate; quota unknown'
+  const how = howChosen({
+    ownerOverride,
+    tied: tied.length,
+    best: best?.priority,
+  })
   const changed = described({ override: chosen.override })
 
   return {
@@ -608,16 +599,12 @@ export function chooseCandidate({
 }
 
 export function dispatchTask({
-  hydraId,
-  state,
   rule,
   project,
   harness,
   override,
   offers,
 }: {
-  hydraId: string
-  state: HydraState
   rule?: string
   project?: string
   harness?: string
@@ -625,10 +612,7 @@ export function dispatchTask({
   offers?: Partial<Record<Harness, string[]>>
 }): DispatchChoice {
   return chooseCandidate({
-    config: effectiveDispatch({
-      hydraId,
-      state,
-    }),
+    config: effectiveDispatch(),
     rule,
     project,
     harness,

@@ -3,7 +3,7 @@ import { existsSync } from 'node:fs'
 import { delimiter, join } from 'node:path'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import type { HydraState } from '#app/model.ts'
-import { configPath, effectiveDispatch, loginFolder, onTemplate, parseAccounts, readConfig, type Harness } from '#workers/dispatch-config.ts'
+import { effectiveDispatch, loginFolder, onTemplate, type Harness } from '#workers/dispatch-config.ts'
 import { detectedHarnesses, hookStatus, setupHooks } from './hooks.ts'
 import { skillStatus } from './skills.ts'
 import { projectMemoryView } from '#memory/project-memory.ts'
@@ -40,15 +40,12 @@ export function setupCheck({
 }): SetupItem[] {
   const items: SetupItem[] = []
 
-  if (onTemplate({
-    hydraId,
-    state,
-  })) {
+  if (onTemplate()) {
     items.push({
       name: 'config',
       missing: TEMPLATE_NUDGE,
       by: 'hydra',
-      fix: `pnyx-axi rule init --shared --hydra ${hydraId}`,
+      fix: `pnyx-axi rule init --hydra ${hydraId}`,
     })
   }
 
@@ -57,24 +54,11 @@ export function setupCheck({
       dispatch,
       accounts,
       fallback,
-    } = effectiveDispatch({
-      hydraId,
-      state,
-    })
+    } = effectiveDispatch()
     const harnesses = new Set([
       ...Object.values(dispatch.rules).flatMap(rule => rule.candidates),
       ...dispatch.default,
     ].map(candidate => candidate.harness))
-
-    // A per-Hydra registry with accounts replaces the shared one.
-    const shared = !Object.keys(parseAccounts({
-      value: readConfig({
-        path: configPath({
-          hydraId,
-          accounts: true,
-        }),
-      }),
-    }).accounts).length ? ' --shared' : ''
 
     for (const [
       name,
@@ -85,7 +69,7 @@ export function setupCheck({
           name: `account:${name}`,
           missing: `login folder ${account.folder} does not exist`,
           by: 'owner',
-          fix: `${SIGN_IN[account.provider]} with that folder, or remove it: pnyx-axi account remove ${name}${shared} --hydra ${hydraId}`,
+          fix: `${SIGN_IN[account.provider]} with that folder, or remove it: pnyx-axi account remove ${name} --hydra ${hydraId}`,
         })
       }
     }
@@ -100,7 +84,7 @@ export function setupCheck({
           missing: `no ${harness} login for the rules that name it`,
           by: 'owner',
           // Default logins count only while no account is registered; otherwise the login must be registered too.
-          fix: fallback ? SIGN_IN[harness] : `${SIGN_IN[harness]}, then pnyx-axi account set ${harness}:personal --provider ${harness} --folder <login folder>${shared} --hydra ${hydraId}`,
+          fix: fallback ? SIGN_IN[harness] : `${SIGN_IN[harness]}, then pnyx-axi account set ${harness}:personal --provider ${harness} --folder <login folder> --hydra ${hydraId}`,
         })
       }
     }
@@ -109,7 +93,7 @@ export function setupCheck({
       name: 'config',
       missing: (error as Error).message,
       by: 'owner',
-      fix: 'fix that file by hand',
+      fix: `pnyx-axi rule show --hydra ${hydraId}, then fix it with pnyx-axi rule apply`,
     })
   }
 

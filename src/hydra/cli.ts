@@ -844,6 +844,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  // Read before the Hydra writer, so the shared registry lock is never taken inside it.
+  const effective = effectiveDispatch()
   const result = commit({
     hydraId,
     meta: m,
@@ -882,10 +884,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       const config = hydraConfig({
         state,
         id: hydraId,
-      })
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
       })
       const provider = config.hydra.agent?.harness
         ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
