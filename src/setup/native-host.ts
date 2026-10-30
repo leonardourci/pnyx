@@ -158,12 +158,8 @@ export function selectedNativeBundle({ source }: { source: string }): {
 
 export async function ensureNativeHost({
   source,
-  maintenance = false,
-  launch = true,
 }: {
   source: string
-  maintenance?: boolean
-  launch?: boolean
 }) {
   const paths = nativePaths()
   const connect = () => connectHost({
@@ -183,26 +179,6 @@ export async function ensureNativeHost({
 
   try {
     const client = await connect()
-    const marker = join(
-      paths.directory,
-      'maintenance.json',
-    )
-
-    if (!maintenance && existsSync(marker)) {
-      const transition = JSON.parse(readFileSync(
-        marker,
-        'utf8',
-      )) as { instance: string }
-
-      if (transition.instance !== client.ready.instance) {
-        client.detach()
-        fail({
-          code: 'MAINTENANCE_PENDING',
-          message: 'Native replacement is checking readiness; reconnect after maintenance finishes',
-        })
-      }
-    }
-
     client.detach()
 
     return await nativeProviders(paths)
@@ -242,17 +218,7 @@ export async function ensureNativeHost({
     }
   }
 
-  if (!owned && !maintenance && existsSync(join(
-    paths.directory,
-    'maintenance.json',
-  ))) {
-    fail({
-      code: 'MAINTENANCE_PENDING',
-      message: 'Native replacement has not completed; reconcile its saved maintenance state before starting another owner',
-    })
-  }
-
-  if (!owned && launch) {
+  if (!owned) {
     const {
       bundle,
       entry,

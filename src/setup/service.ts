@@ -814,7 +814,6 @@ type NativeBundle = {
 type ApplicationServiceOptions = Parameters<typeof setupApplicationService>[0]
 export type NativeServiceOptions = ApplicationServiceOptions & {
   nativeBundle?(): NativeBundle
-  replace?: boolean
 }
 
 export function setupService({
@@ -854,7 +853,6 @@ export function setupNativeService({
     { encoding: 'utf8' },
   ),
   nativeBundle,
-  replace = false,
 }: NativeServiceOptions): NativeService {
   if (platform !== 'darwin' && platform !== 'linux') {
     throw new HydraError({
@@ -872,7 +870,7 @@ export function setupNativeService({
     environment,
   })
 
-  if (existsSync(path) && !replace) {
+  if (existsSync(path)) {
     return {
       path,
       label,

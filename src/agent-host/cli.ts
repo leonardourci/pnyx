@@ -1,15 +1,11 @@
 import { randomUUID } from 'node:crypto'
 import { AxiError } from 'axi-sdk-js'
 import { checked } from './remote.ts'
-import { drainNative, maintainNative, nativeClient } from '#setup/native-maintenance.ts'
-import { PNYX_ROOT } from '#upgrade/runner.ts'
-import { serverPids } from '#app/server.ts'
-import { RESTART_SIGNAL } from '#upgrade/restart.ts'
+import { stopNative, nativeClient } from '#setup/native-maintenance.ts'
 
-export const NATIVE_HELP = `usage: pnyx-axi native status|drain|replace
-status reads native readiness, pending work and unapplied critical facts.
-drain freezes every new native input and open; answers, interrupts and replay remain available.
-replace stages this build, drains, and replaces only a quiescent host with every critical fact applied. Rerun while draining to check again. A failed replacement restores the previous bundle. Successful replacement restarts the application to reconnect.
+export const NATIVE_HELP = `usage: pnyx-axi native status|stop
+status reads native readiness, pending work and unapplied outcomes.
+stop ends an idle host only after queued input, permissions, controls, background work and unapplied outcomes are clear. Busy or uncertain ownership defers the stop. Host updates are manual and separate from app upgrades.
 `
 
 // eslint-disable-next-line pnyx/object-params -- runAxiCli owns this signature.
@@ -21,11 +17,10 @@ export async function native(args: string[]): Promise<Record<string, unknown>> {
 
   if (extra.length || ![
     'status',
-    'drain',
-    'replace',
+    'stop',
   ].includes(command ?? '')) {
     throw new AxiError(
-      'Expected native status, drain or replace',
+      'Expected native status or stop',
       'VALIDATION_ERROR',
       ['Run `pnyx-axi native --help`'],
     )
@@ -35,31 +30,16 @@ export async function native(args: string[]): Promise<Record<string, unknown>> {
 
   if (command !== 'status' && actor !== 'cli' && actor !== 'owner') {
     throw new AxiError(
-      'Only the owner can drain or replace the native host',
+      'Only the owner can stop the native host',
       'OWNER_ONLY',
     )
-  }
-
-  if (command === 'replace') {
-    const result = await maintainNative({ source: PNYX_ROOT })
-
-    if (result.state !== 'draining') {
-      for (const pid of await serverPids()) {
-        process.kill(
-          pid,
-          RESTART_SIGNAL,
-        )
-      }
-    }
-
-    return { native: result }
   }
 
   const client = await nativeClient()
 
   try {
-    if (command === 'drain') {
-      return { native: (await drainNative({ client })).status }
+    if (command === 'stop') {
+      return { native: await stopNative({ client }) }
     }
 
     const result = checked({
