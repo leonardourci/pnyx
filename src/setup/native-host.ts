@@ -5,7 +5,6 @@ import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { nativeProviders } from '#app/native-provider.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
 import { connectHost } from '#agent-host/client.ts'
 import { installBundle, selectBundle } from '#agent-host/install.ts'
 import { validateBundle } from '#agent-host/bundle.ts'
@@ -107,16 +106,6 @@ export function requireSafeActivation() {
           message: 'Stop the previous application at a safe native-session boundary before first activation',
         })
       }
-    }
-
-    const state = loadHydra({ hydraId }).state
-    const working = Object.values(state.sessions ?? {}).some(session => session.agent.host === 'pnyx' && (session.sessionActivity ?? session.activity) === 'working')
-
-    if (working || Object.keys(state.helper?.runs ?? {}).length) {
-      fail({
-        code: 'NATIVE_MIGRATION_BUSY',
-        message: 'Finish the existing in-process turns before activating the native host',
-      })
     }
   }
 }

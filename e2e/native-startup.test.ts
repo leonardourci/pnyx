@@ -7,11 +7,13 @@ import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
 import { ensureNativeHost, nativePaths } from '#setup/native-host.ts'
+import { withWriter } from '#app/writer.ts'
+import { EVENT_VERSION } from '#store/events.ts'
 import { processStart } from '#agent-host/discovery.ts'
 import { until } from '#agent-host/fixtures/harness.ts'
 
 test(
-  'production startup pins native code and SDK dependencies, and a second app keeps the same host',
+  'production startup activates with saved work markers and keeps the same native host',
   async t => {
     const root = realpathSync(mkdtempSync('/tmp/pnyx-start-'))
     const before = process.env.PNYX_HOME
@@ -20,6 +22,50 @@ test(
       'state',
     )
     const paths = nativePaths()
+    withWriter({
+      hydraId: 'default',
+      create: true,
+      fn: ({ writer }) => {
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: 'interrupted-session',
+            at: '2026-10-30T00:00:00.000Z',
+            actor: 'pnyx',
+            cardId: 'task',
+            type: 'card.pushed',
+            data: {
+              key: 'codex:interrupted',
+              title: 'Interrupted worker',
+              activity: 'working',
+              agent: {
+                provider: 'codex',
+                sessionId: 'interrupted',
+                host: 'pnyx',
+              },
+            },
+          },
+        })
+        writer.append({
+          event: {
+            v: EVENT_VERSION,
+            seq: writer.state.seq + 1,
+            id: 'interrupted-helper',
+            at: '2026-10-30T00:00:01.000Z',
+            actor: 'pnyx',
+            cardId: '$hydra',
+            type: 'hydra.helper-started',
+            data: {
+              id: 'interrupted-helper',
+              tasks: ['task'],
+              prompt: '',
+              seqs: [],
+            },
+          },
+        })
+      },
+    })
     t.after(async () => {
       if (existsSync(join(
         paths.directory,
