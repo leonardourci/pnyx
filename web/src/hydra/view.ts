@@ -41,3 +41,42 @@ export function slashPrefix({
 
   return insideChip ? null : query
 }
+
+export interface SlashState {
+  prefix: string | null
+  dismissed: number | null
+}
+
+export function slashState({
+  text,
+  cursor,
+  chips,
+  dismissed = null,
+}: {
+  text: string
+  cursor: number
+  chips?: {
+    from: number
+    to: number
+  }[]
+  dismissed?: number | null
+}): SlashState {
+  const prefix = slashPrefix({
+    text,
+    cursor,
+    chips,
+  })
+  const start = prefix === null ? null : cursor - prefix.length
+
+  if (start !== null && start === dismissed) {
+    return {
+      prefix: null,
+      dismissed,
+    }
+  }
+
+  return {
+    prefix,
+    dismissed: null,
+  }
+}

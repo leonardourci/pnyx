@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { matchingSuggestions } from '#hydra/suggestion-matches.ts'
 import { draftView } from './draft.ts'
 import { reference, taskMention } from '#hydra/mentions.ts'
-import { slashPrefix } from './view.ts'
+import { slashPrefix, slashState } from './view.ts'
 
 const suggestions = ({
   text,
@@ -162,6 +162,94 @@ test(
         cursor: 11,
       }),
       '/chat',
+    )
+  },
+)
+
+test(
+  'dismissed slash searches stay closed through prose edits and caret movement',
+  () => {
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands / profiles for dispatching',
+        cursor: 42,
+        dismissed: 16,
+      }),
+      {
+        prefix: null,
+        dismissed: 16,
+      },
+    )
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands / profiles for dispatching',
+        cursor: 24,
+        dismissed: 16,
+      }),
+      {
+        prefix: null,
+        dismissed: 16,
+      },
+    )
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands / profiles for dispatching /review',
+        cursor: 50,
+        dismissed: 16,
+      }),
+      {
+        prefix: '/review',
+        dismissed: null,
+      },
+    )
+  },
+)
+
+test(
+  'leaving or replacing a dismissed slash rearms completion',
+  () => {
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands / profiles',
+        cursor: 15,
+        dismissed: 16,
+      }),
+      {
+        prefix: null,
+        dismissed: null,
+      },
+    )
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands ',
+        cursor: 16,
+        dismissed: 16,
+      }),
+      {
+        prefix: null,
+        dismissed: null,
+      },
+    )
+    assert.deepEqual(
+      slashState({
+        text: 'custom commands /chat review',
+        cursor: 28,
+      }),
+      {
+        prefix: '/chat review',
+        dismissed: null,
+      },
+    )
+    assert.deepEqual(
+      slashState({
+        text: 'changed custom commands /review',
+        cursor: 31,
+        dismissed: 16,
+      }),
+      {
+        prefix: '/review',
+        dismissed: null,
+      },
     )
   },
 )
