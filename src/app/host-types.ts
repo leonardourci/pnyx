@@ -171,6 +171,7 @@ export interface Host {
 }
 
 export interface Live {
+  consumed?: Promise<void>
   input: ReturnType<typeof inbox>
   replies: ReturnType<typeof liveReplies>
   // The provider may still be loading when the first message arrives.

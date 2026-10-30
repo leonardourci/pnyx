@@ -1323,7 +1323,7 @@ export function createHost({
 
       const current = loadHydra({ hydraId }).state.cards[card.id]
 
-      if (current?.agent && sessionId({ agent: current.agent }) === key
+      if (!entry.session.readOnly && current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
         ringSteering({
           card: current,
@@ -2113,7 +2113,7 @@ export function createHost({
       key,
       entry,
     )
-    void consume({
+    entry.consumed = consume({
       key,
       card,
       entry,
@@ -4915,6 +4915,12 @@ export function createHost({
             card: card as Card & { agent: AgentRef },
             session,
           })
+
+          if (session.readOnly) {
+            await entry.consumed
+            continue
+          }
+
           await session.replayed?.()
 
           for (const event of events) {
@@ -5026,7 +5032,10 @@ export function createHost({
           for (const session of Object.values(writer.state.sessions ?? {})) {
             const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
 
-            if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking) {
+            const provider = providerOf({ provider: session.agent.provider })
+
+            if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking
+              || provider.canOpen?.() === false) {
               continue
             }
 
