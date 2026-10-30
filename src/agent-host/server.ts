@@ -36,10 +36,10 @@ export async function serveAgentHost({
     installation,
     bootIdentity,
   })
-  let sessions: ReturnType<typeof hostSessions>
+  let sessions: Awaited<ReturnType<typeof hostSessions>>
 
   try {
-    sessions = hostSessions({
+    sessions = await hostSessions({
       directory,
       providers,
       build,

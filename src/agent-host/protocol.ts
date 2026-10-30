@@ -1,4 +1,5 @@
 import type { HostedEvent, HostedFact, HostedInput, HostedSession, HostedUsage, NativePermission, PermissionDecision, ModelOption } from '#workers/provider.ts'
+import type { NativeGroup } from './groups.ts'
 import { HydraError } from '#store/errors.ts'
 
 export const PROTOCOL = 1
@@ -27,7 +28,8 @@ export type Grant = {
 }
 export type Summary = {
   boot?: string
-  recovery?: 'boot_changed'
+  recovery?: 'boot_changed' | 'group_ended'
+  groups?: NativeGroup[]
   ref: SessionRef
   provider: ProviderId
   nativeId?: string

@@ -10,11 +10,13 @@ import { output, replaceFile, type Output, type OutputLimits } from './output.ts
 import { requestLedger, fingerprint } from './ledger.ts'
 import { serial } from './serial.ts'
 import { verifiedBootChange } from './boot.ts'
+import { endGroup, nativeGroup } from './groups.ts'
 import { PROTOCOL, CAPABILITIES, fail } from './protocol.ts'
 import type { AnswerReceipt, Grant, Mutation, Operation, PendingPermission, ProviderId, Result, Scope, SessionRef, Summary, ToClient, ToHost } from './protocol.ts'
 
 const CONTROL_TIMEOUT_MS = 30000
 const MAX_SESSIONS = 64
+const MAX_GROUPS = 64
 const MAX_INPUTS = 9000
 const MAX_QUEUED_INPUT_BYTES = 16 * 1024 * 1024
 export type Peer = {
@@ -53,7 +55,7 @@ const controller = (): Controller => ({
   delivered: new Set(),
 })
 
-export function hostSessions({
+export async function hostSessions({
   directory,
   providers,
   build,
@@ -117,7 +119,7 @@ export function hostSessions({
   const finishRecovery = ({ entry }: { entry: Session }) => {
     const summary = entry.output.summary
 
-    if (summary.recovery !== 'boot_changed' || entry.output.pending().length > 0
+    if (!summary.recovery || entry.output.pending().length > 0
       || entry.output.retention() !== 'healthy') {
       return
     }
@@ -173,12 +175,18 @@ export function hostSessions({
       after: boot,
     })) {
       summary.recovery = 'boot_changed'
+    } else if (Array.isArray(summary.groups) && summary.groups.length > 0) {
+      const ended = await Promise.all(summary.groups.map(group => endGroup({ group })))
+
+      if (ended.every(Boolean)) {
+        summary.recovery = 'group_ended'
+      }
     }
 
     const entry = make({ summary })
     summary.controllerRevision = 0
 
-    if (summary.recovery === 'boot_changed' || ![
+    if (summary.recovery || ![
       'closed',
       'failed',
     ].includes(summary.phase)) {
@@ -855,6 +863,31 @@ export function hostSessions({
               outputSchema: options.outputSchema,
               allow: options.allow,
               context: () => entry.context,
+              ownProcess({ pid }) {
+                const group = nativeGroup({ pid })
+                const summary = entry.output.summary
+                const groups = summary.groups ?? []
+
+                const recorded = groups.some(known => known.id === group.id
+                  && known.start === group.start)
+
+                if (recorded) {
+                  return
+                }
+
+                if (groups.length >= MAX_GROUPS) {
+                  fail({
+                    code: 'OWNERSHIP_LIMIT',
+                    message: 'The native session reached its process-group limit',
+                  })
+                }
+
+                summary.groups = [
+                  ...groups,
+                  group,
+                ]
+                entry.output.save()
+              },
             }
 
             if (options.resume) {
@@ -936,7 +969,7 @@ export function hostSessions({
       })
       await accepted.persisted
 
-      if (entry.output.summary.recovery === 'boot_changed' && entry.output.pending().length === 0) {
+      if (entry.output.summary.recovery && entry.output.pending().length === 0) {
         await entry.output.compact()
         finishRecovery({ entry })
       }
@@ -1085,4 +1118,4 @@ export function hostSessions({
   }
 }
 
-export type HostSessions = ReturnType<typeof hostSessions>
+export type HostSessions = Awaited<ReturnType<typeof hostSessions>>
