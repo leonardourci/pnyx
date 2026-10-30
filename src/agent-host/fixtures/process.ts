@@ -1,8 +1,6 @@
 import { spawn, type ChildProcess } from 'node:child_process'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import { spawn, type ChildProcess } from 'node:child_process'
-import { join } from 'node:path'
 import { serveAgentHost } from '#agent-host/server.ts'
 import { deferred } from '#agent-host/deferred.ts'
 import { errorResult } from '#agent-host/protocol.ts'

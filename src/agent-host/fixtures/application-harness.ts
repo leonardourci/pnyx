@@ -12,9 +12,11 @@ const READY_MS = 15000
 export async function fixtureApplication({
   t,
   boot,
+  groups = false,
 }: {
   t: TestContext
   boot?: string
+  groups?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-app-'))
   const messages: string[] = []
@@ -38,6 +40,7 @@ export async function fixtureApplication({
     t,
     directory: root,
     boot,
+    groups,
   })
   t.after(() => rmSync(
     root,

@@ -271,7 +271,7 @@ for (const harness of [
 }
 
 test(
-  'a killed host refuses cold reopen while its real provider and tool descendants survive',
+  'a killed host ends its recorded provider group before cold resume',
   async t => {
     const {
       mkdtempSync,
@@ -341,7 +341,7 @@ test(
       )
     }
 
-    await fixtureHost({
+    const replacement = await fixtureHost({
       t,
       directory: root,
     })
@@ -349,19 +349,35 @@ test(
       directory: root,
       journal: join(
         root,
-        'other-journal',
+        'journal',
       ),
       installation: 'fixture-installation',
     })
     t.after(second.detach)
-    await assert.rejects(
-      second.providers.codex.open({
+    await until({
+      check: () => Object.values(owners).every(owner =>
+        processStart({ pid: owner.pid }) !== owner.start),
+    })
+    const resumed = await second.providers.codex.open({
+      cwd: root,
+      env: {},
+      settings: {},
+      agent: {
+        provider: 'codex',
+        sessionId: session.id,
         cwd: root,
-        env: {},
-        settings: {},
-        signal: new AbortController().signal,
-      }),
-      /ownership|reconcil/i,
+        host: 'pnyx',
+        resume: true,
+      },
+      signal: new AbortController().signal,
+    })
+    assert.equal(
+      resumed.id,
+      session.id,
+    )
+    assert.deepEqual(
+      (await replacement.stats()).map(state => state.input),
+      [[]],
     )
   },
 )
