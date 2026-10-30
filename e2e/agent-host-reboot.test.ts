@@ -70,14 +70,14 @@ for (const pair of [
   },
 ]) {
   test(
-    `native recovery remains fenced with ${pair.label}`,
+    `native recovery resumes without a cleanup fence with ${pair.label}`,
     async t => {
       const first = await fixtureHost({
         t,
         boot: pair.before,
       })
       const client = await first.connect()
-      await controlledSession({
+      const session = await controlledSession({
         host: first,
         client,
       })
@@ -92,20 +92,44 @@ for (const pair of [
       const current = observer.ready.sessions[0]!
       assert.equal(
         current.phase,
-        'recovery_required',
+        'closed',
       )
       assert.equal(
         current.recovery,
-        undefined,
+        'host_lost',
       )
-      const opening = await controlledSession({
-        host: next,
-        client: observer,
-      }).catch(error => error)
-      assert.ok(opening instanceof Error)
+      const claim = await observer.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'attach',
+          scope: { kind: 'host' },
+          expectedRevision: 0,
+        },
+      })
+      assert.ok(claim.kind === 'attached')
+      const resumed = await observer.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'open',
+          controller: claim.control.generation,
+          options: {
+            ...session.options,
+            resume: { nativeId: session.nativeId },
+          },
+        },
+      })
+      assert.ok(resumed.kind === 'opened')
+      assert.equal(
+        resumed.session.nativeId,
+        session.nativeId,
+      )
+      assert.notEqual(
+        resumed.session.ref.epoch,
+        session.ref.epoch,
+      )
       assert.deepEqual(
-        await next.stats(),
-        [],
+        (await next.stats()).map(state => state.input),
+        [[]],
       )
     },
   )
