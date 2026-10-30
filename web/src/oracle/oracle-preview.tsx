@@ -15,6 +15,7 @@ import type { DoneAfterHours } from '#settings/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
+import { KeyRows } from '#web-preferences/keyboard-settings.tsx'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import type { SettingsMatch } from '#web-settings/catalog.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
@@ -320,6 +321,7 @@ function SettingResult({
         saveHydra={saveHydra}
         dispatchError={dispatchError}
       />
+      {entry.id === 'keyboard' && <KeyRows prefs={settings.view.keyboard} save={settings.save} query="" />}
     </SettingRow>
   )
 }
