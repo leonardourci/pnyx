@@ -412,8 +412,10 @@ for (const harness of [
     'committed-closed-host-crash',
     'committed-pending-closed-host-crash',
     'malformed',
+    'recorded-error-before-ack',
     'late',
     'late-after-error',
+    'receipt-fact-after-error',
     'conflicting-after-error',
     'expired-after-error',
     'invalid-date-after-error',
@@ -681,6 +683,39 @@ for (const harness of [
           ],
         }
 
+        if (result === 'receipt-fact-after-error') {
+          await host.control({
+            kind: 'event',
+            nativeId: helper.id,
+            event: {
+              type: 'structured',
+              value: outcomes,
+            },
+          })
+          const observer = await host.connect()
+          const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+          const retained = await snapshot({
+            client: observer,
+            ref: summary.ref,
+          })
+          const fact = retained.pendingFacts.find(fact => fact.event.type === 'structured')!
+          const path = join(
+            app.home,
+            'hydras/default/helper-pending',
+            `${batch.id}.json`,
+          )
+          const completion = JSON.parse(readFileSync(
+            path,
+            'utf8',
+          ))
+          completion.native.fact = `${summary.ref.epoch}:${fact.seq}`
+          writeFileSync(
+            path,
+            JSON.stringify(completion),
+          )
+          observer.detach()
+        }
+
         if (result === 'structured') {
           await host.control({
             kind: 'event',
@@ -717,7 +752,8 @@ for (const harness of [
               turn,
               inputIds: result === 'conflicting-after-error' ? ['unrelated-input'] : [batch.id],
               status: 'completed',
-              final: result === 'malformed' ? '{}' : JSON.stringify(outcomes),
+              final: result === 'malformed' || result === 'recorded-error-before-ack'
+                ? '{}' : JSON.stringify(outcomes),
               queued: 0,
             },
           })
@@ -869,7 +905,8 @@ for (const harness of [
           return
         }
 
-        if (lateAfterError && result !== 'late-after-error' && !missingJournal) {
+        if (lateAfterError && result !== 'late-after-error'
+          && result !== 'receipt-fact-after-error' && !missingJournal) {
           await app.start()
           const refusal = result === 'conflicting-after-error'
             ? 'does not complete this helper batch' : 'no valid original deadline'
@@ -888,7 +925,7 @@ for (const harness of [
           return
         }
 
-        if (result === 'late-after-error' || missingJournal) {
+        if (result === 'late-after-error' || result === 'receipt-fact-after-error' || missingJournal) {
           await assert.rejects(app.start({ crashCompletionAcks: true }))
           assert.equal(
             app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.'),
@@ -942,6 +979,77 @@ for (const harness of [
           )
           assert.equal(
             (await host.stats()).some(state => state.id === helper.id),
+            false,
+          )
+
+          return
+        }
+
+        if (result === 'recorded-error-before-ack') {
+          // The acknowledgement may be reached before the server reports ready.
+          const applying = await app.start({ crashCompletionAcks: true }).catch(() => undefined)
+          await until({ check: () => applying === undefined || applying.child.signalCode === 'SIGKILL' })
+          await applying?.exited
+          const journal = JSON.parse(readFileSync(
+            join(
+              app.home,
+              'hydras/default/helper-pending',
+              `${batch.id}.json`,
+            ),
+            'utf8',
+          ))
+          assert.ok(journal.native.fact)
+          const error = app.state().helper!.runs[batch.id]!.error
+          assert.ok(error)
+          const recovered = await app.start()
+          await until({
+            check: () => !existsSync(join(
+              app.home,
+              'hydras/default/helper-pending',
+              `${batch.id}.json`,
+            )),
+          })
+          assert.equal(
+            app.state().helper!.outcomes.length,
+            0,
+          )
+          const observer = await host.connect()
+          const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+          const settled = await snapshot({
+            client: observer,
+            ref: summary.ref,
+          })
+          assert.equal(
+            settled.pendingFacts.length,
+            0,
+          )
+          recovered.child.kill('SIGKILL')
+          await recovered.exited
+          await app.start()
+          const completions = readFileSync(
+            join(
+              app.home,
+              'hydras/default/events.jsonl',
+            ),
+            'utf8',
+          ).trim()
+            .split('\n')
+            .map(line => JSON.parse(line))
+            .filter(event => event.type === 'hydra.helper-finished' && event.data.batch === batch.id)
+          assert.equal(
+            completions.length,
+            1,
+          )
+          assert.equal(
+            completions[0].data.error,
+            error,
+          )
+          assert.equal(
+            existsSync(join(
+              app.home,
+              'hydras/default',
+              `helper-lease-${encodeURIComponent(batch.tasks[0]!)}.json`,
+            )),
             false,
           )
 

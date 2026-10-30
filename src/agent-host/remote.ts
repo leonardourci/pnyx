@@ -425,8 +425,25 @@ export async function remoteSession({
       through: completion,
       applyOutcome,
     } = {}) {
+      const sequenceFor = ({ fact }: { fact: string }) => {
+        const sequence = Number(fact.slice(summary.ref.epoch.length + 1))
+
+        if (!fact.startsWith(`${summary.ref.epoch}:`) || !Number.isSafeInteger(sequence)
+          || sequence <= 0 || sequence > viewThrough || baseline?.retention !== 'healthy') {
+          fail({
+            code: 'RECOVERY_REQUIRED',
+            message: 'The retained completion fact cannot be reconciled in this native epoch',
+          })
+        }
+
+        return sequence
+      }
+
+      const appliedThrough = completion ? sequenceFor({ fact: completion }) : 0
+
       if (applyOutcome) {
-        const pending = queue.filter(item => typeof item.event === 'object' && item.event.type === 'turn-ended')
+        const pending = queue.filter(item => item.fact && item.fact.seq > appliedThrough
+          && typeof item.event === 'object' && item.event.type === 'turn-ended')
 
         if (pending.length > 1) {
           fail({
@@ -439,6 +456,7 @@ export async function remoteSession({
 
         if (retained?.fact && typeof retained.event === 'object' && retained.event.type === 'turn-ended') {
           const fact = `${retained.fact.ref.epoch}:${retained.fact.seq}`
+          sequenceFor({ fact })
           await applyOutcome({
             outcome: retained.event.outcome,
             fact,
@@ -450,15 +468,7 @@ export async function remoteSession({
       let completed = true
 
       if (completion) {
-        const sequence = Number(completion.slice(summary.ref.epoch.length + 1))
-
-        if (!completion.startsWith(`${summary.ref.epoch}:`) || !Number.isSafeInteger(sequence)
-          || sequence <= 0 || sequence > viewThrough || baseline?.retention !== 'healthy') {
-          fail({
-            code: 'RECOVERY_REQUIRED',
-            message: 'The retained completion fact cannot be reconciled in this native epoch',
-          })
-        }
+        const sequence = sequenceFor({ fact: completion })
 
         completed = !queue.some(item => item.fact?.seq === sequence)
       }
