@@ -4907,6 +4907,7 @@ export function createHost({
             cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
             agent: card.agent,
             settings: card.settings ?? {},
+            context: card.id === HYDRA_CARD ? digest : undefined,
             env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
             signal: controller.signal,
           })
