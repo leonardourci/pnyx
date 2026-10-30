@@ -6,7 +6,8 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import { VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { Button, Input, NumberField, Select, Switch } from '#web-shared/ui/controls.tsx'
-import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
+import { DEFAULT_DONE_HOURS } from '#tasks/retention-rules.ts'
+import { saveSharedSettings, useSharedSettings } from '#web-settings/shared-settings.ts'
 import { KeyboardSettings } from '#web-preferences/keyboard-settings.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import type { Command } from './connection.ts'
@@ -50,6 +51,7 @@ function ConnectedSettings({
   } = useHeadsDispatch({ command })
   const hydraAgent = effective?.dispatch.rules.hydra?.candidates[0]
   const config = hydraConfig({ state })
+  const doneAfterHours = useSharedSettings()?.doneAfterHours ?? DEFAULT_DONE_HOURS
 
   return (
     <section className="settings" aria-label="Settings">
@@ -148,31 +150,23 @@ function ConnectedSettings({
         </section>
         <section className="settings-box">
           <h2>Hydra</h2>
-          <label className="setting-label">Hide Done cards after (hours)</label>
+          <label className="setting-label">Hide Done cards after (hours, or off)</label>
           <Input
-            key={config.doneAfterHours ?? DEFAULT_DONE_HOURS}
+            key={String(doneAfterHours)}
             aria-label="Hide Done cards after hours"
-            type="number"
-            min="0"
-            max={MAX_DONE_HOURS}
-            step="any"
-            defaultValue={config.doneAfterHours ?? DEFAULT_DONE_HOURS}
+            defaultValue={String(doneAfterHours)}
             onBlur={e => {
-              if (e.target.value !== String(config.doneAfterHours ?? DEFAULT_DONE_HOURS)) {
-                void command({
-                  name: 'hydra',
-                  args: [
-                    'set',
-                    '--done-after-hours',
-                    e.target.value,
-                    '--event-id',
-                    crypto.randomUUID(),
-                  ],
-                }).catch(e => notify({ text: e.message }))
+              const raw = e.target.value.trim()
+
+              if (raw !== String(doneAfterHours)) {
+                saveSharedSettings({
+                  command,
+                  patch: { doneAfterHours: raw === 'off' ? 'off' : Number(raw) },
+                }).catch((error: Error) => notify({ text: error.message }))
               }
             }}
           />
-          <p className="muted small">0 keeps Done cards visible. Hidden cards stay in recorded history and can be brought back with the CLI.</p>
+          <p className="muted small">Applies to every Hydra. off keeps Done cards visible and 0 hides them right away. Hidden cards stay in recorded history and can be brought back with the CLI.</p>
           <label className="setting-label">Identity</label>
           <Input
             key={config.hydra.id}

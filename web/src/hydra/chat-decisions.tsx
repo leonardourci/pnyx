@@ -17,7 +17,7 @@ export interface ChatDecision {
 export const chatDecisions = ({ cards }: { cards: Card[] }): ChatDecision[] => cards.flatMap(card =>
   (card.asks ?? []).filter(ask => ask.audience === 'owner' && !ask.closed).map(ask => ({
     id: `ask:${card.id}:${ask.id}`,
-    at: ask.escalated?.at ?? ask.at,
+    at: ask.reaskedAt ?? ask.escalated?.at ?? ask.at,
     card,
     ask,
   })))
@@ -80,9 +80,12 @@ function Decided({
     return <p className="decided">{title}</p>
   }
 
+  const recorded = ask.mergeHold && ask.choice === 'Merge'
+    ? 'Hydra lifted Hold using your answer' : 'Recorded as your answer'
+
   return (
     <div className="decided">
-      <Disclosure title={<>Recorded as your answer to ‘{askWording({ ask }).question}’</>}>
+      <Disclosure title={<>{recorded} to ‘{askWording({ ask }).question}’</>}>
         <blockquote><CollapsibleText text={ask.fromMessage.text} /></blockquote>
       </Disclosure>
       <Button
@@ -98,7 +101,7 @@ function Decided({
                 ask.answered ?? '',
               ],
             })
-            notify({ text: 'Question reopened.' })
+            notify({ text: ask.mergeHold ? 'Hold restored.' : 'Question reopened.' })
           } catch (error) {
             notify({ text: String(error) })
           }

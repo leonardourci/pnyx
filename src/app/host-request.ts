@@ -90,10 +90,7 @@ export async function hostRequestUnlocked({
         state: current,
         ref: task,
       }).project
-      const config = effectiveDispatch({
-        hydraId: host.hydraId,
-        state: current,
-      })
+      const config = effectiveDispatch()
       const rule = field({
         body,
         name: 'rule',

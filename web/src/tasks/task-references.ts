@@ -5,14 +5,18 @@ import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { cardState } from './view.ts'
 import { statusLabel } from '#tasks/card-status.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
+import { useSharedSettings } from '#web-settings/shared-settings.ts'
 
 export function taskReferences({
   state,
+  hours,
   now,
   actions,
   connected,
 }: {
   state: HydraState
+  hours?: DoneAfterHours
   actions?: Record<string, CurrentAction>
   connected?: boolean
   now: number
@@ -25,10 +29,10 @@ export function taskReferences({
       const column = config.columns.find(column => column.id === c.column)
       const status = cardState({
         card: c,
+        hours,
         state,
         action: actions?.[c.id],
         connected,
-        hours: state.config?.doneAfterHours,
         now,
       })
 
@@ -69,9 +73,12 @@ export function useTaskReferences({
     [],
   )
 
+  const hours = useSharedSettings()?.doneAfterHours
+
   return useMemo(
     () => taskReferences({
       state,
+      hours,
       actions,
       connected,
       now,
@@ -81,6 +88,7 @@ export function useTaskReferences({
       connected,
       actions,
       state.config,
+      hours,
       now,
     ],
   )

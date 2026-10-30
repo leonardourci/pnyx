@@ -18,7 +18,6 @@ import { canonical } from '#store/paths.ts'
 import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
-import { MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
@@ -36,6 +35,10 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { upgradeCommand } from '#upgrade/model.ts'
+import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
+import type { Settings } from '#settings/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import { HELPER_MODELS } from '#routine-helper/route.ts'
 
 export async function home(): Promise<Output> {
   hideDone({ hydraId: DEFAULT_HYDRA })
@@ -109,6 +112,74 @@ export async function home(): Promise<Output> {
   }
 
   return out
+}
+
+// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
+const SETTING_FLAGS = [
+  'done-after-hours',
+  'review-minutes',
+  'helper',
+  'helper-model',
+  'helper-effort',
+]
+
+function sharedSettingFlags({
+  values,
+  hydraId,
+}: {
+  values: Record<string, string | boolean | undefined>
+  hydraId: string
+}): Partial<Settings> | undefined {
+  const patch: Partial<Settings> = {}
+  const done = values['done-after-hours']
+
+  if (done !== undefined) {
+    const raw = String(done).trim()
+    patch.doneAfterHours = raw === 'off' ? 'off' : Number(raw || Number.NaN)
+  }
+
+  if (values['review-minutes'] !== undefined) {
+    const raw = String(values['review-minutes']).trim()
+
+    if (!raw) {
+      throw new HydraError({
+        message: '--review-minutes takes a number of minutes (0 turns reviews off)',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+
+    patch.reviewMinutes = Number(raw)
+  }
+
+  if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
+    const current = readSettings().settings.helper
+    const agent = typeof current === 'object' ? current : undefined
+    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
+
+    if (harness === 'off' || harness === 'auto') {
+      patch.helper = harness
+    } else if (harness === 'claude' || harness === 'codex') {
+      const previous = agent?.harness === harness ? agent : undefined
+      const effort = values['helper-effort'] ?? previous?.effort
+      const helper: AgentConfig = {
+        harness,
+        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
+      }
+
+      if (effort !== undefined) {
+        helper.effort = String(effort)
+      }
+
+      patch.helper = helper
+    } else {
+      throw new HydraError({
+        message: '--helper takes auto, off, claude or codex',
+        code: 'VALIDATION_ERROR',
+      })
+    }
+  }
+
+  return Object.keys(patch).length ? patch : undefined
 }
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
@@ -188,11 +259,23 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   if (action === 'show') {
     const state = loadHydra({ hydraId: id }).state
 
+    const hydra = structuredClone(hydraConfig({
+      state,
+      id,
+    }))
+    // These three live in the shared settings; a Hydra's own config copy is never read.
+    delete hydra.doneAfterHours
+    delete hydra.reviewMinutes
+    delete hydra.helper
+    const shared = readSettings().settings
+
     return {
-      hydra: hydraConfig({
-        state,
-        id,
-      }),
+      hydra,
+      settings: {
+        doneAfterHours: shared.doneAfterHours,
+        reviewMinutes: shared.reviewMinutes,
+        helper: shared.helper,
+      },
       projects: projectRows({ state }),
       revision: state.configRevision ?? 0,
     }
@@ -206,8 +289,20 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
   }
 
   const m = meta({ values })
+  const shared = sharedSettingFlags({
+    values,
+    hydraId: id,
+  })
+  // --base only shapes hydra homes, so on set it changes nothing in the Hydra.
+  const hydraFlags = Object.keys(values).some(flag => values[flag] !== undefined
+    && !SETTING_FLAGS.includes(flag) && !(flag in WRITE) && flag !== 'base')
+  const onlySettings = shared !== undefined && action === 'set' && !hydraFlags
 
-  return commit({
+  if (shared) {
+    checkSettings({ patch: shared })
+  }
+
+  const committed = onlySettings ? undefined : commit({
     hydraId: id,
     create: action === 'create',
     meta: m,
@@ -316,65 +411,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         data.position = position
       }
 
-      if (values['done-after-hours'] !== undefined) {
-        const raw = String(values['done-after-hours']).trim()
-        const hours = Number(raw)
-
-        if (!raw || !Number.isFinite(hours) || hours < 0 || hours > MAX_DONE_HOURS) {
-          throw new HydraError({
-            message: `--done-after-hours must be a number from 0 to ${MAX_DONE_HOURS} (0 keeps Done cards visible)`,
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        data.doneAfterHours = hours
-      }
-
-      if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
-        const harness = values.helper ?? (current.helper && current.helper.harness) ?? current.hydra.agent?.harness ?? 'claude'
-
-        if (harness === 'off') {
-          data.helper = false
-        } else if (harness === 'auto') {
-          delete data.helper
-        } else if (harness === 'claude' || harness === 'codex') {
-          let previous: Exclude<typeof current.helper, false>
-
-          if (current.helper && current.helper.harness === harness) {
-            previous = current.helper
-          }
-
-          data.helper = {
-            harness,
-            model: String(values['helper-model'] ?? previous?.model ?? (harness === 'claude' ? 'sonnet' : 'gpt-6-luna')),
-          }
-          const effort = values['helper-effort'] ?? previous?.effort
-
-          if (effort !== undefined) {
-            data.helper.effort = String(effort)
-          }
-        } else {
-          throw new HydraError({
-            message: '--helper takes auto, off, claude or codex',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-      }
-
-      if (values['review-minutes'] !== undefined) {
-        const minutes = Number(values['review-minutes'])
-
-        if (!String(values['review-minutes']).trim() || !Number.isFinite(minutes) || minutes < 0
-          || minutes * 60_000 > 2_147_483_647) {
-          throw new HydraError({
-            message: '--review-minutes must be a non-negative number within the timer range (0 turns reviews off)',
-            code: 'VALIDATION_ERROR',
-          })
-        }
-
-        data.reviewMinutes = minutes
-      }
-
       delete data.command
 
       if (command) {
@@ -426,6 +462,32 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       })
     },
   })
+
+  if (!shared) {
+    return committed!
+  }
+
+  const settings = settingsReceipt({
+    saved: saveSettings({
+      patch: shared,
+      meta: {
+        ...m,
+        ifRevision: undefined,
+      },
+    }),
+  })
+
+  if (committed) {
+    return {
+      ...committed,
+      settings,
+    }
+  }
+
+  return {
+    ...settings,
+    help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
+  }
 }
 
 // An unreadable Hydra counts as none: a repeated name is harmless.
@@ -782,6 +844,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     })
   }
 
+  // Read before the Hydra writer, so the shared registry lock is never taken inside it.
+  const effective = effectiveDispatch()
   const result = commit({
     hydraId,
     meta: m,
@@ -820,10 +884,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       const config = hydraConfig({
         state,
         id: hydraId,
-      })
-      const effective = effectiveDispatch({
-        hydraId,
-        state,
       })
       const provider = config.hydra.agent?.harness
         ?? effective.dispatch.rules.hydra?.candidates[0]?.harness

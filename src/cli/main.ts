@@ -111,7 +111,11 @@ await runAxiCli({
   topLevelHelp: TOP_LEVEL_HELP,
   home,
   getCommandHelp: () => focused,
-  formatError: command === 'apply' ? formatApplyError : undefined,
+  formatError: [
+    'apply',
+    'rule',
+    'account',
+  ].includes(command ?? '') ? formatApplyError : undefined,
   commands: Object.fromEntries(Object.entries(all).map(([
     name,
     run,

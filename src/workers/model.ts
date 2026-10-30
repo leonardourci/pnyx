@@ -5,6 +5,9 @@ import type { SourceRef } from '#app/model.ts'
 import type { TaskCopy } from '#projects/model.ts'
 import type { Column } from '#tasks/columns-model.ts'
 
+// The characters a harness's model, effort or mode flag can take.
+export const AGENT_FLAG = /^[\w.:/[\]-]{1,100}$/
+
 // queued: recorded before the send. delivery_unknown: the route could not confirm
 // the send either way, so it is never resent blindly.
 export const REPLY_STATES = [
@@ -275,7 +278,8 @@ export type SessionEvent = EventBase & {
 
 export interface DispatchProposal {
   token: string
-  kind: 'rule' | 'account' | 'command'
+  // rule and account proposals hold whole files from before heads dispatch took patches.
+  kind: 'dispatch' | 'rule' | 'account' | 'command'
   shared: boolean
   before: string
   value: string

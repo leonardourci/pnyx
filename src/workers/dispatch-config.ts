@@ -1,15 +1,17 @@
-import { existsSync, mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, renameSync, statSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, isAbsolute, join, resolve } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
-import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { AgentConfig } from './model.ts'
-import { hydraDir } from '#app/home-migration.ts'
-import { pnyxHome } from '#store/storage.ts'
-
-// Hydra's own pinned agent is owner-level: it lives in the shared file and wins over any Hydra's copy.
-export const HYDRA_RULE = 'hydra'
+import { hydraDir, hydraIds } from '#app/home-migration.ts'
+import type { HydraEvent } from '#app/model.ts'
+import type { Meta } from '#app/command-meta.ts'
+import type { Output } from '#app/cli-support.ts'
+import { readLog } from '#app/event-log.ts'
+import { pnyxHome, privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
+import { appendJournal, readJournal } from '#store/journal.ts'
+import { candidateIssues, checkDispatch, fallbackAccount, HARNESSES, mergePatch, type DispatchChange, type DispatchDocument } from './dispatch-check.ts'
 
 export type Harness = AgentConfig['harness']
 export type Candidate = Omit<AgentConfig, 'quota'>
@@ -29,7 +31,6 @@ export interface Account {
   provider: Harness
   folder: string
 }
-export interface Accounts { accounts: Record<string, Account> }
 export interface EffectiveDispatch {
   dispatch: HeadsDispatch
   accounts: Record<string, Account>
@@ -37,25 +38,37 @@ export interface EffectiveDispatch {
   fallback?: true
 }
 
-export function configPath({
-  hydraId,
-  accounts = false,
-  shared = false,
-}: {
-  hydraId: string
-  accounts?: boolean
-  shared?: boolean
-}): string {
-  return shared ? join(
+type Fields = Record<string, unknown>
+
+export interface ChangeEntry {
+  v: 1
+  id: string
+  at: string
+  actor: string
+  reason?: string
+  digest?: string
+  changes?: DispatchChange[]
+  receipt?: Output
+  // The whole document after this change; the last one logged is the saved heads dispatch.
+  document?: DispatchDocument
+  // A retry record for a patch that changed nothing; it does not count toward the revision.
+  unchanged?: true
+}
+
+export function configPath({ accounts = false }: { accounts?: boolean } = {}): string {
+  return join(
     pnyxHome(),
     'config',
     accounts ? 'hydra-accounts.json' : 'hydra-heads-dispatch.json',
   )
-    : join(
-      hydraDir({ hydraId }),
-      accounts ? 'accounts.json' : 'heads-dispatch.json',
-    )
 }
+
+// The change log is the saved heads dispatch: one line per change, each carrying the whole document.
+export const changesPath = () => join(
+  pnyxHome(),
+  'config',
+  'dispatch-changes.jsonl',
+)
 
 // Resolves the same from src/ and dist/, which sit at the same depth.
 const TEMPLATES = join(
@@ -74,15 +87,15 @@ function templatePath({ accounts = false }: { accounts?: boolean } = {}): string
 }
 
 // Unlike owner config, a missing shipped template is a broken install, so this throws instead of reading as empty.
-export function readTemplate({ accounts = false }: { accounts?: boolean } = {}): unknown {
+export function readTemplate({ accounts = false }: { accounts?: boolean } = {}): Fields {
   return JSON.parse(readFileSync(
     templatePath({ accounts }),
     'utf8',
-  ))
+  )) as Fields
 }
 
 export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
-  const template = parseDispatch({ value: readTemplate() })
+  const template = readTemplate() as Partial<HeadsDispatch>
 
   return {
     rules: template.rules ?? {},
@@ -90,8 +103,8 @@ export function templateRules(): Pick<HeadsDispatch, 'rules' | 'default'> {
   }
 }
 
-export function templateAccounts(): Accounts {
-  const template = parseAccounts({ value: readTemplate({ accounts: true }) })
+export function templateAccounts(): { accounts: Record<string, Account> } {
+  const template = readTemplate({ accounts: true }) as { accounts: Record<string, Account> }
 
   for (const account of Object.values(template.accounts)) {
     const folder = process.env[loginVariable({ provider: account.provider })]
@@ -104,17 +117,11 @@ export function templateAccounts(): Accounts {
   return template
 }
 
-export function onTemplate({
-  hydraId,
-  state,
-}: {
-  hydraId: string
-  state: HydraState
-}): boolean {
-  return !existsSync(configPath({
-    hydraId,
-    shared: true,
-  })) && !existsSync(configPath({ hydraId })) && !Object.keys(state.config?.agents ?? {}).length
+// Nothing is saved yet: the change log holds no document, even after the one-time merge.
+export function onTemplate(): boolean {
+  migrate()
+
+  return !committedDocument()
 }
 
 export function invalid({ message }: { message: string }): never {
@@ -124,401 +131,462 @@ export function invalid({ message }: { message: string }): never {
   })
 }
 
-function object({
-  value,
-  what,
-}: {
-  value: unknown
-  what: string
-}): Record<string, unknown> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return invalid({ message: `${what} must be an object` })
-  }
-
-  return value as Record<string, unknown>
-}
-
-function keys({
-  value,
-  allowed,
-  what,
-}: {
-  value: Record<string, unknown>
-  allowed: string[]
-  what: string
-}): void {
-  const extra = Object.keys(value).filter(key => !allowed.includes(key))
-
-  if (extra.length) {
-    invalid({ message: `${what}: unknown fields ${extra.join(', ')}` })
-  }
-}
-
-export function name({ value }: { value: string }): string {
-  if (!/^[a-z][a-z0-9:._-]{0,79}$/.test(value)) {
-    invalid({ message: 'names use lowercase letters, digits, colon, dot, underscore and dash' })
-  }
-
-  return value
-}
-
 export function candidates({ value }: { value: unknown }): Candidate[] {
-  if (!Array.isArray(value)) {
-    return invalid({ message: 'candidates must be an array' })
+  const [issue] = candidateIssues({ value })
+
+  if (issue) {
+    invalid({ message: issue.problem })
   }
 
-  return value.map(raw => {
-    const item = object({
-      value: raw,
-      what: 'candidate',
-    })
-    keys({
-      value: item,
-      allowed: [
-        'harness',
-        'model',
-        'effort',
-        'mode',
-        'fast',
-      ],
-      what: 'candidate',
-    })
-
-    if (item.harness !== 'claude' && item.harness !== 'codex') {
-      invalid({ message: 'candidate harness must be claude or codex' })
-    }
-
-    for (const key of [
-      'model',
-      'effort',
-      'mode',
-    ]) {
-      if (item[key] !== undefined && (typeof item[key] !== 'string' || !/^[\w.:/[\]-]{1,100}$/.test(item[key]))) {
-        invalid({ message: `candidate ${key} has characters a harness flag cannot take` })
-      }
-    }
-
-    if (item.fast !== undefined && typeof item.fast !== 'boolean') {
-      invalid({ message: 'candidate fast must be boolean' })
-    }
-
-    return item as unknown as Candidate
-  })
+  return value as Candidate[]
 }
 
-function order({ value }: { value: unknown }): AccountOrder {
-  const item = object({
-    value,
-    what: 'account order',
-  })
-  keys({
-    value: item,
-    allowed: [
-      'claude',
-      'codex',
-    ],
-    what: 'account order',
-  })
-
-  for (const names of Object.values(item)) {
-    if (!Array.isArray(names) || names.some(n => typeof n !== 'string')) {
-      invalid({ message: 'account order must contain arrays of account names' })
-    }
-
-    for (const n of names as string[]) {
-      name({ value: n })
-    }
-  }
-
-  return item as AccountOrder
-}
-
-export function parseDispatch({ value }: { value: unknown }): Partial<HeadsDispatch> {
-  const item = object({
-    value,
-    what: 'heads dispatch',
-  })
-  keys({
-    value: item,
-    allowed: [
-      'rules',
-      'default',
-      'main',
-      'workers',
-      'projects',
-    ],
-    what: 'heads dispatch',
-  })
-  const result: Partial<HeadsDispatch> = {}
-
-  if (item.rules !== undefined) {
-    result.rules = Object.fromEntries(Object.entries(object({
-      value: item.rules,
-      what: 'rules',
-    })).map(([
-      key,
-      raw,
-    ]) => {
-      name({ value: key })
-
-      if (key === 'default') {
-        invalid({ message: 'default is a separate candidate list, not a named rule' })
-      }
-
-      const r = object({
-        value: raw,
-        what: `rule ${key}`,
-      })
-      keys({
-        value: r,
-        allowed: [
-          'when',
-          'candidates',
-        ],
-        what: `rule ${key}`,
-      })
-
-      if (typeof r.when !== 'string' || !r.when.trim()) {
-        invalid({ message: `rule ${key} needs a plain-language when` })
-      }
-
-      return [
-        key,
-        {
-          when: r.when,
-          candidates: candidates({ value: r.candidates }),
-        },
-      ]
-    }))
-  }
-
-  if (item.default !== undefined) {
-    result.default = candidates({ value: item.default })
-  }
-
-  if (item.main !== undefined && item.main !== '') {
-    if (typeof item.main !== 'string') {
-      invalid({ message: 'main must be an account name' })
-    }
-
-    result.main = name({ value: item.main as string })
-  }
-
-  if (item.workers !== undefined) {
-    result.workers = order({ value: item.workers })
-  }
-
-  if (item.projects !== undefined) {
-    result.projects = Object.fromEntries(Object.entries(object({
-      value: item.projects,
-      what: 'projects',
-    })).map(([
-      path,
-      raw,
-    ]) => {
-      if (!isAbsolute(path)) {
-        invalid({ message: 'project overrides use absolute project paths' })
-      }
-
-      return [
-        path,
-        order({ value: raw }),
-      ]
-    }))
-  }
-
-  return result
-}
-
-export function parseAccounts({ value }: { value: unknown }): Accounts {
-  const item = object({
-    value,
-    what: 'accounts file',
-  })
-  keys({
-    value: item,
-    allowed: ['accounts'],
-    what: 'accounts file',
-  })
-
-  return {
-    accounts: Object.fromEntries(Object.entries(object({
-      value: item.accounts ?? {},
-      what: 'accounts',
-    })).map(([
-      key,
-      raw,
-    ]) => {
-      name({ value: key })
-      const a = object({
-        value: raw,
-        what: `account ${key}`,
-      })
-      keys({
-        value: a,
-        allowed: [
-          'provider',
-          'folder',
-        ],
-        what: `account ${key}`,
-      })
-
-      if (a.provider !== 'claude' && a.provider !== 'codex') {
-        invalid({ message: `account ${key} provider must be claude or codex` })
-      }
-
-      if (typeof a.folder !== 'string' || (!isAbsolute(a.folder) && !a.folder.startsWith('~/'))) {
-        invalid({ message: `account ${key} needs an absolute login folder or ~/path` })
-      }
-
-      return [
-        key,
-        {
-          provider: a.provider,
-          folder: a.folder,
-        },
-      ]
-    })),
-  }
-}
-
-export function readConfig({ path }: { path: string }): unknown {
+export function readConfig({ path }: { path: string }): Fields {
   try {
-    return JSON.parse(readFileSync(
+    const value: unknown = JSON.parse(readFileSync(
       path,
       'utf8',
     ))
+
+    return value && typeof value === 'object' && !Array.isArray(value) ? value as Fields : invalid({ message: `${path} must hold a JSON object` })
   } catch (error) {
     if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
       return {}
+    }
+
+    if (error instanceof HydraError) {
+      throw error
     }
 
     return invalid({ message: `cannot read ${path}: ${error instanceof SyntaxError ? 'invalid JSON' : 'file is unreadable'}` })
   }
 }
 
-export function writeConfig({
+const serialized = ({ value }: { value: unknown }) => `${JSON.stringify(
+  value,
+  null,
+  2,
+)}\n`
+
+function writeJson({
   path,
   value,
-  accounts = false,
 }: {
   path: string
   value: unknown
-  accounts?: boolean
 }): void {
-  const parsed = accounts ? parseAccounts({ value }) : parseDispatch({ value })
-  mkdirSync(
-    dirname(path),
-    { recursive: true },
-  )
+  privateDir({ dir: dirname(path) })
   const temp = `${path}.${randomUUID()}.tmp`
-  writeFileSync(
-    temp,
-    `${JSON.stringify(
-      parsed,
-      null,
-      2,
-    )}\n`,
-    { mode: 0o600 },
-  )
+  writeDurably({
+    path: temp,
+    data: serialized({ value }),
+    flag: 'w',
+  })
   renameSync(
     temp,
     path,
   )
 }
 
-export function legacyDispatch({ state }: { state: HydraState }): Partial<HeadsDispatch> {
-  const agents = state.config?.agents ?? {}
+const mirrorFiles = ({ document }: { document: DispatchDocument }) => {
+  const {
+    accounts,
+    ...dispatch
+  } = document
 
-  const list = ({ agent }: { agent: AgentConfig }): Candidate[] => {
-    const {
-      quota: _quota,
-      ...candidate
-    } = agent
-    void _quota
+  return [
+    {
+      path: configPath({ accounts: true }),
+      value: { accounts },
+    },
+    {
+      path: configPath(),
+      value: dispatch,
+    },
+  ]
+}
 
-    return [candidate]
-  }
-
-  return {
-    rules: Object.fromEntries(Object.entries(agents).filter(([key]) => key !== 'default')
-      .map(([
-        key,
-        agent,
-      ]) => [
-        key,
-        {
-          when: `Use for ${key} work`,
-          candidates: list({ agent }),
-        },
-      ])),
-    ...(agents.default ? { default: list({ agent: agents.default }) } : {}),
+// The two files only mirror the change log for people reading them; a read rewrites them from the log.
+export function writeDocument({ document }: { document: DispatchDocument }): void {
+  for (const file of mirrorFiles({ document })) {
+    writeJson(file)
   }
 }
 
-function nonempty({ value }: { value: unknown }): boolean {
-  return value !== undefined && value !== '' && (typeof value !== 'object' || value === null || Object.keys(value).length > 0)
-}
-
-export function effectiveDispatch({
-  hydraId,
-  state,
-}: {
-  hydraId: string
-  state: HydraState
-}): EffectiveDispatch {
-  const sharedPath = configPath({
-    hydraId,
-    shared: true,
+function mirrored({ document }: { document: DispatchDocument }): boolean {
+  return mirrorFiles({ document }).every(({
+    path,
+    value,
+  }) => {
+    try {
+      return readFileSync(
+        path,
+        'utf8',
+      ) === serialized({ value })
+    } catch {
+      // A missing or unreadable file is rewritten like a stale one.
+      return false
+    }
   })
-  const shared = parseDispatch({ value: readConfig({ path: sharedPath }) })
-  const path = configPath({ hydraId })
-  const local = existsSync(path)
-    ? parseDispatch({ value: readConfig({ path }) }) : legacyDispatch({ state })
-  const dispatch: HeadsDispatch = {
+}
+
+export const readChanges = () => readJournal<ChangeEntry>({
+  path: changesPath(),
+  readable: ({ entry }) => entry?.v === 1 && typeof entry.id === 'string',
+})
+
+// A copy, since the journal keeps the parsed entries for the next read.
+const committedDocument = () => structuredClone(readChanges()
+  .findLast(entry => entry.document)?.document)
+
+// The durable log line is the commit point: a failed append changes nothing, and the files follow it.
+export function commitChange({ entry }: { entry: ChangeEntry }): void {
+  appendJournal({
+    path: changesPath(),
+    entry,
+  })
+
+  if (entry.document) {
+    writeDocument({ document: entry.document })
+  }
+}
+
+// Saves the shipped templates as the first change, keeping either file that already exists; a saved document is never replaced.
+export function initConfig({ meta }: { meta: Meta }): {
+  dispatch: string
+  accounts: string
+} {
+  const paths = {
+    dispatch: configPath(),
+    accounts: configPath({ accounts: true }),
+  }
+
+  withRegistryLock({
+    fn: () => {
+      mergeHydraFiles()
+
+      if (committedDocument()) {
+        return
+      }
+
+      commitChange({
+        entry: {
+          v: 1,
+          id: meta.id ?? randomUUID(),
+          at: meta.at,
+          actor: meta.actor,
+          reason: 'Saved the shipped heads dispatch templates',
+          document: compose({
+            dispatch: existsSync(paths.dispatch)
+              ? readConfig({ path: paths.dispatch })
+              : readTemplate(),
+            accounts: existsSync(paths.accounts)
+              ? readConfig({ path: paths.accounts })
+              : templateAccounts(),
+          }) as DispatchDocument,
+        },
+      })
+    },
+  })
+
+  return paths
+}
+
+const nonempty = ({ value }: { value: unknown }) => value !== undefined && value !== '' && value !== null
+  && (typeof value !== 'object' || Object.keys(value).length > 0)
+
+// Before the first logged document, an empty section keeps the shipped template's rules and default list.
+function compose({
+  dispatch,
+  accounts,
+}: {
+  dispatch: Fields
+  accounts: Fields
+}): unknown {
+  const document: Fields = {
     ...templateRules(),
     workers: {},
     projects: {},
   }
 
-  for (const key of [
-    'rules',
-    'default',
-    'main',
-    'workers',
-    'projects',
-  ] as const) {
-    const chosen = nonempty({ value: local[key] }) ? local[key] : shared[key]
+  for (const [
+    key,
+    value,
+  ] of Object.entries(dispatch)) {
+    if (nonempty({ value })) {
+      document[key] = value
+    }
+  }
 
-    if (chosen !== undefined) {
-      Object.assign(
-        dispatch,
-        { [key]: chosen },
+  document.accounts = accounts.accounts ?? {}
+
+  return document
+}
+
+const filesDocument = () => compose({
+  dispatch: readConfig({ path: configPath() }),
+  accounts: readConfig({ path: configPath({ accounts: true }) }),
+}) as DispatchDocument
+
+function checked({ document }: { document: unknown }): DispatchDocument {
+  const errors = checkDispatch({ document }).filter(issue => issue.level === 'error' && !issue.readable)
+
+  if (errors.length) {
+    throw new HydraError({
+      message: `heads dispatch is invalid: ${errors.map(issue => `${issue.path} ${issue.problem}`).join('; ')}`,
+      code: 'VALIDATION_ERROR',
+      help: ['Run `pnyx-axi rule schema`, then fix it with `pnyx-axi rule apply`'],
+    })
+  }
+
+  return document as DispatchDocument
+}
+
+type AgentsEvent = HydraEvent & { type: 'board.agents' }
+
+// A Hydra's old agents, as `rule migrate` used to turn them into rules.
+function legacyAgents({ hydraId }: { hydraId: string }): Fields | undefined {
+  const agents = readLog({ dir: hydraDir({ hydraId }) })?.events
+    .filter((event): event is AgentsEvent => event.type === 'board.agents')
+    .at(-1)?.data.agents ?? {}
+
+  const list = ({ agent }: { agent: AgentConfig }): Candidate[] => {
+    const candidate: AgentConfig = structuredClone(agent)
+    delete candidate.quota
+
+    return [candidate]
+  }
+
+  const rules = Object.fromEntries(Object.entries(agents).filter(([key]) => key !== 'default')
+    .map(([
+      key,
+      agent,
+    ]) => [
+      key,
+      {
+        when: `Use for ${key} work`,
+        candidates: list({ agent }),
+      },
+    ]))
+
+  if (!Object.keys(agents).length) {
+    return undefined
+  }
+
+  const legacy: Fields = { rules }
+
+  if (agents.default) {
+    legacy.default = list({ agent: agents.default })
+  }
+
+  return legacy
+}
+
+function sections({ value }: { value: Fields }): Fields {
+  return Object.fromEntries(Object.entries(value).filter(([
+    , section,
+  ]) => nonempty({ value: section })))
+}
+
+interface HydraFiles {
+  dispatch?: string
+  accounts?: string
+  legacy?: Fields
+  at: number
+}
+
+function hydraFiles(): HydraFiles[] {
+  return hydraIds().flatMap(hydraId => {
+    const dir = hydraDir({ hydraId })
+    const dispatch = join(
+      dir,
+      'heads-dispatch.json',
+    )
+    const accounts = join(
+      dir,
+      'accounts.json',
+    )
+    const files: HydraFiles = {
+      at: 0,
+    }
+
+    for (const [
+      key,
+      path,
+    ] of [
+        [
+          'dispatch',
+          dispatch,
+        ],
+        [
+          'accounts',
+          accounts,
+        ],
+      ] as const) {
+      if (existsSync(path)) {
+        files[key] = path
+        files.at = Math.max(
+          files.at,
+          statSync(path).mtimeMs,
+        )
+      }
+    }
+
+    if (!files.dispatch) {
+      files.legacy = legacyAgents({ hydraId })
+    }
+
+    return files.dispatch || files.accounts || files.legacy ? [files] : []
+  })
+    .toSorted((
+      a,
+      b,
+    ) => a.at - b.at)
+}
+
+// Each Hydra's own dispatch and accounts merge into the shared ones once, the newest last; the shared Hydra pin still wins.
+export function mergeHydraFiles(): void {
+  if (existsSync(changesPath())) {
+    return
+  }
+
+  const found = hydraFiles()
+
+  if (!found.length) {
+    appendJournal({ path: changesPath() })
+
+    return
+  }
+
+  const shared = readConfig({ path: configPath() })
+  let dispatch: unknown = sections({ value: shared })
+  let accounts: unknown = readConfig({ path: configPath({ accounts: true }) })
+
+  for (const files of found) {
+    const own = files.dispatch ? readConfig({ path: files.dispatch }) : files.legacy ?? {}
+    dispatch = mergePatch({
+      target: dispatch,
+      patch: sections({ value: own }),
+    })
+    accounts = mergePatch({
+      target: accounts,
+      patch: files.accounts ? readConfig({ path: files.accounts }) : {},
+    })
+  }
+
+  const pinned = (shared.rules as Fields | undefined)?.hydra
+
+  if (pinned) {
+    dispatch = mergePatch({
+      target: dispatch,
+      patch: { rules: { hydra: pinned } },
+    })
+  }
+
+  for (const path of [
+    configPath(),
+    configPath({ accounts: true }),
+  ]) {
+    if (existsSync(path)) {
+      copyFileSync(
+        path,
+        `${path}.before-merge`,
       )
     }
   }
 
-  const pinned = shared.rules?.[HYDRA_RULE]
+  commitChange({
+    entry: {
+      v: 1,
+      id: randomUUID(),
+      at: new Date().toISOString(),
+      actor: 'pnyx',
+      reason: 'Merged each Hydra’s own heads dispatch and accounts into the shared files',
+      document: compose({
+        dispatch: dispatch as Fields,
+        accounts: accounts as Fields,
+      }) as DispatchDocument,
+    },
+  })
 
-  if (pinned) {
-    dispatch.rules = {
-      ...dispatch.rules,
-      [HYDRA_RULE]: pinned,
+  for (const files of found) {
+    for (const path of [
+      files.dispatch,
+      files.accounts,
+    ]) {
+      if (path) {
+        renameSync(
+          path,
+          `${path}.merged`,
+        )
+      }
     }
   }
+}
 
-  const globalPath = configPath({
-    hydraId,
-    accounts: true,
-    shared: true,
-  })
-  const localPath = configPath({
-    hydraId,
-    accounts: true,
-  })
-  const globalAccounts = parseAccounts({ value: readConfig({ path: globalPath }) }).accounts
-  const localAccounts = parseAccounts({ value: readConfig({ path: localPath }) }).accounts
-  const registered = Object.keys(localAccounts).length ? localAccounts : globalAccounts
+// The one-time merge takes the registry lock, so callers run it before taking a Hydra writer.
+function migrate(): void {
+  if (!existsSync(changesPath())) {
+    withRegistryLock({ fn: mergeHydraFiles })
+  }
+}
+
+// For writers holding the registry lock: the saved document, errors included, with files a cut-short save left behind rewritten.
+export function lockedDocument(): DispatchDocument {
+  mergeHydraFiles()
+  const committed = committedDocument()
+
+  if (!committed) {
+    return filesDocument()
+  }
+
+  if (!mirrored({ document: committed })) {
+    writeDocument({ document: committed })
+  }
+
+  return committed
+}
+
+// A reader never waits for the lock: the log already gave it the document, and a later read repairs the files.
+function repairFiles(): void {
+  try {
+    withRegistryLock({
+      fn: lockedDocument,
+      timeout: 0,
+    })
+  } catch (error) {
+    if (!(error instanceof HydraError && error.code === 'LOCKED')) {
+      throw error
+    }
+  }
+}
+
+// The saved document with any errors it holds, so a patch can still repair it; readers take readDocument.
+export function savedDocument(): DispatchDocument {
+  migrate()
+  const committed = committedDocument()
+
+  if (committed) {
+    if (!mirrored({ document: committed })) {
+      repairFiles()
+    }
+
+    return committed
+  }
+
+  const files = filesDocument()
+
+  // A first save logs its document before renaming either file, so files read before that line appears are one pair.
+  return committedDocument() ?? files
+}
+
+export const readDocument = () => checked({ document: savedDocument() })
+
+export function effectiveDispatch(): EffectiveDispatch {
+  const {
+    accounts: registered,
+    ...dispatch
+  } = readDocument()
 
   if (Object.keys(registered).length) {
     return {
@@ -528,13 +596,10 @@ export function effectiveDispatch({
   }
 
   // With no registered accounts, Hydra and workers run on each harness's own login, as an unconfigured harness does.
-  const accounts: Record<string, Account> = Object.fromEntries(([
-    'claude',
-    'codex',
-  ] as const)
+  const accounts: Record<string, Account> = Object.fromEntries(HARNESSES
     .filter(provider => existsSync(defaultLogin({ provider })))
     .map(provider => [
-      `${provider}:default`,
+      fallbackAccount({ provider }),
       {
         provider,
         folder: defaultLogin({ provider }),
@@ -546,16 +611,20 @@ export function effectiveDispatch({
     accounts[key]!.provider,
     [key],
   ]))
+  const fallback: HeadsDispatch = {
+    ...dispatch,
+    workers: {
+      ...workers,
+      ...dispatch.workers,
+    },
+  }
+
+  if (main) {
+    fallback.main = main
+  }
 
   return {
-    dispatch: {
-      ...dispatch,
-      ...(main ? { main } : {}),
-      workers: {
-        ...workers,
-        ...dispatch.workers,
-      },
-    },
+    dispatch: fallback,
     accounts,
     fallback: true,
   }

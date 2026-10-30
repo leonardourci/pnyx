@@ -66,6 +66,7 @@ The flows:
 - `questions.test.ts` covers permission requests and report choices.
 - `steering.test.ts` covers steering a worker, the steering inbox and external sources.
 - `landing.test.ts` covers landing a branch or a pull request and project refresh.
+- `settings.test.ts` covers the settings every Hydra shares: a change from one Hydra reaching another Hydra's open page, while each board keeps its own layout.
 - `helper.test.ts` covers the routine helper's routing: progress that wakes nobody, batches while main works, capped batches and a failed batch's hand-back.
 - `recovery.test.ts` covers restart and recovery, and a server that goes idle once nothing changes.
 - `oracle.test.ts` covers Oracle queries from the page: a query waits for the index only when it is missing or behind the log, a change catches it up without a query, and a catch-up that fails reaches the page as an error.

@@ -35,6 +35,7 @@ One folder per feature. Code for a feature lives in its folder. The root README 
 | `src/memory/` | owner, project and Hydra memory, its budgets and commands |
 | `src/projects/` | attached projects, their identity and refresh, disposable copies and their Git helpers |
 | `src/preferences/` | keyboard rules, view and layout preferences and their commands |
+| `src/settings/` | the settings every Hydra shares: their append-only log, validation, `settings` command and the move from per-Hydra values |
 | `src/oracle/` | the full-text history search index (`search.db`), derived from the event log and recorded transcripts |
 | `src/investigations/` | investigation reports and their review inventory |
 | `src/task-sources/` | task sources, called external sources in the CLI, events and docs: the process and review results that workers claim |

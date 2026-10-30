@@ -27,6 +27,7 @@ export interface HydraConfig {
   command?: string
   // The command makes its own folder, so starts through it skip the task copy.
   commandOwnsFolder?: boolean
+  // Retained so older logs replay; the settings every Hydra shares now hold these and the helper.
   doneAfterHours?: number
   reviewMinutes?: number
 }
@@ -46,6 +47,7 @@ export interface HydraMessage {
   answers?: string
   fromMessage?: AnswerMessage
   choice?: string
+  liftsHold?: string
   at: string
   actor: string
   hydra: string

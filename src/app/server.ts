@@ -20,6 +20,7 @@ import { fireReminders } from '#tasks/fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from '#tasks/reminders.ts'
 import { listFolders } from '#projects/folders.ts'
 import { doneDeadline } from '#tasks/retention-rules.ts'
+import { effectiveView, readSettings } from '#settings/store.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { settleDone, settles } from '#projects/copies.ts'
 import { execFile, type ChildProcess } from 'node:child_process'
@@ -51,7 +52,7 @@ import type { ViewPreferences } from '#preferences/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { reduce } from './reducer.ts'
-import { traces, viewFor } from '#preferences/view.ts'
+import { traces } from '#preferences/view.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
@@ -82,7 +83,7 @@ const shownTraces = ({
     tools,
     thinking,
   } = traces({
-    view: viewFor({ state: { view } }),
+    view: effectiveView({ state: { view } }),
     card,
   })
 
@@ -1296,7 +1297,10 @@ export async function mountOwnedHydra({
           state,
         })
         pump()
-        const deadline = doneDeadline({ state })
+        const deadline = doneDeadline({
+          state,
+          hours: readSettings().settings.doneAfterHours,
+        })
 
         if (deadline !== undefined && deadline <= Date.now()) {
           hideDone({ hydraId })
@@ -1326,7 +1330,10 @@ export async function mountOwnedHydra({
         const deadlines = [
           sourceDeadline({ state }),
           sources.deadline(),
-          doneDeadline({ state }),
+          doneDeadline({
+            state,
+            hours: readSettings().settings.doneAfterHours,
+          }),
           ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
             ? [queueCheckedAt + QUEUE_POLL_MS] : []),
         ]
@@ -1946,10 +1953,7 @@ export async function mountOwnedHydra({
             ref: args[0],
           })
           const config = hydraConfig({ state })
-          const effective = effectiveDispatch({
-            hydraId,
-            state,
-          })
+          const effective = effectiveDispatch()
           const receiving = card.id === HYDRA_CARD
             ? config.hydra.agent?.harness
               ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
@@ -2553,6 +2557,18 @@ export async function mountOwnedHydra({
     })
   }
 
+  const sendSettings = ({ ws }: { ws: HydraClient }) => {
+    const read = readSettings()
+    send({
+      ws,
+      message: {
+        type: 'settings',
+        settings: read.settings,
+        revision: read.revision,
+      },
+    })
+  }
+
   const connect = ({
     ws,
     after,
@@ -2582,6 +2598,7 @@ export async function mountOwnedHydra({
       })
     }
 
+    sendSettings({ ws })
     resume({
       ws,
       after,
@@ -2828,6 +2845,21 @@ export async function mountOwnedHydra({
           })
         }
       }
+    },
+    settings() {
+      for (const ws of clients) {
+        sendSettings({ ws })
+
+        // Focus mode and the detail switches decide what a thread page shows.
+        for (const map of threadSubscriptions) {
+          if (map.has(ws)) {
+            refreshThread({ ws })
+          }
+        }
+      }
+
+      // The Done deadline follows the shared hours.
+      kick()
     },
     upgrade() {
       const upgrade = upgradeStatus()

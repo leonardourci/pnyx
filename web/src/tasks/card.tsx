@@ -31,6 +31,7 @@ import { CardLinks } from './card-links.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
 import { draggableItem } from '#web-shared/ui/drag.ts'
 
 const OPEN_SHARE = 0.5
@@ -131,7 +132,7 @@ export function HydraCard({
   state?: import('#app/model.ts').HydraState
   action?: CurrentAction
   labelColors?: SavedLabelColor[]
-  doneAfterHours?: number
+  doneAfterHours?: DoneAfterHours
   notify({ text }: { text: string }): void
   latest?: LatestMessage
   selected: boolean

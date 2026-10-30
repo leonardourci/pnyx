@@ -28,7 +28,8 @@ commands:
   context [--cwd <folder>]                   Open tasks for the attached project holding a folder (the session-start hook prints it)
   oracle "<words>" | status | rebuild        Full-text search over titles, links, events and transcripts
   undo <event-id>                            Append the reverse of a manual edit, move, link or outcome
-  view show|schema|set; layout show|reset      Inspect or save preferences; reset widths
+  settings show|schema|set                   Pnyx-wide settings: theme, text sizes, Hide Done, review cadence, helper, Oracle filters, Hydra order
+  view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the running server
@@ -66,7 +67,7 @@ undo refuses its individual events. See docs/pnyx-axi.md for the full operation 
 pnyx-axi hydra create --firstmate <home>
 pnyx-axi hydra list
 pnyx-axi hydra homes [--base <folder>]
-pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours>] [--review-minutes <n>]
+pnyx-axi hydra show|set --hydra <id> [--name <name>] [--icon <icon>] [--position <n>] [--identity <identity>] [--session <session>] [--firstmate <home>] [--command <shell>] [--command-folder own|copy] [--done-after-hours <hours|off>] [--review-minutes <n>] [--helper auto|off|claude|codex]
 Each Hydra has one orchestrator identity. Changing that identity preserves tasks, history and old messages.
 hydra create without --name gives the Hydra an unused Greek name and its icon; hydra set --name renames it and keeps the icon. --icon takes one of the Greek names or hydra (the Hydra mark).
 Hydras list in creation order; --position <n> moves one, on the scale of creation time in ms (dragging a Hydra in the web panel sets it).
@@ -74,9 +75,10 @@ At start the server names, once, every Hydra still called by its id or by no nam
 --session self picks the session running in the caller's own Paseo terminal, tmux pane or Herdr pane. No process is launched. A session used as Hydra cannot also be a task worker.
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
+--done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
 --helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
---done-after-hours hides cards after continuous time in Done (default 24); 0 keeps them visible. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
+--done-after-hours hides cards after continuous time in Done (default 24); off keeps them visible and 0 hides them right away. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
 --command-folder own says the command makes its own folder, so it runs in the project folder and Pnyx makes no task copy; copy (the default) runs it in the task's copy.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
@@ -185,12 +187,15 @@ Turns an investigation with a stored report into its build; its worker keeps the
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
 Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
 pnyx-axi task merge <id> [--url <pull request>]
-Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
-and never while a check is red or still running.
+Merges the task's linked pull request with a merge commit and records it. Hydra needs --merge hydra or the owner's Merge approval for that link,
+and never merges while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
 Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
+Hydra can replace an answered merge Hold with --from-message <owner-message> --choice Merge only when that saved owner message is newer than the Hold answer. Undo restores Hold.
+pnyx-axi task reask <task> <question> --reason <why>
+Hydra re-asks an answered merge Hold in chat and on the card. It grants no approval until the owner answers Merge.
 Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>
@@ -359,11 +364,15 @@ Stops the one server of every Hydra. A login service starts it again; \`pnyx-axi
 
 export function commandHelp({ command }: { command: string }): string | undefined {
   if (command === 'layout') {
-    return 'usage: pnyx-axi layout show|reset [--hydra <name>] [--if-revision <view revision>]'
+    return 'usage: pnyx-axi layout show|reset [--all] [--hydra <name>] [--if-revision <view revision>]\nreset --all resets dragged widths in every Hydra.'
   }
 
   if (command === 'view') {
-    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]'
+    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]\nKeys every Hydra shares (theme, text sizes, cards and chat toggles, keyboard, default widths) are saved with settings set; the rest stay with the board.'
+  }
+
+  if (command === 'settings') {
+    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, model, effort }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. A repeated --event-id saves once, even when nothing changed.'
   }
 
   return COMMAND_HELP[command]

@@ -444,10 +444,7 @@ export async function startTask({
 
   if (how !== 'command') {
     let offers: Partial<Record<Harness, string[]>> | undefined
-    const { dispatch: effective } = effectiveDispatch({
-      hydraId,
-      state,
-    })
+    const { dispatch: effective } = effectiveDispatch()
     const list = harness ? startCandidates({
       dispatch: effective,
       rule,
@@ -498,8 +495,6 @@ export async function startTask({
     }
 
     dispatch = dispatchTask({
-      hydraId,
-      state,
       project: card.project,
       rule,
       harness,
@@ -975,10 +970,7 @@ export async function startHydra({
     }
   }
 
-  const config = effectiveDispatch({
-    hydraId,
-    state: loadHydra({ hydraId }).state,
-  })
+  const config = effectiveDispatch()
   const selectedRule = rule ?? (config.dispatch.rules.hydra ? 'hydra' : 'default')
   const mainName = config.dispatch.main
   const main = mainName && Object.hasOwn(
