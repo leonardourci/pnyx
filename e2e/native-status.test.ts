@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { randomUUID } from 'node:crypto'
 import { readdirSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -23,7 +22,7 @@ const journalText = ({ root }: { root: string }) => readdirSync(join(
   .join('\n')
 
 test(
-  'native drain status reaches the existing browser socket without a reconnect',
+  'native host loss reaches the existing browser socket without a reconnect',
   async t => {
     const app = await fixtureApplication({ t })
     const server = await app.start()
@@ -53,24 +52,9 @@ test(
       },
     )
     await until({ check: () => statuses.includes('ready') })
-    const client = await app.host.connect()
-    const claim = await client.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'attach',
-        scope: { kind: 'host' },
-        expectedRevision: client.ready.hostControllerRevision,
-      },
-    })
-    assert.ok(claim.kind === 'attached')
-    await client.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'drain',
-        controller: claim.control.generation,
-      },
-    })
-    await until({ check: () => statuses.includes('draining') })
+    app.host.child.kill('SIGKILL')
+    await app.host.exited
+    await until({ check: () => statuses.includes('unavailable') })
     assert.equal(
       connections,
       1,
@@ -78,7 +62,7 @@ test(
     const response = await fetch(`http://127.0.0.1:${server.port}/health`)
     assert.equal(
       (await response.json()).native.state,
-      'draining',
+      'unavailable',
     )
   },
 )
@@ -150,7 +134,13 @@ for (const provider of [
         ],
       })
       await answer()
-      await until({ check: () => journalText({ root: app.root }).includes('"phase":"queued"') })
+      await until({
+        check: async () => {
+          const metrics = await first.control({ kind: 'metrics' }) as { heldAnswers: number }
+
+          return metrics.heldAnswers === 1
+        },
+      })
       assert.equal(
         (await app.host.stats()).find(state => state.id === nativeId)!.answers,
         0,
@@ -185,7 +175,10 @@ for (const provider of [
         true,
       )
       const journals = journalText({ root: app.root })
-      assert.ok(journals.includes('supersedes'))
+      assert.equal(
+        journals.includes('"answers":'),
+        false,
+      )
       assert.equal(
         journals.includes(secret),
         false,
@@ -218,7 +211,7 @@ for (const provider of [
     'secret',
   ] as const) {
     test(
-      `${provider} decision-before-journal crash recovers ${decision}`,
+      `${provider} saved-decision crash recovers ${decision}`,
       async t => {
         const app = await fixtureApplication({ t })
         const first = await app.start()
@@ -303,8 +296,8 @@ for (const provider of [
               name,
             ),
             'utf8',
-          )) as { answers: Record<string, unknown> })
-        assert.ok(journalsBefore.every(binding => Object.keys(binding.answers).length === 0))
+          )) as Record<string, unknown>)
+        assert.ok(journalsBefore.every(binding => !('answers' in binding)))
         assert.equal(
           (await app.host.stats()).find(state => state.id === nativeId)!.answers,
           0,

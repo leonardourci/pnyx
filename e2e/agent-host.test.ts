@@ -1623,7 +1623,13 @@ test(
       },
     })
     const response = deferred<ToClient>()
-    const unsubscribe = client.subscribe({ receive: ({ frame }) => response.resolve(frame) })
+    const unsubscribe = client.subscribe({
+      receive: ({ frame }) => {
+        if (frame.type === 'error' || frame.type === 'snapshot' && frame.ref.id === session.ref.id) {
+          response.resolve(frame)
+        }
+      },
+    })
     const timeout = setTimeout(
       () => response.reject(new Error('Oversized snapshot was not refused')),
       WAIT_MS,

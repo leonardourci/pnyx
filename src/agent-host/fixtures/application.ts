@@ -48,7 +48,7 @@ const trace = ({
   }
 }
 
-let holdAnswers = false, holdDecisions = false, heldDecisions = 0
+let holdAnswers = false, holdDecisions = false, heldDecisions = 0, heldAnswers = 0
 const call = native.client.call
 const acknowledge = native.client.acknowledge
 const completions = new Set<string>()
@@ -73,6 +73,7 @@ native.client.acknowledge = async ({ ...request }) => {
 
 native.client.call = async ({ ...request }) => {
   if (request.operation.kind === 'answer' && holdAnswers) {
+    heldAnswers++
     await new Promise<void>(() => {})
   }
 
@@ -306,6 +307,7 @@ process.on(
         measurements,
         heldCompletions,
         heldDecisions,
+        heldAnswers,
 
       })
 
