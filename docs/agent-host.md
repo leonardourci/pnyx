@@ -26,7 +26,7 @@ A restarted host exposes retained facts under their old incarnation without reop
 
 ## Runtime bundles
 
-`stageBundle` copies a prepared production payload, dereferences dependencies and hashes its files into a versioned bundle. Payload preparation must include the entry, its package imports and all provider dependencies. Validation rejects changed bytes, missing entries and symlinks. The native entry verifies that it is running from the supplied bundle. Rebuilding the source payload leaves the copied runtime available. Production service installation, bundle selection and safe replacement are separate integration steps.
+`stageBundle` copies a prepared production payload, dereferences dependencies and hashes its files into a versioned bundle. Payload preparation must include the entry, its package imports and all provider dependencies. Validation rejects changed bytes, missing entries and symlinks. The native entry verifies that it is running from the supplied bundle. Rebuilding the source payload leaves the copied runtime available. Production service installation and initial bundle selection preserve this runtime across app upgrades.
 
 The host imports provider adapters and storage primitives, with no application reducer, task, Hydra or helper policy. See [Provider sessions](provider-sessions.md) for the shared native types and [Testing](testing.md) for the subprocess tests.
 
@@ -42,8 +42,6 @@ Helper recovery can attach to retained old-incarnation facts without opening a p
 
 ## Native maintenance
 
-`pnyx-axi native status` reads the host's native-work and critical-ack blockers. Owner-only `native drain` freezes every new open and input, including steering. Answers, targeted interrupts, watch, result lookup and application acknowledgements remain available. Settings, context and ordinary close are refused during drain.
+Normal app upgrades leave the native host and selected runtime unchanged. Host updates are rare, manual maintenance. `pnyx-axi native status` reports live work and unapplied outcomes without taking control. Owner-only `native stop` closes the host only when queued input, permissions, controls, native background work and unapplied outcomes are all clear. Busy or uncertain ownership defers the stop; it never kills an active turn to finish an update. Stop the application before maintaining the host so it cannot admit new work or start the selected runtime again. A login-managed native job must also be stopped separately before changing its runtime.
 
-`pnyx-axi native replace` stages and validates this build before draining. Previously admitted inputs must all settle, native background and control ownership must be known idle, and the app must durably apply every critical fact. Closing idle handles creates final lifecycle facts; the old transport remains alive until those are acknowledged too. Rerun the command to check the barrier again. There is no timeout that forces replacement. A stale host controller cannot authorize shutdown.
-
-After the clean owner exits, replacement selects the candidate bundle and updates only the native service. A readiness failure restores the previous bundle; both copied dependency trees stay available. App startup observes a saved maintenance marker during the swap. The app restarts after replacement or rollback to reconnect. A native host crash preserves the conservative recovery refusal, and never counts as a clean maintenance handoff.
+There is no automatic candidate staging, drain, swap, rollback or application restart. The selected immutable runtime stays available until explicit maintenance. A clean idle stop records its predecessor only after compacting acknowledged outcomes; a replacement can then discard closed descriptors. A host crash does not establish a clean handoff and leaves ambiguous inputs UNKNOWN.
