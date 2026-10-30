@@ -18,9 +18,20 @@ paths:
 - Read Hydra state from the connection store over the one WebSocket. Don't keep a second copy of it in component state.
 - Use the installed React, Vite and Tailwind versions' current APIs, checked against their types or docs, not deprecated props or callbacks.
 - Keep accessible names, `aria-label` and `data-*` state attributes stable when you move or rename a component; assistive technology relies on them.
-- Show agent- or owner-written text (questions, notes, briefs, reports, comments, chat) through `RichText` from `web/src/shared/ui/rich-text.tsx`, as in `<RichText text={card.intent} />`; a one-line summary inside a control uses `markdownText`. It shows tokens exactly as the composer does: task, column and skill chips, and image chips for `[image: <path>]` tokens and bare absolute image paths that open the picture on click. Never draw images outside their chips.
 - Chat tokens (commands, skills and task mentions) share one rendering between the composer and sent messages, including their icons, colors and task navigation. Keep surrounding text normal and unknown command or skill names literal.
 - Prefer inline creation and editing over modals and dialogs: a new column is created inline at the end of the Hydra, card fields edit in place. Reserve overlays for things that truly need them (command palette, confirming a destructive action).
+
+## Written text
+
+Text people write goes through two shared components, so a new screen gets chips, mentions, skills and images by using them:
+
+- `RichText` (`web/src/shared/ui/rich-text.tsx`) shows agent- or owner-written text: questions, notes, briefs, reports, comments and chat. It shows every token exactly as the composer does while typing: task, column and skill chips, and image chips for `[image: <path>]` tokens and bare absolute image paths that open the picture on click. Never draw an image outside its chip. `CollapsibleText` is `RichText` behind "Show more". A one-line summary inside a control uses `markdownText`.
+- `ComposerField` (`web/src/shared/ui/composer-field.tsx`) is the composer for owner-written prose: the Hydra composer, comment notes, answers, asks and briefs, and any new one. On its own it is a compact box that grows with its text, without the + menu. It handles @ mentions, / skills and commands, chips, images pasted or dropped at the caret, and copies that keep their references. The app provides its tasks, projects, columns and skills once through `ComposerSourcesProvider`. Model, mode, effort and Fast controls stay on the Hydra composer. A single-line title stays an `Input`.
+
+```tsx
+<RichText text={card.intent} />
+<ComposerField label="Your answer" value={text} change={({ text }) => setText(text)} />
+```
 
 ## Actions show their result immediately
 
