@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { nativeProviders } from '#app/native-provider.ts'
 import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
-import { fixtureHost, until } from '#agent-host/fixtures/harness.ts'
+import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
 for (const provider of [
   'claude-code',
@@ -375,16 +375,20 @@ for (const harness of [
     'structured',
     'malformed',
     'late',
+    'host-crash',
+    'host-crash-uncertain',
   ] as const) {
     test(
-      `${harness} helper recovers ${result} completion and releases its outage lease`,
+      result === 'host-crash-uncertain'
+        ? `${harness} helper preserves an unresolved host-crash batch and its lease`
+        : `${harness} helper recovers ${result} completion and releases its outage lease`,
       async t => {
         const app = await fixtureApplication({ t })
         const {
-          host,
           cli,
           folder,
         } = app
+        let host = app.host
         const first = await app.start()
         await cli({
           args: [
@@ -513,20 +517,76 @@ for (const harness of [
           })
         }
 
-        await host.control({
-          kind: 'event',
-          nativeId: helper.id,
-          event: {
-            type: 'result',
-            turn,
-            inputIds: [batch.id],
-            status: 'completed',
-            final: result === 'malformed' ? '{}' : JSON.stringify(outcomes),
-            queued: 0,
-          },
-        })
+        if (result !== 'host-crash-uncertain') {
+          await host.control({
+            kind: 'event',
+            nativeId: helper.id,
+            event: {
+              type: 'result',
+              turn,
+              inputIds: [batch.id],
+              status: 'completed',
+              final: result === 'malformed' ? '{}' : JSON.stringify(outcomes),
+              queued: 0,
+            },
+          })
+        }
+
+        const hostLost = result === 'host-crash' || result === 'host-crash-uncertain'
+
+        if (hostLost) {
+          const observer = await host.connect()
+          const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+          const retained = await snapshot({
+            client: observer,
+            ref: summary.ref,
+          })
+          assert.equal(
+            retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'),
+            result !== 'host-crash-uncertain',
+          )
+          observer.detach()
+          host.child.kill('SIGKILL')
+          await host.exited
+          host = await fixtureHost({
+            t,
+            directory: app.root,
+          })
+        }
+
         const failed = result === 'malformed' || result === 'late'
         const second = await app.start()
+
+        if (result === 'host-crash-uncertain') {
+          await until({ check: () => app.errors().includes('helper retained ownership requires reconciliation') })
+          assert.ok(app.state().helper!.runs[batch.id])
+          assert.equal(
+            app.state().helper!.runs[batch.id]!.error,
+            undefined,
+          )
+          assert.equal(
+            app.state().helper!.outcomes.length,
+            0,
+          )
+          assert.equal(
+            (await host.stats()).length,
+            0,
+          )
+          await assert.rejects(
+            cli({
+              args: [
+                'task',
+                'rename',
+                'help',
+                '--title',
+                'Must remain leased',
+              ],
+            }),
+            /Command failed/,
+          )
+
+          return
+        }
 
         try {
           await until({
@@ -534,13 +594,17 @@ for (const harness of [
               ? !!app.state().helper!.runs[batch.id]?.error
               : app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.'),
           })
-          await until({
-            check: async () => {
-              const native = (await host.stats()).find(state => state.id === helper.id)
 
-              return native?.closed === true
-            },
-          })
+          if (result !== 'host-crash') {
+            await until({
+              check: async () => {
+                const native = (await host.stats()).find(state => state.id === helper.id)
+
+                return native?.closed === true
+              },
+            })
+          }
+
           await until({
             check: () => !existsSync(join(
               app.home,
@@ -557,7 +621,7 @@ for (const harness of [
 
         assert.equal(
           (await host.stats()).length,
-          3,
+          result === 'host-crash' ? 0 : 3,
         )
         assert.equal(
           app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
