@@ -43,6 +43,8 @@ interface Asking {
   error?: string
 }
 
+const MENU_LABEL = 'Filters, actions and settings'
+
 const ARROWS = [
   'ArrowUp',
   'ArrowDown',
@@ -1169,7 +1171,7 @@ export function Oracle({
   ]
   const shownBadges = ask ? askBadges : searchBadges
   const countLabel = found.pending ? 'Searching…' : `${results.length} ${results.length === 1 ? 'result' : 'results'}`
-  const searchCount = token ? 'Filters' : countLabel
+  const searchCount = token ? MENU_LABEL : countLabel
   const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
@@ -1249,7 +1251,7 @@ export function Oracle({
       }))}
     </Group>
   ))
-  const emptyMenu = <p className="oracle-empty">No filter matches “{token?.text}” here. Esc drops it.</p>
+  const emptyMenu = <p className="oracle-empty">Nothing matches “{token?.text}” here. Esc drops it.</p>
   const emptyResults = <p className="oracle-empty">{nothing}</p>
   const askRow = (
     <Group label="Request">
@@ -1294,7 +1296,7 @@ export function Oracle({
   // The previous results stay, dimmed, until the new query's answer arrives.
   const dimmed = found.pending && !token && !ask
   const empty = token ? emptyMenu : emptyResults
-  const listLabel = token ? 'Filters' : 'Oracle results'
+  const listLabel = token ? MENU_LABEL : 'Oracle results'
   const searchPlaceholder = 'Search tasks, conversations, projects and settings; > filters; ask to ask a Hydra'
 
   const palette = (
