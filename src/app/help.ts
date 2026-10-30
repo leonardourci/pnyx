@@ -187,12 +187,15 @@ Turns an investigation with a stored report into its build; its worker keeps the
 pnyx-axi task landing <id> [--landing pr|branch] [--merge owner|hydra] [--clear]
 Gives this task alone a landing rule other than its project's, or prints the rule it follows. Owner, or Hydra on the owner's word.
 pnyx-axi task merge <id> [--url <pull request>]
-Merges the task's linked pull request with a merge commit and records it. Hydra may merge only where the project's rule is --merge hydra,
-and never while a check is red or still running.
+Merges the task's linked pull request with a merge commit and records it. Hydra needs --merge hydra or the owner's Merge approval for that link,
+and never merges while a check is red or still running.
 pnyx-axi task ask <task> --question <text> [--context <text>] [--choice "<label>[: <description>]"]... [--recommend <n>] [--details <text> | --details-file <path>] [--to hydra|owner] [--kind go]
 A worker's question goes to Hydra (the default); only Hydra asks the owner, with --to owner. A go question requires a held card and offers Go or Hold; only Go releases it. Other questions accept a typed answer.
 pnyx-axi task answer <task> <question> [--choice <n|label>] [--text <answer>] [--from-message <id>] [--reason <text>] [--undelivered]
 Sends the answer to the task's worker. With --from-message, Hydra records the owner's newer message and outgoing answer together before delivery; failed, queued or unknown delivery does not reopen the question. Go/Hold and Merge/Hold questions also take --choice. Retry failed delivery with reply --idempotency-key <reply-id>.
+Hydra can replace an answered merge Hold with --from-message <owner-message> --choice Merge only when that saved owner message is newer than the Hold answer. Undo restores Hold.
+pnyx-axi task reask <task> <question> --reason <why>
+Hydra re-asks an answered merge Hold in chat and on the card. It grants no approval until the owner answers Merge.
 Answers without an owner source resolve once delivered. An uncertain delivery holds those questions; check the session before using --undelivered to answer or escalate again.
 pnyx-axi task close-question <task> <question> --evidence <link or recorded fact> --reason <why moot>
 pnyx-axi task reopen-question <task> <question> --answer <current answer event>

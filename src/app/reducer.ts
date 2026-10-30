@@ -16,7 +16,7 @@ import { applyDependencies } from '#tasks/dependencies.ts'
 import { applyQueue } from '#workers/queue.ts'
 import { applyReminder } from '#tasks/reminders.ts'
 import { applyPermission } from '#workers/permission-rules.ts'
-import { applyAsk } from '#tasks/questions.ts'
+import { applyAsk, applyAskChoice } from '#tasks/questions.ts'
 import { applyHelper } from '#routine-helper/state.ts'
 import { applyAttachment, cardSessionId, observeSession, sessionId } from '#workers/session-attachments.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '#tasks/events.ts'
@@ -899,12 +899,27 @@ function apply({
       // session's own card, so the answer is marked on all of them.
       if (answers && event.data.state === 'delivered') {
         if (card.asks && !reply.accepted) {
-          card.asks = card.asks.map(a => (a.id === answers && !a.answered && !a.closed ? {
-            ...a,
-            answered: reply.id,
-            answeredAt: event.at,
-            fromMessage: event.data.decision?.fromMessage,
-          } : a))
+          card.asks = card.asks.map(ask => {
+            const sameRound = ask.answerRound === decision?.answerRound
+
+            if (ask.id !== answers || !sameRound || ask.answered || ask.closed) {
+              return ask
+            }
+
+            const answered = {
+              ...ask,
+              answered: reply.id,
+              answeredAt: event.at,
+              fromMessage: decision?.fromMessage,
+            }
+            applyAskChoice({
+              ask: answered,
+              choice: decision?.choice,
+              answer: decision?.answer,
+            })
+
+            return answered
+          })
         }
 
         const id = cardSessionId({ card })
