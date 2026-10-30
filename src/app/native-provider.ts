@@ -154,14 +154,15 @@ export async function nativeProviders({
       let summary = agent && inventory.findLast(session =>
         session.provider === provider && session.nativeId === agent.sessionId)
       let recovered = false
+      const retained = reattachOnly || reattach
 
-      if (!summary && reattachOnly && binding?.session) {
+      if (!summary && retained && binding?.session) {
         const previous = binding.session.ref
         summary = inventory.find(session => session.ref.id === previous.id
         && session.ref.epoch === previous.epoch)
       }
 
-      if (reattachOnly && !summary) {
+      if (retained && !summary) {
         fail({
           code: 'RECOVERY_REQUIRED',
           message: 'The retained native binding is unavailable; preserve the original work until reconciled',
@@ -197,7 +198,9 @@ export async function nativeProviders({
         summary = current ?? previous.session
       }
 
-      if (reattach && (!binding || binding.instance !== client.ready.instance || !summary
+      if (reattach && (!binding?.session || !summary
+        || binding.session.ref.id !== summary.ref.id
+        || binding.session.ref.epoch !== summary.ref.epoch
         || summary.nativeId !== agent?.sessionId)) {
         fail({
           code: 'RECOVERY_REQUIRED',
@@ -205,13 +208,9 @@ export async function nativeProviders({
         })
       }
 
-      const terminalReattachment = reattach && (summary?.phase === 'closed' || summary?.phase === 'failed')
-
       const recoveryReplay = summary?.phase === 'recovery_required' && summary.recovery !== undefined
 
-      if (summary?.phase === 'live' || terminalReattachment || recoveryReplay) {
-        recovered = true
-      } else if (summary && reattachOnly) {
+      if (summary?.phase === 'live' || recoveryReplay || summary && retained) {
         recovered = true
       } else if (summary && summary.phase !== 'closed' && summary.phase !== 'failed') {
         fail({
@@ -298,7 +297,7 @@ export async function nativeProviders({
         summary,
         recovered,
         context,
-        readOnly: recoveryReplay || reattachOnly && summary.phase !== 'live',
+        readOnly: recoveryReplay || retained && summary.phase !== 'live',
         requireOutcome: reattachOnly === true && summary.phase !== 'live',
         async persistAnswer({
           permission,
