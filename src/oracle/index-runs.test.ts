@@ -39,6 +39,15 @@ test(
       f.finishes.length,
       1,
     )
+    f.finishes[0]!.finish()
+    await f.settle()
+    t.mock.timers.tick(5 * INDEX_DELAY_MS)
+    await f.settle()
+    assert.equal(
+      f.finishes.length,
+      1,
+      'the burst left no other catch-up waiting',
+    )
   },
 )
 
@@ -145,6 +154,39 @@ test(
     assert.equal(
       await second,
       'disk I/O error',
+    )
+  },
+)
+
+test(
+  'a stopped index starts no catch-up a change left waiting',
+  async t => {
+    const f = fixture({ t })
+    f.runs.changed()
+    f.runs.stop()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    await f.settle()
+    assert.equal(
+      f.finishes.length,
+      0,
+    )
+  },
+)
+
+test(
+  'a change during a catch-up starts no follow-up once the index stopped',
+  async t => {
+    const f = fixture({ t })
+    f.runs.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    f.runs.changed()
+    t.mock.timers.tick(INDEX_DELAY_MS)
+    f.runs.stop()
+    f.finishes[0]!.finish()
+    await f.settle()
+    assert.equal(
+      f.finishes.length,
+      1,
     )
   },
 )

@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
-import { chmodSync, existsSync } from 'node:fs'
+import { chmodSync } from 'node:fs'
 import { test } from 'node:test'
-import { searchPath, type Hit } from '#oracle/index.ts'
-import { openPage } from '#test-harness/harness.ts'
+import { indexStatus, searchPath, type Hit } from '#oracle/index.ts'
+import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 type Page = Awaited<ReturnType<typeof openPage>>
@@ -44,7 +44,7 @@ const createTask = ({
 })
 
 test(
-  'the Oracle answers from an index the server builds and keeps current outside its own process',
+  'a query waits for the index when it is missing or behind the log, and a change catches it up with no query',
   async t => {
     const s = await pnyx.scenario()
     await createTask({
@@ -66,7 +66,6 @@ test(
       [s.task({ key: 'billing' }).id],
       'a first query waits for the first build',
     )
-    assert.ok(existsSync(searchPath({ hydraId: s.hydraId })))
 
     await createTask({
       s,
@@ -85,6 +84,21 @@ test(
       [s.task({ key: 'refunds' }).id],
       'a query on an index behind the log waits for it to catch up',
     )
+
+    await createTask({
+      s,
+      title: 'Rotate the invoice signing keys',
+      key: 'keys',
+    })
+    const created = s.state().seq
+    await until({
+      what: 'the index to catch up with the new task without a query',
+      check: () => {
+        const index = indexStatus({ hydraId: s.hydraId })
+
+        return index !== null && index.builtThrough >= created
+      },
+    })
   },
 )
 
