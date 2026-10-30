@@ -29,6 +29,12 @@ export type DoneAfterHours = number | 'off'
 // auto picks a lighter model on Hydra's harness; off sends every wake to Hydra.
 export type HelperSetting = 'auto' | 'off' | AgentConfig
 
+// The lighter model auto picks on each harness, and the one a chosen harness starts from.
+export const HELPER_MODELS = {
+  claude: 'sonnet',
+  codex: 'gpt-6-luna',
+} as const
+
 export interface Settings extends SharedView {
   doneAfterHours: DoneAfterHours
   reviewMinutes: number
@@ -49,6 +55,9 @@ export const SETTING_KEYS = [
 ] as const
 
 export type SettingKey = (typeof SETTING_KEYS)[number]
+
+export const isSettingKey = ({ key }: { key: string }) =>
+  SETTING_KEYS.includes(key as SettingKey)
 
 // One change to the shared settings; the log is only appended, so every old value stays.
 export interface SettingsEntry {

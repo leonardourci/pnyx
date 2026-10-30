@@ -2,7 +2,10 @@ import { useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import type { Settings } from '#settings/model.ts'
+import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
+import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { About } from '#web-app/about.tsx'
 import { KeyboardSettings } from '#web-preferences/keyboard-settings.tsx'
@@ -10,12 +13,14 @@ import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
+import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
-import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
-import { BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, ThemePreview } from './previews.tsx'
+import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
+import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
 
@@ -33,6 +38,10 @@ export const SETTING_ICONS: Record<string, string> = {
   thinkingDetails: 'thinking',
   keyboard: 'keyboard',
   version: 'about',
+  doneAfterHours: 'done',
+  reviewMinutes: 'reminder',
+  helper: 'helper',
+  hydraAgent: 'agent',
 }
 const WIDTH_SLIDER_MAX = 900
 const WIDTH_MAX = 2400
@@ -51,7 +60,9 @@ export function SettingPreview({
   state,
   view,
   save,
-}: Saving & {
+  settings,
+  rule,
+}: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
 }): ReactNode {
@@ -68,6 +79,8 @@ export function SettingPreview({
       return <BoardPreview state={state} view={view} mark="columns" />
     case 'defaultHydraWidth':
       return <BoardPreview state={state} view={view} mark="chat" />
+    case 'resetWidths':
+      return <ResetPreview state={state} view={view} />
     case 'lastMessageOnCards':
       return <CardUpdatesPreview view={view} />
     case 'focusMode':
@@ -75,6 +88,14 @@ export function SettingPreview({
     case 'toolDetails':
     case 'thinkingDetails':
       return <ConversationPreview view={view} open />
+    case 'doneAfterHours':
+      return <DonePreview hours={settings.doneAfterHours} />
+    case 'reviewMinutes':
+      return <ReviewPreview minutes={settings.reviewMinutes} />
+    case 'helper':
+      return rule && <HelperPreview helper={settings.helper} hydra={rule} />
+    case 'hydraAgent':
+      return rule && <AgentPreview agent={rule} />
     default:
       return undefined
   }
@@ -82,7 +103,14 @@ export function SettingPreview({
 
 interface Saving {
   view: ViewPreferences
-  save({ patch }: { patch: unknown }): Promise<boolean>
+  save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
+}
+
+// The settings every Hydra shares beyond its view, and the agent new Hydras start on.
+interface Hydra {
+  settings: Settings
+  rule?: AgentConfig
+  dispatchError?: string
 }
 
 function TextSize({
@@ -191,21 +219,38 @@ export function SettingControl({
   notify,
   upgrade,
   startUpgrade,
-}: Saving & {
+  settings,
+  rule,
+  connected,
+  saveHydra,
+  dispatchError,
+}: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
   command: Command
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
+  connected: boolean
+  saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }): ReactNode {
+  if ((entry.id === 'helper' || entry.id === 'hydraAgent') && !rule) {
+    return <DispatchStatus error={dispatchError} />
+  }
+
+  // Focus mode hides tool calls and thinking, so their own switches wait for it to turn off.
+  const hidden = view.focusMode && (entry.id === 'toolDetails' || entry.id === 'thinkingDetails')
   const toggle = ({ key }: { key: Toggle }) => (
-    <Switch
-      quiet
-      label={entry.label}
-      checked={view[key]}
-      onChange={({ value }) => save({ patch: { [key]: value } })}
-    />
+    <div className="setting-stack">
+      <Switch
+        quiet
+        label={entry.label}
+        checked={view[key]}
+        disabled={hidden}
+        onChange={({ value }) => save({ patch: { [key]: value } })}
+      />
+      {hidden && <Help text="Focus mode is on, so these stay hidden; turn it off to use this." />}
+    </div>
   )
 
   switch (entry.id) {
@@ -266,6 +311,34 @@ export function SettingControl({
     case 'toolDetails':
     case 'thinkingDetails':
       return toggle({ key: entry.id })
+    case 'doneAfterHours':
+      return <HideDone hours={settings.doneAfterHours} save={save} />
+    case 'reviewMinutes':
+      return <ReviewCadence minutes={settings.reviewMinutes} save={save} />
+    case 'helper':
+      return (
+        rule && (
+          <RoutineHelper
+            helper={settings.helper}
+            hydra={rule}
+            command={command}
+            connected={connected}
+            save={save}
+          />
+        )
+      )
+    case 'hydraAgent':
+      return (
+        rule && (
+          <DefaultAgent
+            rule={rule}
+            command={command}
+            connected={connected}
+            saveHydra={({ patch }) => saveHydra({ patch })
+              .catch((error: Error) => notify({ text: error.message }))}
+          />
+        )
+      )
     case 'keyboard':
       return <KeyboardSettings embedded prefs={view.keyboard} save={save} />
     case 'version':
@@ -326,6 +399,12 @@ export function SettingsPage({
     setOnlyChanged,
   ] = useState(false)
   const settings = useSharedSettings() ?? DEFAULT_SETTINGS
+  const {
+    effective,
+    saveHydra,
+    error: dispatchError,
+  } = useHeadsDispatch({ command })
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const changed = changedIds({
     view,
     settings,
@@ -424,7 +503,7 @@ export function SettingsPage({
       {sections.map(item => (
         <section key={item.id} className="settings-section" aria-labelledby={`settings-${item.id}`}>
           <div className="settings-section-head">
-            <h2 id={`settings-${item.id}`}>{item.label}</h2>
+            <h2 id={`settings-${item.id}`}><Icon name={item.icon} size={18} />{item.label}</h2>
           </div>
           {shown.filter(match => match.entry.section === item.id).map(match => (
             <SettingRow
@@ -447,6 +526,8 @@ export function SettingsPage({
                   state={state}
                   view={view}
                   save={save}
+                  settings={settings}
+                  rule={rule}
                 />
               )}
             >
@@ -459,6 +540,11 @@ export function SettingsPage({
                 notify={notify}
                 upgrade={upgrade}
                 startUpgrade={startUpgrade}
+                settings={settings}
+                rule={rule}
+                connected={connected}
+                saveHydra={saveHydra}
+                dispatchError={dispatchError}
               />
             </SettingRow>
           ))}

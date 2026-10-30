@@ -15,6 +15,9 @@ import type { Command } from '#web-app/connection.ts'
 import { useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { changedIds, resetPatch } from '#web-settings/changed.ts'
 import type { SettingsMatch } from '#web-settings/catalog.ts'
+import { DEFAULT_SETTINGS } from '#settings/settings.ts'
+import { useSharedSettings } from '#web-settings/shared-settings.ts'
+import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { SETTING_ICONS, SettingControl, SettingPreview } from '#web-settings/settings-page.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -222,6 +225,7 @@ export function FilterPreview({
 
 export interface SettingProps {
   view: ViewPreferences
+  connected: boolean
   save({ patch }: { patch: unknown }): Promise<boolean>
   command: Command
   notify({ text }: { text: string }): void
@@ -239,6 +243,13 @@ function SettingResult({
   settings: SettingProps
 }) {
   const { entry } = match
+  const shared = useSharedSettings() ?? DEFAULT_SETTINGS
+  const {
+    effective,
+    saveHydra,
+    error: dispatchError,
+  } = useHeadsDispatch({ command: settings.command })
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
 
   return (
     <SettingRow
@@ -246,11 +257,15 @@ function SettingResult({
       label={entry.label}
       description={entry.description}
       terms={match.terms}
-      changed={changedIds({ view: settings.view }).has(entry.id)}
+      changed={changedIds({
+        view: settings.view,
+        settings: shared,
+      }).has(entry.id)}
       reset={() => settings.save({
         patch: resetPatch({
           id: entry.id,
           view: settings.view,
+          settings: shared,
         }),
       })}
       preview={(
@@ -259,6 +274,8 @@ function SettingResult({
           state={state}
           view={settings.view}
           save={settings.save}
+          settings={shared}
+          rule={rule}
         />
       )}
     >
@@ -266,6 +283,10 @@ function SettingResult({
         entry={entry}
         state={state}
         {...settings}
+        settings={shared}
+        rule={rule}
+        saveHydra={saveHydra}
+        dispatchError={dispatchError}
       />
     </SettingRow>
   )

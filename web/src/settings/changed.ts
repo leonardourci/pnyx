@@ -14,13 +14,19 @@ const differs = ({
   initial: unknown
 }) => JSON.stringify(value) !== JSON.stringify(initial)
 
+const HYDRA_KEYS = [
+  'doneAfterHours',
+  'reviewMinutes',
+  'helper',
+] as const
+
 // Column widths count once any column differs, since the map also names columns the default does not.
 export function changedIds({
   view,
   settings,
 }: {
   view: ViewPreferences
-  settings?: Settings
+  settings: Settings
 }): Set<string> {
   const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => ![
     'defaultColumnWidths',
@@ -31,7 +37,16 @@ export function changedIds({
     initial: initialOf({ id: key }),
   })))
 
-  const widths = settings?.defaultColumnWidths ?? view.defaultColumnWidths
+  for (const key of HYDRA_KEYS) {
+    if (differs({
+      value: settings[key],
+      initial: DEFAULT_SETTINGS[key],
+    })) {
+      ids.add(key)
+    }
+  }
+
+  const widths = settings.defaultColumnWidths
   const columnsChanged = view.defaultColumnWidth !== DEFAULT_COLUMN_WIDTH
     || Object.values(widths).some(width => width !== DEFAULT_COLUMN_WIDTH)
 

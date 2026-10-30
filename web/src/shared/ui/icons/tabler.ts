@@ -10,7 +10,7 @@ import {
   IconQuote, IconRobot, IconSearch, IconSettings, IconStar, IconTag, IconTerminal2, IconTestPipe,
   IconTool, IconUser, IconWorld, IconX,
   IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
-  IconMoon, IconPalette, IconRefresh, IconSun, IconTypography,
+  IconMoon, IconPalette, IconRefresh, IconSparkles, IconSun, IconTypography, IconUsers,
 } from '@tabler/icons-react'
 
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
@@ -75,6 +75,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   you: IconUser,
   decision: IconExclamationCircle,
   moved: IconArrowRight,
+  arrow_right: IconArrowRight,
   renamed: IconPencil,
   edit: IconPencil,
   test: IconTestPipe,
@@ -99,5 +100,6 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   focus: IconEyeOff,
   keyboard: IconKeyboard,
   about: IconInfoCircle,
-
+  helper: IconSparkles,
+  workers: IconUsers,
 }

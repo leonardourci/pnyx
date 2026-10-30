@@ -466,6 +466,7 @@ export function Oracle({
   const shownResult = token ? menuAction : current
   const settings: SettingProps = {
     view,
+    connected,
     save,
     command,
     notify,

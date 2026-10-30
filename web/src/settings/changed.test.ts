@@ -2,17 +2,20 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_VIEW } from '#preferences/view.ts'
-import type { Settings } from '#settings/model.ts'
+import { SHARED_VIEW_KEYS, type Settings } from '#settings/model.ts'
 import { DEFAULT_SETTINGS, patchSettings } from '#settings/settings.ts'
 import { changedIds, resetPatch } from './changed.ts'
 
 const viewOf = ({ settings }: { settings: Settings }) => ({
   ...DEFAULT_VIEW,
-  ...settings,
+  ...Object.fromEntries(SHARED_VIEW_KEYS.map(key => [
+    key,
+    settings[key],
+  ])),
 }) as ViewPreferences
 
 test(
-  'resetting a setting clears it from Changed, including a custom binding and a custom column width',
+  'resetting a setting clears it from Changed, including a custom binding, a custom column width and a Hydra setting',
   () => {
     let settings = patchSettings({
       current: DEFAULT_SETTINGS,
@@ -23,12 +26,19 @@ test(
           'custom:abc': 500,
           'in_progress': 600,
         },
+        helper: 'off',
       },
     })
     assert.deepEqual(
-      [...changedIds({ view: viewOf({ settings }) })].sort(),
+      [
+        ...changedIds({
+          view: viewOf({ settings }),
+          settings,
+        }),
+      ].sort(),
       [
         'defaultColumnWidths',
+        'helper',
         'keyboard',
         'theme',
       ],
@@ -38,6 +48,7 @@ test(
       'theme',
       'keyboard',
       'defaultColumnWidths',
+      'helper',
     ]) {
       settings = patchSettings({
         current: settings,
@@ -49,7 +60,12 @@ test(
     }
 
     assert.deepEqual(
-      [...changedIds({ view: viewOf({ settings }) })],
+      [
+        ...changedIds({
+          view: viewOf({ settings }),
+          settings,
+        }),
+      ],
       [],
     )
     assert.equal(

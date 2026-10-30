@@ -8,7 +8,7 @@ import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type Sh
 
 export const DEFAULT_REVIEW_MINUTES = 30
 // setTimeout's limit, which the review timer schedules with.
-const MAX_REVIEW_MINUTES = Math.floor(2_147_483_647 / 60_000)
+export const MAX_REVIEW_MINUTES = Math.floor(2_147_483_647 / 60_000)
 
 export const DEFAULT_SETTINGS: Settings = {
   ...pickView({ view: DEFAULT_VIEW }),
