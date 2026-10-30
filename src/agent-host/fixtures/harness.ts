@@ -3,7 +3,7 @@ import { fork } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
-import { setImmediate } from 'node:timers/promises'
+import { setImmediate, setTimeout as delay } from 'node:timers/promises'
 import type { TestContext } from 'node:test'
 import { deferred } from '#agent-host/deferred.ts'
 import { endGroup, type NativeGroup } from '#agent-host/groups.ts'
@@ -13,6 +13,7 @@ import type { HostedInput } from '#workers/provider.ts'
 import type { ToClient } from '#agent-host/protocol.ts'
 
 const WAIT_MS = 5000
+const SECOND_MS = 1000
 export type NativeStats = {
   id: string
   closed: boolean
@@ -188,6 +189,8 @@ export async function fixtureHost({
       'sessions',
     )
 
+    const groups: NativeGroup[] = []
+
     if (existsSync(sessions)) {
       for (const name of readdirSync(sessions)) {
         const descriptor = join(
@@ -205,9 +208,20 @@ export async function fixtureHost({
           'utf8',
         )) as { groups?: NativeGroup[] }
 
-        for (const group of saved.groups ?? []) {
-          await endGroup({ group })
-        }
+        groups.push(...saved.groups ?? [])
+      }
+    }
+
+    if (groups.length) {
+      // Reap fixture-owned children only after ps's start-second boundary.
+      await delay(SECOND_MS - Date.now() % SECOND_MS)
+      const lastAliveAt = Date.now()
+
+      for (const group of groups) {
+        await endGroup({
+          group,
+          lastAliveAt,
+        })
       }
     }
 

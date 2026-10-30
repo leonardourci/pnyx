@@ -175,12 +175,13 @@ export async function hostSessions({
       after: boot,
     })) {
       summary.recovery = 'boot_changed'
-    } else if (Array.isArray(summary.groups) && summary.groups.length > 0) {
-      const ended = await Promise.all(summary.groups.map(group => endGroup({ group })))
-
-      if (ended.every(Boolean)) {
-        summary.recovery = 'group_ended'
-      }
+    } else {
+      const groups = Array.isArray(summary.groups) ? summary.groups : []
+      await Promise.all(groups.map(group => endGroup({
+        group,
+        lastAliveAt: summary.lastAliveAt,
+      })))
+      summary.recovery = 'host_lost'
     }
 
     const entry = make({ summary })

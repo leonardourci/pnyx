@@ -201,3 +201,65 @@ test(
     )
   },
 )
+
+test(
+  'descriptor saves record live-owner time without advancing a recovered owner cutoff',
+  t => {
+    const directory = mkdtempSync('/tmp/pnyx-output-alive-')
+    t.after(() => rmSync(
+      directory,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.parse('2026-01-01T00:00:01Z'),
+    })
+    const session: Summary = {
+      ref: {
+        id: 'session',
+        epoch: 'epoch',
+      },
+      provider: 'codex',
+      phase: 'opening',
+      controllerRevision: 0,
+    }
+    const stream = output({
+      directory,
+      session,
+    })
+    const saved = () => JSON.parse(readFileSync(
+      join(
+        directory,
+        'session.json',
+      ),
+      'utf8',
+    ))
+    assert.equal(
+      saved().lastAliveAt,
+      Date.parse('2026-01-01T00:00:01Z'),
+    )
+    t.mock.timers.tick(2000)
+    session.phase = 'live'
+    stream.save()
+    assert.equal(
+      saved().lastAliveAt,
+      Date.parse('2026-01-01T00:00:03Z'),
+    )
+    t.mock.timers.tick(3000)
+    session.phase = 'recovery_required'
+    stream.save()
+    assert.equal(
+      saved().lastAliveAt,
+      Date.parse('2026-01-01T00:00:03Z'),
+    )
+    session.phase = 'closed'
+    stream.save()
+    assert.equal(
+      saved().lastAliveAt,
+      Date.parse('2026-01-01T00:00:03Z'),
+    )
+  },
+)

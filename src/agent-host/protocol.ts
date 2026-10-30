@@ -28,7 +28,8 @@ export type Grant = {
 }
 export type Summary = {
   boot?: string
-  recovery?: 'boot_changed' | 'group_ended'
+  lastAliveAt?: number
+  recovery?: 'boot_changed' | 'group_ended' | 'host_lost'
   groups?: NativeGroup[]
   ref: SessionRef
   provider: ProviderId

@@ -99,6 +99,18 @@ export function output({
   let usage: Snapshot['usage']
   const listeners = new Set<({ frame }: { frame: EventFrame }) => void>()
 
+  const save = () => {
+    // Reconciliation must not advance the old owner's last-alive bound.
+    if (session.phase === 'opening' || session.phase === 'live') {
+      session.lastAliveAt = Date.now()
+    }
+
+    replaceFile({
+      path: descriptor,
+      text: JSON.stringify(session),
+    })
+  }
+
   if (existsSync(path)) {
     try {
       const saved = readFileSync(
@@ -150,10 +162,7 @@ export function output({
       })
     }
   } else {
-    replaceFile({
-      path: descriptor,
-      text: JSON.stringify(session),
-    })
+    save()
     writeDurably({
       path,
       data: '',
@@ -242,12 +251,7 @@ export function output({
     through: () => sequence,
     retention: () => retention,
     canAdmit: () => retention === 'healthy' && durableBytes < limits.criticalBytes,
-    save() {
-      replaceFile({
-        path: descriptor,
-        text: JSON.stringify(session),
-      })
-    },
+    save,
     publish({ event }: { event: HostedEvent }) {
       const frame: EventFrame = {
         type: 'event',

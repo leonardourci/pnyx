@@ -31,7 +31,7 @@ export function kernelBootIdentity(): string | undefined {
 
     return UUID.test(identity) ? identity.toLowerCase() : undefined
   } catch {
-    // An unreadable kernel identity leaves recovery fenced.
+    // An unreadable boot identity uses best-effort process cleanup instead.
     return undefined
   }
 }
