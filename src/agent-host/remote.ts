@@ -27,12 +27,14 @@ export async function remoteSession({
   completedAnswer,
   context,
   readOnly = false,
+  requireOutcome = readOnly,
 }: {
   client: HostClient
   summary: Summary
   recovered: boolean
   context?(): string
   readOnly?: boolean
+  requireOutcome?: boolean
   persistAnswer({
     permission,
     decision,
@@ -256,7 +258,9 @@ export async function remoteSession({
   client.watch({ ref: summary.ref })
   await started.promise
 
-  if (readOnly && summary.recovery === undefined && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
+  const hasOutcome = queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')
+
+  if (requireOutcome && !hasOutcome) {
     detach()
     fail({
       code: 'RECOVERY_REQUIRED',
