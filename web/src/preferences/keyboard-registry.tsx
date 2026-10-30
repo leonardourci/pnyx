@@ -23,6 +23,10 @@ export const isEditing = ({ target }: { target: Element }) => {
   return !!field && !field.hasAttribute(CARET_HOST)
 }
 
+// The nearest data-key-scope names the scope, and Pnyx only ever writes a KeyScope there.
+export const keyScopeOf = ({ target }: { target: Element }) =>
+  (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope ?? 'navigation') as KeyScope
+
 export function focusElement({ selector }: { selector: string }) {
   const element = document.querySelector<HTMLElement>(selector)
   element?.focus({ preventScroll: true }); element?.scrollIntoView({
@@ -115,7 +119,7 @@ export function KeyboardProvider({
 
         const overlay = target.closest('[data-key-scope=overlay]')
         // Message blocks, comments and buttons inside the conversation share its scope.
-        const scope = hints ? 'hints' : overlay ? 'overlay' : (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope ?? 'navigation') as KeyScope
+        const scope = hints ? 'hints' : overlay ? 'overlay' : keyScopeOf({ target })
         // These controls own their standard navigation and selection keys; buttons and
         // links and disclosures in the conversation keep Enter.
         const owned = target.closest('[role=combobox],[role=listbox],[role=separator]')

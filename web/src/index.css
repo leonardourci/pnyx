@@ -1087,25 +1087,40 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .fast-toggle[aria-checked=true] { color: var(--color-gold); background: var(--color-gold-wash); }
 .detail > .jump { position: sticky; bottom: 12px; }
 
-.oracle { position: relative; display: flex; align-items: center; gap: 7px; flex: 1; max-width: 380px; min-width: 140px; }
-.oracle > .input { width: 100%; }
-.oracle-results { position: absolute; top: calc(100% + 12px); right: 0; width: min(560px, calc(100vw - 24px)); max-height: min(70dvh, 650px); overflow: auto; background: var(--color-surface); border: 1px solid var(--color-line); border-radius: 8px; box-shadow: 0 12px 32px var(--color-shadow); z-index: 65; padding: 6px; }
-.oracle-row { padding: 7px 8px; border-bottom: 1px solid var(--color-subtle); font-size: var(--text-ui); }
-.oracle-row > [role=gridcell] { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.oracle-row[aria-selected=true] { background: var(--color-raised); }
-.oracle-row > [role=gridcell] > span { flex: 1; }
-.oracle-row > [role=gridcell] > .settings-box { flex: 1; }
-.oracle-row > [role=gridcell] > .button { text-align: left; justify-content: flex-start; }
-.oracle-row .number-field { width: 100%; }
-.oracle-row .switch-label { margin: 0; }
-.oracle-row > [role=gridcell] > .input { max-width: 220px; }
-.oracle-hit { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; width: 100%; gap: 3px; }
-.oracle-hit > .button { padding: 0; text-align: left; }
-.oracle-hit > .markdown { width: 100%; color: var(--color-muted); font-size: inherit; }
-.oracle-hit strong { font-weight: 600; }
-.oracle-hit span, .oracle-hit small { color: var(--color-muted); white-space: normal; overflow-wrap: anywhere; }
-.oracle-caption { padding: 12px 8px 4px; font-size: var(--text-meta); color: var(--color-muted); }
-@media (max-width: 760px) { .oracle { order: 5; max-width: none; flex-basis: 100%; }.oracle-results { width: calc(100vw - 24px); }.oracle-row > [role=gridcell] { flex-wrap: wrap; } }
+.oracle-palette { margin: 9vh auto auto; width: min(980px, calc(100vw - 32px)); height: min(660px, 82dvh); padding: 0; border: 1px solid var(--color-line); border-radius: 12px; background: var(--color-surface); color: var(--color-ink); box-shadow: 0 24px 64px var(--color-shadow); overflow: hidden; }
+.oracle-palette[open] { display: flex; flex-direction: column; }
+.oracle-palette::backdrop { background: var(--color-shadow); }
+.oracle-palette > .search-bar { margin: 10px; }
+.oracle-body { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 3fr); flex: 1; min-height: 0; border-top: 1px solid var(--color-subtle); }
+.oracle-list { overflow: auto; padding: 4px 6px 8px; border-right: 1px solid var(--color-subtle); transition: opacity .12s; }
+.oracle-list[data-pending] { opacity: .55; }
+.oracle-caption { padding: 10px 8px 4px; font-size: var(--text-meta); color: var(--color-muted); }
+.oracle-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 6px; font-size: var(--text-ui); color: var(--color-muted); cursor: pointer; }
+.oracle-option[aria-selected=true] { background: var(--color-raised); color: var(--color-ink); }
+.oracle-option-label { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--color-ink); }
+.oracle-option-meta { flex: none; max-width: 45%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--text-meta); }
+.oracle-option mark, .oracle-preview mark { background: var(--color-gold-wash); color: inherit; border-radius: 2px; }
+.oracle-empty { padding: 16px 8px; color: var(--color-muted); font-size: var(--text-body); }
+.oracle-preview { overflow: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; font-size: var(--text-body); }
+.oracle-preview-title { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: var(--text-label); }
+.oracle-preview .setting-row { border-top: 0; padding-top: 0; }
+.oracle-card { display: flex; flex-direction: column; align-items: flex-start; gap: 7px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-background); }
+.oracle-card > .card-state { align-self: stretch; }
+.oracle-card-title { font-size: var(--text-label); font-weight: 600; }
+.oracle-card-said { color: var(--color-muted); display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden; }
+.oracle-snippets, .oracle-project-tasks { display: flex; flex-direction: column; gap: 6px; }
+.oracle-snippet { display: flex; flex-direction: column; gap: 2px; max-height: 9em; overflow: hidden; padding: 6px 8px; border-left: 2px solid var(--color-gold-line); border-radius: 4px; background: var(--color-background); white-space: pre-wrap; overflow-wrap: anywhere; }
+.oracle-project-task { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.oracle-preview-foot { margin-top: auto; display: flex; flex-direction: column; align-items: flex-start; gap: 6px; padding-top: 8px; border-top: 1px solid var(--color-subtle); }
+.search-badge[data-kind=hydra] { background: var(--color-gold-wash); color: var(--color-gold); }
+.search-badge[data-kind=kind] { color: var(--color-slate); }
+.search-badge[data-kind=column] { color: var(--color-blue); }
+.search-badge[data-kind=project] { color: var(--color-teal); }
+.search-badge[data-kind=when] { color: var(--color-purple); }
+.search-badge[data-kind=ask] { background: var(--color-gold-wash); color: var(--color-gold); }
+.oracle-ask-message { margin: 0; padding: 10px 12px; border: 1px solid var(--color-subtle); border-radius: 8px; background: var(--color-background); white-space: pre-wrap; overflow-wrap: anywhere; }
+.oracle-ask-error { color: var(--color-red); }
+@media (max-width: 760px) { .oracle-palette { margin-top: 12px; height: calc(100dvh - 24px); }.oracle-body { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 3fr) minmax(0, 2fr); }.oracle-list { border-right: 0; border-bottom: 1px solid var(--color-subtle); } }
 
 .permission-input { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 16rem; overflow: auto; }
 .permission-details { display: grid; gap: 4px; margin: 0; font-size: var(--text-ui); }
@@ -1162,10 +1177,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .left-panel[hidden] { display: none; }
 .left-panel .brand { display: flex; align-items: center; gap: 10px; padding: 0 9px; }
 .offline { color: var(--color-red); font: 400 var(--text-meta) var(--font-sans); letter-spacing: normal; }
-.left-panel .oracle { flex: 0 0 auto; width: 100%; min-width: 0; max-width: none; order: 0; }
-.left-panel .oracle > .identity-icon { position: absolute; left: 9px; color: var(--color-muted); pointer-events: none; }
-.left-panel .oracle > .input { padding-left: 30px; font-size: var(--text-ui); background: var(--color-background); }
-.left-panel .oracle-results { left: 0; right: auto; top: calc(100% + 5px); width: min(360px, calc(100vw - 28px)); }
+.left-panel .oracle-trigger { width: 100%; justify-content: flex-start; gap: 7px; padding: 7px 9px; border-color: var(--color-control); background: var(--color-background); color: var(--color-muted); line-height: 1.5; }
+.left-panel .oracle-trigger > span { flex: 1; text-align: left; }
+.left-panel .oracle-trigger > kbd { padding: 0 4px; }
 .left-panel nav { display: flex; flex-direction: column; gap: 2px; }
 .left-panel nav > .button { width: 100%; justify-content: flex-start; padding: 8px 10px; font-size: var(--text-ui); }
 .left-panel nav > .button[aria-pressed=true], .hydra-name[aria-current=page], .panel-project[aria-pressed=true] { background: var(--color-raised); }

@@ -22,11 +22,11 @@ import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
-import { DefaultAgent, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
+import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry } from './catalog.ts'
 
-const ICONS: Record<string, string> = {
+export const SETTING_ICONS: Record<string, string> = {
   theme: 'theme',
   fontSize: 'text-size',
   chatFontSize: 'comment',
@@ -114,7 +114,8 @@ interface Saving {
 
 interface Hydra {
   settings: Settings
-  rule: AgentConfig
+  rule?: AgentConfig
+  dispatchError?: string
 }
 
 // A slider's value while it moves, keyed by the setting it changes; undefined once it is let go.
@@ -136,7 +137,7 @@ const resetTo = ({ id }: { id: string }) => {
   return typeof initial === 'string' ? initial : undefined
 }
 
-function Preview({
+export function SettingPreview({
   entry,
   state,
   view,
@@ -174,9 +175,9 @@ function Preview({
     case 'reviewMinutes':
       return <ReviewPreview minutes={settings.reviewMinutes} />
     case 'helper':
-      return <HelperPreview helper={settings.helper} hydra={rule} />
+      return rule && <HelperPreview helper={settings.helper} hydra={rule} />
     case 'hydraAgent':
-      return <AgentPreview agent={rule} />
+      return rule && <AgentPreview agent={rule} />
     default:
       return undefined
   }
@@ -336,7 +337,7 @@ function ResetWidths({
   )
 }
 
-function Control({
+export function SettingControl({
   entry,
   state,
   view,
@@ -350,6 +351,7 @@ function Control({
   rule,
   connected,
   saveHydra,
+  dispatchError,
 }: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
@@ -361,6 +363,10 @@ function Control({
   connected: boolean
   saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }): ReactNode {
+  if ((entry.id === 'helper' || entry.id === 'hydraAgent') && !rule) {
+    return <DispatchStatus error={dispatchError} />
+  }
+
   // Focus mode hides tool calls and thinking, so their own switches wait for it to turn off.
   const hidden = view.focusMode && (entry.id === 'toolDetails' || entry.id === 'thinkingDetails')
   const toggle = ({ key }: { key: Toggle }) => (
@@ -440,23 +446,27 @@ function Control({
       return <ReviewCadence minutes={settings.reviewMinutes} save={save} slide={slideTo({ key: 'reviewMinutes' })} />
     case 'helper':
       return (
-        <RoutineHelper
-          helper={settings.helper}
-          hydra={rule}
-          command={command}
-          connected={connected}
-          save={save}
-        />
+        rule && (
+          <RoutineHelper
+            helper={settings.helper}
+            hydra={rule}
+            command={command}
+            connected={connected}
+            save={save}
+          />
+        )
       )
     case 'hydraAgent':
       return (
-        <DefaultAgent
-          rule={rule}
-          command={command}
-          connected={connected}
-          saveHydra={({ patch }) => saveHydra({ patch })
-            .catch((error: Error) => notify({ text: error.message }))}
-        />
+        rule && (
+          <DefaultAgent
+            rule={rule}
+            command={command}
+            connected={connected}
+            saveHydra={({ patch }) => saveHydra({ patch })
+              .catch((error: Error) => notify({ text: error.message }))}
+          />
+        )
       )
     case 'headsDispatch':
       return <DispatchSettings state={state} command={command} notify={notify} />
@@ -510,6 +520,7 @@ export function SettingsPage({
   notify,
   upgrade,
   startUpgrade,
+  initialQuery = '',
 }: Saving & {
   state: HydraState
   connected: boolean
@@ -517,12 +528,14 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
+  // The search the page opens with, such as a setting the Oracle sent here.
+  initialQuery?: string
 }) {
   const search = useRef<HTMLInputElement>(null)
   const [
     query,
     setQuery,
-  ] = useState('')
+  ] = useState(initialQuery)
   const [
     onlyChanged,
     setOnlyChanged,
@@ -535,8 +548,9 @@ export function SettingsPage({
   const {
     effective,
     saveHydra,
+    error: dispatchError,
   } = useHeadsDispatch({ command })
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   // Previews draw what a slider shows while it moves, before the value saves.
   const shownView = viewFor({
     state,
@@ -676,7 +690,7 @@ export function SettingsPage({
           <div className="settings-rows">
             {shown.filter(match => match.entry.section === item.id).map(match => {
               const control = (
-                <Control
+                <SettingControl
                   entry={match.entry}
                   state={state}
                   view={view}
@@ -690,6 +704,7 @@ export function SettingsPage({
                   rule={rule}
                   connected={connected}
                   saveHydra={saveHydra}
+                  dispatchError={dispatchError}
                 />
               )
 
@@ -701,7 +716,7 @@ export function SettingsPage({
               return (
                 <SettingRow
                   key={match.entry.id}
-                  icon={ICONS[match.entry.id] ?? 'settings'}
+                  icon={SETTING_ICONS[match.entry.id] ?? 'settings'}
                   label={match.entry.label}
                   description={match.entry.id === 'resetWidths' ? draggedText({ state }) : match.entry.description}
                   terms={match.terms}
@@ -715,7 +730,7 @@ export function SettingsPage({
                   })}
                   resetTo={resetTo({ id: match.entry.id })}
                   preview={PREVIEWED.has(match.entry.id) && (
-                    <Preview
+                    <SettingPreview
                       entry={match.entry}
                       state={state}
                       view={shownView}

@@ -6,14 +6,12 @@ import { storageKey } from '#web-hydra/outbox.ts'
 import { hydraViews, restoreView, readComments, savedComments, scrollers, type Restore } from './restore.ts'
 import { pageTitle, hydraTitle } from './view.ts'
 import { SettingsPage } from '#web-settings/settings-page.tsx'
-import { expandedByColumn, columnsFor, findBoxCards } from '#web-tasks/view.ts'
+import { expandedByColumn, columnsFor, filterCards } from '#web-tasks/view.ts'
 import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 import { TaskCreate, type TaskDraft } from '#web-tasks/task-create.tsx'
 import { viewFor } from '#preferences/view.ts'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
-import { useFoundCards } from '#web-oracle/card-oracle.ts'
-import { commandQuery } from '#web-oracle/oracle-catalog.ts'
 import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import { focusElement, KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
@@ -22,6 +20,7 @@ import { argument } from '#web-tasks/optimistic.ts'
 import { useHydraKeyboard } from '#web-preferences/keyboard-hydra.tsx'
 import { lockedColumn } from '#tasks/column-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
+import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { Panel } from './panel.tsx'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
@@ -99,9 +98,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     ] = useState(''), [
       tag,
       setTag,
-    ] = useState(''), [
-      query,
-      setQuery,
     ] = useState('')
   const [
       selectedRef,
@@ -300,6 +296,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     panel,
     setPanel,
   ] = useState(restored.panel ?? true)
+  // The search Settings opens with when the Oracle sends a setting there; it also remounts the page for it.
+  const [
+    settingsQuery,
+    setSettingsQuery,
+  ] = useState('')
+  // The Oracle's palette draws inside the page, so it takes the page's text sizes.
+  const [
+    layer,
+    setLayer,
+  ] = useState<HTMLDivElement | null>(null)
   const [
     project,
     setProject,
@@ -517,24 +523,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [view.theme],
   )
   const columns = columnsFor({ state })
-  const found = useFoundCards({
-    command,
-    query: commandQuery({ query }) ? '' : query,
-    workspace,
-    revision: state.seq,
-  })
-  const filteredCards = findBoxCards({
+  const filteredCards = filterCards({
     state,
-    actions,
     workspace,
     tag,
-    query: commandQuery({ query }) ? '' : query,
-    meaning: found.hits.map(h => h.card),
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
   const filterScope = JSON.stringify([
     workspace,
     tag,
-    query,
     project,
   ])
   useEffect(
@@ -930,7 +926,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     column: string
     parent?: string
   }) => {
-    setPage('hydra'); setWorkspace(''); setTag(''); setQuery(''); filterProject({ path: '' }); clearSelection()
+    setPage('hydra'); setWorkspace(''); setTag(''); filterProject({ path: '' }); clearSelection()
     taskFormVersion.current++
     const refused = hydra.edits.findLast(intent => {
       const {
@@ -1015,7 +1011,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
     togglePanel: () => setPanel(shown => !shown),
-    showPanel: () => setPanel(true),
   })
 
   const answerTask = ({ card }: { card: Card }) => {
@@ -1030,6 +1025,82 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
   }
 
+  const answerTaskById = ({ id }: { id: string }) => {
+    const card = state.cards[id]
+
+    if (!card) {
+      return
+    }
+
+    open({
+      id,
+      focusPanel: false,
+    })
+    answerTask({ card })
+  }
+
+  const openSettings = ({ query }: { query: string }) => {
+    setSettingsQuery(query); setPage('settings')
+    requestAnimationFrame(() => focusElement({ selector: '.settings-page .search-bar-input' }))
+  }
+
+  const selectProject = ({ path }: { path: string }) => {
+    filterProject({ path }); clearSelection(); setPage('hydra')
+  }
+
+  // The same command Hydra's composer sends the owner's message with, scoped to the chosen Hydra.
+  const askHydra = ({
+    id,
+    text,
+    event,
+    onChecking,
+  }: {
+    id: string
+    text: string
+    event: string
+    onChecking(): void
+  }) => hydra.commandFor({ id })({
+    name: 'hydra',
+    args: [
+      'send',
+      `--text=${text}`,
+      '--event-id',
+      event,
+    ],
+    onChecking,
+  })
+
+  const openChat = async ({ id }: { id: string }) => {
+    if (id === navigation.hydraId) {
+      openHydra()
+
+      return
+    }
+
+    try {
+      await navigate({
+        url: new URL(
+          `/hydra/${encodeURIComponent(id)}/`,
+          location.href,
+        ).href,
+      })
+      requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
+    } catch (error) {
+      notify({ text: error instanceof Error ? error.message : String(error) })
+    }
+  }
+
+  // The Oracle names the Hydra as its list does, never by its id.
+  const oracleHydra = {
+    id: navigation.hydraId,
+    name: shownHydra ? hydraTitle(shownHydra) : 'Hydra',
+    icon: shownHydra?.icon ?? HYDRA_MARK,
+  }
+  const askTargets = edits.hydras.map(h => ({
+    id: h.id,
+    name: hydraTitle(h),
+    icon: h.icon ?? HYDRA_MARK,
+  }))
   const opening = navigation.hydras.find(h => h.id === loading)
   const currentHydra = shownHydra
   const others = edits.hydras.filter(h => h.id !== navigation.hydraId)
@@ -1080,6 +1151,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         otherProjects={otherProjects}
       >
         <div
+          ref={setLayer}
           className="app"
           data-seq={state.seq}
           data-connected={connected}
@@ -1095,26 +1167,35 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             upgrade={upgrade}
             startUpgrade={startUpgrade}
             page={page}
-            navigate={({ page }) => setPage(page)}
+            navigate={({ page }) => {
+              setSettingsQuery(''); setPage(page)
+            }}
             oracle={(
               <Oracle
-                selected={selected}
                 state={state}
+                cardActions={actions}
                 view={view}
                 command={command}
-                query={query}
-                setQuery={({ query }) => setQuery(query)}
-                hits={found.hits}
-                pending={found.pending}
+                connected={connected}
+                hydra={oracleHydra}
+                projects={shownHydra?.projects ?? []}
+                workspace={workspace}
+                layer={layer}
                 save={save}
+                notify={notify}
+                upgrade={upgrade}
+                startUpgrade={startUpgrade}
                 openTask={open}
+                answerTask={answerTaskById}
                 openHydra={openHydra}
-                showPanel={() => setPanel(true)}
+                selectProject={selectProject}
+                openSettings={openSettings}
                 createTask={createTask}
                 createColumn={createColumn}
                 action={keyboard.onAction}
-                notify={notify}
-                connected={connected}
+                hydras={askTargets}
+                send={askHydra}
+                openChat={openChat}
               />
             )}
           >
@@ -1347,6 +1428,8 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             )}
             {page === 'settings' && (
               <SettingsPage
+                key={settingsQuery}
+                initialQuery={settingsQuery}
                 state={state}
                 connected={connected}
                 view={view}
