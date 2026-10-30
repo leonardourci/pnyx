@@ -83,7 +83,7 @@ The flows:
 - `agent-host-remote.test.ts` runs real CLI/server SIGKILL flows for Hydra and workers on both providers and tracks the separate helper replay gate.
 - `agent-host-maintenance.test.ts` proves manual idle stop, carried input settlement, background/compaction blockers, unapplied-outcome protection, controller fencing and clean restart.
 - `native-status.test.ts` checks status over the existing browser socket and secret re-entry after an app crash before native delivery.
-- `native-startup.test.ts` starts the copied production SDK closure in an isolated home and records idle resources.
+- `native-startup.test.ts` checks first activation after an in-process server closes, including saved work and upgrade records, dead and invalid PIDs, refusal while the previous server is live, and reuse of the copied production SDK closure. It also records idle resources.
 - `native-performance.test.ts` runs the opt-in full application comparison with `PNYX_NATIVE_BENCHMARK=1` in the isolated environment from `scripts/verification/test-environment.ts`. At one session, RPC p95/p99 must stay below 5/10 ms. At ten sessions, a fixture-only socket observer beside the host measures request-to-reply handling against the same limits, excluding application response scheduling stalls. Page and warm Hydra-send, worker-message and effort-setting receipt p95 regression must remain within 10 ms of the local baseline at both loads; every command must still return a receipt.
 - `agent-host-bundle.test.ts` starts a host from copied runtime bytes and checks that rebuilding the source payload leaves its native owner and old bundle usable.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.

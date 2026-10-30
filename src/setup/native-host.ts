@@ -4,8 +4,7 @@ import { closeSync, existsSync, fsyncSync, lstatSync, openSync, readFileSync, re
 import { join } from 'node:path'
 import { setTimeout as delay } from 'node:timers/promises'
 import { nativeProviders } from '#app/native-provider.ts'
-import { hydraIds } from '#app/home-migration.ts'
-import { loadHydra } from '#app/store.ts'
+import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { connectHost } from '#agent-host/client.ts'
 import { installBundle, selectBundle } from '#agent-host/install.ts'
 import { validateBundle } from '#agent-host/bundle.ts'
@@ -89,9 +88,7 @@ export function nativePaths() {
 export function requireSafeActivation() {
   for (const hydraId of hydraIds()) {
     const server = join(
-      pnyxHome(),
-      'hydras',
-      hydraId,
+      hydraDir({ hydraId }),
       'server.json',
     )
 
@@ -101,21 +98,29 @@ export function requireSafeActivation() {
         'utf8',
       )) as { pid: number }
 
-      if (processStart({ pid: previous.pid })) {
+      if (!Number.isSafeInteger(previous.pid) || previous.pid <= 0) {
         fail({
-          code: 'NATIVE_MIGRATION_BUSY',
-          message: 'Stop the previous application at a safe native-session boundary before first activation',
+          code: 'RECOVERY_REQUIRED',
+          message: 'The previous application PID is not verifiable',
         })
       }
-    }
 
-    const state = loadHydra({ hydraId }).state
-    const working = Object.values(state.sessions ?? {}).some(session => session.agent.host === 'pnyx' && (session.sessionActivity ?? session.activity) === 'working')
+      try {
+        process.kill(
+          previous.pid,
+          0,
+        )
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'ESRCH') {
+          continue
+        }
 
-    if (working || Object.keys(state.helper?.runs ?? {}).length) {
+        throw error
+      }
+
       fail({
         code: 'NATIVE_MIGRATION_BUSY',
-        message: 'Finish the existing in-process turns before activating the native host',
+        message: 'Stop the previous application at a safe native-session boundary before first activation',
       })
     }
   }

@@ -28,6 +28,8 @@ A restarted host exposes retained facts under their old incarnation without reop
 
 `stageBundle` copies a prepared production payload, dereferences dependencies and hashes its files into a versioned bundle. Payload preparation must include the entry, its package imports and all provider dependencies. Validation rejects changed bytes, missing entries and symlinks. The native entry verifies that it is running from the supplied bundle. Rebuilding the source payload leaves the copied runtime available. Production service installation and initial bundle selection preserve this runtime across app upgrades.
 
+First activation waits for every recorded previous application PID to exit, including Hydras still held in the legacy `boards/` folder. Saved working-session and helper records may outlive the application and do not block activation; the restarted application reconciles them through its existing recovery policy. An invalid PID or a process probe that cannot establish exit prevents activation. A reused live PID conservatively blocks it too. This check does not establish whether detached provider tools have finished.
+
 The host imports provider adapters and storage primitives, with no application reducer, task, Hydra or helper policy. See [Provider sessions](provider-sessions.md) for the shared native types and [Testing](testing.md) for the subprocess tests.
 
 ## Application reconnect
