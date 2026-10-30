@@ -2,19 +2,21 @@ import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
 import type { Question } from './model.ts'
-import { form } from '#integrations/hooks/observe.ts'
+import { form } from './native-prompts.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { imageBytes } from './input.ts'
 import { nativeSession, type NativeEvent, type NativeSession } from './native-session.ts'
-import { compactCommand } from '#workers/compaction/state.ts'
+import { compactCommand } from './compact-command.ts'
 import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
   env,
+  detached,
 }: {
   cwd: string
   env: NodeJS.ProcessEnv
+  detached?: boolean
 }) => ChildProcessWithoutNullStreams
 
 type ObjectValue = Record<string, unknown>
@@ -833,6 +835,7 @@ export function codexProvider({
   spawnCodex = ({
     cwd,
     env,
+    detached,
   }) => spawn(
     'codex',
     [
@@ -844,6 +847,7 @@ export function codexProvider({
       cwd,
       env,
       stdio: 'pipe',
+      detached,
     },
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {
@@ -940,18 +944,29 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
+      ownProcess,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
         resolve(): void
         reject({ error }: { error: unknown }): void
       } | undefined
-      const rpc = connection({
-        child: spawnCodex({
-          cwd,
-          env,
-        }),
+      const child = spawnCodex({
+        cwd,
+        env,
+        detached: ownProcess !== undefined,
       })
+
+      if (child.pid !== undefined) {
+        try {
+          ownProcess?.({ pid: child.pid })
+        } catch (error) {
+          child.kill('SIGKILL')
+          throw error
+        }
+      }
+
+      const rpc = connection({ child })
 
       const close = () => {
         deferredInterrupt?.reject({ error: new Error('The Codex session closed before it could be interrupted') })

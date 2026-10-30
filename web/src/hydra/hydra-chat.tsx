@@ -829,7 +829,7 @@ export function HydraChat({
               <InlinePermissions
                 card={{
                   ...card,
-                  permissions: card.permissions?.filter(p => p.status === 'pending'),
+                  permissions: card.permissions?.filter(p => p.status === 'pending' || p.delivery === 'needs_reentry' || p.delivery === 'unknown'),
                 }}
                 command={command}
                 notify={notify}

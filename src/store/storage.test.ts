@@ -4,7 +4,7 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { writeDurably } from './storage.ts'
+import { acquireLock, writeDurably } from './storage.ts'
 
 test(
   'durable writes complete short filesystem writes and refuse a write that stops making progress',
@@ -83,6 +83,62 @@ test(
         'utf8',
       ),
       'one complete transaction\n',
+    )
+  },
+)
+
+test(
+  'an abandoned empty writer lock becomes recoverable within one blocking acquisition',
+  t => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-empty-lock-',
+    ))
+    t.after(() => rmSync(
+      root,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const path = join(
+      root,
+      'writer.lock',
+    )
+    fs.writeFileSync(
+      path,
+      '',
+    )
+    const emptyLockGraceMs = 10_000
+    const remainingGraceMs = 1000
+    const created = new Date(Date.now() - emptyLockGraceMs + remainingGraceMs)
+    fs.utimesSync(
+      path,
+      created,
+      created,
+    )
+    assert.throws(
+      () => acquireLock({
+        dir: root,
+        timeout: 0,
+      }),
+      { code: 'LOCKED' },
+    )
+    const release = acquireLock({
+      dir: root,
+      timeout: 5,
+    })
+    assert.equal(
+      readFileSync(
+        path,
+        'utf8',
+      ),
+      String(process.pid),
+    )
+    release()
+    assert.equal(
+      fs.existsSync(path),
+      false,
     )
   },
 )

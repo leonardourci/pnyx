@@ -1,3 +1,4 @@
+import { native, NATIVE_HELP } from '#agent-host/cli.ts'
 import { formatApplyError } from '#app/apply/cli.ts'
 import { supervisedCommands } from '#routine-helper/commands.ts'
 import { approval } from '#app/confirmations.ts'
@@ -28,6 +29,7 @@ const HELP: Record<string, string> = {
   ...DISPATCH_HELP,
   integrations: INTEGRATIONS_HELP,
   upgrade: UPGRADE_HELP,
+  native: NATIVE_HELP,
 }
 
 const help = ({ command }: { command: string }) => commandHelp({ command })
@@ -87,6 +89,7 @@ const all = ownerOnly({
         serve,
         stop,
         upgrade,
+        native,
         ...firstmateCommands,
         reply,
         agent,

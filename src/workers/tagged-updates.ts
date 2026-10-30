@@ -12,17 +12,16 @@ export function copyTagged({
   texts,
   asks,
   at,
+  turn = randomUUID(),
 }: {
   writer: Writer
   texts: string[]
   // Ids of the Hydra messages this turn answered.
   asks: string[]
   at: string
+  turn?: string
 }) {
   const tagged = new Set<string>()
-  // Two turns can finish in the same millisecond, so `at` alone would let the second reply's note look like a duplicate.
-  const turn = randomUUID()
-
   texts.flatMap(text => taggedParagraphs({ text })).forEach((
     paragraph,
     index,

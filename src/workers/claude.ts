@@ -1,14 +1,15 @@
 import { existsSync } from 'node:fs'
+import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
-import { questions } from '#integrations/hooks/observe.ts'
+import { questions } from './native-prompts.ts'
 import type { HostedImage, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
-import { compactCommand } from '#workers/compaction/state.ts'
+import { compactCommand } from './compact-command.ts'
 
 export type QueryFn = typeof query
 export type ReadSettings = ({ cwd }: { cwd: string }) => Promise<Settings>
@@ -240,6 +241,7 @@ export function claudeProvider({
       outputSchema,
       allow,
       context,
+      ownProcess,
     }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
@@ -247,6 +249,44 @@ export function claudeProvider({
         session: id,
         folder: env.CLAUDE_CONFIG_DIR,
       })
+      let spawnProcess: Options['spawnClaudeCodeProcess']
+
+      if (ownProcess) {
+        spawnProcess = ({
+          command,
+          args,
+          cwd,
+          env,
+          signal,
+        }) => {
+          const child = spawn(
+            command,
+            args,
+            {
+              cwd,
+              env,
+              signal,
+              detached: true,
+              stdio: 'pipe',
+            },
+          )
+
+          // The SDK's custom process contract leaves stderr consumption to the caller.
+          child.stderr.resume()
+
+          if (child.pid !== undefined) {
+            try {
+              ownProcess({ pid: child.pid })
+            } catch (error) {
+              child.kill('SIGKILL')
+              throw error
+            }
+          }
+
+          return child
+        }
+      }
+
       let running: ReturnType<QueryFn> | undefined
       let closed = false, interrupted = false
 
@@ -317,6 +357,7 @@ export function claudeProvider({
             options: {
               cwd,
               includePartialMessages: true,
+              spawnClaudeCodeProcess: spawnProcess,
               ...(outputSchema ? {
                 outputFormat: {
                   type: 'json_schema',

@@ -138,7 +138,7 @@ export function permissionAnswer({
 export function permissionAttention({ card }: { card: Card }): void {
   card.attention = [
     ...card.attention.filter(a => !a.key.startsWith(PERMISSION_PREFIX)),
-    ...(card.permissions ?? []).filter(p => p.status === 'pending').map(p => ({
+    ...(card.permissions ?? []).filter(p => p.status === 'pending' || p.delivery === 'needs_reentry' || p.delivery === 'unknown').map(p => ({
       kind: 'permission',
       key: `${PERMISSION_PREFIX}${p.id}`,
       blocking: true,
@@ -161,7 +161,7 @@ export function permissionEvent({
   const event: Extract<HydraEvent, { type: 'task.permission' }> = {
     v: EVENT_VERSION,
     seq: state.seq + 1,
-    id: meta.id ?? `permission:${request.id}:${request.status}`,
+    id: meta.id ?? `permission:${request.id}:${request.status}${request.delivery ? `:${request.delivery}` : ''}`,
     at: meta.at,
     actor: meta.actor,
     cardId: card.id,
@@ -194,16 +194,44 @@ export function applyPermission({
     const requests = card.permissions ?? []
     const prior = requests.find(p => p.id === event.data.id)
 
+    const sameRequest = prior?.session === event.data.session && prior?.status === event.data.status
+
+    if (prior && sameRequest && event.data.delivery) {
+      prior.delivery = event.data.delivery
+      permissionAttention({ card })
+      card.revision++
+      card.updatedSeq = event.seq
+      card.updatedAt = event.at
+    }
+
     if ((!prior && event.data.status === 'pending') || (prior?.status === 'pending' && event.data.status !== 'pending' && prior.session === event.data.session)) {
       card.permissions = prior
-        ? requests.map(p => p.id === prior.id
-          ? {
+        ? requests.map(p => {
+          if (p.id !== prior.id) {
+            return p
+          }
+
+          const updated: PermissionRequest = {
             ...prior,
             status: event.data.status,
-            ...(event.data.answers ? { answers: event.data.answers } : {}),
-            ...(event.data.values ? { values: event.data.values } : {}),
           }
-          : p)
+
+          if (event.data.delivery) {
+            updated.delivery = event.data.delivery
+          } else {
+            delete updated.delivery
+          }
+
+          if (event.data.answers) {
+            updated.answers = event.data.answers
+          }
+
+          if (event.data.values) {
+            updated.values = event.data.values
+          }
+
+          return updated
+        })
         : [
           ...requests,
           {
