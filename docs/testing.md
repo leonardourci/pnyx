@@ -81,7 +81,7 @@ The flows:
 - `agent-host-reboot.test.ts` checks kernel boot identity persistence, resume with same or unknown identities, and retained-fact settlement before cold resume.
 - `agent-host.test.ts` exercises the authenticated native host in a real isolated subprocess: reconnect, request/input deduplication, controller takeover, critical replay and acknowledgements, secret receipts, pressure, singleton discovery and host-loss refusal.
 - `agent-host-remote.test.ts` runs real CLI/server SIGKILL flows for Hydra and workers on both providers and tracks the separate helper replay gate.
-- `agent-host-maintenance.test.ts` proves drain, carried input settlement, background/compaction blockers, withheld and final-close acknowledgements, controller fencing and real-process bundle replacement/rollback.
+- `agent-host-maintenance.test.ts` proves manual idle stop, carried input settlement, background/compaction blockers, unapplied-outcome protection, controller fencing and clean restart.
 - `native-status.test.ts` checks status over the existing browser socket and secret re-entry after an app crash before native delivery.
 - `native-startup.test.ts` starts the copied production SDK closure in an isolated home and records idle resources.
 - `native-performance.test.ts` runs the opt-in full application comparison: `PNYX_NATIVE_BENCHMARK=1 node --conditions=source --test --test-timeout=600000 e2e/native-performance.test.ts`. Its p95/p99 native call gates are 5/10 ms; page p95 regression must remain within 10 ms of the local baseline.
