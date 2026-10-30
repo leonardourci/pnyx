@@ -150,3 +150,54 @@ test(
     )
   },
 )
+
+test(
+  'view events preserve sequence across the durable outcome barrier',
+  async t => {
+    const directory = mkdtempSync('/tmp/pnyx-output-order-')
+    t.after(() => rmSync(
+      directory,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const stream = output({
+      directory,
+      session: {
+        ref: {
+          id: 'session',
+          epoch: 'epoch',
+        },
+        provider: 'codex',
+        phase: 'live',
+        controllerRevision: 1,
+      },
+    })
+    const received: number[] = []
+    stream.subscribe({
+      listener: ({ frame }) => {
+        received.push(frame.seq)
+      },
+    })
+    stream.publish({
+      event: {
+        type: 'structured',
+        value: 'completed first turn',
+      },
+    })
+    stream.publish({ event: 'working' })
+    await stream.flush()
+    assert.deepEqual(
+      received,
+      [
+        1,
+        2,
+      ],
+    )
+    assert.equal(
+      stream.baseline({}).activity,
+      'working',
+    )
+  },
+)

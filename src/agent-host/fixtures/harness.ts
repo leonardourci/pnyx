@@ -125,6 +125,7 @@ export async function fixtureHost({
     kind,
     nativeId,
     event,
+    nextEvent,
     expected,
     submit,
     count,
@@ -133,6 +134,7 @@ export async function fixtureHost({
     kind: 'stats' | 'event' | 'ask' | 'release' | 'stop' | 'burst'
     nativeId?: string
     event?: NativeEvent
+    nextEvent?: NativeEvent
     expected?: string
     submit?: boolean
     count?: number
@@ -155,6 +157,7 @@ export async function fixtureHost({
         kind,
         nativeId,
         event,
+        nextEvent,
         expected,
         submit,
         count,

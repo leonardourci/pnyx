@@ -184,6 +184,7 @@ try {
         kind: string
         nativeId?: string
         event?: NativeEvent
+        nextEvent?: NativeEvent
         expected?: string
         submit?: boolean
         count?: number
@@ -230,6 +231,11 @@ try {
           })
         } else if (request.kind === 'event' && state?.emit && request.event) {
           state.emit({ event: request.event })
+
+          if (request.nextEvent) {
+            state.emit({ event: request.nextEvent })
+          }
+
           process.send?.({
             id: request.id,
             ok: true,

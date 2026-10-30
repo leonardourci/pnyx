@@ -1849,3 +1849,50 @@ test(
     )
   },
 )
+
+test(
+  'transport preserves durable completion before the following live turn',
+  async t => {
+    const host = await fixtureHost({ t })
+    const client = await host.connect()
+    const session = await controlledSession({
+      host,
+      client,
+    })
+    await snapshot({
+      client,
+      ref: session.ref,
+    })
+    const frames: Extract<ToClient, { type: 'event' }>[] = []
+    client.subscribe({
+      receive: ({ frame }) => {
+        if (frame.type === 'event' && frame.ref.id === session.ref.id) {
+          frames.push(frame)
+        }
+      },
+    })
+    await host.control({
+      kind: 'event',
+      nativeId: session.nativeId,
+      event: {
+        type: 'result',
+        turn: 'first-turn',
+        inputIds: [],
+        status: 'completed',
+        queued: 0,
+      },
+      nextEvent: 'working',
+    })
+    await until({ check: () => frames.some(frame => frame.event === 'working') })
+    const turnEvents = frames.filter(frame => frame.event === 'working'
+      || typeof frame.event === 'object' && frame.event.type === 'turn-ended')
+    assert.deepEqual(
+      turnEvents.map(frame => typeof frame.event === 'string' ? frame.event : frame.event.type),
+      [
+        'turn-ended',
+        'working',
+      ],
+    )
+    assert.ok(turnEvents[0]!.seq < turnEvents[1]!.seq)
+  },
+)
