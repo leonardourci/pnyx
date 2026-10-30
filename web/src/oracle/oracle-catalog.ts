@@ -24,6 +24,13 @@ export type OracleAction = {
   key: string
 })
 
+export const ACTION_ICONS = {
+  task: 'plus',
+  column: 'plus',
+  ask: 'comments',
+  key: 'keyboard',
+} as const
+
 export interface OraclePanel {
   id: string
   label: string

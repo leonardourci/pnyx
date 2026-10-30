@@ -26,7 +26,7 @@ import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { cardState, columnLook, columnsFor } from '#web-tasks/view.ts'
 import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
-import type { OracleAction, OraclePanel } from './oracle-catalog.ts'
+import { ACTION_ICONS, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
 import type { OracleResult } from './results.ts'
 
 const SNIPPET_SOURCES: Record<Kind, string> = {
@@ -178,7 +178,7 @@ function ActionPreview({ action }: { action: OracleAction }) {
 
   return (
     <>
-      <h3 className="oracle-preview-title"><Icon name={action.run === 'key' ? 'keyboard' : 'plus'} size={16} />{action.label}</h3>
+      <h3 className="oracle-preview-title"><Icon name={ACTION_ICONS[action.run]} size={16} />{action.label}</h3>
       <p>{action.does}</p>
       {keys && <p className="muted small">Its shortcut: <kbd>{keys}</kbd></p>}
     </>

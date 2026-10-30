@@ -23,7 +23,7 @@ import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
-import { oracleActions, type OracleAction } from './oracle-catalog.ts'
+import { ACTION_ICONS, oracleActions, type OracleAction } from './oracle-catalog.ts'
 import { AskPreview, FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
 import { menuActions, oracleResults, type OracleResult } from './results.ts'
 
@@ -42,13 +42,6 @@ interface Asking {
   sending: boolean
   error?: string
 }
-
-const ACTION_ICONS = {
-  task: 'plus',
-  column: 'plus',
-  ask: 'comments',
-  key: 'keyboard',
-} as const
 
 const ARROWS = [
   'ArrowUp',
