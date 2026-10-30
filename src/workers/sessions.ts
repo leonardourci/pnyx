@@ -214,6 +214,8 @@ export function decideSession({
   meta,
   fromQueue,
   working,
+  brief,
+  nativeEpoch,
 }: {
   state: HydraState
   ref: string
@@ -221,6 +223,8 @@ export function decideSession({
   meta: Meta
   fromQueue?: string
   working?: boolean
+  brief?: string
+  nativeEpoch?: string
 }): Decision {
   if (meta.id && meta.id in state.eventIds) {
     return { skipped: 'duplicate' }
@@ -279,11 +283,15 @@ export function decideSession({
     after: target?.id ?? null,
   }
 
+  if (nativeEpoch) {
+    data.nativeEpoch = nativeEpoch
+  }
+
   if (working) {
     data.working = true
   }
 
-  const instructions = target ? taskInstructions({ card: target }) : ''
+  const instructions = brief ?? (target ? taskInstructions({ card: target }) : '')
 
   if (instructions) {
     data.brief = instructions

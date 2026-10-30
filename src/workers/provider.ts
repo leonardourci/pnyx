@@ -177,6 +177,7 @@ export interface HostedSession {
   accepted?({ id }: { id: string }): boolean
   permissionDelivery?({ permission }: { permission: string }): string | undefined
   remote?: true
+  incarnation?: string
   recovered?: boolean
   replayed?(): Promise<void>
   fact?(): {

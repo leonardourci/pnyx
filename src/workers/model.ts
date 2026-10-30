@@ -268,6 +268,7 @@ export type SessionEvent = EventBase & {
     before: string | null
     after: string | null
     brief?: string
+    nativeEpoch?: string
     working?: boolean
     handoff?: {
       folder: string
