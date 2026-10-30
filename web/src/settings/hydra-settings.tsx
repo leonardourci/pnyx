@@ -19,7 +19,9 @@ export function DispatchStatus({ error }: { error?: string }) {
   return (
     <div className="setting-stack" role="status">
       <p>{error ? `Could not load agent settings: ${error}` : 'Loading agent settings…'}</p>
-      {error && <Button onClick={() => window.dispatchEvent(new Event(DISPATCH_CHANGED))}>Retry</Button>}
+      {error && (
+        <Button onClick={() => window.dispatchEvent(new Event(DISPATCH_CHANGED))}>Retry</Button>
+      )}
     </div>
   )
 }
