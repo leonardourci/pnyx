@@ -421,7 +421,32 @@ export async function remoteSession({
     replayed: () => replay.promise,
     refreshContext,
     applied,
-    async settle({ through: completion } = {}) {
+    async settle({
+      through: completion,
+      applyOutcome,
+    } = {}) {
+      if (applyOutcome) {
+        const pending = queue.filter(item => typeof item.event === 'object' && item.event.type === 'turn-ended')
+
+        if (pending.length > 1) {
+          fail({
+            code: 'UNAPPLIED_FACT',
+            message: 'Several retained native outcomes require separate reconciliation',
+          })
+        }
+
+        const retained = pending[0]
+
+        if (retained?.fact && typeof retained.event === 'object' && retained.event.type === 'turn-ended') {
+          const fact = `${retained.fact.ref.epoch}:${retained.fact.seq}`
+          await applyOutcome({
+            outcome: retained.event.outcome,
+            fact,
+          })
+          completion = fact
+        }
+      }
+
       let completed = true
 
       if (completion) {
