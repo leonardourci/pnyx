@@ -1,0 +1,55 @@
+# Native agent host transport
+
+`src/agent-host/` owns Claude Code and Codex sessions in a separate process. `pnyx-axi serve` reconnects Hydra, worker and routine helper sessions after an application restart. Normal app upgrades preserve the running host and its immutable runtime; host maintenance is a separate, manual operation.
+
+The host listens on one authenticated Unix socket in a canonical private runtime directory. A durable installation ID, private token and live process claim prevent competing owners. Clients negotiate protocol and capabilities; a different application build does not replace a healthy host. Socket paths that exceed the platform limit fail explicitly. An unrelated file, live socket or unverifiable owner claim is preserved.
+
+## Ownership and requests
+
+Each session has a native incarnation (`id` and `epoch`). A serialized attach barrier grants one connection an opaque controller generation. The host scope controls session opens; a session scope controls inputs, answers, settings, context, interrupts, close and critical acknowledgements. An observer can watch or read results, but cannot mutate or compact output. A takeover invalidates earlier controller generations. An unsettled native action blocks later mutations even when its caller has timed out.
+
+Stateful calls have stable request IDs. Repeating an admitted ID returns its result when the operation identity matches; conflicting reuse fails. The comparison excludes controller tokens and answer decision contents, except for allow/deny behavior. Named input IDs also include the explicit image manifest in their identity. Images are selected by the application and checked by the provider adapter. Disconnecting a client removes its readers and leaves the native owner running. Explicit close is separate; idle close checks queued input and the provider's conservative native-work inventory.
+
+This foundation limits a host lifetime to 64 session descriptors and 10,000 named requests, including completed requests and closed sessions. Reaching a limit explicitly refuses new admissions. Each live session also bounds admission to 9,000 input IDs and 16 MiB of queued input. Reaching those bounds refuses new input instead of evicting deduplication identities. Restarting is not a safe way to recover capacity while native ownership is unresolved.
+
+Permission decisions stay in the live continuation. The ledger retains only answer identity and receipt phase, never values or hashes of values. A client that lost an answer reply can look up the request without resending its secret. `submitted` means handed to the SDK callback or native pipe, not proof of native application. A missing request in an intact live ledger is `NOT_RECEIVED`; after host loss it is `UNKNOWN`.
+
+## Output and recovery
+
+The live host retains input admission IDs and queued payloads in memory. It does not wait for a queued-input disk write before provider consumption. Reconnect snapshots contain those admitted IDs, bounded current text/activity, live work and permissions, and unacknowledged facts. There is no historical delta replay. The controller fence remains serialized and is rechecked before queued mutations and acknowledgements.
+
+Only terminal outcomes, structured output, compaction events and terminal failures have a durable outbox handoff. Live input receipts and permission/answer callbacks remain in memory and are reconciled from the surviving owner. A snapshot's view watermark never acknowledges a fact. After durable domain application the current controller acknowledges a delivered prefix in memory; a host crash can replay previously applied facts with the same epoch, sequence and time, so domain application must be idempotent.
+
+Non-reconstructible facts are persisted asynchronously in coalesced snapshots before durable delivery. Retention or disk pressure stops new admissions and uses an emergency in-memory reserve; exhausting that reserve explicitly fails the native owner and requires reconciliation. Facts retained only in memory cannot survive a host crash. Slow socket readers are disconnected without stopping the provider. Oversized snapshots fail explicitly and leave the facts for reconciliation.
+
+A restarted host exposes retained facts under their old incarnation without reopening the provider. Retained facts must settle before saved sessions reopen. Missing provider history is not proof that an input was never consumed: ambiguous inputs stay UNKNOWN and are never automatically replayed after host loss. The host records the kernel boot identity with each native session. A verified boot change proves that the old native processes ended; retained facts must be applied and durably settled before the descriptor becomes closed and admission can resume. Each provider child starts in a private process group whose ID and process-start identity are recorded with its session. After host loss, recovery uses the old descriptor’s last-alive time as a conservative cleanup cutoff. Existing live descriptor saves update that bound without a heartbeat. Cleanup signals individual recorded-group members only when their readable start precedes the cutoff’s whole second, rechecking identity before TERM and bounded KILL. Missing, changed, same-second or newer identities are left alone; a missing legacy cutoff skips signaling. Recovery still resumes the saved native session after retained facts settle. These surviving tools have the same accepted limit as tools that detach into another group; macOS has no pidfd to eliminate the check-then-signal window. The application applies old-incarnation facts through a read-only attachment, then resumes the saved provider session through its existing continuation policy. Task retries, helper policy, authorization grants and maintenance drain remain application concerns. Host termination still ends its live continuations; only client loss is survivable at this stage.
+
+## Runtime bundles
+
+`stageBundle` copies a prepared production payload, dereferences dependencies and hashes its files into a versioned bundle. Payload preparation must include the entry, its package imports and all provider dependencies. Validation rejects changed bytes, missing entries and symlinks. The native entry verifies that it is running from the supplied bundle. Rebuilding the source payload leaves the copied runtime available. Production service installation and initial bundle selection preserve this runtime across app upgrades.
+
+The host imports provider adapters and storage primitives, with no application reducer, task, Hydra or helper policy. See [Provider sessions](provider-sessions.md) for the shared native types and [Testing](testing.md) for the subprocess tests.
+
+## Application reconnect
+
+After a socket loss, the running application reconnects, claims the host controller and reads a fresh inventory. It reattaches session controllers before accepting further host requests. Concurrent opens for the same native session share one pending attachment, including a wake that arrives during recovery. Transport recovery never retries an ambiguous mutation; surviving admission IDs establish which original inputs already belong to that host.
+
+The application retains small native binding and permission metadata, without a second copy of input text or image manifests. It reconstructs unsent intent from its event log using stable IDs. Before preparing context or reading attachments, it checks the surviving host's admitted IDs; an already admitted input keeps its original live payload. The worker attachment records its original launch brief, and Hydra delivery events retain generated wake intent and task scope. These sources name the native incarnation, so recovery cannot replay an older owner's inputs into a resumed conversation. A pending helper batch is submitted only if that host never admitted its batch ID. A different host incarnation cannot establish whether an ambiguous input was consumed and does not authorize replay. An unacknowledged durable inbox entry can ring its doorbell again after recovery; a repeated notice is not a new instruction or a replay of uncertain owner input.
+
+Reattachment republishes the current context digest. Input, compaction and application state changes refresh that digest without changing an admitted payload. Replayed turn outcomes keep their original turn identity when copying tagged replies to task history.
+
+Helper recovery can attach to retained old-incarnation facts without opening a provider or submitting input. It applies the original terminal outcome before acknowledging its facts and releasing the batch lease. A batch with no retained terminal outcome keeps its lease and requires ownership reconciliation; new helper batches wait while the host has unresolved native owners.
+
+## Native maintenance
+
+Normal app upgrades leave the native host and selected runtime unchanged. Host updates are rare, manual maintenance. `pnyx-axi native status` reports live work and unapplied outcomes without taking control. Owner-only `native stop` closes the host only when queued input, permissions, controls, native background work and unapplied outcomes are all clear. Busy or uncertain ownership defers the stop; it never kills an active turn to finish an update. Stop the application before maintaining the host so it cannot admit new work or start the selected runtime again. A login-managed native job must also be stopped separately before changing its runtime.
+
+There is no automatic candidate staging, drain, swap, rollback or application restart. The selected immutable runtime stays available until explicit maintenance. A clean idle stop records its predecessor only after compacting acknowledged outcomes; a replacement can then discard closed descriptors. A host crash does not establish a clean handoff and leaves ambiguous inputs UNKNOWN.
+
+## Status and answers
+
+The navigation panel shows host unavailability and required recovery through the existing browser WebSocket. A healthy host adds no status card. `native status` and `/health` expose readiness for local diagnostics.
+
+Answer receipts distinguish received, submitted and unknown delivery. Submitted means handed to the SDK callback or native pipe, without proof of native application. Reconcile unknown delivery by the original request ID. Re-enter secrets only when the same live host confirms NOT_RECEIVED for the pending request; host loss returns UNKNOWN and never authorizes a resend.
+
+The full application benchmark is opt-in with `PNYX_NATIVE_BENCHMARK=1`. It compares one and ten active fixture sessions, image materialization, permissions and browser delta delivery against the same in-process provider fixture. Page latency and native call latency are separate gates. See [Testing](testing.md) for the command.

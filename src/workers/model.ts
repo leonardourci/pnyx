@@ -180,6 +180,7 @@ export type SteeringEvent = EventBase & (
 export interface PermissionRequest {
   id: string
   nativeId?: string
+  delivery?: 'queued' | 'received' | 'submitted' | 'needs_reentry' | 'unknown' | 'aborted' | 'failed'
   session: string
   tool: string
   input: Record<string, unknown>
@@ -267,6 +268,7 @@ export type SessionEvent = EventBase & {
     before: string | null
     after: string | null
     brief?: string
+    nativeEpoch?: string
     working?: boolean
     handoff?: {
       folder: string

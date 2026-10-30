@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 import { unwatchFile, existsSync, watchFile, mkdirSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
+import type { NativeConnection } from './native-provider.ts'
 import type { QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
@@ -37,6 +38,7 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  native?: NativeConnection
   // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry and followed pull requests wait between reads; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
@@ -188,6 +190,7 @@ export async function startServer({
         build: buildId(),
         hydras,
         skipped,
+        native: options.native?.status?.(),
       }
 
       return reply({
@@ -731,6 +734,7 @@ async function mountHydra({
   catalogLocations,
   query,
   spawnCodex,
+  native,
   wakeDelay,
   stallDelay,
   busyDelay,
@@ -753,6 +757,7 @@ async function mountHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  native?: NativeConnection
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -778,6 +783,7 @@ async function mountHydra({
       catalogLocations,
       query,
       spawnCodex,
+      native,
       wakeDelay,
       stallDelay,
       busyDelay,

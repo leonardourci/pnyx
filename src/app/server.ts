@@ -63,6 +63,7 @@ import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
+import type { NativeConnection } from './native-provider.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
@@ -150,6 +151,7 @@ export async function mountOwnedHydra({
   catalogLocations,
   query,
   spawnCodex,
+  native,
   wakeDelay,
   stallDelay,
   busyDelay,
@@ -172,6 +174,7 @@ export async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
+  native?: NativeConnection
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -553,6 +556,28 @@ export async function mountOwnedHydra({
       ws.send({ message })
     }
   }
+
+  const sendNative = ({ ws }: { ws: HydraClient }) => {
+    const status = native?.status?.()
+
+    if (status) {
+      send({
+        ws,
+        message: {
+          type: 'native-status',
+          native: status,
+        },
+      })
+    }
+  }
+
+  const stopNativeStatus = native?.subscribeStatus?.({
+    changed() {
+      for (const ws of clients) {
+        sendNative({ ws })
+      }
+    },
+  })
 
   const sendQueue = ({ ws }: { ws: HydraClient }) => send({
     ws,
@@ -1380,6 +1405,7 @@ export async function mountOwnedHydra({
     hydraId,
     query,
     spawnCodex,
+    native: native?.providers,
     wakeDelay,
     stallDelay,
     busyDelay,
@@ -1412,6 +1438,29 @@ export async function mountOwnedHydra({
           }
         }
       }
+    },
+  })
+
+  let nativeRecovery = Promise.resolve()
+  const unwatchNative = native?.client?.subscribe({
+    receive: ({ frame }) => {
+      const ready = frame.type === 'ready' || frame.type === 'host-status' && frame.status.state === 'ready'
+
+      if (!ready) {
+        return
+      }
+
+      nativeRecovery = nativeRecovery.then(async () => {
+        if (!closed) {
+          await agents.recover()
+          kick()
+        }
+      }).catch(error => {
+        console.error(
+          'pnyx-axi native reattachment:',
+          error,
+        )
+      })
     },
   })
 
@@ -1456,10 +1505,14 @@ export async function mountOwnedHydra({
         })
       }
 
-      return readBody({ req }).then(body => hostRequest({
-        host: agents,
-        body,
-      }))
+      return readBody({ req }).then(async body => {
+        await nativeRecovery
+
+        return hostRequest({
+          host: agents,
+          body,
+        })
+      })
         .then(
           answer => reply({
             res,
@@ -1668,6 +1721,7 @@ export async function mountOwnedHydra({
           hydraId,
           pid: process.pid,
           build: buildId(),
+          native: native?.status?.(),
         },
       })
     }
@@ -2586,6 +2640,7 @@ export async function mountOwnedHydra({
         installation: hydraIdentity({ hydraId: '' }),
       },
     })
+    sendNative({ ws })
     const upgrade = upgradeStatus()
 
     if (upgrade) {
@@ -2704,6 +2759,7 @@ export async function mountOwnedHydra({
   const watchers: PathWatch[] = []
 
   const stop = async () => {
+    stopNativeStatus?.()
     closed = true
     historyIndex.stop()
 
@@ -2712,6 +2768,7 @@ export async function mountOwnedHydra({
     }
 
     writeRetries.clear()
+    unwatchNative?.()
     unwatchFile(
       eventsPath,
       kick,
@@ -2721,6 +2778,7 @@ export async function mountOwnedHydra({
       replyRun,
       followRun,
       joinWorkers(),
+      nativeRecovery,
     ])
     await sources.close()
     firstmate?.close()

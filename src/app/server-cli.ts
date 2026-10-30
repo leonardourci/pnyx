@@ -6,6 +6,8 @@ import { flagError } from './cli-support.ts'
 import { DEFAULT_PORT, infoPath, type ServerInfo } from './server-state.ts'
 import { STOP_TIMEOUT_MS, type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
+import type { NativeProviders } from './native-provider.ts'
+import { ensureNativeHost } from '#setup/native-host.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
 import { HydraError } from '#store/errors.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
@@ -45,15 +47,20 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
 
   const port = Number(values.port ?? DEFAULT_PORT)
   let server: RunningServer
+  let native: NativeProviders | undefined
 
   try {
+    native = await ensureNativeHost({ source: PNYX_ROOT })
     server = await startServer({
+      native,
       hydraId,
       port,
       homes: values.home,
       upgradeRoot: PNYX_ROOT,
     })
   } catch (error) {
+    native?.detach()
+
     if (error instanceof HydraError) {
       throw new AxiError(
         error.message,
@@ -100,6 +107,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   })
   const watched = firstmate?.close()
   await server.close()
+  native.detach()
 
   if (signal === RESTART_SIGNAL) {
     relaunch()

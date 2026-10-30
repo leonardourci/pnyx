@@ -10,7 +10,7 @@ export const RESTART_SIGNAL = 'SIGUSR2'
 // The login service starts the server again by itself; a server started by hand starts its replacement.
 // Only launchd's job is recognized: a supervisor on Linux would see two servers race for the port.
 export function relaunch() {
-  if (process.env.XPC_SERVICE_NAME === serviceFile().label) {
+  if (process.env.PNYX_SERVICE_ROLE === 'application' || process.env.XPC_SERVICE_NAME === serviceFile().label) {
     return
   }
 

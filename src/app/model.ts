@@ -59,6 +59,13 @@ export type HydraChange = EventBase & (
   }
   | {
     type: 'board.configured'
+    nativeInput?: {
+      tasks?: string[]
+      epoch: string
+      id: string
+      text: string
+      original?: string
+    }
     data: HydraConfig
   }
   | {
