@@ -409,7 +409,7 @@ function environment({ env }: { env: NodeJS.ProcessEnv }): Record<string, string
 
 export type NativeProviders = Awaited<ReturnType<typeof nativeProviders>>
 
-export type NativeConnection = Pick<NativeProviders, 'providers'> & Partial<Pick<NativeProviders, 'status' | 'subscribeStatus'>>
+export type NativeConnection = Pick<NativeProviders, 'providers'> & Partial<Pick<NativeProviders, 'client' | 'status' | 'subscribeStatus'>>
 
 function deliveryPhase({ result }: { result: Result }): string {
   if (result.kind === 'answer') {
