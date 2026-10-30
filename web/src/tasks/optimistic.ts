@@ -212,14 +212,13 @@ export function optimisticState({
 
   if (name === 'hydra' && action === 'set') {
     const title = option({ flag: '--name' })
-    const identity = option({ flag: '--identity' }), hours = option({ flag: '--done-after-hours' })
+    const identity = option({ flag: '--identity' })
 
     return {
       ...state,
       config: {
         ...config,
         ...(title ? { name: title } : {}),
-        ...(hours !== undefined ? { doneAfterHours: Number(hours) } : {}),
         hydra: {
           ...config.hydra,
           ...(identity ? { id: identity } : {}),

@@ -113,30 +113,15 @@ test(
       what: 'main to finish',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
-    withWriter({
-      hydraId: s.hydraId,
-      fn: ({ writer }) => {
-        const decision = hydraEvent({
-          state: writer.state,
-          cardId: HYDRA_CARD,
-          meta: {
-            at: new Date().toISOString(),
-            actor: 'web',
-          },
-          change: {
-            type: 'board.configured',
-            data: {
-              ...writer.state.config!,
-              helper: {
-                harness: 'claude',
-                model: 'sonnet',
-              },
-            },
-          },
-        })
-        assert.ok('event' in decision)
-        writer.append({ event: decision.event })
-      },
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'claude',
+        '--helper-model',
+        'sonnet',
+      ],
     })
     const task = s.task({ key: 'work' })
     pnyx.claude.plan({

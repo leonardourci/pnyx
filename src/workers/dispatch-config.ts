@@ -4,7 +4,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { randomUUID } from 'node:crypto'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
-import type { AgentConfig } from './model.ts'
+import { AGENT_FLAG, type AgentConfig } from './model.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { pnyxHome } from '#store/storage.ts'
 
@@ -193,7 +193,7 @@ export function candidates({ value }: { value: unknown }): Candidate[] {
       'effort',
       'mode',
     ]) {
-      if (item[key] !== undefined && (typeof item[key] !== 'string' || !/^[\w.:/[\]-]{1,100}$/.test(item[key]))) {
+      if (item[key] !== undefined && (typeof item[key] !== 'string' || !AGENT_FLAG.test(item[key]))) {
         invalid({ message: `candidate ${key} has characters a harness flag cannot take` })
       }
     }

@@ -9,6 +9,7 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { observedStatus, type ObservedStatus } from './observed-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
 
 export const TASK_DRAG = 'application/pnyx-task'
 
@@ -136,7 +137,7 @@ export function cardState({
   connected,
 }: {
   card: Card
-  hours?: number
+  hours?: DoneAfterHours
   now: number
   state?: HydraState
   action?: CurrentAction

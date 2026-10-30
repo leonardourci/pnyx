@@ -20,6 +20,7 @@ import { scriptPullRequest, type FakePullRequest } from './github.ts'
 import { fakeDispatch } from './dispatch-fixture.ts'
 import { upgradeRepo } from './upgrade-fixture.ts'
 import { replayClaude, replayCodex, type AgentSession } from './fake-agents.ts'
+import type { Settings } from '#settings/model.ts'
 
 const BIN = join(
   import.meta.dirname,
@@ -172,6 +173,7 @@ export async function openPage({
   const checking: string[] = []
   const queues: HydraQueue[] = []
   const upgrades: UpgradeStatus[] = []
+  const settings: Settings[] = []
   ws.on(
     'message',
     (data: unknown) => {
@@ -181,6 +183,8 @@ export async function openPage({
         checking.push(message.id)
       } else if (message.type === 'upgrade') {
         upgrades.push(message.upgrade)
+      } else if (message.type === 'settings') {
+        settings.push(message.settings)
       } else if (message.type === 'hydraQueue') {
         queues.push(message.queue)
       } else if (message.type === 'snapshot') {
@@ -217,6 +221,8 @@ export async function openPage({
     checking,
     queues,
     upgrades,
+    // Every shared settings push, in order: one on connect, then one per change.
+    settings,
     shows: <T>({
       what,
       check,

@@ -21,10 +21,8 @@ export const DEFAULT_VIEW: ViewPreferences = {
   lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [
-    id,
-    DEFAULT_COLUMN_WIDTH,
-  ])),
+  defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
+  defaultColumnWidths: {},
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
   chatFontSize: 16,
@@ -142,41 +140,64 @@ export function traces({
   }
 }
 
-export const viewFor = ({ state }: { state: Pick<HydraState, 'view' | 'config'> }): ViewPreferences => {
+// Shared settings, when given, win over the Hydra's own copy of the same preferences.
+export const viewFor = ({
+  state,
+  settings,
+}: {
+  state: Pick<HydraState, 'view' | 'config'>
+  settings?: Partial<ViewPreferences>
+}): ViewPreferences => {
+  const own = structuredClone(state.view ?? {}) as Partial<ViewPreferences>
+
+  // Only a Hydra's own view from older releases can hold their saved default widths; shared values are literal.
+  if (own.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra) {
+    delete own.defaultHydraWidth
+  }
+
+  if (own.defaultColumnWidths) {
+    own.defaultColumnWidths = Object.fromEntries(Object.entries(own.defaultColumnWidths)
+      .filter(([
+        , width,
+      ]) => width !== LEGACY_DEFAULT_WIDTHS.column))
+  }
+
   const view = {
     ...structuredClone(DEFAULT_VIEW),
-    ...state.view,
+    ...own,
+    ...structuredClone(settings),
   }
   const columnIds = new Set<string>([
     ...COLUMNS,
     ...(state.config?.columns ?? view.customColumns).map(column => column.id),
   ])
 
+  const defaultColumnWidth = persistedSize({
+    value: view.defaultColumnWidth,
+    fallback: DEFAULT_COLUMN_WIDTH,
+    ...VIEW_SIZE_LIMITS.columnWidth,
+  })
+
   return {
     ...view,
+    defaultColumnWidth,
     keyboard: {
       ...view.keyboard,
       bindings: Object.fromEntries(Object.entries(view.keyboard.bindings)
         .filter(([id]) => KEY_ACTIONS.some(action => action.id === id))),
     },
     defaultHydraWidth: persistedSize({
-      value: view.defaultHydraWidth === LEGACY_DEFAULT_WIDTHS.hydra
-        ? undefined
-        : view.defaultHydraWidth,
+      value: view.defaultHydraWidth,
       fallback: DEFAULT_VIEW.defaultHydraWidth,
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
     defaultColumnWidths: {
-      ...Object.fromEntries((state.config?.columns ?? view.customColumns)
-        .map(c => [
-          c.id,
-          DEFAULT_COLUMN_WIDTH,
-        ])),
+      ...Object.fromEntries([...columnIds].map(id => [
+        id,
+        defaultColumnWidth,
+      ])),
       ...Object.fromEntries(Object.entries(persistedMap({
-        values: Object.fromEntries(Object.entries(view.defaultColumnWidths ?? {})
-          .filter(([
-            , width,
-          ]) => width !== LEGACY_DEFAULT_WIDTHS.column)),
+        values: view.defaultColumnWidths ?? {},
         ...VIEW_SIZE_LIMITS.columnWidth,
       })).filter(([id]) => columnIds.has(id))),
     },
@@ -245,10 +266,6 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
       id,
       null,
     ])),
-    ...Object.fromEntries(Object.entries(view.defaultColumnWidths)
-      .filter(([
-        , width,
-      ]) => width !== DEFAULT_WIDTHS.column)),
   },
 })
 
@@ -292,9 +309,12 @@ const size = ({
 export function patchView({
   state,
   input: rawInput,
+  settings,
 }: {
   state: HydraState
   input: unknown
+  // Shared settings to patch instead of the Hydra's own view.
+  settings?: Partial<ViewPreferences>
 }): ViewPreferences {
   const input = record({ value: rawInput })
 
@@ -302,7 +322,10 @@ export function patchView({
     return invalid({ detail: 'expected an object' })
   }
 
-  const next = structuredClone(viewFor({ state }))
+  const next = structuredClone(viewFor({
+    state,
+    settings,
+  }))
   const hydraColumnIds = state.config?.columns.map(c => c.id) ?? []
 
   for (const [
@@ -379,6 +402,11 @@ export function patchView({
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
+      case 'defaultColumnWidth': next.defaultColumnWidth = size({
+        value,
+        ...VIEW_SIZE_LIMITS.columnWidth,
+        key,
+      }); break
       case 'defaultHydraWidth': next.defaultHydraWidth = size({
         value,
         ...VIEW_SIZE_LIMITS.hydraWidth,

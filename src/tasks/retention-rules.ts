@@ -2,6 +2,7 @@ import { openAsks } from './questions.ts'
 import { reportReviewGaps } from '#investigations/inventory.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'
+import type { DoneAfterHours } from '#settings/model.ts'
 
 export const DEFAULT_DONE_HOURS = 24
 export const MAX_DONE_HOURS = 876000
@@ -32,18 +33,19 @@ export function refreshDone({
   }
 }
 
+// A task's own 0 keeps it visible; the shared setting says that with off, so its 0 hides right away.
 export function cardDoneDeadline({
   card,
   hours = DEFAULT_DONE_HOURS,
 }: {
   card: Card
-  hours?: number
+  hours?: DoneAfterHours
 }): number | undefined {
   const delay = card.doneAfterHours ?? hours
-
+  const kept = card.doneAfterHours === 0 || delay === 'off'
   const pendingReportChoice = openAsks({ card }).some(ask => ask.origin)
 
-  if (pendingReportChoice || card.hidden || card.keepDone || !card.doneAt || delay === 0) {
+  if (pendingReportChoice || card.hidden || card.keepDone || !card.doneAt || kept) {
     return undefined
   }
 
@@ -52,7 +54,13 @@ export function cardDoneDeadline({
   return Number.isFinite(deadline) ? deadline : undefined
 }
 
-export function doneDeadline({ state }: { state: HydraState }): number | undefined {
+export function doneDeadline({
+  state,
+  hours,
+}: {
+  state: HydraState
+  hours: DoneAfterHours
+}): number | undefined {
   let next: number | undefined
 
   for (const card of Object.values(state.cards)) {
@@ -65,7 +73,7 @@ export function doneDeadline({ state }: { state: HydraState }): number | undefin
 
     const deadline = cardDoneDeadline({
       card,
-      hours: state.config?.doneAfterHours,
+      hours,
     })
 
     if (deadline !== undefined) {

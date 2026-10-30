@@ -18,6 +18,7 @@ import { columnsFor } from '#web-tasks/view.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { latestMessage, readThread, recordEntries } from '#hydra/transcripts-read.ts'
+import { saveSettings } from '#settings/store.ts'
 
 const meta = {
   at: '2026-10-13T10:00:00Z',
@@ -291,22 +292,20 @@ test(
       older.older,
       undefined,
     )
-    const showTools = reduce({
-      state,
-      event: event({
-        d: decideView({
-          state,
-          patch: { focusMode: false },
-          meta,
-        }),
-      }),
+    saveSettings({
+      patch: { focusMode: false },
+      meta,
     })
     assert.ok(readThread({
       hydraId: 'default',
-      state: showTools,
-      card: showTools.cards.c1!,
+      state,
+      card: state.cards.c1!,
       homes: [],
     }).entries.some(e => e.kind === 'tool'))
+    saveSettings({
+      patch: { focusMode: true },
+      meta,
+    })
   },
 )
 

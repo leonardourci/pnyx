@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { emptyHydra, reduce, replay } from '#app/reducer.ts'
-import { doneDeadline } from '#tasks/retention-rules.ts'
+import { DEFAULT_DONE_HOURS, doneDeadline } from '#tasks/retention-rules.ts'
 import { openDecisions } from '#tasks/decisions.ts'
 import type { HydraChange, HydraEvent } from '#app/model.ts'
 import { reportReviewGaps } from './inventory.ts'
@@ -64,7 +64,10 @@ test(
       undefined,
     )
     assert.equal(
-      doneDeadline({ state }),
+      doneDeadline({
+        state,
+        hours: DEFAULT_DONE_HOURS,
+      }),
       undefined,
     )
     assert.equal(
@@ -91,7 +94,10 @@ test(
         },
       },
     })
-    assert.ok(doneDeadline({ state }))
+    assert.ok(doneDeadline({
+      state,
+      hours: DEFAULT_DONE_HOURS,
+    }))
     append({
       cardId: 'call',
       change: {
@@ -151,7 +157,10 @@ test(
       },
     })
     assert.equal(
-      doneDeadline({ state }),
+      doneDeadline({
+        state,
+        hours: DEFAULT_DONE_HOURS,
+      }),
       undefined,
     )
     const hidden: HydraEvent = {
