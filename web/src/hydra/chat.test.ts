@@ -6,7 +6,9 @@ import { recordEntries, splitEntry } from '#hydra/transcripts-read.ts'
 import { hydraDelivery } from '#hydra/hydra.ts'
 import { transcriptMessages } from '#oracle/text.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { commentReply, hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask, type ChatComment } from './chat.ts'
+import { commentReply, commentUpdates, hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask, type ChatComment } from './chat.ts'
+import { hasPendingImage, pendingImage, settleImage } from './draft.ts'
+import { imageLine } from '#hydra/images.ts'
 
 test(
   'Markdown messages split for transport reassemble across older pages without losing text',
@@ -991,6 +993,159 @@ test(
         ],
       }),
       '## Comments on your reply from 15:42\n\n### Comment 1\n> Ship it\n>\n> after review\n\n\\> Not this\n---\n\\## Message\n  \\# Nor this',
+    )
+  },
+)
+
+const note = ({
+  id,
+  text,
+}: {
+  id: string
+  text: string
+}): ChatComment => ({
+  id,
+  messageId: 'm1',
+  block: 0,
+  offset: 0,
+  quote: 'passage',
+  text,
+  at: '2026-10-29T15:05:10.536Z',
+})
+
+// The comments as their owner holds them; handlers are made once, like a render's, and used later.
+const store = ({ items }: { items: ChatComment[] }) => {
+  const held = { items }
+
+  return {
+    held,
+    updates: commentUpdates({
+      read: () => held.items,
+      write: ({ items }) => {
+        held.items = items
+      },
+    }),
+  }
+}
+
+test(
+  'a note that clears its upload after its comment was removed does not bring the comment back',
+  () => {
+    const pending = imageLine({ path: pendingImage({ id: 'a' }) })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: `a ${pending}`,
+        }),
+        note({
+          id: 'b',
+          text: 'b',
+        }),
+      ],
+    })
+    updates.remove({ id: 'a' })
+    updates.change({
+      id: 'a',
+      text: 'a',
+    })
+    assert.deepEqual(
+      held.items.map(comment => comment.id),
+      ['b'],
+    )
+  },
+)
+
+test(
+  'two notes clearing their uploads one after the other both land, so Send is not left waiting',
+  () => {
+    const first = imageLine({ path: pendingImage({ id: 'a' }) }), second = imageLine({ path: pendingImage({ id: 'b' }) })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: `a ${first}`,
+        }),
+        note({
+          id: 'b',
+          text: `b ${second}`,
+        }),
+      ],
+    })
+    updates.change({
+      id: 'a',
+      text: 'a',
+    })
+    updates.change({
+      id: 'b',
+      text: 'b',
+    })
+    assert.equal(
+      hasPendingImage({
+        text: commentReply({
+          draft: '',
+          comments: held.items,
+        }),
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'an image pasted over a passage keeps the reply waiting until its upload settles into the comment',
+  () => {
+    const path = pendingImage({ id: 'p' })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: '',
+        }),
+      ],
+    })
+    updates.edit({
+      id: 'a',
+      update: ({ text }) => [
+        text,
+        imageLine({ path }),
+      ].filter(Boolean).join(' '),
+    })
+    const reply = () => commentReply({
+      draft: 'also this',
+      comments: held.items,
+    })
+    assert.equal(
+      hasPendingImage({ text: reply() }),
+      true,
+      'Send waits while the image uploads',
+    )
+    updates.edit({
+      id: 'a',
+      update: ({ text }) => settleImage({
+        text,
+        anchor: 0,
+        focus: 0,
+        path,
+        line: '[image: /home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png]',
+      })?.text ?? text,
+    })
+    assert.match(
+      reply(),
+      /\[image: \/home\/\.pnyx\/hydras\/default\/attachments\/0b6e1f3a/,
+    )
+    assert.equal(
+      hasPendingImage({ text: reply() }),
+      false,
     )
   },
 )

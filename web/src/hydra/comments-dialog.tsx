@@ -1,8 +1,8 @@
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
+import { commentUpdates, groupComments, orderedComments, sendableComment, type ChatComment } from './chat.ts'
 import { MessageComment } from './message-comment.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 
@@ -60,6 +60,19 @@ export function CommentsDialog({
   show({ id }: { id: string }): void
   close(): void
 }) {
+  // A note's cleanup can run after this render, as when the dialog closes mid-upload, so edits use the newest list.
+  const latest = useRef(comments)
+  latest.current = comments
+
+  const write = ({ items }: { items: ChatComment[] }) => {
+    latest.current = items
+    setComments({ items })
+  }
+
+  const updates = commentUpdates({
+    read: () => latest.current,
+    write,
+  })
   const listed = comments.filter(comment => shown.includes(comment.id))
   const replies = groupComments({ comments: listed })
   const numbers = new Map(orderedComments({ comments }).map((
@@ -71,8 +84,8 @@ export function CommentsDialog({
   ]))
 
   const finish = () => {
-    setComments({
-      items: comments.filter(comment => !shown.includes(comment.id)
+    write({
+      items: latest.current.filter(comment => !shown.includes(comment.id)
         || sendableComment({ comment })),
     })
     close()
@@ -89,16 +102,14 @@ export function CommentsDialog({
                 key={comment.id}
                 comment={comment}
                 number={numbers.get(comment.id)!}
-                change={({ text }) => setComments({
-                  items: comments.map(c => c.id === comment.id ? {
-                    ...c,
-                    text,
-                  } : c),
+                change={({ text }) => updates.change({
+                  id: comment.id,
+                  text,
                 })}
-                remove={() => setComments({ items: comments.filter(c => c.id !== comment.id) })}
+                remove={() => updates.remove({ id: comment.id })}
                 release={() => {
                   if (!sendableComment({ comment })) {
-                    setComments({ items: comments.filter(c => c.id !== comment.id) })
+                    updates.remove({ id: comment.id })
                   }
                 }}
                 show={() => show({ id: comment.id })}

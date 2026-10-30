@@ -1,5 +1,5 @@
-import type { ViewPreferences } from '#preferences/model.ts'
 import type { Settings } from '#settings/model.ts'
+import type { ViewPreferences } from '#preferences/model.ts'
 import { DEFAULT_COLUMN_WIDTH } from '#preferences/view.ts'
 import { DEFAULT_KEYBOARD } from '#preferences/keyboard.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
@@ -28,7 +28,10 @@ export function changedIds({
   view: ViewPreferences
   settings: Settings
 }): Set<string> {
-  const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => key !== 'defaultColumnWidths'
+  const ids = new Set(Object.keys(DEFAULT_SETTINGS).filter(key => ![
+    'defaultColumnWidths',
+    'defaultColumnWidth',
+  ].includes(key)
     && key in view && differs({
     value: view[key as keyof ViewPreferences],
     initial: initialOf({ id: key }),
@@ -43,7 +46,11 @@ export function changedIds({
     }
   }
 
-  if (Object.values(view.defaultColumnWidths).some(width => width !== DEFAULT_COLUMN_WIDTH)) {
+  const widths = settings.defaultColumnWidths
+  const columnsChanged = view.defaultColumnWidth !== DEFAULT_COLUMN_WIDTH
+    || Object.values(widths).some(width => width !== DEFAULT_COLUMN_WIDTH)
+
+  if (columnsChanged) {
     ids.add('defaultColumnWidths')
   }
 
@@ -54,9 +61,11 @@ export function changedIds({
 export function resetPatch({
   id,
   view,
+  settings,
 }: {
   id: string
   view: ViewPreferences
+  settings?: Settings
 }): Record<string, unknown> {
   if (id === 'keyboard') {
     return {
@@ -68,10 +77,13 @@ export function resetPatch({
   }
 
   if (id === 'defaultColumnWidths') {
+    const widths = settings?.defaultColumnWidths ?? view.defaultColumnWidths
+
     return {
-      defaultColumnWidths: Object.fromEntries(Object.keys(view.defaultColumnWidths).map(column => [
+      defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
+      defaultColumnWidths: Object.fromEntries(Object.keys(widths).map(column => [
         column,
-        column in DEFAULT_SETTINGS.defaultColumnWidths ? DEFAULT_COLUMN_WIDTH : null,
+        null,
       ])),
     }
   }

@@ -21,10 +21,8 @@ export const DEFAULT_VIEW: ViewPreferences = {
   lastMessageOnCards: true,
   hydraWidth: DEFAULT_WIDTHS.hydra,
   defaultHydraWidth: DEFAULT_WIDTHS.hydra,
-  defaultColumnWidths: Object.fromEntries(COLUMNS.map(id => [
-    id,
-    DEFAULT_COLUMN_WIDTH,
-  ])),
+  defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
+  defaultColumnWidths: {},
   keyboard: DEFAULT_KEYBOARD,
   fontSize: 14,
   chatFontSize: 16,
@@ -174,8 +172,15 @@ export const viewFor = ({
     ...(state.config?.columns ?? view.customColumns).map(column => column.id),
   ])
 
+  const defaultColumnWidth = persistedSize({
+    value: view.defaultColumnWidth,
+    fallback: DEFAULT_COLUMN_WIDTH,
+    ...VIEW_SIZE_LIMITS.columnWidth,
+  })
+
   return {
     ...view,
+    defaultColumnWidth,
     keyboard: {
       ...view.keyboard,
       bindings: Object.fromEntries(Object.entries(view.keyboard.bindings)
@@ -187,11 +192,10 @@ export const viewFor = ({
       ...VIEW_SIZE_LIMITS.hydraWidth,
     }),
     defaultColumnWidths: {
-      ...Object.fromEntries((state.config?.columns ?? view.customColumns)
-        .map(c => [
-          c.id,
-          DEFAULT_COLUMN_WIDTH,
-        ])),
+      ...Object.fromEntries([...columnIds].map(id => [
+        id,
+        defaultColumnWidth,
+      ])),
       ...Object.fromEntries(Object.entries(persistedMap({
         values: view.defaultColumnWidths ?? {},
         ...VIEW_SIZE_LIMITS.columnWidth,
@@ -262,10 +266,6 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
       id,
       null,
     ])),
-    ...Object.fromEntries(Object.entries(view.defaultColumnWidths)
-      .filter(([
-        , width,
-      ]) => width !== DEFAULT_WIDTHS.column)),
   },
 })
 
@@ -402,6 +402,11 @@ export function patchView({
           max: VIEW_SIZE_LIMITS[key].max,
           key,
         }); break
+      case 'defaultColumnWidth': next.defaultColumnWidth = size({
+        value,
+        ...VIEW_SIZE_LIMITS.columnWidth,
+        key,
+      }); break
       case 'defaultHydraWidth': next.defaultHydraWidth = size({
         value,
         ...VIEW_SIZE_LIMITS.hydraWidth,

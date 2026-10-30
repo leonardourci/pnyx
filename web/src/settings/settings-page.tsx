@@ -16,8 +16,8 @@ import { SearchBar } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
-import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
+import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
@@ -725,6 +725,7 @@ export function SettingsPage({
                     patch: resetPatch({
                       id: match.entry.id,
                       view,
+                      settings,
                     }),
                   })}
                   resetTo={resetTo({ id: match.entry.id })}

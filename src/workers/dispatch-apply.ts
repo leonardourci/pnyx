@@ -228,6 +228,7 @@ export function applyDispatch({
 }): Output {
   return withRegistryLock({
     fn: () => {
+      const document = lockedDocument()
       const entries = readChanges()
       const revision = revisionOf({ entries })
       const digest = createHash('sha256').update(canonical({
@@ -263,7 +264,6 @@ export function applyDispatch({
         })
       }
 
-      const document = lockedDocument()
       const after = mergePatch({
         target: document,
         patch: envelope.patch,
