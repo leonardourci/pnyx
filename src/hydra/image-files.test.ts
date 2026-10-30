@@ -60,6 +60,13 @@ test(
     writeFileSync(
       join(
         shots,
+        'photo.jpeg',
+      ),
+      'jpeg',
+    )
+    writeFileSync(
+      join(
+        shots,
         'huge.png',
       ),
       Buffer.alloc(MAX_IMAGE_BYTES + 1),
@@ -101,6 +108,15 @@ test(
         type: 'image/png',
         stored: false,
       },
+    )
+    assert.deepEqual(
+      served({ route: 'copies/pnyx-1/.lavish/icons/photo.jpeg' }),
+      {
+        body: Buffer.from('jpeg'),
+        type: 'image/jpeg',
+        stored: false,
+      },
+      'a .jpeg image',
     )
     assert.equal(
       served({ route: 'copies/pnyx-1/.lavish/icons/notes.txt' }),

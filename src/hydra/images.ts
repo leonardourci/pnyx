@@ -5,6 +5,7 @@ import { FILE_BLOCK } from './attachments.ts'
 export const IMAGE_TYPES = {
   '.png': 'image/png',
   '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg',
   '.gif': 'image/gif',
   '.webp': 'image/webp',
 } as const
@@ -27,8 +28,10 @@ export const imageType = ({ path }: { path: string }): ImageType | undefined =>
   IMAGE_TYPES[(/\.\w+$/.exec(path)?.[0] ?? '') as keyof typeof IMAGE_TYPES]
 
 // Shown text also renders a bare absolute image path as an image chip; only tokens are sent as images.
+// A path with spaces is recognized quoted ("/My Shots/a.png") or shell-escaped (/My\ Shots/a.png),
+// since an unquoted space cannot be told from the sentence around it.
 export const SHOWN_IMAGE = new RegExp(
-  `\\[image: (\\/[^\\]\\n]+)\\]|(?<![\\w/.:~-])(\\/[^\\s\\[\\]()<>"'\`]+\\.(?:${EXTENSIONS}))(?![\\w/]|\\.\\w)`,
+  `\\[image: (\\/[^\\]\\n]+)\\]|"(\\/[^"\\n]+?\\.(?:${EXTENSIONS}))"|(?<![\\w/.:~-])(\\/(?:\\\\ |[^\\s\\[\\]<>"'\`])+?\\.(?:${EXTENSIONS}))(?![\\w/]|\\.\\w)`,
   'g',
 )
 // Code and link targets render literally, so their paths get no chip and no number.
@@ -40,11 +43,15 @@ export const imagePaths = ({ text }: { text: string }) =>
 export const shownImagePath = ({ match }: { match: RegExpMatchArray }) => {
   const [
     , tokenPath,
+    quotedPath,
     barePath,
   ] = match
 
   return {
-    path: (tokenPath ?? barePath)!,
+    path: (tokenPath ?? quotedPath ?? barePath!.replaceAll(
+      '\\ ',
+      ' ',
+    )),
     bare: tokenPath === undefined,
   }
 }

@@ -93,3 +93,22 @@ test(
     )
   },
 )
+
+test(
+  'a screenshot path with parentheses, a quoted or escaped space, or a .jpeg extension is an image too',
+  () => {
+    assert.deepEqual(
+      [
+        ...shownImageNames({
+          text: 'See /tmp/test(1).png, "/tmp/My Folder/Screen Shot 2026.png", /tmp/My\\ Shots/a\\ b.png and /tmp/photo.jpeg, then /tmp/a and b.png',
+        }).keys(),
+      ],
+      [
+        '/tmp/test(1).png',
+        '/tmp/My Folder/Screen Shot 2026.png',
+        '/tmp/My Shots/a b.png',
+        '/tmp/photo.jpeg',
+      ],
+    )
+  },
+)
