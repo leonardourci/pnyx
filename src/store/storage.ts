@@ -161,14 +161,9 @@ export function acquireLock({
     'writer.lock',
   )
   const takeover = `${path}.takeover`
-  const deadline = Date.now() + timeout
-  let attempts = 0
-  let retryTakeover: boolean
+  let deadline = Date.now() + timeout
 
-  do {
-    attempts++
-    retryTakeover = false
-
+  while (true) {
     try {
       const fd = openSync(
         path,
@@ -190,15 +185,34 @@ export function acquireLock({
       }
     }
 
+    if (timeout > 0) {
+      try {
+        const owner = Number(readFileSync(
+          path,
+          'utf8',
+        ))
+
+        if (!Number.isInteger(owner) || owner <= 0) {
+          deadline = Math.max(
+            deadline,
+            statSync(path).mtimeMs + STALE_EMPTY_LOCK_MS + timeout,
+          )
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
+    }
+
     if (lockIsStale({ path }) && takeOver({
       path,
       takeover,
     })) {
-      retryTakeover = timeout === 0 && attempts === 1
       continue
     }
 
-    if (timeout === 0) {
+    if (Date.now() >= deadline) {
       break
     }
 
@@ -214,7 +228,7 @@ export function acquireLock({
         ),
       ),
     )
-  } while (retryTakeover || Date.now() < deadline)
+  }
 
   let owner: string
 
