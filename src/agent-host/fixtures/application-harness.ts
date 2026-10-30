@@ -9,7 +9,13 @@ import { fixtureHost } from './harness.ts'
 
 const READY_MS = 15000
 
-export async function fixtureApplication({ t }: { t: TestContext }) {
+export async function fixtureApplication({
+  t,
+  boot,
+}: {
+  t: TestContext
+  boot?: string
+}) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-app-'))
   const messages: string[] = []
   const children: {
@@ -31,6 +37,7 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
   const host = await fixtureHost({
     t,
     directory: root,
+    boot,
   })
   t.after(() => rmSync(
     root,
