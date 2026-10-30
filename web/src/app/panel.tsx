@@ -47,10 +47,8 @@ function NativeReadiness({ status }: { status: NativeStatus }) {
     return null
   }
 
-  const title = status.state === 'draining' ? 'Agent maintenance pending' : status.state === 'unavailable' ? 'Agent host unavailable' : 'Agent recovery needs attention'
-  const text = status.state === 'draining'
-    ? 'Existing work can finish. New work waits. Answers and interrupts remain available.'
-    : 'Keep saved work in place while native ownership is checked.'
+  const title = status.state === 'unavailable' ? 'Agent host unavailable' : 'Agent recovery needs attention'
+  const text = 'Keep saved work in place while native ownership is checked.'
 
   return (
     <div className="native-status" role="status" data-native-status={status.state}>
