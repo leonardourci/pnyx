@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict'
 import { fork } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
-import { mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, readdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 import type { TestContext } from 'node:test'
 import { deferred } from '#agent-host/deferred.ts'
+import { endGroup, type NativeGroup } from '#agent-host/groups.ts'
 import { connectHost, type HostClient } from '#agent-host/client.ts'
 import type { NativeEvent } from '#workers/native-session.ts'
 import type { HostedInput } from '#workers/provider.ts'
@@ -42,6 +43,7 @@ export async function fixtureHost({
   slowControls = false,
   entry,
   boot,
+  groups = false,
 }: {
   t: TestContext
   pressure?: boolean
@@ -49,6 +51,7 @@ export async function fixtureHost({
   slowControls?: boolean
   entry?: string
   boot?: string | null
+  groups?: boolean
 }) {
   const root = directory ?? realpathSync(mkdtempSync('/tmp/pnyx-host-'))
   const installation = 'fixture-installation'
@@ -69,6 +72,7 @@ export async function fixtureHost({
         PNYX_HOME: root,
         HOME: root,
         FIXTURE_BOOT: boot === null ? '' : boot,
+        FIXTURE_GROUPS: groups ? '1' : '0',
         FIXTURE_PRESSURE: pressure ? '1' : '0',
         FIXTURE_TIMEOUT: slowControls ? '1' : '0',
       },
@@ -177,6 +181,34 @@ export async function fixtureHost({
     if (child.exitCode === null && child.signalCode === null) {
       child.kill('SIGKILL')
       await exited.promise
+    }
+
+    const sessions = join(
+      root,
+      'sessions',
+    )
+
+    if (existsSync(sessions)) {
+      for (const name of readdirSync(sessions)) {
+        const descriptor = join(
+          sessions,
+          name,
+          'session.json',
+        )
+
+        if (!existsSync(descriptor)) {
+          continue
+        }
+
+        const saved = JSON.parse(readFileSync(
+          descriptor,
+          'utf8',
+        )) as { groups?: NativeGroup[] }
+
+        for (const group of saved.groups ?? []) {
+          await endGroup({ group })
+        }
+      }
     }
 
     if (!directory) {

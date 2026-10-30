@@ -48,7 +48,7 @@ const provider = (): Provider => ({
       context,
     }
 
-    if (settings.fixtureTree === '1') {
+    if (settings.fixtureTree === '1' || process.env.FIXTURE_GROUPS === '1') {
       state.tree = spawn(
         process.execPath,
         [
