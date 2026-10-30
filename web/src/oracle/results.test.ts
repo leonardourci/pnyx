@@ -1,9 +1,12 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra } from '#app/reducer.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Hit } from '#oracle/index.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 import type { Card } from '#tasks/model.ts'
+import type { NativeWork } from '#workers/provider.ts'
 import { SETTINGS_CATALOG } from '#web-settings/catalog.ts'
 import { filterOptions, filterToken, hydraFilter } from './filters.ts'
 import { oracleActions } from './oracle-catalog.ts'
@@ -471,6 +474,78 @@ test(
           ['panel:agents'],
         ],
       ],
+    )
+  },
+)
+
+test(
+  'a task is found by the status its worker’s current action gives it, and Hydra’s own card is never a task',
+  () => {
+    const idle: NativeWork = {
+      runningTurns: [],
+      runningTools: [],
+      unsettledInputs: [],
+      pendingControls: [],
+      queue: {
+        knowledge: 'known',
+        count: 0,
+      },
+      background: {
+        knowledge: 'known',
+        tasks: [],
+      },
+    }
+    const settled: CurrentAction = {
+      calls: [],
+      done: true,
+      work: idle,
+    }
+    const working = emptyHydra()
+    working.cards = {
+      release: {
+        ...card({
+          id: 'release',
+          title: 'Package release',
+          at: '2026-10-29T11:00:00Z',
+        }),
+        agent: {
+          provider: 'codex',
+          sessionId: 'release-session',
+        },
+        activity: 'finished',
+      },
+      [HYDRA_CARD]: card({
+        id: HYDRA_CARD,
+        title: 'Hydra is idle',
+        at: '2026-10-29T11:00:00Z',
+      }),
+    }
+    const tasks = ({
+      cardActions,
+    }: {
+      cardActions: Record<string, CurrentAction>
+    }) => oracleResults({
+      state: working,
+      hits: [],
+      projects: [],
+      actions: [],
+      cardActions,
+      hydra,
+      text: 'idle',
+      badges: [hydraBadge],
+      now,
+    }).filter(group => group.label === 'Tasks')
+      .flatMap(group => group.results.map(result => result.id))
+
+    assert.deepEqual(
+      tasks({ cardActions: { release: settled } }),
+      ['task:release'],
+      'the settled worker makes the badge read idle',
+    )
+    assert.deepEqual(
+      tasks({ cardActions: {} }),
+      [],
+      'without the action the badge reads activity unknown',
     )
   },
 )
