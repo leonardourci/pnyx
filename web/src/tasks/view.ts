@@ -5,7 +5,8 @@ import type { Card } from '#tasks/model.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { cardDoneDeadline, HOUR_MS } from '#tasks/retention-rules.ts'
 import { elapsedTime } from '#web-shared/time.ts'
-import { cardStatus, type CardStatus } from '#tasks/card-status.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import { observedStatus, type ObservedStatus } from './observed-status.ts'
 import { ownerQuestions, type OwnerQuestion } from '#tasks/questions.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
@@ -27,11 +28,13 @@ export function filterCards({
   workspace,
   tag,
   query = '',
+  actions,
 }: {
   state: HydraState
   workspace: string
   tag: string
   query?: string
+  actions?: Record<string, CurrentAction>
 }): Card[] {
   const words = query.toLowerCase().trim()
     .split(/\s+/)
@@ -44,6 +47,11 @@ export function filterCards({
       c.title,
       c.project ?? '',
       c.key,
+      observedStatus({
+        card: c,
+        state,
+        action: actions?.[c.id],
+      }).text,
       ...c.tags,
       ...c.links.map(l => `${l.number ?? ''} ${l.title ?? ''}`),
     ].join(' ').toLowerCase()
@@ -63,6 +71,7 @@ export function findBoxCards(
     workspace,
     tag,
     query,
+    actions,
     meaning: found,
   }: {
     state: HydraState
@@ -70,6 +79,7 @@ export function findBoxCards(
     tag: string
     query: string
     meaning: string[]
+    actions?: Record<string, CurrentAction>
   },
 ): Card[] {
   const local = filterCards({
@@ -77,6 +87,7 @@ export function findBoxCards(
     workspace,
     tag,
     query,
+    actions,
   })
   const seen = new Set(local.map(c => c.id))
 
@@ -117,28 +128,27 @@ export function dropBefore({
   return index < 0 ? undefined : cards[below ? index + 1 : index]?.id
 }
 
-export function taskLabel({ card }: { card: Card }): string {
-  if (card.status) {
-    return `${card.status.state.replaceAll(
-      '_',
-      ' ',
-    )}${card.status.note ? `: ${card.status.note}` : ''}`
-  }
-
-  return shownActivity({ card })
-    ?? card.outcome?.state ?? (card.tracking ? 'No status' : 'Activity unknown')
-}
-
 export function cardState({
   card,
   hours,
   now,
+  state,
+  action,
+  connected,
 }: {
   card: Card
   hours?: DoneAfterHours
   now: number
-}): CardStatus {
-  const status = cardStatus({ card })
+  state?: HydraState
+  action?: CurrentAction
+  connected?: boolean
+}): ObservedStatus {
+  const status = observedStatus({
+    card,
+    state,
+    action,
+    connected,
+  })
 
   if (status.kind === 'done' && card.doneAt) {
     const deadline = cardDoneDeadline({

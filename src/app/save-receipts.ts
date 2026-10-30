@@ -36,6 +36,33 @@ export function savedReceipt({
   command: SaveCommand
   state: HydraState
 }): Record<string, unknown> | undefined {
+  if ([
+    'reply',
+    'task-message',
+    'answer',
+    'agent',
+  ].includes(command.name)) {
+    const ref = command.args[0] ?? ''
+    const card = state.cards[ref] ?? state.cards[state.keys[ref] ?? '']
+    const attempt = command.args[command.name === 'answer' || command.name === 'agent' ? 3 : 2]
+    const reply = card?.replies?.find(reply => reply.id === attempt)
+
+    if (reply && reply.state !== 'failed') {
+      return {
+        type: 'receipt',
+        id: command.id,
+        saved: true,
+        reply: {
+          card: card.id,
+          reply: reply.id,
+          state: reply.state,
+        },
+      }
+    }
+
+    return
+  }
+
   const id = saveEventId({ command })
   const seq = id && state.eventIds[id]
 

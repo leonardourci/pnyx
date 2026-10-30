@@ -49,6 +49,14 @@ const ASKS = Object.keys(TOOLS)
 const REQUEST_TIMEOUT_MS = 30_000
 // Opening a thread first starts every configured MCP server and plugin, which can take minutes.
 const OPEN_TIMEOUT_MS = 300_000
+const TOOL_LABELS: Record<string, string> = {
+  commandExecution: 'Shell',
+  mcpToolCall: 'MCP tool',
+  dynamicToolCall: 'Tool',
+  collabAgentToolCall: 'Agent',
+  webSearch: 'Web search',
+}
+
 // Items that run while the turn waits on them, such as a shell command or a subagent.
 const TOOL_ITEMS = [
   'commandExecution',
@@ -688,6 +696,7 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
               yield {
                 type: 'tool',
                 id: item.id,
+                tool: typeof item.name === 'string' ? item.name : TOOL_LABELS[String(item.type)],
                 running: event.method === 'item/started',
               }
               continue

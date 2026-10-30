@@ -10,7 +10,7 @@ export const CARET_KEY = /^(Arrow(Up|Down|Left|Right)|Home|End|Page(Up|Down))$/
 export const MESSAGE_CONTROLS = '.comment-pill, .comment-card, .comment-annotations, .receipt, .code-language, .trace summary'
 export const QUESTION_CONTROLS = '.chat-decision .ask :is(button, textarea, input, summary, [role=button]):not([aria-disabled=true])'
 // A tooltip shows over a focused mention, and images under the text stay selectable; neither is message text.
-const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention, .tooltip, .sr-only, .message-images, ${QUESTION_CONTROLS}`
+const NON_MESSAGE_TEXT = `${MESSAGE_CONTROLS}, .trace, a[href], .task-mention, .tooltip, .sr-only, ${QUESTION_CONTROLS}`
 export const CARET_CSS = `[${CARET_HOST}] :is(${NON_MESSAGE_TEXT}) { -webkit-user-modify: read-only; } [${CARET_HOST}] :is(${MESSAGE_CONTROLS}) { user-select: none; }`
 
 const selectableMessageText = ({ node }: { node: Text }) =>

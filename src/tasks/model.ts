@@ -310,6 +310,7 @@ export type RepliedEvent = EventBase & {
       choice?: string
     }
     answers?: string
+    accepted?: boolean
     detail?: string
     control?: boolean
     taskMessage?: boolean

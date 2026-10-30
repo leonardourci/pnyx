@@ -1,3 +1,4 @@
+import { matchingSuggestions, suggestionMatch } from '#hydra/suggestion-matches.ts'
 import type { HydraProject } from '#projects/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
@@ -30,7 +31,7 @@ import { ImageThumb, ImageViewer } from './attached-image.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { columnLook } from '#web-tasks/view.ts'
-import { slashMatches, slashPrefix } from './view.ts'
+import { slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
@@ -290,7 +291,6 @@ export function Composer({
   meter,
   stop,
   compacting = false,
-  serverComments = true,
   focusAbove,
   projectRequest = false,
   projectRequested,
@@ -317,7 +317,6 @@ export function Composer({
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
-  serverComments?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
   // An Add project request to write into the draft; projectRequested clears it once written.
@@ -376,6 +375,7 @@ export function Composer({
     setUploads,
   ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
+  const chipOccurrences = new Map<string, number>()
   const display = view.display
   const paths = requestPaths({ display })
   const mirrored = view.chips.length > 0 || paths.length > 0
@@ -390,8 +390,8 @@ export function Composer({
   // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
   const beforeCuts = useRef(new Map<string, string>())
 
-  const query = (mention?.query ?? '').trim().toLocaleLowerCase()
-  const typed = (mention?.query ?? '').trim()
+  const query = mention?.query ?? ''
+  const typed = query.trim()
   const folderPath = /^[~/]/.test(typed) ? typed : ''
   const folders = useFolders({
     path: folderPath,
@@ -399,7 +399,7 @@ export function Composer({
     connected: mention !== null,
   })
   const folderItems = folderSuggestions({
-    query,
+    query: typed.toLocaleLowerCase(),
     typed,
     attached: projects,
     otherProjects,
@@ -419,9 +419,11 @@ export function Composer({
     }),
     path: selectedFolder.path,
   }
-  const listed: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
-      && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
+
+  const candidates: (MentionItem & { search?: string })[] = [
+    ...view.chips.filter(chip => {
+      return chip.attached && !isPendingImage({ path: chip.value })
+    }).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
       title: chip.name,
@@ -432,21 +434,29 @@ export function Composer({
         label: chip.name,
       }),
     })),
-    ...projects.filter(project => !project.detached
-      && `${project.name} ${project.path}`.toLocaleLowerCase().includes(query)).map(project => ({
-      key: `project:${project.path}`,
-      kind: 'project' as const,
-      title: project.name,
-      detail: 'Project',
-      insert: reference({
-        kind: 'project',
-        value: project.path,
-        label: project.name,
-      }),
-      path: project.path,
-    })),
-    ...folderItems,
-    ...columns.filter(column => column.title.toLocaleLowerCase().includes(query)).map(column => ({
+
+    ...projects.filter(project => !project.detached).map(project => {
+      const titleMatch = suggestionMatch({
+        name: project.name,
+        query,
+      })
+
+      return ({
+        key: `project:${project.path}`,
+        kind: 'project' as const,
+        title: project.name,
+        excerpt: titleMatch ? undefined : project.path,
+        search: project.path,
+        detail: 'Project',
+        insert: reference({
+          kind: 'project',
+          value: project.path,
+          label: project.name,
+        }),
+        path: project.path,
+      })
+    }),
+    ...columns.map(column => ({
       key: `column:${column.id}`,
       kind: 'column' as const,
       title: column.title,
@@ -465,18 +475,31 @@ export function Composer({
     }).map(({
       card,
       excerpt,
+      excerptHighlights,
     }) => ({
       key: `task:${card.id}`,
       kind: 'task' as const,
       title: card.title,
+      search: card.initialPrompt ?? card.brief ?? '',
       detail: card.project ? projectTitle({ project: card.project }) : 'No project',
       excerpt,
+      excerptHighlights,
       ...taskLook({ id: card.id }),
       insert: taskMention({
         id: card.id,
         title: card.title,
       }),
     })),
+  ]
+  // Folders follow the ranked matches; they are already matched against what was typed.
+  const listed: MentionItem[] = [
+    ...matchingSuggestions({
+      items: candidates,
+      query,
+      name: ({ item }) => item.title,
+      fallback: ({ item }) => item.search ?? '',
+    }),
+    ...folderItems,
   ]
   // A typed path that names a folder leads, so Enter adds the folder typed rather than a project under it.
   const matches = typedFolder
@@ -502,6 +525,7 @@ export function Composer({
     setPrefix(slashPrefix({
       text: shown.display,
       cursor,
+      chips: shown.chips,
     }))
     const found = mentionQuery({
       text: shown.display,
@@ -793,32 +817,9 @@ export function Composer({
     key: card,
     hydraId,
   }))
-  const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
-  const [
-    taught,
-    setTaught,
-  ] = useState(false)
-  useEffect(
-    () => {
-      if (serverComments) {
-        return
-      }
-
-      try {
-        setTaught(localStorage.getItem(commentKey) === 'sent')
-      } catch {
-        setTaught(false)
-      }
-    },
-    [
-      commentKey,
-      serverComments,
-    ],
-  )
   const outgoing = commentReply({
     draft,
     comments,
-    firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const imagesLoading = hasPendingImage({ text: outgoing })
@@ -860,10 +861,11 @@ export function Composer({
       onCatalogOpen,
     ],
   )
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
-    command: s.command,
-    prefix: prefix ?? '',
-  }))
+  const suggestions = matchingSuggestions({
+    items: catalog?.suggestions ?? [],
+    query: prefix ?? '',
+    name: ({ item }) => item.command,
+  })
 
   const choose = ({
     command,
@@ -883,6 +885,7 @@ export function Composer({
     const query = slashPrefix({
       text: display,
       cursor,
+      chips: view.chips,
     })
 
     if (query === null || query !== prefix) {
@@ -1163,17 +1166,6 @@ export function Composer({
       } | undefined
 
       if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        if (!serverComments && (commented || taken?.comments.length)) {
-          setTaught(true)
-
-          try {
-            localStorage.setItem(
-              commentKey,
-              'sent',
-            )
-          } catch { /* Storage can be disabled. */ }
-        }
-
         attempt.current = null
       } else {
         problem = receipt?.state === 'delivery_unknown'
@@ -1325,6 +1317,7 @@ export function Composer({
             <MentionPicker
               anchor={input}
               id={mentionList}
+              query={query}
               matches={matches}
               active={picked}
               choose={chooseMention}
@@ -1348,6 +1341,7 @@ export function Composer({
           {prefix !== null && (
             <SuggestionPicker
               id={`suggestions-${card}`}
+              query={prefix}
               anchor={input}
               label="Skills and commands"
               className="slash-menu"
@@ -1507,11 +1501,6 @@ export function Composer({
 
               write(edit)
               setGoal(null)
-              const shown = draftView({ text: edit.text }).display
-              setPrefix(slashPrefix({
-                text: shown,
-                cursor: edit.caret,
-              }))
               setActive(0)
               trackMention({
                 text: edit.text,
@@ -1701,6 +1690,20 @@ export function Composer({
                   to: chip.from,
                   paths,
                 })
+                const identity = JSON.stringify([
+                  chip.kind,
+                  chip.attached,
+                  chip.value,
+                ])
+                const occurrence = chipOccurrences.get(identity) ?? 0
+                chipOccurrences.set(
+                  identity,
+                  occurrence + 1,
+                )
+                const key = JSON.stringify([
+                  identity,
+                  occurrence,
+                ])
 
                 const skill = chip.kind === 'skill' ? readSkillReference({
                   value: chip.value,
@@ -1740,7 +1743,7 @@ export function Composer({
                 }
 
                 return (
-                  <Fragment key={chip.start}>
+                  <Fragment key={key}>
                     {before}
                     <span className="draft-token" data-from={chip.from} data-to={chip.to}>
                       {CHIP_SPACE}{token}{CHIP_SPACE}
@@ -1846,7 +1849,6 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
-                    firstComment: !serverComments && !taught,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'

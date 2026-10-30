@@ -10,7 +10,6 @@ import { expandedByColumn, columnsFor, findBoxCards } from '#web-tasks/view.ts'
 import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 import { TaskCreate, type TaskDraft } from '#web-tasks/task-create.tsx'
 import { viewFor } from '#preferences/view.ts'
-import { pnyxLookup } from '#web-hydra/pnyx-action.ts'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { useFoundCards } from '#web-oracle/card-oracle.ts'
 import { commandQuery } from '#web-oracle/oracle-catalog.ts'
@@ -491,8 +490,11 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     state,
     settings: shared && pickView({ view: shared }),
   })
-  const lookup = pnyxLookup({ state })
-  const references = useTaskReferences({ state })
+  const references = useTaskReferences({
+    state,
+    actions,
+    connected,
+  })
   useEffect(
     () => {
       const root = document.documentElement, dark = matchMedia('(prefers-color-scheme: dark)')
@@ -522,6 +524,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   })
   const filteredCards = findBoxCards({
     state,
+    actions,
     workspace,
     tag,
     query: commandQuery({ query }) ? '' : query,
@@ -1171,6 +1174,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                   state={state}
                   liveThread={hydraThread}
                   action={actions[HYDRA_CARD]}
+                  taskActions={actions}
                   queue={hydraQueue}
                   command={command}
                   connected={connected}
@@ -1264,12 +1268,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                                   <HydraCard
                                     key={item.key}
                                     card={item}
+                                    state={state}
                                     labelColors={state.labelColors}
                                     doneAfterHours={shared?.doneAfterHours}
                                     notify={notify}
                                     latest={latest[item.id]}
                                     action={actions[item.id]}
-                                    lookup={lookup}
                                     answer={answerTask}
                                     selected={expandedIds.includes(item.id)}
                                     onEdit={cancelOpen}

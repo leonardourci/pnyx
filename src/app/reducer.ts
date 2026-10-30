@@ -1,3 +1,4 @@
+import { cloneValue } from './preimage.ts'
 import { ownerActor } from './actors.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { refreshTasks } from '#tasks/columns.ts'
@@ -238,10 +239,12 @@ export function applyHydra({
 
   // Kinds are Hydra settings; saving one does not choose the Hydra.
   if (event.type === 'board.agents') {
-    state.config = structuredClone(hydraConfig({
-      state,
-      id: event.boardId,
-    }))
+    state.config = cloneValue({
+      value: hydraConfig({
+        state,
+        id: event.boardId,
+      }),
+    })
     state.config.agents = structuredClone(event.data.agents)
     state.configRevision = (state.configRevision ?? 0) + 1
 
@@ -249,10 +252,12 @@ export function applyHydra({
   }
 
   if (event.type === 'board.columns') {
-    state.config = structuredClone(hydraConfig({
-      state,
-      id: event.boardId,
-    }))
+    state.config = cloneValue({
+      value: hydraConfig({
+        state,
+        id: event.boardId,
+      }),
+    })
     state.config.columns = structuredClone(event.data.columns)
     state.configRevision = (state.configRevision ?? 0) + 1
 
@@ -868,6 +873,12 @@ function apply({
       }
       const decision = event.data.decision ?? previous?.decision
 
+      if (event.data.accepted || previous?.accepted) {
+        reply.accepted = true
+        reply.text = event.data.text ?? previous?.text
+        reply.context = event.data.context ?? previous?.context
+      }
+
       if (decision) {
         reply.decision = decision
       }
@@ -887,8 +898,8 @@ function apply({
       // A task shows its session's requests, which hooks read back from the
       // session's own card, so the answer is marked on all of them.
       if (answers && event.data.state === 'delivered') {
-        if (card.asks) {
-          card.asks = card.asks.map(a => (a.id === answers ? {
+        if (card.asks && !reply.accepted) {
+          card.asks = card.asks.map(a => (a.id === answers && !a.answered && !a.closed ? {
             ...a,
             answered: reply.id,
             answeredAt: event.at,
@@ -1025,6 +1036,28 @@ function apply({
   return true
 }
 
+export function replayOwned({
+  state,
+  events,
+}: {
+  state: HydraState
+  events: Iterable<HydraEvent>
+}): HydraState {
+  for (const event of events) {
+    if (apply({
+      state,
+      event,
+    })) {
+      refreshDone({
+        state,
+        at: event.at,
+      })
+    }
+  }
+
+  return state
+}
+
 export function replay({
   state,
   events,
@@ -1032,21 +1065,10 @@ export function replay({
   state: HydraState
   events: Iterable<HydraEvent>
 }): HydraState {
-  const next = structuredClone(state)
-
-  for (const event of events) {
-    if (apply({
-      state: next,
-      event,
-    })) {
-      refreshDone({
-        state: next,
-        at: event.at,
-      })
-    }
-  }
-
-  return next
+  return replayOwned({
+    state: structuredClone(state),
+    events,
+  })
 }
 
 export function reduce({
