@@ -33,3 +33,7 @@ The host imports provider adapters and storage primitives, with no application r
 ## Application reconnect
 
 The application retains small native binding and permission metadata, without a second copy of input text or image manifests. It reconstructs unsent intent from its event log using stable IDs. Before preparing context or reading attachments, it checks the surviving host's admitted IDs; an already admitted input keeps its original live payload. The worker attachment records its original launch brief, and Hydra delivery events retain generated wake intent and task scope. These sources name the native incarnation, so recovery cannot replay an older owner's inputs into a resumed conversation. A pending helper batch is submitted only if that host never admitted its batch ID. A different host incarnation cannot establish whether an ambiguous input was consumed and does not authorize replay.
+
+Reattachment republishes the current context digest. Input, compaction and application state changes refresh that digest without changing an admitted payload. Replayed turn outcomes keep their original turn identity when copying tagged replies to task history.
+
+Helper recovery can attach to retained old-incarnation facts without opening a provider or submitting input. It applies the original terminal outcome before acknowledging its facts and releasing the batch lease. A batch with no retained terminal outcome keeps its lease and requires ownership reconciliation; new helper batches wait while the host has unresolved native owners.
