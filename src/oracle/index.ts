@@ -27,6 +27,9 @@ export type Kind = (typeof KINDS)[number]
 
 const EVENTS = 'events'
 const NOTE_WEIGHT = 2
+const BUSY_TIMEOUT = 'PRAGMA busy_timeout = 5000'
+// Readers keep answering during a catch-up, and a killed writer leaves no hot journal that blocks read-only opens.
+const WAL = 'PRAGMA journal_mode = WAL'
 // A chunk's BM25 rank, lower is better, with notes weighted up.
 const RANK = `bm25(docs_fts) * CASE d.kind WHEN 'note' THEN ${NOTE_WEIGHT} ELSE 1 END`
 
@@ -154,9 +157,11 @@ function openWriter(
 
   if (existsSync(path)) {
     const db = new DatabaseSync(path)
-    db.exec('PRAGMA busy_timeout = 5000')
+    db.exec(BUSY_TIMEOUT)
 
     if (isCurrent({ db })) {
+      db.exec(WAL)
+
       return db
     }
 
@@ -179,11 +184,23 @@ function openWriter(
     path,
     0o600,
   )
-  db.exec('PRAGMA busy_timeout = 5000')
+  db.exec(BUSY_TIMEOUT)
+  db.exec(WAL)
   // IF NOT EXISTS lets two first runs race to create the same file.
   db.exec(`BEGIN IMMEDIATE; ${SCHEMA}
     INSERT OR REPLACE INTO meta (key, value) VALUES ('index_schema_version', '${SCHEMA_VERSION}'), ('chunker_version', '${CHUNKER_VERSION}');
     COMMIT;`)
+
+  return db
+}
+
+function openReader({ path }: { path: string }): DatabaseSync {
+  const { DatabaseSync } = sqlite()
+  const db = new DatabaseSync(
+    path,
+    { readOnly: true },
+  )
+  db.exec(BUSY_TIMEOUT)
 
   return db
 }
@@ -923,14 +940,9 @@ export function search({
     })
   }
 
-  const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(
-    searchPath({ hydraId }),
-    { readOnly: true },
-  )
+  const db = openReader({ path: searchPath({ hydraId }) })
 
   try {
-    db.exec('PRAGMA busy_timeout = 5000')
     const terms = typed.map(t => (
       t.prefix ? {
         ...t,
@@ -1102,14 +1114,9 @@ export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | nul
     return null
   }
 
-  const { DatabaseSync } = sqlite()
-  const db = new DatabaseSync(
-    path,
-    { readOnly: true },
-  )
+  const db = openReader({ path })
 
   try {
-    db.exec('PRAGMA busy_timeout = 5000')
     const bytes = statSync(path).size
 
     if (!isCurrent({ db })) {

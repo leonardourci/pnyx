@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
-import { search, updateIndex } from './index.ts'
+import { search, searchPath, sqlite, updateIndex } from './index.ts'
 import { redact, transcriptMessages } from './text.ts'
 
 const scratch = mkdtempSync(join(
@@ -174,5 +174,55 @@ test(
       }).hits[0]!.snippets[0]!.snippet,
       /example\/\[project\]\/pull/,
     )
+  },
+)
+
+test(
+  'a search answers from the saved index while a catch-up holds its write lock',
+  () => {
+    process.env.PNYX_HOME = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-locked-',
+    ))
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => writer.append({
+        event: {
+          v: 1,
+          seq: 1,
+          id: 'keys',
+          at: '2026-10-15T10:00:00Z',
+          actor: 'fixture',
+          cardId: '$board',
+          type: 'hydra.message',
+          data: {
+            action: 'send',
+            text: 'Rotate the signing keys',
+            hydra: 'hydra',
+          },
+        },
+      }),
+    })
+    updateIndex({ hydraId: 'default' })
+    const { DatabaseSync } = sqlite()
+    const catchUp = new DatabaseSync(searchPath({ hydraId: 'default' }))
+    // A long catch-up holds the lock this strongly once its page cache spills.
+    catchUp.exec('BEGIN EXCLUSIVE; DELETE FROM docs;')
+
+    try {
+      assert.deepEqual(
+        search({
+          hydraId: 'default',
+          query: {
+            text: 'signing',
+            limit: 1,
+          },
+        }).hits.map(hit => hit.card),
+        ['$board'],
+      )
+    } finally {
+      catchUp.exec('ROLLBACK')
+      catchUp.close()
+    }
   },
 )
