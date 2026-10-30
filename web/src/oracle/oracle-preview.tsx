@@ -20,6 +20,7 @@ import { SETTING_ICONS, SettingControl, SettingPreview } from '#web-settings/set
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
+import { markdownText } from '#web-hydra/markdown.tsx'
 import { Highlight, SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { CardLinks } from '#web-tasks/card-links.tsx'
@@ -70,7 +71,7 @@ function Snippets({
             now,
           })}
           </span>
-          <span><Highlight text={snippet.snippet} terms={terms} /></span>
+          <span><Highlight text={markdownText({ text: snippet.snippet })} terms={terms} /></span>
         </p>
       ))}
     </section>
@@ -145,7 +146,7 @@ function TaskPreview({
         </div>
         <h3 className="oracle-card-title"><Highlight text={card.title} terms={terms} /></h3>
         <ColumnOf state={state} card={card} />
-        {said && <p className="oracle-card-said"><Highlight text={said.text} terms={terms} /></p>}
+        {said && <p className="oracle-card-said"><Highlight text={markdownText({ text: said.text })} terms={terms} /></p>}
         <CardLinks links={card.links} expanded={false} />
       </div>
       <Snippets hit={hit} terms={terms} now={now} />
