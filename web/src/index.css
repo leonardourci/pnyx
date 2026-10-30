@@ -1887,6 +1887,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-json-changes h5 { margin: 4px 0; color: var(--color-muted); font-size: var(--text-meta); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .dispatch-json-changes .dispatch-changes { padding: 0; border: 0; }
 .dispatch-savebar { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); box-shadow: 0 -2px 8px var(--color-shadow); }
+.dispatch-settings:has(.dispatch-json) > .dispatch-savebar { position: static; }
 .dispatch-savebar-status { flex: 1; }
 .dispatch-savebar-status[data-errors] { color: var(--color-red); font-weight: 600; }
 .dispatch-issues { flex-basis: 100%; margin: 0; padding: 0; list-style: none; font-size: var(--text-meta); }
