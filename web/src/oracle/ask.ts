@@ -92,3 +92,26 @@ export function askKey({
 
   return mod ? 'send-open' : 'send'
 }
+
+export type SettledSend = 'notify' | 'show-error' | 'close' | 'open-chat'
+
+// A request the owner has left, by closing the palette or leaving Ask mode, only notifies.
+export function settledSend({
+  current,
+  sent,
+  opening,
+}: {
+  current: boolean
+  sent: boolean
+  opening: boolean
+}): SettledSend {
+  if (!current) {
+    return 'notify'
+  }
+
+  if (!sent) {
+    return 'show-error'
+  }
+
+  return opening ? 'open-chat' : 'close'
+}

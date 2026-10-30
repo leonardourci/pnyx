@@ -19,7 +19,7 @@ import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
-import { askKey, askStart, askTargets, type AskKey, type AskTarget } from './ask.ts'
+import { askKey, askStart, askTargets, settledSend, type AskKey, type AskTarget } from './ask.ts'
 import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus, PASS, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
@@ -338,6 +338,11 @@ export function Oracle({
   })
   // The last Enter or arrow pressed while the query was still being answered, run once it is.
   const waiting = useRef<Pressed | null>(null)
+  // The request being sent or last refused; opening, closing or leaving Ask mode drops it.
+  const attempt = useRef<{
+    text: string
+    to: string
+  } | null>(null)
   // Hover selects only when the pointer moves, so a list changing under a still pointer keeps the keyboard's choice.
   const pointer = useRef<{
     x: number
@@ -473,6 +478,7 @@ export function Oracle({
     }
 
     origin.current = context
+    attempt.current = null
     const reset = !remember || ids !== undefined
     // The palette renders before focusing, so keys typed right after the shortcut reach the input.
     flushSync(() => {
@@ -494,13 +500,20 @@ export function Oracle({
   }
 
   const close = ({ restore }: { restore: boolean }) => {
+    const shown = dialog.current?.open === true
     waiting.current = null
+    attempt.current = null
     dialog.current?.close()
     setOpen(false); setInPreview(false)
 
-    if (restore) {
+    if (restore && shown) {
       returnFocus()
     }
+  }
+
+  const leaveAsk = () => {
+    attempt.current = null
+    setAsk(null)
   }
 
   useKeyAction({
@@ -887,42 +900,65 @@ export function Oracle({
     to?: AskTarget
     opening: boolean
   }) => {
-    if (!ask || !to || ask.sending || !query.trim()) {
+    const text = query.trim()
+
+    if (!ask || !to || ask.sending || !text) {
       return
     }
 
-    const asked = ask
+    const sending = {
+      text,
+      to: to.id,
+    }
+    attempt.current = sending
     setAsk({
-      ...asked,
+      ...ask,
       sending: true,
       error: undefined,
     })
 
+    let problem: string | undefined
+
     try {
       const receipt = await send({
         id: to.id,
-        text: query.trim(),
+        text,
       })
 
       if (receipt.state !== 'queued') {
-        throw new Error(typeof receipt.detail === 'string' ? receipt.detail : `${to.name} did not take the request.`)
+        problem = typeof receipt.detail === 'string' ? receipt.detail : `${to.name} did not take the request.`
       }
     } catch (error) {
-      setAsk({
-        ...asked,
-        sending: false,
-        error: error instanceof Error ? error.message : String(error),
-      })
-
-      return
+      problem = error instanceof Error ? error.message : String(error)
     }
 
-    setAsk(null); setQuery('')
-    close({ restore: !opening })
-    notify({ text: `Sent to ${to.name}` })
+    const sent = problem === undefined
+    const outcome = settledSend({
+      current: attempt.current === sending,
+      sent,
+      opening,
+    })
 
-    if (opening) {
-      openChat({ id: to.id })
+    switch (outcome) {
+      case 'notify':
+        notify({ text: sent ? `Sent to ${to.name}` : `Ask ${to.name}: ${problem}` })
+        break
+      case 'show-error':
+        setAsk(value => value && {
+          ...value,
+          sending: false,
+          error: problem,
+        })
+        break
+      case 'close':
+      case 'open-chat':
+        setAsk(null); setQuery('')
+        close({ restore: outcome === 'close' })
+        notify({ text: `Sent to ${to.name}` })
+
+        if (outcome === 'open-chat') {
+          openChat({ id: to.id })
+        }
     }
   }
 
@@ -933,7 +969,7 @@ export function Oracle({
 
     switch (key) {
       case 'leave':
-        setAsk(null)
+        leaveAsk()
         break
       case 'back':
         setAsk({
@@ -988,6 +1024,11 @@ export function Oracle({
   }
 
   const type = ({ typed }: { typed: string }) => {
+    // The request is on its way, so its text stays as sent.
+    if (ask?.sending) {
+      return
+    }
+
     const start = ask ? null : askStart({
       query: typed,
       hydras: targets,
@@ -1016,7 +1057,7 @@ export function Oracle({
 
   const removeBadge = ({ id }: { id: string }) => {
     if (id === ASK_BADGE) {
-      setAsk(null)
+      leaveAsk()
     } else {
       setBadgeIds(ids => ids.filter(item => item !== id))
     }

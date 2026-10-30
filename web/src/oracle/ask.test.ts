@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { askKey, askStart, askTargets } from './ask.ts'
+import { askKey, askStart, askTargets, settledSend } from './ask.ts'
 
 const zeus = {
   id: 'lab',
@@ -214,5 +214,53 @@ test(
         null,
       )
     }
+  },
+)
+
+test(
+  'a send the owner left by closing the palette or leaving Ask mode only notifies; otherwise a refusal stays and a delivered request closes or opens the chat',
+  () => {
+    assert.equal(
+      settledSend({
+        current: false,
+        sent: true,
+        opening: true,
+      }),
+      'notify',
+      'delivered after the palette closed: no focus taken back and no chat opened',
+    )
+    assert.equal(
+      settledSend({
+        current: false,
+        sent: false,
+        opening: false,
+      }),
+      'notify',
+      'refused after leaving Ask mode: the new search keeps its text',
+    )
+    assert.equal(
+      settledSend({
+        current: true,
+        sent: false,
+        opening: false,
+      }),
+      'show-error',
+    )
+    assert.equal(
+      settledSend({
+        current: true,
+        sent: true,
+        opening: false,
+      }),
+      'close',
+    )
+    assert.equal(
+      settledSend({
+        current: true,
+        sent: true,
+        opening: true,
+      }),
+      'open-chat',
+    )
   },
 )
