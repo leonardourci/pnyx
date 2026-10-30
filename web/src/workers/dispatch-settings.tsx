@@ -241,7 +241,7 @@ function HowPicked() {
       <h4 id="dispatch-how"><Icon name="about" size={14} />How a worker’s agent is picked</h4>
       <ol>
         <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
-        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>Each candidate takes the first account in its harness’s order below that is signed in and has quota left.</li>
+        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>Each candidate takes the first account in its harness’s configured order that is signed in and has quota left.</li>
         <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The Now column shows the result.</li>
       </ol>
     </section>
