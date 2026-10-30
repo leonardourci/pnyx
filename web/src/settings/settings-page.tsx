@@ -20,11 +20,11 @@ import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
-import { DefaultAgent, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
+import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
 import { changedIds, resetPatch } from './changed.ts'
 import { SETTINGS_CATALOG, SETTINGS_SECTIONS, searchSettings, type CatalogEntry, type SettingsSection } from './catalog.ts'
 
-const ICONS: Record<string, string> = {
+export const SETTING_ICONS: Record<string, string> = {
   theme: 'theme',
   fontSize: 'text-size',
   chatFontSize: 'comment',
@@ -54,7 +54,8 @@ const SUGGESTIONS = [
 
 type Toggle = 'lastMessageOnCards' | 'focusMode' | 'toolDetails' | 'thinkingDetails'
 
-function Preview({
+// The setting's live picture, which the Settings page and the Oracle's preview share.
+export function SettingPreview({
   entry,
   state,
   view,
@@ -92,9 +93,9 @@ function Preview({
     case 'reviewMinutes':
       return <ReviewPreview minutes={settings.reviewMinutes} />
     case 'helper':
-      return <HelperPreview helper={settings.helper} hydra={rule} />
+      return rule && <HelperPreview helper={settings.helper} hydra={rule} />
     case 'hydraAgent':
-      return <AgentPreview agent={rule} />
+      return rule && <AgentPreview agent={rule} />
     default:
       return undefined
   }
@@ -108,7 +109,8 @@ interface Saving {
 // The settings every Hydra shares beyond its view, and the agent new Hydras start on.
 interface Hydra {
   settings: Settings
-  rule: AgentConfig
+  rule?: AgentConfig
+  dispatchError?: string
 }
 
 function TextSize({
@@ -208,7 +210,7 @@ function ResetWidths({
   )
 }
 
-function Control({
+export function SettingControl({
   entry,
   state,
   view,
@@ -221,6 +223,7 @@ function Control({
   rule,
   connected,
   saveHydra,
+  dispatchError,
 }: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
@@ -231,6 +234,10 @@ function Control({
   connected: boolean
   saveHydra({ patch }: { patch: Partial<AgentConfig> }): Promise<unknown>
 }): ReactNode {
+  if ((entry.id === 'helper' || entry.id === 'hydraAgent') && !rule) {
+    return <DispatchStatus error={dispatchError} />
+  }
+
   // Focus mode hides tool calls and thinking, so their own switches wait for it to turn off.
   const hidden = view.focusMode && (entry.id === 'toolDetails' || entry.id === 'thinkingDetails')
   const toggle = ({ key }: { key: Toggle }) => (
@@ -310,23 +317,27 @@ function Control({
       return <ReviewCadence minutes={settings.reviewMinutes} save={save} />
     case 'helper':
       return (
-        <RoutineHelper
-          helper={settings.helper}
-          hydra={rule}
-          command={command}
-          connected={connected}
-          save={save}
-        />
+        rule && (
+          <RoutineHelper
+            helper={settings.helper}
+            hydra={rule}
+            command={command}
+            connected={connected}
+            save={save}
+          />
+        )
       )
     case 'hydraAgent':
       return (
-        <DefaultAgent
-          rule={rule}
-          command={command}
-          connected={connected}
-          saveHydra={({ patch }) => saveHydra({ patch })
-            .catch((error: Error) => notify({ text: error.message }))}
-        />
+        rule && (
+          <DefaultAgent
+            rule={rule}
+            command={command}
+            connected={connected}
+            saveHydra={({ patch }) => saveHydra({ patch })
+              .catch((error: Error) => notify({ text: error.message }))}
+          />
+        )
       )
     case 'keyboard':
       return <KeyboardSettings embedded prefs={view.keyboard} save={save} />
@@ -363,6 +374,7 @@ export function SettingsPage({
   notify,
   upgrade,
   startUpgrade,
+  initialQuery = '',
 }: Saving & {
   state: HydraState
   connected: boolean
@@ -370,12 +382,14 @@ export function SettingsPage({
   notify({ text }: { text: string }): void
   upgrade?: UpgradeStatus
   startUpgrade(): void
+  // The search the page opens with, such as a setting the Oracle sent here.
+  initialQuery?: string
 }) {
   const search = useRef<HTMLInputElement>(null)
   const [
     query,
     setQuery,
-  ] = useState('')
+  ] = useState(initialQuery)
   const [
     section,
     setSection,
@@ -388,8 +402,9 @@ export function SettingsPage({
   const {
     effective,
     saveHydra,
+    error: dispatchError,
   } = useHeadsDispatch({ command })
-  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const changed = changedIds({
     view,
     settings,
@@ -493,7 +508,7 @@ export function SettingsPage({
           {shown.filter(match => match.entry.section === item.id).map(match => (
             <SettingRow
               key={match.entry.id}
-              icon={ICONS[match.entry.id] ?? 'settings'}
+              icon={SETTING_ICONS[match.entry.id] ?? 'settings'}
               label={match.entry.label}
               description={match.entry.description}
               terms={match.terms}
@@ -506,7 +521,7 @@ export function SettingsPage({
                 }),
               })}
               preview={(
-                <Preview
+                <SettingPreview
                   entry={match.entry}
                   state={state}
                   view={view}
@@ -516,7 +531,7 @@ export function SettingsPage({
                 />
               )}
             >
-              <Control
+              <SettingControl
                 entry={match.entry}
                 state={state}
                 view={view}
@@ -529,6 +544,7 @@ export function SettingsPage({
                 rule={rule}
                 connected={connected}
                 saveHydra={saveHydra}
+                dispatchError={dispatchError}
               />
             </SettingRow>
           ))}

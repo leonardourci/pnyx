@@ -3,7 +3,8 @@ import { DEFAULT_REVIEW_MINUTES, MAX_REVIEW_MINUTES } from '#settings/settings.t
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { Command } from '#web-app/connection.ts'
-import { NumberField, Switch } from '#web-shared/ui/controls.tsx'
+import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
+import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
@@ -13,6 +14,15 @@ const DONE_SLIDER_MAX = 168
 const REVIEW_SLIDER_MAX = 120
 
 type Save = ({ patch }: { patch: Record<string, unknown> }) => Promise<boolean>
+
+export function DispatchStatus({ error }: { error?: string }) {
+  return (
+    <div className="setting-stack" role="status">
+      <p>{error ? `Could not load agent settings: ${error}` : 'Loading agent settings…'}</p>
+      {error && <Button onClick={() => window.dispatchEvent(new Event(DISPATCH_CHANGED))}>Retry</Button>}
+    </div>
+  )
+}
 
 export function Help({ text }: { text: string }) {
   return <p className="setting-help"><Icon name="about" size={14} />{text}</p>

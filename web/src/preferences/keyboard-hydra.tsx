@@ -38,7 +38,6 @@ export function useHydraKeyboard({
   newColumn,
   cancelColumn,
   togglePanel,
-  showPanel,
 }: {
   state: HydraState
   groups: ColumnCards[]
@@ -53,7 +52,6 @@ export function useHydraKeyboard({
   newColumn: boolean
   cancelColumn(): void
   togglePanel(): void
-  showPanel(): void
 }) {
   const [
     remembered,
@@ -261,12 +259,6 @@ export function useHydraKeyboard({
 
     if (id === 'topbar') {
       togglePanel()
-
-      return true
-    }
-
-    if (id === 'palette' || id === 'find' || id === 'search') {
-      showPanel(); requestAnimationFrame(() => focusElement({ selector: '[data-oracle-slot] input' }))
 
       return true
     }

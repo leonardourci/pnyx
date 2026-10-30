@@ -213,22 +213,13 @@ export const KEY_ACTIONS = [
   }),
   action({
     id: 'search',
-    label: 'Search tasks',
+    label: 'Open the Oracle',
     keys: ['/'],
     scopes: navigation,
   }),
   action({
-    id: 'find',
-    label: 'Find in current view',
-    keys: ['Mod+f'],
-    scopes: [
-      ...navigation,
-      'composer',
-    ],
-  }),
-  action({
     id: 'palette',
-    label: 'Focus Oracle',
+    label: 'Open or close the Oracle',
     keys: ['Mod+k'],
     scopes: [
       ...navigation,
@@ -418,14 +409,7 @@ export function keyboardError({ prefs }: { prefs: KeyboardPreferences }): string
           return 'Use logical keys, modifiers and up to three space-separated keys: ' + binding
         }
 
-        const localFind = a.id === 'find' && strokes.length === 1
-          && strokes[0]![0].length === 1 && [
-          'Control',
-          'Meta',
-        ].includes(strokes[0]![0][0]!)
-          && String(strokes[0]![2]).toLowerCase() === 'f'
-
-        if (!localFind && strokes.some(([
+        if (strokes.some(([
           mods, ,
           key,
         ]) => (mods.some(m => m === 'Control' || m === 'Meta') && /^(l|t|w|r|f|p|q|n|\+|-|=|0)$/i.test(String(key))) || (mods.includes('Alt') && [
@@ -589,7 +573,6 @@ export function resolveKey(
   const available = KEY_ACTIONS.filter(a =>
     a.scopes.includes(context.scope)
     && (!context.editing || [
-      'find',
       'send',
       'palette',
       'topbar',
