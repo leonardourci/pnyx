@@ -587,7 +587,7 @@ test(
           activity: 'finished',
         },
       }).text,
-      'finished its turn',
+      'activity unknown',
     )
     assert.equal(
       state({
@@ -611,7 +611,7 @@ test(
           ],
         },
       }).text,
-      'needs you',
+      'waiting for you',
     )
     assert.equal(
       state({

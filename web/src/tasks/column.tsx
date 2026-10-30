@@ -11,7 +11,8 @@ import { CopyId } from '#web-shared/ui/copy-id.tsx'
 import { DeleteItem, Menu } from '#web-shared/ui/menu.tsx'
 import { Resize } from '#web-shared/ui/resize.tsx'
 import type { Command } from '#web-app/connection.ts'
-import { columnLook, dropBefore } from './view.ts'
+import { dropPoint } from '#web-shared/ui/drag.ts'
+import { columnLook, dropBefore, TASK_DRAG } from './view.ts'
 
 export function Column({
   id,
@@ -91,7 +92,12 @@ export function Column({
       onDrop={e => {
         e.preventDefault()
         const source = e.dataTransfer.getData('application/pnyx-column')
-        const task = e.dataTransfer.getData('application/pnyx-task')
+        const drop = dropPoint({
+          event: e,
+          type: TASK_DRAG,
+          item: 'data-task',
+        })
+        const task = drop.dragged
 
         if (source && source !== id) {
           const target = columnIds.indexOf(id)
@@ -107,12 +113,10 @@ export function Column({
             ],
           }).catch(error => report({ error }))
         } else if (task) {
-          const over = e.target instanceof Element ? e.target.closest<HTMLElement>('[data-task]') : null
-          const rect = over?.getBoundingClientRect()
           const before = dropBefore({
             cards,
-            over: over?.dataset.task,
-            below: !!rect && e.clientY > rect.top + rect.height / 2,
+            over: drop.over,
+            below: drop.below,
           })
 
           if (before !== task) {

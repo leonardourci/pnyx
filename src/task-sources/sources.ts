@@ -480,8 +480,8 @@ export function resultText({
 }): string {
   if (source.lavish) {
     const handling = !lavishCanRearm({ result })
-      ? 'Conclude this round, acknowledge its inbox message, then mark this source result handled. Do not re-arm or reopen this session.'
-      : `Apply every item once. File genuine owner choices with task ask; retain their IDs for the report inventory. Acknowledge inbox message ${result.message}, then re-arm with task source lavish <task> <new-source-id> --page ${JSON.stringify(source.lavish.page)} --executable ${JSON.stringify(source.command.executable)} --after ${source.id} --sequence ${result.sequence} --agent-reply-file <path> --session <session> --generation <generation>. This handles the old round and stages the reply before the next poll.`
+      ? 'Read its inbox message to acknowledge receipt, conclude this round, then mark this source result handled. Do not re-arm or reopen this session.'
+      : `Read inbox message ${result.message} to acknowledge receipt. Apply every item once. File genuine owner choices with task ask; retain their IDs for the report inventory. After applying the feedback, re-arm with task source lavish <task> <new-source-id> --page ${JSON.stringify(source.lavish.page)} --executable ${JSON.stringify(source.command.executable)} --after ${source.id} --sequence ${result.sequence} --agent-reply-file <path> --session <session> --generation <generation>. This handles the old round and stages the reply before the next poll.`
     const recovery = result.outcome === 'completed' ? ''
       : ' Listening stopped. Inspect the retained uncertainty and verify prior effects and reply acceptance before any explicit recovery; never blindly repeat a post or destructive poll.'
 
@@ -492,5 +492,5 @@ export function resultText({
 
   return `External source ${source.id}, result ${result.sequence}: ${result.outcome}. ${result.detail}\n`
     + `stdout:\n${result.stdout}\nstderr:\n${result.stderr}\n`
-    + `Read with task source read <task> ${source.id}; acknowledge inbox message ${result.message}, then task source handled <task> ${source.id} ${result.sequence} --session <session> --generation <generation>.`
+    + `Read inbox message ${result.message} to acknowledge receipt, then read with task source read <task> ${source.id}. After resolving the result, run task source handled <task> ${source.id} ${result.sequence} --session <session> --generation <generation>.`
 }

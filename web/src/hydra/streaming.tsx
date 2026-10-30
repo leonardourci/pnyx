@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type ComponentProps, type RefObject } from 'react'
-import { imageNames } from '#hydra/images.ts'
+import { shownImageNames } from '#hydra/images.ts'
 import { Markdown, MarkdownBlocks, markdown } from './markdown.tsx'
 import {
   EDGE,
@@ -438,7 +438,7 @@ function StreamedText({
   const host = useRef<HTMLDivElement>(null)
   const state = useRef<Reveal | null>(null)
   const images = useMemo(
-    () => imageNames({ text }),
+    () => shownImageNames({ text }),
     [text],
   )
 

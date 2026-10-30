@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { setImmediate } from 'node:timers/promises'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
 import { loadHydra } from '#app/store.ts'
@@ -8,22 +7,10 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { QueryFn } from '#workers/claude.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
+import { settle } from '#test-harness/child-fixture.ts'
 
-const WAIT_MS = 5000
 const QUIET_MS = 3600000
 const result = claudeRecording.turn.find(message => message.type === 'result')
-
-async function until({ check }: { check(): boolean }) {
-  const deadline = Date.now() + WAIT_MS
-
-  while (!check()) {
-    assert.ok(
-      Date.now() < deadline,
-      'fixture did not settle',
-    )
-    await setImmediate()
-  }
-}
 
 async function rejectedSetting({ work }: { work: 'queued' | 'background' | 'unknown' }) {
   assert.ok(result?.type === 'result' && result.subtype === 'success')
@@ -78,7 +65,10 @@ async function rejectedSetting({ work }: { work: 'queued' | 'background' | 'unkn
       text: 'First',
       actor: 'cli',
     })
-    await until({ check: () => native.incoming.length === 1 })
+    await settle({
+      what: 'fixture did not settle',
+      check: () => native.incoming.length === 1,
+    })
 
     if (work === 'queued') {
       await host.hydra({
@@ -86,7 +76,10 @@ async function rejectedSetting({ work }: { work: 'queued' | 'background' | 'unkn
         text: 'Second',
         actor: 'cli',
       })
-      await until({ check: () => native.incoming.length === 2 })
+      await settle({
+        what: 'fixture did not settle',
+        check: () => native.incoming.length === 2,
+      })
     }
 
     if (work === 'background') {
@@ -111,7 +104,10 @@ async function rejectedSetting({ work }: { work: 'queued' | 'background' | 'unkn
     }
 
     native.send({ message: completed })
-    await until({ check: () => loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished' })
+    await settle({
+      what: 'fixture did not settle',
+      check: () => loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
     assert.equal(
       native.closed(),
       false,
@@ -141,7 +137,10 @@ async function rejectedSetting({ work }: { work: 'queued' | 'background' | 'unkn
       })
     }
 
-    await until({ check: () => native.closed() })
+    await settle({
+      what: 'fixture did not settle',
+      check: () => native.closed(),
+    })
   } finally {
     host.close()
   }

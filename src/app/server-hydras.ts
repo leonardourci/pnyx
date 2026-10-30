@@ -10,6 +10,8 @@ import { withRegistryLock } from '#store/storage.ts'
 import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { liveTask } from '#tasks/select.ts'
+import { pickName } from '#hydra/hydra-names.ts'
+import { otherHydraNames } from '#hydra/cli.ts'
 
 export interface HydraProjectSummary {
   name: string
@@ -23,6 +25,9 @@ export interface HydraSummary {
   identity?: string
   id: string
   name: string
+  icon?: string
+  // Position in the Hydra list: the set position, else creation time in ms.
+  order: number
   hydra: string
   projects: HydraProjectSummary[]
 }
@@ -89,7 +94,14 @@ export function listHydras(): HydraSummary[] {
 
     return summary
   })
+    .sort((
+      a,
+      b,
+    ) => a.order - b.order || a.id.localeCompare(b.id))
 }
+
+// A Hydra whose log has no readable first event sorts last.
+const createdAt = ({ id }: { id: string }) => Date.parse(readInitialEvent({ hydraId: id })?.at ?? '') || Number.MAX_SAFE_INTEGER
 
 function summarize({ id }: { id: string }): {
   summary: HydraSummary
@@ -140,6 +152,8 @@ function summarize({ id }: { id: string }): {
           seq,
         ]) => seq === 1 && event.startsWith('hydra-create:'))?.[0].slice('hydra-create:'.length),
         name: config.name,
+        icon: config.icon,
+        order: config.position ?? createdAt({ id }),
         hydra: home ? `Firstmate ${home}` : config.hydra.name,
         projects,
       },
@@ -149,6 +163,7 @@ function summarize({ id }: { id: string }): {
       summary: {
         id,
         name: id,
+        order: Number.MAX_SAFE_INTEGER,
         hydra: 'could not be loaded',
         projects: [],
       },
@@ -158,9 +173,11 @@ function summarize({ id }: { id: string }): {
 
 export function createHydra({
   name,
+  icon,
   attempt,
 }: {
   name: string
+  icon?: string
   attempt?: string
 }): string {
   return withRegistryLock({
@@ -186,38 +203,117 @@ export function createHydra({
       }
 
       const id = `hydra-${n}`
-      commands.hydra([
+      const args = [
         'create',
         id,
-        '--name',
-        name,
         '--actor',
         'web',
         ...(eventId ? [
           '--event-id',
           eventId,
         ] : []),
-      ])
+      ]
+
+      // Without a name the CLI picks an unused Greek one.
+      if (name) {
+        args.push(
+          '--name',
+          name,
+        )
+      }
+
+      if (icon) {
+        args.push(
+          '--icon',
+          icon,
+        )
+      }
+
+      commands.hydra(args)
 
       return id
     },
   })
 }
 
-export function renameHydra({
+export function editHydra({
   id,
   name,
+  icon,
+  position,
 }: {
   id: string
-  name: string
+  name?: string
+  icon?: string
+  position?: number
 }): void {
-  commands.hydra([
+  const args = [
     'set',
     '--hydra',
     id,
-    '--name',
-    name,
     '--actor',
     'web',
-  ])
+  ]
+
+  if (name) {
+    args.push(
+      '--name',
+      name,
+    )
+  }
+
+  if (icon) {
+    args.push(
+      '--icon',
+      icon,
+    )
+  }
+
+  if (position !== undefined) {
+    args.push(
+      '--position',
+      String(position),
+    )
+  }
+
+  commands.hydra(args)
+}
+
+// A Firstmate Hydra keeps its home's name; an unreadable Hydra is left for opening to report.
+export function nameUnnamedHydras(): void {
+  withRegistryLock({
+    fn: () => {
+      for (const id of hydraIds()) {
+        const config = readableConfig({ id })
+
+        if (!config || config.hydra.kind === 'firstmate' || (config.name.trim() && config.name !== id)) {
+          continue
+        }
+
+        const picked = pickName({ taken: otherHydraNames({ id }) })
+        commands.hydra([
+          'set',
+          '--hydra',
+          id,
+          '--name',
+          picked.name,
+          '--icon',
+          picked.icon,
+          '--actor',
+          'pnyx',
+        ])
+      }
+    },
+  })
+}
+
+function readableConfig({ id }: { id: string }) {
+  try {
+    return hydraConfig({
+      state: loadHydra({ hydraId: id }).state,
+      id,
+    })
+  } catch {
+    return undefined
+  }
 }

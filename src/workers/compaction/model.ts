@@ -35,10 +35,6 @@ export interface CompactionState {
   operations: Compaction[]
   inputs: CompactInput[]
   priority?: string
-  commentEpoch?: string
-  commentSession?: string
-  taughtEpoch?: string
-  commentMessage?: string
 }
 
 export type CompactionChange =
@@ -63,6 +59,7 @@ export type CompactionChange =
     kind: 'priority'
     id: string
   }
+  // Older logs hold this event from the retired comment note; replay ignores it.
   | {
     kind: 'comments'
     epoch: string

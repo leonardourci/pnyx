@@ -97,26 +97,30 @@ interface TurnPlan {
   hold?: boolean
 }
 
+interface ClaudeTurnPlan extends TurnPlan {
+  // Native messages sent ahead of the recorded turn, as Claude Code sends compaction statuses; a held plan waits between them.
+  before?: SDKMessage[]
+  after?: SDKMessage[]
+}
+
 // A plan answers only the Hydra that was current when it was made, so flows never share plans.
-function plannedTurns({ hydra }: { hydra(): string }) {
-  const plans: (TurnPlan & {
+function plannedTurns<Plan extends TurnPlan>({ hydra }: { hydra(): string }) {
+  const plans: (Plan & {
     hydra: string
     wait: Promise<void>
   })[] = []
 
   return {
     plan: ({
-      text,
-      reply,
       hold,
-    }: TurnPlan) => {
+      ...plan
+    }: Plan) => {
       let release = () => {}
       const wait = new Promise<void>(resolve => {
         release = resolve
       })
       plans.push({
-        text,
-        reply,
+        ...plan as Plan,
         hold,
         hydra: hydra(),
         wait,
@@ -151,7 +155,7 @@ function plannedTurns({ hydra }: { hydra(): string }) {
 // Each message starts the recorded turn again under the session's own id; the transcript is written as Claude Code writes it.
 export function replayClaude({ hydra }: { hydra(): string }) {
   const sessions: AgentSession[] = []
-  const turns = plannedTurns({ hydra })
+  const turns = plannedTurns<ClaudeTurnPlan>({ hydra })
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
@@ -241,6 +245,24 @@ export function replayClaude({ hydra }: { hydra(): string }) {
           env: session.env,
         })
         const answer = plan?.reply ?? reply
+
+        for (const native of plan?.before ?? []) {
+          yield {
+            ...native,
+            session_id: id,
+          }
+        }
+
+        if (plan?.after) {
+          await plan.wait
+
+          for (const native of plan.after) {
+            yield {
+              ...native,
+              session_id: id,
+            }
+          }
+        }
 
         for (const recorded of claudeRecording.turn) {
           if (recorded.type === 'assistant') {

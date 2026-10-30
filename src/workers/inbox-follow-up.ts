@@ -116,7 +116,7 @@ export async function followUpSteering({
               id,
               at,
               result: 'exhausted',
-              detail: recovery.at(-1)?.detail ?? 'notification budget spent without a worker acknowledgement',
+              detail: recovery.at(-1)?.detail ?? 'notification budget spent without a worker read receipt',
             },
           })
 
