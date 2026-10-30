@@ -314,7 +314,14 @@ export function claimHost({
           probe.once(
             'connect',
             () => {
-              clearTimeout(timeout); probe.destroy(); resolve('LIVE')
+              // Drain peer output so probing cannot reset an unrelated service.
+              probe.end(); probe.resume()
+            },
+          )
+          probe.once(
+            'close',
+            () => {
+              clearTimeout(timeout); resolve('LIVE')
             },
           )
           probe.once(
