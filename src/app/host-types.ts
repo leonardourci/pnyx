@@ -190,4 +190,5 @@ export interface Live {
   thinking: Set<string>
   // The tool calls running now, by id, with when each started.
   tools: Map<string, number>
+  toolNames: Map<string, string>
 }

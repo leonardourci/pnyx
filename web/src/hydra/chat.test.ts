@@ -6,7 +6,9 @@ import { recordEntries, splitEntry } from '#hydra/transcripts-read.ts'
 import { hydraDelivery } from '#hydra/hydra.ts'
 import { transcriptMessages } from '#oracle/text.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask } from './chat.ts'
+import { commentReply, commentUpdates, hydraMessages, joinMessageParts, keepStreamedKeys, leadingTask, type ChatComment } from './chat.ts'
+import { hasPendingImage, pendingImage, settleImage } from './draft.ts'
+import { imageLine } from '#hydra/images.ts'
 
 test(
   'Markdown messages split for transport reassemble across older pages without losing text',
@@ -184,6 +186,148 @@ test(
           'Is [@Fix login](pnyx-task:t1) done?',
         ],
       ],
+    )
+  },
+)
+
+for (const context of [
+  undefined,
+  'Referenced tasks (context only):\n\nTask t1: Fix login',
+]) {
+  test(
+    `an owner reply sent from a task card keeps its task once Hydra's copy arrives ${context ? 'with' : 'without'} context`,
+    () => {
+      const entries = hydraMessages({
+        messages: [
+          {
+            ...message({
+              id: 'reply',
+              text: 'go ahead',
+            }),
+            task: 't1',
+            context,
+          },
+        ],
+        transcript: [
+          {
+            id: 'native',
+            kind: 'message',
+            role: 'user',
+            text: context ? `go ahead\n\n${context}` : 'go ahead',
+            at: '2026-10-20T10:00:01Z',
+          },
+        ],
+      })
+
+      assert.deepEqual(
+        entries.map(entry => [
+          entry.text,
+          entry.task,
+        ]),
+        [
+          [
+            'go ahead',
+            't1',
+          ],
+        ],
+      )
+    },
+  )
+}
+
+test(
+  'owner copies rewritten from the transcript keep their place in the conversation',
+  () => {
+    const turn = ({
+      id,
+      role,
+      text,
+    }: {
+      id: string
+      role: string
+      text: string
+    }): ThreadEntry => ({
+      id,
+      kind: 'message',
+      role,
+      text,
+    })
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'first',
+            text: 'Plan it',
+          }),
+          context: 'Referenced tasks (context only):\n\nTask t2: Plan',
+        },
+        {
+          ...message({
+            id: 'second',
+            text: 'go ahead',
+          }),
+          task: 't1',
+        },
+      ],
+      transcript: [
+        turn({
+          id: 'user-a',
+          role: 'user',
+          text: 'Plan it\n\nReferenced tasks (context only):\n\nTask t2: Plan',
+        }),
+        turn({
+          id: 'answer-a',
+          role: 'assistant',
+          text: 'Planned.',
+        }),
+        turn({
+          id: 'user-b',
+          role: 'user',
+          text: 'go ahead',
+        }),
+        turn({
+          id: 'answer-b',
+          role: 'assistant',
+          text: 'Started.',
+        }),
+      ],
+    })
+
+    assert.deepEqual(
+      entries.map(entry => [
+        entry.id,
+        entry.text,
+        entry.task,
+      ]),
+      [
+        [
+          'user-a',
+          'Plan it',
+          undefined,
+        ],
+        [
+          'answer-a',
+          'Planned.',
+          undefined,
+        ],
+        [
+          'user-b',
+          'go ahead',
+          't1',
+        ],
+        [
+          'answer-b',
+          'Started.',
+          undefined,
+        ],
+      ],
+    )
+    assert.equal(
+      Object.hasOwn(
+        entries[0]!,
+        'task',
+      ),
+      false,
     )
   },
 )
@@ -548,8 +692,8 @@ test(
       }).map(entry => entry.text),
       [
         leading,
-        tagged,
         quoting,
+        tagged,
       ],
     )
   },
@@ -754,6 +898,254 @@ test(
         },
       }),
       'task-login',
+    )
+  },
+)
+
+const comments: ChatComment[] = [
+  {
+    id: 'c1',
+    messageId: 'm1',
+    at: '15:42',
+    block: 0,
+    offset: 0,
+    quote: 'Ship it\n\nafter review',
+    text: 'Which review?\n\nThe second one.',
+  },
+  {
+    id: 'c2',
+    messageId: 'm1',
+    at: '15:42',
+    block: 1,
+    offset: 0,
+    quote: 'today',
+    paragraph: 'Merge it today.',
+    text: 'Tomorrow instead.',
+    images: ['[image: /tmp/calendar.png]'],
+  },
+]
+const commentSection = `## Comments on your reply from 15:42
+
+### Comment 1
+> Ship it
+>
+> after review
+
+Which review?
+
+The second one.
+
+### Comment 2
+> today
+>
+> > Merge it today.
+
+Tomorrow instead.
+[image: /tmp/calendar.png]`
+
+test(
+  'comments reach the agent in one shape, with a message section only when the owner wrote one',
+  () => {
+    assert.equal(
+      commentReply({
+        draft: '',
+        comments,
+      }),
+      commentSection,
+    )
+    assert.equal(
+      commentReply({
+        draft: 'Thanks',
+        comments: [],
+      }),
+      'Thanks',
+    )
+    assert.equal(
+      commentReply({
+        draft: '',
+        comments: [
+          comments[0]!,
+          {
+            ...comments[1]!,
+            messageId: 'm2',
+            at: '15:50',
+          },
+        ],
+      }),
+      '## Comments on your reply from 15:42\n\n### Comment 1\n> Ship it\n>\n> after review\n\nWhich review?\n\nThe second one.'
+        + '\n\n## Comments on your reply from 15:50\n\n### Comment 1\n> today\n>\n> > Merge it today.\n\nTomorrow instead.\n[image: /tmp/calendar.png]',
+    )
+    assert.equal(
+      commentReply({
+        draft: 'Thanks',
+        comments,
+      }),
+      `${commentSection}\n\n## Message\nThanks`,
+    )
+    assert.equal(
+      commentReply({
+        draft: '',
+        comments: [
+          {
+            ...comments[0]!,
+            text: '> Not this\n---\n## Message\n  # Nor this',
+          },
+        ],
+      }),
+      '## Comments on your reply from 15:42\n\n### Comment 1\n> Ship it\n>\n> after review\n\n\\> Not this\n---\n\\## Message\n  \\# Nor this',
+    )
+  },
+)
+
+const note = ({
+  id,
+  text,
+}: {
+  id: string
+  text: string
+}): ChatComment => ({
+  id,
+  messageId: 'm1',
+  block: 0,
+  offset: 0,
+  quote: 'passage',
+  text,
+  at: '2026-10-29T15:05:10.536Z',
+})
+
+// The comments as their owner holds them; handlers are made once, like a render's, and used later.
+const store = ({ items }: { items: ChatComment[] }) => {
+  const held = { items }
+
+  return {
+    held,
+    updates: commentUpdates({
+      read: () => held.items,
+      write: ({ items }) => {
+        held.items = items
+      },
+    }),
+  }
+}
+
+test(
+  'a note that clears its upload after its comment was removed does not bring the comment back',
+  () => {
+    const pending = imageLine({ path: pendingImage({ id: 'a' }) })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: `a ${pending}`,
+        }),
+        note({
+          id: 'b',
+          text: 'b',
+        }),
+      ],
+    })
+    updates.remove({ id: 'a' })
+    updates.change({
+      id: 'a',
+      text: 'a',
+    })
+    assert.deepEqual(
+      held.items.map(comment => comment.id),
+      ['b'],
+    )
+  },
+)
+
+test(
+  'two notes clearing their uploads one after the other both land, so Send is not left waiting',
+  () => {
+    const first = imageLine({ path: pendingImage({ id: 'a' }) }), second = imageLine({ path: pendingImage({ id: 'b' }) })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: `a ${first}`,
+        }),
+        note({
+          id: 'b',
+          text: `b ${second}`,
+        }),
+      ],
+    })
+    updates.change({
+      id: 'a',
+      text: 'a',
+    })
+    updates.change({
+      id: 'b',
+      text: 'b',
+    })
+    assert.equal(
+      hasPendingImage({
+        text: commentReply({
+          draft: '',
+          comments: held.items,
+        }),
+      }),
+      false,
+    )
+  },
+)
+
+test(
+  'an image pasted over a passage keeps the reply waiting until its upload settles into the comment',
+  () => {
+    const path = pendingImage({ id: 'p' })
+    const {
+      held,
+      updates,
+    } = store({
+      items: [
+        note({
+          id: 'a',
+          text: '',
+        }),
+      ],
+    })
+    updates.edit({
+      id: 'a',
+      update: ({ text }) => [
+        text,
+        imageLine({ path }),
+      ].filter(Boolean).join(' '),
+    })
+    const reply = () => commentReply({
+      draft: 'also this',
+      comments: held.items,
+    })
+    assert.equal(
+      hasPendingImage({ text: reply() }),
+      true,
+      'Send waits while the image uploads',
+    )
+    updates.edit({
+      id: 'a',
+      update: ({ text }) => settleImage({
+        text,
+        anchor: 0,
+        focus: 0,
+        path,
+        line: '[image: /home/.pnyx/hydras/default/attachments/0b6e1f3a-2c4d-4e5f-8a9b-0c1d2e3f4a5b.png]',
+      })?.text ?? text,
+    })
+    assert.match(
+      reply(),
+      /\[image: \/home\/\.pnyx\/hydras\/default\/attachments\/0b6e1f3a/,
+    )
+    assert.equal(
+      hasPendingImage({ text: reply() }),
+      false,
     )
   },
 )

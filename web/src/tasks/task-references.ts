@@ -1,3 +1,4 @@
+import type { CurrentAction } from '#hydra/calls.ts'
 import { useEffect, useMemo, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -8,8 +9,12 @@ import { statusLabel } from '#tasks/card-status.ts'
 export function taskReferences({
   state,
   now,
+  actions,
+  connected,
 }: {
   state: HydraState
+  actions?: Record<string, CurrentAction>
+  connected?: boolean
   now: number
 }) {
   const config = hydraConfig({ state })
@@ -20,6 +25,9 @@ export function taskReferences({
       const column = config.columns.find(column => column.id === c.column)
       const status = cardState({
         card: c,
+        state,
+        action: actions?.[c.id],
+        connected,
         hours: state.config?.doneAfterHours,
         now,
       })
@@ -36,7 +44,15 @@ export function taskReferences({
     }))
 }
 
-export function useTaskReferences({ state }: { state: HydraState }) {
+export function useTaskReferences({
+  state,
+  actions,
+  connected,
+}: {
+  state: HydraState
+  actions?: Record<string, CurrentAction>
+  connected?: boolean
+}) {
   const [
     now,
     setNow,
@@ -56,10 +72,14 @@ export function useTaskReferences({ state }: { state: HydraState }) {
   return useMemo(
     () => taskReferences({
       state,
+      actions,
+      connected,
       now,
     }),
     [
       state.cards,
+      connected,
+      actions,
       state.config,
       now,
     ],

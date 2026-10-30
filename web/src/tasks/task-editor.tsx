@@ -1,6 +1,9 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Card } from '#tasks/model.ts'
-import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
+import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { ComposerField, type ComposerFieldHandle } from '#web-shared/ui/composer-field.tsx'
+import { hasPendingImage } from '#web-hydra/draft.ts'
+import { MAX_BRIEF_LENGTH } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export interface TaskDraft {
@@ -37,7 +40,7 @@ export function TaskEditor({
     setBrief,
   ] = useState(draft?.brief ?? card.brief ?? '')
   const titleField = useRef<HTMLInputElement>(null)
-  const briefField = useRef<HTMLTextAreaElement>(null)
+  const briefField = useRef<ComposerFieldHandle>(null)
   useEffect(
     () => {
       const field = titleField.current
@@ -50,12 +53,22 @@ export function TaskEditor({
     [],
   )
 
+  const imagesLoading = hasPendingImage({ text: brief })
+  const tooLong = brief.trim().length > MAX_BRIEF_LENGTH
+  const blocked = imagesLoading || tooLong
+  const blockedReason = imagesLoading ? 'Images are still loading' : `A brief holds up to ${MAX_BRIEF_LENGTH} characters`
+
   const save = () => {
     const nextTitle = title.replace(
       /\s+/g,
       ' ',
     ).trim()
     const nextBrief = brief.trim()
+
+    if (blocked) {
+      return
+    }
+
     const saving = [
       ...(nextTitle && nextTitle !== card.title ? [
         command({
@@ -120,27 +133,26 @@ export function TaskEditor({
         onChange={event => setTitle(event.target.value)}
         onKeyDown={event => {
           if (event.key === 'Enter' && !event.nativeEvent.isComposing && !event.metaKey && !event.ctrlKey) {
-            event.preventDefault(); briefField.current?.focus()
+            event.preventDefault(); briefField.current?.input?.focus()
           }
         }}
       />
       {!card.automaticTask && (
         <>
           <span className="eyebrow">Brief</span>
-          <Textarea
+          <ComposerField
             ref={briefField}
-            aria-label="Brief"
+            label="Brief"
             placeholder="Add a brief…"
-            maxLength={24000}
             value={brief}
-            onChange={event => setBrief(event.target.value)}
+            change={({ text }) => setBrief(text)}
           />
         </>
       )}
       <div className="row">
-        <Button type="submit" variant="primary">Save</Button>
+        <Button type="submit" variant="primary" disabled={blocked}>Save</Button>
         <Button onClick={close}>Cancel</Button>
-        <span className="muted small">⌘/Ctrl+Enter saves · Esc cancels</span>
+        <span className="muted small">{blocked ? blockedReason : '⌘/Ctrl+Enter saves · Esc cancels'}</span>
       </div>
     </form>
   )

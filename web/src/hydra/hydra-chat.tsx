@@ -11,7 +11,12 @@ import { chatDecisions, ChatDecisionCard, type ChatDecision } from './chat-decis
 import { DispatchProposals } from '#web-workers/dispatch-proposals.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { REDUCED_MOTION, WorkingDots } from './streaming.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
+import { Button, InlineButton } from '#web-shared/ui/controls.tsx'
+import { ContextMenu, menuPoint, opensMenu } from '#web-shared/ui/menu.tsx'
+import { IconPicker } from '#web-shared/ui/icon-picker.tsx'
+import { HYDRA_MARK } from '#hydra/hydra-names.ts'
+import { hydraTitle } from '#web-app/view.ts'
+import { HYDRA_ICONS, HydraNameEditor, type HydraIdentity } from './hydra-title.tsx'
 import { useCallback, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
@@ -33,7 +38,7 @@ import { LiveLabel } from '#web-shared/ui/live-label.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { Composer } from './composer.tsx'
-import { useSkillsCatalog } from './skills-catalog.ts'
+import { useComposerSources } from '#web-shared/ui/composer-field.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
@@ -51,6 +56,112 @@ interface Sending {
   confirmed: boolean
 }
 
+function HydraHead({
+  name,
+  icon = HYDRA_MARK,
+  taken,
+  editHydra,
+  addProject,
+  connected,
+  children,
+}: {
+  name: string
+  icon?: string
+  taken: string[]
+  editHydra?({
+    name,
+    icon,
+  }: HydraIdentity): void
+  addProject?(): void
+  connected: boolean
+  children: ReactNode
+}) {
+  const [
+    editing,
+    setEditing,
+  ] = useState(false)
+  const [
+    menu,
+    setMenu,
+  ] = useState<{
+    x: number
+    y: number
+  } | null>(null)
+  const closeMenu = useCallback(
+    () => setMenu(null),
+    [],
+  )
+  const canEdit = !!editHydra && connected
+
+  const openMenu = ({ event }: { event: Parameters<typeof menuPoint>[0]['event'] & { preventDefault(): void } }) => {
+    event.preventDefault(); setMenu(menuPoint({ event }))
+  }
+
+  return (
+    <header
+      className="hydra-head"
+      onContextMenu={event => canEdit && openMenu({ event })}
+      onKeyDown={event => canEdit && opensMenu({ event }) && openMenu({
+        event: {
+          preventDefault: () => event.preventDefault(),
+          currentTarget: event.currentTarget,
+        },
+      })}
+    >
+      {editing && editHydra ? (
+        <HydraNameEditor
+          saved={{
+            name,
+            icon,
+          }}
+          taken={taken}
+          iconSize={24}
+          save={({
+            name,
+            icon,
+          }) => {
+            setEditing(false); editHydra({
+              name,
+              icon,
+            })
+          }}
+          cancel={() => setEditing(false)}
+        />
+      ) : (
+        <>
+          {canEdit ? (
+            <IconPicker
+              label="Change icon"
+              value={icon}
+              choices={HYDRA_ICONS}
+              size={24}
+              pick={({ icon }) => editHydra({
+                name,
+                icon,
+              })}
+            />
+          ) : <Icon name={icon} size={24} />}
+          <Button
+            className="hydra-title"
+            disabled={!canEdit}
+            title="Click to edit"
+            aria-label={`Edit ${hydraTitle({ name })}`}
+            onClick={() => setEditing(true)}
+          ><span className={name ? 'hydra-label' : 'hydra-label muted'}>{hydraTitle({ name })}</span>
+          </Button>
+        </>
+      )}
+      {children}
+      {menu && (
+        <ContextMenu label={`${hydraTitle({ name })} menu`} at={menu} close={closeMenu}>
+          <Button onClick={() => setEditing(true)}>Edit</Button>
+          {addProject && <Button onClick={addProject}>Add project</Button>}
+        </ContextMenu>
+      )}
+    </header>
+  )
+}
+
 export function HydraChat({
   state,
   command,
@@ -64,12 +175,30 @@ export function HydraChat({
   setComments,
   liveThread,
   queue,
-  projectSetup,
+  identity,
+  editHydra,
+  addProject,
+  projectRequest,
+  projectRequested,
   openTask,
   action,
+  taskActions,
 }: {
-  projectSetup?: ReactNode
+  // The Hydra's name and icon for the header, and the names of the owner's other Hydras.
+  identity?: {
+    name: string
+    icon?: string
+    taken: string[]
+  }
+  editHydra?({
+    name,
+    icon,
+  }: HydraIdentity): void
+  addProject?(): void
+  projectRequest?: boolean
+  projectRequested?(): void
   action?: CurrentAction
+  taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
   queue: HydraQueue
   state: HydraState
@@ -120,29 +249,8 @@ export function HydraChat({
   const follow = useRef(true), lastTop = useRef(0), scrolledAt = useRef(0), glide = useRef(0)
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
-  const [
-    catalogOpen,
-    setCatalogOpen,
-  ] = useState(false)
-  const onCatalogOpen = useCallback(
-    ({ open }: { open: boolean }) => setCatalogOpen(open),
-    [],
-  )
-  const receiving = config.hydra.agent?.harness ?? card?.agent?.provider ?? 'claude'
-  const catalog = useSkillsCatalog({
-    identity: JSON.stringify([
-      HYDRA_CARD,
-      card?.agent?.provider,
-      card?.agent?.cwd,
-      card?.agent?.sessionId,
-      receiving === 'claude-code' ? 'claude' : receiving,
-    ]),
-    card: HYDRA_CARD,
-    provider: receiving,
-    command,
-    connected,
-    open: catalogOpen,
-  })
+  const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
+  const { catalog } = useComposerSources()
   const {
     thinking,
   } = traces({
@@ -578,7 +686,11 @@ export function HydraChat({
     route: true,
     watching: 'unknown',
   }
-  const references = useTaskReferences({ state })
+  const references = useTaskReferences({
+    state,
+    actions: taskActions,
+    connected,
+  })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
@@ -599,11 +711,16 @@ export function HydraChat({
         flexBasis: width ?? view.hydraWidth,
       }}
     >
-      <header className="hydra-head">
-        <Icon name="hydra" size={24} />
-        <strong>{config.name}</strong>
+      <HydraHead
+        name={identity?.name ?? config.name}
+        icon={identity?.icon}
+        taken={identity?.taken ?? []}
+        editHydra={editHydra}
+        addProject={addProject}
+        connected={connected}
+      >
         {hosted && <span className="hydra-status" role="status" data-down={pill.down || undefined}>{pill.text}</span>}
-      </header>
+      </HydraHead>
       <div className="hydra-body">
         <div
           className="hydra-messages thread"
@@ -654,7 +771,6 @@ export function HydraChat({
           }}
         >
           <div className="hydra-stream" ref={content}>
-            {projectSetup && <div className="hydra-project-setup">{projectSetup}</div>}
             {olderCursor && (
               <Button
                 disabled={loadingEarlier || !connected}
@@ -702,7 +818,12 @@ export function HydraChat({
               connected={connected}
               notify={notify}
             />
-            {!entries.length && !projectSetup && <p className="hydra-empty">What are we working on?</p>}
+            {!entries.length && (
+              <p className="hydra-empty">
+                What are we working on?
+                {offerProject && <> <InlineButton className="hydra-empty-action" onClick={addProject}>Add a project</InlineButton></>}
+              </p>
+            )}
             {errors.map(a => <p key={a.key} className="chat-error" role="alert"><Icon name="error" size={16} />{a.text}</p>)}
             {card && (
               <InlinePermissions
@@ -791,7 +912,6 @@ export function HydraChat({
       />
       <Composer
         compacting={Boolean(compacting)}
-        serverComments={hosted}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
@@ -802,14 +922,6 @@ export function HydraChat({
           return true
         }}
         card={HYDRA_CARD}
-        catalog={catalog}
-        onCatalogOpen={onCatalogOpen}
-        labelColors={state.labelColors}
-        cards={Object.values(state.cards)}
-        projects={state.projects ?? []}
-        columns={config.columns}
-        taskReferences={references}
-        openTask={openTask}
         title="Hydra"
         draft={draft}
         setDraft={setDraft}
@@ -818,6 +930,8 @@ export function HydraChat({
         thread={route}
         command={deliver}
         notify={notify}
+        projectRequest={projectRequest}
+        projectRequested={projectRequested}
         stop={((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
         meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(

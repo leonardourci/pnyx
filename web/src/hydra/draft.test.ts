@@ -306,6 +306,26 @@ test(
 )
 
 test(
+  'a field that stops its own uploads removes only their placeholders, so the draft can be sent again',
+  () => {
+    const mine = pendingImage({ id: 'mine' }), other = pendingImage({ id: 'other' })
+    const text = `note [image: ${mine}] and [image: ${other}]`
+    const rest = withoutPendingImages({
+      text,
+      paths: new Set([mine]),
+    })
+    assert.equal(
+      rest,
+      `note and [image: ${other}]`,
+    )
+    assert.equal(
+      hasPendingImage({ text: withoutPendingImages({ text: rest }) }),
+      false,
+    )
+  },
+)
+
+test(
   'two images uploading together keep their numbers and places whichever answers first',
   () => {
     const first = pendingImage({ id: 'p1' }), second = pendingImage({ id: 'p2' })

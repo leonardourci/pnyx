@@ -23,12 +23,14 @@ import {
   enterNote, leaveNote, selectionFocus, onNoteEdgeLine,
   controlBetween, leaveQuestionControl, enterControl,
 } from './caret.ts'
-import { clock, copiedText, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
+import { clock, commentUpdates, copiedText, duration, leadingTask, orderedComments, ownMessage, sendableComment, turnTimings, type ChatComment, type TurnTiming } from './chat.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
-import { pastedImages, uploadImages } from './image-upload.ts'
-import { MessageImages } from './attached-image.tsx'
+import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
+import { pendingImage, settleImage } from './draft.ts'
+import { imageLine } from '#hydra/images.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { MessageComment } from './message-comment.tsx'
+import { revealComment } from './comment-reveal.ts'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
   MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
@@ -143,7 +145,6 @@ export function Messages({
     comment.id,
     index + 1,
   ]))
-  const uploading = useRef(new Map<string, number>())
   const {
     entries,
     calls,
@@ -178,14 +179,17 @@ export function Messages({
     latest.current = items; setComments({ items })
   }
 
-  const remove = ({ id }: { id: string }) =>
-    update({ items: latest.current.filter(c => c.id !== id) })
+  const updates = commentUpdates({
+    read: () => latest.current,
+    write: update,
+  })
+  const remove = updates.remove
 
-  // Pending uploads keep an empty note alive until its attachment arrives.
+  // An image still uploading holds its placeholder in the note, which keeps the note alive.
   const release = ({ id }: { id: string }) => {
     const comment = latest.current.find(c => c.id === id)
 
-    if (comment && !sendableComment({ comment }) && !uploading.current.get(id)) {
+    if (comment && !sendableComment({ comment })) {
       remove({ id })
     }
   }
@@ -234,45 +238,64 @@ export function Messages({
     return comment.id
   }
 
-  const attach = async ({
+  // An image pasted over a passage goes at the end of its comment's text as a placeholder at once, so Send
+  // waits for its upload; the upload then puts the image in its place, or takes the placeholder out.
+  const attach = ({
     id,
     files,
   }: {
     id: string
     files: File[]
   }) => {
-    const pending = uploading.current
-    pending.set(
-      id,
-      (pending.get(id) ?? 0) + 1,
-    )
     const {
-      lines,
+      images,
       failures,
-    } = await uploadImages({ files })
-    pending.set(
-      id,
-      pending.get(id)! - 1,
-    )
+    } = checkImages({ files })
 
     if (failures.length) {
       notify({ text: failures.join(' ') })
     }
 
-    const comment = latest.current.find(c => c.id === id)
+    const placed = images.map(file => ({
+      file,
+      path: pendingImage({ id: crypto.randomUUID() }),
+    }))
 
-    if (comment && lines.length) {
-      update({
-        items: latest.current.map(c => c.id === id ? {
-          ...c,
-          images: [
-            ...c.images ?? [],
-            ...lines,
-          ],
-        } : c),
+    if (!placed.length) {
+      return
+    }
+
+    updates.edit({
+      id,
+      update: ({ text }) => [
+        text.trimEnd(),
+        ...placed.map(({ path }) => imageLine({ path })),
+      ].filter(Boolean).join(' '),
+    })
+
+    for (const {
+      file,
+      path,
+    } of placed) {
+      void uploadImage({ file }).catch((error: Error) => {
+        notify({ text: error.message })
       })
-    } else if (comment && !document.activeElement?.closest(`[data-comment-id="${id}"]`)) {
-      release({ id })
+        .then(line => {
+          updates.edit({
+            id,
+            update: ({ text }) => settleImage({
+              text,
+              anchor: 0,
+              focus: 0,
+              path,
+              line: line ?? undefined,
+            })?.text ?? text,
+          })
+
+          if (!document.activeElement?.closest(`[data-comment-id="${id}"]`)) {
+            release({ id })
+          }
+        })
     }
   }
 
@@ -948,10 +971,14 @@ export function Messages({
                               direction,
                             })}
                             release={() => release({ id: comment.id })}
-                            attach={({ files }) => void attach({
-                              id: comment.id,
-                              files,
-                            })}
+                            show={() => {
+                              if (root.current) {
+                                revealComment({
+                                  host: root.current,
+                                  comment,
+                                })
+                              }
+                            }}
                           />
                         ))}
                       </div>
@@ -963,7 +990,6 @@ export function Messages({
                   ? <PnyxCallRow call={calls.get(entry.id)!} />
                   : <Trace entry={entry} details={entry.kind === 'tool' ? toolDetails : thinkingDetails} />
               ))}
-              {entry.kind === 'message' && !inline?.has(entry.id) && <MessageImages text={entry.text} />}
               {entry.delivery ? (
                 <span className="receipt" role="status">
                   {Object.entries(entry.delivery).map(([

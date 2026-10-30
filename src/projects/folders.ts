@@ -1,8 +1,9 @@
 import { opendir, realpath, stat } from 'node:fs/promises'
 import { homedir } from 'node:os'
-import { basename, dirname, isAbsolute, join, resolve } from 'node:path'
-import { hydraIds } from '#app/home-migration.ts'
+import { basename, dirname, isAbsolute, join, resolve, sep } from 'node:path'
+import { hydraIds, hydrasDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
+import { FOLDER_LIMIT } from './folder-limit.ts'
 
 export interface Folder {
   name: string
@@ -85,7 +86,7 @@ export async function listFolders({
       folders.push(folder({ path: child }))
     }
 
-    if (folders.length === 50) {
+    if (folders.length === FOLDER_LIMIT) {
       break
     }
   }
@@ -113,11 +114,15 @@ export async function listFolders({
   }
 
   const recent: Folder[] = []
+  // Hydra's own agent folders live under Pnyx's home; they are never a project to add.
+  const pnyxFolders = await realpath(hydrasDir()).catch(() => hydrasDir())
 
   for (const cwd of candidates) {
     try {
-      if ((await stat(cwd)).isDirectory()) {
-        recent.push(folder({ path: await realpath(cwd) }))
+      const path = await realpath(cwd)
+
+      if ((await stat(path)).isDirectory() && !path.startsWith(`${pnyxFolders}${sep}`)) {
+        recent.push(folder({ path }))
       }
     } catch { /* Old working folders can have disappeared. */ }
 

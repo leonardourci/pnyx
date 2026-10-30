@@ -1,121 +1,27 @@
-import type { HydraProject } from '#projects/model.ts'
-import type { HydraColumn } from '#tasks/columns-model.ts'
-import type { Card, SavedLabelColor } from '#tasks/model.ts'
-import { matchingTasks, mentionQuery, reference, taskMention } from '#hydra/mentions.ts'
-import { MentionPicker, type MentionItem } from './mention-picker.tsx'
 import { commandBytes, MAX_MESSAGE_BYTES } from '#app/server-protocol.ts'
 import { readAttempt, saveAttempt } from './outbox.ts'
 import { revealComment } from './comment-reveal.ts'
-import { Fragment, useEffect, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { flushSync } from 'react-dom'
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
-import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
-import { isUpgradeSuggestion } from '#upgrade/model.ts'
-import { SkillBadge } from './skill-badge.tsx'
-import { Label } from '#web-shared/ui/label.tsx'
-import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
-import type { Catalog } from '#hydra/transcripts-catalog.ts'
-import { ReferenceBadge } from './reference-badge.tsx'
-import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
+import { COMPOSER_ICON } from './hydra-agent.tsx'
+import { sendableRequest } from './project-request.ts'
+import { Button, Input } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { taskStateIcon, type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { Popover } from '#web-shared/ui/popover.tsx'
-import { ImageThumb, ImageViewer } from './attached-image.tsx'
-import { AttachmentCard } from './attachment-card.tsx'
-import { projectTitle } from '#web-projects/view.ts'
-import { columnLook } from '#web-tasks/view.ts'
-import { slashMatches, slashPrefix } from './view.ts'
+import { ComposerField, type ComposerFieldHandle } from '#web-shared/ui/composer-field.tsx'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
 import { placeMessageCaret, conversationMessages, latestAgentMessage } from './caret.ts'
-import { checkImages, pastedImages, uploadImage } from './image-upload.ts'
-import { embedImages, imagesHtml } from './clipboard.ts'
 import { CommentsDialog, CommentsPill } from './comments-dialog.tsx'
 import { fileBlock } from '#hydra/attachments.ts'
-import { imageLine } from '#hydra/images.ts'
-import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, hasPendingImage, isPendingImage, shownDraft, pendingImage, placeBlock, placeImages, removeChip, replaceDisplay, settleImage, snapSelection, withoutPendingImages, type PlacedChip } from './draft.ts'
+import { draftView, hasPendingImage } from './draft.ts'
 
-// A selection's fixed end and the end that moves, whichever way it was made.
-const selectionEnds = ({ field }: { field: HTMLTextAreaElement }) => field.selectionDirection === 'backward'
-  ? {
-    anchor: field.selectionEnd,
-    focus: field.selectionStart,
-  }
-  : {
-    anchor: field.selectionStart,
-    focus: field.selectionEnd,
-  }
-
-const select = ({
-  field,
-  anchor,
-  focus,
-}: {
-  field: HTMLTextAreaElement
-  anchor: number
-  focus: number
-}) => field.setSelectionRange(
-  Math.min(
-    anchor,
-    focus,
-  ),
-  Math.max(
-    anchor,
-    focus,
-  ),
-  focus < anchor ? 'backward' : 'forward',
-)
-
-function UploadBar({ fraction }: { fraction: number }) {
-  return (
-    <span className="upload-bar">
-      <span className="upload-bar-done" style={{ width: `${fraction * 100}%` }} />
-    </span>
-  )
-}
-
-function DraftCard({
-  chip,
-  progress = 0,
-  open,
-  remove,
-}: {
-  chip: PlacedChip
-  progress?: number
-  open(): void
-  remove(): void
-}) {
-  const image = chip.kind === 'image'
-  const loading = image && isPendingImage({ path: chip.value })
-  const stored = image && !loading
-  const slot = stored ? <ImageThumb path={chip.value} /> : <Icon name={image ? 'image' : 'file'} size={13} />
-  const label = loading ? <>{chip.name}<UploadBar fraction={progress} /></> : chip.name
-
-  return (
-    <span className="draft-chip draft-card" data-kind={chip.kind} data-loading={loading || undefined}>
-      {chip.label}
-      <AttachmentCard
-        keepsInputFocus
-        slot={slot}
-        label={label}
-        title={stored ? 'Show image' : chip.name}
-        tone={chip.attached ? undefined : 'reference'}
-        open={stored ? open : undefined}
-        remove={remove}
-        removeLabel={`Remove ${chip.name}`}
-      />
-    </span>
-  )
-}
+// Icons beside the text of the composer's menu items.
+const MENU_ICON = 16
 
 export function Composer({
   card,
-  cards,
-  projects,
-  columns,
-  taskReferences,
-  openTask,
   title,
   draft,
   setDraft,
@@ -123,23 +29,16 @@ export function Composer({
   setComments,
   thread,
   command,
-  catalog,
-  onCatalogOpen,
-  labelColors,
   notify,
   settings,
   meter,
   stop,
   compacting = false,
-  serverComments = true,
   focusAbove,
+  projectRequest = false,
+  projectRequested,
 }: {
   card: string
-  cards: Card[]
-  projects: HydraProject[]
-  columns: HydraColumn[]
-  taskReferences: Record<string, TaskReferenceData>
-  openTask({ id }: { id: string }): void
   title: string
   draft: string
   setDraft({ text }: { text: string }): void
@@ -147,17 +46,16 @@ export function Composer({
   setComments({ items }: { items: ChatComment[] }): void
   thread: ThreadPage | null
   command: Command
-  catalog: Catalog | null
-  onCatalogOpen({ open }: { open: boolean }): void
-  labelColors?: SavedLabelColor[]
   notify({ text }: { text: string }): void
   settings?: ReactNode
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
-  serverComments?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
+  // An Add project request to write into the draft; projectRequested clears it once written.
+  projectRequest?: boolean
+  projectRequested?(): void
 }) {
   const [
     failure,
@@ -174,286 +72,23 @@ export function Composer({
     checking,
     setChecking,
   ] = useState(false)
-  const [
-    prefix,
-    setPrefix,
-  ] = useState<string | null>(null)
-  const [
-    active,
-    setActive,
-  ] = useState(0)
-  const [
-    mention,
-    setMention,
-  ] = useState<ReturnType<typeof mentionQuery>>(null)
-  const [
-    mentionActive,
-    setMentionActive,
-  ] = useState(0)
-  const [
-    viewing,
-    setViewing,
-  ] = useState<PlacedChip | null>(null)
-  // How far each image still uploading has got, by its placeholder's path.
-  const [
-    uploads,
-    setUploads,
-  ] = useState<Record<string, number>>({})
-  const view = draftView({ text: draft })
-  const display = view.display
-  const mentionList = `mentions-${card}`
-  const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
-  const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
-  // Where the selection goes once React has written the new display text.
-  const caretNext = useRef<{
-    anchor: number
-    focus: number
-  } | null>(null), caretLast = useRef(0)
-  // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
-  const beforeCuts = useRef(new Map<string, string>())
-
-  const query = (mention?.query ?? '').trim().toLocaleLowerCase()
-  const matches: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
-      && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
-      key: `${chip.kind}:${chip.value}`,
-      kind: chip.kind,
-      title: chip.name,
-      detail: chip.kind === 'image' ? 'Attached image' : 'Attached file',
-      insert: reference({
-        kind: chip.kind,
-        value: chip.value,
-        label: chip.name,
-      }),
-    })),
-    ...projects.filter(project => !project.detached
-      && `${project.name} ${project.path}`.toLocaleLowerCase().includes(query)).map(project => ({
-      key: `project:${project.path}`,
-      kind: 'project' as const,
-      title: project.name,
-      detail: 'Project',
-      insert: reference({
-        kind: 'project',
-        value: project.path,
-        label: project.name,
-      }),
-    })),
-    ...columns.filter(column => column.title.toLocaleLowerCase().includes(query)).map(column => ({
-      key: `column:${column.id}`,
-      kind: 'column' as const,
-      title: column.title,
-      detail: 'Column',
-      icons: [columnLook({ column }).icon],
-      tone: columnLook({ column }).tone,
-      insert: reference({
-        kind: 'column',
-        value: column.id,
-        label: column.title,
-      }),
-    })),
-    ...matchingTasks({
-      cards,
-      query: mention?.query ?? '',
-    }).map(({
-      card,
-      excerpt,
-    }) => ({
-      key: `task:${card.id}`,
-      kind: 'task' as const,
-      title: card.title,
-      detail: card.project ? projectTitle({ project: card.project }) : 'No project',
-      excerpt,
-      ...taskLook({ id: card.id }),
-      insert: taskMention({
-        id: card.id,
-        title: card.title,
-      }),
-    })),
-  ]
-  const picked = Math.min(
-    mentionActive,
-    matches.length - 1,
-  )
-
-  // A chip's own @ never starts a new mention.
-  const trackMention = ({
-    text,
-    cursor,
-  }: {
-    text: string
-    cursor: number
-  }) => {
-    const shown = draftView({ text })
-    setPrefix(slashPrefix({
-      text: shown.display,
-      cursor,
-    }))
-    const found = mentionQuery({
-      text: shown.display,
-      cursor,
-    })
-    const insideChip = found && shown.chips.some(chip =>
-      chip.from <= found.start && found.start < chip.to)
-    setMention(insideChip ? null : found)
-    setMentionActive(0)
-  }
+  const field = useRef<ComposerFieldHandle>(null)
+  const form = useRef<HTMLFormElement>(null), files = useRef<HTMLInputElement>(null)
 
   const write = ({
     text,
     caret,
-    anchor = caret,
   }: {
     text: string
     caret: number
-    anchor?: number
   }) => {
-    caretNext.current = {
-      anchor,
-      focus: caret,
-    }
-    setDraft({ text })
-    // An insert finishing before the next render, like a second chosen file, builds on this text.
-    current.current.draft = text
-  }
-
-  const fittedHeight = useRef<string | undefined>(undefined)
-
-  // Holding the box height while measuring stops the browser from scrolling a pinned chat up.
-  const fit = ({ element }: { element: HTMLTextAreaElement }) => {
-    if (fittedHeight.current !== undefined && element.style.height !== fittedHeight.current) {
-      return
-    }
-
-    const box = element.parentElement
-
-    if (box) {
-      box.style.minHeight = `${box.offsetHeight}px`
-    }
-
-    element.style.height = '0'
-    element.style.height = `${element.scrollHeight}px`
-    fittedHeight.current = element.style.height
-    box?.style.removeProperty('min-height')
-  }
-
-  useLayoutEffect(
-    () => {
-      const element = input.current
-
-      if (!element) {
-        return
-      }
-
-      fit({ element })
-
-      if (caretNext.current !== null) {
-        select({
-          field: element,
-          ...caretNext.current,
-        })
-        caretLast.current = caretNext.current.focus
-        caretNext.current = null
-      }
-
-      if (mirror.current) {
-        mirror.current.scrollTop = element.scrollTop
-      }
-    },
-    [display],
-  )
-
-  // A wider or narrower panel re-wraps the draft; only a width change refits, so the refit's own height change does not loop.
-  useEffect(
-    () => {
-      const element = input.current
-
-      if (!element) {
-        return
-      }
-
-      let width = element.clientWidth
-      const observer = new ResizeObserver(() => {
-        if (element.clientWidth !== width) {
-          width = element.clientWidth
-          fit({ element })
-
-          if (mirror.current) {
-            mirror.current.scrollTop = element.scrollTop
-          }
-        }
-      })
-      observer.observe(element)
-
-      return () => observer.disconnect()
-    },
-    [],
-  )
-
-  const chooseMention = ({ item }: { item: MentionItem }) => {
-    const element = input.current
-
-    if (!mention || !element) {
-      return
-    }
-
-    write(replaceDisplay({
-      text: draft,
-      from: mention.start,
-      to: element.selectionStart,
-      insert: `${item.insert} `,
-    }))
-    setMention(null); element.focus()
-  }
-
-  // A task looks like its card reference (card, then state, in its column's color); a column shows its icon.
-  function taskLook({ id }: { id: string }) {
-    const known = taskReferences[id]
-
-    return {
-      icons: [
-        'task-card',
-        taskStateIcon({ kind: known?.kind }),
-      ],
-      tone: `column-${known?.column ?? 'custom'}`,
-    }
-  }
-
-  const chipLook = ({ chip }: { chip: PlacedChip }) => {
-    if (chip.kind === 'task') {
-      return taskLook({ id: chip.value })
-    }
-
-    const look = columnLook({
-      column: columns.find(column => column.id === chip.value) ?? { id: chip.value as HydraColumn['id'] },
+    // The field is mounted for the composer's whole life, so every write goes through it.
+    field.current!.write({
+      text,
+      caret,
     })
 
-    return {
-      icons: [look.icon],
-      tone: look.tone,
-    }
-  }
-
-  // Chips let the pointer through to the textarea so a drag can start on one; a click on one still opens it.
-  const chipAt = ({
-    x,
-    y,
-  }: {
-    x: number
-    y: number
-  }) => {
-    const token = [...mirror.current?.querySelectorAll<HTMLElement>('.draft-token') ?? []]
-      .find(element => [...element.querySelector('.draft-chip')?.getClientRects() ?? []]
-        .some(rect => x >= rect.left && x <= rect.right && y >= rect.top && y <= rect.bottom))
-
-    return token ? view.chips.find(chip => chip.from === Number(token.dataset.from)) : undefined
-  }
-
-  const openChip = ({ chip }: { chip: PlacedChip }) => {
-    if (chip.kind === 'task') {
-      openTask({ id: chip.value })
-    } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
-      setViewing(chip)
-    }
+    current.current.draft = text
   }
 
   const hydraId = document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content
@@ -461,32 +96,9 @@ export function Composer({
     key: card,
     hydraId,
   }))
-  const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
-  const [
-    taught,
-    setTaught,
-  ] = useState(false)
-  useEffect(
-    () => {
-      if (serverComments) {
-        return
-      }
-
-      try {
-        setTaught(localStorage.getItem(commentKey) === 'sent')
-      } catch {
-        setTaught(false)
-      }
-    },
-    [
-      commentKey,
-      serverComments,
-    ],
-  )
   const outgoing = commentReply({
     draft,
     comments,
-    firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const imagesLoading = hasPendingImage({ text: outgoing })
@@ -520,232 +132,22 @@ export function Composer({
     comments,
   }
   const { label } = useKeyboard()
-  const catalogOpen = prefix !== null
-  useEffect(
-    () => onCatalogOpen({ open: catalogOpen }),
-    [
-      catalogOpen,
-      onCatalogOpen,
-    ],
-  )
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
-    command: s.command,
-    prefix: prefix ?? '',
-  }))
-
-  const choose = ({ command }: { command: string }) => {
-    const unavailable = catalog?.suggestions.some(item =>
-      skillReference({ item }) === command && item.unavailable)
-
-    if (unavailable) {
-      return
-    }
-
-    const cursor = input.current?.selectionStart ?? display.length
-    const query = slashPrefix({
-      text: display,
-      cursor,
-    })
-
-    if (query === null || query !== prefix) {
-      setPrefix(null)
-
-      return
-    }
-
-    write(replaceDisplay({
-      text: draft,
-      from: cursor - query.length,
-      to: cursor,
-      insert: `${command} `,
-    }))
-    setPrefix(null); setActive(0); input.current?.focus()
-  }
-
-  const insertBlock = ({ block }: { block: string }) => {
-    const edit = placeBlock({
-      text: current.current.draft,
-      caret: input.current?.selectionEnd,
-      block,
-    })
-    write(edit)
-    input.current?.focus()
-
-    return edit.text
-  }
-
-  // A placeholder lives only while this composer's upload runs, so a restored one goes and leaving stops them.
-  const uploading = useRef(new AbortController())
-  useEffect(
-    () => {
-      const controller = new AbortController()
-      uploading.current = controller
-      const restored = current.current.draft
-
-      if (hasPendingImage({ text: restored })) {
-        setDraft({ text: withoutPendingImages({ text: restored }) })
-      }
-
-      return () => controller.abort()
-    },
-    [],
-  )
-
-  const settle = ({
-    path,
-    line,
-  }: {
-    path: string
-    line?: string
-  }) => {
-    if (uploading.current.signal.aborted) {
-      return
-    }
-
-    const ends = input.current ? selectionEnds({ field: input.current }) : {
-      anchor: caretLast.current,
-      focus: caretLast.current,
-    }
-    const settled = settleImage({
-      text: current.current.draft,
-      ...ends,
-      path,
-      line,
-    })
-
-    // Written before the next keystroke or upload reads the draft and caret.
-    if (settled) {
-      flushSync(() => write({
-        text: settled.text,
-        caret: settled.focus,
-        anchor: settled.anchor,
-      }))
-    }
-  }
-
-  const upload = async ({
-    file,
-    path,
-  }: {
-    file: File
-    path: string
-  }) => {
-    const { signal } = uploading.current
-    const track = ({ fraction }: { fraction: number }) => setUploads(progress => ({
-      ...progress,
-      [path]: fraction,
-    }))
-
-    track({ fraction: 0 })
-
-    try {
-      settle({
-        path,
-        line: await uploadImage({
-          file,
-          progress: track,
-          signal,
-        }),
-      })
-    } catch (error) {
-      if (signal.aborted) {
-        return
-      }
-
-      settle({ path })
-      notify({ text: error instanceof Error ? error.message : 'Could not add the image.' })
-    } finally {
-      setUploads(progress => Object.fromEntries(Object.entries(progress)
-        .filter(([key]) => key !== path)))
-    }
-  }
-
-  // Each image takes its place at the caret at once, so typing goes on while it uploads.
-  const attach = ({ files }: { files: File[] }) => {
-    const {
-      images,
-      failures,
-    } = checkImages({ files })
-
-    if (failures.length) {
-      notify({ text: failures.join(' ') })
-    }
-
-    if (!images.length) {
-      return
-    }
-
-    const placed = images.map(file => ({
-      file,
-      path: pendingImage({ id: crypto.randomUUID() }),
-    }))
-    write(placeImages({
-      text: current.current.draft,
-      caret: input.current?.selectionEnd,
-      lines: placed.map(({ path }) => imageLine({ path })),
-    }))
-    input.current?.focus()
-
-    // Each upload settles its own placeholder and reports its own failure.
-    for (const image of placed) {
-      void upload(image)
-    }
-  }
-
-  // A selection with chips carries their Markdown as plain text, so a paste rebuilds them; one without goes as it shows.
-  const carryChips = ({
-    field,
-    data,
-  }: {
-    field: HTMLTextAreaElement
-    data: DataTransfer
-  }) => {
-    const source = copyDraft({
-      text: draft,
-      from: field.selectionStart,
-      to: field.selectionEnd,
-    })
-
-    if (source === undefined) {
-      return false
-    }
-
-    data.setData(
-      'text/plain',
-      source,
-    )
-
-    const embedded = embedImages()
-    const marked = shownDraft({
-      text: source,
-      image: embedded.image,
-    })
-
-    if (embedded.images.length) {
-      data.setData(
-        'text/html',
-        imagesHtml({
-          text: marked,
-          images: embedded.images,
-        }),
-      )
-    }
-
-    return true
-  }
-
-  const removeCard = ({ chip }: { chip: PlacedChip }) => {
-    write(removeChip({
-      text: draft,
-      chip,
-    }))
-    input.current?.focus()
-  }
+  const insertBlock = ({ block }: { block: string }) => field.current!.insertBlock({ block })
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
-    const text = restore && attempt.current ? attempt.current.text : outgoing
+    const request = sendableRequest({
+      text: restore && attempt.current ? attempt.current.text : outgoing,
+    })
+    const text = request.text
 
     if (sending || !text.trim()) {
+      return
+    }
+
+    if (request.unpicked) {
+      notify({ text: 'Pick a project or folder to add first.' })
+      field.current?.input?.focus()
+
       return
     }
 
@@ -781,7 +183,7 @@ export function Composer({
         caret: 0,
       })
       setComments({ items: comments.filter(comment => !sendableComment({ comment })) })
-      setMention(null); setPrefix(null); setActive(0)
+      field.current?.closePickers()
     }
 
     let problem: string | null = null
@@ -801,17 +203,6 @@ export function Composer({
       } | undefined
 
       if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        if (!serverComments && (commented || taken?.comments.length)) {
-          setTaught(true)
-
-          try {
-            localStorage.setItem(
-              commentKey,
-              'sent',
-            )
-          } catch { /* Storage can be disabled. */ }
-        }
-
         attempt.current = null
       } else {
         problem = receipt?.state === 'delivery_unknown'
@@ -879,7 +270,7 @@ export function Composer({
         target,
       },
     }) => {
-      if (scope !== 'composer' || !input.current?.form?.contains(target)) {
+      if (scope !== 'composer' || !form.current?.contains(target)) {
         return false
       }
 
@@ -888,23 +279,32 @@ export function Composer({
       return true
     },
   })
-  useKeyAction({
-    id: 'cancel',
-    handler: ({
-      context: {
-        scope,
-        target,
-      },
-    }) => {
-      if (scope !== 'composer' || !input.current?.form?.contains(target) || prefix === null && mention === null) {
-        return false
-      }
 
-      setPrefix(null); setActive(0); setMention(null)
+  // Up from the start of the draft leaves for what sits above the composer: an open question, then the last reply.
+  const leaveUp = ({ event: e }: { event: KeyboardEvent<HTMLTextAreaElement> }) => {
+    const plainUp = e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
+      && e.currentTarget.selectionEnd === 0
 
-      return true
-    },
-  })
+    if (!plainUp) {
+      return
+    }
+
+    if (focusAbove?.()) {
+      e.preventDefault(); e.stopPropagation()
+
+      return
+    }
+
+    const host = conversationMessages({ from: e.currentTarget })
+
+    if (host && placeMessageCaret({
+      host,
+      target: latestAgentMessage({ host }),
+      edge: 'end',
+    })) {
+      e.preventDefault()
+    }
+  }
 
   return (
     <>
@@ -938,7 +338,7 @@ export function Composer({
         }}
         onDrop={event => {
           if (event.dataTransfer.files.length) {
-            event.preventDefault(); attach({ files: [...event.dataTransfer.files] })
+            event.preventDefault(); field.current?.attach({ files: [...event.dataTransfer.files] })
           }
         }}
       >
@@ -958,387 +358,37 @@ export function Composer({
             close={() => setListing(null)}
           />
         )}
-        <div className="composer-input" data-chips={view.chips.length > 0 || undefined}>
-          {mention && (
-            <MentionPicker
-              anchor={input}
-              id={mentionList}
-              matches={matches}
-              active={picked}
-              choose={chooseMention}
-            />
-          )}
-          {prefix !== null && (
-            <SuggestionPicker
-              id={`suggestions-${card}`}
-              anchor={input}
-              label="Skills and commands"
-              className="slash-menu"
-              active={Math.min(
-                active,
-                suggestions.length - 1,
-              )}
-              matches={suggestions.map(item => ({
-                ...item,
-                key: `${item.projectPath ?? item.source}:${item.file ?? item.command}`,
-                title: `/${item.command.replace(
-                  /^[$/]/,
-                  '',
-                )}`,
-                detail: '',
-                disabled: Boolean(item.unavailable),
-                badge: item.project ? (
-                  <Label
-                    project
-                    label={item.projectPath ?? item.project}
-                    text={item.project}
-                    colors={labelColors}
-                  />
-                ) : undefined,
-                group: item.source,
-                excerpt: item.description,
-                icons: isUpgradeSuggestion({ item }) ? ['upgrade'] : undefined,
-
-              }))}
-              choose={({ item }) => choose({ command: skillReference({ item }) })}
-              loading={!catalog}
-              empty={catalog?.unavailable ?? 'No matching skill or command.'}
-              footer={(
-                <>
-                  {catalog?.unavailable && catalog.suggestions.length > 0 && <p role="status">{catalog.unavailable}</p>}
-                  {catalog?.note && <p>{catalog.note}</p>}
-                </>
-              )}
-
-            />
-          )}
-          <Textarea
-            ref={input}
-            rows={1}
-            data-key-scope="composer"
-            id={`reply-${card}`}
-            value={display}
-            placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
-            aria-label={`Reply to ${title}`}
-            aria-controls={mention ? mentionList : catalogOpen ? `suggestions-${card}` : undefined}
-            aria-activedescendant={mention && matches.length ? `${mentionList}-${picked}`
-              : active >= 0 && suggestions[active] ? `suggestions-${card}-${Math.min(
-                active,
-                suggestions.length - 1,
-              )}` : undefined}
-            onScroll={event => {
-              if (mirror.current) {
-                mirror.current.scrollTop = event.currentTarget.scrollTop
-              }
-            }}
-            onSelect={event => {
-              const element = event.currentTarget
-              const {
-                anchor,
-                focus,
-              } = selectionEnds({ field: element })
-              const snapped = snapSelection({
-                view,
-                anchor,
-                focus,
-                previous: caretLast.current,
-              })
-
-              if (snapped.anchor !== anchor || snapped.focus !== focus) {
-                select({
-                  field: element,
-                  ...snapped,
-                })
-              }
-
-              caretLast.current = snapped.focus
-            }}
-            onClick={event => {
-              const element = event.currentTarget
-              const clicked = element.selectionStart === element.selectionEnd ? chipAt({
-                x: event.clientX,
-                y: event.clientY,
-              }) : undefined
-
-              if (clicked) {
-                openChip({ chip: clicked })
-              }
-
-              trackMention({
-                text: draft,
-                cursor: element.selectionStart,
-              })
-            }}
-            onBlur={() => setMention(null)}
-            onCopy={event => {
-              if (carryChips({
-                field: event.currentTarget,
-                data: event.clipboardData,
-              })) {
-                event.preventDefault()
-              }
-            }}
-            onCut={event => {
-              if (carryChips({
-                field: event.currentTarget,
-                data: event.clipboardData,
-              })) {
-                event.preventDefault()
-                beforeCuts.current.set(
-                  display,
-                  draft,
-                )
-
-                // Only the browser's own edit lands on Undo; inside a script's execCommand it can't run, so write directly.
-                if (!document.execCommand('delete')) {
-                  write(replaceDisplay({
-                    text: draft,
-                    from: event.currentTarget.selectionStart,
-                    to: event.currentTarget.selectionEnd,
-                    insert: '',
-                  }))
-                }
-              }
-            }}
-            // A dragged chip carries its Markdown too, so it lands as a chip, not its label.
-            onDragStart={event => carryChips({
-              field: event.currentTarget,
-              data: event.dataTransfer,
-            })}
-            onPaste={event => {
-              const files = pastedImages({ clipboardData: event.clipboardData })
-
-              if (files.length) {
-                event.preventDefault(); attach({ files })
-              }
-            }}
-            onChange={e => {
-              const undoneCut = e.nativeEvent instanceof InputEvent && e.nativeEvent.inputType === 'historyUndo'
-                ? beforeCuts.current.get(e.target.value) : undefined
-              const edit = undoneCut === undefined ? editDraft({
-                text: draft,
-                next: e.target.value,
-                caret: e.target.selectionStart,
-              }) : {
-                text: undoneCut,
-                caret: e.target.selectionEnd,
-                anchor: e.target.selectionStart,
-              }
-
-              write(edit)
-              const shown = draftView({ text: edit.text }).display
-              setPrefix(slashPrefix({
-                text: shown,
-                cursor: edit.caret,
-              }))
-              setActive(0)
-              trackMention({
-                text: edit.text,
-                cursor: edit.caret,
-              })
-            }}
-            onKeyDown={e => {
-              if (e.nativeEvent.isComposing || e.key === 'Process') {
-                return
-              }
-
-              const pickerCount = mention ? matches.length : suggestions.length
-
-              const dismissEmptyPicker = pickerCount === 0
-                && (e.key === 'Tab' || mention !== null || catalog !== null)
-
-              if ((mention || catalogOpen) && dismissEmptyPicker
-                && (e.key === 'Enter' || e.key === 'Tab') && !e.metaKey && !e.ctrlKey && !e.altKey) {
-                setMention(null)
-                setPrefix(null)
-
-                return
-              }
-
-              if ((mention || catalogOpen) && [
-                'ArrowDown',
-                'ArrowUp',
-                'Enter',
-                'Tab',
-                'Escape',
-              ].includes(e.key)
-                && !e.metaKey && !e.ctrlKey && !e.altKey && !(e.key === 'Tab' && e.shiftKey)) {
-                e.preventDefault()
-                e.stopPropagation()
-                const count = mention ? matches.length : suggestions.length
-                const index = mention ? picked : Math.min(
-                  active,
-                  count - 1,
-                )
-
-                if (e.key === 'Escape') {
-                  setMention(null)
-                  setPrefix(null)
-                } else if (e.key === 'Enter' || e.key === 'Tab') {
-                  if (mention && matches[index]) {
-                    chooseMention({ item: matches[index] })
-                  } else if (!mention && suggestions[index]) {
-                    choose({ command: skillReference({ item: suggestions[index] }) })
-                  }
-                } else {
-                  const next = Math.max(
-                    0,
-                    Math.min(
-                      count - 1,
-                      index + (e.key === 'ArrowDown' ? 1 : -1),
-                    ),
-                  )
-
-                  if (mention) {
-                    setMentionActive(next)
-                  } else {
-                    setActive(next)
-                  }
-                }
-
-                return
-              }
-
-              if ([
-                'ArrowLeft',
-                'ArrowRight',
-                'Home',
-                'End',
-              ].includes(e.key)) {
-                requestAnimationFrame(() => {
-                  if (input.current) {
-                    trackMention({
-                      text: current.current.draft,
-                      cursor: input.current.selectionStart,
-                    })
-                  }
-                })
-              }
-
-              if (e.key === 'Tab') {
-                setMention(null)
-                setPrefix(null); setActive(0)
-              }
-
-              if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey
-                && prefix === null && mention === null && e.currentTarget.selectionEnd === 0
-                && focusAbove?.()) {
-                e.preventDefault(); e.stopPropagation()
-
-                return
-              }
-
-              const host = conversationMessages({ from: e.currentTarget })
-
-              if (e.key === 'ArrowUp' && !e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey && prefix === null && mention === null &&
-                e.currentTarget.selectionEnd === 0 && host && placeMessageCaret({
-                host,
-                target: latestAgentMessage({ host }),
-                edge: 'end',
-              })) {
-                e.preventDefault()
-              }
-            }}
-          />
-          {view.chips.length > 0 && (
-            <div className="draft-mirror" ref={mirror} aria-hidden="true">
-              {view.chips.map((
-                chip,
-                index,
-              ) => {
-                const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
-                const title = chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined
-                const before = display.slice(
-                  view.chips[index - 1]?.to ?? 0,
-                  chip.from,
-                )
-
-                const skill = chip.kind === 'skill' ? readSkillReference({
-                  value: chip.value,
-                }) : undefined
-
-                let token: ReactNode
-
-                if (skill) {
-                  token = (
-                    <SkillBadge
-                      skill={skill}
-                      colors={labelColors}
-                      remove={() => removeCard({ chip })}
-                    />
-                  )
-                } else if (cardChip({ chip })) {
-                  token = (
-                    <DraftCard
-                      chip={chip}
-                      progress={uploads[chip.value]}
-                      open={() => openChip({ chip })}
-                      remove={() => removeCard({ chip })}
-                    />
-                  )
-                } else {
-                  token = (
-                    <ReferenceBadge
-                      icons={look?.icons ?? []}
-                      className={look?.tone ?? ''}
-                      data-kind={chip.kind}
-                      title={title}
-                      onClick={() => openChip({ chip })}
-                    >
-                      {look ? chip.name : chip.label}
-                    </ReferenceBadge>
-                  )
-                }
-
-                return (
-                  <Fragment key={chip.start}>
-                    {before}
-                    <span className="draft-token" data-from={chip.from} data-to={chip.to}>
-                      {CHIP_SPACE}{token}{CHIP_SPACE}
-                    </span>
-                  </Fragment>
-                )
-              })}
-              {display.slice(view.chips.at(-1)!.to)}
-              {/* A trailing newline still gets a line box, as it does in the textarea. */}
-              {'\u200B'}
-            </div>
-          )}
-        </div>
+        <ComposerField
+          ref={field}
+          standalone={false}
+          id={`reply-${card}`}
+          keyScope="composer"
+          value={draft}
+          change={setDraft}
+          label={`Reply to ${title}`}
+          placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
+          onKeyDown={leaveUp}
+          projectRequests
+          projectRequest={projectRequest}
+          projectRequested={projectRequested}
+        />
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="plus" size={16} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={COMPOSER_ICON} />}>
             {({ close }) => (
               <>
                 <Button
                   onClick={() => {
                     close(); files.current?.click()
                   }}
-                >Insert files or images
+                >
+                  <Icon name="paperclip" size={MENU_ICON} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
-                    close()
-                    const element = input.current
-
-                    if (element) {
-                      element.focus()
-
-                      const cursor = element.selectionStart
-                      const boundary = cursor > 0 && !/\s/.test(display[cursor - 1]!) ? ' ' : ''
-                      const edit = replaceDisplay({
-                        text: draft,
-                        from: cursor,
-                        to: element.selectionEnd,
-                        insert: `${boundary}@`,
-                      })
-                      write(edit)
-                      setMention({
-                        start: edit.caret - 1,
-                        query: '',
-                      }); setMentionActive(0); setPrefix(null)
-                    }
+                    close(); field.current?.mention()
                   }}
-                >Mention
+                >
+                  <Icon name="mention" size={MENU_ICON} />Mention
                 </Button>
               </>
             )}
@@ -1356,7 +406,7 @@ export function Composer({
               event.target.value = ''
 
               if (images.length) {
-                attach({ files: images })
+                field.current?.attach({ files: images })
               }
 
               if (!selected.length) {
@@ -1390,7 +440,6 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
-                    firstComment: !serverComments && !taught,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'
@@ -1437,17 +486,10 @@ export function Composer({
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={sending || !outgoing.trim() || imagesLoading}
           >
-            <Icon name="send" size={14} />
+            <Icon name="send" size={COMPOSER_ICON} />
           </Button>
         </div>
       </form>
-      {viewing && (
-        <ImageViewer
-          path={viewing.value}
-          label={viewing.name}
-          close={() => setViewing(null)}
-        />
-      )}
     </>
   )
 }

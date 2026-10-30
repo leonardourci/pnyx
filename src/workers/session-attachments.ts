@@ -1,3 +1,4 @@
+import { cloneValue } from '#app/preimage.ts'
 import type { AgentRef, AgentSession, TerminalFacts, SessionEvent } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
@@ -113,8 +114,8 @@ export function projectSession({
   }
 
   task.sessionIds = [session.id]
-  task.agent = structuredClone(session.agent)
-  task.launch = session.launch && structuredClone(session.launch)
+  task.agent = cloneValue({ value: session.agent })
+  task.launch = session.launch && cloneValue({ value: session.launch })
   task.sourceRefs = [
     ...task.sourceRefs.filter(r => !session.sourceRefs.some(s =>
       r.adapter === s.adapter && r.instanceId === s.instanceId && r.objectId === s.objectId)),
@@ -199,7 +200,7 @@ export function applyAttachment({
     session.queueCompleted = (session.queueCompleted ?? 0) + 1
 
     if (handoff.copy) {
-      target.copy = structuredClone(handoff.copy)
+      target.copy = cloneValue({ value: handoff.copy })
 
       if (old && old.copy) {
         old.copy = {
@@ -236,7 +237,7 @@ export function observeSession({
   state.sessions ??= {}
   const session = state.sessions[id] ??= {
     id,
-    agent: structuredClone(card.agent),
+    agent: cloneValue({ value: card.agent }),
     originCardId: card.id,
     taskId: card.sessionIds?.length && !card.sessionIds.includes(id) ? null : card.id,
     attention: [],

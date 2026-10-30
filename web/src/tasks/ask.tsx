@@ -2,9 +2,11 @@ import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
 import { answerDelivery, askWording } from '#tasks/questions.ts'
-import { Button, Textarea } from '#web-shared/ui/controls.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { ComposerField } from '#web-shared/ui/composer-field.tsx'
+import { hasPendingImage } from '#web-hydra/draft.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
-import { Markdown } from '#web-hydra/markdown.tsx'
+import { RichText } from '#web-shared/ui/rich-text.tsx'
 import type { Command } from '#web-app/connection.ts'
 
 const RECEIPT: Record<string, string> = {
@@ -56,6 +58,7 @@ export function AskPanel({
   const options = ask.options ?? []
   const pending = delivery?.state === 'queued' || delivery?.state === 'delivery_unknown'
   const failed = delivery?.state === 'failed'
+  const imagesLoading = hasPendingImage({ text })
   const sendLabel = failed ? 'Send answer again' : 'Send answer'
 
   const send = async () => {
@@ -101,11 +104,11 @@ export function AskPanel({
 
   return (
     <article className="ask ask-structured" aria-label="Question for you">
-      <div className="ask-headline"><Markdown text={question} /></div>
+      <div className="ask-headline"><RichText text={question} /></div>
       {failed && <p className="muted small">Answer saved. Delivery failed; send it again below.</p>}
       {/* The whole question shows at once: context and evidence are what the owner decides on. */}
-      {context && <div className="ask-context"><Markdown text={context} /></div>}
-      {ask.details && <div className="ask-details"><Markdown text={ask.details} /></div>}
+      {context && <div className="ask-context"><RichText text={context} /></div>}
+      {ask.details && <div className="ask-details"><RichText text={ask.details} /></div>}
       {question !== ask.question && <div className="decision-from">The worker asked:<CollapsibleText text={ask.question} /></div>}
       {!!options.length && (
         <div className="ask-options" role="group" aria-label="Choices">
@@ -128,15 +131,13 @@ export function AskPanel({
           ))}
         </div>
       )}
-      <Textarea
-        contentEditable={false}
-        aria-label="Your answer"
+      <ComposerField
+        label="Your answer"
         placeholder={options.length ? 'Add a note, or answer in your own words' : 'Your answer'}
-        rows={2}
         value={text}
-        onChange={e => setDraft({
+        change={({ text }) => setDraft({
           pick,
-          text: e.target.value,
+          text,
         })}
       />
       <div className="pending-decision-actions">
@@ -144,7 +145,7 @@ export function AskPanel({
         <Button
           contentEditable={false}
           variant="surface"
-          disabled={busy || (!pick && !text.trim())}
+          disabled={busy || imagesLoading || (!pick && !text.trim())}
           onClick={() => void send()}
         >{sendLabel}
         </Button>

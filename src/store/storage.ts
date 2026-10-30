@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from './errors.ts'
@@ -5,7 +6,8 @@ import { pnyxHome } from './paths.ts'
 
 export { pnyxHome } from './paths.ts'
 
-const LOCK_TIMEOUT_MS = 5000
+export const LOCK_TIMEOUT_MS = 5000
+export const nonblockingLocks = new AsyncLocalStorage<true>()
 const STALE_EMPTY_LOCK_MS = 10_000
 
 // HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
@@ -149,7 +151,7 @@ function takeOver({
 // O_EXCL lock file holding the writer's pid; a lock whose process is gone is taken over.
 export function acquireLock({
   dir,
-  timeout = LOCK_TIMEOUT_MS,
+  timeout = nonblockingLocks.getStore() ? 0 : LOCK_TIMEOUT_MS,
 }: {
   dir: string
   timeout?: number
@@ -194,6 +196,10 @@ export function acquireLock({
     })) {
       retryTakeover = timeout === 0 && attempts === 1
       continue
+    }
+
+    if (timeout === 0) {
+      break
     }
 
     Atomics.wait(

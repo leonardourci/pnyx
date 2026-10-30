@@ -2,7 +2,7 @@ import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
 import { Marked, type Token, type Tokens } from 'marked'
-import { IMAGE, imageLine, imageNames } from '#hydra/images.ts'
+import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { ChatTokensContext, ChatTokenText, SkillToken } from './chat-token-text.tsx'
@@ -87,23 +87,46 @@ function Sourced({
   return <span {...{ [CHIP_SOURCE]: markdown }}>{children}</span>
 }
 
+// An image shows as the composer shows it: a chip with its thumbnail, opening full size on click.
 const withImages = ({
   text,
   images,
 }: {
   text: string
   images?: Map<string, string>
-}): ReactNode => text.split(IMAGE).map((
-  part,
-  n,
-) => n % 2 ? (
-  <Sourced key={n} markdown={imageLine({ path: part })}>
-    <ImageChip
-      path={part}
-      label={images?.get(part) ?? 'Image'}
-    />
-  </Sourced>
-) : <ChatTokenText key={n} text={part} />)
+}): ReactNode => {
+  const parts: ReactNode[] = []
+  let end = 0
+
+  for (const match of text.matchAll(SHOWN_IMAGE)) {
+    const [source] = match
+    const { path } = shownImagePath({ match })
+    parts.push(
+      <ChatTokenText
+        key={end}
+        text={text.slice(
+          end,
+          match.index,
+        )}
+      />,
+      <Sourced key={`${match.index}:image`} markdown={source}>
+        <ImageChip
+          path={path}
+          label={shownImageLabel({
+            match,
+            names: images,
+          })}
+        />
+      </Sourced>,
+    )
+    end = match.index + source.length
+  }
+
+  return [
+    ...parts,
+    <ChatTokenText key={end} text={text.slice(end)} />,
+  ]
+}
 
 const inline = ({
   tokens,
@@ -543,7 +566,7 @@ export const Markdown = memo(function Markdown({
     [prepared],
   )
   const images = useMemo(
-    () => imageNames({ text }),
+    () => shownImageNames({ text }),
     [text],
   )
 

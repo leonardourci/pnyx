@@ -3,6 +3,15 @@ import { isUpgradeSuggestion, UPGRADE_SUGGESTION } from '#upgrade/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { Catalog, Suggestion } from './transcripts-catalog.ts'
 
+// Add project, typed inline: the composer turns it into its request with a project and folder picker.
+export const ADD_PROJECT_COMMAND = '/add-project'
+const ADD_PROJECT_SUGGESTION: Suggestion = {
+  command: ADD_PROJECT_COMMAND,
+  description: 'Ask Hydra to add a project or folder to this Hydra.',
+  source: 'Built-in',
+  kind: 'command',
+}
+
 export const BUILT_IN_SKILLS = [
   {
     name: INSCRIBE_SKILL,
@@ -37,13 +46,14 @@ export function withBuiltInSkills({
   }))
 
   const external = catalog.suggestions.filter(item =>
-    !item.builtin && !isUpgradeSuggestion({ item }))
+    !item.builtin && !isUpgradeSuggestion({ item }) && item.command !== ADD_PROJECT_COMMAND)
 
   return {
     ...catalog,
     suggestions: [
       ...builtins,
       UPGRADE_SUGGESTION,
+      ADD_PROJECT_SUGGESTION,
       ...external,
     ],
   }
