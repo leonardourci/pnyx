@@ -4,7 +4,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { Command } from '#web-app/connection.ts'
 import type { TaskReferenceData } from '#web-tasks/task-reference.tsx'
-import { ComposerSourcesProvider } from '#web-shared/ui/composer-field.tsx'
+import { ComposerSourcesProvider, type ComposerSources } from '#web-shared/ui/composer-field.tsx'
 import { useSkillsCatalog } from './skills-catalog.ts'
 
 // Every composer field in a Hydra mentions its tasks, projects and columns and offers Hydra's skills.
@@ -15,6 +15,7 @@ export function HydraComposerSources({
   references,
   openTask,
   notify,
+  otherProjects,
   children,
 }: {
   state: HydraState
@@ -23,6 +24,7 @@ export function HydraComposerSources({
   references: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   notify({ text }: { text: string }): void
+  otherProjects: ComposerSources['otherProjects']
   children: ReactNode
 }) {
   const config = hydraConfig({ state }), card = state.cards[HYDRA_CARD]
@@ -71,6 +73,7 @@ export function HydraComposerSources({
         catalogOpen,
         labelColors: state.labelColors,
         notify,
+        otherProjects,
       }}
     >
       {children}

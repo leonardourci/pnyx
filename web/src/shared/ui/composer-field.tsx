@@ -43,6 +43,12 @@ export interface ComposerSources {
   // A field asks for the skills catalog while its / menu is open.
   catalogOpen({ open }: { open: boolean }): void
   labelColors?: SavedLabelColor[]
+  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
+  otherProjects: {
+    name: string
+    path: string
+    hydra: string
+  }[]
   notify({ text }: { text: string }): void
 }
 
@@ -321,8 +327,7 @@ export function ComposerField({
   keyScope,
   onKeyDown,
   onBlur,
-  folders: foldersOffered = false,
-  otherProjects = [],
+  projectRequests = false,
   projectRequest = false,
   projectRequested,
   ref,
@@ -339,14 +344,8 @@ export function ComposerField({
   // Runs after the pickers had their turn with the key.
   onKeyDown?({ event }: { event: KeyboardEvent<HTMLTextAreaElement> }): void
   onBlur?(): void
-  // The Hydra composer's own: folders and clones under @, typed path completion and Add project requests.
-  folders?: boolean
-  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
-  otherProjects?: {
-    name: string
-    path: string
-    hydra: string
-  }[]
+  // The Hydra composer's own: /add-project writes an Add project request into the draft.
+  projectRequests?: boolean
   // An Add project request to write into the draft; projectRequested clears it once written.
   projectRequest?: boolean
   projectRequested?(): void
@@ -362,6 +361,7 @@ export function ComposerField({
     catalogOpen: onCatalogOpen,
     labelColors,
     notify,
+    otherProjects,
   } = useComposerSources()
   const [
     prefix,
@@ -419,13 +419,13 @@ export function ComposerField({
 
   const query = mention?.query ?? ''
   const typed = query.trim()
-  const folderPath = foldersOffered && /^[~/]/.test(typed) ? typed : ''
+  const folderPath = /^[~/]/.test(typed) ? typed : ''
   const folders = useFolders({
     path: folderPath,
     repository: '',
-    connected: foldersOffered && mention !== null,
+    connected: mention !== null,
   })
-  const folderItems = !foldersOffered ? [] : folderSuggestions({
+  const folderItems = folderSuggestions({
     query: typed.toLocaleLowerCase(),
     typed,
     attached: projects,
@@ -888,7 +888,7 @@ export function ComposerField({
       return
     }
 
-    if (foldersOffered && item?.kind === 'command' && item.command === ADD_PROJECT_COMMAND) {
+    if (projectRequests && item?.kind === 'command' && item.command === ADD_PROJECT_COMMAND) {
       setPrefix(null); setActive(0)
       requestProject({
         text: replaceDisplay({

@@ -180,7 +180,6 @@ export function HydraChat({
   addProject,
   projectRequest,
   projectRequested,
-  otherProjects,
   openTask,
   action,
   taskActions,
@@ -198,11 +197,6 @@ export function HydraChat({
   addProject?(): void
   projectRequest?: boolean
   projectRequested?(): void
-  otherProjects?: {
-    name: string
-    path: string
-    hydra: string
-  }[]
   action?: CurrentAction
   taskActions?: Record<string, CurrentAction>
   liveThread: ThreadPage | null
@@ -938,7 +932,6 @@ export function HydraChat({
         notify={notify}
         projectRequest={projectRequest}
         projectRequested={projectRequested}
-        otherProjects={otherProjects}
         stop={((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
         meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(

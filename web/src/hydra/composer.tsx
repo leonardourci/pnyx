@@ -37,7 +37,6 @@ export function Composer({
   focusAbove,
   projectRequest = false,
   projectRequested,
-  otherProjects = [],
 }: {
   card: string
   title: string
@@ -57,12 +56,6 @@ export function Composer({
   // An Add project request to write into the draft; projectRequested clears it once written.
   projectRequest?: boolean
   projectRequested?(): void
-  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
-  otherProjects?: {
-    name: string
-    path: string
-    hydra: string
-  }[]
 }) {
   const [
     failure,
@@ -375,8 +368,7 @@ export function Composer({
           label={`Reply to ${title}`}
           placeholder={title === 'Hydra' ? 'Message Hydra…' : 'Reply, or / for commands…'}
           onKeyDown={leaveUp}
-          folders
-          otherProjects={otherProjects}
+          projectRequests
           projectRequest={projectRequest}
           projectRequested={projectRequested}
         />

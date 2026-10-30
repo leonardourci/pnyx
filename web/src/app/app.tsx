@@ -1030,6 +1030,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         references={references}
         openTask={revealTask}
         notify={notify}
+        otherProjects={otherProjects}
       >
         <div
           className="app"
@@ -1144,7 +1145,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                     addProject={() => addProject({ id: navigation.hydraId })}
                     projectRequest={projectRequest}
                     projectRequested={() => setProjectRequest(false)}
-                    otherProjects={otherProjects}
                     state={state}
                     liveThread={hydraThread}
                     action={actions[HYDRA_CARD]}
