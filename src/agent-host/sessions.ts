@@ -178,7 +178,7 @@ export function hostSessions({
     const entry = make({ summary })
     summary.controllerRevision = 0
 
-    if (![
+    if (summary.recovery === 'boot_changed' || ![
       'closed',
       'failed',
     ].includes(summary.phase)) {
