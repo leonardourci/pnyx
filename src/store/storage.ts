@@ -9,6 +9,7 @@ export { pnyxHome } from './paths.ts'
 export const LOCK_TIMEOUT_MS = 5000
 export const nonblockingLocks = new AsyncLocalStorage<true>()
 const STALE_EMPTY_LOCK_MS = 10_000
+const LOCK_POLL_MS = 25
 
 // HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
 export function privateDir({ dir }: { dir: string }): void {
@@ -162,8 +163,10 @@ export function acquireLock({
   )
   const takeover = `${path}.takeover`
   let deadline = Date.now() + timeout
+  const emptyLockDeadline = deadline + STALE_EMPTY_LOCK_MS
+  let retrying = false
 
-  while (true) {
+  const createLock = (): (() => void) | undefined => {
     try {
       const fd = openSync(
         path,
@@ -183,6 +186,31 @@ export function acquireLock({
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
         throw error
       }
+
+      return undefined
+    }
+  }
+
+  do {
+    if (retrying) {
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        Math.min(
+          LOCK_POLL_MS,
+          Math.max(
+            0,
+            deadline - Date.now(),
+          ),
+        ),
+      )
+    }
+
+    const release = createLock()
+
+    if (release) {
+      return release
     }
 
     if (timeout > 0) {
@@ -195,7 +223,10 @@ export function acquireLock({
         if (!Number.isInteger(owner) || owner <= 0) {
           deadline = Math.max(
             deadline,
-            statSync(path).mtimeMs + STALE_EMPTY_LOCK_MS + timeout,
+            Math.min(
+              emptyLockDeadline,
+              statSync(path).mtimeMs + STALE_EMPTY_LOCK_MS + timeout,
+            ),
           )
         }
       } catch (error) {
@@ -209,26 +240,15 @@ export function acquireLock({
       path,
       takeover,
     })) {
-      continue
+      const reclaimed = createLock()
+
+      if (reclaimed) {
+        return reclaimed
+      }
     }
 
-    if (Date.now() >= deadline) {
-      break
-    }
-
-    Atomics.wait(
-      new Int32Array(new SharedArrayBuffer(4)),
-      0,
-      0,
-      Math.min(
-        25,
-        Math.max(
-          0,
-          deadline - Date.now(),
-        ),
-      ),
-    )
-  }
+    retrying = true
+  } while (Date.now() < deadline)
 
   let owner: string
 
