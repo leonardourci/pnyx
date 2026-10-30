@@ -11,7 +11,7 @@ export interface SearchBadge {
   icon?: string
 }
 
-export interface SearchCombobox {
+interface SearchCombobox {
   expanded: boolean
   controls: string
   activeDescendant?: string

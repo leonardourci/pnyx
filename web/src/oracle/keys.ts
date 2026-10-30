@@ -1,6 +1,6 @@
 export type PaletteKey = 'wait' | 'up' | 'down' | 'open' | 'open-elsewhere' | 'preview' | 'commit' | 'drop-filter' | 'clear' | 'close'
 
-export const WAITING_KEYS = [
+const WAITING_KEYS = [
   'Enter',
   'ArrowDown',
   'ArrowUp',

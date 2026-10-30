@@ -4,11 +4,10 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import type { KeyScope } from '#preferences/keyboard.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { Command, Receipt } from '#web-app/connection.ts'
-import { focusElement, useKeyAction, useKeyboard, type ActionContext } from '#web-preferences/keyboard-registry.tsx'
+import { focusElement, keyScopeOf, useKeyAction, useKeyboard, type ActionContext } from '#web-preferences/keyboard-registry.tsx'
 import { SETTINGS_SECTIONS } from '#web-settings/catalog.ts'
 import { SETTING_ICONS } from '#web-settings/settings-page.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
@@ -22,14 +21,13 @@ import { columnsFor } from '#web-tasks/view.ts'
 import { askAttempt, askKey, askStart, askTargets, settledSend, type AskAttempt, type AskKey, type AskTarget } from './ask.ts'
 import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus, PASS, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
-import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
+import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, queryText, SETTINGS_FILTER, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
 import { ACTION_ICONS, oracleActions, type OracleAction } from './oracle-catalog.ts'
 import { AskPreview, FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
 import { menuActions, oracleResults, type OracleResult } from './results.ts'
 
 const FOCUSABLE = 'a[href], button, input, textarea, [tabindex]'
-const SETTINGS_KIND = KIND_FILTERS.find(filter => filter.values.includes('setting'))!
 // The help key opens on the settings and actions that name the keyboard.
 const HELP_QUERY = 'keyboard'
 
@@ -89,7 +87,7 @@ const keepInView = ({
 
 const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
   target,
-  scope: (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope as KeyScope | undefined) ?? 'navigation',
+  scope: keyScopeOf({ target }),
 })
 
 const countLabel = ({
@@ -561,7 +559,7 @@ export function Oracle({
       context,
       ids: [
         hydraBadge.id,
-        SETTINGS_KIND.id,
+        SETTINGS_FILTER.id,
       ],
       text: HELP_QUERY,
     }),

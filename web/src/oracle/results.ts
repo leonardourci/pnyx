@@ -209,8 +209,18 @@ export function oracleResults({
 }): ResultGroup[] {
   const words = text.toLowerCase().split(/\s+/)
     .filter(Boolean)
-  const visible = hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card]!.hidden))
-  const found = new Set(visible.map(hit => hit.card))
+  const chatHits = hits.filter(hit => hit.kind === 'hydra')
+  const cardHits = hits.flatMap(hit => {
+    const card = hit.kind === 'hydra' ? undefined : state.cards[hit.card]
+
+    return card && !card.hidden ? [
+      {
+        hit,
+        card,
+      },
+    ] : []
+  })
+  const found = new Set(cardHits.map(({ card }) => card.id))
   // filterCards also matches a card's key, tags, link numbers and status badge text, which the index doesn't hold.
   const cardMatches = text ? filterCards({
     state,
@@ -225,8 +235,11 @@ export function oracleResults({
     })) : []
   const tasks = text
     ? [
-      ...visible.filter(hit => hit.kind !== 'hydra').map(hit => taskResult({
-        card: state.cards[hit.card]!,
+      ...cardHits.map(({
+        hit,
+        card,
+      }) => taskResult({
+        card,
         hit,
         hydra,
       })),
@@ -236,16 +249,21 @@ export function oracleResults({
       card,
       hydra,
     }))
-  const chat = visible.filter(hit => hit.kind === 'hydra').map(hit => conversationResult({
+  const chat = chatHits.map(hit => conversationResult({
     hit,
     at: newestSnippet({ hit }),
     hydra,
   }))
   // A hit in a task's transcript is a match in its conversation too.
-  const taskChatHits = visible.filter(hit => hit.kind !== 'hydra' && hasConversation({ card: state.cards[hit.card]! })
-    && hit.snippets.some(snippet => snippet.kind === 'transcript'))
-    .map(hit => taskConversation({
-      card: state.cards[hit.card]!,
+  const taskChatHits = cardHits.filter(({
+    hit,
+    card,
+  }) => hasConversation({ card }) && hit.snippets.some(snippet => snippet.kind === 'transcript'))
+    .map(({
+      hit,
+      card,
+    }) => taskConversation({
+      card,
       hit,
       hydra,
     }))

@@ -3,8 +3,8 @@ import type { HydraColumn } from '#tasks/columns-model.ts'
 import { columnLook } from '#web-tasks/view.ts'
 
 // A panel is a whole settings block shown in the preview, such as Projects.
-export type ResultKind = 'project' | 'task' | 'conversation' | 'setting' | 'panel' | 'action'
-export type FilterType = 'kind' | 'hydra' | 'column' | 'project' | 'when'
+type ResultKind = 'project' | 'task' | 'conversation' | 'setting' | 'panel' | 'action'
+type FilterType = 'kind' | 'hydra' | 'column' | 'project' | 'when'
 
 const RESULT_KINDS: ResultKind[] = [
   'project',
@@ -74,6 +74,18 @@ export interface Candidate {
   at?: string
 }
 
+export const SETTINGS_FILTER: Filter = {
+  id: 'kind:settings',
+  type: 'kind',
+  label: 'Settings',
+  icon: 'settings',
+  values: [
+    'setting',
+    'panel',
+    'action',
+  ],
+  words: 'actions preferences',
+}
 export const KIND_FILTERS: Filter[] = [
   {
     id: 'kind:tasks',
@@ -99,18 +111,7 @@ export const KIND_FILTERS: Filter[] = [
     values: ['project'],
     words: 'folders repositories',
   },
-  {
-    id: 'kind:settings',
-    type: 'kind',
-    label: 'Settings',
-    icon: 'settings',
-    values: [
-      'setting',
-      'panel',
-      'action',
-    ],
-    words: 'actions preferences',
-  },
+  SETTINGS_FILTER,
 ]
 const WHEN_FILTERS: Filter[] = [
   {
@@ -292,7 +293,7 @@ const since = ({
   window,
   now,
 }: {
-  window: string
+  window?: string
   now: number
 }) => {
   if (window === 'today') {
@@ -326,15 +327,17 @@ function passesType({
     return false
   }
 
+  const { hydra } = item
+
   if (type === 'hydra') {
-    return item.hydra === undefined || chosen.some(badge => badge.values.includes(item.hydra!))
+    return hydra === undefined || chosen.some(badge => badge.values.includes(hydra))
   }
 
   if (type === 'when') {
     const at = item.at ? Date.parse(item.at) : NaN
 
-    return chosen.some(badge => at >= since({
-      window: badge.values[0]!,
+    return chosen.some(({ values: [window] }) => at >= since({
+      window,
       now,
     }))
   }
