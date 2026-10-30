@@ -5,6 +5,7 @@ export interface ViewPreferences {
   focusMode: boolean
   lastMessageOnCards: boolean
   defaultHydraWidth: number
+  defaultColumnWidth: number
   defaultColumnWidths: Record<string, number>
   theme: 'light' | 'dark' | 'system'
   keyboard: import('./keyboard.ts').KeyboardPreferences

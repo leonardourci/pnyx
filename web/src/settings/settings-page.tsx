@@ -11,6 +11,8 @@ import { InlineConfirm } from '#web-shared/ui/inline-confirm.tsx'
 import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
+import { DEFAULT_SETTINGS } from '#settings/settings.ts'
+import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, ThemePreview } from './previews.tsx'
@@ -323,7 +325,11 @@ export function SettingsPage({
     onlyChanged,
     setOnlyChanged,
   ] = useState(false)
-  const changed = changedIds({ view })
+  const settings = useSharedSettings() ?? DEFAULT_SETTINGS
+  const changed = changedIds({
+    view,
+    settings,
+  })
   const found = searchSettings({ query })
     .filter(match => !onlyChanged || changed.has(match.entry.id))
   const shown = found.filter(match => !section || match.entry.section === section)
@@ -432,6 +438,7 @@ export function SettingsPage({
                 patch: resetPatch({
                   id: match.entry.id,
                   view,
+                  settings,
                 }),
               })}
               preview={(

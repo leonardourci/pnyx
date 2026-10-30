@@ -10,7 +10,8 @@ import type { LatestMessage } from '#hydra/transcripts-read.ts'
 import { CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { CardTitle } from './card-title.tsx'
 import { TaskEditor, type TaskDraft } from './task-editor.tsx'
-import { useCardHeight } from './card-height.ts'
+import { useCardHeight, useTypingGrowth } from './card-height.ts'
+import { clickTogglesCard } from './card-click.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { projectTitle } from '#web-projects/view.ts'
@@ -231,6 +232,7 @@ export function HydraCard({
     element,
     selected,
   })
+  const typingGrowth = useTypingGrowth({ element })
   const saved = selected ? view.cardHeights[card.id] : view.closedCardHeights[card.id]
   const closedHeight = bounds.minimum + CLOSED_EXTRA_LINES * bounds.line
   const defaultHeight = selected ? Math.round(bounds.available * OPEN_SHARE) : closedHeight
@@ -361,7 +363,13 @@ export function HydraCard({
           bounds.minimum,
           Math.min(
             bounds.maximum,
-            preview ?? height,
+            preview ?? Math.min(
+              Math.max(
+                bounds.available,
+                height,
+              ),
+              height + typingGrowth,
+            ),
           ),
         ) : undefined,
       }}
@@ -369,10 +377,11 @@ export function HydraCard({
       data-tab={selected ? tab : undefined}
       data-label-color={tint?.color}
       onClick={e => {
-        const control = e.target instanceof Element
-          && e.target.closest('a, button, input, textarea, form, summary, .menu, .resize')
-
-        if (!control && !window.getSelection()?.toString()) {
+        if (clickTogglesCard({
+          card: e.currentTarget,
+          target: e.target instanceof Element ? e.target : null,
+          selecting: !!window.getSelection()?.toString(),
+        })) {
           open({
             id: card.id,
             pointer: true,

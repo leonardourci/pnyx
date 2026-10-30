@@ -5,7 +5,7 @@ import { AxiError } from 'axi-sdk-js'
 import type { Column } from './columns-model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { projectsFor } from '#projects/read.ts'
-import type { Card, NotedEvent } from './model.ts'
+import { MAX_BRIEF_LENGTH, type Card, type NotedEvent } from './model.ts'
 import { clip, guard, parse, COMMON, WRITE, meta, required, commit, HISTORY_MAX, summarize, integer, TEXT_CUT, type Output } from '#app/cli-support.ts'
 import { canonical } from '#store/paths.ts'
 import { loadHydra } from '#app/store.ts'
@@ -310,9 +310,9 @@ export function taskBrief({ value }: { value: unknown }): string | undefined {
     return undefined
   }
 
-  if (typeof value !== 'string' || value.length > 24000) {
+  if (typeof value !== 'string' || value.length > MAX_BRIEF_LENGTH) {
     throw new HydraError({
-      message: 'a brief must be text of up to 24000 characters',
+      message: `a brief must be text of up to ${MAX_BRIEF_LENGTH} characters`,
       code: 'VALIDATION_ERROR',
     })
   }

@@ -58,3 +58,45 @@ test(
     )
   },
 )
+
+test(
+  'resetting column defaults clears the fallback and overrides hidden in another Hydra',
+  () => {
+    const settings = patchSettings({
+      current: DEFAULT_SETTINGS,
+      input: {
+        defaultColumnWidth: 460,
+        defaultColumnWidths: { 'custom:other-hydra': 510 },
+      },
+    })
+    const view = {
+      ...viewOf({ settings }),
+      defaultColumnWidths: { 'custom:current': 460 },
+    }
+    assert.deepEqual(
+      [
+        ...changedIds({
+          view,
+          settings,
+        }),
+      ],
+      ['defaultColumnWidths'],
+    )
+    const reset = patchSettings({
+      current: settings,
+      input: resetPatch({
+        id: 'defaultColumnWidths',
+        view,
+        settings,
+      }),
+    })
+    assert.equal(
+      reset.defaultColumnWidth,
+      380,
+    )
+    assert.deepEqual(
+      reset.defaultColumnWidths,
+      {},
+    )
+  },
+)

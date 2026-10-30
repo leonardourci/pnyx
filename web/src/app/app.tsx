@@ -11,6 +11,7 @@ import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 import { TaskCreate, type TaskDraft } from '#web-tasks/task-create.tsx'
 import { viewFor } from '#preferences/view.ts'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
+import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
 import { liveTask } from '#tasks/select.ts'
 import type { Card } from '#tasks/model.ts'
 import { focusElement, KeyboardProvider } from '#web-preferences/keyboard-registry.tsx'
@@ -1135,307 +1136,316 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       hints={keyboard.hints.length > 0}
       hintKey={keyboard.hintKey}
     >
-      <div
-        ref={setLayer}
-        className="app"
-        data-seq={state.seq}
-        data-connected={connected}
-        style={{
-          '--text-ui': `${view.fontSize}px`,
-          '--text-chat': `${view.chatFontSize}px`,
-          '--text-code': `${view.codeFontSize}px`,
-        } as CSSProperties}
+      <HydraComposerSources
+        state={state}
+        command={command}
+        connected={connected}
+        references={references}
+        openTask={revealTask}
+        notify={notify}
+        otherProjects={otherProjects}
       >
-        <Panel
-          shown={panel}
-          connected={connected}
-          upgrade={upgrade}
-          startUpgrade={startUpgrade}
-          page={page}
-          navigate={({ page }) => {
-            setSettingsQuery(''); setPage(page)
-          }}
-          oracle={(
-            <Oracle
-              state={state}
-              cardActions={actions}
-              view={view}
+        <div
+          ref={setLayer}
+          className="app"
+          data-seq={state.seq}
+          data-connected={connected}
+          style={{
+            '--text-ui': `${view.fontSize}px`,
+            '--text-chat': `${view.chatFontSize}px`,
+            '--text-code': `${view.codeFontSize}px`,
+          } as CSSProperties}
+        >
+          <Panel
+            shown={panel}
+            connected={connected}
+            upgrade={upgrade}
+            startUpgrade={startUpgrade}
+            page={page}
+            navigate={({ page }) => {
+              setSettingsQuery(''); setPage(page)
+            }}
+            oracle={(
+              <Oracle
+                state={state}
+                cardActions={actions}
+                view={view}
+                command={command}
+                connected={connected}
+                hydra={oracleHydra}
+                projects={shownHydra?.projects ?? []}
+                workspace={workspace}
+                layer={layer}
+                save={save}
+                notify={notify}
+                upgrade={upgrade}
+                startUpgrade={startUpgrade}
+                openTask={open}
+                answerTask={answerTaskById}
+                openHydra={openHydra}
+                selectProject={selectProject}
+                openSettings={openSettings}
+                createTask={createTask}
+                createColumn={createColumn}
+                action={keyboard.onAction}
+                hydras={askTargets}
+                send={askHydra}
+                openChat={openChat}
+              />
+            )}
+          >
+            <Hydras
+              createHydra={hydra.createHydra}
+              editHydra={edits.edit}
+              moveHydra={edits.move}
               command={command}
               connected={connected}
-              hydra={oracleHydra}
-              projects={shownHydra?.projects ?? []}
-              workspace={workspace}
-              layer={layer}
-              save={save}
               notify={notify}
-              upgrade={upgrade}
-              startUpgrade={startUpgrade}
-              openTask={open}
-              answerTask={answerTaskById}
-              openHydra={openHydra}
-              selectProject={selectProject}
-              openSettings={openSettings}
-              createTask={createTask}
-              createColumn={createColumn}
-              action={keyboard.onAction}
-              hydras={askTargets}
-              send={askHydra}
-              openChat={openChat}
+              hydras={edits.hydras}
+              current={navigation.hydraId}
+              navigate={navigate}
+              loading={!!loading}
+              project={project}
+              resolveProject={resolveProject}
+              selectProject={({ path }) => {
+                filterProject({ path: project === path ? '' : path }); clearSelection(); setPage('hydra')
+              }}
+              showHydra={() => {
+                setPage('hydra'); filterProject({ path: '' })
+              }}
+              addProject={addProject}
             />
-          )}
-        >
-          <Hydras
-            createHydra={hydra.createHydra}
-            editHydra={edits.edit}
-            moveHydra={edits.move}
-            command={command}
-            connected={connected}
-            notify={notify}
-            hydras={edits.hydras}
-            current={navigation.hydraId}
-            navigate={navigate}
-            loading={!!loading}
-            project={project}
-            resolveProject={resolveProject}
-            selectProject={({ path }) => {
-              filterProject({ path: project === path ? '' : path }); clearSelection(); setPage('hydra')
-            }}
-            showHydra={() => {
-              setPage('hydra'); filterProject({ path: '' })
-            }}
-            addProject={addProject}
-          />
-        </Panel>
-        <main
-          className="shell"
-          aria-busy={!!loading || !loaded}
-          data-hydra={navigation.hydraId}
-          data-provisional={hydra.creating || undefined}
-        >
-          {(loading || !loaded) && (
-            <p className="loading-status" role="status">
-              {hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…
-            </p>
-          )}
-          {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
-          {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
-          <PendingStatus
-            intents={[
-              ...hydra.intents,
-              ...installationPending,
-              ...projectPending,
-            ]}
-          />
-          {page === 'hydra' && (
-            <>
-              <div className="hydra-page">
-                <HydraChat
-                  identity={currentHydra && {
-                    name: currentHydra.name,
-                    icon: currentHydra.icon,
-                    taken: edits.hydras.filter(h => h.id !== currentHydra.id).map(h => h.name),
-                  }}
-                  editHydra={({
-                    name,
-                    icon,
-                  }) => edits.edit({
-                    id: navigation.hydraId,
-                    name,
-                    icon,
-                  })}
-                  addProject={() => addProject({ id: navigation.hydraId })}
-                  projectRequest={projectRequest}
-                  projectRequested={() => setProjectRequest(false)}
-                  otherProjects={otherProjects}
-                  state={state}
-                  liveThread={hydraThread}
-                  action={actions[HYDRA_CARD]}
-                  taskActions={actions}
-                  queue={hydraQueue}
-                  command={command}
-                  connected={connected}
-                  openTask={revealTask}
-                  notify={notify}
-                  view={view}
-                  save={save}
-                  draft={drafts[HYDRA_CARD] ?? ''}
-                  setDraft={({ text }) => setDrafts(d => ({
-                    ...d,
-                    [HYDRA_CARD]: text,
-                  }))}
-                  comments={comments[HYDRA_CARD] ?? []}
-                  setComments={({ items }) => setComments(c => ({
-                    ...c,
-                    [HYDRA_CARD]: items,
-                  }))}
-                />
-                <TaskReferencesProvider references={references} openTask={revealTask}>
-                  <div className="hydra-main">
-                    <div className="work-area inline">
-                      <div className="hydra-space">
-                        <div className="kanban" aria-label="Work columns">
-                          {columns.map(c => {
-                            const items = cards.filter(card => card.column === c.id)
+          </Panel>
+          <main
+            className="shell"
+            aria-busy={!!loading || !loaded}
+            data-hydra={navigation.hydraId}
+            data-provisional={hydra.creating || undefined}
+          >
+            {(loading || !loaded) && (
+              <p className="loading-status" role="status">
+                {hydra.creating ? 'Creating Hydra' : <>Loading {opening ? <HydraLabel name={opening.name} icon={opening.icon} size={14} /> : 'Hydra'}</>}…
+              </p>
+            )}
+            {error && <p className="error-banner" role="alert">{error} <Button onClick={hydra.retryHydra}>Retry connection</Button></p>}
+            {checking && <p className="save-checking loading-status" role="status">Checking whether your changes were saved. Retrying automatically.</p>}
+            <PendingStatus
+              intents={[
+                ...hydra.intents,
+                ...installationPending,
+                ...projectPending,
+              ]}
+            />
+            {page === 'hydra' && (
+              <>
+                <div className="hydra-page">
+                  <HydraChat
+                    identity={currentHydra && {
+                      name: currentHydra.name,
+                      icon: currentHydra.icon,
+                      taken: edits.hydras.filter(h => h.id !== currentHydra.id).map(h => h.name),
+                    }}
+                    editHydra={({
+                      name,
+                      icon,
+                    }) => edits.edit({
+                      id: navigation.hydraId,
+                      name,
+                      icon,
+                    })}
+                    addProject={() => addProject({ id: navigation.hydraId })}
+                    projectRequest={projectRequest}
+                    projectRequested={() => setProjectRequest(false)}
+                    state={state}
+                    liveThread={hydraThread}
+                    action={actions[HYDRA_CARD]}
+                    taskActions={actions}
+                    queue={hydraQueue}
+                    command={command}
+                    connected={connected}
+                    openTask={revealTask}
+                    notify={notify}
+                    view={view}
+                    save={save}
+                    draft={drafts[HYDRA_CARD] ?? ''}
+                    setDraft={({ text }) => setDrafts(d => ({
+                      ...d,
+                      [HYDRA_CARD]: text,
+                    }))}
+                    comments={comments[HYDRA_CARD] ?? []}
+                    setComments={({ items }) => setComments(c => ({
+                      ...c,
+                      [HYDRA_CARD]: items,
+                    }))}
+                  />
+                  <TaskReferencesProvider references={references} openTask={revealTask}>
+                    <div className="hydra-main">
+                      <div className="work-area inline">
+                        <div className="hydra-space">
+                          <div className="kanban" aria-label="Work columns">
+                            {columns.map(c => {
+                              const items = cards.filter(card => card.column === c.id)
 
-                            return (
-                              <Column
-                                key={c.id}
-                                {...c}
-                                cards={items}
-                                view={view}
-                                save={save}
-                                command={command}
-                                notify={notify}
-                                revision={state.configRevision ?? 0}
-                                connected={connected}
-                                columnIds={columns.map(c => c.id)}
-                                locked={lockedColumn({
-                                  state,
-                                  id: c.id,
-                                })}
-                                editingTitle={newColumn === c.id}
-                                titleFinished={() => setNewColumn(null)}
-                                createTask={createTask}
-                              >
-                                {creatingTask?.column === c.id && (
-                                  <TaskCreate
-                                    key={`${c.id}:${creatingTask.parent ?? ''}`}
-                                    {...creatingTask}
-                                    command={command}
-                                    connected={connected}
-                                    notify={notify}
-                                    cancel={() => setCreatingTask(null)}
-                                    recover={({ draft }) => {
-                                      if (taskFormVersion.current === creatingTask.version) {
-                                        setCreatingTask({
-                                          ...creatingTask,
-                                          draft,
+                              return (
+                                <Column
+                                  key={c.id}
+                                  {...c}
+                                  cards={items}
+                                  view={view}
+                                  save={save}
+                                  command={command}
+                                  notify={notify}
+                                  revision={state.configRevision ?? 0}
+                                  connected={connected}
+                                  columnIds={columns.map(c => c.id)}
+                                  locked={lockedColumn({
+                                    state,
+                                    id: c.id,
+                                  })}
+                                  editingTitle={newColumn === c.id}
+                                  titleFinished={() => setNewColumn(null)}
+                                  createTask={createTask}
+                                >
+                                  {creatingTask?.column === c.id && (
+                                    <TaskCreate
+                                      key={`${c.id}:${creatingTask.parent ?? ''}`}
+                                      {...creatingTask}
+                                      command={command}
+                                      connected={connected}
+                                      notify={notify}
+                                      cancel={() => setCreatingTask(null)}
+                                      recover={({ draft }) => {
+                                        if (taskFormVersion.current === creatingTask.version) {
+                                          setCreatingTask({
+                                            ...creatingTask,
+                                            draft,
+                                          })
+                                        }
+
+                                        const key = `task:${draft.attempt}`
+                                        setActive(current => current === key ? null : current)
+                                        setExpanded(ids => ids.filter(id => id !== key))
+                                      }}
+                                      submitted={({ id }) => {
+                                        setCreatingTask(null); expand({
+                                          id,
+                                          column: c.id,
                                         })
-                                      }
+                                        const first = items[0]
 
-                                      const key = `task:${draft.attempt}`
-                                      setActive(current => current === key ? null : current)
-                                      setExpanded(ids => ids.filter(id => id !== key))
-                                    }}
-                                    submitted={({ id }) => {
-                                      setCreatingTask(null); expand({
-                                        id,
-                                        column: c.id,
-                                      })
-                                      const first = items[0]
-
-                                      if (first) {
-                                        void command({
-                                          name: 'move',
-                                          args: [
-                                            id,
-                                            c.id,
-                                            '--before',
-                                            first.id,
-                                            '--event-id',
-                                            crypto.randomUUID(),
-                                          ],
-                                        }).catch(e => notify({ text: e.message }))
-                                      }
-                                    }}
-                                  />
-                                )}
-                                {items.map(item => (
-                                  <HydraCard
-                                    key={item.key}
-                                    card={item}
-                                    state={state}
-                                    labelColors={state.labelColors}
-                                    doneAfterHours={shared?.doneAfterHours}
-                                    notify={notify}
-                                    latest={latest[item.id]}
-                                    action={actions[item.id]}
-                                    answer={answerTask}
-                                    selected={expandedIds.includes(item.id)}
-                                    onEdit={cancelOpen}
-                                    recoverSelection={({ id }) => {
-                                      setActive(current => current ?? id)
-                                      setExpanded(ids => ids.length ? ids : [id])
-                                    }}
-                                    view={view}
-                                    save={save}
-                                    open={({
-                                      id,
-                                      pointer,
-                                      focusPanel,
-                                    }) => {
-                                      if (expandedIds.includes(id)) {
-                                        close({ id })
-
-                                        return Promise.resolve(false)
-                                      }
-
-                                      return open({
+                                        if (first) {
+                                          void command({
+                                            name: 'move',
+                                            args: [
+                                              id,
+                                              c.id,
+                                              '--before',
+                                              first.id,
+                                              '--event-id',
+                                              crypto.randomUUID(),
+                                            ],
+                                          }).catch(e => notify({ text: e.message }))
+                                        }
+                                      }}
+                                    />
+                                  )}
+                                  {items.map(item => (
+                                    <HydraCard
+                                      key={item.key}
+                                      card={item}
+                                      state={state}
+                                      labelColors={state.labelColors}
+                                      doneAfterHours={shared?.doneAfterHours}
+                                      notify={notify}
+                                      latest={latest[item.id]}
+                                      action={actions[item.id]}
+                                      answer={answerTask}
+                                      selected={expandedIds.includes(item.id)}
+                                      onEdit={cancelOpen}
+                                      recoverSelection={({ id }) => {
+                                        setActive(current => current ?? id)
+                                        setExpanded(ids => ids.length ? ids : [id])
+                                      }}
+                                      view={view}
+                                      save={save}
+                                      open={({
                                         id,
                                         pointer,
                                         focusPanel,
-                                      })
-                                    }}
-                                    command={command}
-                                    connected={connected}
-                                    tabIndex={
-                                      (items.some(i => i.id === keyboard.remembered[c.id])
-                                        ? keyboard.remembered[c.id]
-                                        : items[0]?.id) === item.id ? 0 : -1
-                                    }
-                                  >
-                                    {expandedIds.includes(item.id) && (
-                                      <Detail
-                                        card={item}
-                                        state={state}
-                                        command={command}
-                                        connected={connected}
-                                      />
-                                    )}
-                                  </HydraCard>
-                                ))}
-                              </Column>
-                            )
-                          })}
-                          <div className="add-column">
-                            <Button
-                              disabled={!connected}
-                              onClick={createColumn}
-                            ><Icon name="plus" />Add column
-                            </Button>
+                                      }) => {
+                                        if (expandedIds.includes(id)) {
+                                          close({ id })
+
+                                          return Promise.resolve(false)
+                                        }
+
+                                        return open({
+                                          id,
+                                          pointer,
+                                          focusPanel,
+                                        })
+                                      }}
+                                      command={command}
+                                      connected={connected}
+                                      tabIndex={
+                                        (items.some(i => i.id === keyboard.remembered[c.id])
+                                          ? keyboard.remembered[c.id]
+                                          : items[0]?.id) === item.id ? 0 : -1
+                                      }
+                                    >
+                                      {expandedIds.includes(item.id) && (
+                                        <Detail
+                                          card={item}
+                                          state={state}
+                                          command={command}
+                                          connected={connected}
+                                        />
+                                      )}
+                                    </HydraCard>
+                                  ))}
+                                </Column>
+                              )
+                            })}
+                            <div className="add-column">
+                              <Button
+                                disabled={!connected}
+                                onClick={createColumn}
+                              ><Icon name="plus" />Add column
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                </TaskReferencesProvider>
-              </div>
-            </>
+                  </TaskReferencesProvider>
+                </div>
+              </>
+            )}
+            {page === 'settings' && (
+              <SettingsPage
+                key={settingsQuery}
+                initialQuery={settingsQuery}
+                state={state}
+                connected={connected}
+                view={view}
+                save={save}
+                command={command}
+                notify={notify}
+                upgrade={upgrade}
+                startUpgrade={startUpgrade}
+              />
+            )}
+          </main>
+          {notice && (
+            <div className="notice" role="status">
+              <span>{notice.text}</span>
+              <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
+                <Icon name="close" />
+              </Button>
+            </div>
           )}
-          {page === 'settings' && (
-            <SettingsPage
-              key={settingsQuery}
-              initialQuery={settingsQuery}
-              state={state}
-              connected={connected}
-              view={view}
-              save={save}
-              command={command}
-              notify={notify}
-              upgrade={upgrade}
-              startUpgrade={startUpgrade}
-            />
-          )}
-        </main>
-        {notice && (
-          <div className="notice" role="status">
-            <span>{notice.text}</span>
-            <Button aria-label="Dismiss notification" onClick={() => setNotice(null)}>
-              <Icon name="close" />
-            </Button>
-          </div>
-        )}
-      </div>
+        </div>
+      </HydraComposerSources>
     </KeyboardProvider>
   )
 }
