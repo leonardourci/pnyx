@@ -24,7 +24,7 @@ import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
-import { randomUUID } from 'node:crypto'
+import { createHash, randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
@@ -87,6 +87,20 @@ const RETRY_MS = [
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 // A deadline that could not record its failure, as when another writer holds the lock, tries again this soon.
 const COMPACTION_RETRY_MS = 1000
+
+function keyForSteering({
+  card,
+  ids,
+}: {
+  card: Card
+  ids: string[]
+}): string {
+  return createHash('sha256').update(JSON.stringify([
+    card.agent?.sessionId,
+    ids,
+  ]))
+    .digest('hex')
+}
 
 export function createHost({
   hydraId,
@@ -1219,6 +1233,10 @@ export function createHost({
     }
 
     entry.input.push({
+      id: `steering:${keyForSteering({
+        card,
+        ids,
+      })}`,
       text: '',
       steeringIds: ids,
     })
@@ -1348,6 +1366,10 @@ export function createHost({
 
       const input = async function* () {
         for await (const item of entry.input) {
+          if (item.id && entry.session?.accepted?.({ id: item.id })) {
+            continue
+          }
+
           const current = compactOwner()
 
           if (current && activeCompaction({ card: current })) {
@@ -1515,7 +1537,7 @@ export function createHost({
 
       const compactionIds = new Map<string, string>()
 
-      for await (const activity of entry.session.run({
+      for await (const received of entry.session.run({
         input: input(),
         permission: ({
           id,
@@ -1537,6 +1559,7 @@ export function createHost({
           form,
         }),
       })) {
+        const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
         applying = entry.session.fact?.()
 
         try {
@@ -1549,7 +1572,8 @@ export function createHost({
 
                 if (request && request.status !== 'pending') {
                   writer.append({
-                    event: permissionEvent({                      state: writer.state,
+                    event: permissionEvent({
+                      state: writer.state,
                       card: current,
                       request: {
                         ...request,
@@ -1567,8 +1591,8 @@ export function createHost({
             continue
           }
 
-          if (typeof activity === 'object' && activity.type === 'turn-ended') {
-            const outcome = activity.outcome
+          if (typeof received === 'object' && received.type === 'turn-ended') {
+            const outcome = received.outcome
             note({
               fn: ({ writer }) => record({
                 writer,
@@ -1582,10 +1606,6 @@ export function createHost({
             for (const text of outcome.assistant) {
               entry.replies.update(text)
             }
-
-            entry.activity = 'finished'
-            streamed({ session: key })
-            continue
           }
 
           if (entry.replaced || !closing && live.get(key) !== entry) {
@@ -1632,7 +1652,10 @@ export function createHost({
             })
 
             if (activity.state !== 'running') {
-              settleCompaction({ card: current.id, settling: true })
+              settleCompaction({
+                card: current.id,
+                settling: true,
+              })
             }
 
             continue
@@ -1647,7 +1670,10 @@ export function createHost({
             const owner = compactOwner()
 
             if (owner && settlingCompactions.has(owner.id)) {
-              settleCompaction({ card: owner.id, settling: false })
+              settleCompaction({
+                card: owner.id,
+                settling: false,
+              })
             }
           }
 
@@ -1698,7 +1724,10 @@ export function createHost({
 
           if (typeof activity !== 'string' && activity.type === 'tool') {
             if (activity.running) {
-              entry.toolNames.set(activity.id, activity.tool ?? 'tool')
+              entry.toolNames.set(
+                activity.id,
+                activity.tool ?? 'tool',
+              )
               entry.tools.set(
                 activity.id,
                 Date.now(),
@@ -4269,7 +4298,10 @@ export function createHost({
         })
         entry.activity = 'working'
         entry.sentAt = Date.now()
-        entry.input.push({ text: prompt })
+        entry.input.push({
+          id: `${id}:launch-input`,
+          text: prompt,
+        })
 
         return {
           task: claimed.card.id,

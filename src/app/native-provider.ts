@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Provider, HostedInput, PermissionDecision } from '#workers/provider.ts'
+import type { Provider, PermissionDecision } from '#workers/provider.ts'
 import type { ProviderId, Summary } from '#agent-host/protocol.ts'
 import { fail } from '#agent-host/protocol.ts'
 import { connectHost } from '#agent-host/client.ts'
@@ -14,7 +14,6 @@ type Binding = {
   request: string
   instance: string
   session?: Summary
-  inputs: Record<string, HostedInput>
   answers: Record<string, {
     permission: string
     secret: boolean
@@ -51,6 +50,7 @@ export async function nativeProviders({
       'named-requests',
       'critical-outbox',
       'live-owners',
+      'volatile-inputs',
     ],
   })
   const claim = checked({
@@ -131,6 +131,10 @@ export async function nativeProviders({
         )
       }
 
+      if (binding && 'inputs' in binding) {
+        delete binding.inputs
+      }
+
       const save = () => writer!.write({ text: () => JSON.stringify(binding) })
       let summary = agent && inventory.find(session =>
         session.provider === provider && session.nativeId === agent.sessionId)
@@ -172,7 +176,6 @@ export async function nativeProviders({
         binding = {
           request: randomUUID(),
           instance: client.ready.instance,
-          inputs: {},
           answers: {},
         }
         await save()
@@ -241,18 +244,6 @@ export async function nativeProviders({
         client,
         summary,
         recovered,
-        async persistInput({ input }) {
-          const stored = active.inputs[input.id]
-
-          if (stored) {
-            return stored
-          }
-
-          active.inputs[input.id] = input
-          await save()
-
-          return input
-        },
         async persistAnswer({
           permission,
           decision,

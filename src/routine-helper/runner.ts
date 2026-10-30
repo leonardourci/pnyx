@@ -503,7 +503,7 @@ export function createRoutineHelper({
         }
 
         const input = async function* () {
-          if (session.recovered) {
+          if (session.accepted?.({ id: batch.id })) {
             return
           }
 
