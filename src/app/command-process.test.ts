@@ -384,3 +384,113 @@ test(
     }
   },
 )
+
+test(
+  'Hydra edits and moves stay pending while their writer is busy',
+  async t => {
+    const root = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-hydra-edit-lock-',
+    ))
+    const saved = { ...process.env }
+    process.env.PNYX_HOME = join(
+      root,
+      'home',
+    )
+    process.env.PNYX_SEMANTIC = 'off'
+    t.after(() => {
+      process.env = saved
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    commands.hydra([
+      'create',
+      'lab',
+    ])
+    const server = await startServer({ hydraId: 'lab' })
+    const page = await openPage({
+      port: server.port,
+      hydraId: 'lab',
+    })
+    const lock = join(
+      hydraDir({ hydraId: 'lab' }),
+      'writer.lock',
+    )
+    writeFileSync(
+      lock,
+      String(process.pid),
+    )
+    const edit = page.command({
+      name: 'hydras',
+      args: [
+        'edit',
+        'lab',
+        'Renamed',
+      ],
+    })
+    const move = page.command({
+      name: 'hydras',
+      args: [
+        'move',
+        'lab',
+        '42',
+      ],
+    })
+    const outcome = Promise.allSettled([
+      edit,
+      move,
+    ])
+
+    try {
+      await until({
+        what: 'both Hydra actions checking their writer',
+        check: () => page.checking.length >= 2,
+      })
+      await page.command({
+        name: 'history',
+        args: [
+          '--limit',
+          '1',
+        ],
+      })
+      rmSync(lock)
+      const results = await outcome
+      assert.equal(
+        results[0]?.status,
+        'fulfilled',
+      )
+      assert.equal(
+        results[1]?.status,
+        'fulfilled',
+      )
+      const config = loadHydra({ hydraId: 'lab' }).state.config
+      assert.equal(
+        config?.name,
+        'Renamed',
+      )
+      assert.equal(
+        config?.position,
+        42,
+      )
+      assert.deepEqual(
+        loadHydra({ hydraId: 'lab' }).state,
+        replay({
+          state: emptyHydra(),
+          events: readEvents({ hydraId: 'lab' }),
+        }),
+      )
+    } finally {
+      rmSync(
+        lock,
+        { force: true },
+      )
+      page.close()
+      await server.close()
+    }
+  },
+)

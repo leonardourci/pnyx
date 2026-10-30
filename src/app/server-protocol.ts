@@ -79,5 +79,8 @@ export function retryable({
     'agent',
     'hydra-agent',
   ].includes(name) || args.some(arg => arg === '--event-id' || arg.startsWith('--event-id='))
-    || (name === 'hydras' && (args[0] === 'rename' || (args[0] === 'create' && !!args[2])))
+    || (name === 'hydras' && ([
+      'edit',
+      'move',
+    ].includes(args[0] ?? '') || (args[0] === 'create' && !!args[2])))
 }

@@ -1,3 +1,4 @@
+import { AxiError } from 'axi-sdk-js'
 import { nonblockingLocks } from '#store/storage.ts'
 import { commandTimeout, retryable } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -2388,7 +2389,7 @@ export async function mountOwnedHydra({
       } catch (error) {
         fail({
           error: (error as Error).message,
-          code: error instanceof HydraError ? error.code : 'UNKNOWN',
+          code: error instanceof HydraError || error instanceof AxiError ? error.code : 'UNKNOWN',
         })
       }
 
