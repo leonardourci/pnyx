@@ -790,6 +790,40 @@ test(
 )
 
 test(
+  'legacy default widths remain inherited when the shared fallback changes',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'legacy',
+    ])
+    legacyView({
+      hydraId: 'legacy',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: {
+        theme: 'dark',
+        defaultColumnWidths: { done: 510 },
+      },
+    })
+    await settings()
+    await commands.settings([
+      'set',
+      '--json',
+      '{"defaultColumnWidth":460}',
+    ])
+    const view = (await show({ hydraId: 'legacy' })).view
+    assert.equal(
+      (view.defaultColumnWidths as Record<string, number>).queued,
+      460,
+    )
+    assert.equal(
+      (view.defaultColumnWidths as Record<string, number>).done,
+      510,
+    )
+  },
+)
+
+test(
   'the shared column fallback reaches other Hydras and future columns while preserving overrides',
   async () => {
     home()

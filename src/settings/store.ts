@@ -8,7 +8,7 @@ import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { viewFor } from '#preferences/view.ts'
+import { DEFAULT_COLUMN_WIDTH, viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { privateDir, withRegistryLock, writeDurably } from '#store/storage.ts'
@@ -221,9 +221,14 @@ function migrate(): void {
   const after = structuredClone(DEFAULT_SETTINGS)
 
   if (view) {
+    const migrated = pickView({ view: viewFor({ state: { view: view.data.after } }) })
+    migrated.defaultColumnWidths = Object.fromEntries(Object.entries(migrated.defaultColumnWidths)
+      .filter(([
+        , width,
+      ]) => width !== DEFAULT_COLUMN_WIDTH))
     Object.assign(
       after,
-      pickView({ view: viewFor({ state: { view: view.data.after } }) }),
+      migrated,
     )
   }
 
