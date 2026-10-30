@@ -1,6 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from '#app/model.ts'
+import { emptyHydra, reduce } from '#app/reducer.ts'
+import { decidePush } from '#tasks/push.ts'
 import type { Card } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
 import { loadUpdates, noteUpdate, retryUpdates, staleUpdates, updatesOf } from './updates-cache.ts'
@@ -558,6 +560,177 @@ test(
     assert.equal(
       firstRead.open.size,
       0,
+    )
+  },
+)
+
+test(
+  'Updates keep each lifted Hold and quote the current owner answer after Undo and another lift',
+  () => {
+    const created = decidePush({
+      state: emptyHydra(),
+      key: 'synthetic-merge-history',
+      input: { title: 'Review merge' },
+      meta: {
+        at: '2026-10-13T13:00:00Z',
+        actor: 'cli',
+      },
+    })
+    assert.ok('event' in created)
+    const state = reduce({
+      state: emptyHydra(),
+      event: created.event,
+    })
+    const card = state.cards[created.event.cardId]
+    assert.ok(card)
+    const updates = taskTimeline({
+      card,
+      columns,
+      events: [
+        event({
+          seq: 1,
+          type: 'task.asked',
+          data: {
+            id: 'merge-question',
+            question: 'Merge PR #281?',
+            audience: 'owner',
+          },
+        }),
+        event({
+          seq: 2,
+          type: 'hydra.message',
+          data: {
+            answers: 'merge-question',
+            text: 'Hold',
+            choice: 'Hold',
+          },
+          actor: 'web',
+        }),
+        event({
+          seq: 3,
+          type: 'hydra.message',
+          data: {
+            answers: 'merge-question',
+            text: 'Merge it this morning.',
+            choice: 'Merge',
+            liftsHold: 'e2',
+            fromMessage: { id: 'owner-a' },
+          },
+          actor: 'hydra',
+        }),
+        event({
+          seq: 4,
+          type: 'task.ask.reopened',
+          data: {
+            ask: 'merge-question',
+            answer: 'e3',
+          },
+        }),
+        event({
+          seq: 5,
+          type: 'hydra.message',
+          data: {
+            answers: 'merge-question',
+            text: 'Merge it this afternoon.',
+            choice: 'Merge',
+            liftsHold: 'e2',
+            fromMessage: { id: 'owner-b' },
+          },
+          actor: 'hydra',
+        }),
+      ],
+    })
+    assert.deepEqual(
+      updates.filter(update => update.state === 'Hydra lifted Hold').map(update => update.decision?.answer),
+      [
+        'Merge it this afternoon.',
+        'Merge it this morning.',
+      ],
+    )
+    assert.equal(
+      updates.find(update => update.id === 'merge-question')?.decision?.choice,
+      'Hold',
+    )
+    assert.equal(
+      updates[0]?.decision?.question,
+      'Merge PR #281?',
+    )
+  },
+)
+
+test(
+  'Updates preserve a fresh Hold answer when Hydra asks again',
+  () => {
+    const created = decidePush({
+      state: emptyHydra(),
+      key: 'synthetic-reasked-history',
+      input: { title: 'Review merge again' },
+      meta: {
+        at: '2026-10-13T13:00:00Z',
+        actor: 'cli',
+      },
+    })
+    assert.ok('event' in created)
+    const card = reduce({
+      state: emptyHydra(),
+      event: created.event,
+    }).cards[created.event.cardId]
+    assert.ok(card)
+    const updates = taskTimeline({
+      card,
+      columns,
+      events: [
+        event({
+          seq: 1,
+          type: 'task.asked',
+          data: {
+            id: 'merge-question',
+            question: 'Merge PR #281?',
+            audience: 'owner',
+          },
+        }),
+        event({
+          seq: 2,
+          type: 'hydra.message',
+          data: {
+            answers: 'merge-question',
+            text: 'Hold for review.',
+            choice: 'Hold',
+          },
+          actor: 'web',
+        }),
+        event({
+          seq: 3,
+          type: 'task.ask.reopened',
+          data: {
+            ask: 'merge-question',
+            answer: 'e2',
+            reask: true,
+          },
+          actor: 'hydra',
+        }),
+        event({
+          seq: 4,
+          type: 'hydra.message',
+          data: {
+            answers: 'merge-question',
+            text: 'Still Hold until I check the security change.',
+            choice: 'Hold',
+          },
+          actor: 'web',
+        }),
+      ],
+    })
+    assert.deepEqual(
+      updates.filter(update => update.decision?.answer).map(update => update.decision?.answer),
+      [
+        'Still Hold until I check the security change.',
+        'Hold for review.',
+      ],
+    )
+    assert.equal(
+      updates[0]?.decision?.question,
+      'Merge PR #281?',
     )
   },
 )
