@@ -89,14 +89,31 @@ const findAsk = ({
   return ask
 }
 
+const currentAnswerReplies = ({
+  card,
+  question,
+}: {
+  card: Card
+  question: string
+}) => {
+  const round = card.asks?.find(ask => ask.id === question)?.answerRound
+
+  return card.replies?.filter(reply =>
+    reply.answers === question && reply.decision?.answerRound === round) ?? []
+}
+
 // An answer still being sent, or one that may have landed, holds the question until someone checks.
-const pendingAnswer = ({
+export const pendingAnswer = ({
   card,
   ask,
 }: {
   card: Card
   ask: Ask
-}) => card.replies?.find(r => r.answers === ask.id && (r.state === 'queued' || r.state === 'delivery_unknown'))
+}) => currentAnswerReplies({
+  card,
+  question: ask.id,
+})
+  .find(reply => reply.state === 'queued' || reply.state === 'delivery_unknown')
 
 // undelivered: the answerer checked the worker's session and the uncertain answer never arrived.
 const closed = ({
@@ -435,6 +452,7 @@ export function askAnswer({
     answer: string
     choice?: string
     liftsHold?: string
+    answerRound?: string
   }
 } {
   const ask = findAsk({
@@ -568,6 +586,7 @@ export function askAnswer({
       ...(label ? { choice: label } : {}),
       fromMessage: source,
       liftsHold: label === 'Merge' ? ask.mergeHold?.answered ?? ask.answered : undefined,
+      answerRound: ask.answerRound,
     },
   }
 }
@@ -711,6 +730,7 @@ export function applyAsk({
           choice: a.choice,
         }
         reopened.reaskedAt = event.at
+        reopened.answerRound = event.id
       } else if (a.mergeHold) {
         delete reopened.fromMessage
         Object.assign(
@@ -724,6 +744,7 @@ export function applyAsk({
 
         delete reopened.mergeHold
         delete reopened.reaskedAt
+        delete reopened.answerRound
 
         return reopened
       }
@@ -1034,7 +1055,10 @@ export function answerDelivery({
   card: Card
   question: string
 }) {
-  return card.replies?.findLast(reply => reply.answers === question)
+  return currentAnswerReplies({
+    card,
+    question,
+  }).at(-1)
 }
 
 export interface OwnerQuestion {

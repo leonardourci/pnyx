@@ -16,7 +16,7 @@ import type { HydraEvent } from '#app/model.ts'
 import { acquireLock } from '#store/storage.ts'
 import { decidePush } from './push.ts'
 import { findCard } from './push-rules.ts'
-import { cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
+import { answerDelivery, cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
 import { ownerGates } from './owner-gates.ts'
 import { relevantUpdate } from './updates.ts'
 
@@ -2329,3 +2329,78 @@ test(
     )
   },
 )
+
+for (const mode of [
+  'queued',
+  'unknown',
+] as const) {
+  test(
+    `a re-asked merge ignores the previous Hold's ${mode} receipt`,
+    async t => {
+      const {
+        l,
+        ref,
+        question,
+      } = await heldMerge({ t })
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      const source = l.chat({
+        ref,
+        text: 'Keep this PR on Hold.',
+      })
+      l.mode({ value: mode })
+      await l.relay({
+        ref,
+        question,
+        message: source,
+        choice: 'Hold',
+        text: 'Keep this on Hold.',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Hold',
+      )
+      await l.task({
+        args: [
+          'reask',
+          ref,
+          question,
+        ],
+      })
+      assert.equal(
+        answerDelivery({
+          card: l.card({ ref }),
+          question,
+        }),
+        undefined,
+      )
+      assert.equal(
+        ownerQuestions({ card: l.card({ ref }) })[0]?.delivery,
+        undefined,
+      )
+      await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--choice',
+          'Merge',
+        ],
+        actor: 'web',
+      })
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.choice,
+        'Merge',
+      )
+      assert.equal(
+        l.card({ ref }).replies?.length,
+        1,
+      )
+    },
+  )
+}

@@ -4,7 +4,7 @@ import { HydraError } from '#store/errors.ts'
 import type { Ask, AskAudience, Card } from './model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
-import { askAnswer, askReport, askWording, decideAsk, decideAskClosure, decideEscalation } from './questions.ts'
+import { askAnswer, askReport, askWording, decideAsk, decideAskClosure, decideEscalation, pendingAnswer } from './questions.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraDelivery, hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -72,7 +72,10 @@ const askState = ({
     return `answered (${ask.answered})`
   }
 
-  const pending = card.replies?.find(r => r.answers === ask.id && (r.state === 'queued' || r.state === 'delivery_unknown'))
+  const pending = pendingAnswer({
+    card,
+    ask,
+  })
 
   if (pending) {
     return `answer ${pending.state} (${pending.id})`

@@ -101,6 +101,7 @@ export interface Ask {
   fromMessage?: AnswerMessage
   mergeHold?: Pick<Ask, 'answered' | 'answeredAt' | 'fromMessage' | 'choice'>
   reaskedAt?: string
+  answerRound?: string
 }
 
 // An investigation's answer is its stored report; a build task's is its landed work.
@@ -313,6 +314,7 @@ export type RepliedEvent = EventBase & {
       answer: string
       choice?: string
       liftsHold?: string
+      answerRound?: string
     }
     answers?: string
     accepted?: boolean
