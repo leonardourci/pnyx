@@ -4903,72 +4903,87 @@ export function createHost({
 
           const provider = providerOf({ provider: card.agent.provider })
 
-          if (!provider.owns?.({ agent: card.agent })) {
-            continue
-          }
+          const recoveredEpochs = new Set<string>()
 
-          const session = await provider.open({
-            cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
-            agent: card.agent,
-            settings: card.settings ?? {},
-            context: card.id === HYDRA_CARD ? digest : undefined,
-            env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
-            signal: controller.signal,
-          })
-          const entry = open({
-            card: card as Card & { agent: AgentRef },
-            session,
-          })
+          while (provider.owns?.({ agent: card.agent })) {
+            const session = await provider.open({
+              cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
+              agent: card.agent,
+              settings: card.settings ?? {},
+              context: card.id === HYDRA_CARD ? digest : undefined,
+              env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
+              signal: controller.signal,
+            })
 
-          if (session.readOnly) {
-            await entry.consumed
-            continue
-          }
+            if (session.incarnation) {
+              if (recoveredEpochs.has(session.incarnation)) {
+                session.detach?.()
+                throw new HydraError({
+                  code: 'RECOVERY_REQUIRED',
+                  message: 'The retained native epoch did not settle during application recovery',
+                })
+              }
 
-          await session.replayed?.()
+              recoveredEpochs.add(session.incarnation)
+            }
 
-          for (const event of events) {
-            let input: {
-              id: string
-              text: string
-              original?: string
-            } | undefined
+            const entry = open({
+              card: card as Card & { agent: AgentRef },
+              session,
+            })
 
-            if (event.type === 'board.configured' && event.nativeInput
+            if (session.readOnly) {
+              await entry.consumed
+              continue
+            }
+
+            await session.replayed?.()
+
+            for (const event of events) {
+              let input: {
+                id: string
+                text: string
+                original?: string
+              } | undefined
+
+              if (event.type === 'board.configured' && event.nativeInput
               && event.nativeInput.epoch === session.incarnation) {
-              input = event.nativeInput
-              const unfinished = !session.accepted?.({ id: input.id })
+                input = event.nativeInput
+                const unfinished = !session.accepted?.({ id: input.id })
                 || session.snapshot().work.unsettledInputs.includes(input.id)
 
-              if (unfinished) {
-                for (const task of event.nativeInput.tasks ?? []) {
-                  mainTasks.add(task)
-                }
+                if (unfinished) {
+                  for (const task of event.nativeInput.tasks ?? []) {
+                    mainTasks.add(task)
+                  }
 
-                const wakeThrough = WAKE_ID.exec(input.id)?.[1]
+                  const wakeThrough = WAKE_ID.exec(input.id)?.[1]
 
-                if (wakeThrough) {
-                  readThrough = Math.max(
-                    readThrough,
-                    Number(wakeThrough),
-                  )
+                  if (wakeThrough) {
+                    readThrough = Math.max(
+                      readThrough,
+                      Number(wakeThrough),
+                    )
+                  }
                 }
-              }
-            } else if (event.type === 'task.session' && event.data.session === key
+              } else if (event.type === 'task.session' && event.data.session === key
               && event.data.nativeEpoch === session.incarnation
               && event.id.endsWith(':attach') && event.data.brief) {
-              input = {
-                id: `${event.id.slice(
-                  0,
-                  -':attach'.length,
-                )}:launch-input`,
-                text: event.data.brief,
+                input = {
+                  id: `${event.id.slice(
+                    0,
+                    -':attach'.length,
+                  )}:launch-input`,
+                  text: event.data.brief,
+                }
+              }
+
+              if (input && !session.accepted?.({ id: input.id })) {
+                entry.input.push(input)
               }
             }
 
-            if (input && !session.accepted?.({ id: input.id })) {
-              entry.input.push(input)
-            }
+            break
           }
         }
       }

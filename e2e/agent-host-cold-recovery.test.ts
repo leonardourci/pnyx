@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -125,6 +126,69 @@ for (const harness of [
         const outcome = retained.pendingFacts.find(fact => fact.event.type === 'turn-ended')
         assert.ok(outcome)
         const completionId = `native:${old.ref.epoch}:${outcome.seq}:finished`
+        const claim = await observer.call({
+          id: randomUUID(),
+          operation: {
+            kind: 'attach',
+            scope: { kind: 'host' },
+            expectedRevision: observer.ready.hostControllerRevision,
+          },
+        })
+        assert.ok(claim.kind === 'attached')
+
+        for (const epoch of [
+          'middle',
+          'latest',
+        ]) {
+          const opened = await observer.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'open',
+              controller: claim.control.generation,
+              options: {
+                provider: old.provider,
+                cwd: app.folder,
+                settings: {},
+                environment: {},
+                resume: { nativeId: workerId },
+              },
+            },
+          })
+          assert.ok(
+            opened.kind === 'opened',
+            epoch,
+          )
+          const attached = await observer.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'attach',
+              scope: {
+                kind: 'session',
+                ref: opened.session.ref,
+              },
+              expectedRevision: 0,
+            },
+          })
+          assert.ok(attached.kind === 'attached')
+          await observer.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'close',
+              ref: opened.session.ref,
+              controller: attached.control.generation,
+              expectedIdle: false,
+            },
+          })
+          const closed = await snapshot({
+            client: observer,
+            ref: opened.session.ref,
+          })
+          assert.deepEqual(
+            closed.pendingFacts.map(fact => fact.event.type),
+            ['ended'],
+          )
+        }
+
         app.host.child.kill('SIGKILL')
         await app.host.exited
         const replacement = await fixtureHost({
