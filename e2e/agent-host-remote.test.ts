@@ -404,6 +404,8 @@ for (const harness of [
     'text',
     'structured',
     'committed',
+    'committed-host-crash',
+    'committed-closed-host-crash',
     'malformed',
     'late',
     'host-crash',
@@ -580,9 +582,11 @@ for (const harness of [
         }
 
         const failed = result === 'malformed' || result === 'late'
-        let second = await app.start({ holdHelperCompletion: result === 'committed' })
+        const committed = result.startsWith('committed')
+        const lostAfterCommit = result === 'committed-host-crash' || result === 'committed-closed-host-crash'
+        let second = await app.start({ holdHelperCompletion: committed })
 
-        if (result === 'committed') {
+        if (committed) {
           await until({ check: async () => (await second.control({ kind: 'metrics' }) as { heldCompletions: number }).heldCompletions > 0 })
           assert.equal(
             app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
@@ -590,6 +594,64 @@ for (const harness of [
           )
           second.child.kill('SIGKILL')
           await second.exited
+
+          if (result === 'committed-closed-host-crash') {
+            const observer = await host.connect()
+            const summary = observer.ready.sessions.find(session => session.nativeId === helper.id)!
+            const attached = await observer.call({
+              id: randomUUID(),
+              operation: {
+                kind: 'attach',
+                scope: {
+                  kind: 'session',
+                  ref: summary.ref,
+                },
+                expectedRevision: summary.controllerRevision,
+              },
+            })
+            assert.ok(attached.kind === 'attached')
+            const pending = await snapshot({
+              client: observer,
+              ref: summary.ref,
+            })
+            await observer.acknowledge({
+              ref: summary.ref,
+              controller: attached.control.generation,
+              through: pending.pendingFacts.at(-1)!.seq,
+            })
+            const closed = await observer.call({
+              id: randomUUID(),
+              operation: {
+                kind: 'close',
+                ref: summary.ref,
+                controller: attached.control.generation,
+                expectedIdle: true,
+              },
+            })
+            assert.equal(
+              closed.kind,
+              'ok',
+            )
+            const terminal = await snapshot({
+              client: observer,
+              ref: summary.ref,
+            })
+            assert.equal(
+              terminal.pendingFacts.some(fact => fact.event.type === 'turn-ended'),
+              false,
+            )
+            observer.detach()
+          }
+
+          if (lostAfterCommit) {
+            host.child.kill('SIGKILL')
+            await host.exited
+            host = await fixtureHost({
+              t,
+              directory: app.root,
+            })
+          }
+
           second = await app.start()
         }
 
@@ -634,7 +696,7 @@ for (const harness of [
               : app.state().helper!.outcomes.some(outcome => outcome.summary === 'Nudged once.'),
           })
 
-          if (result !== 'host-crash') {
+          if (!hostLost && !lostAfterCommit) {
             await until({
               check: async () => {
                 const native = (await host.stats()).find(state => state.id === helper.id)
@@ -658,7 +720,7 @@ for (const harness of [
           throw error
         }
 
-        if (hostLost) {
+        if (hostLost || lostAfterCommit) {
           for (const state of await host.stats()) {
             assert.ok(state.input.every(input => !original.get(state.id)?.includes(input.id)))
           }
