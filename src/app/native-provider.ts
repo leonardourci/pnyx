@@ -146,6 +146,48 @@ export async function nativeProviders({
 
       return same && (session.phase === 'live' || session.phase === 'recovery_required' && session.recovery !== undefined)
     }),
+    recovering({
+      cwd,
+      env,
+    }) {
+      if (!client.available()) {
+        return undefined
+      }
+
+      const candidates = inventory.filter(session => session.provider === provider
+        && session.phase === 'recovery_required' && session.recovery !== undefined)
+
+      if (candidates.length === 0) {
+        return undefined
+      }
+
+      const { binding } = readBinding({
+        provider,
+        cwd,
+        env,
+        journal,
+      })
+      const previous = binding?.session
+
+      if (!previous || previous.provider !== provider) {
+        return undefined
+      }
+
+      const summary = candidates.find(session => session.ref.id === previous.ref.id
+        && session.ref.epoch === previous.ref.epoch)
+
+      if (!summary?.nativeId || summary.nativeId !== previous.nativeId) {
+        return undefined
+      }
+
+      return {
+        provider,
+        sessionId: summary.nativeId,
+        cwd,
+        host: 'pnyx',
+        transcriptPath: summary.path,
+      }
+    },
     async models({
       cwd,
       env,
@@ -177,21 +219,14 @@ export async function nativeProviders({
       reattachOnly,
       reattach,
     }) {
-      const key = fingerprint({
-        value: {
-          provider,
-          cwd,
-          actor: env.PNYX_ACTOR ?? '',
-        },
-      })
-      const path = join(
+      const stored = readBinding({
+        provider,
+        cwd,
+        env,
         journal,
-        `${key}.json`,
-      )
-      let binding: Binding | undefined = existsSync(path) ? JSON.parse(readFileSync(
-        path,
-        'utf8',
-      )) : undefined
+      })
+      const path = stored.path
+      let binding = stored.binding
       let writer = writers.get(path)
 
       if (!writer) {
@@ -532,5 +567,41 @@ async function settleClosedEnds({
   } finally {
     clearTimeout(timeout)
     unsubscribe()
+  }
+}
+
+function readBinding({
+  provider,
+  cwd,
+  env,
+  journal,
+}: {
+  provider: ProviderId
+  cwd: string
+  env: NodeJS.ProcessEnv
+  journal: string
+}): {
+  path: string
+  binding: Binding | undefined
+} {
+  const key = fingerprint({
+    value: {
+      provider,
+      cwd,
+      actor: env.PNYX_ACTOR ?? '',
+    },
+  })
+  const path = join(
+    journal,
+    `${key}.json`,
+  )
+  const binding: Binding | undefined = existsSync(path) ? JSON.parse(readFileSync(
+    path,
+    'utf8',
+  )) : undefined
+
+  return {
+    path,
+    binding,
   }
 }
