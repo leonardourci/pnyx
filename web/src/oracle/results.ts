@@ -5,7 +5,7 @@ import type { Hit } from '#oracle/index.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { searchSettings, type SettingsMatch } from '#web-settings/catalog.ts'
+import { searchSettings, SETTINGS_CATALOG, type SettingsMatch } from '#web-settings/catalog.ts'
 import { nameMatches, passes, wholeList, type Candidate, type Filter, type FilterToken } from './filters.ts'
 import { matchesCommand, oraclePanels, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
 
@@ -125,24 +125,64 @@ const asksFor = ({
   kind: string
 }) => badges.some(badge => badge.type === 'kind' && badge.values.includes(kind))
 
-// The actions a bare > token names, listed beside the filter menu; long forms and text before the token name none.
+const settingResult = ({ match }: { match: SettingsMatch }): OracleResult => ({
+  id: `setting:${match.entry.id}`,
+  kind: 'setting',
+  title: match.entry.label,
+  match,
+})
+
+const panelResult = ({
+  panel,
+  hydra,
+}: {
+  panel: OraclePanel
+  hydra: Hydra
+}): OracleResult => ({
+  id: panel.id,
+  kind: 'panel',
+  title: panel.label,
+  hydra: hydra.id,
+  panel,
+})
+
+// The actions and settings a bare > token names, listed beside the filter menu; long forms and text before the token name none.
 export const menuActions = ({
   token,
   text,
   actions,
+  state,
+  hydra,
 }: {
   token: FilterToken | null
   text: string
   actions: OracleAction[]
+  state: HydraState
+  hydra: Hydra
 }): OracleResult[] => {
   if (!token || token.type || text) {
     return []
   }
 
-  return actions.filter(action => nameMatches({
-    label: action.label,
+  const named = ({ label }: { label: string }) => nameMatches({
+    label,
     needle: token.needle,
-  })).map(action => actionResult({ action }))
+  })
+
+  return [
+    ...actions.filter(named).map(action => actionResult({ action })),
+    ...SETTINGS_CATALOG.filter(named).map(entry => settingResult({
+      match: {
+        entry,
+        terms: [],
+      },
+    })),
+    ...oraclePanels({ state }).filter(named)
+      .map(panel => panelResult({
+        panel,
+        hydra,
+      })),
+  ]
 }
 
 // What the Oracle lists for a query and its badges, grouped: projects, tasks, conversations, then settings and actions.
@@ -224,22 +264,16 @@ export function oracleResults({
       project: project.path,
       summary: project,
     }))
-  const settings = listsSettings ? searchSettings({ query: text }).map((match): OracleResult => ({
-    id: `setting:${match.entry.id}`,
-    kind: 'setting',
-    title: match.entry.label,
-    match,
-  })) : []
+  const settings = listsSettings
+    ? searchSettings({ query: text }).map(match => settingResult({ match }))
+    : []
   const panels = listsSettings ? oraclePanels({ state }).filter(panel => matchesCommand({
     query: text,
     text: `${panel.label} ${panel.words}`,
   }))
-    .map((panel): OracleResult => ({
-      id: panel.id,
-      kind: 'panel',
-      title: panel.label,
-      hydra: hydra.id,
+    .map(panel => panelResult({
       panel,
+      hydra,
     })) : []
   const actionResults = listsSettings ? actions.filter(action => matchesCommand({
     query: text,

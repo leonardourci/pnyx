@@ -19,7 +19,7 @@ export type OracleAction = {
 } & ({
   run: 'task'
   column: string
-} | { run: 'column' } | {
+} | { run: 'column' } | { run: 'ask' } | {
   run: 'key'
   key: string
 })
@@ -55,6 +55,13 @@ export function oracleActions({
   scope: KeyScope
 }): OracleAction[] {
   return [
+    {
+      id: 'action:ask',
+      label: 'Ask a Hydra',
+      words: 'request message send',
+      does: 'Enter starts a request to a Hydra, as typing ask and a space does.',
+      run: 'ask',
+    },
     ...columns.map((column): OracleAction => ({
       id: `action:task:${column.id}`,
       label: `New task in ${column.title}`,

@@ -43,6 +43,13 @@ interface Asking {
   error?: string
 }
 
+const ACTION_ICONS = {
+  task: 'plus',
+  column: 'plus',
+  ask: 'comments',
+  key: 'keyboard',
+} as const
+
 const ARROWS = [
   'ArrowUp',
   'ArrowDown',
@@ -100,7 +107,7 @@ const resultIcon = ({ result }: { result: OracleResult }) => {
     case 'panel':
       return result.panel.panel === 'projects' ? 'project' : 'agent'
     case 'action':
-      return result.action.run === 'key' ? 'keyboard' : 'plus'
+      return ACTION_ICONS[result.action.run]
   }
 }
 
@@ -379,6 +386,8 @@ export function Oracle({
     token,
     text,
     actions,
+    state,
+    hydra,
   }) : []
   const groups = open && !ask ? oracleResults({
     state,
@@ -528,7 +537,7 @@ export function Oracle({
       createTask({ column: entry.column })
     } else if (entry.run === 'column') {
       createColumn()
-    } else {
+    } else if (entry.run === 'key') {
       const context = origin.current
       const registered = [...(handlers.get(entry.key) ?? [])].reverse()
 
@@ -602,6 +611,18 @@ export function Oracle({
     // A panel has nowhere else to open, so both Enters move into its controls.
     if (result.kind === 'panel') {
       focusPreview()
+
+      return
+    }
+
+    // Ask is a mode of the bar, so the palette stays open for the request.
+    if (result.kind === 'action' && result.action.run === 'ask') {
+      setAsk({
+        picking: false,
+        sending: false,
+      })
+      setQuery('')
+      input.current?.focus()
 
       return
     }
@@ -1206,7 +1227,7 @@ export function Oracle({
     </Group>
   )
   const actionGroup = typedActions.length > 0 && (
-    <Group key="actions" label="Actions">
+    <Group key="actions" label="Actions and settings">
       {typedActions.map((
         result,
         index,

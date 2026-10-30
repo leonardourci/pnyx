@@ -28,7 +28,7 @@ export function paletteKey({
   query: string
   // The caret sits at the end of the field with nothing selected.
   atEnd?: boolean
-  // The menu's selection is an action rather than a filter.
+  // The menu's selection is an action or a setting rather than a filter.
   onAction?: boolean
 }): PaletteKey | null {
   if (composing) {

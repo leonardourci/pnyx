@@ -183,7 +183,7 @@ test(
 )
 
 test(
-  'a bare > lists every action beside the filter menu, > and letters the actions whose names start with them, and nothing else does',
+  'a bare > lists every action, setting and panel beside the filter menu, > and letters those whose names start with them, and nothing else does',
   () => {
     const typed = ({
       query,
@@ -195,11 +195,32 @@ test(
       token: filterToken({ query }),
       text,
       actions,
+      state,
+      hydra,
     }).map(result => result.id)
 
     assert.deepEqual(
       typed({ query: '>' }),
-      actions.map(action => action.id),
+      [
+        ...actions.map(action => action.id),
+        ...SETTINGS_CATALOG.map(entry => `setting:${entry.id}`),
+        'panel:projects',
+        'panel:agents',
+      ],
+    )
+    assert.deepEqual(
+      typed({ query: '>ask' }),
+      ['action:ask'],
+      'Ask is an action, so > reaches it',
+    )
+    assert.deepEqual(
+      typed({ query: '>theme' }),
+      ['setting:theme'],
+      'a setting is reachable from > by its name',
+    )
+    assert.ok(
+      typed({ query: '>proj' }).includes('panel:projects'),
+      'the Projects panel too',
     )
 
     const columnWords = typed({ query: '>col' })
