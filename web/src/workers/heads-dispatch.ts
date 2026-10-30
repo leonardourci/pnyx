@@ -28,7 +28,6 @@ export const hydraDefault = ({
 
 type Readable = Pick<ReturnType<typeof dispatchSettings>, 'refresh'>
 
-// Reads again whenever a dispatch change lands or the window comes back.
 function useRefreshed({
   resource,
   command,
@@ -77,7 +76,6 @@ function useRefreshed({
   )
 }
 
-// The editable document and its revision, for Settings' heads dispatch.
 export function useDispatchDocument({ command }: { command: Command }) {
   const resource = dispatchDocument()
   const snapshot = useSyncExternalStore(

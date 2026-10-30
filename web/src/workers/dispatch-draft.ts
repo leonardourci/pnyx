@@ -19,7 +19,6 @@ export type DraftRule = Rule & { name: string }
 // The table edits rules as a list, so a rule keeps its row while it is renamed and two rules may share a name until fixed.
 export type Draft = Omit<DispatchDocument, 'rules'> & { rules: DraftRule[] }
 
-// A rule's place in the draft, or the default list.
 export type RuleAt = number | 'default'
 
 const candidateList = ({ value }: { value: unknown }) => Array.isArray(value)
@@ -29,7 +28,7 @@ const candidateList = ({ value }: { value: unknown }) => Array.isArray(value)
     return candidate?.harness === 'claude' || candidate?.harness === 'codex'
   })
 
-// Only a document whose rules and default are candidate lists fits the table; anything else stays in the JSON view.
+// An unsupported harness stays in JSON because model pickers require a known harness.
 export function toDraft({ document }: { document: unknown }): Draft | undefined {
   const fields = asRecord({ value: document })
   const rules = asRecord({ value: fields?.rules })
@@ -69,7 +68,6 @@ export function documentOf({ draft }: { draft: Draft }): DispatchDocument {
   }
 }
 
-// Every problem the checker finds, plus a name two rules share, which a document cannot hold.
 export function draftIssues({ draft }: { draft: Draft }): DispatchIssue[] {
   const names = draft.rules.map(rule => rule.name)
   const shared = [
@@ -171,7 +169,6 @@ export function changeKind({ change }: { change: DispatchChange }): 'added' | 'r
   return change.after === undefined ? 'removed' : 'changed'
 }
 
-// The issues at a path, or also those under it.
 export function issuesAt({
   issues,
   segments,
@@ -192,7 +189,6 @@ export const ruleSegments = ({ name }: { name: string }) => name === 'default' ?
   'candidates',
 ]
 
-// Each picker cell of a candidate: changed from the saved one at its place, and red while it holds an error.
 export function candidateMarks({
   saved,
   candidate,
@@ -328,7 +324,6 @@ export function withoutRule({
   }
 }
 
-// The JSON view's text as a document, or why it is not one.
 export function parseDocument({ text }: { text: string }): {
   document?: unknown
   problem?: string

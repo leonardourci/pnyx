@@ -7,7 +7,6 @@ import { DISPATCH_CHANGED, useHeadsDispatch } from './heads-dispatch.ts'
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? 'none' : JSON.stringify(value)
 
-// Pending owner questions with their dispatch status, and the Confirm and Dismiss both Hydra's chat and Settings use.
 export function useDispatchProposals({
   state,
   command,

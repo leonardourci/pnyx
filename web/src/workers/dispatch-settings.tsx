@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
-import type { Candidate, Harness } from '#workers/dispatch-config.ts'
+import type { Candidate } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -73,7 +73,6 @@ const showingAfter = ({ command }: { command: Command }): Command => Object.assi
   { retain: command.retain },
 )
 
-// Which candidate each rule would start now, for a document without errors.
 function useStartsNow({
   command,
   document,
@@ -249,7 +248,6 @@ function HowPicked() {
   )
 }
 
-// Where in its rule a problem sits, such as "candidate 2 effort".
 function placeOf({
   issue,
   prefix,
@@ -711,7 +709,6 @@ function SaveBar({
   )
 }
 
-// A text that is not JSON has that one problem; a document has the checker's.
 function jsonIssues({
   document,
   problem,

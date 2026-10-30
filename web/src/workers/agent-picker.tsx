@@ -4,7 +4,6 @@ import type { Command } from '#web-app/connection.ts'
 import { Button, Select, type Option } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 
-// A picker that is a table cell: changed from what is saved, or holding a problem.
 export interface CellMark {
   changed?: boolean
   invalid?: boolean
