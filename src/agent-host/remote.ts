@@ -350,6 +350,7 @@ export async function remoteSession({
 
   const session: HostedSession = {
     remote: true,
+    incarnation: summary.ref.epoch,
     recovered,
     accepted: ({ id }) => recovered && admitted.has(id),
     id: summary.nativeId!,

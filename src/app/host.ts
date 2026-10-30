@@ -1372,7 +1372,10 @@ export function createHost({
 
           const current = compactOwner()
 
-          if (current && activeCompaction({ card: current })) {
+          const compaction = activeCompaction({ card: current })
+          const restartingCompact = compactCommand({ text: item.text }) && compaction?.id === `manual:${item.id}`
+
+          if (current && compaction && !restartingCompact) {
             if (item.steeringIds) {
               for (const id of item.steeringIds) {
                 const message = current.steering?.find(message => message.id === id && !message.ack)
@@ -3652,26 +3655,40 @@ export function createHost({
                 state: writer.state,
                 id: hydraId,
               })
-              apply({
-                writer,
-                decision: hydraEvent({
-                  state: writer.state,
-                  meta: {
-                    ...meta,
-                    id: deliveryId,
-                  },
-                  cardId: HYDRA_CARD,
-                  change: {
-                    type: 'board.configured',
-                    data: {
-                      ...current,
-                      hydra: {
-                        ...current.hydra,
-                        session: sessionId({ agent: ref }),
-                      },
+              const delivery = hydraEvent({
+                state: writer.state,
+                meta: {
+                  ...meta,
+                  id: deliveryId,
+                },
+                cardId: HYDRA_CARD,
+                change: {
+                  type: 'board.configured',
+                  data: {
+                    ...current,
+                    hydra: {
+                      ...current.hydra,
+                      session: sessionId({ agent: ref }),
                     },
                   },
-                }),
+                },
+              })
+
+              const epoch = prepared?.incarnation ?? running?.session?.incarnation
+
+              if (epoch && 'event' in delivery && delivery.event.type === 'board.configured') {
+                delivery.event.nativeInput = {
+                  epoch,
+                  tasks: wakeTasks.get(id),
+                  id,
+                  text,
+                  original,
+                }
+              }
+
+              apply({
+                writer,
+                decision: delivery,
               })
 
               return writer.state.cards[HYDRA_CARD] as Card & { agent: AgentRef }
@@ -4241,6 +4258,8 @@ export function createHost({
                 ref: sessionId({ agent }),
                 task: card.id,
                 working: true,
+                brief: prepared.incarnation ? prompt : undefined,
+                nativeEpoch: prepared.incarnation,
                 meta: {
                   ...meta,
                   id: `${id}:attach`,
@@ -4852,6 +4871,7 @@ export function createHost({
     recover: async () => {
       if (native) {
         const state = loadHydra({ hydraId }).state
+        const events = readEvents({ hydraId })
 
         for (const card of Object.values(state.cards)) {
           if (card.agent?.host !== 'pnyx') {
@@ -4878,11 +4898,55 @@ export function createHost({
             env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
             signal: controller.signal,
           })
-          open({
+          const entry = open({
             card: card as Card & { agent: AgentRef },
             session,
           })
           await session.replayed?.()
+
+          for (const event of events) {
+            let input: {
+              id: string
+              text: string
+              original?: string
+            } | undefined
+
+            if (event.type === 'board.configured' && event.nativeInput
+              && event.nativeInput.epoch === session.incarnation) {
+              input = event.nativeInput
+              const unfinished = !session.accepted?.({ id: input.id })
+                || session.snapshot().work.unsettledInputs.includes(input.id)
+
+              if (unfinished) {
+                for (const task of event.nativeInput.tasks ?? []) {
+                  mainTasks.add(task)
+                }
+
+                const wakeThrough = WAKE_ID.exec(input.id)?.[1]
+
+                if (wakeThrough) {
+                  readThrough = Math.max(
+                    readThrough,
+                    Number(wakeThrough),
+                  )
+                }
+              }
+            } else if (event.type === 'task.session' && event.data.session === key
+              && event.data.nativeEpoch === session.incarnation
+              && event.id.endsWith(':attach') && event.data.brief) {
+              input = {
+                id: `${event.id.slice(
+                  0,
+                  -':attach'.length,
+                )}:launch-input`,
+                text: event.data.brief,
+              }
+            }
+
+            if (input && !session.accepted?.({ id: input.id })) {
+              entry.input.push(input)
+            }
+          }
         }
       }
 
