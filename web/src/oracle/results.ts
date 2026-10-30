@@ -6,7 +6,7 @@ import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
 import { searchSettings, SETTINGS_CATALOG, type SettingsMatch } from '#web-settings/catalog.ts'
-import { nameMatches, passes, wholeList, type Candidate, type Filter, type FilterToken } from './filters.ts'
+import { nameMatches, passes, type Candidate, type Filter, type FilterToken } from './filters.ts'
 import { matchesCommand, oraclePanels, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
 
 interface Shown extends Candidate {
@@ -37,7 +37,7 @@ export type OracleResult = Shown & ({
   action: OracleAction
 })
 
-export interface ResultGroup {
+interface ResultGroup {
   label: string
   results: OracleResult[]
 }
@@ -116,14 +116,6 @@ const recentCards = ({ state }: { state: HydraState }) => Object.values(state.ca
     a,
     b,
   ) => b.updatedAt.localeCompare(a.updatedAt))
-
-const asksFor = ({
-  badges,
-  kind,
-}: {
-  badges: Filter[]
-  kind: string
-}) => badges.some(badge => badge.type === 'kind' && badge.values.includes(kind))
 
 const settingResult = ({ match }: { match: SettingsMatch }): OracleResult => ({
   id: `setting:${match.entry.id}`,
@@ -205,17 +197,8 @@ export function oracleResults({
   badges: Filter[]
   now: number
 }): ResultGroup[] {
-  const whole = wholeList({
-    text,
-    badges,
-  })
   const words = text.toLowerCase().split(/\s+/)
     .filter(Boolean)
-  // Without text, settings and actions fill the list only for the whole list or a Settings badge.
-  const listsSettings = !!text || whole || asksFor({
-    badges,
-    kind: 'setting',
-  })
   const visible = hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card]!.hidden))
   const tasks = text
     ? visible.filter(hit => hit.kind !== 'hydra').map(hit => taskResult({
@@ -241,19 +224,10 @@ export function oracleResults({
       card,
       hydra,
     }))
-  let conversations = chat
-
-  if (whole) {
-    conversations = [
-      ownChat,
-      ...taskChats,
-    ]
-  } else if (!text && asksFor({
-    badges,
-    kind: 'conversation',
-  })) {
-    conversations = [ownChat]
-  }
+  const conversations = text ? chat : [
+    ownChat,
+    ...taskChats,
+  ]
 
   const projectResults = projects.filter(project => words.every(word => `${project.name} ${project.path}`.toLowerCase().includes(word)))
     .map((project): OracleResult => ({
@@ -264,22 +238,20 @@ export function oracleResults({
       project: project.path,
       summary: project,
     }))
-  const settings = listsSettings
-    ? searchSettings({ query: text }).map(match => settingResult({ match }))
-    : []
-  const panels = listsSettings ? oraclePanels({ state }).filter(panel => matchesCommand({
+  const settings = searchSettings({ query: text }).map(match => settingResult({ match }))
+  const panels = oraclePanels({ state }).filter(panel => matchesCommand({
     query: text,
     text: `${panel.label} ${panel.words}`,
   }))
     .map(panel => panelResult({
       panel,
       hydra,
-    })) : []
-  const actionResults = listsSettings ? actions.filter(action => matchesCommand({
+    }))
+  const actionResults = actions.filter(action => matchesCommand({
     query: text,
     text: `${action.label} ${action.words}`,
   }))
-    .map(action => actionResult({ action })) : []
+    .map(action => actionResult({ action }))
   const kept = ({ results }: { results: OracleResult[] }) => results.filter(item => passes({
     item,
     badges,

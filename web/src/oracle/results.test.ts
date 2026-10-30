@@ -362,6 +362,67 @@ test(
 )
 
 test(
+  'without text, a badge narrows the whole list and keeps the task conversations it applies to',
+  () => {
+    const empty = ({ badge }: { badge: string }) => listed({
+      text: '',
+      badges: [
+        hydraBadge,
+        option({ id: badge }),
+      ],
+      found: [],
+    })
+
+    assert.deepEqual(
+      empty({ badge: 'kind:conversations' }),
+      [
+        [
+          'Conversations',
+          [
+            'conversation:hydra',
+            'conversation:fresh',
+          ],
+        ],
+      ],
+    )
+    assert.deepEqual(
+      empty({ badge: 'when:today' }),
+      [
+        [
+          'Tasks',
+          ['task:fresh'],
+        ],
+        [
+          'Conversations',
+          ['conversation:fresh'],
+        ],
+      ],
+      'the Hydra chat has no activity time in this state, so Today leaves it out',
+    )
+    assert.deepEqual(
+      empty({ badge: 'project:/work/pnyx' }),
+      [
+        [
+          'Projects',
+          ['project:/work/pnyx'],
+        ],
+        [
+          'Tasks',
+          [
+            'task:fresh',
+            'task:old',
+          ],
+        ],
+        [
+          'Conversations',
+          ['conversation:fresh'],
+        ],
+      ],
+    )
+  },
+)
+
+test(
   'the Projects and Agents panels are found by their old words, among settings and actions',
   () => {
     assert.deepEqual(

@@ -6,7 +6,7 @@ import { columnLook } from '#web-tasks/view.ts'
 export type ResultKind = 'project' | 'task' | 'conversation' | 'setting' | 'panel' | 'action'
 export type FilterType = 'kind' | 'hydra' | 'column' | 'project' | 'when'
 
-export const RESULT_KINDS: ResultKind[] = [
+const RESULT_KINDS: ResultKind[] = [
   'project',
   'task',
   'conversation',
@@ -14,7 +14,7 @@ export const RESULT_KINDS: ResultKind[] = [
   'panel',
   'action',
 ]
-export const FILTER_TYPES: FilterType[] = [
+const FILTER_TYPES: FilterType[] = [
   'kind',
   'hydra',
   'column',
@@ -365,12 +365,3 @@ export function passes({
     })
   })
 }
-
-// No text and only Hydra badges: the Oracle lists everything it holds.
-export const wholeList = ({
-  text,
-  badges,
-}: {
-  text: string
-  badges: Filter[]
-}) => !text && badges.every(badge => badge.type === 'hydra')
