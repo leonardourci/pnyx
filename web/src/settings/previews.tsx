@@ -3,7 +3,6 @@ import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { DEFAULT_COLUMN_WIDTH } from '#preferences/view.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 
@@ -170,7 +169,7 @@ function boardWidths({
 
       return {
         id: column.id,
-        width: own ?? view.defaultColumnWidths[column.id] ?? DEFAULT_COLUMN_WIDTH,
+        width: own ?? view.defaultColumnWidths[column.id] ?? view.defaultColumnWidth,
         dragged: own !== undefined,
       }
     }),

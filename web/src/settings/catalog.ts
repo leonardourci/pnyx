@@ -120,7 +120,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'defaultColumnWidths',
     section: 'layout',
     label: 'Default column width',
-    description: 'Sets every column’s default at once. Open “Per column” to give one column its own.',
+    description: 'Used by columns without a per-column override, in every Hydra. Open “Per column” to set an override.',
     related: [
       'wide',
       'narrow',

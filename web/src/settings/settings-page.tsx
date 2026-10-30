@@ -1,7 +1,7 @@
 import { useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
+import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS, viewFor } from '#preferences/view.ts'
 import type { Settings } from '#settings/model.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -214,19 +214,6 @@ function TextSize({
   )
 }
 
-// The width most columns start at, which the one slider sets for all of them.
-const commonWidth = ({ widths }: { widths: number[] }) => widths.reduce(
-  (
-    best,
-    width,
-  ) => {
-    const used = ({ at }: { at: number }) => widths.filter(other => other === at).length
-
-    return used({ at: width }) > used({ at: best }) ? width : best
-  },
-  widths[0] ?? DEFAULT_COLUMN_WIDTH,
-)
-
 function ColumnWidths({
   state,
   view,
@@ -237,11 +224,8 @@ function ColumnWidths({
   slide: Slide
 }) {
   const columns = columnsFor({ state })
-  const widthOf = ({ id }: { id: string }) => view.defaultColumnWidths[id] ?? DEFAULT_COLUMN_WIDTH
-  const every = ({ width }: { width: number }) => Object.fromEntries(columns.map(column => [
-    column.id,
-    width,
-  ]))
+  const widthOf = ({ id }: { id: string }) =>
+    view.defaultColumnWidths[id] ?? view.defaultColumnWidth
   const slider = {
     max: WIDTH_SLIDER_MAX,
     initial: DEFAULT_COLUMN_WIDTH,
@@ -252,17 +236,14 @@ function ColumnWidths({
     <div className="setting-stack">
       <NumberField
         label="Default column width"
-        value={commonWidth({ widths: columns.map(column => widthOf({ id: column.id })) })}
+        value={view.defaultColumnWidth}
         min={VIEW_SIZE_LIMITS.columnWidth.min}
         max={WIDTH_MAX}
         slider={slider}
-        onChange={({ value }) => save({ patch: { defaultColumnWidths: every({ width: value }) } })}
+        onChange={({ value }) => save({ patch: { defaultColumnWidth: value } })}
         onSlide={({ value }) => slide({
-          key: 'defaultColumnWidths',
-          value: value === undefined ? undefined : {
-            ...view.defaultColumnWidths,
-            ...every({ width: value }),
-          },
+          key: 'defaultColumnWidth',
+          value,
         })}
       />
       <details className="setting-more">
@@ -557,10 +538,14 @@ export function SettingsPage({
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0] ?? { harness: 'claude' }
   // Previews draw what a slider shows while it moves, before the value saves.
-  const shownView = {
-    ...view,
-    ...live,
-  } as ViewPreferences
+  const shownView = viewFor({
+    state,
+    settings: {
+      ...view,
+      ...settings,
+      ...live,
+    },
+  })
   const shownSettings = {
     ...settings,
     ...live,
