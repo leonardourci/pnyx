@@ -318,7 +318,7 @@ const OPEN_LABELS: Record<OracleResult['kind'], string> = {
 const hints = ({ mod }: { mod: string }): Record<OracleResult['kind'], string> => ({
   task: `↵ opens the task · ${mod}↵ opens it with Hydra’s reply composer`,
   conversation: '↵ opens the chat',
-  project: '↵ shows the project’s tasks on the board',
+  project: '↵ shows the project’s tasks in the Hydra',
   setting: `↵ flips a switch or moves to its control · ${mod}↵ opens it on the Settings page`,
   panel: '↵ moves into its controls',
   action: '↵ runs it',

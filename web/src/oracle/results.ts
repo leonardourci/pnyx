@@ -206,8 +206,8 @@ export function oracleResults({
     .filter(Boolean)
   const visible = hits.filter(hit => hit.kind === 'hydra' || (state.cards[hit.card] && !state.cards[hit.card]!.hidden))
   const found = new Set(visible.map(hit => hit.card))
-  // The board's own match finds what the index doesn't hold, such as a status badge's text or a card's key.
-  const onBoard = text ? filterCards({
+  // filterCards also matches a card's key, tags, link numbers and status badge text, which the index doesn't hold.
+  const cardMatches = text ? filterCards({
     state,
     workspace: '',
     tag: '',
@@ -225,7 +225,7 @@ export function oracleResults({
         hit,
         hydra,
       })),
-      ...onBoard,
+      ...cardMatches,
     ]
     : recentCards({ state }).map(card => taskResult({
       card,

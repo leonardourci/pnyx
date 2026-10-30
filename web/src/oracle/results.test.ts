@@ -262,7 +262,7 @@ test(
 )
 
 test(
-  'a query groups projects, server task hits then the board’s own matches, the Hydra chat as one conversation, then settings and actions',
+  'a query groups projects, server task hits then the cards’ own matches, the Hydra chat as one conversation, then settings and actions',
   () => {
     const groups = listed({ text: 'deploy' })
 
@@ -279,7 +279,7 @@ test(
         'task:old',
         'task:fresh',
       ],
-      'the server hit leads, the board’s own title match follows, and a hidden card stays out',
+      'the server hit leads, the card’s own title match follows, and a hidden card stays out',
     )
     assert.deepEqual(
       listed({
