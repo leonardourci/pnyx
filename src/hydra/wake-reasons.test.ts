@@ -581,6 +581,13 @@ test(
           id: 'fix',
           tracking: 'declared',
           stoppedAt: '2026-10-23T10:05:00.000Z',
+          attention: [
+            {
+              kind: 'question',
+              key: 'q1',
+              blocking: true,
+            },
+          ],
           sessionIds: ['s1'],
           links: [
             {
@@ -634,6 +641,54 @@ test(
         `- ${ref({ id: 'fix' })} turn ended: the worker's session ended, and no worker watches ${PR}`,
       ],
     )
+  },
+)
+
+test(
+  'a question cleared or answered before recovery does not wake Hydra again',
+  () => {
+    const question: Card['attention'][number] = {
+      kind: 'interrupted',
+      key: 'pnyx:interrupted',
+      blocking: true,
+      text: 'Send a message to continue it.',
+    }
+    const interrupted = event({
+      type: 'card.pushed',
+      actor: 'pnyx',
+      data: {
+        key: 'fix',
+        attention: [question],
+        before: { attention: [] },
+      },
+    })
+
+    for (const attention of [
+      [],
+      [
+        {
+          ...question,
+          answered: '2026-10-23T10:06:00.000Z',
+        },
+      ],
+    ]) {
+      const state = hydraState({
+        cards: [
+          card({
+            id: 'fix',
+            tracking: 'declared',
+            attention,
+          }),
+        ],
+      })
+      assert.deepEqual(
+        wakeReasons({
+          state,
+          events: [interrupted],
+        }),
+        [],
+      )
+    }
   },
 )
 
