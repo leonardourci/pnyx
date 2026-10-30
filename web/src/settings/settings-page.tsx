@@ -54,7 +54,6 @@ const UNITS: Record<string, string> = {
   doneAfterHours: 'h',
   reviewMinutes: 'min',
 }
-// The rows that draw a live preview beside their control.
 const PREVIEWED = new Set([
   'theme',
   'fontSize',
@@ -113,7 +112,6 @@ interface Saving {
   save({ patch }: { patch: Record<string, unknown> }): Promise<boolean>
 }
 
-// The settings every Hydra shares beyond its view, and the agent new Hydras start on.
 interface Hydra {
   settings: Settings
   rule: AgentConfig
@@ -298,7 +296,6 @@ function ColumnWidths({
   )
 }
 
-// What the dragged-widths row says about this Hydra's own drags.
 const draggedText = ({ state }: { state: HydraState }) => {
   const dragged: string[] = []
 
@@ -577,7 +574,6 @@ export function SettingsPage({
   const keyboardFound = found.some(match => match.entry.id === 'keyboard')
   const keys = searching && !keyboardFound ? keyActionsMatching({ query }) : []
   const keyboardEntry = SETTINGS_CATALOG.find(entry => entry.id === 'keyboard')!
-  // A search that names a shortcut shows the Keyboard section with only its matching rows.
   const matches = keys.length ? [
     ...found,
     {
