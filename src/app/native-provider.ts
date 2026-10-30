@@ -2,7 +2,7 @@ import { nativeStatus, type NativeStatus } from './native-status.ts'
 import { randomUUID } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import type { Provider, PermissionDecision, HostedSession } from '#workers/provider.ts'
+import type { Provider, HostedSession } from '#workers/provider.ts'
 import type { ProviderId, Result, Summary } from '#agent-host/protocol.ts'
 import { fail } from '#agent-host/protocol.ts'
 import { nativeConnection } from './native-connection.ts'
@@ -15,13 +15,7 @@ type Binding = {
   request: string
   instance: string
   session?: Summary
-  answers: Record<string, {
-    permission: string
-    secret: boolean
-    supersedes?: string
-    decision?: PermissionDecision
-    phase: string
-  }>
+
 }
 
 export async function nativeProviders({
@@ -55,6 +49,7 @@ export async function nativeProviders({
       'critical-outbox',
       'live-owners',
       'volatile-inputs',
+      'host-status',
     ],
     attached: async ({ client: connection }) => {
       const claim = checked({
@@ -79,10 +74,7 @@ export async function nativeProviders({
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
   const openings = new Map<string, Promise<HostedSession>>()
   let status = nativeStatus({
-    maintenance: client.ready.maintenance ?? {
-      mode: 'ready',
-      blockers: [],
-    },
+    readiness: client.ready.readiness,
     build: client.ready.build,
     instance: client.ready.instance,
   })
@@ -91,7 +83,7 @@ export async function nativeProviders({
     receive({ frame }) {
       if (frame.type === 'host-status') {
         status = nativeStatus({
-          maintenance: frame.status,
+          readiness: frame.status,
           build: client.ready.build,
           instance: client.ready.instance,
         })
@@ -187,6 +179,10 @@ export async function nativeProviders({
         if ('applied' in binding) {
           delete binding.applied
         }
+
+        if ('answers' in binding) {
+          delete binding.answers
+        }
       }
 
       const save = () => writer!.write({ text: () => JSON.stringify(binding) })
@@ -267,7 +263,6 @@ export async function nativeProviders({
         binding = {
           request: randomUUID(),
           instance: client.ready.instance,
-          answers: {},
         }
         await save()
         const result = checked({
@@ -311,19 +306,8 @@ export async function nativeProviders({
 
       binding.session = summary
       await save()
-      const active = binding
+      const deliveries = new Map<string, string>()
       const initialAttempt = ({ permission }: { permission: string }) => `${summary.ref.epoch}:answer:${permission}`
-
-      for (const [
-        id,
-        answer,
-      ] of Object.entries(active.answers)) {
-        const result = await client.result({ requestId: id })
-
-        answer.phase = deliveryPhase({ result })
-      }
-
-      await save()
       const session = await remoteSession({
         client,
         summary,
@@ -331,71 +315,40 @@ export async function nativeProviders({
         context,
         readOnly: recoveryReplay || retained && summary.phase !== 'live',
         requireOutcome: reattachOnly === true && summary.phase !== 'live',
-        async persistAnswer({
-          permission,
-          decision,
-        }) {
-          const prefix = initialAttempt({ permission })
-          const prior = Object.entries(active.answers).filter(([
-            , answer,
-          ]) => answer.permission === permission)
-            .at(-1)
-          const previous = prior?.[1]
-          const id = previous?.secret && previous.phase === 'not_received' ? `${prefix}:reentry:${randomUUID()}` : prefix
+        async answerId({ permission }) {
+          const id = initialAttempt({ permission })
+          const phase = deliveryPhase({ result: await client.result({ requestId: id }) })
 
-          if (previous && previous.phase !== 'not_received') {
+          if (phase !== 'not_received') {
             fail({
               code: 'DELIVERY_UNKNOWN',
               message: 'Reconcile the existing native answer receipt before another delivery',
             })
           }
 
-          const secret = decision.behavior === 'allow' && (!!decision.answers || !!decision.values)
-          active.answers[id] = {
-            permission,
-            secret,
-            supersedes: id === prefix ? undefined : prior?.[0],
-            decision: secret ? undefined : decision,
-            phase: 'queued',
-          }
-          await save()
-
           return id
         },
         async completedAnswer({
-
           answerId,
           phase,
         }) {
-          const answer = active.answers[answerId]
-
-          if (answer && answer.phase !== phase) {
-            answer.phase = phase
-            await save()
-          }
+          deliveries.set(
+            answerId,
+            phase,
+          )
         },
       })
 
-      // This stable ID survives a crash before the decision's journal write.
       for (const permission of session.snapshot().permissions) {
-        if (Object.values(active.answers).some(answer => answer.permission === permission.id)) {
-          continue
-        }
-
         const id = initialAttempt({ permission: permission.id })
-        const result = await client.result({ requestId: id })
-        active.answers[id] = {
-          permission: permission.id,
-          secret: true,
-          phase: deliveryPhase({ result }),
-        }
-        await save()
+        deliveries.set(
+          id,
+          deliveryPhase({ result: await client.result({ requestId: id }) }),
+        )
       }
 
-      session.permissionDelivery = ({ permission }) => {
-        return Object.values(active.answers).filter(answer => answer.permission === permission)
-          .at(-1)?.phase
-      }
+      session.permissionDelivery = ({ permission }) =>
+        deliveries.get(initialAttempt({ permission }))
 
       return session
     },

@@ -1,28 +1,24 @@
-import type { Maintenance } from '#agent-host/protocol.ts'
+import type { Readiness } from '#agent-host/protocol.ts'
 
 export type NativeStatus = {
-  state: 'ready' | 'draining' | 'unavailable' | 'recovery_required'
+  state: Readiness['state'] | 'unavailable'
   build: string
   instance: string
   reasons: string[]
 }
 
 export function nativeStatus({
-  maintenance,
+  readiness,
   build,
   instance,
 }: {
-  maintenance: Maintenance
+  readiness: Readiness
   build: string
   instance: string
 }): NativeStatus {
-  const reasons = [...new Set(maintenance.blockers.flatMap(blocker => blocker.reasons))]
-  const uncertain = reasons.some(reason => /ownership|recovery|retention/i.test(reason))
-
   return {
+    ...readiness,
     build,
     instance,
-    state: uncertain ? 'recovery_required' : maintenance.mode === 'ready' ? 'ready' : 'draining',
-    reasons,
   }
 }

@@ -5,7 +5,7 @@ import type { Fact, Mutation, Result, Snapshot, Summary, ToClient } from './prot
 import { fail } from './protocol.ts'
 import { HydraError } from '#store/errors.ts'
 import { eventClass, nativeIdle } from '#workers/native-session.ts'
-import type { AskPermission, HostedEvent, HostedSession, PermissionDecision, TurnOutcome } from '#workers/provider.ts'
+import type { AskPermission, HostedEvent, HostedSession, TurnOutcome } from '#workers/provider.ts'
 
 const MAX_PENDING = 2048
 
@@ -24,7 +24,7 @@ export async function remoteSession({
   client,
   summary,
   recovered,
-  persistAnswer,
+  answerId: prepareAnswer,
   completedAnswer,
   context,
   readOnly = false,
@@ -36,13 +36,7 @@ export async function remoteSession({
   context?(): string
   readOnly?: boolean
   requireOutcome?: boolean
-  persistAnswer({
-    permission,
-    decision,
-  }: {
-    permission: string
-    decision: PermissionDecision
-  }): Promise<string>
+  answerId({ permission }: { permission: string }): Promise<string>
   completedAnswer({
     answerId,
     phase,
@@ -292,10 +286,7 @@ export async function remoteSession({
         return
       }
 
-      const answerId = await persistAnswer({
-        permission: request.id,
-        decision,
-      })
+      const answerId = await prepareAnswer({ permission: request.id })
       const result = await call({
         id: answerId,
         operation: {
