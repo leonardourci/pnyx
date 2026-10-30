@@ -122,6 +122,12 @@ export async function endGroup({ group }: { group: NativeGroup }): Promise<boole
       duration: KILL_WAIT_MS,
     },
   ] as const) {
+    const currentStart = processStart({ pid: group.id })
+
+    if (currentStart && currentStart !== group.start) {
+      return false
+    }
+
     try {
       process.kill(
         -group.id,
