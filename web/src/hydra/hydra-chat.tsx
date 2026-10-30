@@ -38,7 +38,7 @@ import { LiveLabel } from '#web-shared/ui/live-label.tsx'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { UsageRing } from '#web-workers/usage-ring.tsx'
 import { Composer } from './composer.tsx'
-import { useSkillsCatalog } from './skills-catalog.ts'
+import { useComposerSources } from '#web-shared/ui/composer-field.tsx'
 import { HydraAgent } from './hydra-agent.tsx'
 import { MESSAGE_SCROLL } from './comment-motion.ts'
 import { clock, duration, hydraPill, joinMessageParts, keepStreamedKeys, quoteInto, type ChatComment } from './chat.ts'
@@ -256,29 +256,7 @@ export function HydraChat({
   const previousEntries = useRef<ChatEntry[]>([]), streamedKeys = useRef(new Map<string, string>())
   const config = hydraConfig({ state }), hydra = config.hydra, card = state.cards[HYDRA_CARD]
   const offerProject = !!addProject && hydra.kind !== 'firstmate' && !(state.projects ?? []).some(p => !p.detached)
-  const [
-    catalogOpen,
-    setCatalogOpen,
-  ] = useState(false)
-  const onCatalogOpen = useCallback(
-    ({ open }: { open: boolean }) => setCatalogOpen(open),
-    [],
-  )
-  const receiving = config.hydra.agent?.harness ?? card?.agent?.provider ?? 'claude'
-  const catalog = useSkillsCatalog({
-    identity: JSON.stringify([
-      HYDRA_CARD,
-      card?.agent?.provider,
-      card?.agent?.cwd,
-      card?.agent?.sessionId,
-      receiving === 'claude-code' ? 'claude' : receiving,
-    ]),
-    card: HYDRA_CARD,
-    provider: receiving,
-    command,
-    connected,
-    open: catalogOpen,
-  })
+  const { catalog } = useComposerSources()
   const {
     thinking,
   } = traces({
@@ -950,14 +928,6 @@ export function HydraChat({
           return true
         }}
         card={HYDRA_CARD}
-        catalog={catalog}
-        onCatalogOpen={onCatalogOpen}
-        labelColors={state.labelColors}
-        cards={Object.values(state.cards)}
-        projects={state.projects ?? []}
-        columns={config.columns}
-        taskReferences={references}
-        openTask={openTask}
         title="Hydra"
         draft={draft}
         setDraft={setDraft}
