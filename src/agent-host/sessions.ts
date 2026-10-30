@@ -97,7 +97,7 @@ export async function hostSessions({
   } : undefined
   const intact = !previous
   const predecessor = previous?.clean ? previous.instance : previous?.predecessor
-  let drain: string | undefined, stopped = false
+  let stopped = false
   let queries = 0
   replaceFile({
     path: ledgerPath,
@@ -269,10 +269,10 @@ export async function hostSessions({
   }
 
   const requireReady = () => {
-    if (drain || stopped) {
+    if (stopped) {
       fail({
-        code: 'DRAINING',
-        message: 'Native maintenance has frozen new work and configuration; answers and targeted interrupts remain available',
+        code: 'HOST_STOPPED',
+        message: 'The native host is stopping at an idle boundary',
       })
     }
   }
@@ -333,7 +333,11 @@ export async function hostSessions({
       return
     }
 
-    entry.output.publish({ event })
+    const idleClose = stopped && typeof event === 'object' && event.type === 'ended' && event.reason === 'closed'
+
+    if (!idleClose) {
+      entry.output.publish({ event })
+    }
 
     if (typeof event === 'object' && event.type === 'ended') {
       if (entry.output.summary.phase !== 'recovery_required') {
@@ -807,8 +811,7 @@ export async function hostSessions({
     }
 
     return {
-      mode: stopped ? 'stopped' : drain ? 'draining' : 'ready',
-      drain,
+      mode: stopped ? 'stopped' : 'ready',
       blockers,
     }
   }
@@ -820,6 +823,8 @@ export async function hostSessions({
         status: maintenance(),
       }
     }
+
+    stopped = true
 
     for (const entry of sessions.values()) {
       if (entry.output.summary.phase !== 'live') {
@@ -834,6 +839,10 @@ export async function hostSessions({
           entry.native!.close(); await entry.finished.promise
         },
       })
+    }
+
+    for (const entry of sessions.values()) {
+      await entry.output.compact()
     }
 
     const status = maintenance()
@@ -932,7 +941,7 @@ export async function hostSessions({
 
       if (operation.kind === 'attach') {
         scope = operation.scope
-      } else if (operation.kind === 'open' || operation.kind === 'drain' || operation.kind === 'shutdown') {
+      } else if (operation.kind === 'open' || operation.kind === 'shutdown') {
         scope = { kind: 'host' }
       } else {
         scope = {
@@ -1006,23 +1015,7 @@ export async function hostSessions({
                 }
               }
 
-              if (operation.kind === 'drain') {
-                drain ??= randomUUID()
-
-                return {
-                  kind: 'maintenance',
-                  status: maintenance(),
-                }
-              }
-
               if (operation.kind === 'shutdown') {
-                if (!drain || operation.drain !== drain || stopped) {
-                  fail({
-                    code: 'STALE_DRAIN',
-                    message: 'Use the current native drain barrier',
-                  })
-                }
-
                 return shutdown()
               }
 

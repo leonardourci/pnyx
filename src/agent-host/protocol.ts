@@ -9,7 +9,8 @@ export const CAPABILITIES = [
   'critical-outbox',
   'live-owners',
   'volatile-inputs',
-  'quiescent-maintenance',]
+  'idle-stop',
+]
 export const MAX_FRAME_BYTES = 16 * 1024 * 1024
 export const MAX_SOCKET_BYTES = 2 * MAX_FRAME_BYTES
 export type ProviderId = 'claude-code' | 'codex'
@@ -85,8 +86,7 @@ export type Mutation = {
   }
 )
 export type Maintenance = {
-  mode: 'ready' | 'draining' | 'stopped'
-  drain?: string
+  mode: 'ready' | 'stopped'
   blockers: {
     ref?: SessionRef
     reasons: string[]
@@ -95,13 +95,8 @@ export type Maintenance = {
 export type Operation = Mutation
   | { kind: 'status' }
   | {
-    kind: 'drain'
-    controller: string
-  }
-  | {
     kind: 'shutdown'
     controller: string
-    drain: string
     when: 'quiescent'
   }
   | {
