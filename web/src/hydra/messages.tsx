@@ -301,7 +301,9 @@ export function Messages({
 
   // The caret host is contenteditable for navigation, so native paste must be intercepted.
   const paste = ({ event }: { event: PasteEvent<HTMLDivElement> }) => {
-    if (event.target instanceof Element && event.target.closest('.comment-card')) {
+    if (event.target instanceof Element && (
+      isEditing({ target: event.target }) || event.target.closest('.comment-card')
+    )) {
       return
     }
 
