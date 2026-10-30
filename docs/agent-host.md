@@ -29,3 +29,7 @@ A restarted host exposes retained facts under their old incarnation without reop
 `stageBundle` copies a prepared production payload, dereferences dependencies and hashes its files into a versioned bundle. Payload preparation must include the entry, its package imports and all provider dependencies. Validation rejects changed bytes, missing entries and symlinks. The native entry verifies that it is running from the supplied bundle. Rebuilding the source payload leaves the copied runtime available. Production service installation, bundle selection and safe replacement are separate integration steps.
 
 The host imports provider adapters and storage primitives, with no application reducer, task, Hydra or helper policy. See [Provider sessions](provider-sessions.md) for the shared native types and [Testing](testing.md) for the subprocess tests.
+
+## Application reconnect
+
+The application retains small native binding and permission metadata, without a second copy of input text or image manifests. It reconstructs unsent intent from its event log using stable IDs. Before preparing context or reading attachments, it checks the surviving host's admitted IDs; an already admitted input keeps its original live payload. A pending helper batch is submitted only if that host never admitted its batch ID. A different host incarnation cannot establish whether an ambiguous input was consumed and does not authorize replay.
