@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { randomUUID } from 'node:crypto'
 import fs, { existsSync, mkdirSync, readFileSync, symlinkSync, unlinkSync, writeFileSync } from 'node:fs'
 import fsPromises from 'node:fs/promises'
 import { syncBuiltinESMExports } from 'node:module'
@@ -1668,34 +1669,41 @@ test(
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
-    const answer = await page.command({
-      name: 'task',
-      args: [
-        'answer',
-        s.task({ key: 'held' }).id,
+
+    try {
+      const answer = await page.command({
+        name: 'task',
+        args: [
+          'answer',
+          s.task({ key: 'held' }).id,
+          ask.id,
+          '--choice',
+          'Merge',
+          '--event-id',
+          randomUUID(),
+        ],
+      })
+      assert.equal(
+        answer.answered,
         ask.id,
-        '--choice',
-        'Merge',
-      ],
-    })
-    assert.equal(
-      answer.answered,
-      ask.id,
-    )
-    await hydra.run({
-      args: [
-        'task',
-        'merge',
-        'held',
-      ],
-    })
-    assert.equal(
-      s.task({ key: 'held' }).links[0]?.state,
-      'merged',
-    )
-    assert.equal(
-      s.merges({ number: 283 }),
-      1,
-    )
+      )
+      await hydra.run({
+        args: [
+          'task',
+          'merge',
+          'held',
+        ],
+      })
+      assert.equal(
+        s.task({ key: 'held' }).links[0]?.state,
+        'merged',
+      )
+      assert.equal(
+        s.merges({ number: 283 }),
+        1,
+      )
+    } finally {
+      page.close()
+    }
   },
 )
