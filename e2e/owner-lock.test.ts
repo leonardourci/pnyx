@@ -51,6 +51,10 @@ for (const action of [
           '--event-id',
           'busy-owner-attempt',
         ]
+      await page.shows({
+        what: 'the created task on the page',
+        check: ({ state }) => state.cards[card.id],
+      })
       const heldSince = Date.now()
       writeFileSync(
         lock,
@@ -63,10 +67,13 @@ for (const action of [
           args,
         })
         // Observe rejection before waiting on the held lock.
+        let failure: unknown
         const outcome = (async () => {
           try {
             return { receipt: await sent }
           } catch (error) {
+            failure = error
+
             return { error }
           }
         })()
@@ -84,7 +91,13 @@ for (const action of [
         )
         await until({
           what: 'the pending lock response',
-          check: () => page.checking.length > 0,
+          check: () => {
+            if (failure) {
+              throw failure
+            }
+
+            return page.checking.length > 0
+          },
         })
         await until({
           what: 'the lock held beyond its ordinary wait limit',
