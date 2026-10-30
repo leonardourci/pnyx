@@ -201,7 +201,6 @@ export function oracleResults({
       card,
       hydra,
     }))
-  // Without text, a Conversations badge lists the Hydra's chat; the whole list also lists each task's conversation.
   let conversations = chat
 
   if (whole) {

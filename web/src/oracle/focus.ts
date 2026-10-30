@@ -44,8 +44,7 @@ export function recoverFocus<T>({
   return after.find(control => controls.includes(control)) ?? INPUT
 }
 
-// How a preview control reacts to the side arrows: a slider and a text field move their own value or caret with
-// them, and a radio group changes its option; anything else leaves ← and → to the palette.
+// These controls use ← → themselves: a slider's value, a text field's caret, a radio group's option.
 export type ControlKind = 'slider' | 'text' | 'radio' | 'other'
 
 const NOT_TEXT = [
@@ -93,8 +92,7 @@ export function controlKind({
 // The control keeps the key, as a slider keeps ← and → and an open popup keeps every arrow.
 export const PASS = 'pass'
 
-// ↑ ↓ step through the controls in Tab's order, ↑ on the first going back to the input and ↓ on the last staying put;
-// ← goes back to the input unless the control uses the side arrows itself.
+// ↓ stops on the last control rather than wrapping, so holding it never lands back in the bar.
 export function arrowFocus<T>({
   controls,
   from,
@@ -155,8 +153,7 @@ export interface Row {
   height: number
 }
 
-// The scroll that keeps up to `buffer` rows visible above and below the focused one; near either end,
-// or when the rows don't fit, the buffer shrinks, and the first row shows the list's own top.
+// Near the first row the pane scrolls to its top, so the first group's heading stays in view.
 export function bufferedScroll({
   scrollTop,
   viewport,

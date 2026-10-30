@@ -504,8 +504,7 @@ test(
   },
 )
 
-// Each preview's typical controls: where → from the field lands, then ↓ through every control, staying on the last,
-// ↑ back to the field from the first, and ← back to the field from any control that doesn't use it.
+// One case per preview type, since each mixes different kinds of control.
 const ARROW_PREVIEWS: Record<string, {
   controls: Control[]
   entry?: string

@@ -8,7 +8,6 @@ export const WAITING_KEYS = [
 ]
 
 // The bar's keys: the filter menu takes them while a filter is half-typed, and Enter and the arrows wait for a pending answer.
-// → enters the preview only from the end of the text, so it still moves the caret inside it.
 export function paletteKey({
   key,
   shift = false,
@@ -38,6 +37,7 @@ export function paletteKey({
 
   const intoPreview = key === 'ArrowRight' && atEnd
 
+  // Inside the text, → still moves the caret.
   if (key === 'ArrowRight' && !atEnd) {
     return null
   }
@@ -79,7 +79,7 @@ export function paletteKey({
   return mod ? 'open-elsewhere' : 'open'
 }
 
-// Space and Tab make the selected filter a badge; on an action, Enter runs it, Space does nothing and Tab is the focus cycle's.
+// An action has no badge to make, so Tab on it stays the focus cycle's.
 function menuKey({
   key,
   shift,

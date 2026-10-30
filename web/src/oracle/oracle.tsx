@@ -56,7 +56,6 @@ interface Pressed {
   atEnd: boolean
 }
 
-// Scrolls a pane so the focused row or control keeps two neighbours in view on each side.
 const keepInView = ({
   container,
   items,
@@ -429,7 +428,7 @@ export function Oracle({
   const askIndex = ask?.picking ? targetIds.findIndex(id => id === pickedId) : 0
   const activeIndex = ask ? askIndex : resultIndex
   const activeDescendant = activeIndex >= 0 ? optionId({ index: activeIndex }) : undefined
-  // The result Enter and the preview act on: an action picked in the filter menu, or the selected result.
+  // While a filter is half-typed, the menu's selection stands in for the results list's.
   const shownResult = token ? menuAction : current
   const settings: SettingProps = {
     view,
