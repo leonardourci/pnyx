@@ -12,7 +12,6 @@ const MODIFIERS = [
   'Alt',
 ]
 
-// Every action's keys as removable chips, grouped by where they work, with + to capture another key.
 export function KeyRows({
   prefs,
   save,
