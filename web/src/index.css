@@ -409,9 +409,33 @@ h3 { font-weight: 600; }
 
 .composer:focus-within { border-color: var(--color-gold-line); box-shadow: 0 0 0 3px var(--color-gold-wash); }
 
+.composer > .composer-field { display: contents; }
+
+.composer-compact { position: relative; min-width: 0; border: 1px solid var(--color-control); border-radius: 6px; background: var(--color-surface); }
+
+.composer-compact:focus-within { border-color: var(--color-gold-line); }
+
+.composer-compact > .composer-input { min-height: 0; }
+
+/* The textarea and its chip mirror share every metric, so chips sit exactly over the text they stand for. */
+.composer-compact :is(.textarea, .draft-mirror) { margin: 0; padding: 5px 8px; border: 0; font: inherit; font-size: var(--text-chat); line-height: var(--chat-line); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+
+/* A compact field grows with its text up to its limit, then scrolls. */
+.composer-compact .textarea { height: auto; min-height: 0; max-height: min(40vh, 12lh); resize: none; overflow-y: auto; background: transparent; outline: none; }
+
+.ask .composer-compact .textarea { min-height: calc(2lh + 10px); }
+
+.task-create .composer-compact .textarea { min-height: calc(3lh + 10px); }
+
+.task-editor .composer-compact .textarea { min-height: calc(5lh + 10px); max-height: min(50vh, 24lh); }
+
+.composer-field.comment-note { flex: 1; }
+
+.composer-field.comment-note .textarea { user-select: text; }
+
 .composer-input { flex: 0 1 auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); position: relative; display: flex; flex-direction: column; overflow: hidden; }
 
-.composer .textarea, .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
+.composer .textarea, .composer .draft-mirror { margin: 0; padding: 4px 8px; border: 0; font: var(--text-chat)/var(--chat-line) var(--font-chat); letter-spacing: normal; white-space: pre-wrap; overflow-wrap: break-word; scrollbar-gutter: stable; }
 
 .composer .textarea { height: auto; min-height: calc(var(--text-chat) * var(--chat-line) + 8px); max-height: min(50vh, 480px); overflow-y: auto; background: transparent; outline: none; }
 
@@ -764,9 +788,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .comment-row { display: flex; align-items: flex-start; gap: 6px; }
 
-/* One line tall for a one-line note, growing as it wraps; elsewhere than Chromium it keeps one row and scrolls. */
-.comment-note.input { flex: 1; height: auto; min-height: 1lh; max-height: 12lh; padding: 2px 0; border: 0; outline: none; background: transparent; color: var(--color-ink); line-height: 1.45; field-sizing: content; user-select: text; }
-
 .icon-button { width: 24px; height: 24px; min-height: 24px; padding: 0; flex: none; color: var(--color-muted); }
 
 .composer-comments { align-self: flex-start; display: inline-flex; font-size: var(--text-chat); }
@@ -792,10 +813,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .comments-dialog .comment-card { margin: 4px 0; }
 
 .comments-dialog .comment-quote { display: -webkit-box; overflow: hidden; white-space: normal; -webkit-box-orient: vertical; -webkit-line-clamp: 4; }
-
-.comment-images { display: flex; flex-wrap: wrap; gap: 6px; }
-
-.comment-images .attached-image img { height: 44px; width: auto; }
 
 .running { display: flex; align-items: center; gap: 8px; padding: 12px 0 4px; font-size: var(--text-meta); color: var(--color-blue); }
 
@@ -950,8 +967,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .message-lead:is(:has(+ .markdown > :first-child:not(.message-block)), :has(+ .markdown > .message-block:first-child > :first-child:not(p))) { float: none; display: block; margin-bottom: var(--block-gap); }
 
 .task-create { display: flex; flex-direction: column; gap: 8px; flex-shrink: 0; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); }
-
-.task-create .textarea { height: 96px; }
 
 .message.mine { font-family: var(--font-sans); }
 
@@ -1557,7 +1572,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card-state > .tooltip-anchor:has(.project-label) { flex-shrink: 1; min-width: 0; max-width: 100%; overflow: hidden; }
 .card .card-brief .text-preview { max-height: 6lh; -webkit-line-clamp: 6; line-clamp: 6; }
 .task-editor { display: flex; flex-direction: column; gap: 6px; }
-.task-editor .textarea { min-height: 96px; resize: vertical; font-size: var(--text-ui); }
 .task-editor > .row { flex-wrap: wrap; }
 @media (prefers-reduced-motion: reduce) { .card-brief-chevron { transition: none; } }
 
@@ -1601,7 +1615,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .card .task-report, .card .card-question { gap: 3px; padding: 6px 8px; }
 .card .task-updates > ol > li { padding-block: 5px; }
 .ask .decision-recommended { flex-shrink: 0; margin: 0; padding: 0 4px; font-size: .85em; }
-.ask .textarea { font-size: var(--text-chat); line-height: var(--chat-line); padding: 5px 7px; }
 .ask .disclosure > summary { padding-block: 3px; }
 :is(.card, .ask) .markdown code { font-size: .95em; }
 .card .collapsible-text { min-width: 0; max-width: 100%; }

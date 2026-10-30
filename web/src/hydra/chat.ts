@@ -132,6 +132,45 @@ export interface ChatComment {
 
 const SHORT_QUOTE_WORDS = 3
 
+// Edits read the newest list and write through, so a removed comment stays removed and back-to-back edits all land.
+export function commentUpdates({
+  read,
+  write,
+}: {
+  read(): ChatComment[]
+  write({ items }: { items: ChatComment[] }): void
+}) {
+  const edit = ({
+    id,
+    update,
+  }: {
+    id: string
+    update({ text }: { text: string }): string
+  }) => write({
+    items: read().map(comment => comment.id === id ? {
+      ...comment,
+      text: update({ text: comment.text }),
+    } : comment),
+  })
+
+  return {
+    edit,
+    change: ({
+      id,
+      text,
+    }: {
+      id: string
+      text: string
+    }) => edit({
+      id,
+      update: () => text,
+    }),
+    remove: ({ id }: { id: string }) => write({
+      items: read().filter(comment => comment.id !== id),
+    }),
+  }
+}
+
 export const sendableComment = ({ comment }: { comment: ChatComment }) =>
   !!comment.text.trim() || !!comment.images?.length
 
