@@ -549,3 +549,127 @@ test(
     )
   },
 )
+
+test(
+  'with text, a task whose recorded conversation matches is listed as a conversation too, also under a Conversations badge',
+  () => {
+    const transcript: Hit = {
+      card: 'fresh',
+      title: 'Deploy previews',
+      match: 'lexical',
+      snippets: [
+        {
+          kind: 'transcript',
+          at: '2026-10-29T11:00:00Z',
+          snippet: 'the rollout script retries twice',
+        },
+      ],
+    }
+    const found: Hit[] = [
+      transcript,
+      {
+        card: 'old',
+        title: 'Deploy docs',
+        match: 'lexical',
+        snippets: [
+          {
+            kind: 'transcript',
+            at: '2026-10-20T10:00:00Z',
+            snippet: 'rollout notes',
+          },
+        ],
+      },
+    ]
+
+    assert.deepEqual(
+      listed({
+        text: 'rollout',
+        badges: [
+          hydraBadge,
+          option({ id: 'kind:conversations' }),
+        ],
+        found,
+      }),
+      [
+        [
+          'Conversations',
+          ['conversation:fresh'],
+        ],
+      ],
+      'the old task has no recorded session, so it has no conversation to open',
+    )
+    assert.deepEqual(
+      listed({
+        text: 'rollout',
+        found,
+      }),
+      [
+        [
+          'Tasks',
+          [
+            'task:fresh',
+            'task:old',
+          ],
+        ],
+        [
+          'Conversations',
+          ['conversation:fresh'],
+        ],
+      ],
+    )
+
+    const [conversations] = oracleResults({
+      state,
+      hits: [transcript],
+      projects: [],
+      actions: [],
+      cardActions: {},
+      hydra,
+      text: 'rollout',
+      badges: [
+        hydraBadge,
+        option({ id: 'kind:conversations' }),
+      ],
+      now,
+    })
+
+    assert.deepEqual(
+      conversations?.results[0],
+      {
+        id: 'conversation:fresh',
+        kind: 'conversation',
+        title: 'Deploy previews',
+        hydra: 'default',
+        project: '/work/pnyx',
+        at: '2026-10-29T11:00:00Z',
+        card: state.cards.fresh,
+        hit: transcript,
+      },
+      'its preview shows the matching passage',
+    )
+    assert.deepEqual(
+      listed({
+        text: 'rollout',
+        found: [
+          {
+            ...transcript,
+            snippets: [
+              {
+                kind: 'note',
+                at: '2026-10-29T11:00:00Z',
+                snippet: 'rollout is next',
+              },
+            ],
+          },
+        ],
+      }),
+      [
+        [
+          'Tasks',
+          ['task:fresh'],
+        ],
+      ],
+      'a match only in a note is no match in the conversation',
+    )
+  },
+)

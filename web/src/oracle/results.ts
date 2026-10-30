@@ -91,9 +91,11 @@ const conversationResult = ({
 
 const taskConversation = ({
   card,
+  hit,
   hydra,
 }: {
   card: Card
+  hit?: Hit
   hydra: Hydra
 }): OracleResult => ({
   id: `conversation:${card.id}`,
@@ -103,7 +105,10 @@ const taskConversation = ({
   project: card.project,
   at: card.updatedAt,
   card,
+  hit,
 })
+
+const hasConversation = ({ card }: { card: Card }) => cardSessionId({ card }) !== undefined
 
 const actionResult = ({ action }: { action: OracleAction }): OracleResult => ({
   id: action.id,
@@ -236,16 +241,27 @@ export function oracleResults({
     at: newestSnippet({ hit }),
     hydra,
   }))
+  // A hit in a task's transcript is a match in its conversation too.
+  const taskChatHits = visible.filter(hit => hit.kind !== 'hydra' && hasConversation({ card: state.cards[hit.card]! })
+    && hit.snippets.some(snippet => snippet.kind === 'transcript'))
+    .map(hit => taskConversation({
+      card: state.cards[hit.card]!,
+      hit,
+      hydra,
+    }))
   const ownChat = conversationResult({
     at: state.cards[HYDRA_CARD]?.updatedAt,
     hydra,
   })
-  const taskChats = recentCards({ state }).filter(card => cardSessionId({ card }) !== undefined)
+  const taskChats = recentCards({ state }).filter(card => hasConversation({ card }))
     .map(card => taskConversation({
       card,
       hydra,
     }))
-  const conversations = text ? chat : [
+  const conversations = text ? [
+    ...chat,
+    ...taskChatHits,
+  ] : [
     ownChat,
     ...taskChats,
   ]

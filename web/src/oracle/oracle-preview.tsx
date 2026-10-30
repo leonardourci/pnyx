@@ -365,11 +365,12 @@ export function ResultPreview({
           now={now}
         />
       )}
-      {card && (
+      {result.kind === 'conversation' && result.card && (
         <TaskPreview
-          card={card}
+          card={result.card}
+          hit={result.hit}
           state={state}
-          action={cardActions[card.id]}
+          action={cardActions[result.card.id]}
           connected={connected}
           terms={terms}
           doneAfterHours={doneAfterHours}
