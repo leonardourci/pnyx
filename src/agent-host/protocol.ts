@@ -86,6 +86,10 @@ export type Mutation = {
     expectedIdle: boolean
   }
 )
+export type Readiness = {
+  state: 'ready' | 'recovery_required'
+  reasons: string[]
+}
 export type Maintenance = {
   mode: 'ready' | 'stopped'
   blockers: {
@@ -223,7 +227,7 @@ export type ToHost = {
   }
 export type ToClient = {
   type: 'host-status'
-  status: Maintenance
+  status: Readiness
 }
   | {
     type: 'ready'
@@ -233,6 +237,7 @@ export type ToClient = {
     capabilities: string[]
     hostControllerRevision: number
     maintenance: Maintenance
+    readiness: Readiness
     predecessor?: string
     sessions: Summary[]
     ledger: 'intact' | 'recovery_required'

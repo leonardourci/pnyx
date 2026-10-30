@@ -49,7 +49,7 @@ export async function serveAgentHost({
     statusQueued = true
     setImmediate(() => {
       statusQueued = false
-      const status = sessions.maintenance()
+      const status = sessions.readiness()
       const key = JSON.stringify(status)
 
       if (key === statusKey) {

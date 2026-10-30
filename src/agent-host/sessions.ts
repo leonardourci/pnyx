@@ -766,6 +766,29 @@ export async function hostSessions({
     return { kind: 'ok' }
   }
 
+  const readiness = () => {
+    const reasons: string[] = []
+
+    if (uncertainOpening || recoveredSessions) {
+      reasons.push('Previous native ownership needs reconciliation')
+    }
+
+    for (const entry of sessions.values()) {
+      if (entry.output.summary.phase === 'recovery_required' || entry.uncertain.size) {
+        reasons.push('A native session has uncertain ownership')
+      }
+
+      if (entry.output.retention() !== 'healthy') {
+        reasons.push('Retained outcomes need reconciliation')
+      }
+    }
+
+    return {
+      state: reasons.length ? 'recovery_required' as const : 'ready' as const,
+      reasons: [...new Set(reasons)],
+    }
+  }
+
   const maintenance = (): Maintenance => {
     const blockers: Maintenance['blockers'] = []
 
@@ -879,6 +902,7 @@ export async function hostSessions({
 
   return {
     maintenance,
+    readiness,
     ready(): Extract<ToClient, { type: 'ready' }> {
       return {
         type: 'ready',
@@ -888,6 +912,7 @@ export async function hostSessions({
         capabilities: CAPABILITIES,
         hostControllerRevision: hostControl.revision,
         maintenance: maintenance(),
+        readiness: readiness(),
         predecessor,
         sessions: [...sessions.values()].map(entry => structuredClone(entry.output.summary)),
         ledger: intact ? 'intact' : 'recovery_required',
