@@ -76,8 +76,8 @@ The flows:
 - `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
 - `compaction.test.ts` covers compaction. Through the real CLI and server it sends Claude Code's repeated status during one long `/compact` and a compaction followed straight by another; an isolated child with a controlled clock checks that a silent or unanswered compaction fails at its deadline, even while another writer holds the lock, that late statuses keep its one operation, and that held input waits through a second compaction started after a pause. Each case releases the messages held during the compaction.
 - `native-process.test.ts` exercises the provider spawn hooks with real children, checking private process groups and stderr pressure through the Claude hook.
-- `agent-host-group.test.ts` checks real provider/tool group termination before saved-session resume, unknown boot identity with a recorded group, and refusal for a different process lifetime.
-- `agent-host-reboot.test.ts` checks kernel boot identity persistence, refusal for same or unknown identities, and retained-fact settlement before verified reboot release.
+- `agent-host-group.test.ts` checks cleanup of verified old provider/tool members and saved-session resume even when identity or the legacy cutoff is unknown.
+- `agent-host-reboot.test.ts` checks kernel boot identity persistence, resume with same or unknown identities, and retained-fact settlement before cold resume.
 - `agent-host.test.ts` exercises the authenticated native host in a real isolated subprocess: reconnect, request/input deduplication, controller takeover, critical replay and acknowledgements, secret receipts, pressure, singleton discovery and host-loss refusal.
 - `agent-host-bundle.test.ts` starts a host from copied runtime bytes and checks that rebuilding the source payload leaves its native owner and old bundle usable.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.
