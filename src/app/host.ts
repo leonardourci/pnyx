@@ -1814,7 +1814,8 @@ export function createHost({
                   writer,
                   texts,
                   asks,
-                  at: new Date().toISOString(),
+                  at: applying?.at ?? new Date().toISOString(),
+                  turn: entry.session?.snapshot().outcome?.turn,
                 }),
               })
               finishReading()

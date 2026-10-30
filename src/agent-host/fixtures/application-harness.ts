@@ -107,7 +107,13 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
     'utf8',
   )).state
 
-  const start = async ({ holdInputs = false }: { holdInputs?: boolean | 'wake' } = {}) => {
+  const start = async ({
+    holdInputs = false,
+    holdCompletionAcks = false,
+  }: {
+    holdInputs?: boolean | 'wake'
+    holdCompletionAcks?: boolean
+  } = {}) => {
     const child = fork(
       join(
         import.meta.dirname,
@@ -126,6 +132,7 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
         env: {
           ...env,
           PNYX_FIXTURE_HOLD_INPUTS: String(holdInputs),
+          PNYX_FIXTURE_HOLD_COMPLETION_ACKS: String(holdCompletionAcks),
         },
       },
     )

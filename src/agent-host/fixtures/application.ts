@@ -12,6 +12,26 @@ const native = await nativeProviders({
 })
 
 const call = native.client.call
+const acknowledge = native.client.acknowledge
+const completions = new Set<string>()
+
+native.client.subscribe({
+  receive: ({ frame }) => {
+    if (frame.type === 'event' && typeof frame.event === 'object' && frame.event.type === 'turn-ended') {
+      completions.add(`${frame.ref.id}:${frame.seq}`)
+    }
+  },
+})
+
+native.client.acknowledge = async ({ ...request }) => {
+  const completion = completions.has(`${request.ref.id}:${request.through}`)
+
+  if (process.env.PNYX_FIXTURE_HOLD_COMPLETION_ACKS === 'true' && completion) {
+    await new Promise<void>(() => {})
+  }
+
+  return acknowledge(request)
+}
 
 native.client.call = async ({ ...request }) => {
   const holding = process.env.PNYX_FIXTURE_HOLD_INPUTS
