@@ -234,7 +234,10 @@ export function output({
     pending: ({ persisted = false }: { persisted?: boolean } = {}) =>
       structuredClone(facts.filter(fact =>
         !persisted || !durableEvent({ event: fact.event }) || fact.seq <= persistedThrough)),
-    flush: () => lastWrite,
+    async flush() {
+      await lastWrite
+      await delivery
+    },
     through: () => sequence,
     retention: () => retention,
     canAdmit: () => retention === 'healthy' && durableBytes < limits.criticalBytes,
@@ -338,25 +341,21 @@ export function output({
         }
       }
 
-      if (eventClass({ event }) === 'critical') {
-        // A degraded outbox exposes its reserved in-memory facts so the coordinator can reconcile them.
-        const retained = durable.then(
-          () => {},
-          () => {},
-        )
-        delivery = delivery.then(async () => {
-          await retained
-          deliver()
-        }).catch(error => {
-          retention = 'degraded'
-          console.error(
-            'Native critical delivery failed; retained facts require reconciliation:',
-            error,
-          )
-        })
-      } else {
+      // A degraded outbox exposes its reserved in-memory facts for reconciliation.
+      const retained = durable.then(
+        () => {},
+        () => {},
+      )
+      delivery = delivery.then(async () => {
+        await retained
         deliver()
-      }
+      }).catch(error => {
+        retention = 'degraded'
+        console.error(
+          'Native delivery failed; retained facts require reconciliation:',
+          error,
+        )
+      })
 
       return frame
     },
