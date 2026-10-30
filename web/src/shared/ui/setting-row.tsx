@@ -27,7 +27,6 @@ function Highlight({
   ) => index % 2 ? <mark key={index}>{part}</mark> : part)
 }
 
-// One setting: its icon, name, description and control, a live preview beside them, and a reset while it differs from its default.
 export function SettingRow({
   icon,
   label,
