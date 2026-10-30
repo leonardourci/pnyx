@@ -13,7 +13,8 @@ import { steeringToFollow } from '#workers/inbox-follow-up.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './save-receipts.ts'
-import { ATTACHMENT_NAME, IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine, imageType } from '#hydra/images.ts'
+import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
+import { hydraImageFile } from '#hydra/image-files.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { fireReminders } from '#tasks/fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from '#tasks/reminders.ts'
@@ -38,7 +39,7 @@ import { paseoConversation, type PaseoConversation } from '#integrations/paseo/t
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
@@ -1503,10 +1504,10 @@ export async function mountOwnedHydra({
       })
     }
 
-    const attachment = /^\/attachments\/([^/]+)$/.exec(path)?.[1]
+    const image = /^\/((?:attachments|copies)\/.+)$/.exec(path)?.[1]
 
     // An <img> cannot send a header, so the page passes its token in the query, as for the WebSocket.
-    if (attachment !== undefined) {
+    if (image !== undefined) {
       if (!authorized({
         given: new URL(
           req.url ?? '/',
@@ -1523,36 +1524,34 @@ export async function mountOwnedHydra({
         })
       }
 
-      try {
-        if (!ATTACHMENT_NAME.test(attachment)) {
-          throw new Error('not an attachment')
-        }
+      const served = hydraImageFile({
+        dir,
+        route: image,
+      })
 
-        const body = readFileSync(join(
-          dir,
-          'attachments',
-          attachment,
-        ))
-
-        return void res.writeHead(
-          200,
-          {
-            'content-type': imageType({ path: attachment })!,
-            'x-content-type-options': 'nosniff',
-            'cache-control': 'private, max-age=31536000, immutable',
-          },
-        )
-          .end(body)
-      } catch {
+      if (!served) {
         return reply({
           res,
           status: 404,
           body: {
-            error: 'attachment not found',
+            error: 'image not found',
             code: 'NOT_FOUND',
           },
         })
       }
+
+      return void res.writeHead(
+        200,
+        {
+          'content-type': served.type,
+          'x-content-type-options': 'nosniff',
+          // A task copy's bytes come from its repository, so they never run as a page.
+          'content-security-policy': "default-src 'none'; sandbox",
+          // A stored attachment never changes; an image in a task copy can.
+          'cache-control': served.stored ? 'private, max-age=31536000, immutable' : 'private, no-cache',
+        },
+      )
+        .end(served.body)
     }
 
     if (path === '/folders') {

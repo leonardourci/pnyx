@@ -1,20 +1,25 @@
 import { useState } from 'react'
 import { createPortal } from 'react-dom'
-import { ATTACHMENT_NAME, imageLine, imageNames } from '#hydra/images.ts'
+import { ATTACHMENT_NAME, imageLine, imageType } from '#hydra/images.ts'
 import { AttachmentCard } from './attachment-card.tsx'
 import { Dialog } from '#web-shared/ui/dialog.tsx'
-import { Button } from '#web-shared/ui/controls.tsx'
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { CHIP_SOURCE } from './message-selection.ts'
 
+// A Hydra serves its stored attachments and the images inside its task copies; any other path has no source.
 function attachmentSource({ path }: { path: string }) {
-  const stored = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/attachments\/([^/]+)$/i.exec(path)
+  const served = /\/(?:hydras|boards)\/([a-z0-9][a-z0-9._-]{0,63})\/(attachments\/[^/]+|copies\/.+)$/.exec(path)
   const token = document.querySelector<HTMLMetaElement>('meta[name=pnyx-token]')?.content
+  const route = served?.[2]
+  const stored = route?.startsWith('attachments/') && ATTACHMENT_NAME.test(route.slice('attachments/'.length))
+  const copied = route?.startsWith('copies/') && imageType({ path: route })
+    && !route.split('/').some(part => part === '.' || part === '..')
 
   // Cached chat can render while navigation still has the previous Hydra's base URL.
-  return token && stored && ATTACHMENT_NAME.test(stored[2]!)
-    ? `/hydra/${encodeURIComponent(stored[1]!)}/attachments/${stored[2]}?token=${encodeURIComponent(token)}` : undefined
+  return token && route && (stored || copied)
+    ? `/hydra/${encodeURIComponent(served[1]!)}/${route.split('/').map(encodeURIComponent)
+      .join('/')}?token=${encodeURIComponent(token)}`
+    : undefined
 }
 
 export function AttachedImage({ path }: { path: string }) {
@@ -38,68 +43,6 @@ export function AttachedImage({ path }: { path: string }) {
     >
       <img src={src} alt="Attached image" onError={() => setFailed(true)} />
     </a>
-  )
-}
-
-// An image that no longer loads leaves only its chip in the sentence.
-function MessageImage({
-  path,
-  src,
-  name,
-}: {
-  path: string
-  src: string
-  name: string
-}) {
-  const [
-    failed,
-    setFailed,
-  ] = useState(false)
-  const [
-    open,
-    setOpen,
-  ] = useState(false)
-
-  if (failed) {
-    return null
-  }
-
-  return (
-    <figure className="message-image" {...{ [CHIP_SOURCE]: imageLine({ path }) }}>
-      <Button className="message-image-open" title="Show image" onClick={() => setOpen(true)}>
-        <img src={src} alt={name} onError={() => setFailed(true)} />
-      </Button>
-      <figcaption>{name}</figcaption>
-      {open && <ImageViewer path={path} label={name} close={() => setOpen(false)} />}
-    </figure>
-  )
-}
-
-// The chip keeps the image's place in the sentence; the image itself shows under the text, named like its chip.
-export function MessageImages({ text }: { text: string }) {
-  const stored = [...imageNames({ text })].flatMap(([
-    path,
-    name,
-  ]) => {
-    const src = attachmentSource({ path })
-
-    return src ? [
-      {
-        path,
-        src,
-        name,
-      },
-    ] : []
-  })
-
-  if (!stored.length) {
-    return null
-  }
-
-  return (
-    <div className="message-images" contentEditable={false}>
-      {stored.map(image => <MessageImage key={image.path} {...image} />)}
-    </div>
   )
 }
 

@@ -1,5 +1,5 @@
 import { useId, useLayoutEffect, useRef, useState, type ReactNode } from 'react'
-import { Markdown } from '#web-hydra/markdown.tsx'
+import { RichText } from './rich-text.tsx'
 import { Icon } from './icon.tsx'
 import { Button } from './controls.tsx'
 
@@ -62,7 +62,7 @@ export function CollapsibleText({
 
   return (
     <div className={`collapsible-text ${className}`}>
-      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><Markdown text={text} /></div>
+      <div id={id} ref={preview} className={expanded ? undefined : 'text-preview'}><RichText text={text} /></div>
       {(long || expanded) && (
         <Button
           contentEditable={false}
