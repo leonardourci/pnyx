@@ -1039,16 +1039,16 @@ export function createHydraConnection() {
         },
       })
     } else if ('id' in message && message.id) {
-      if (message.type !== 'error' && Array.isArray(message.hydras)) {
-        updateHydras({ rows: message.hydras as HydraSummary[] })
-      }
-
       const request = requests.get(message.id)
 
       if (!request || request.scope !== scope) {
         publish(); flush()
 
         return
+      }
+
+      if (request.name === 'hydras' && message.type !== 'error' && Array.isArray(message.hydras)) {
+        updateHydras({ rows: message.hydras as HydraSummary[] })
       }
 
       if (message.type === 'error' && request.saveId && message.saved !== false) {
