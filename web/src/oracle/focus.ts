@@ -102,17 +102,40 @@ export function controlKind({
 // The control keeps the key, as a slider keeps ← and → and an open popup keeps every arrow.
 export const PASS = 'pass'
 
+// A multi-line field's text and selection, as offsets into it.
+interface Caret {
+  value: string
+  start: number
+  end: number
+}
+
+// ↑ moves the caret until it is on the first line, and ↓ until it is on the last.
+const caretMoves = ({
+  key,
+  caret,
+}: {
+  key: string
+  caret: Caret
+}) => key === 'ArrowUp'
+  ? caret.value.slice(
+    0,
+    caret.start,
+  ).includes('\n')
+  : caret.value.slice(caret.end).includes('\n')
+
 // ↓ stops on the last control rather than wrapping, so holding it never lands back in the bar.
 export function arrowFocus<T>({
   controls,
   from,
   key,
   kind,
+  lines,
 }: {
   controls: T[]
   from: T
   key: string
   kind: ControlKind
+  lines?: Caret
 }): T | typeof INPUT | typeof PASS {
   if (kind === 'popup') {
     return PASS
@@ -120,6 +143,15 @@ export function arrowFocus<T>({
 
   if (key === 'ArrowLeft') {
     return kind === 'other' ? INPUT : PASS
+  }
+
+  const vertical = key === 'ArrowUp' || key === 'ArrowDown'
+
+  if (vertical && lines && caretMoves({
+    key,
+    caret: lines,
+  })) {
+    return PASS
   }
 
   if (key === 'ArrowUp') {

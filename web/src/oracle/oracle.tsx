@@ -1192,6 +1192,11 @@ export function Oracle({
           'false',
         ].includes(target.getAttribute('aria-haspopup')),
       }),
+      lines: target instanceof HTMLTextAreaElement ? {
+        value: target.value,
+        start: target.selectionStart,
+        end: target.selectionEnd,
+      } : undefined,
     })
 
     if (to === PASS) {

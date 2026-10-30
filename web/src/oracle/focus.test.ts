@@ -684,6 +684,79 @@ for (const [
   )
 }
 
+test(
+  'in a multi-line field ↑ and ↓ move its caret between lines, and move focus only from its first or last line',
+  () => {
+    const press = ({
+      key,
+      at,
+    }: {
+      key: string
+      at: number
+    }) => arrowFocus({
+      controls: [
+        'Start command name',
+        'Start command',
+        'Brings its own folder',
+      ],
+      from: 'Start command',
+      key,
+      kind: 'text',
+      lines: {
+        value: 'pnpm i\npnpm build\npnpm dev',
+        start: at,
+        end: at,
+      },
+    })
+
+    assert.equal(
+      press({
+        key: 'ArrowUp',
+        at: 6,
+      }),
+      'Start command name',
+      'the end of the first line',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowDown',
+        at: 6,
+      }),
+      PASS,
+    )
+    assert.equal(
+      press({
+        key: 'ArrowUp',
+        at: 10,
+      }),
+      PASS,
+      'the middle line',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowDown',
+        at: 10,
+      }),
+      PASS,
+    )
+    assert.equal(
+      press({
+        key: 'ArrowDown',
+        at: 18,
+      }),
+      'Brings its own folder',
+      'the start of the last line',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowUp',
+        at: 26,
+      }),
+      PASS,
+    )
+  },
+)
+
 const rows = ({
   count,
   height = 30,
