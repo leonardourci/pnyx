@@ -227,7 +227,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     label: 'Routine helper',
     description: 'A lighter agent that handles Hydra’s routine wakes, so the main Hydra spends its quota on your messages and decisions.',
     values: [
-      'Auto',
+      'Automatic',
       'Off',
       'Choose',
     ],

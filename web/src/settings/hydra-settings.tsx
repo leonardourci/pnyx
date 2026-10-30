@@ -101,7 +101,7 @@ export function ReviewCadence({
 const HELPER_CHOICES = [
   {
     value: 'auto',
-    label: 'Auto',
+    label: 'Automatic',
     icon: 'helper',
   },
   {
@@ -162,7 +162,7 @@ export function RoutineHelper({
           })}
         />
       )}
-      <Help text={`Auto uses Sonnet when Hydra runs on Claude and ${HELPER_MODELS.codex} when it runs on Codex. Off sends every wake to the main Hydra.`} />
+      <Help text={`Automatic uses Sonnet when Hydra runs on Claude and ${HELPER_MODELS.codex} when it runs on Codex. Off sends every wake to the main Hydra.`} />
     </div>
   )
 }
