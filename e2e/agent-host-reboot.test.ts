@@ -111,115 +111,133 @@ for (const pair of [
   )
 }
 
-test(
-  'verified reboot settles old facts before cold resume and survives another host crash',
-  async t => {
-    const first = await fixtureHost({
-      t,
-      boot: FIRST_BOOT,
-    })
-    const client = await first.connect()
-    const session = await controlledSession({
-      host: first,
-      client,
-    })
-    await first.control({
-      kind: 'event',
-      nativeId: session.nativeId,
-      event: {
-        type: 'structured',
-        value: 'retained result',
-      },
-    })
-    const original = await snapshot({
-      client,
-      ref: session.ref,
-    })
-    first.child.kill('SIGKILL')
-    await first.exited
-    const second = await fixtureHost({
-      t,
-      directory: first.root,
-      boot: NEXT_BOOT,
-    })
-    const recovering = await second.connect()
-    assert.equal(
-      recovering.ready.sessions[0]!.recovery,
-      'boot_changed',
-    )
-    second.child.kill('SIGKILL')
-    await second.exited
-    const third = await fixtureHost({
-      t,
-      directory: first.root,
-      boot: NEXT_BOOT,
-    })
-    const current = await third.connect()
-    assert.equal(
-      current.ready.sessions[0]!.phase,
-      'recovery_required',
-    )
-    const hostClaim = await current.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'attach',
-        scope: { kind: 'host' },
-        expectedRevision: 0,
-      },
-    })
-    assert.ok(hostClaim.kind === 'attached')
-    const open = () => current.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'open',
-        controller: hostClaim.control.generation,
-        options: {
-          ...session.options,
-          resume: { nativeId: session.nativeId },
+for (const phase of [
+  'live',
+  'closed',
+]) {
+  test(
+    `verified reboot settles ${phase} facts before cold resume and survives another host crash`,
+    async t => {
+      const first = await fixtureHost({
+        t,
+        boot: FIRST_BOOT,
+      })
+      const client = await first.connect()
+      const session = await controlledSession({
+        host: first,
+        client,
+      })
+      await first.control({
+        kind: 'event',
+        nativeId: session.nativeId,
+        event: {
+          type: 'structured',
+          value: 'retained result',
         },
-      },
-    })
-    const refused = await open()
-    assert.ok(refused.kind === 'error' && refused.code === 'RECOVERY_REQUIRED')
-    const claim = await current.call({
-      id: randomUUID(),
-      operation: {
-        kind: 'attach',
-        scope: {
-          kind: 'session',
-          ref: session.ref,
+      })
+
+      if (phase === 'closed') {
+        await client.call({
+          id: randomUUID(),
+          operation: {
+            kind: 'close',
+            ref: session.ref,
+            controller: session.token,
+            expectedIdle: false,
+          },
+        })
+      }
+
+      const original = await snapshot({
+        client,
+        ref: session.ref,
+      })
+      first.child.kill('SIGKILL')
+      await first.exited
+      const second = await fixtureHost({
+        t,
+        directory: first.root,
+        boot: NEXT_BOOT,
+      })
+      const recovering = await second.connect()
+      assert.equal(
+        recovering.ready.sessions[0]!.recovery,
+        'boot_changed',
+      )
+      second.child.kill('SIGKILL')
+      await second.exited
+      const third = await fixtureHost({
+        t,
+        directory: first.root,
+        boot: NEXT_BOOT,
+      })
+      const current = await third.connect()
+      assert.equal(
+        current.ready.sessions[0]!.phase,
+        'recovery_required',
+      )
+      const hostClaim = await current.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'attach',
+          scope: { kind: 'host' },
+          expectedRevision: 0,
         },
-        expectedRevision: 0,
-      },
-    })
-    assert.ok(claim.kind === 'attached')
-    const retained = await snapshot({
-      client: current,
-      ref: session.ref,
-    })
-    assert.deepEqual(
-      retained.pendingFacts,
-      original.pendingFacts,
-    )
-    const settled = await current.acknowledge({
-      ref: session.ref,
-      controller: claim.control.generation,
-      through: retained.pendingFacts.at(-1)!.seq,
-    })
-    assert.ok(settled.kind === 'ok' && settled.session?.phase === 'closed')
-    const resumed = await open()
-    assert.ok(resumed.kind === 'opened')
-    assert.equal(
-      resumed.session.nativeId,
-      session.nativeId,
-    )
-    assert.notEqual(
-      resumed.session.ref.epoch,
-      session.ref.epoch,
-    )
-    assert.deepEqual(
-      (await third.stats()).map(state => state.input),
-      [[]],
-    )
-  },
-)
+      })
+      assert.ok(hostClaim.kind === 'attached')
+      const open = () => current.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'open',
+          controller: hostClaim.control.generation,
+          options: {
+            ...session.options,
+            resume: { nativeId: session.nativeId },
+          },
+        },
+      })
+      const refused = await open()
+      assert.ok(refused.kind === 'error' && refused.code === 'RECOVERY_REQUIRED')
+      const claim = await current.call({
+        id: randomUUID(),
+        operation: {
+          kind: 'attach',
+          scope: {
+            kind: 'session',
+            ref: session.ref,
+          },
+          expectedRevision: 0,
+        },
+      })
+      assert.ok(claim.kind === 'attached')
+      const retained = await snapshot({
+        client: current,
+        ref: session.ref,
+      })
+      assert.deepEqual(
+        retained.pendingFacts,
+        original.pendingFacts,
+      )
+      const settled = await current.acknowledge({
+        ref: session.ref,
+        controller: claim.control.generation,
+        through: retained.pendingFacts.at(-1)!.seq,
+      })
+      assert.ok(settled.kind === 'ok' && settled.session?.phase === 'closed')
+      const resumed = await open()
+      assert.ok(resumed.kind === 'opened')
+      assert.equal(
+        resumed.session.nativeId,
+        session.nativeId,
+      )
+      assert.notEqual(
+        resumed.session.ref.epoch,
+        session.ref.epoch,
+      )
+      assert.deepEqual(
+        (await third.stats()).map(state => state.input),
+        [[]],
+      )
+    },
+  )
+}
