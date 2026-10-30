@@ -109,7 +109,7 @@ interface Caret {
   end: number
 }
 
-// ↑ moves the caret until it is on the first line, and ↓ until it is on the last.
+// A multi-line field keeps ↑ ↓ for its caret until the caret reaches its first or last line.
 const caretMoves = ({
   key,
   caret,

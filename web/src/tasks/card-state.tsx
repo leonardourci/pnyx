@@ -8,7 +8,7 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { relativeTime } from './brief.ts'
 import type { ObservedStatus } from './observed-status.ts'
 
-// A card's status line: what its worker is doing, since when, and its project.
+// The card and the Oracle's preview share it so their status never drifts apart.
 export function CardState({
   card,
   status,
