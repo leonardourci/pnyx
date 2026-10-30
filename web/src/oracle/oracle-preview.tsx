@@ -335,7 +335,10 @@ export function ResultPreview({
   const { platform } = useKeyboard()
   const now = Date.now()
   const elsewhere = result.kind === 'setting'
-  const hint = hints({ mod: platform === 'mac' ? '⌘' : 'Ctrl+' })[result.kind]
+  // A task's conversation opens its task, so it reads like one.
+  const card = result.kind === 'conversation' ? result.card : undefined
+  const shownKind = card ? 'task' : result.kind
+  const hint = hints({ mod: platform === 'mac' ? '⌘' : 'Ctrl+' })[shownKind]
 
   return (
     <>
@@ -349,7 +352,16 @@ export function ResultPreview({
           now={now}
         />
       )}
-      {result.kind === 'conversation' && (
+      {card && (
+        <TaskPreview
+          card={card}
+          state={state}
+          terms={terms}
+          doneAfterHours={doneAfterHours}
+          now={now}
+        />
+      )}
+      {result.kind === 'conversation' && !card && (
         <>
           <h3 className="oracle-preview-title"><Icon name="comments" size={16} />{result.title}</h3>
           <Snippets hit={result.hit} terms={terms} now={now} />
@@ -367,7 +379,7 @@ export function ResultPreview({
       )}
       {result.kind === 'action' && <ActionPreview action={result.action} />}
       <div className="oracle-preview-foot">
-        <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[result.kind]}</Button>
+        <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[shownKind]}</Button>
         <p className="muted small">{hint}. Tab moves here; Esc, ⇧Tab or typing goes back to the bar.</p>
       </div>
     </>

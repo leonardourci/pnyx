@@ -15,6 +15,7 @@ export function paletteKey({
   pending,
   token,
   query,
+  onAction = false,
 }: {
   key: string
   shift?: boolean
@@ -23,6 +24,8 @@ export function paletteKey({
   pending: boolean
   token?: string
   query: string
+  // The menu's selection is an action rather than a filter.
+  onAction?: boolean
 }): PaletteKey | null {
   if (composing) {
     return null
@@ -32,7 +35,9 @@ export function paletteKey({
     return menuKey({
       key,
       shift,
+      mod,
       token,
+      onAction,
     })
   }
 
@@ -59,14 +64,19 @@ export function paletteKey({
   return mod ? 'open-elsewhere' : 'open'
 }
 
+// Space and Tab make the selected filter a badge; on an action, Enter runs it, Space does nothing and Tab is the focus cycle's.
 function menuKey({
   key,
   shift,
+  mod,
   token,
+  onAction,
 }: {
   key: string
   shift: boolean
+  mod: boolean
   token: string
+  onAction: boolean
 }): PaletteKey | null {
   if (key === 'Escape') {
     return 'drop-filter'
@@ -78,6 +88,14 @@ function menuKey({
 
   if (key === 'ArrowUp') {
     return 'up'
+  }
+
+  if (key === 'Enter' && onAction) {
+    return mod ? 'open-elsewhere' : 'open'
+  }
+
+  if (key === 'Tab' && onAction) {
+    return null
   }
 
   // A space right after a bare > is just typed.

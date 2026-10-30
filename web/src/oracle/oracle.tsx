@@ -21,11 +21,11 @@ import { columnsFor } from '#web-tasks/view.ts'
 import { askKey, askStart, askTargets, type AskKey, type AskTarget } from './ask.ts'
 import { INPUT, moveFocus, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
-import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, FILTER_TYPES, hydraFilter, KIND_FILTERS, queryText, recentOnly, TYPE_LABELS, type Filter } from './filters.ts'
+import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
 import { oracleActions, type OracleAction } from './oracle-catalog.ts'
 import { AskPreview, FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
-import { oracleResults, type OracleResult } from './results.ts'
+import { menuActions, oracleResults, type OracleResult } from './results.ts'
 
 const FOCUSABLE = 'a[href], button, input, textarea, [tabindex]'
 const SETTINGS_KIND = KIND_FILTERS.find(filter => filter.values.includes('setting'))!
@@ -88,10 +88,10 @@ function resultMeta({
         now,
       })}`
     case 'conversation':
-      return result.at ? relativeTime({
-        at: result.at,
+      return conversationMeta({
+        result,
         now,
-      }) : ''
+      })
     case 'project':
       return result.summary.path
     case 'setting':
@@ -103,10 +103,25 @@ function resultMeta({
   }
 }
 
+const conversationMeta = ({
+  result,
+  now,
+}: {
+  result: Extract<OracleResult, { kind: 'conversation' }>
+  now: number
+}) => {
+  const when = result.at ? relativeTime({
+    at: result.at,
+    now,
+  }) : ''
+
+  return result.card ? `Task · ${when}` : when
+}
+
 const menuHint = ({ filter }: { filter: Filter }) => {
   const words = filter.label.toLowerCase().split(' ')
 
-  return `>${words.at(-1)}`
+  return `${TYPE_LABELS[filter.type]} · >${words.at(-1)}`
 }
 
 // A press outside the palette's box lands on its backdrop, which closes it.
@@ -324,6 +339,11 @@ export function Oracle({
     scope: origin.current.scope,
   }) : []
   const now = Date.now()
+  const typedActions = open ? menuActions({
+    token,
+    text,
+    actions,
+  }) : []
   const groups = open && !ask ? oracleResults({
     state,
     hits: found.hits,
@@ -345,13 +365,18 @@ export function Oracle({
     key: resultKey,
   })
   const menuKey = token?.text ?? ''
+  const menuIds = [
+    ...menu.map(filter => filter.id),
+    ...typedActions.map(result => result.id),
+  ]
   const menuSelected = selectedId({
-    ids: menu.map(filter => filter.id),
+    ids: menuIds,
     chosen: menuChosen,
     key: menuKey,
   })
   const current = results.find(result => result.id === selected)
   const menuFilter = menu.find(filter => filter.id === menuSelected)
+  const menuAction = typedActions.find(result => result.id === menuSelected)
   const optionId = ({ index }: { index: number }) => `${listId}-${index}`
   const targets = askTargets({
     hydras,
@@ -362,15 +387,13 @@ export function Oracle({
   const pickedId = targetIds.find(id => id === ask?.picked) ?? targetIds[0]
   const pickedTarget = targets.find(target => target.id === pickedId)
   const resultIndex = token
-    ? menu.findIndex(filter => filter.id === menuSelected)
+    ? menuIds.findIndex(id => id === menuSelected)
     : results.findIndex(result => result.id === selected)
   const askIndex = ask?.picking ? targetIds.findIndex(id => id === pickedId) : 0
   const activeIndex = ask ? askIndex : resultIndex
   const activeDescendant = activeIndex >= 0 ? optionId({ index: activeIndex }) : undefined
-  const recent = recentOnly({
-    text,
-    badges,
-  })
+  // The result Enter and the preview act on: an action picked in the filter menu, or the selected result.
+  const shownResult = token ? menuAction : current
   const settings: SettingProps = {
     view,
     save,
@@ -547,17 +570,25 @@ export function Oracle({
 
     close({ restore: true }); setQuery('')
 
+    const openCard = ({ id }: { id: string }) => {
+      if (elsewhere) {
+        answerTask({ id })
+      } else {
+        openTask({ id })
+      }
+    }
+
     switch (result.kind) {
       case 'task':
-        if (elsewhere) {
-          answerTask({ id: result.card.id })
-        } else {
-          openTask({ id: result.card.id })
-        }
-
+        openCard({ id: result.card.id })
         break
       case 'conversation':
-        openHydra()
+        if (result.card) {
+          openCard({ id: result.card.id })
+        } else {
+          openHydra()
+        }
+
         break
       case 'project':
         selectProject({ path: result.summary.path })
@@ -604,7 +635,7 @@ export function Oracle({
 
   const move = ({ step }: { step: number }) => {
     const id = movedId({
-      ids: token ? menu.map(filter => filter.id) : results.map(result => result.id),
+      ids: token ? menuIds : results.map(result => result.id),
       current: token ? menuSelected : selected,
       step,
     })
@@ -631,9 +662,9 @@ export function Oracle({
         break
       case 'open':
       case 'open-elsewhere':
-        if (current) {
+        if (shownResult) {
           choose({
-            result: current,
+            result: shownResult,
             elsewhere: key === 'open-elsewhere',
           })
         }
@@ -667,6 +698,7 @@ export function Oracle({
     pending: found.pending,
     token: token?.text,
     query,
+    onAction: !!menuAction,
   })
 
   useEffect(
@@ -1024,52 +1056,80 @@ export function Oracle({
   const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
-  const nothing = recent ? 'No tasks yet.' : `Nothing matches.${widen}`
+  const nothing = `Nothing matches.${widen}`
 
-  const menuList = FILTER_TYPES.map(type => ({
-    type,
-    filters: menu.filter(filter => filter.type === type),
-  })).filter(group => group.filters.length > 0)
-    .map(group => (
-      <Group key={group.type} label={TYPE_LABELS[group.type]}>
-        {group.filters.map(filter => (
-          <Option
-            key={filter.id}
-            id={optionId({ index: menu.indexOf(filter) })}
-            value={filter.id}
-            selected={filter.id === menuSelected}
-            icon={filter.icon}
-            label={filter.label}
-            terms={[]}
-            meta={menuHint({ filter })}
-            pick={() => commit({ filter })}
-          />
-        ))}
-      </Group>
-    ))
-  const resultList = groups.map(group => (
-    <Group key={group.label} label={group.label}>
-      {group.results.map(result => (
+  const resultOption = ({
+    result,
+    index,
+    picked,
+  }: {
+    result: OracleResult
+    index: number
+    picked: boolean
+  }) => (
+    <Option
+      key={result.id}
+      id={optionId({ index })}
+      value={result.id}
+      selected={picked}
+      icon={resultIcon({ result })}
+      label={result.title}
+      terms={terms}
+      meta={resultMeta({
+        result,
+        state,
+        keys,
+        now,
+      })}
+      pick={() => choose({
+        result,
+        elsewhere: false,
+      })}
+    />
+  )
+  const filterGroup = menu.length > 0 && (
+    <Group key="filters" label="Filters">
+      {menu.map((
+        filter,
+        index,
+      ) => (
         <Option
-          key={result.id}
-          id={optionId({ index: results.indexOf(result) })}
-          value={result.id}
-          selected={result.id === selected}
-          icon={resultIcon({ result })}
-          label={result.title}
-          terms={terms}
-          meta={resultMeta({
-            result,
-            state,
-            keys,
-            now,
-          })}
-          pick={() => choose({
-            result,
-            elsewhere: false,
-          })}
+          key={filter.id}
+          id={optionId({ index })}
+          value={filter.id}
+          selected={filter.id === menuSelected}
+          icon={filter.icon}
+          label={filter.label}
+          terms={[]}
+          meta={menuHint({ filter })}
+          pick={() => commit({ filter })}
         />
       ))}
+    </Group>
+  )
+  const actionGroup = typedActions.length > 0 && (
+    <Group key="actions" label="Actions">
+      {typedActions.map((
+        result,
+        index,
+      ) => resultOption({
+        result,
+        index: menu.length + index,
+        picked: result.id === menuSelected,
+      }))}
+    </Group>
+  )
+  const menuList = [
+    filterGroup,
+    actionGroup,
+  ].filter(group => group !== false)
+  const resultList = groups.map(group => (
+    <Group key={group.label} label={group.label}>
+      {group.results.map(result => resultOption({
+        result,
+        index: results.indexOf(result),
+        picked: result.id === selected,
+      }))}
     </Group>
   ))
   const emptyMenu = <p className="oracle-empty">No filter matches “{token?.text}” here. Esc drops it.</p>
@@ -1205,17 +1265,17 @@ export function Oracle({
                 error={ask.error}
               />
             )}
-            {token && <FilterPreview filter={menuFilter} badges={badges} />}
-            {!ask && !token && current && (
+            {token && !menuAction && <FilterPreview filter={menuFilter} badges={badges} />}
+            {!ask && shownResult && (
               <ResultPreview
-                result={current}
+                result={shownResult}
                 state={state}
                 terms={terms}
                 doneAfterHours={shared?.doneAfterHours}
                 connected={connected}
                 settings={settings}
                 choose={({ elsewhere }) => choose({
-                  result: current,
+                  result: shownResult,
                   elsewhere,
                 })}
               />

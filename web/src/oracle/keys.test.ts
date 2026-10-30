@@ -10,6 +10,7 @@ const press = ({
   pending = false,
   token,
   query = 'deploy',
+  onAction = false,
 }: {
   key: string
   shift?: boolean
@@ -18,6 +19,7 @@ const press = ({
   pending?: boolean
   token?: string
   query?: string
+  onAction?: boolean
 }) => paletteKey({
   key,
   shift,
@@ -26,6 +28,7 @@ const press = ({
   pending,
   token,
   query,
+  onAction,
 })
 
 test(
@@ -252,6 +255,58 @@ test(
         step: -1,
       }),
       'a',
+    )
+  },
+)
+
+test(
+  'on an action in the > menu, Enter runs it, Space does nothing and Tab is the focus cycle’s; on a filter they make the badge',
+  () => {
+    const onAction = ({
+      key,
+      mod = false,
+    }: {
+      key: string
+      mod?: boolean
+    }) => press({
+      key,
+      mod,
+      token: '>col',
+      query: '>col',
+      onAction: true,
+    })
+
+    assert.equal(
+      onAction({ key: 'Enter' }),
+      'open',
+    )
+    assert.equal(
+      onAction({
+        key: 'Enter',
+        mod: true,
+      }),
+      'open-elsewhere',
+    )
+    assert.equal(
+      onAction({ key: 'Tab' }),
+      null,
+    )
+    assert.equal(
+      onAction({ key: ' ' }),
+      'commit',
+      'a commit with no filter selected keeps the space out of the token and does nothing else',
+    )
+    assert.equal(
+      onAction({ key: 'ArrowDown' }),
+      'down',
+    )
+    assert.equal(
+      press({
+        key: 'Enter',
+        token: '>col',
+        query: '>col',
+      }),
+      'commit',
     )
   },
 )

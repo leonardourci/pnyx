@@ -4,9 +4,10 @@ import { emptyHydra } from '#app/reducer.ts'
 import type { Hit } from '#oracle/index.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
 import type { Card } from '#tasks/model.ts'
-import { filterOptions, hydraFilter } from './filters.ts'
+import { SETTINGS_CATALOG } from '#web-settings/catalog.ts'
+import { filterOptions, filterToken, hydraFilter } from './filters.ts'
 import { oracleActions } from './oracle-catalog.ts'
-import { oracleResults } from './results.ts'
+import { menuActions, oracleResults } from './results.ts'
 
 const hydra = {
   id: 'default',
@@ -67,12 +68,15 @@ state.cards = {
     title: 'Deploy docs',
     at: '2026-10-20T10:00:00Z',
   }),
-  fresh: card({
-    id: 'fresh',
-    title: 'Deploy previews',
-    column: 'in_progress',
-    at: '2026-10-29T11:00:00Z',
-  }),
+  fresh: {
+    ...card({
+      id: 'fresh',
+      title: 'Deploy previews',
+      column: 'in_progress',
+      at: '2026-10-29T11:00:00Z',
+    }),
+    sessionIds: ['claude-code:fresh-session'],
+  },
   gone: {
     ...card({
       id: 'gone',
@@ -137,7 +141,7 @@ const listed = ({
 ])
 
 test(
-  'an empty query with only the Hydra badge lists the live tasks by latest activity',
+  'an empty query with only the Hydra badge lists everything: projects, live tasks by activity, the chats in state, every setting, panel and action',
   () => {
     assert.deepEqual(
       listed({
@@ -146,13 +150,88 @@ test(
       }),
       [
         [
-          'Recent tasks',
+          'Projects',
+          ['project:/work/pnyx'],
+        ],
+        [
+          'Tasks',
           [
             'task:fresh',
             'task:old',
           ],
         ],
+        [
+          'Conversations',
+          [
+            'conversation:hydra',
+            'conversation:fresh',
+          ],
+        ],
+        [
+          'Settings and actions',
+          [
+            ...SETTINGS_CATALOG.map(entry => `setting:${entry.id}`),
+            'panel:projects',
+            'panel:agents',
+            ...actions.map(action => action.id),
+          ],
+        ],
       ],
+      'only the task with a recorded session has a conversation, and the hidden task stays out',
+    )
+  },
+)
+
+test(
+  'a bare > lists every action beside the filter menu, > and letters the actions whose names start with them, and nothing else does',
+  () => {
+    const typed = ({
+      query,
+      text = '',
+    }: {
+      query: string
+      text?: string
+    }) => menuActions({
+      token: filterToken({ query }),
+      text,
+      actions,
+    }).map(result => result.id)
+
+    assert.deepEqual(
+      typed({ query: '>' }),
+      actions.map(action => action.id),
+    )
+
+    const columnWords = typed({ query: '>col' })
+
+    assert.ok(
+      columnWords.includes('action:column'),
+      'New column',
+    )
+    assert.ok(
+      columnWords.includes('action:key:board.left'),
+      'Previous column',
+    )
+    assert.ok(
+      !columnWords.includes('action:task:queued'),
+      'New task in Queued has no word starting with col',
+    )
+    assert.deepEqual(
+      typed({ query: 'in:prog' }),
+      [],
+      'a long form names a filter type, not actions',
+    )
+    assert.deepEqual(
+      typed({
+        query: 'deploy >prog',
+        text: 'deploy',
+      }),
+      [],
+      'text before the token keeps the plain filter menu',
+    )
+    assert.deepEqual(
+      typed({ query: 'deploy' }),
+      [],
     )
   },
 )

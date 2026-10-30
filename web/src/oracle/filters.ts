@@ -226,17 +226,20 @@ export function possibleKinds({ badges }: { badges: Filter[] }): ResultKind[] {
   }))
 }
 
-const named = ({
-  filter,
+// A name matches the letters after > when it, or any of its words, starts with them.
+export const nameMatches = ({
+  label,
+  words = '',
   needle,
 }: {
-  filter: Filter
+  label: string
+  words?: string
   needle: string
 }) => {
-  const label = filter.label.toLowerCase()
-  const words = `${label} ${filter.words ?? ''}`.split(/[\s/-]+/)
+  const name = label.toLowerCase()
+  const parts = `${name} ${words.toLowerCase()}`.split(/[\s/-]+/)
 
-  return !needle || label.startsWith(needle) || words.some(word => word.startsWith(needle))
+  return !needle || name.startsWith(needle) || parts.some(part => part.startsWith(needle))
 }
 
 // The filters a half-typed token can become: not chosen yet, of its type, and still leaving some result.
@@ -257,8 +260,9 @@ export function filterMenu({
         filter,
       ],
     }).length > 0
-    && named({
-      filter,
+    && nameMatches({
+      label: filter.label,
+      words: filter.words,
       needle: token.needle,
     }))
 }
@@ -362,8 +366,8 @@ export function passes({
   })
 }
 
-// No text and only Hydra badges: the Oracle lists recent tasks.
-export const recentOnly = ({
+// No text and only Hydra badges: the Oracle lists everything it holds.
+export const wholeList = ({
   text,
   badges,
 }: {

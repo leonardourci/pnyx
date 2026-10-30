@@ -4,11 +4,10 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Hit } from '#oracle/index.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
+import { cardSessionId } from '#workers/session-attachments.ts'
 import { searchSettings, type SettingsMatch } from '#web-settings/catalog.ts'
-import { passes, recentOnly, type Candidate, type Filter } from './filters.ts'
+import { nameMatches, passes, wholeList, type Candidate, type Filter, type FilterToken } from './filters.ts'
 import { matchesCommand, oraclePanels, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
-
-export const RECENT_TASKS = 12
 
 interface Shown extends Candidate {
   id: string
@@ -22,6 +21,8 @@ export type OracleResult = Shown & ({
 } | {
   kind: 'conversation'
   hit?: Hit
+  // A task's own conversation; without one, the result is the Hydra's chat.
+  card?: Card
 } | {
   kind: 'project'
   summary: HydraProjectSummary
@@ -86,6 +87,29 @@ const conversationResult = ({
   hit,
 })
 
+const taskConversation = ({
+  card,
+  hydra,
+}: {
+  card: Card
+  hydra: Hydra
+}): OracleResult => ({
+  id: `conversation:${card.id}`,
+  kind: 'conversation',
+  title: card.title,
+  hydra: hydra.id,
+  project: card.project,
+  at: card.updatedAt,
+  card,
+})
+
+const actionResult = ({ action }: { action: OracleAction }): OracleResult => ({
+  id: action.id,
+  kind: 'action',
+  title: action.label,
+  action,
+})
+
 const recentCards = ({ state }: { state: HydraState }) => Object.values(state.cards)
   .filter(card => card.id !== HYDRA_CARD && liveTask({ card }))
   .sort((
@@ -100,6 +124,26 @@ const asksFor = ({
   badges: Filter[]
   kind: string
 }) => badges.some(badge => badge.type === 'kind' && badge.values.includes(kind))
+
+// The actions a bare > token names, listed beside the filter menu; long forms and text before the token name none.
+export const menuActions = ({
+  token,
+  text,
+  actions,
+}: {
+  token: FilterToken | null
+  text: string
+  actions: OracleAction[]
+}): OracleResult[] => {
+  if (!token || token.type || text) {
+    return []
+  }
+
+  return actions.filter(action => nameMatches({
+    label: action.label,
+    needle: token.needle,
+  })).map(action => actionResult({ action }))
+}
 
 // What the Oracle lists for a query and its badges, grouped: projects, tasks, conversations, then settings and actions.
 export function oracleResults({
@@ -121,31 +165,14 @@ export function oracleResults({
   badges: Filter[]
   now: number
 }): ResultGroup[] {
-  if (recentOnly({
+  const whole = wholeList({
     text,
     badges,
-  })) {
-    const recent = recentCards({ state }).slice(
-      0,
-      RECENT_TASKS,
-    )
-      .map(card => taskResult({
-        card,
-        hydra,
-      }))
-
-    return recent.length ? [
-      {
-        label: 'Recent tasks',
-        results: recent,
-      },
-    ] : []
-  }
-
+  })
   const words = text.toLowerCase().split(/\s+/)
     .filter(Boolean)
-  // Settings and actions fill an empty query only when a Settings badge asks for them.
-  const listsSettings = !!text || asksFor({
+  // Without text, settings and actions fill the list only for the whole list or a Settings badge.
+  const listsSettings = !!text || whole || asksFor({
     badges,
     kind: 'setting',
   })
@@ -165,17 +192,30 @@ export function oracleResults({
     at: newestSnippet({ hit }),
     hydra,
   }))
-  const conversations = !text && asksFor({
+  const ownChat = conversationResult({
+    at: state.cards[HYDRA_CARD]?.updatedAt,
+    hydra,
+  })
+  const taskChats = recentCards({ state }).filter(card => cardSessionId({ card }) !== undefined)
+    .map(card => taskConversation({
+      card,
+      hydra,
+    }))
+  // Without text, a Conversations badge lists the Hydra's chat; the whole list also lists each task's conversation.
+  let conversations = chat
+
+  if (whole) {
+    conversations = [
+      ownChat,
+      ...taskChats,
+    ]
+  } else if (!text && asksFor({
     badges,
     kind: 'conversation',
-  })
-    ? [
-      conversationResult({
-        at: state.cards[HYDRA_CARD]?.updatedAt,
-        hydra,
-      }),
-    ]
-    : chat
+  })) {
+    conversations = [ownChat]
+  }
+
   const projectResults = projects.filter(project => words.every(word => `${project.name} ${project.path}`.toLowerCase().includes(word)))
     .map((project): OracleResult => ({
       id: `project:${project.path}`,
@@ -206,12 +246,7 @@ export function oracleResults({
     query: text,
     text: `${action.label} ${action.words}`,
   }))
-    .map((action): OracleResult => ({
-      id: action.id,
-      kind: 'action',
-      title: action.label,
-      action,
-    })) : []
+    .map(action => actionResult({ action })) : []
   const kept = ({ results }: { results: OracleResult[] }) => results.filter(item => passes({
     item,
     badges,

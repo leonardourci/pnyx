@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
-import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, passes, queryText, recentOnly, type Filter } from './filters.ts'
+import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, passes, queryText, wholeList, type Filter } from './filters.ts'
 
 const hydra = hydraFilter({
   hydra: {
@@ -324,7 +324,7 @@ test(
 )
 
 test(
-  'Hydra badges lead the bar, and only Hydra badges with no text list recent tasks',
+  'Hydra badges lead the bar, and only Hydra badges with no text list everything',
   () => {
     assert.deepEqual(
       addBadge({
@@ -346,15 +346,15 @@ test(
         queued.id,
       ],
     )
-    assert.ok(recentOnly({
+    assert.ok(wholeList({
       text: '',
       badges: [hydra],
     }))
-    assert.ok(!recentOnly({
+    assert.ok(!wholeList({
       text: 'deploy',
       badges: [hydra],
     }))
-    assert.ok(!recentOnly({
+    assert.ok(!wholeList({
       text: '',
       badges: [
         hydra,
