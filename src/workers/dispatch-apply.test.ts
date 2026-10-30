@@ -181,6 +181,78 @@ test(
 )
 
 test(
+  'the first apply checks and reports the revision after legacy dispatch migration',
+  () => {
+    const { file } = lab()
+    writeFileSync(
+      join(
+        hydraDir({ hydraId: 'lab' }),
+        'heads-dispatch.json',
+      ),
+      JSON.stringify({
+        rules: {
+          legacy: {
+            when: 'Old rule',
+            candidates: [{ harness: 'claude' }],
+          },
+        },
+      }),
+    )
+    const patch = file({
+      value: {
+        version: 1,
+        patch: {
+          rules: {
+            docs: {
+              when: 'Docs',
+              candidates: [{ harness: 'codex' }],
+            },
+          },
+        },
+      },
+    })
+    assert.throws(
+      () => rule({
+        args: [
+          'apply',
+          '--file',
+          patch,
+          '--if-revision',
+          '0',
+        ],
+      }),
+      { code: 'REVISION_CONFLICT' },
+    )
+    const saved = rule({
+      args: [
+        'apply',
+        '--file',
+        patch,
+        '--if-revision',
+        '1',
+      ],
+    })
+    assert.equal(
+      saved.revision,
+      2,
+    )
+    const shown = show()
+    assert.equal(
+      shown.revision,
+      2,
+    )
+    assert.equal(
+      shown.document.rules.legacy?.when,
+      'Old rule',
+    )
+    assert.equal(
+      shown.document.rules.docs?.when,
+      'Docs',
+    )
+  },
+)
+
+test(
   'rule apply saves the whole patch at once, refuses a stale revision and answers a retried event id with its first receipt',
   () => {
     const { file } = lab()

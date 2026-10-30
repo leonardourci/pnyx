@@ -1,5 +1,7 @@
 import { useRef, useState } from 'react'
-import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
+import { Button, Input } from '#web-shared/ui/controls.tsx'
+import { ComposerField } from '#web-shared/ui/composer-field.tsx'
+import { hasPendingImage } from '#web-hydra/draft.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
 
@@ -41,6 +43,7 @@ export function TaskCreate({
       setBusy,
     ] = useState(false)
   const attempt = useRef(draft?.attempt ?? crypto.randomUUID())
+  const imagesLoading = hasPendingImage({ text: prompt })
 
   return (
     <form
@@ -49,7 +52,7 @@ export function TaskCreate({
       onSubmit={e => {
         e.preventDefault()
 
-        if (busy || !title.trim()) {
+        if (busy || !title.trim() || imagesLoading) {
           return
         }
 
@@ -100,14 +103,14 @@ export function TaskCreate({
         value={title}
         onChange={e => setTitle(e.target.value)}
       />
-      <Textarea
-        aria-label="Your ask"
+      <ComposerField
+        label="Your ask"
         placeholder="What should happen?"
         value={prompt}
-        onChange={e => setPrompt(e.target.value)}
+        change={({ text }) => setPrompt(text)}
       />
       <div className="row">
-        <Button type="submit" disabled={!connected || busy || !title.trim()}>{busy ? 'Saving…' : 'Save task'}</Button>
+        <Button type="submit" disabled={!connected || busy || !title.trim() || imagesLoading}>{busy ? 'Saving…' : 'Save task'}</Button>
         <Button disabled={busy} onClick={cancel}>Cancel</Button>
       </div>
     </form>

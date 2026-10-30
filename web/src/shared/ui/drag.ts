@@ -18,7 +18,10 @@ export function draggableItem({
     draggable: enabled,
     // eslint-disable-next-line pnyx/object-params -- React event handler.
     onDragStart: (event: DragEvent<HTMLElement>) => {
-      if (skip && event.target instanceof Element && event.target.closest(skip)) {
+      // React bubbles a portal's drags, like an image viewer's, to the item; those are not the item's.
+      const elsewhere = !event.currentTarget.contains(event.target as Node)
+
+      if (elsewhere || (skip && event.target instanceof Element && event.target.closest(skip))) {
         event.preventDefault()
 
         return
