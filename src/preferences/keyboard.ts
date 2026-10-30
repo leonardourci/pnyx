@@ -213,13 +213,13 @@ export const KEY_ACTIONS = [
   }),
   action({
     id: 'search',
-    label: 'Search tasks',
+    label: 'Open the Oracle',
     keys: ['/'],
     scopes: navigation,
   }),
   action({
     id: 'palette',
-    label: 'Focus Oracle',
+    label: 'Open or close the Oracle',
     keys: ['Mod+k'],
     scopes: [
       ...navigation,
