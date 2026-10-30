@@ -148,7 +148,7 @@ function parse({ words }: { words: string[] }) {
 const STATES: Record<string, string> = {
   working: 'working',
   needs_you: 'needs you',
-  paused: 'paused',
+  paused: 'waiting (reported)',
   blocked: 'blocked',
   done: 'done',
 }

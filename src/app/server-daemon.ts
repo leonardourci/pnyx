@@ -12,7 +12,7 @@ import { allowedRequest, requestUrl, HYDRA_PATH, type RunningServer, type Mounte
 import { MAX_MESSAGE_BYTES } from './server-protocol.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { background } from './background.ts'
-import { listHydras } from './server-hydras.ts'
+import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydraDir, hydrasDir } from './home-migration.ts'
 import { localToken, hydraIdentity, claimServer } from './server-state.ts'
@@ -688,6 +688,10 @@ export async function startServer({
   }
 
   await Promise.allSettled(hydraIds().map(id => mount({ id })))
+  background({
+    name: 'name Hydras',
+    run: nameUnnamedHydras,
+  })
 
   return {
     port: bound,

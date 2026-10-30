@@ -570,14 +570,16 @@ export function createSourceRunner({
           return
         }
 
+        const existing = card.steering?.find(message => message.id === result.message)
+        const text = existing ? existing.text : resultText({
+          source,
+          result,
+        })
         enqueueSteering({
           writer,
           ref: card.id,
           id: result.message,
-          text: resultText({
-            source,
-            result,
-          }),
+          text,
           source: `external:${source.registration}`,
           meta: metadata(),
         })

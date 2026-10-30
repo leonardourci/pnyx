@@ -1,7 +1,7 @@
 import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { readOwnerEntries } from './owner-memory-log.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
-import { dateLearnings, learningText, type LearningChange, type Learning } from './learnings.ts'
+import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange, type Learning } from './learnings.ts'
 import { appendFileSync, existsSync, readFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 import { randomUUID } from 'node:crypto'
@@ -43,7 +43,7 @@ export interface ProjectMemoryEvent {
 export interface ProjectMemory {
   revision: number
   learnings?: Learning[]
-  archived: Learning[]
+  archived: ArchivedLine[]
   documents: Partial<Record<ProjectMemoryKey, string>>
   sources: Record<string, string>
   events: ProjectMemoryEvent[]
@@ -135,10 +135,16 @@ function readProjectMemoryLog({ id }: { id: string }): ProjectMemory {
       })
     }
 
-    const retired = memory.learnings?.find(line => line.text === event.learning?.archive)
-
-    if (retired) {
-      memory.archived.push(retired)
+    // A profile is rebuilt from its sources, so lines it drops are not the owner's to recover.
+    if (event.key !== 'profile') {
+      memory.archived = archiveRemoved({
+        archived: memory.archived,
+        key: event.key,
+        before: memory.documents[event.key] ?? null,
+        after: event.after,
+        at: event.at,
+        reason: event.reason,
+      })
     }
 
     if (event.after === null) {

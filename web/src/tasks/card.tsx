@@ -14,7 +14,7 @@ import { useCardHeight } from './card-height.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import type { Command } from '#web-app/connection.ts'
 import { projectTitle } from '#web-projects/view.ts'
-import { cardState } from './view.ts'
+import { cardState, TASK_DRAG } from './view.ts'
 import { currentState, statusLabel, waitingQuestions } from '#tasks/card-status.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
 import { Tabs, panelId, tabId } from '#web-shared/ui/tabs.tsx'
@@ -29,9 +29,8 @@ import { relativeTime } from './brief.ts'
 import { CardLinks } from './card-links.tsx'
 import { TaskReport } from '#web-investigations/task-report.tsx'
 import { HoverActions } from '#web-shared/ui/hover-actions.tsx'
-import { ActionBubble } from '#web-hydra/action-bubble.tsx'
-import type { PnyxLookup } from '#web-hydra/pnyx-action.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
+import { draggableItem } from '#web-shared/ui/drag.ts'
 
 const OPEN_SHARE = 0.5
 
@@ -107,6 +106,7 @@ function LastMessage({ message }: { message: LatestMessage }) {
 
 export function HydraCard({
   card,
+  state,
   labelColors,
   latest,
   selected,
@@ -123,11 +123,10 @@ export function HydraCard({
   doneAfterHours,
   notify,
   action,
-  lookup,
 }: {
   card: CardData
+  state?: import('#app/model.ts').HydraState
   action?: CurrentAction
-  lookup: PnyxLookup
   labelColors?: SavedLabelColor[]
   doneAfterHours?: number
   notify({ text }: { text: string }): void
@@ -264,6 +263,9 @@ export function HydraCard({
   const status = cardState({
     card,
     hours: doneAfterHours,
+    connected,
+    state,
+    action,
     now,
   })
   const working = status.kind === 'working'
@@ -373,38 +375,21 @@ export function HydraCard({
           })
         }
       }}
-      draggable={connected && !selected && !reminding && !editing}
-      onDragStart={e => {
-        if (e.target instanceof Element && e.target.closest('button, .resize, form')) {
-          e.preventDefault()
-
-          return
-        }
-
-        e.stopPropagation(); e.dataTransfer.setData(
-          'application/pnyx-task',
-          card.id,
-        )
-      }}
+      {...draggableItem({
+        type: TASK_DRAG,
+        id: card.id,
+        enabled: connected && !selected && !reminding && !editing,
+        skip: 'button, .resize, form',
+      })}
     >
       <div className="card-content">
         <div className="card-state">
-          <span className={`agent-activity activity-${status.kind}`}>
-            {working
-              ? <WorkingDots />
-              : <i aria-hidden="true" />}
-            {working
-              ? (
-                <ActionBubble
-                  action={action}
-                  since={card.workingSince}
-                  lookup={lookup}
-                  look="inline"
-                  idle={statusText}
-                />
-              )
-              : statusText}
-          </span>
+          <Tooltip content={status.details}>
+            <span className={`agent-activity activity-${status.kind}`} aria-label={statusText}>
+              {working ? <WorkingDots /> : <i aria-hidden="true" />}
+              {statusText}
+            </span>
+          </Tooltip>
           <Tooltip content={created ? `Created ${new Date(created).toLocaleString()}` : 'Creation time not recorded'}>
             <time className="card-since" dateTime={status.at || card.updatedAt} tabIndex={0}>
               {relativeTime({

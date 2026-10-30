@@ -72,7 +72,7 @@ pnyx-axi project add /absolute/path/to/project --hydra work
 
 Select **work** in the left panel, then choose a model for your signed-in harness in Hydra's composer (a Codex model if you use only Codex).
 
-You can also use **＋ Add project** to attach a folder or clone a repository.
+You can also type `/add-project` in Hydra's composer, or right-click the Hydra and choose **Add project**, to ask Hydra to attach a folder or clone a repository.
 
 ### 3. Talk to Hydra
 
@@ -108,7 +108,7 @@ The **Waiting on you** strip keeps open questions and permissions within reach.
 
 ### Tasks and columns
 
-A task holds your ask, its brief, updates, conversation and links. Columns place cards from recorded facts such as working, paused, waiting on you or done.
+A task holds your ask, its brief, updates, conversation and links. Its badge shows observed questions, running tools, background work, pull request checks and queues. Worker declarations stay as notes; columns still follow the recorded lifecycle.
 
 You can create tasks and columns inline and move cards yourself. A finished agent turn leaves the task open until its completion requirements are met.
 

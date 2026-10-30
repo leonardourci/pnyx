@@ -28,6 +28,7 @@ interface Creation {
   attempt: string
   from: string
   name: string
+  icon?: string
   refusal?: {
     message: string
     code: string
@@ -467,6 +468,7 @@ export function createHydraConnection() {
     scope.subscribed = true
     scope.subscription = crypto.randomUUID()
     scope.ready = false
+    scope.actions = {}
     send({
       message: {
         type: 'subscribe',
@@ -925,6 +927,7 @@ export function createHydraConnection() {
       scope.subscribed = false
     } else if (message.type === 'snapshot') {
       scope.resource.confirm({ state: message.state })
+      scope.actions = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
       scope.queue = emptyQueue()
@@ -998,7 +1001,7 @@ export function createHydraConnection() {
         changes: message.messages,
       })
       scope.actions = withChanges({
-        current: scope.actions,
+        current: scope.ready ? scope.actions : {},
         changes: message.actions,
       })
       const wasReady = scope.ready
@@ -1109,6 +1112,7 @@ export function createHydraConnection() {
 
     for (const scope of scopes.values()) {
       scope.ready = false; scope.subscribed = false; scope.subscription = null
+      scope.actions = {}
     }
 
     for (const request of requests.values()) {
@@ -1339,6 +1343,9 @@ export function createHydraConnection() {
         patch: {
           id,
           name: creation.name,
+          icon: creation.icon,
+          // Created now, so it sorts last until the server's summary arrives.
+          order: Date.now(),
           hydra: 'Hydra',
           projects: [],
           creationAttempt: creation.attempt,
@@ -1388,15 +1395,21 @@ export function createHydraConnection() {
 
     publish()
 
+    const args = [
+      'create',
+      creation.name,
+      creation.attempt,
+    ]
+
+    if (creation.icon) {
+      args.push(creation.icon)
+    }
+
     try {
       const receipt = await command({
         scope: scopeFor({ id: creation.from }),
         name: 'hydras',
-        args: [
-          'create',
-          creation.name,
-          creation.attempt,
-        ],
+        args,
         creation: creation.attempt,
       })
       const outcome = receipt.creation as { hydraId: string }
@@ -1432,11 +1445,18 @@ export function createHydraConnection() {
     }
   }
 
-  const create = ({ name = '' }: { name?: string } = {}) => attemptCreation({
+  const create = ({
+    name,
+    icon,
+  }: {
+    name: string
+    icon: string
+  }) => attemptCreation({
     creation: {
       attempt: crypto.randomUUID(),
       from: selection().id,
       name,
+      icon,
     },
     choose: true,
     push: true,

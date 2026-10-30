@@ -26,6 +26,7 @@ export const CHIP_JOIN = WORD_JOINER + NO_BREAK_SPACE + WORD_JOINER
 const REFERENCE_ROOM: Partial<Record<ChipKind, string>> = {
   column: ICON_SPACE + CHIP_JOIN,
   task: ICON_SPACE + WORD_JOINER + ICON_SPACE + CHIP_JOIN,
+  slot: '',
 }
 const CARD_NAME_MAX = 20
 const LETTERS = new Intl.Segmenter(
@@ -236,6 +237,17 @@ function displayOffset({
 
   return offset - shift
 }
+
+export const displayAt = ({
+  text,
+  offset,
+}: {
+  text: string
+  offset: number
+}) => displayOffset({
+  view: draftView({ text }),
+  offset,
+})
 
 // A caret never rests inside a chip: it moves to the edge it was heading for.
 function snapCaret({

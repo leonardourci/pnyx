@@ -58,7 +58,7 @@ import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
-import { createHydra, listHydras, renameHydra } from './server-hydras.ts'
+import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
@@ -1965,6 +1965,7 @@ export async function mountOwnedHydra({
             action,
             first,
             second,
+            third,
           ] = args
           const reply = ({
             open,
@@ -1990,7 +1991,7 @@ export async function mountOwnedHydra({
           })
 
           if (action === 'create') {
-            if (args.length > 3 || (second !== undefined && !/^[a-zA-Z0-9._:-]{1,128}$/.test(second))) {
+            if (args.length > 4 || (second !== undefined && !/^[a-zA-Z0-9._:-]{1,128}$/.test(second))) {
               throw new HydraError({
                 message: 'Invalid Hydra creation attempt',
                 code: 'VALIDATION_ERROR',
@@ -2002,6 +2003,7 @@ export async function mountOwnedHydra({
                 0,
                 100,
               ) ?? '',
+              icon: third || undefined,
               attempt: second,
             })
             const opening = open({ id: created })
@@ -2037,20 +2039,27 @@ export async function mountOwnedHydra({
                 code: error instanceof HydraError ? error.code : 'UNKNOWN',
               }),
             )
-          } else if (action === 'rename' && first && second?.trim() && listHydras().some(b => b.id === first)) {
-            renameHydra({
+          } else if (action === 'edit' && first && (second?.trim() || third) && listHydras().some(b => b.id === first)) {
+            editHydra({
               id: first,
-              name: second.trim().slice(
+              name: second?.trim().slice(
                 0,
                 100,
               ),
+              icon: third || undefined,
+            })
+            reply()
+          } else if (action === 'move' && first && second && listHydras().some(b => b.id === first)) {
+            editHydra({
+              id: first,
+              position: Number(second),
             })
             reply()
           } else if (action === undefined) {
             reply()
           } else {
             throw new HydraError({
-              message: 'Hydras expects nothing, open <id>, create <name> or rename <id> <name>',
+              message: 'Hydras expects nothing, open <id>, create <name> [<attempt> <icon>], edit <id> <name> [<icon>] or move <id> <position>',
               code: 'VALIDATION_ERROR',
             })
           }

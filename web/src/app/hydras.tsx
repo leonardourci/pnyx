@@ -1,14 +1,50 @@
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { useEffect, useState } from 'react'
-import type { HydraSummary } from '#app/server-hydras.ts'
+import { useCallback, useEffect, useState, type KeyboardEvent, type MouseEvent } from 'react'
+import type { HydraProjectSummary, HydraSummary } from '#app/server-hydras.ts'
+import { HYDRA_MARK, pickName } from '#hydra/hydra-names.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
-import { InlineTitle } from '#web-shared/ui/inline-title.tsx'
+import { carries, draggableItem, dropPoint } from '#web-shared/ui/drag.ts'
+import { ContextMenu, DeleteItem, menuPoint, opensMenu } from '#web-shared/ui/menu.tsx'
+import { HydraLabel, HydraNameEditor, type HydraIdentity } from '#web-hydra/hydra-title.tsx'
 import type { Command } from './connection.ts'
 import { hydraTitle } from './view.ts'
+import { placements } from './hydra-order.ts'
+
+type MenuItem = {
+  kind: 'hydra'
+  hydra: HydraSummary
+} | {
+  kind: 'project'
+  hydra: HydraSummary
+  project: HydraProjectSummary
+}
+type MenuTarget = MenuItem & {
+  at: {
+    x: number
+    y: number
+  }
+}
+
+const identityOf = ({ hydra }: { hydra: HydraSummary }): HydraIdentity => ({
+  name: hydra.name,
+  icon: hydra.icon ?? HYDRA_MARK,
+})
+
+const HYDRA_DRAG = 'application/pnyx-hydra'
+
+const otherNames = ({
+  hydras,
+  id,
+}: {
+  hydras: HydraSummary[]
+  id?: string
+}) => hydras.filter(h => h.id !== id).map(h => h.name)
 
 export function Hydras({
   command,
   createHydra,
+  editHydra,
+  moveHydra,
   connected,
   notify,
   hydras,
@@ -22,7 +58,22 @@ export function Hydras({
   loading,
 }: {
   loading: boolean
-  createHydra(): Promise<void>
+  createHydra({
+    name,
+    icon,
+  }: HydraIdentity): Promise<void>
+  editHydra({
+    id,
+    name,
+    icon,
+  }: HydraIdentity & { id: string }): void
+  moveHydra({
+    id,
+    position,
+  }: {
+    id: string
+    position: number
+  }): Promise<void>
   navigate({ url }: { url: string }): Promise<void>
   command: Command
   connected: boolean
@@ -32,7 +83,7 @@ export function Hydras({
   resolveProject({ references }: { references: string[] }): void
   selectProject({ path }: { path: string }): void
   showHydra(): void
-  addProject(): void
+  addProject({ id }: { id: string }): void
   notify({ text }: { text: string }): void
 }) {
   const [
@@ -40,9 +91,29 @@ export function Hydras({
     setExpanded,
   ] = useState<Record<string, boolean>>({})
   const [
-    renaming,
-    setRenaming,
-  ] = useState(false)
+    editing,
+    setEditing,
+  ] = useState<string | null>(null)
+  // A new Hydra's name is edited before it is created, so Enter, a click away and Esc all create it.
+  const [
+    drafting,
+    setDrafting,
+  ] = useState<HydraIdentity | null>(null)
+  const [
+    menu,
+    setMenu,
+  ] = useState<MenuTarget | null>(null)
+  const [
+    drop,
+    setDrop,
+  ] = useState<{
+    over: string
+    below: boolean
+  } | null>(null)
+  const closeMenu = useCallback(
+    () => setMenu(null),
+    [],
+  )
   useEffect(
     () => {
       const chosen = hydras.find(h => h.id === current)?.projects.find(p => p.path === project)
@@ -79,38 +150,99 @@ export function Hydras({
     ],
   )
 
-  const go = ({
-    args,
+  const openHydra = async ({
+    id,
     path,
-    projects = false,
   }: {
-    args: string[]
+    id: string
     path?: string
-    projects?: boolean
   }) => {
-    if (args[0] === 'open') {
-      const url = new URL(
-        `/hydra/${encodeURIComponent(args[1]!)}/`,
-        location.href,
+    const url = new URL(
+      `/hydra/${encodeURIComponent(id)}/`,
+      location.href,
+    )
+
+    if (path) {
+      url.searchParams.set(
+        'open-project',
+        path,
       )
+    }
 
-      if (path) {
-        url.searchParams.set(
-          'open-project',
+    try {
+      await navigate({ url: url.href })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
+  const create = async ({
+    name,
+    icon,
+  }: HydraIdentity) => {
+    setDrafting(null)
+
+    try {
+      await createHydra({
+        name,
+        icon,
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
+  const openMenu = ({
+    event,
+    target,
+  }: {
+    event: MouseEvent<Element> | KeyboardEvent<Element>
+    target: MenuItem
+  }) => {
+    event.preventDefault()
+    setMenu({
+      ...target,
+      at: menuPoint({ event: 'clientX' in event ? event : { currentTarget: event.currentTarget } }),
+    })
+  }
+
+  const move = async ({
+    id,
+    index,
+  }: {
+    id: string
+    index: number
+  }) => {
+    for (const placement of placements({
+      hydras,
+      id,
+      index,
+    })) {
+      await moveHydra(placement)
+    }
+  }
+
+  const copyPath = async ({ path }: { path: string }) => {
+    try {
+      await navigator.clipboard.writeText(path)
+      notify({ text: 'Path copied' })
+    } catch {
+      notify({ text: 'Could not copy the path' })
+    }
+  }
+
+  const detach = async ({ path }: { path: string }) => {
+    try {
+      await command({
+        name: 'project',
+        args: [
+          'remove',
           path,
-        )
-      }
-
-      if (projects) {
-        url.searchParams.set(
-          'projects',
-          '1',
-        )
-      }
-
-      void navigate({ url: url.href }).catch((e: Error) => notify({ text: e.message }))
-
-      return
+        ],
+      })
+      notify({ text: 'Project detached. Tasks and history stay.' })
+    } catch (error) {
+      notify({ text: (error as Error).message })
     }
   }
 
@@ -119,64 +251,126 @@ export function Hydras({
       <div className="hydras-heading"><h2>Hydras</h2>
         <Button
           aria-label="Create Hydra"
-          disabled={!connected}
-          onClick={() => {
-            void createHydra().catch((error: Error) => notify({ text: error.message }))
-          }}
+          disabled={!connected || !!drafting}
+          onClick={() => setDrafting(pickName({ taken: otherNames({ hydras }) }))}
         ><Icon name="plus" />
         </Button>
       </div>
-      <div className="hydras-tree">
+      <div
+        className="hydras-tree"
+        onDragOver={event => {
+          if (!carries({
+            event,
+            type: HYDRA_DRAG,
+          })) {
+            return
+          }
+
+          event.preventDefault()
+          const point = dropPoint({
+            event,
+            type: HYDRA_DRAG,
+            item: 'data-hydra',
+          })
+          setDrop(point.over ? {
+            over: point.over,
+            below: point.below,
+          } : null)
+        }}
+        onDrop={event => {
+          const point = dropPoint({
+            event,
+            type: HYDRA_DRAG,
+            item: 'data-hydra',
+          })
+          setDrop(null)
+
+          if (!point.dragged || !point.over || point.over === point.dragged) {
+            return
+          }
+
+          event.preventDefault()
+          const others = hydras.filter(h => h.id !== point.dragged)
+          const target = others.findIndex(h => h.id === point.over)
+          move({
+            id: point.dragged,
+            index: point.below ? target + 1 : target,
+          })
+        }}
+        onDragEnd={() => setDrop(null)}
+      >
         {hydras.map(h => {
-          const active = h.id === current, open = expanded[h.id] ?? active
+          const active = h.id === current, isOpen = expanded[h.id] ?? active
+          const dropClass = drop?.over === h.id ? ` drop-${drop.below ? 'after' : 'before'}` : ''
 
           return (
-            <div key={h.id} className="hydra-branch">
+            <div
+              key={h.id}
+              data-hydra={h.id}
+              className={`hydra-branch${dropClass}`}
+              {...draggableItem({
+                type: HYDRA_DRAG,
+                id: h.id,
+                enabled: connected && editing !== h.id,
+              })}
+            >
               <div className="hydra-row">
                 <Button
-                  aria-label={`${open ? 'Collapse' : 'Expand'} ${hydraTitle(h)}`}
-                  aria-expanded={open}
+                  aria-label={`${isOpen ? 'Collapse' : 'Expand'} ${hydraTitle(h)}`}
+                  aria-expanded={isOpen}
                   aria-controls={`projects-${h.id}`}
                   onClick={() => setExpanded(e => ({
                     ...e,
-                    [h.id]: !open,
+                    [h.id]: !isOpen,
                   }))}
-                ><Icon name={open ? 'chevron_down' : 'chevron_right'} />
+                ><Icon name={isOpen ? 'chevron_down' : 'chevron_right'} />
                 </Button>
-                {active && renaming ? (
-                  <InlineTitle
-                    value={h.name}
-                    label={`Rename Hydra ${hydraTitle(h)}`}
-                    startEditing
-                    finished={() => setRenaming(false)}
-                    save={({ title }) => command({
-                      name: 'hydra',
-                      args: [
-                        'set',
-                        '--name',
-                        title,
-                        '--event-id',
-                        crypto.randomUUID(),
-                      ],
+                {editing === h.id ? (
+                  <HydraNameEditor
+                    saved={identityOf({ hydra: h })}
+                    taken={otherNames({
+                      hydras,
+                      id: h.id,
                     })}
+                    save={({
+                      name,
+                      icon,
+                    }) => {
+                      setEditing(null); editHydra({
+                        id: h.id,
+                        name,
+                        icon,
+                      })
+                    }}
+                    cancel={() => setEditing(null)}
                   />
                 ) : (
                   <Button
                     className="hydra-name"
                     data-hydra-current={active ? '' : undefined}
                     aria-current={active ? 'page' : undefined}
-                    onDoubleClick={() => active && setRenaming(true)}
-                    onClick={() => active && !loading ? showHydra() : go({
-                      args: [
-                        'open',
-                        h.id,
-                      ],
+                    title="Double-click or right-click to edit"
+                    onDoubleClick={() => setEditing(h.id)}
+                    onContextMenu={event => openMenu({
+                      event,
+                      target: {
+                        kind: 'hydra',
+                        hydra: h,
+                      },
                     })}
-                  ><Icon name="hydra" size={20} /><span className={h.name ? undefined : 'muted'}>{hydraTitle(h)}</span>
+                    onKeyDown={event => opensMenu({ event }) && openMenu({
+                      event,
+                      target: {
+                        kind: 'hydra',
+                        hydra: h,
+                      },
+                    })}
+                    onClick={() => active && !loading ? showHydra() : openHydra({ id: h.id })}
+                  ><HydraLabel name={h.name} icon={h.icon} />
                   </Button>
                 )}
               </div>
-              {open && (
+              {isOpen && (
                 <div className="hydra-projects" id={`projects-${h.id}`}>
                   {h.projects.map(p => (
                     <Button
@@ -185,11 +379,24 @@ export function Hydras({
                       title={p.path}
                       aria-pressed={active && project === p.path}
                       disabled={!connected}
-                      onClick={() => active ? selectProject({ path: p.path }) : go({
-                        args: [
-                          'open',
-                          h.id,
-                        ],
+                      onContextMenu={event => openMenu({
+                        event,
+                        target: {
+                          kind: 'project',
+                          hydra: h,
+                          project: p,
+                        },
+                      })}
+                      onKeyDown={event => opensMenu({ event }) && openMenu({
+                        event,
+                        target: {
+                          kind: 'project',
+                          hydra: h,
+                          project: p,
+                        },
+                      })}
+                      onClick={() => active ? selectProject({ path: p.path }) : openHydra({
+                        id: h.id,
                         path: p.path,
                       })}
                     >
@@ -197,24 +404,47 @@ export function Hydras({
                       <small aria-label={`${p.live} live, ${p.asks} asks`}><span>{p.live} live</span><span className={p.asks ? 'project-asks' : ''}>{p.asks} asks</span></small>
                     </Button>
                   ))}
-                  <Button
-                    className="add-project"
-                    disabled={!connected}
-                    onClick={() => active ? addProject() : go({
-                      args: [
-                        'open',
-                        h.id,
-                      ],
-                      projects: true,
-                    })}
-                  ><Icon name="plus" />Add project
-                  </Button>
                 </div>
               )}
             </div>
           )
         })}
+        {drafting && (
+          <div className="hydra-branch">
+            <div className="hydra-row">
+              <span className="hydra-row-spacer" />
+              <HydraNameEditor
+                saved={drafting}
+                taken={otherNames({ hydras })}
+                save={create}
+                cancel={() => create(drafting)}
+              />
+            </div>
+          </div>
+        )}
       </div>
+      {menu?.kind === 'hydra' && (
+        <ContextMenu label={`${hydraTitle(menu.hydra)} menu`} at={menu.at} close={closeMenu}>
+          <Button disabled={!connected} onClick={() => setEditing(menu.hydra.id)}>Edit</Button>
+          <Button
+            disabled={!connected}
+            onClick={() => addProject({ id: menu.hydra.id })}
+          >Add project
+          </Button>
+        </ContextMenu>
+      )}
+      {menu?.kind === 'project' && (
+        <ContextMenu label={`${menu.project.name} menu`} at={menu.at} close={closeMenu}>
+          <Button onClick={() => copyPath({ path: menu.project.path })}>Copy path</Button>
+          {menu.hydra.id === current && (
+            <DeleteItem
+              label="Detach…"
+              disabled={!connected}
+              confirm={() => detach({ path: menu.project.path }).finally(closeMenu)}
+            />
+          )}
+        </ContextMenu>
+      )}
     </section>
   )
 }

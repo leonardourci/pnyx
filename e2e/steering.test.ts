@@ -83,21 +83,42 @@ test(
     )
     page.close()
 
+    const commented = '## Comments on your reply from 10:00\n\n### Comment 1\n> Write the changelog\n\nAdd the release date.'
     await s.owner({
       args: [
         'reply',
         card.id,
         '--text',
-        'Add the release date.',
+        commented,
       ],
     })
     await finished({ turns: 2 })
     const instruction = s.task({ key: 'notes' }).steering![0]!
     assert.equal(
       instruction.text,
-      'Add the release date.',
+      commented,
     )
     const worker = s.as({ agent: first })
+    const inbox = await worker.run({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        card.id,
+      ],
+    })
+    assert.match(
+      inbox,
+      /### Comment 1/,
+    )
+    assert.doesNotMatch(
+      inbox,
+      /Internal note/,
+    )
+    assert.equal(
+      s.events().some(event => event.type === 'session.compaction' && event.data.kind === 'comments'),
+      false,
+    )
     const current = s.task({ key: 'notes' })
     await worker.run({
       args: [
@@ -200,7 +221,8 @@ test(
         'work',
       ],
     })
-    const worker = s.as({ agent: await s.agent({ cwd: folder }) })
+    const agent = await s.agent({ cwd: folder })
+    const worker = s.as({ agent })
     await until({
       what: 'the opening worker turn to finish',
       check: () => s.task({ key: 'work' }).sessionActivity === 'finished',
@@ -327,27 +349,53 @@ test(
         'second',
       ],
     )
-    const claim = claimFlags({ card: s.task({ key: 'work' }) })
-    const read = await worker.run({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        'work',
-      ],
+    const missingIdentity = { ...agent.env }
+    delete missingIdentity.PNYX_STEERING_WORKER
+    const staleWorker = s.as({
+      agent: {
+        ...agent,
+        env: {
+          ...agent.env,
+          PNYX_STEERING_WORKER: 'stale-launch',
+        },
+      },
     })
-    assert.match(
-      read,
-      /Olá 🌊/,
+    const unidentifiedWorker = s.as({
+      agent: {
+        ...agent,
+        env: missingIdentity,
+      },
+    })
+    assert.equal(
+      await staleWorker.refused({
+        args: [
+          'task',
+          'inbox',
+          'read',
+          'work',
+        ],
+      }),
+      'STALE_CLAIM',
     )
-    assert.match(
-      read,
-      /pending: 2/,
+    assert.equal(
+      await unidentifiedWorker.refused({
+        args: [
+          'task',
+          'inbox',
+          'read',
+          'work',
+        ],
+      }),
+      'STALE_CLAIM',
     )
-    assert.match(
-      read,
-      new RegExp(s.task({ key: 'work' }).sessionIds![0]!),
+    assert.deepEqual(
+      pending({ card: s.task({ key: 'work' }) }),
+      [
+        'first',
+        'second',
+      ],
     )
+    const claim = claimFlags({ card: s.task({ key: 'work' }) })
     const notification = [
       'task',
       'inbox',
@@ -422,6 +470,30 @@ test(
       s.task({ key: 'work' }).steering![0]!.ack!.actor,
       `worker:${s.task({ key: 'work' }).id}`,
     )
+    const read = await worker.run({
+      args: [
+        'task',
+        'inbox',
+        'read',
+        'work',
+      ],
+    })
+    assert.match(
+      read,
+      /Olá 🌊/,
+    )
+    assert.match(
+      read,
+      /pending: 0/,
+    )
+    assert.match(
+      read,
+      new RegExp(s.task({ key: 'work' }).sessionIds![0]!),
+    )
+    assert.deepEqual(
+      pending({ card: s.task({ key: 'work' }) }),
+      [],
+    )
     await s.owner({
       args: [
         'task',
@@ -452,10 +524,7 @@ test(
     const restored = s.task({ key: 'work' })
     assert.deepEqual(
       pending({ card: restored }),
-      [
-        'second',
-        'third',
-      ],
+      ['third'],
     )
     const replayed = replay({
       state: emptyHydra(),

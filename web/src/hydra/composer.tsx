@@ -1,3 +1,4 @@
+import { matchingSuggestions, suggestionMatch } from '#hydra/suggestion-matches.ts'
 import type { HydraProject } from '#projects/model.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import type { Card, SavedLabelColor } from '#tasks/model.ts'
@@ -11,10 +12,16 @@ import { flushSync } from 'react-dom'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { isUpgradeSuggestion } from '#upgrade/model.ts'
+import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
+import { useFolders } from '#web-projects/add-project.tsx'
+import { completePath } from './path-completion.ts'
+import { COMPOSER_ICON } from './hydra-agent.tsx'
+import { GOALS, mentionText, REQUEST_HEAD, requestPaths, sendableRequest, withProjectRequest } from './project-request.ts'
 import { SkillBadge } from './skill-badge.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
-import type { Catalog } from '#hydra/transcripts-catalog.ts'
+import type { Catalog, Suggestion } from '#hydra/transcripts-catalog.ts'
+import type { FolderListing } from '#projects/folders.ts'
 import { ReferenceBadge } from './reference-badge.tsx'
 import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
@@ -24,7 +31,7 @@ import { ImageThumb, ImageViewer } from './attached-image.tsx'
 import { AttachmentCard } from './attachment-card.tsx'
 import { projectTitle } from '#web-projects/view.ts'
 import { columnLook } from '#web-tasks/view.ts'
-import { slashMatches, slashPrefix } from './view.ts'
+import { slashPrefix } from './view.ts'
 import { clock, commentReply, sendableComment, type ChatComment } from './chat.ts'
 import type { Command } from '#web-app/connection.ts'
 import { useKeyAction, useKeyboard } from '#web-preferences/keyboard-registry.tsx'
@@ -66,6 +73,159 @@ const select = ({
   ),
   focus < anchor ? 'backward' : 'forward',
 )
+
+// Icons beside the text of the composer's menu items.
+const MENU_ICON = 16
+
+const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
+
+// What the @ picker offers beyond this Hydra's own projects.
+function folderSuggestions({
+  query,
+  typed,
+  attached,
+  otherProjects,
+  listing,
+  typedPath,
+}: {
+  query: string
+  typed: string
+  attached: HydraProject[]
+  otherProjects: {
+    name: string
+    path: string
+    hydra: string
+  }[]
+  listing?: FolderListing
+  typedPath: boolean
+}): MentionItem[] {
+  if (CLONE_URL.test(typed)) {
+    const repository = typed.replace(
+      /\.git$/,
+      '',
+    ).split(/[/:]/)
+      .pop() || typed
+
+    return [
+      {
+        key: `clone:${typed}`,
+        kind: 'project',
+        title: `Clone ${repository}`,
+        detail: typed,
+        icons: ['clone'],
+        group: 'Folders',
+        insert: typed,
+        path: typed,
+      },
+    ]
+  }
+
+  // A typed path lists only what is under it; other Hydras' projects would match any path.
+  const candidates = (typedPath ? [] : otherProjects).map(project => ({
+    ...project,
+    detail: `In ${project.hydra}`,
+  }))
+  const folders: FolderListing['recent'] = []
+
+  if (listing) {
+    folders.push(...listing.recent)
+  }
+
+  if (listing && typedPath) {
+    folders.push(...listing.folders)
+  }
+
+  for (const folder of folders) {
+    candidates.push({
+      ...folder,
+      hydra: '',
+      detail: folder.path,
+    })
+  }
+
+  const skip = new Set(attached.filter(project => !project.detached).map(project => project.path))
+  const items: MentionItem[] = []
+
+  for (const folder of candidates) {
+    const matching = typedPath || !query || `${folder.name} ${folder.path}`.toLocaleLowerCase().includes(query)
+
+    if (matching && !skip.has(folder.path)) {
+      skip.add(folder.path)
+      items.push({
+        key: `folder:${folder.path}`,
+        kind: 'project',
+        title: folder.name,
+        detail: folder.detail,
+        group: 'Folders',
+        insert: reference({
+          kind: 'project',
+          value: folder.path,
+          label: folder.name,
+        }),
+        path: folder.path,
+      })
+    }
+  }
+
+  return items
+}
+
+// Display text from `from` to `to`, with the request paths in it marked.
+function markedPaths({
+  display,
+  from,
+  to,
+  paths,
+}: {
+  display: string
+  from: number
+  to: number
+  paths: {
+    from: number
+    to: number
+  }[]
+}): ReactNode[] {
+  const parts: ReactNode[] = []
+  let at = from
+
+  for (const path of paths.filter(path => path.to > from && path.from < to)) {
+    const start = Math.max(
+      path.from,
+      at,
+    )
+    const end = Math.min(
+      path.to,
+      to,
+    )
+    parts.push(
+      display.slice(
+        at,
+        start,
+      ),
+      <span key={start} className="draft-path">{display.slice(
+        start,
+        end,
+      )}
+      </span>,
+    )
+    at = end
+  }
+
+  parts.push(display.slice(
+    at,
+    to,
+  ))
+
+  return parts
+}
+
+function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
+  if (isUpgradeSuggestion({ item })) {
+    return ['upgrade']
+  }
+
+  return item.command === ADD_PROJECT_COMMAND ? ['attach'] : undefined
+}
 
 function UploadBar({ fraction }: { fraction: number }) {
   return (
@@ -131,8 +291,10 @@ export function Composer({
   meter,
   stop,
   compacting = false,
-  serverComments = true,
   focusAbove,
+  projectRequest = false,
+  projectRequested,
+  otherProjects = [],
 }: {
   card: string
   cards: Card[]
@@ -155,9 +317,17 @@ export function Composer({
   meter?: ReactNode
   // Shown while Hydra runs a turn: it stops that turn, never the workers.
   compacting?: boolean
-  serverComments?: boolean
   stop?(): Promise<void>
   focusAbove?(): boolean
+  // An Add project request to write into the draft; projectRequested clears it once written.
+  projectRequest?: boolean
+  projectRequested?(): void
+  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
+  otherProjects?: {
+    name: string
+    path: string
+    hydra: string
+  }[]
 }) {
   const [
     failure,
@@ -190,6 +360,11 @@ export function Composer({
     mentionActive,
     setMentionActive,
   ] = useState(0)
+  // The goal blank of an Add project request is selected: -1 has no suggestion chosen yet.
+  const [
+    goal,
+    setGoal,
+  ] = useState<number | null>(null)
   const [
     viewing,
     setViewing,
@@ -201,6 +376,8 @@ export function Composer({
   ] = useState<Record<string, number>>({})
   const view = draftView({ text: draft })
   const display = view.display
+  const paths = requestPaths({ display })
+  const mirrored = view.chips.length > 0 || paths.length > 0
   const mentionList = `mentions-${card}`
   const input = useRef<HTMLTextAreaElement>(null), form = useRef<HTMLFormElement>(null)
   const mirror = useRef<HTMLDivElement>(null), files = useRef<HTMLInputElement>(null)
@@ -212,10 +389,40 @@ export function Composer({
   // The draft before each cut, keyed by what it showed, so an Undo that brings that text back restores its chips.
   const beforeCuts = useRef(new Map<string, string>())
 
-  const query = (mention?.query ?? '').trim().toLocaleLowerCase()
-  const matches: MentionItem[] = [
-    ...view.chips.filter(chip => chip.attached && !isPendingImage({ path: chip.value })
-      && chip.name.toLocaleLowerCase().includes(query)).map(chip => ({
+  const query = mention?.query ?? ''
+  const typed = query.trim()
+  const folderPath = /^[~/]/.test(typed) ? typed : ''
+  const folders = useFolders({
+    path: folderPath,
+    repository: '',
+    connected: mention !== null,
+  })
+  const folderItems = folderSuggestions({
+    query: typed.toLocaleLowerCase(),
+    typed,
+    attached: projects,
+    otherProjects,
+    listing: folders?.listing,
+    typedPath: !!folderPath,
+  })
+  const selectedFolder = folderPath ? folders?.listing?.selected : undefined
+  const typedFolder: MentionItem | undefined = selectedFolder && {
+    key: `folder:${selectedFolder.path}`,
+    kind: 'project',
+    title: selectedFolder.name,
+    detail: selectedFolder.path,
+    insert: reference({
+      kind: 'project',
+      value: selectedFolder.path,
+      label: selectedFolder.name,
+    }),
+    path: selectedFolder.path,
+  }
+
+  const candidates: (MentionItem & { search?: string })[] = [
+    ...view.chips.filter(chip => {
+      return chip.attached && !isPendingImage({ path: chip.value })
+    }).map(chip => ({
       key: `${chip.kind}:${chip.value}`,
       kind: chip.kind,
       title: chip.name,
@@ -226,19 +433,29 @@ export function Composer({
         label: chip.name,
       }),
     })),
-    ...projects.filter(project => !project.detached
-      && `${project.name} ${project.path}`.toLocaleLowerCase().includes(query)).map(project => ({
-      key: `project:${project.path}`,
-      kind: 'project' as const,
-      title: project.name,
-      detail: 'Project',
-      insert: reference({
-        kind: 'project',
-        value: project.path,
-        label: project.name,
-      }),
-    })),
-    ...columns.filter(column => column.title.toLocaleLowerCase().includes(query)).map(column => ({
+
+    ...projects.filter(project => !project.detached).map(project => {
+      const titleMatch = suggestionMatch({
+        name: project.name,
+        query,
+      })
+
+      return ({
+        key: `project:${project.path}`,
+        kind: 'project' as const,
+        title: project.name,
+        excerpt: titleMatch ? undefined : project.path,
+        search: project.path,
+        detail: 'Project',
+        insert: reference({
+          kind: 'project',
+          value: project.path,
+          label: project.name,
+        }),
+        path: project.path,
+      })
+    }),
+    ...columns.map(column => ({
       key: `column:${column.id}`,
       kind: 'column' as const,
       title: column.title,
@@ -257,12 +474,15 @@ export function Composer({
     }).map(({
       card,
       excerpt,
+      excerptHighlights,
     }) => ({
       key: `task:${card.id}`,
       kind: 'task' as const,
       title: card.title,
+      search: card.initialPrompt ?? card.brief ?? '',
       detail: card.project ? projectTitle({ project: card.project }) : 'No project',
       excerpt,
+      excerptHighlights,
       ...taskLook({ id: card.id }),
       insert: taskMention({
         id: card.id,
@@ -270,6 +490,23 @@ export function Composer({
       }),
     })),
   ]
+  // Folders follow the ranked matches; they are already matched against what was typed.
+  const listed: MentionItem[] = [
+    ...matchingSuggestions({
+      items: candidates,
+      query,
+      name: ({ item }) => item.title,
+      fallback: ({ item }) => item.search ?? '',
+    }),
+    ...folderItems,
+  ]
+  // A typed path that names a folder leads, so Enter adds the folder typed rather than a project under it.
+  const matches = typedFolder
+    ? [
+      typedFolder,
+      ...listed.filter(item => item.insert !== typedFolder.insert),
+    ]
+    : listed
   const picked = Math.min(
     mentionActive,
     matches.length - 1,
@@ -287,11 +524,43 @@ export function Composer({
     setPrefix(slashPrefix({
       text: shown.display,
       cursor,
+      chips: shown.chips,
     }))
     const found = mentionQuery({
       text: shown.display,
       cursor,
     })
+    const typed = mention && `@${mention.query}`
+    const leftFolder = !found && typedFolder && typed
+      && shown.display.slice(
+        mention.start,
+        mention.start + typed.length,
+      ) === typed
+
+    // Moving the caret off a typed path that names a folder adds that folder as a badge.
+    if (leftFolder) {
+      const edit = replaceDisplay({
+        text,
+        from: mention.start,
+        to: mention.start + typed.length,
+        insert: mentionText({
+          item: typedFolder,
+          before: shown.display.slice(
+            0,
+            mention.start,
+          ),
+        }),
+      })
+      const grown = draftView({ text: edit.text }).display.length - shown.display.length
+      write({
+        text: edit.text,
+        caret: cursor > mention.start ? cursor + grown : cursor,
+      })
+      setMention(null)
+
+      return
+    }
+
     const insideChip = found && shown.chips.some(chip =>
       chip.from <= found.start && found.start < chip.to)
     setMention(insideChip ? null : found)
@@ -396,14 +665,80 @@ export function Composer({
       return
     }
 
-    write(replaceDisplay({
+    const written = mentionText({
+      item,
+      before: display.slice(
+        0,
+        mention.start,
+      ),
+    })
+    const edit = replaceDisplay({
       text: draft,
       from: mention.start,
       to: element.selectionStart,
-      insert: `${item.insert} `,
-    }))
+      // A chip is followed by a space; a plain path already has the request's own.
+      insert: written === item.insert ? `${written} ` : written,
+    })
+    const goalSlot = display.slice(
+      0,
+      mention.start,
+    ).endsWith(REQUEST_HEAD) && draftView({ text: edit.text }).chips.find(chip => chip.kind === 'slot' && chip.from >= edit.caret)
+
+    if (goalSlot) {
+      write({
+        text: edit.text,
+        anchor: goalSlot.from,
+        caret: goalSlot.to,
+      })
+      setGoal(-1)
+    } else {
+      write(edit)
+    }
+
     setMention(null); element.focus()
   }
+
+  const requestProject = ({ text }: { text: string }) => {
+    const edit = withProjectRequest({ text })
+    write(edit)
+    input.current?.focus()
+    trackMention({
+      text: edit.text,
+      cursor: edit.caret,
+    })
+  }
+
+  const fillGoal = ({ text }: { text: string }) => {
+    // The goal the caret is on, so a second request never fills the first one's blank.
+    const caret = input.current?.selectionStart ?? 0
+    const slots = view.chips.filter(chip => chip.kind === 'slot')
+    const onCaret = slots.find(chip => chip.from <= caret && caret <= chip.to)
+    const slot = onCaret ?? slots.find(chip => chip.from >= caret)
+
+    if (slot) {
+      write(replaceDisplay({
+        text: draft,
+        from: slot.from,
+        to: slot.to,
+        insert: text,
+      }))
+    }
+
+    setGoal(null); input.current?.focus()
+  }
+
+  useEffect(
+    () => {
+      if (!projectRequest) {
+        return
+      }
+
+      projectRequested?.()
+      requestProject({ text: current.current.draft })
+    },
+    // Only a new request writes; the helpers read the latest draft.
+    [projectRequest],
+  )
 
   // A task looks like its card reference (card, then state, in its column's color); a column shows its icon.
   function taskLook({ id }: { id: string }) {
@@ -453,6 +788,26 @@ export function Composer({
       openTask({ id: chip.value })
     } else if (chip.kind === 'image' && !isPendingImage({ path: chip.value })) {
       setViewing(chip)
+    } else if (chip.kind === 'slot') {
+      write({
+        text: draft,
+        anchor: chip.from,
+        caret: chip.to,
+      })
+      setGoal(-1); input.current?.focus()
+    } else if (chip.kind === 'project') {
+      const edit = replaceDisplay({
+        text: draft,
+        from: chip.from,
+        to: chip.to,
+        insert: '@',
+      })
+      write(edit)
+      input.current?.focus()
+      trackMention({
+        text: edit.text,
+        cursor: edit.caret,
+      })
     }
   }
 
@@ -461,32 +816,9 @@ export function Composer({
     key: card,
     hydraId,
   }))
-  const commentKey = `pnyx-comments:${card}:${thread?.session ?? ''}`
-  const [
-    taught,
-    setTaught,
-  ] = useState(false)
-  useEffect(
-    () => {
-      if (serverComments) {
-        return
-      }
-
-      try {
-        setTaught(localStorage.getItem(commentKey) === 'sent')
-      } catch {
-        setTaught(false)
-      }
-    },
-    [
-      commentKey,
-      serverComments,
-    ],
-  )
   const outgoing = commentReply({
     draft,
     comments,
-    firstComment: !serverComments && !taught,
   })
   const sendable = comments.filter(comment => sendableComment({ comment }))
   const imagesLoading = hasPendingImage({ text: outgoing })
@@ -528,12 +860,19 @@ export function Composer({
       onCatalogOpen,
     ],
   )
-  const suggestions = (catalog?.suggestions ?? []).filter(s => slashMatches({
-    command: s.command,
-    prefix: prefix ?? '',
-  }))
+  const suggestions = matchingSuggestions({
+    items: catalog?.suggestions ?? [],
+    query: prefix ?? '',
+    name: ({ item }) => item.command,
+  })
 
-  const choose = ({ command }: { command: string }) => {
+  const choose = ({
+    command,
+    item,
+  }: {
+    command: string
+    item?: Suggestion
+  }) => {
     const unavailable = catalog?.suggestions.some(item =>
       skillReference({ item }) === command && item.unavailable)
 
@@ -545,10 +884,25 @@ export function Composer({
     const query = slashPrefix({
       text: display,
       cursor,
+      chips: view.chips,
     })
 
     if (query === null || query !== prefix) {
       setPrefix(null)
+
+      return
+    }
+
+    if (item?.kind === 'command' && item.command === ADD_PROJECT_COMMAND) {
+      setPrefix(null); setActive(0)
+      requestProject({
+        text: replaceDisplay({
+          text: draft,
+          from: cursor - query.length,
+          to: cursor,
+          insert: '',
+        }).text,
+      })
 
       return
     }
@@ -743,9 +1097,19 @@ export function Composer({
   }
 
   const send = async ({ restore = false }: { restore?: boolean } = {}) => {
-    const text = restore && attempt.current ? attempt.current.text : outgoing
+    const request = sendableRequest({
+      text: restore && attempt.current ? attempt.current.text : outgoing,
+    })
+    const text = request.text
 
     if (sending || !text.trim()) {
+      return
+    }
+
+    if (request.unpicked) {
+      notify({ text: 'Pick a project or folder to add first.' })
+      input.current?.focus()
+
       return
     }
 
@@ -801,17 +1165,6 @@ export function Composer({
       } | undefined
 
       if (receipt?.state === 'delivered' || receipt?.state === 'queued') {
-        if (!serverComments && (commented || taken?.comments.length)) {
-          setTaught(true)
-
-          try {
-            localStorage.setItem(
-              commentKey,
-              'sent',
-            )
-          } catch { /* Storage can be disabled. */ }
-        }
-
         attempt.current = null
       } else {
         problem = receipt?.state === 'delivery_unknown'
@@ -958,19 +1311,36 @@ export function Composer({
             close={() => setListing(null)}
           />
         )}
-        <div className="composer-input" data-chips={view.chips.length > 0 || undefined}>
+        <div className="composer-input" data-chips={mirrored || undefined}>
           {mention && (
             <MentionPicker
               anchor={input}
               id={mentionList}
+              query={query}
               matches={matches}
               active={picked}
               choose={chooseMention}
             />
           )}
+          {goal !== null && !mention && (
+            <SuggestionPicker
+              id={`goals-${card}`}
+              anchor={input}
+              label="What you want done (optional)"
+              active={goal}
+              matches={GOALS.map(text => ({
+                key: text,
+                title: text,
+                detail: '',
+                group: 'What you want done (optional)',
+              }))}
+              choose={({ item }) => fillGoal({ text: item.title })}
+            />
+          )}
           {prefix !== null && (
             <SuggestionPicker
               id={`suggestions-${card}`}
+              query={prefix}
               anchor={input}
               label="Skills and commands"
               className="slash-menu"
@@ -997,10 +1367,13 @@ export function Composer({
                 ) : undefined,
                 group: item.source,
                 excerpt: item.description,
-                icons: isUpgradeSuggestion({ item }) ? ['upgrade'] : undefined,
+                icons: slashIcons({ item }),
 
               }))}
-              choose={({ item }) => choose({ command: skillReference({ item }) })}
+              choose={({ item }) => choose({
+                command: skillReference({ item }),
+                item,
+              })}
               loading={!catalog}
               empty={catalog?.unavailable ?? 'No matching skill or command.'}
               footer={(
@@ -1126,11 +1499,7 @@ export function Composer({
               }
 
               write(edit)
-              const shown = draftView({ text: edit.text }).display
-              setPrefix(slashPrefix({
-                text: shown,
-                cursor: edit.caret,
-              }))
+              setGoal(null)
               setActive(0)
               trackMention({
                 text: edit.text,
@@ -1139,6 +1508,69 @@ export function Composer({
             }}
             onKeyDown={e => {
               if (e.nativeEvent.isComposing || e.key === 'Process') {
+                return
+              }
+
+              if (goal !== null && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                const chosen = goal >= 0 ? GOALS[goal] : undefined
+
+                if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+                  e.preventDefault()
+                  setGoal(Math.max(
+                    -1,
+                    Math.min(
+                      GOALS.length - 1,
+                      goal + (e.key === 'ArrowDown' ? 1 : -1),
+                    ),
+                  ))
+
+                  return
+                }
+
+                if ((e.key === 'Tab' && !e.shiftKey) || (e.key === 'Enter' && chosen)) {
+                  e.preventDefault()
+                  fillGoal({ text: chosen ?? GOALS[0] })
+
+                  return
+                }
+
+                if (e.key === 'Escape') {
+                  e.preventDefault(); setGoal(null)
+
+                  return
+                }
+              }
+
+              // A typed path completes like a shell: Tab extends it as text, and Tab on a complete path adds it.
+              // Tab with nothing to complete leaves the path as typed; an item moved to with the arrows is picked as usual.
+              const fromTop = picked <= 0
+              const listing = mention && folderPath && fromTop ? folders?.listing : undefined
+              const completed = listing && completePath({
+                typed: folderPath,
+                listing,
+              })
+
+              if (e.key === 'Tab' && mention && folderPath && fromTop
+                && !e.shiftKey && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                e.preventDefault()
+                e.stopPropagation()
+
+                if (typedFolder) {
+                  chooseMention({ item: typedFolder })
+                } else if (completed) {
+                  const edit = replaceDisplay({
+                    text: draft,
+                    from: mention.start + 1,
+                    to: e.currentTarget.selectionStart,
+                    insert: completed,
+                  })
+                  write(edit)
+                  trackMention({
+                    text: edit.text,
+                    cursor: edit.caret,
+                  })
+                }
+
                 return
               }
 
@@ -1178,7 +1610,10 @@ export function Composer({
                   if (mention && matches[index]) {
                     chooseMention({ item: matches[index] })
                   } else if (!mention && suggestions[index]) {
-                    choose({ command: skillReference({ item: suggestions[index] }) })
+                    choose({
+                      command: skillReference({ item: suggestions[index] }),
+                      item: suggestions[index],
+                    })
                   }
                 } else {
                   const next = Math.max(
@@ -1240,7 +1675,7 @@ export function Composer({
               }
             }}
           />
-          {view.chips.length > 0 && (
+          {mirrored && (
             <div className="draft-mirror" ref={mirror} aria-hidden="true">
               {view.chips.map((
                 chip,
@@ -1248,10 +1683,12 @@ export function Composer({
               ) => {
                 const look = chip.kind === 'task' || chip.kind === 'column' ? chipLook({ chip }) : undefined
                 const title = chip.kind === 'project' ? chip.value : chip.kind === 'task' ? 'Open task' : undefined
-                const before = display.slice(
-                  view.chips[index - 1]?.to ?? 0,
-                  chip.from,
-                )
+                const before = markedPaths({
+                  display,
+                  from: view.chips[index - 1]?.to ?? 0,
+                  to: chip.from,
+                  paths,
+                })
 
                 const skill = chip.kind === 'skill' ? readSkillReference({
                   value: chip.value,
@@ -1299,21 +1736,27 @@ export function Composer({
                   </Fragment>
                 )
               })}
-              {display.slice(view.chips.at(-1)!.to)}
+              {markedPaths({
+                display,
+                from: view.chips.at(-1)?.to ?? 0,
+                to: display.length,
+                paths,
+              })}
               {/* A trailing newline still gets a line box, as it does in the textarea. */}
               {'\u200B'}
             </div>
           )}
         </div>
         <div className="composer-bar">
-          <Popover label="Add to message" className="composer-add" trigger={<Icon name="plus" size={16} />}>
+          <Popover label="Add to message" className="composer-add" trigger={<Icon name="attach" size={COMPOSER_ICON} />}>
             {({ close }) => (
               <>
                 <Button
                   onClick={() => {
                     close(); files.current?.click()
                   }}
-                >Insert files or images
+                >
+                  <Icon name="paperclip" size={MENU_ICON} />Insert files or images
                 </Button>
                 <Button
                   onClick={() => {
@@ -1338,7 +1781,8 @@ export function Composer({
                       }); setMentionActive(0); setPrefix(null)
                     }
                   }}
-                >Mention
+                >
+                  <Icon name="mention" size={MENU_ICON} />Mention
                 </Button>
               </>
             )}
@@ -1390,7 +1834,6 @@ export function Composer({
                   const text = commentReply({
                     draft: next,
                     comments: current.current.comments,
-                    firstComment: !serverComments && !taught,
                   })
                   const id = crypto.randomUUID()
                   const name = 'hydra'
@@ -1437,7 +1880,7 @@ export function Composer({
             title={sending ? 'Sending…' : `Send · ${label({ id: 'send' })}${thread?.route ? ` · through ${thread.via ?? 'the recorded route'}` : ''}`}
             disabled={sending || !outgoing.trim() || imagesLoading}
           >
-            <Icon name="send" size={14} />
+            <Icon name="send" size={COMPOSER_ICON} />
           </Button>
         </div>
       </form>

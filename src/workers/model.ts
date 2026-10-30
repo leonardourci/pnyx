@@ -120,7 +120,7 @@ export interface SteeringAck {
   at: string
   actor: string
   claim: SteeringClaim
-  outcome: 'incorporated' | 'blocked'
+  outcome: 'read' | 'incorporated' | 'blocked'
   note?: string
 }
 

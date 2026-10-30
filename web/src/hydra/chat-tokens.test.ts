@@ -251,6 +251,10 @@ test(
           'Built-in',
         ],
         [
+          '/add-project',
+          'Built-in',
+        ],
+        [
           '/compact',
           'Agent commands',
         ],
