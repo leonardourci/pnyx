@@ -500,10 +500,20 @@ export function settleImage({
 }
 
 // A placeholder saved with a draft lost its upload when the page closed.
-export function withoutPendingImages({ text }: { text: string }) {
+// Only the given placeholders go when `paths` is set, as when one field's own uploads stop.
+export function withoutPendingImages({
+  text,
+  paths,
+}: {
+  text: string
+  paths?: Set<string>
+}) {
   let rest = text
 
-  for (const path of imagePaths({ text }).filter(path => isPendingImage({ path }))) {
+  const leaving = imagePaths({ text })
+    .filter(path => isPendingImage({ path }) && (!paths || paths.has(path)))
+
+  for (const path of leaving) {
     rest = settleImage({
       text: rest,
       anchor: 0,

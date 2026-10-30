@@ -1,12 +1,10 @@
-import { imagePaths } from '#hydra/images.ts'
-import { AttachedImage } from './attached-image.tsx'
-import { Button, Textarea } from '#web-shared/ui/controls.tsx'
+import { Button } from '#web-shared/ui/controls.tsx'
+import { ComposerField } from '#web-shared/ui/composer-field.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { markdownText } from './markdown.tsx'
 import { onNoteEdgeLine, type CaretDirection } from './caret.ts'
 import { commentContext, quoteSnippet, type ChatComment } from './chat.ts'
-import { pastedImages } from './image-upload.ts'
 import { COMMENT_FOCUS } from './comment-motion.ts'
 import { CommentNumber } from './comment-number.tsx'
 
@@ -19,9 +17,11 @@ const LINE_KEYS: Record<string, CaretDirection> = {
 function CommentQuote({
   comment,
   clip,
+  show,
 }: {
   comment: ChatComment
   clip: boolean
+  show?(): void
 }) {
   const {
     before,
@@ -36,7 +36,22 @@ function CommentQuote({
   // The whole context shows above the card, so the card itself never changes size.
   return (
     <Tooltip content={<>{before}<mark>{match}</mark>{after}</>}>
-      <div className="comment-quote">
+      <div
+        className="comment-quote"
+        role={show ? 'button' : undefined}
+        tabIndex={show ? 0 : undefined}
+        // The quote goes back to its passage instead of the card's own click, which focuses the note.
+        onClick={event => {
+          if (show) {
+            event.stopPropagation(); show()
+          }
+        }}
+        onKeyDown={event => {
+          if (show && (event.key === 'Enter' || event.key === ' ')) {
+            event.preventDefault(); event.stopPropagation(); show()
+          }
+        }}
+      >
         {clip && before.length > CLIP ? `…${before.slice(-CLIP)}` : before}
         <mark>{match}</mark>
         {after}
@@ -50,7 +65,6 @@ export function MessageComment({
   number,
   change,
   remove,
-  attach,
   inline = false,
   leave,
   release,
@@ -60,7 +74,6 @@ export function MessageComment({
   number: number
   change({ text }: { text: string }): void
   remove(): void
-  attach?({ files }: { files: File[] }): void
   inline?: boolean
   leave?({
     note,
@@ -72,8 +85,6 @@ export function MessageComment({
   release?(): void
   show?(): void
 }) {
-  const images = imagePaths({ text: (comment.images ?? []).join('\n') })
-
   return (
     <div
       className="comment-card"
@@ -90,30 +101,22 @@ export function MessageComment({
     >
       <div className="comment-heading">
         <CommentNumber number={number} />
-        <CommentQuote comment={comment} clip={inline} />
+        <CommentQuote comment={comment} clip={inline} show={show} />
       </div>
       <div className="comment-row">
-        <Textarea
+        <ComposerField
           className="comment-note"
-          rows={1}
           placeholder="Comment…"
-          aria-label="Comment on selected text"
+          label="Comment on selected text"
           value={comment.text}
-          onChange={e => change({ text: e.target.value })}
+          change={change}
           // Switching apps, say to grab a screenshot, blurs the note too; keep it for the return.
           onBlur={() => {
             if (document.hasFocus()) {
               release?.()
             }
           }}
-          onPaste={event => {
-            const files = pastedImages({ clipboardData: event.clipboardData })
-
-            if (attach && files.length) {
-              event.preventDefault(); attach({ files })
-            }
-          }}
-          onKeyDown={event => {
+          onKeyDown={({ event }) => {
             const note = event.currentTarget, {
               key,
               shiftKey,
@@ -143,7 +146,7 @@ export function MessageComment({
             }
           }}
         />
-        {show && (
+        {show && !inline && (
           <Button
             className="icon-button"
             aria-label="Show in chat"
@@ -157,11 +160,6 @@ export function MessageComment({
           <Icon name="close" size={14} />
         </Button>
       </div>
-      {images.length > 0 && (
-        <div className="comment-images">
-          {images.map(path => <AttachedImage key={path} path={path} />)}
-        </div>
-      )}
     </div>
   )
 }

@@ -28,6 +28,7 @@ import { CommentAnnotations } from './comment-annotations.tsx'
 import { pastedImages, uploadImages } from './image-upload.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { MessageComment } from './message-comment.tsx'
+import { revealComment } from './comment-reveal.ts'
 import { HIGHLIGHT_SUPPORTED, clearHighlights, commentHighlightName, commentRange, paintComments } from './comment-highlight.ts'
 import {
   MESSAGE_DECORATIONS, blockPassage, messageBlock, messageBlockKey, samePassage, selectedPassage,
@@ -260,14 +261,15 @@ export function Messages({
 
     const comment = latest.current.find(c => c.id === id)
 
+    // An image pasted over a passage goes at the end of its comment's text.
     if (comment && lines.length) {
       update({
         items: latest.current.map(c => c.id === id ? {
           ...c,
-          images: [
-            ...c.images ?? [],
+          text: [
+            c.text.trimEnd(),
             ...lines,
-          ],
+          ].filter(Boolean).join(' '),
         } : c),
       })
     } else if (comment && !document.activeElement?.closest(`[data-comment-id="${id}"]`)) {
@@ -947,10 +949,14 @@ export function Messages({
                               direction,
                             })}
                             release={() => release({ id: comment.id })}
-                            attach={({ files }) => void attach({
-                              id: comment.id,
-                              files,
-                            })}
+                            show={() => {
+                              if (root.current) {
+                                revealComment({
+                                  host: root.current,
+                                  comment,
+                                })
+                              }
+                            }}
                           />
                         ))}
                       </div>
