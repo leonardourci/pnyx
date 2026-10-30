@@ -380,7 +380,7 @@ export function ResultPreview({
       {result.kind === 'action' && <ActionPreview action={result.action} />}
       <div className="oracle-preview-foot">
         <Button variant="surface" onClick={() => choose({ elsewhere })}>{OPEN_LABELS[shownKind]}</Button>
-        <p className="muted small">{hint}. Tab moves here; Esc, ⇧Tab or typing goes back to the bar.</p>
+        <p className="muted small">{hint}. → or Tab moves here; ↑ ↓ move between its controls; ← or Esc goes back to the bar.</p>
       </div>
     </>
   )

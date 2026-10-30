@@ -10,6 +10,7 @@ const press = ({
   pending = false,
   token,
   query = 'deploy',
+  atEnd = true,
   onAction = false,
 }: {
   key: string
@@ -19,6 +20,7 @@ const press = ({
   pending?: boolean
   token?: string
   query?: string
+  atEnd?: boolean
   onAction?: boolean
 }) => paletteKey({
   key,
@@ -28,6 +30,7 @@ const press = ({
   pending,
   token,
   query,
+  atEnd,
   onAction,
 })
 
@@ -255,6 +258,44 @@ test(
         step: -1,
       }),
       'a',
+    )
+  },
+)
+
+test(
+  '→ at the end of the text enters the preview, waiting like ↑ ↓ while the answer is pending, and elsewhere in the text moves the caret',
+  () => {
+    assert.equal(
+      press({ key: 'ArrowRight' }),
+      'preview',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowRight',
+        pending: true,
+      }),
+      'wait',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowRight',
+        atEnd: false,
+      }),
+      null,
+      'with the caret inside the text, → is the caret’s',
+    )
+    assert.equal(
+      press({ key: 'ArrowLeft' }),
+      null,
+      '← always stays the caret’s, or the badge mark’s at the start',
+    )
+    assert.equal(
+      press({
+        key: 'ArrowRight',
+        token: '>',
+        query: '>',
+      }),
+      'preview',
     )
   },
 )

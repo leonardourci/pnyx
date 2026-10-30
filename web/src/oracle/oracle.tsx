@@ -19,7 +19,7 @@ import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { relativeTime } from '#web-tasks/brief.ts'
 import { columnsFor } from '#web-tasks/view.ts'
 import { askKey, askStart, askTargets, type AskKey, type AskTarget } from './ask.ts'
-import { INPUT, moveFocus, recoverFocus } from './focus.ts'
+import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus, PASS, recoverFocus } from './focus.ts'
 import { useFoundCards } from './card-oracle.ts'
 import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, KIND_FILTERS, queryText, TYPE_LABELS, type Filter } from './filters.ts'
 import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
@@ -43,9 +43,44 @@ interface Asking {
   error?: string
 }
 
+const ARROWS = [
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+]
+
 interface Pressed {
   key: string
   mod: boolean
+  atEnd: boolean
+}
+
+// Scrolls a pane so the focused row or control keeps two neighbours in view on each side.
+const keepInView = ({
+  container,
+  items,
+  focus,
+}: {
+  container: HTMLElement
+  items: HTMLElement[]
+  focus: HTMLElement
+}) => {
+  const box = container.getBoundingClientRect()
+
+  container.scrollTop = bufferedScroll({
+    scrollTop: container.scrollTop,
+    viewport: container.clientHeight,
+    rows: items.map(item => {
+      const rect = item.getBoundingClientRect()
+
+      return {
+        top: rect.top - box.top + container.scrollTop,
+        height: rect.height,
+      }
+    }),
+    index: items.indexOf(focus),
+  })
 }
 
 const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
@@ -309,6 +344,8 @@ export function Oracle({
     control: HTMLElement
     before: HTMLElement[]
   } | null>(null)
+  // The selection last moved by a key, so the list keeps its scroll buffer then and not on hover.
+  const stepped = useRef(false)
   const listId = useId()
 
   const columns = columnsFor({ state })
@@ -519,11 +556,13 @@ export function Oracle({
     }
   }
 
-  // A setting's own control comes before its Reset to default, which sits first in the row.
   const focusPreview = () => {
     const controls = previewControls()
-    const first = controls.find(control => control.closest('.setting-control')) ?? controls[0]
-    first?.focus()
+
+    enterPreview({
+      controls,
+      own: controls.filter(control => control.closest('.setting-control')),
+    })?.focus()
   }
 
   const chooseSetting = ({
@@ -634,6 +673,7 @@ export function Oracle({
   }
 
   const move = ({ step }: { step: number }) => {
+    stepped.current = true
     const id = movedId({
       ids: token ? menuIds : results.map(result => result.id),
       current: token ? menuSelected : selected,
@@ -670,6 +710,9 @@ export function Oracle({
         }
 
         break
+      case 'preview':
+        focusPreview()
+        break
       case 'commit':
         commit({ filter: menuFilter })
         break
@@ -698,6 +741,7 @@ export function Oracle({
     pending: found.pending,
     token: token?.text,
     query,
+    atEnd: pressed.atEnd,
     onAction: !!menuAction,
   })
 
@@ -791,11 +835,28 @@ export function Oracle({
   )
   useEffect(
     () => {
-      list.current?.querySelector('[aria-selected=true]')?.scrollIntoView({ block: 'nearest' })
+      const node = list.current
+      const row = node?.querySelector<HTMLElement>('[aria-selected=true]')
+
+      if (!node || !row) {
+        return
+      }
+
+      if (stepped.current) {
+        stepped.current = false
+        keepInView({
+          container: node,
+          items: [...node.querySelectorAll<HTMLElement>('[role=option]')],
+          focus: row,
+        })
+      } else {
+        row.scrollIntoView({ block: 'nearest' })
+      }
     },
     [
       selected,
       menuSelected,
+      pickedId,
     ],
   )
 
@@ -869,6 +930,7 @@ export function Oracle({
         break
       case 'up':
       case 'down':
+        stepped.current = true
         setAsk({
           ...ask,
           picked: movedId({
@@ -949,10 +1011,13 @@ export function Oracle({
       return
     }
 
+    const field = event.currentTarget
+    const end = field.value.length
     const pressed = {
       key: event.key,
       mod: event.metaKey || event.ctrlKey,
       shift: event.shiftKey,
+      atEnd: field.selectionStart === end && field.selectionEnd === end,
     }
     const key = route({
       pressed,
@@ -1004,6 +1069,40 @@ export function Oracle({
         move: event.shiftKey ? 'previous' : 'next',
       }),
     })
+  }
+
+  // Runs before the control's own keys, so a closed Select or a radio group doesn't take ↑ ↓ for itself.
+  const previewArrow = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
+    const { target } = event
+    const modified = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+    const typing = composing({ event: event.nativeEvent })
+    const plainArrow = ARROWS.includes(event.key) && !modified && !typing
+
+    if (!plainArrow || !(target instanceof HTMLElement)) {
+      return
+    }
+
+    const to = arrowFocus({
+      controls: previewControls(),
+      from: target,
+      key: event.key,
+      kind: controlKind({
+        tag: target.tagName,
+        type: target instanceof HTMLInputElement ? target.type : undefined,
+        role: target.getAttribute('role'),
+      }),
+      popup: target.getAttribute('aria-expanded') === 'true',
+    })
+
+    if (to === PASS) {
+      return
+    }
+
+    event.preventDefault(); event.stopPropagation()
+
+    if (to !== target) {
+      focusStop({ to })
+    }
   }
 
   // A control that closed its own popup on this Esc already kept the key, so only the next Esc returns.
@@ -1240,12 +1339,22 @@ export function Oracle({
             className="oracle-preview"
             role="region"
             aria-label="Preview"
+            onKeyDownCapture={event => previewArrow({ event })}
             onKeyDown={event => previewKey({ event })}
             onFocus={event => {
+              const controls = previewControls()
               setInPreview(true)
               focused.current = {
                 control: event.target,
-                before: previewControls(),
+                before: controls,
+              }
+
+              if (event.target.matches(':focus-visible')) {
+                keepInView({
+                  container: event.currentTarget,
+                  items: controls,
+                  focus: event.target,
+                })
               }
             }}
             onBlur={event => {

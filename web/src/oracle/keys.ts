@@ -1,12 +1,14 @@
-export type PaletteKey = 'wait' | 'up' | 'down' | 'open' | 'open-elsewhere' | 'commit' | 'drop-filter' | 'clear' | 'close'
+export type PaletteKey = 'wait' | 'up' | 'down' | 'open' | 'open-elsewhere' | 'preview' | 'commit' | 'drop-filter' | 'clear' | 'close'
 
 export const WAITING_KEYS = [
   'Enter',
   'ArrowDown',
   'ArrowUp',
+  'ArrowRight',
 ]
 
 // The bar's keys: the filter menu takes them while a filter is half-typed, and Enter and the arrows wait for a pending answer.
+// → enters the preview only from the end of the text, so it still moves the caret inside it.
 export function paletteKey({
   key,
   shift = false,
@@ -15,6 +17,7 @@ export function paletteKey({
   pending,
   token,
   query,
+  atEnd = false,
   onAction = false,
 }: {
   key: string
@@ -24,6 +27,8 @@ export function paletteKey({
   pending: boolean
   token?: string
   query: string
+  // The caret sits at the end of the field with nothing selected.
+  atEnd?: boolean
   // The menu's selection is an action rather than a filter.
   onAction?: boolean
 }): PaletteKey | null {
@@ -31,8 +36,14 @@ export function paletteKey({
     return null
   }
 
+  const intoPreview = key === 'ArrowRight' && atEnd
+
+  if (key === 'ArrowRight' && !atEnd) {
+    return null
+  }
+
   if (token !== undefined) {
-    return menuKey({
+    return intoPreview ? 'preview' : menuKey({
       key,
       shift,
       mod,
@@ -47,6 +58,10 @@ export function paletteKey({
 
   if (pending && WAITING_KEYS.includes(key)) {
     return 'wait'
+  }
+
+  if (intoPreview) {
+    return 'preview'
   }
 
   if (key === 'ArrowDown') {
