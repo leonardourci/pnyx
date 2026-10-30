@@ -1,6 +1,6 @@
 # Native agent host transport
 
-`src/agent-host/` runs Claude Code and Codex sessions in a separate process. `pnyx-axi serve` still runs its agents in process. Hydra, worker and routine helper sessions require application integration before they can survive server restarts.
+`src/agent-host/` owns Claude Code and Codex sessions in a separate process. `pnyx-axi serve` reconnects Hydra, worker and routine helper sessions after an application restart. Normal app upgrades preserve the running host and its immutable runtime; host maintenance is a separate, manual operation.
 
 The host listens on one authenticated Unix socket in a canonical private runtime directory. A durable installation ID, private token and live process claim prevent competing owners. Clients negotiate protocol and capabilities; a different application build does not replace a healthy host. Socket paths that exceed the platform limit fail explicitly. An unrelated file, live socket or unverifiable owner claim is preserved.
 
