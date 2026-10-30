@@ -4,7 +4,7 @@ import { loadHydra } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { checkSettings, effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { isSharedViewKey } from '#settings/model.ts'
-import { DEFAULT_VIEW, DEFAULT_WIDTHS, resetLayoutWidths } from './view.ts'
+import { DEFAULT_VIEW, resetLayoutWidths } from './view.ts'
 import { decideView } from './decisions.ts'
 import { HydraError } from '#store/errors.ts'
 
@@ -141,7 +141,7 @@ export const layout = guard({
           columns: view.columnWidths,
         },
         defaults: {
-          column: DEFAULT_WIDTHS.column,
+          column: view.defaultColumnWidth,
           hydra: view.defaultHydraWidth,
           columns: view.defaultColumnWidths,
         },
