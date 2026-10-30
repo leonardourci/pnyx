@@ -1,7 +1,7 @@
 # Tests
 
 - A `*.test.ts` beside the code it covers is a unit test, only for tricky pure logic: parsers, dispatch rules, the store rebuild and similar.
-- `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. There are no browser tests: check a page change in the local preview and the pull request's screenshots.
+- `e2e/*.test.ts`: flows. Each one walks a user journey through the real `pnyx-axi` commands, the real server and the real saved files, with fake agents, checking along the way. The default suite has no browser tests: check a page change in the local preview and the pull request's screenshots. The optional clipboard regression below exercises native browser editing.
 - `fixtures/` beside the code: synthetic inputs. `src/test-harness/recordings/` holds the recorded agent sessions the fakes replay.
 
 Run the flows after a build (`scenarios` is the launcher's name for the `e2e/` lane):
@@ -16,6 +16,10 @@ node scripts/verification/test.ts scenarios
 For a small batch, pass explicit paths: `node scripts/verification/test.ts src/tasks/reminders.test.ts`.
 
 `pnpm verify` picks what to run from the files the branch changes (see [Development](development.md)).
+
+## Native clipboard regression
+
+With `playwright-axi` installed and its Chromium browser available, run `pnpm build` followed by `node --conditions=source --test scripts/browser/composer-paste.ts`. This opt-in check uses the existing scenario harness, a temporary home and a random port, and closes its own browser session. It covers the task brief, the task-card answer note and the chat Merge/Hold answer through the shared composer: native multiline clipboard paste, text/image preference, image upload, selection/copy, keyboard edits, browser text insertion, IME composition and persisted submission. It uses Chromium's native editing command because headless macOS keyboard shortcuts alone do not reliably trigger paste. The real OS dictation service and other browser engines need a manual trial.
 
 ## Writing a flow
 
