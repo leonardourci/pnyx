@@ -524,7 +524,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const columns = columnsFor({ state })
   const filteredCards = filterCards({
     state,
-    actions,
     workspace,
     tag,
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))

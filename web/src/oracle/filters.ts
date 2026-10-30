@@ -214,7 +214,7 @@ export const queryText = ({ query }: { query: string }) => query.replace(
 ).trim()
 
 // The kinds of result still possible under these badges; two badges of one type mean either.
-export function possibleKinds({ badges }: { badges: Filter[] }): ResultKind[] {
+function possibleKinds({ badges }: { badges: Filter[] }): ResultKind[] {
   return RESULT_KINDS.filter(kind => FILTER_TYPES.every(type => {
     const chosen = badges.filter(badge => badge.type === type)
 

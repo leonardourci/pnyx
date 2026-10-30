@@ -4,7 +4,7 @@ export interface AskTarget {
   icon: string
 }
 
-export interface AskStart {
+interface AskStart {
   target?: AskTarget
   request: string
 }
