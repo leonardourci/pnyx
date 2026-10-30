@@ -4,7 +4,7 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import WebSocket from 'ws'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
-import { until } from '#agent-host/fixtures/harness.ts'
+import { fixtureHost, until } from '#agent-host/fixtures/harness.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 
 const journalText = ({ root }: { root: string }) => readdirSync(join(
@@ -22,7 +22,7 @@ const journalText = ({ root }: { root: string }) => readdirSync(join(
   .join('\n')
 
 test(
-  'native host loss reaches the existing browser socket without a reconnect',
+  'native host loss and recovery reach the existing browser socket without a reconnect',
   async t => {
     const app = await fixtureApplication({ t })
     const server = await app.start()
@@ -63,6 +63,20 @@ test(
     assert.equal(
       (await response.json()).native.state,
       'unavailable',
+    )
+    await fixtureHost({
+      t,
+      directory: app.root,
+    })
+    await until({ check: () => statuses.filter(state => state === 'ready').length === 2 })
+    const recovered = await fetch(`http://127.0.0.1:${server.port}/health`)
+    assert.equal(
+      (await recovered.json()).native.state,
+      'ready',
+    )
+    assert.equal(
+      connections,
+      1,
     )
   },
 )
