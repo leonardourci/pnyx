@@ -6,6 +6,8 @@ import { existsSync, readFileSync, readdirSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
 import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
+const SECOND_MS = 1000
+
 for (const provider of [
   'claude-code',
   'codex',
@@ -302,13 +304,15 @@ test(
       installation: 'fixture-installation',
     })
     t.after(initial.detach)
-    const session = await initial.providers.codex.open({
+    const opening = initial.providers.codex.open({
       cwd: root,
       env: {},
-      settings: { fixtureTree: '1' },
+      settings: {
+        fixtureTree: '1',
+        fixtureOpen: 'hold',
+      },
       signal: new AbortController().signal,
     })
-    session.detach!()
     const path = join(
       root,
       'owned-tree.json',
@@ -331,6 +335,14 @@ test(
         }
       }
     })
+    const born = Math.max(...Object.values(owners).map(owner => Date.parse(owner.start)))
+    await until({ check: () => Date.now() >= born + SECOND_MS })
+    await first.control({
+      kind: 'release',
+      nativeId: (await first.stats())[0]!.id,
+    })
+    const session = await opening
+    session.detach!()
     first.child.kill('SIGKILL')
     await first.exited
 
@@ -478,6 +490,10 @@ for (const harness of [
         await until({ check: async () => (await host.stats()).some(state => state.input.some(input => input.text.includes('Granted tasks:'))) })
         const helper = (await host.stats()).find(state => state.input.some(input => input.text.includes('Granted tasks:')))!
         assert.ok(helper)
+        const original = new Map((await host.stats()).map(state => [
+          state.id,
+          state.input.map(input => input.id),
+        ]))
         const batch = Object.values(app.state().helper!.runs)[0]!
         first.child.kill('SIGKILL')
         await first.exited
@@ -584,10 +600,9 @@ for (const harness of [
             app.state().helper!.outcomes.length,
             0,
           )
-          assert.equal(
-            (await host.stats()).length,
-            0,
-          )
+          const resumed = await host.stats()
+          assert.ok(resumed.every(state => state.id !== helper.id))
+          assert.ok(resumed.every(state => state.input.every(input => !original.get(state.id)?.includes(input.id))))
           await assert.rejects(
             cli({
               args: [
@@ -635,10 +650,17 @@ for (const harness of [
           throw error
         }
 
-        assert.equal(
-          (await host.stats()).length,
-          result === 'host-crash' ? 0 : 3,
-        )
+        if (hostLost) {
+          for (const state of await host.stats()) {
+            assert.ok(state.input.every(input => !original.get(state.id)?.includes(input.id)))
+          }
+        } else {
+          assert.equal(
+            (await host.stats()).length,
+            3,
+          )
+        }
+
         assert.equal(
           app.state().helper!.outcomes.filter(outcome => outcome.summary === 'Nudged once.').length,
           failed ? 0 : 1,
