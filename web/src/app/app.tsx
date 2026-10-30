@@ -1078,7 +1078,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       })
       requestAnimationFrame(() => focusElement({ selector: '.hydra-chat textarea' }))
     } catch (error) {
-      notify({ text: (error as Error).message })
+      notify({ text: error instanceof Error ? error.message : String(error) })
     }
   }
 
