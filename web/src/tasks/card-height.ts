@@ -1,4 +1,4 @@
-import { useLayoutEffect, useState, type RefObject } from 'react'
+import { useEffect, useLayoutEffect, useState, type RefObject } from 'react'
 
 const PANEL_MINIMUM = 120
 // A tab still reading its first content keeps the card's last bounds, so the card never shrinks to a loading line and grows back.
@@ -186,4 +186,74 @@ export function useCardHeight({
   )
 
   return bounds
+}
+
+// How far a field typed in inside the card has grown since it took focus; the card grows by as much.
+export function useTypingGrowth({ element }: { element: RefObject<HTMLElement | null> }) {
+  const [
+    growth,
+    setGrowth,
+  ] = useState(0)
+
+  useEffect(
+    () => {
+      const card = element.current
+
+      if (!card) {
+        return
+      }
+
+      let watching: ResizeObserver | undefined
+
+      const start = (event: FocusEvent) => {
+        const field = event.target instanceof HTMLTextAreaElement && event.target.closest('.composer-field')
+          ? event.target : null
+
+        if (!field) {
+          return
+        }
+
+        watching?.disconnect()
+        const base = field.offsetHeight
+        watching = new ResizeObserver(() => setGrowth(Math.max(
+          0,
+          field.offsetHeight - base,
+        )))
+        watching.observe(field)
+      }
+
+      const stop = (event: FocusEvent) => {
+        if (event.relatedTarget instanceof Node && card.contains(event.relatedTarget)) {
+          return
+        }
+
+        watching?.disconnect()
+        setGrowth(0)
+      }
+
+      card.addEventListener(
+        'focusin',
+        start,
+      )
+      card.addEventListener(
+        'focusout',
+        stop,
+      )
+
+      return () => {
+        watching?.disconnect()
+        card.removeEventListener(
+          'focusin',
+          start,
+        )
+        card.removeEventListener(
+          'focusout',
+          stop,
+        )
+      }
+    },
+    [element],
+  )
+
+  return growth
 }
