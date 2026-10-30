@@ -47,32 +47,46 @@ export function searchSchedule({
   show({
     key,
     hits,
+    failed,
   }: {
     key: string
     hits: Hit[]
+    failed: boolean
   }): void
 }) {
   let current: Search | null = null
   let waiting: ReturnType<typeof setTimeout> | undefined
   let refreshing: ReturnType<typeof setTimeout> | undefined
   let running = false
+  let shown = ''
 
-  // Never rejects: a failed search leaves the last results in place, and the next query or event tries again.
+  // Never rejects: a failed refresh keeps the shown results, and the next query or event tries again.
   const send = async ({ search }: { search: Search }) => {
+    const key = keyOf({ search })
+    const stillCurrent = () => !!current && keyOf({ search: current }) === key
     running = true
 
     try {
       const hits = await find({ search })
-      const stillCurrent = !!current && keyOf({ search: current }) === keyOf({ search })
 
-      if (stillCurrent) {
+      if (stillCurrent()) {
+        shown = key
         show({
-          key: keyOf({ search }),
+          key,
           hits,
+          failed: false,
         })
       }
     } catch {
-      return
+      // A query never answered still ends its wait, with no hits, so Enter and the arrows act again.
+      if (stillCurrent() && shown !== key) {
+        shown = key
+        show({
+          key,
+          hits: [],
+          failed: true,
+        })
+      }
     } finally {
       running = false
     }
@@ -149,6 +163,7 @@ export function useFoundCards({
 }): {
   hits: Hit[]
   pending: boolean
+  failed: boolean
 } {
   const [
     found,
@@ -156,6 +171,7 @@ export function useFoundCards({
   ] = useState<{
     key: string
     hits: Hit[]
+    failed: boolean
   } | null>(null)
   const text = query.trim()
   const search = text ? {
@@ -193,9 +209,11 @@ export function useFoundCards({
   )
 
   const answered = !!search && !!found
+  const pending = !!search && found?.key !== key
 
   return {
     hits: answered ? found.hits : [],
-    pending: !!search && found?.key !== key,
+    pending,
+    failed: answered && !pending && found.failed,
   }
 }

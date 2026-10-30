@@ -92,6 +92,26 @@ const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
   scope: (target.closest<HTMLElement>('[data-key-scope]')?.dataset.keyScope as KeyScope | undefined) ?? 'navigation',
 })
 
+const countLabel = ({
+  pending,
+  failed,
+  count,
+}: {
+  pending: boolean
+  failed: boolean
+  count: number
+}) => {
+  if (pending) {
+    return 'Searching…'
+  }
+
+  if (failed) {
+    return 'Search unavailable'
+  }
+
+  return `${count} ${count === 1 ? 'result' : 'results'}`
+}
+
 const resultIcon = ({ result }: { result: OracleResult }) => {
   switch (result.kind) {
     case 'task':
@@ -1230,8 +1250,12 @@ export function Oracle({
     },
   ]
   const shownBadges = ask ? askBadges : searchBadges
-  const countLabel = found.pending ? 'Searching…' : `${results.length} ${results.length === 1 ? 'result' : 'results'}`
-  const searchCount = token ? MENU_LABEL : countLabel
+  const resultCount = countLabel({
+    pending: found.pending,
+    failed: found.failed,
+    count: results.length,
+  })
+  const searchCount = token ? MENU_LABEL : resultCount
   const count = ask ? 'Ask' : searchCount
   const narrowing = badges.some(badge => badge.type !== 'kind' && badge.type !== 'hydra')
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
