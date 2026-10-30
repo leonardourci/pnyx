@@ -234,3 +234,64 @@ test(
     )
   },
 )
+
+test(
+  'a save without canonical state keeps its preview through a held or failed refresh',
+  async () => {
+    const resource = createSettingsResource<string, string>({
+      scope: 'test:accepted-without-state',
+      project: ({ patch }) => patch,
+      represented: ({
+        state,
+        patch,
+      }) => state === patch,
+      read: ({ receipt }) => typeof receipt.value === 'string' ? receipt.value : undefined,
+    })
+    resource.receive({ state: 'old' })
+    await resource.write({
+      command: async () => ({ revision: 1 }),
+      name: 'rule',
+      args: ['set'],
+      patch: 'new',
+      targets: ['model'],
+    })
+    assert.equal(
+      resource.snapshot().view,
+      'new',
+    )
+    const read = deferred<Record<string, unknown>>()
+    const refreshing = resource.refresh({
+      command: async () => read.promise,
+      name: 'rule',
+      args: ['list'],
+    })
+    assert.equal(
+      resource.snapshot().view,
+      'new',
+    )
+    read.reject({ error: new Error('Read unavailable') })
+    await refreshing
+    assert.equal(
+      resource.snapshot().view,
+      'new',
+    )
+    assert.equal(
+      resource.snapshot().error,
+      'Read unavailable',
+    )
+    await resource.refresh({
+      command: async () => ({ value: 'new' }),
+      name: 'rule',
+      args: ['list'],
+    })
+    assert.equal(
+      resource.snapshot().view,
+      'new',
+    )
+    assert.equal(
+      resource.snapshot().error,
+      '',
+    )
+    assert.ok(resource.snapshot().intents.every(intent => intent.stage === 'confirmed'))
+  },
+)

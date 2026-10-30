@@ -40,7 +40,10 @@ export function createSettingsResource<State, Patch>({
       represented: ({
         state,
         intent,
-      }) => intent.stage === 'unknown' && state !== null && represented({
+      }) => [
+        'unknown',
+        'accepted',
+      ].includes(intent.stage) && state !== null && represented({
         state,
         patch: intent.patch,
       }),
@@ -204,7 +207,7 @@ export function createSettingsResource<State, Patch>({
 
         resource.accept({
           id,
-          complete: true,
+          complete: state !== undefined,
         })
 
         for (const intent of resource.snapshot().intents) {
@@ -212,7 +215,10 @@ export function createSettingsResource<State, Patch>({
             break
           }
 
-          if (intent.stage === 'unknown' && intent.targets.every(target => targets.includes(target))) {
+          if ([
+            'unknown',
+            'accepted',
+          ].includes(intent.stage) && intent.targets.every(target => targets.includes(target))) {
             resource.accept({
               id: intent.id,
               complete: true,
