@@ -94,9 +94,9 @@ export async function nativeProviders({
         }
       }
 
-      if (frame.type === 'host-status') {
+      if (frame.type === 'host-status' || frame.type === 'ready') {
         status = nativeStatus({
-          readiness: frame.status,
+          readiness: frame.type === 'ready' ? frame.readiness : frame.status,
           build: client.ready.build,
           instance: client.ready.instance,
         })
