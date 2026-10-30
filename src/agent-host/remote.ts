@@ -26,11 +26,13 @@ export async function remoteSession({
   persistAnswer,
   completedAnswer,
   context,
+  readOnly = false,
 }: {
   client: HostClient
   summary: Summary
   recovered: boolean
   context?(): string
+  readOnly?: boolean
   persistAnswer({
     permission,
     decision,
@@ -100,6 +102,10 @@ export async function remoteSession({
   })
 
   const refreshContext = async () => {
+    if (readOnly) {
+      return
+    }
+
     const text = context?.()
 
     if (text === undefined || text === publishedContext) {
@@ -250,6 +256,14 @@ export async function remoteSession({
   client.watch({ ref: summary.ref })
   await started.promise
 
+  if (readOnly && !queue.some(item => typeof item.event === 'object' && item.event.type === 'turn-ended')) {
+    detach()
+    fail({
+      code: 'RECOVERY_REQUIRED',
+      message: 'The retained native turn has no terminal outcome; preserve its unresolved ownership',
+    })
+  }
+
   const decide = ({ request }: { request: Extract<HostedEvent, { type: 'permission' }>['request'] }) => {
     if (!permission || permissions.has(request.id)) {
       return
@@ -334,6 +348,10 @@ export async function remoteSession({
       const next = queue.shift()
 
       if (!next) {
+        if (readOnly) {
+          return
+        }
+
         wake = deferred<void>()
         await wake.promise
         continue
@@ -428,6 +446,10 @@ export async function remoteSession({
       }
 
       const feed = async () => {
+        if (readOnly) {
+          return
+        }
+
         for await (const original of input) {
           if (detached) {
             return
@@ -495,6 +517,12 @@ export async function remoteSession({
       return result.kind === 'commands' ? result.commands : []
     },
     close() {
+      if (readOnly) {
+        detach()
+
+        return Promise.resolve()
+      }
+
       const closing = call({
         operation: {
           kind: 'close',

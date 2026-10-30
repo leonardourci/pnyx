@@ -72,6 +72,7 @@ export async function nativeProviders({
   const inventory = client.ready.sessions
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
+    canOpen: () => !inventory.some(session => session.phase === 'recovery_required'),
     owns: ({ agent }) => inventory.some(session => {
       const same = session.provider === provider && session.nativeId === agent.sessionId
 
@@ -105,6 +106,7 @@ export async function nativeProviders({
       context,
       allow,
       outputSchema,
+      reattachOnly,
     }) {
       const key = fingerprint({
         value: {
@@ -140,6 +142,19 @@ export async function nativeProviders({
         session.provider === provider && session.nativeId === agent.sessionId)
       let recovered = false
 
+      if (!summary && reattachOnly && binding?.session) {
+        const previous = binding.session.ref
+        summary = inventory.find(session => session.ref.id === previous.id
+          && session.ref.epoch === previous.epoch)
+      }
+
+      if (reattachOnly && !summary) {
+        fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'The retained native binding is unavailable; preserve the original work until reconciled',
+        })
+      }
+
       if (!summary && binding) {
         if (binding.instance !== client.ready.instance) {
           fail({
@@ -159,6 +174,8 @@ export async function nativeProviders({
       }
 
       if (summary?.phase === 'live') {
+        recovered = true
+      } else if (summary && reattachOnly) {
         recovered = true
       } else if (summary && summary.phase !== 'closed' && summary.phase !== 'failed') {
         fail({
@@ -245,6 +262,7 @@ export async function nativeProviders({
         summary,
         recovered,
         context,
+        readOnly: reattachOnly && summary.phase !== 'live',
         async persistAnswer({
           permission,
           decision,

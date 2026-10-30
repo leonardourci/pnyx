@@ -242,6 +242,7 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   ])
 
 export interface Provider {
+  canOpen?(): boolean
   remote?: true
   owns?({ agent }: { agent: AgentRef }): boolean
   compact?: true
@@ -274,6 +275,7 @@ export interface Provider {
     allow,
     context,
     ownProcess,
+    reattachOnly,
   }: {
     cwd: string
     instructions?: string
@@ -287,5 +289,6 @@ export interface Provider {
     env: NodeJS.ProcessEnv
     signal: AbortSignal
     ownProcess?({ pid }: { pid: number }): void
+    reattachOnly?: boolean
   }): Promise<HostedSession>
 }
