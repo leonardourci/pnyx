@@ -10,6 +10,8 @@ import type { ExternalSource } from '#task-sources/model.ts'
 import type { Column } from './columns-model.ts'
 import type { EventBase } from '#store/events.ts'
 
+export const MAX_BRIEF_LENGTH = 24000
+
 export const NOTE_KINDS = [
   'summary',
   'decision',
