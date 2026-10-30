@@ -841,3 +841,200 @@ for (const harness of [
     },
   )
 }
+
+for (const provider of [
+  'claude-code',
+  'codex',
+] as const) {
+  test(
+    `${provider} refreshes surviving context on input, compaction and reattachment`,
+    async t => {
+      const host = await fixtureHost({ t })
+      const options = {
+        directory: host.root,
+        journal: join(
+          host.root,
+          'journal',
+        ),
+        installation: 'fixture-installation',
+      }
+      let digest = 'memory-v1'
+      const initial = await nativeProviders(options)
+      t.after(initial.detach)
+      const open = {
+        cwd: host.root,
+        env: {},
+        settings: {},
+        signal: new AbortController().signal,
+        context: () => digest,
+      }
+      const session = await initial.providers[provider].open(open)
+      assert.equal(
+        (await host.stats())[0]!.context,
+        'memory-v1',
+      )
+      digest = 'memory-v2'
+      const events: unknown[] = []
+
+      const run = async () => {
+        for await (const event of session.run({
+          input: (async function* () {
+            yield {
+              id: 'first',
+              text: 'First',
+              images: [],
+            }
+          })(),
+          permission: async () => ({ behavior: 'allow' }),
+        })) {
+          events.push(event)
+        }
+      }
+
+      const running = run()
+      await until({ check: async () => (await host.stats())[0]!.input.length === 1 })
+      assert.equal(
+        (await host.stats())[0]!.context,
+        'memory-v2',
+      )
+      digest = 'memory-v3'
+      await host.control({
+        kind: 'event',
+        nativeId: session.id,
+        event: {
+          type: 'compaction',
+          id: 'compact',
+          state: 'done',
+          trigger: 'auto',
+        },
+      })
+      await until({ check: () => events.some(event => typeof event === 'object' && (event as { type: string }).type === 'compaction') })
+      assert.equal(
+        (await host.stats())[0]!.context,
+        'memory-v3',
+      )
+      session.detach!()
+      await running
+      initial.detach()
+      digest = 'memory-v4'
+      const replacement = await nativeProviders(options)
+      t.after(replacement.detach)
+      const resumed = await replacement.providers[provider].open({
+        ...open,
+        agent: {
+          provider,
+          sessionId: session.id,
+        },
+      })
+      t.after(() => resumed.detach!())
+      assert.equal(
+        (await host.stats())[0]!.context,
+        'memory-v4',
+      )
+      assert.equal(
+        (await host.stats())[0]!.input.length,
+        1,
+      )
+    },
+  )
+}
+
+test(
+  'completion replay keeps one tagged task note after an application SIGKILL before acknowledgement',
+  async t => {
+    const { taskMention } = await import('#hydra/mentions.ts')
+    const app = await fixtureApplication({ t })
+    const first = await app.start({ holdCompletionAcks: true })
+    await app.cli({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.cli({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Note target',
+        '--key',
+        'note-target',
+        '--folder',
+        app.folder,
+      ],
+    })
+    const task = app.state().keys['note-target']!
+    const notes = () => readFileSync(
+      join(
+        app.home,
+        'hydras/default/events.jsonl',
+      ),
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => JSON.parse(line) as {
+        type: string
+        cardId: string
+        data: { text: string }
+      })
+      .filter(event => event.type === 'card.noted' && event.cardId === task && event.data.text === 'Recorded once.')
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Please report on the target',
+      ],
+    })
+    await until({ check: async () => (await app.host.stats())[0]?.input.length === 1 })
+    const native = (await app.host.stats())[0]!
+    await app.host.control({
+      kind: 'event',
+      nativeId: native.id,
+      event: {
+        type: 'text',
+        id: 'reply',
+        text: `${taskMention({
+          id: task,
+          title: 'Note target',
+        })} Recorded once.`,
+      },
+    })
+    await app.host.control({
+      kind: 'event',
+      nativeId: native.id,
+      event: {
+        type: 'result',
+        turn: native.turn!,
+        inputIds: native.input.map(input => input.id),
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    await until({ check: () => notes().length === 1 })
+    first.child.kill('SIGKILL')
+    await first.exited
+    await app.start()
+    assert.equal(
+      notes().length,
+      1,
+    )
+    assert.equal(
+      (await app.host.stats())[0]!.input.length,
+      1,
+    )
+  },
+)
