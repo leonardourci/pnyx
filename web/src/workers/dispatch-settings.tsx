@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Candidate, Harness } from '#workers/dispatch-config.ts'
-import { canonical, checkDispatch, HARNESSES, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
+import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
@@ -18,11 +18,6 @@ import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, fo
 
 // Asking for Now waits until typing pauses; quota is read on the server.
 const NOW_DELAY_MS = 600
-
-const HARNESS_LABELS: Record<Harness, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
-}
 
 const VIEWS = [
   {
@@ -628,91 +623,6 @@ function JsonView({
   )
 }
 
-function Accounts({ document }: { document: DispatchDocument }) {
-  const projects = Object.entries(document.projects)
-
-  const rows = ({ harness }: { harness: Harness }) => {
-    const order = document.workers[harness] ?? []
-    const unused = Object.keys(document.accounts)
-      .filter(name => document.accounts[name]!.provider === harness && !order.includes(name))
-
-    return [
-      ...order.map((
-        name,
-        index,
-      ) => ({
-        name,
-        position: index + 1,
-      })),
-      ...unused.map(name => ({
-        name,
-        position: undefined,
-      })),
-    ]
-  }
-
-  return (
-    <section className="dispatch-accounts" aria-labelledby="dispatch-accounts">
-      <p className="dispatch-readonly"><Icon name="about" size={14} />Read-only here. Change accounts in the JSON view, or ask Hydra.</p>
-      <h4 id="dispatch-accounts"><Icon name="you" size={14} />Accounts and order</h4>
-      <p className="dispatch-desc">The logins workers and Hydra run on; workers try each harness’s accounts top to bottom. Pnyx stores the login folder only, never credentials.</p>
-      {!Object.keys(document.accounts).length && <p className="dispatch-desc">No account is registered, so Hydra and workers use each harness’s own login, claude:default and codex:default.</p>}
-      <table className="dispatch-accounts-table">
-        <thead>
-          <tr>
-            <th>Order</th>
-            <th>Account</th>
-            <th>Login folder</th>
-            <th>Hydra</th>
-          </tr>
-        </thead>
-        {HARNESSES.map(harness => (
-          <tbody key={harness}>
-            <tr className="dispatch-group">
-              <th colSpan={4}><span className="dispatch-label"><Icon name={harness === 'claude' ? 'claude-code' : 'codex'} size={14} />{HARNESS_LABELS[harness]}</span></th>
-            </tr>
-            {rows({ harness }).map(({
-              name,
-              position,
-            }) => {
-              const account = Object.hasOwn(
-                document.accounts,
-                name,
-              ) ? document.accounts[name] : undefined
-
-              return (
-                <tr key={name} data-missing={!account || undefined}>
-                  <td>{position ?? '—'}</td>
-                  <td><code>{name}</code></td>
-                  <td>{account ? <code>{account.folder}</code> : 'Not a registered account'}</td>
-                  <td>{document.main === name && <span className="dispatch-label"><Icon name="check" size={14} />Hydra runs here</span>}</td>
-                </tr>
-              )
-            })}
-          </tbody>
-        ))}
-      </table>
-      <h4><Icon name="project" size={14} />Per-project order</h4>
-      <p className="dispatch-desc">Replaces the order above for one project’s workers.</p>
-      {projects.length ? (
-        <dl className="dispatch-projects">
-          {projects.map(([
-            path,
-            order,
-          ]) => (
-            <div key={path}>
-              <dt><code>{path}</code></dt>
-              {HARNESSES.filter(harness => order[harness]?.length).map(harness => (
-                <dd key={harness}>{HARNESS_LABELS[harness]}: {order[harness]!.join(' → ')}</dd>
-              ))}
-            </div>
-          ))}
-        </dl>
-      ) : <p className="dispatch-desc">None.</p>}
-    </section>
-  )
-}
-
 function saveStatus({
   errors,
   changes,
@@ -1004,7 +914,6 @@ export function DispatchSettings({
       ) : (
         <JsonView text={shownText} write={write} changes={changes} />
       )}
-      {tableDocument && <Accounts document={tableDocument} />}
       {unsaved && (
         <SaveBar
           issues={issues}

@@ -1888,16 +1888,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-json-changes { padding: 4px 8px; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-surface); }
 .dispatch-json-changes h5 { margin: 4px 0; color: var(--color-muted); font-size: var(--text-detail); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
 .dispatch-json-changes .dispatch-changes { padding: 0; border: 0; }
-.dispatch-accounts { display: flex; flex-direction: column; gap: 8px; padding: 12px; border: 1px dashed var(--color-gold-line); border-radius: 9px; }
-.dispatch-readonly { display: flex; align-items: center; gap: 6px; color: var(--color-gold); font-size: var(--text-detail); }
-.dispatch-accounts-table { width: 100%; border-collapse: collapse; font-size: var(--text-detail); }
-.dispatch-accounts-table th, .dispatch-accounts-table td { padding: 5px 8px; border-top: 1px solid var(--color-subtle); text-align: left; }
-.dispatch-accounts-table thead th { border-top: 0; background: var(--color-raised); color: var(--color-muted); font-weight: 600; }
-.dispatch-label { display: inline-flex; align-items: center; gap: 4px; }
-.dispatch-accounts-table td svg { color: var(--color-green); }
-.dispatch-accounts-table tr[data-missing] td { color: var(--color-red); }
-.dispatch-projects { margin: 0; font-size: var(--text-detail); }
-.dispatch-projects dd { margin: 2px 0 6px 12px; color: var(--color-muted); }
 .dispatch-savebar { position: sticky; bottom: 0; z-index: 3; display: flex; flex-wrap: wrap; align-items: center; gap: 10px; padding: 10px 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-raised); box-shadow: 0 -2px 8px var(--color-shadow); }
 .dispatch-savebar-status { flex: 1; }
 .dispatch-savebar-status[data-errors] { color: var(--color-red); font-weight: 600; }
