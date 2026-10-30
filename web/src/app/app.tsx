@@ -57,6 +57,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     hydraThread,
     hydraQueue,
     upgrade,
+    native,
     latest,
     actions,
     navigation,
@@ -1165,6 +1166,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
             shown={panel}
             connected={connected}
             upgrade={upgrade}
+            native={native}
             startUpgrade={startUpgrade}
             page={page}
             navigate={({ page }) => {

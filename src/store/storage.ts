@@ -9,6 +9,7 @@ export { pnyxHome } from './paths.ts'
 export const LOCK_TIMEOUT_MS = 5000
 export const nonblockingLocks = new AsyncLocalStorage<true>()
 const STALE_EMPTY_LOCK_MS = 10_000
+const LOCK_POLL_MS = 25
 
 // HydraSnapshot files hold copied transcript text, which is as private as the transcripts.
 export function privateDir({ dir }: { dir: string }): void {
@@ -161,14 +162,11 @@ export function acquireLock({
     'writer.lock',
   )
   const takeover = `${path}.takeover`
-  const deadline = Date.now() + timeout
-  let attempts = 0
-  let retryTakeover: boolean
+  let deadline = Date.now() + timeout
+  const emptyLockDeadline = deadline + STALE_EMPTY_LOCK_MS
+  let retrying = false
 
-  do {
-    attempts++
-    retryTakeover = false
-
+  const createLock = (): (() => void) | undefined => {
     try {
       const fd = openSync(
         path,
@@ -188,33 +186,69 @@ export function acquireLock({
       if ((error as NodeJS.ErrnoException).code !== 'EEXIST') {
         throw error
       }
+
+      return undefined
+    }
+  }
+
+  do {
+    if (retrying) {
+      Atomics.wait(
+        new Int32Array(new SharedArrayBuffer(4)),
+        0,
+        0,
+        Math.min(
+          LOCK_POLL_MS,
+          Math.max(
+            0,
+            deadline - Date.now(),
+          ),
+        ),
+      )
+    }
+
+    const release = createLock()
+
+    if (release) {
+      return release
+    }
+
+    if (timeout > 0) {
+      try {
+        const owner = Number(readFileSync(
+          path,
+          'utf8',
+        ))
+
+        if (!Number.isInteger(owner) || owner <= 0) {
+          deadline = Math.max(
+            deadline,
+            Math.min(
+              emptyLockDeadline,
+              statSync(path).mtimeMs + STALE_EMPTY_LOCK_MS + timeout,
+            ),
+          )
+        }
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
     }
 
     if (lockIsStale({ path }) && takeOver({
       path,
       takeover,
     })) {
-      retryTakeover = timeout === 0 && attempts === 1
-      continue
+      const reclaimed = createLock()
+
+      if (reclaimed) {
+        return reclaimed
+      }
     }
 
-    if (timeout === 0) {
-      break
-    }
-
-    Atomics.wait(
-      new Int32Array(new SharedArrayBuffer(4)),
-      0,
-      0,
-      Math.min(
-        25,
-        Math.max(
-          0,
-          deadline - Date.now(),
-        ),
-      ),
-    )
-  } while (retryTakeover || Date.now() < deadline)
+    retrying = true
+  } while (Date.now() < deadline)
 
   let owner: string
 

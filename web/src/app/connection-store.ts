@@ -1,3 +1,4 @@
+import type { NativeStatus } from '#app/native-status.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
 import { moveHydraStorage, readSettingsSaves, saveSettingsSaves } from '#web-hydra/outbox.ts'
 import { reminderTime } from '#tasks/time.ts'
@@ -125,6 +126,7 @@ export function createHydraConnection() {
   let received = Date.now()
   let reconnect: ReturnType<typeof setTimeout> | undefined
   let upgrade: UpgradeStatus | undefined
+  let native: NativeStatus | undefined
   let watchdog: ReturnType<typeof setInterval> | undefined
 
   const hydras = createPendingResource<HydraSummary[], HydraSummary>({
@@ -285,6 +287,7 @@ export function createHydraConnection() {
       hydraThread: scope.thread,
       hydraQueue: scope.queue,
       upgrade,
+      native,
       latest: scope.latest,
       actions: scope.actions,
       navigation: {
@@ -869,6 +872,7 @@ export function createHydraConnection() {
     if (message.type === 'hello') {
       // A restarted server sends its own answer once its check has one.
       upgrade = undefined
+      native = undefined
 
       if (message.installation !== installation) {
         active = false
@@ -1031,6 +1035,8 @@ export function createHydraConnection() {
       scope.queue = message.queue
     } else if (message.type === 'hydras') {
       updateHydras({ rows: message.hydras })
+    } else if (message.type === 'native-status') {
+      native = message.native
     } else if (message.type === 'upgrade') {
       upgrade = message.upgrade
     } else if (message.type === 'settings') {

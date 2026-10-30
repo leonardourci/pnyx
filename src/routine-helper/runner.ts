@@ -3,7 +3,7 @@ import { agentInput } from '#app/agent-input.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { randomUUID } from 'node:crypto'
 import { join } from 'node:path'
-import { existsSync, mkdirSync, readdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync } from 'node:fs'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
@@ -12,6 +12,7 @@ import { HydraError } from '#store/errors.ts'
 import type { AgentConfig, AgentRef, AgentSettings } from '#workers/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { background } from '#app/background.ts'
+import { replaceFile } from '#agent-host/output.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -25,6 +26,12 @@ import { handbackId, type HelperBatch, type HelperChange, type HelperOutcome, ty
 type Completion = {
   change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
   tasks: string[]
+  at?: string
+  native?: {
+    harness: 'claude' | 'codex'
+    agent: AgentRef
+    fact?: string
+  }
 }
 
 const TURN_MS = 120_000
@@ -155,6 +162,7 @@ export function createRoutineHelper({
   bound = TURN_MS,
   agentFor,
   deadline,
+  canOffer = () => true,
 }: {
   hydraId: string
   provider({ harness }: { harness: 'claude' | 'codex' }): Provider
@@ -166,6 +174,7 @@ export function createRoutineHelper({
     actor: string
   }): NodeJS.ProcessEnv
   context(): string
+  canOffer?(): boolean
   changed(): void
   handback({
     id,
@@ -293,7 +302,13 @@ export function createRoutineHelper({
     }
   }
 
-  const append = ({ change }: { change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }> }) => {
+  const append = ({
+    change,
+    at,
+  }: {
+    at?: string
+    change: Exclude<HelperChange, { type: 'hydra.helper-acknowledged' }>
+  }) => {
     const id = change.type === 'hydra.helper-finished'
       ? `helper-finished:${change.data.batch}` : `helper-started:${change.data.id}`
 
@@ -306,7 +321,7 @@ export function createRoutineHelper({
             state: writer.state,
             cardId: HYDRA_CARD,
             meta: {
-              at: new Date().toISOString(),
+              at: at ?? new Date().toISOString(),
               actor: 'pnyx',
               id,
             },
@@ -339,6 +354,8 @@ export function createRoutineHelper({
   const persistCompletion = async ({
     change,
     tasks,
+    at,
+    native,
   }: Completion) => {
     mkdirSync(
       pendingDir,
@@ -351,21 +368,20 @@ export function createRoutineHelper({
       pendingDir,
       `${change.data.batch}.json`,
     )
-    const temporary = `${path}.tmp`
-    writeFileSync(
-      temporary,
-      JSON.stringify({
+    replaceFile({
+      path,
+      text: JSON.stringify({
         change,
         tasks,
+        at,
+        native,
       }),
-      { mode: 0o600 },
-    )
-    renameSync(
-      temporary,
-      path,
-    )
+    })
     await defer({
-      run: () => append({ change }),
+      run: () => append({
+        change,
+        at,
+      }),
       cleanup: true,
     })
   }
@@ -385,11 +401,41 @@ export function createRoutineHelper({
     })
   }
 
-  const run = async ({ batch }: { batch: HelperBatch }) => {
+  const run = async ({
+    batch,
+    reattachOnly = false,
+  }: {
+    batch: HelperBatch
+    reattachOnly?: boolean
+  }) => {
     const actor = `helper:${batch.id}`
     const releases: (() => void)[] = []
     let cancelDeadline = () => {}
     const usage: HelperUsage = {}
+    let completedAt: string | undefined
+    let remote = false
+    let nativeHarness: 'claude' | 'codex' | undefined
+
+    const nativeCompletion = (): Completion['native'] => {
+      if (!active?.remote || !nativeHarness) {
+        return undefined
+      }
+
+      return {
+        harness: nativeHarness,
+        agent: {
+          provider: nativeHarness === 'codex' ? 'codex' : 'claude-code',
+          sessionId: active.id,
+          cwd: join(
+            hydraDir({ hydraId }),
+            'helper',
+          ),
+          host: 'pnyx',
+          transcriptPath: active.path,
+        },
+        fact: active.fact?.()?.id,
+      }
+    }
 
     try {
       const state = loadHydra({ hydraId }).state
@@ -402,12 +448,16 @@ export function createRoutineHelper({
         throw new Error('The batch now belongs to main')
       }
 
+      nativeHarness = candidate.harness
+      remote = !!provider({ harness: candidate.harness }).remote
+
       for (const task of batch.tasks) {
         releases.push(await defer({
           run: () => taskLease({
             hydraId,
             task,
             actor,
+            durable: remote ? true : undefined,
             lockTimeout: 0,
           }),
         }))
@@ -469,6 +519,7 @@ export function createRoutineHelper({
           context,
           allow: ['pnyx-axi'],
           signal,
+          reattachOnly,
         })
 
         if (signal.aborted) {
@@ -486,6 +537,10 @@ export function createRoutineHelper({
         }
 
         const input = async function* () {
+          if (session.accepted?.({ id: batch.id })) {
+            return
+          }
+
           const card = state.cards[HYDRA_CARD]
           const thread = card ? readThread({
             hydraId,
@@ -547,6 +602,11 @@ export function createRoutineHelper({
 
           if (typeof event === 'object' && event.type === 'turn-ended') {
             const { outcome } = event
+            completedAt = outcome.at
+
+            if (batch.startedAt && Date.parse(outcome.at) > Date.parse(batch.startedAt) + bound) {
+              throw new Error('Helper completed after its original deadline')
+            }
 
             if (outcome.status !== 'completed') {
               throw new Error(outcome.error ?? `Helper turn ${outcome.status}`)
@@ -616,6 +676,8 @@ export function createRoutineHelper({
 
       await persistCompletion({
         tasks: batch.tasks,
+        at: completedAt,
+        native: nativeCompletion(),
         change: {
           type: 'hydra.helper-finished',
           data: {
@@ -626,10 +688,25 @@ export function createRoutineHelper({
         },
       })
 
+      await active?.applied?.()
+
       if (outcomes.some(outcome => outcome.audience === 'owner')) {
         outcomesReady()
       }
     } catch (error) {
+      if (remote && error instanceof HydraError && error.code === 'RECOVERY_REQUIRED') {
+        console.error(
+          'pnyx-axi helper retained ownership requires reconciliation:',
+          error.message,
+        )
+
+        return
+      }
+
+      if (closed && active?.remote) {
+        return
+      }
+
       agent = undefined
       const failure = closed ? 'Helper turn was stopped' : (error as Error).message
 
@@ -639,6 +716,7 @@ export function createRoutineHelper({
       ))) {
         await persistCompletion({
           tasks: batch.tasks,
+          native: nativeCompletion(),
           change: {
             type: 'hydra.helper-finished',
             data: {
@@ -660,47 +738,127 @@ export function createRoutineHelper({
         })
       }
     } finally {
-      const cleanups = [
-        cancelDeadline,
-        () => active?.close(),
-        ...releases,
-      ]
+      if (closed && active?.remote) {
+        cancelDeadline()
+        active.detach?.()
+        active = undefined
+        busy = false
+      } else {
+        cancelDeadline()
+        let cleaned = !remote || !!active
 
-      let cleaned = true
-
-      try {
-        for (const cleanup of cleanups) {
+        try {
           try {
-            await defer({
-              run: cleanup,
-              cleanup: true,
-            })
+            await (active?.remote ? active.settle?.() : active?.close())
           } catch (error) {
             cleaned = false
             console.error(
-              'pnyx-axi helper cleanup:',
+              'pnyx-axi helper native shutdown:',
               error,
             )
           }
-        }
-      } finally {
-        active = undefined
-        abort = undefined
-        busy = false
 
-        if (cleaned && `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds) {
-          rmSync(
-            join(
-              pendingDir,
-              `${batch.id}.json`,
-            ),
-            { force: true },
-          )
-        }
+          const terminal = `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds
+          const cleanups = remote ? batch.tasks.map(task => () => releaseTask({
+            hydraId,
+            task,
+            actor,
+            lockTimeout: 0,
+          })) : releases
 
-        changed()
+          const releaseAllowed = !remote || (cleaned && terminal)
+
+          for (const cleanup of releaseAllowed ? cleanups : []) {
+            try {
+              await defer({
+                run: cleanup,
+                cleanup: true,
+              })
+            } catch (error) {
+              cleaned = false
+              console.error(
+                'pnyx-axi helper cleanup:',
+                error,
+              )
+            }
+          }
+        } finally {
+          active = undefined
+          abort = undefined
+          busy = false
+
+          if (cleaned && `helper-finished:${batch.id}` in loadHydra({ hydraId }).state.eventIds) {
+            rmSync(
+              join(
+                pendingDir,
+                `${batch.id}.json`,
+              ),
+              { force: true },
+            )
+          }
+
+          changed()
+        }
       }
     }
+  }
+
+  const reconcileCompletion = async ({ completion }: { completion: Completion }) => {
+    await persistCompletion(completion)
+    const { native } = completion
+    const actor = `helper:${completion.change.data.batch}`
+
+    if (native) {
+      const adapter = provider({ harness: native.harness })
+
+      if (!adapter.remote) {
+        throw new HydraError({
+          code: 'RECOVERY_REQUIRED',
+          message: 'The native helper owner is unavailable for completion reconciliation',
+        })
+      }
+
+      const session = await adapter.open({
+        cwd: native.agent.cwd!,
+        agent: native.agent,
+        settings: {},
+        reattach: true,
+        env: environment({
+          harness: native.harness,
+          actor,
+        }),
+        signal: stopping.signal,
+      })
+
+      try {
+        if (!session.remote || !session.settle) {
+          throw new Error('Missing native completion reconciliation')
+        }
+
+        await session.settle({ through: native.fact })
+      } finally {
+        session.detach?.()
+      }
+    }
+
+    for (const task of completion.tasks) {
+      await defer({
+        run: () => releaseTask({
+          hydraId,
+          task,
+          actor,
+          lockTimeout: 0,
+        }),
+      })
+    }
+
+    rmSync(
+      join(
+        pendingDir,
+        `${completion.change.data.batch}.json`,
+      ),
+      { force: true },
+    )
   }
 
   return {
@@ -716,7 +874,7 @@ export function createRoutineHelper({
       seqs: number[]
       once?: string[]
     }): Promise<boolean> {
-      if (closed || busy || !tasks.length) {
+      if (closed || busy || !tasks.length || !canOffer()) {
         return false
       }
 
@@ -773,6 +931,35 @@ export function createRoutineHelper({
       const runs = Object.values(loadHydra({ hydraId }).state.helper?.runs ?? {})
 
       for (const batch of runs) {
+        const state = loadHydra({ hydraId }).state
+        const candidate = agentFor ? agentFor() : helperAgent({ state })
+
+        const remote = candidate && provider({ harness: candidate.harness }).remote
+
+        if (!pending.has(batch.id) && !batch.error && remote) {
+          busy = true
+          background({
+            name: 'helper reattachment',
+            run: () => run({
+              batch,
+              reattachOnly: true,
+            }),
+          })
+          continue
+        }
+
+        const recorded = pending.get(batch.id)
+
+        if (recorded) {
+          await reconcileCompletion({ completion: recorded })
+
+          if (!closed && recorded.change.data.error) {
+            giveBack({ batch })
+          }
+
+          continue
+        }
+
         let cleaned = true
 
         for (const task of batch.tasks) {
@@ -794,11 +981,7 @@ export function createRoutineHelper({
           }
         }
 
-        const completion = pending.get(batch.id)
-
-        if (completion) {
-          await persistCompletion(completion)
-        } else if (!batch.error) {
+        if (!batch.error) {
           await persistCompletion({
             tasks: batch.tasks,
             change: {
@@ -812,7 +995,7 @@ export function createRoutineHelper({
           })
         }
 
-        if (!closed && (!completion || completion.change.data.error)) {
+        if (!closed) {
           giveBack({ batch })
         }
 
@@ -833,38 +1016,7 @@ export function createRoutineHelper({
         completion,
       ] of pending) {
         if (!runs.some(batch => batch.id === id)) {
-          let cleaned = true
-
-          for (const task of completion.tasks) {
-            try {
-              await defer({
-                run: () => releaseTask({
-                  hydraId,
-                  task,
-                  actor: `helper:${id}`,
-                  lockTimeout: 0,
-                }),
-              })
-            } catch (error) {
-              cleaned = false
-              console.error(
-                'pnyx-axi helper recovery cleanup:',
-                error,
-              )
-            }
-          }
-
-          await persistCompletion(completion)
-
-          if (cleaned) {
-            rmSync(
-              join(
-                pendingDir,
-                `${id}.json`,
-              ),
-              { force: true },
-            )
-          }
+          await reconcileCompletion({ completion })
         }
       }
 
@@ -872,6 +1024,13 @@ export function createRoutineHelper({
     },
     close() {
       closed = true
+
+      if (active?.remote) {
+        active.detach?.()
+
+        return
+      }
+
       stopping.abort()
       abort?.abort()
       background({

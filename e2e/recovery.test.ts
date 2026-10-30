@@ -308,10 +308,16 @@ test(
   'a server over a long Hydra history stops loading it once nothing changes, and still follows the next change',
   async t => {
     const s = await pnyx.scenario()
-    withWriter({
+    const page = await openPage({
+      port: pnyx.port(),
       hydraId: s.hydraId,
-      fn: ({ writer }) => {
-        for (let n = 0; n < HISTORY_TASKS; n++) {
+    })
+    t.after(() => page.close())
+
+    for (let n = 0; n < HISTORY_TASKS; n++) {
+      withWriter({
+        hydraId: s.hydraId,
+        fn: ({ writer }) => {
           const created = hydraEvent({
             state: writer.state,
             cardId: `task-history-${n}`,
@@ -330,18 +336,15 @@ test(
           })
           assert.ok('event' in created)
           writer.append({ event: created.event })
-        }
-      },
-    })
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    t.after(() => page.close())
-    await page.shows({
-      what: 'the whole history',
-      check: ({ state }) => state.keys[`history-${HISTORY_TASKS - 1}`],
-    })
+        },
+      })
+      // Let each update reach the page before the fixture can fill the socket's output buffer.
+      await page.shows({
+        what: `history task ${n}`,
+        check: ({ state }) => state.keys[`history-${n}`],
+      })
+    }
+
     // Every Hydra load reads its snapshot, so the reads count the server's work on this Hydra.
     const snapshot = snapshotPath({ dir: hydraDir({ hydraId: s.hydraId }) })
     let loads = 0

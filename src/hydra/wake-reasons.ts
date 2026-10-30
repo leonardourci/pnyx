@@ -231,9 +231,10 @@ function pushReasons({
   } = event.data
   const open = ({ list }: { list?: Card['attention'] }) => (list ?? []).filter(a => a.blocking && !a.answered)
   const asked = open({ list: before?.attention }).map(a => a.key)
+  const pending = new Set(open({ list: card.attention }).map(a => a.key))
   // A push that first reports attention has nothing earlier to compare against.
   const questions = before?.attention
-    ? open({ list: attention }).filter(a => !asked.includes(a.key))
+    ? open({ list: attention }).filter(a => !asked.includes(a.key) && pending.has(a.key))
     : []
   const reasons: WakeReason[] = questions.map(a => ({
     kind: 'asked',

@@ -1,3 +1,4 @@
+import { selectedNativeBundle, nativePaths } from './native-host.ts'
 import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
@@ -338,6 +339,7 @@ function setupSystemdService({
   const unitName = `${label}.service`
   const variables = [
     `PNYX_HOME=${home}`,
+    'PNYX_SERVICE_ROLE=application',
     `PATH=${searchPath}`,
     ...[
       'CLAUDE_CONFIG_DIR',
@@ -469,7 +471,7 @@ WantedBy=default.target
 }
 
 // One login service runs the one server of every Hydra in this Pnyx home.
-export function setupService({
+function setupApplicationService({
   port = DEFAULT_PORT,
   remove = false,
   preview = false,
@@ -636,7 +638,7 @@ export function setupService({
 <plist version="1.0"><dict>
 <key>Label</key><string>${label}</string>
 <key>ProgramArguments</key><array>${args.map(arg => `<string>${xml({ text: arg })}</string>`).join('')}</array>
-<key>EnvironmentVariables</key><dict>${homeEntry}<key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
+<key>EnvironmentVariables</key><dict>${homeEntry}<key>PNYX_SERVICE_ROLE</key><string>application</string><key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
 <key>WorkingDirectory</key><string>${xml({ text: home })}</string>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>5</integer>
@@ -793,5 +795,273 @@ export function setupService({
       ...relink,
       ...INSTALLED_HELP,
     ],
+  }
+}
+
+type NativeService = {
+  path: string
+  label: string
+  state: 'preserved' | 'installed' | 'preview'
+  definition?: string
+}
+type NativeBundle = {
+  bundle: string
+  entry: string
+  directory: string
+  installation: string
+}
+
+type ApplicationServiceOptions = Parameters<typeof setupApplicationService>[0]
+export type NativeServiceOptions = ApplicationServiceOptions & {
+  nativeBundle?(): NativeBundle
+}
+
+export function setupService({
+  nativeBundle,
+  ...options
+}: NativeServiceOptions): ServiceResult & { native?: NativeService } {
+  if (options.remove) {
+    return setupApplicationService(options)
+  }
+
+  setupApplicationService({
+    ...options,
+    preview: true,
+  })
+  const native = setupNativeService({
+    ...options,
+    nativeBundle,
+  })
+  const application = setupApplicationService(options)
+
+  return {
+    ...application,
+    native,
+  }
+}
+
+export function setupNativeService({
+  platform = process.platform,
+  userHome = homedir(),
+  environment = process.env,
+  node = process.execPath,
+  searchPath = process.env.PATH ?? '/usr/bin:/bin',
+  preview = false,
+  run = ({ args }) => execFileSync(
+    platform === 'darwin' ? 'launchctl' : 'systemctl',
+    args,
+    { encoding: 'utf8' },
+  ),
+  nativeBundle,
+}: NativeServiceOptions): NativeService {
+  if (platform !== 'darwin' && platform !== 'linux') {
+    throw new HydraError({
+      code: 'UNSUPPORTED_PLATFORM',
+      message: 'Native login jobs require launchd or systemd',
+    })
+  }
+
+  const {
+    label,
+    path,
+  } = nativeServiceFile({
+    platform,
+    userHome,
+    environment,
+  })
+
+  if (existsSync(path)) {
+    return {
+      path,
+      label,
+      state: 'preserved',
+    }
+  }
+
+  const home = pnyxHome()
+  let runtime: NativeBundle
+
+  if (preview) {
+    runtime = {
+      bundle: join(
+        home,
+        'native-bundles',
+        '<selected>',
+      ),
+      entry: join(
+        home,
+        'native-bundles',
+        '<selected>',
+        'dist/agent-host/main.js',
+      ),
+      directory: join(
+        home,
+        'native',
+      ),
+      installation: '<installation>',
+    }
+  } else if (nativeBundle) {
+    runtime = nativeBundle()
+  } else {
+    runtime = {
+      ...selectedNativeBundle({
+        source: join(
+          import.meta.dirname,
+          '..',
+          '..',
+        ),
+      }),
+      ...nativePaths(),
+    }
+  }
+
+  const args = [
+    stableNode({
+      node,
+      searchPath,
+    }),
+    runtime.entry,
+    runtime.bundle,
+    runtime.directory,
+    runtime.installation,
+  ]
+  const log = join(
+    home,
+    'native.log',
+  )
+  const variables = {
+    PNYX_HOME: home,
+    PATH: searchPath,
+  }
+  let definition: string
+
+  if (platform === 'linux') {
+    definition = `[Unit]
+Description=Pnyx native agents
+
+[Service]
+ExecStart=${args.map(arg => systemdQuote({
+  text: arg,
+  command: true,
+})).join(' ')}
+${Object.entries(variables).map(([
+  key,
+  value,
+]) => `Environment=${systemdQuote({ text: `${key}=${value}` })}`)
+  .join('\n')}
+WorkingDirectory=${systemdLiteral({ text: home })}
+Restart=on-failure
+RestartSec=${SERVICE_RESTART_SECONDS}
+StandardOutput=append:${systemdLiteral({ text: log })}
+StandardError=append:${systemdLiteral({ text: log })}
+
+[Install]
+WantedBy=default.target
+`
+  } else {
+    definition = `<?xml version="1.0" encoding="UTF-8"?>
+<plist version="1.0"><dict>
+<key>Label</key><string>${label}</string>
+<key>ProgramArguments</key><array>${args.map(arg => `<string>${xml({ text: arg })}</string>`).join('')}</array>
+<key>EnvironmentVariables</key><dict>${Object.entries(variables).map(([
+  key,
+  value,
+]) => `<key>${key}</key><string>${xml({ text: value })}</string>`)
+  .join('')}</dict>
+<key>WorkingDirectory</key><string>${xml({ text: home })}</string>
+<key>RunAtLoad</key><true/><key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
+<key>ThrottleInterval</key><integer>${SERVICE_RESTART_SECONDS}</integer>
+<key>StandardOutPath</key><string>${xml({ text: log })}</string>
+<key>StandardErrorPath</key><string>${xml({ text: log })}</string>
+</dict></plist>
+`
+  }
+
+  if (preview) {
+    return {
+      path,
+      label,
+      state: 'preview',
+      definition,
+    }
+  }
+
+  privateDir({ dir: home })
+  mkdirSync(
+    dirname(path),
+    { recursive: true },
+  )
+  writeFileSync(
+    path,
+    definition,
+    { mode: 0o600 },
+  )
+
+  try {
+    if (platform === 'linux') {
+      run({
+        args: [
+          '--user',
+          'daemon-reload',
+        ],
+      })
+      run({
+        args: [
+          '--user',
+          'enable',
+          '--now',
+          `${label}.service`,
+        ],
+      })
+    } else {
+      run({
+        args: [
+          'bootstrap',
+          `gui/${process.getuid!()}`,
+          path,
+        ],
+      })
+    }
+  } catch (error) {
+    rmSync(
+      path,
+      { force: true },
+    )
+    throw new HydraError({
+      code: 'SERVICE_ERROR',
+      message: `Native login job could not start: ${error instanceof Error ? error.message : String(error)}`,
+    })
+  }
+
+  return {
+    path,
+    label,
+    state: 'installed',
+  }
+}
+
+export function nativeServiceFile({
+  platform = process.platform,
+  userHome = homedir(),
+  environment = process.env,
+}: Pick<NativeServiceOptions, 'platform' | 'userHome' | 'environment'> = {}) {
+  const application = serviceFile({
+    platform,
+    userHome,
+    configHome: environment.XDG_CONFIG_HOME,
+  })
+
+  return {
+    label: application.label.replace(
+      '.server.',
+      '.native.',
+    ),
+    path: join(
+      dirname(application.path),
+      basename(application.path).replace(
+        '.server.',
+        '.native.',
+      ),
+    ),
   }
 }

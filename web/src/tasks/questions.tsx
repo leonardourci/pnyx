@@ -26,11 +26,13 @@ function QuestionField({
   question,
   index,
   draft,
+  locked = false,
   change,
 }: {
   question: Question
   index: number
   draft: Draft
+  locked?: boolean
   change({ next }: { next: Draft }): void
 }) {
   const toggle = ({ n }: { n: number }) => change({
@@ -46,7 +48,7 @@ function QuestionField({
   })
 
   return (
-    <fieldset className="ask-question">
+    <fieldset className="ask-question" disabled={locked}>
       <legend>Question {index + 1}{question.multiSelect && <span className="small muted"> · pick any</span>}</legend>
       {question.header && <CollapsibleText className="ask-header" text={question.header} />}
       <CollapsibleText text={question.question} />
@@ -89,19 +91,34 @@ export function Questions({
   request,
   busy,
   send,
+  reentry = false,
+  savedAnswers,
 }: {
   request: Attention
   busy: boolean
   send: Send
+  reentry?: boolean
+  savedAnswers?: string[][]
 }) {
   const questions = request.questions ?? []
   const [
     drafts,
     setDrafts,
-  ] = useState<Draft[]>(() => questions.map(() => ({
-    pick: [],
-    text: '',
-  })))
+  ] = useState<Draft[]>(() => questions.map((
+    question,
+    index,
+  ) => {
+    const saved = reentry && !question.secret ? savedAnswers?.[index] ?? [] : []
+    const pick = question.options.flatMap((
+      option,
+      index,
+    ) => saved.includes(option.label) ? [index + 1] : [])
+
+    return {
+      pick,
+      text: pick.length === saved.length ? '' : saved.join(', '),
+    }
+  }))
   const answers: QuestionAnswer[] = drafts
     .map(d => (d.text.trim() ? { text: d.text } : { pick: d.pick }))
   const ready = drafts.every(d => d.text.trim() || d.pick.length)
@@ -128,6 +145,7 @@ export function Questions({
           question={question}
           index={i}
           draft={drafts[i]!}
+          locked={reentry && !question.secret}
           change={({ next }) => setDrafts(all => all.map((
             d,
             j,
@@ -135,7 +153,7 @@ export function Questions({
         />
       ))}
       <Button type="submit" variant="primary" disabled={!ready || busy}>
-        {busy ? 'Sending…' : 'Answer'}
+        {busy ? 'Sending…' : reentry ? 'Send missing secret' : 'Answer'}
       </Button>
     </form>
   )
@@ -202,10 +220,12 @@ export function Form({
   request,
   busy,
   send,
+  reentry = false,
 }: {
   request: Attention
   busy: boolean
   send: Send
+  reentry?: boolean
 }) {
   const fields = request.form ?? []
   const [
@@ -255,16 +275,18 @@ export function Form({
         >
           Accept
         </Button>
-        <Button
-          variant="surface"
-          disabled={busy}
-          onClick={() => void send({
-            request,
-            value: { choice: 'decline' },
-          })}
-        >
-          Decline
-        </Button>
+        {!reentry && (
+          <Button
+            variant="surface"
+            disabled={busy}
+            onClick={() => void send({
+              request,
+              value: { choice: 'decline' },
+            })}
+          >
+            Decline
+          </Button>
+        )}
       </div>
     </div>
   )
