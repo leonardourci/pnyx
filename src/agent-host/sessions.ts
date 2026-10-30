@@ -769,7 +769,7 @@ export async function hostSessions({
   const readiness = () => {
     const reasons: string[] = []
 
-    if (uncertainOpening || recoveredSessions) {
+    if (uncertainOpening || recoveredSessions.size > 0) {
       reasons.push('Previous native ownership needs reconciliation')
     }
 
@@ -1118,21 +1118,21 @@ export async function hostSessions({
                   const group = nativeGroup({ pid })
                   const summary = entry.output.summary
                   const groups = summary.groups ?? []
-  
+
                   const recorded = groups.some(known => known.id === group.id
                     && known.start === group.start)
-  
+
                   if (recorded) {
                     return
                   }
-  
+
                   if (groups.length >= MAX_GROUPS) {
                     fail({
                       code: 'OWNERSHIP_LIMIT',
                       message: 'The native session reached its process-group limit',
                     })
                   }
-  
+
                   summary.groups = [
                     ...groups,
                     group,
@@ -1227,12 +1227,13 @@ export async function hostSessions({
         },
       })
       await accepted.persisted
-      changed()
 
       if (entry.output.summary.recovery && entry.output.pending().length === 0) {
         await entry.output.compact()
         finishRecovery({ entry })
       }
+
+      changed()
 
       return {
         kind: 'ok',
