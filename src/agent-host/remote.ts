@@ -4,7 +4,7 @@ import type { HostClient } from './client.ts'
 import type { Fact, Mutation, Result, Snapshot, Summary, ToClient } from './protocol.ts'
 import { fail } from './protocol.ts'
 import { eventClass } from '#workers/native-session.ts'
-import type { AskPermission, HostedEvent, HostedInput, HostedSession, PermissionDecision, TurnOutcome } from '#workers/provider.ts'
+import type { AskPermission, HostedEvent, HostedSession, PermissionDecision, TurnOutcome } from '#workers/provider.ts'
 
 const MAX_PENDING = 2048
 
@@ -23,14 +23,12 @@ export async function remoteSession({
   client,
   summary,
   recovered,
-  persistInput,
   persistAnswer,
   completedAnswer,
 }: {
   client: HostClient
   summary: Summary
   recovered: boolean
-  persistInput({ input }: { input: HostedInput }): Promise<HostedInput>
   persistAnswer({
     permission,
     decision,
@@ -74,6 +72,7 @@ export async function remoteSession({
     fact?: Fact
   }[] = []
   const known = new Set<number>()
+  const admitted = new Set<string>()
   const permissions = new Map<string, AbortController>()
   let permission: AskPermission | undefined
   let current: Fact | undefined
@@ -132,6 +131,11 @@ export async function remoteSession({
 
     if (frame.type === 'snapshot') {
       baseline = frame.snapshot
+
+      for (const id of frame.snapshot.admittedInputIds) {
+        admitted.add(id)
+      }
+
       boundary = Math.max(
         0,
         ...frame.pendingFacts.map(fact => fact.seq),
@@ -347,6 +351,7 @@ export async function remoteSession({
   const session: HostedSession = {
     remote: true,
     recovered,
+    accepted: ({ id }) => recovered && admitted.has(id),
     id: summary.nativeId!,
     path: summary.path,
     replayed: () => replay.promise,
@@ -388,7 +393,11 @@ export async function remoteSession({
             return
           }
 
-          const message = await persistInput({ input: original })
+          if (recovered && admitted.has(original.id)) {
+            continue
+          }
+
+          const message = original
           await call({
             id: `${summary.ref.epoch}:input:${message.id}`,
             operation: {
@@ -396,6 +405,7 @@ export async function remoteSession({
               input: message,
             },
           })
+          admitted.add(message.id)
         }
       }
 

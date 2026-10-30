@@ -174,6 +174,7 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
+  accepted?({ id }: { id: string }): boolean
   permissionDelivery?({ permission }: { permission: string }): string | undefined
   remote?: true
   recovered?: boolean
