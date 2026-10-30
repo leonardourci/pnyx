@@ -11,6 +11,25 @@ const native = await nativeProviders({
   installation: 'fixture-installation',
 })
 
+const call = native.client.call
+
+native.client.call = async ({ ...request }) => {
+  const holding = process.env.PNYX_FIXTURE_HOLD_INPUTS
+  const holdInput = request.operation.kind === 'input'
+    && (holding === 'true' || (holding === 'wake' && request.operation.input.id.startsWith('wake:')))
+
+  if (holdInput && request.operation.kind === 'input') {
+    process.send?.({
+      type: 'input-held',
+      epoch: request.operation.ref.epoch,
+      inputId: request.operation.input.id,
+    })
+    await new Promise<void>(() => {})
+  }
+
+  return call(request)
+}
+
 if (process.env.PNYX_TEST_VERBOSE === '1') {
   for (const [
     provider,

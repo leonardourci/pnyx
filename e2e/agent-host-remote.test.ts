@@ -596,3 +596,248 @@ for (const harness of [
     )
   }
 }
+
+for (const harness of [
+  'claude',
+  'codex',
+] as const) {
+  for (const role of [
+    'Hydra',
+    'worker',
+  ] as const) {
+    test(
+      `${harness} recovers ${role} input after its app commit but before native admission`,
+      async t => {
+        const app = await fixtureApplication({ t })
+        const first = await app.start({ holdInputs: true })
+        await app.cli({
+          args: [
+            'rule',
+            'set',
+            'hydra',
+            '--harness',
+            harness,
+            '--model',
+            'fixture',
+          ],
+        })
+        await app.cli({
+          args: [
+            'hydra',
+            'set',
+            '--helper',
+            'off',
+          ],
+        })
+        const text = 'Keep this exact custom request through the admission gap.'
+
+        if (role === 'Hydra') {
+          await app.cli({
+            args: [
+              'hydra',
+              'send',
+              '--text',
+              text,
+            ],
+          })
+        } else {
+          await app.cli({
+            args: [
+              'task',
+              'create',
+              '--title',
+              'Admission',
+              '--key',
+              'admission',
+              '--folder',
+              app.folder,
+            ],
+          })
+          await app.cli({
+            args: [
+              'task',
+              'start',
+              'admission',
+              '--via',
+              'pnyx',
+              '--harness',
+              harness,
+              '--model',
+              'fixture',
+              '--folder',
+              app.folder,
+              '--prompt',
+              text,
+            ],
+          })
+        }
+
+        const selected = () => role === 'Hydra' ? app.state().cards['$hydra'] : Object.values(app.state().cards).find(card => card.key === 'admission')
+        await until({ check: () => !!selected()?.agent })
+        const card = selected()!
+        const nativeId = card.agent!.sessionId
+        const observer = await app.host.connect()
+        const summary = observer.ready.sessions.find(session => session.nativeId === nativeId)!
+        const epoch = summary.ref.epoch
+        await until({ check: () => first.heldInputs.some(input => input.epoch === epoch) })
+        assert.equal(
+          (await app.host.stats()).find(state => state.id === nativeId)!.input.length,
+          0,
+        )
+        first.child.kill('SIGKILL')
+        await first.exited
+        const replacement = await app.start()
+        await until({
+          check: async () => {
+            const state = (await app.host.stats()).find(state => state.id === nativeId)!
+
+            return state.input.length === 1
+          },
+        })
+        const received = (await app.host.stats()).find(state => state.id === nativeId)!.input[0]!
+        assert.ok(received.text.includes(text))
+        replacement.child.kill('SIGKILL')
+        await replacement.exited
+        await app.start()
+        assert.equal(
+          (await app.host.stats()).find(state => state.id === nativeId)!.input.length,
+          1,
+        )
+      },
+    )
+  }
+}
+
+for (const harness of [
+  'claude',
+  'codex',
+] as const) {
+  test(
+    `${harness} recovers generated wake input after its app commit but before native admission`,
+    async t => {
+      const app = await fixtureApplication({ t })
+      const held = await app.start({ holdInputs: 'wake' })
+      await app.cli({
+        args: [
+          'rule',
+          'set',
+          'hydra',
+          '--harness',
+          harness,
+          '--model',
+          'fixture',
+        ],
+      })
+      await app.cli({
+        args: [
+          'hydra',
+          'set',
+          '--helper',
+          'off',
+        ],
+      })
+      await app.cli({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'Warm this native session.',
+        ],
+      })
+      await until({
+        check: async () => (await app.host.stats()).some(state => state.input.length === 1),
+      })
+      const states = await app.host.stats()
+      const native = states.find(state => state.input.some(input =>
+        input.text.includes('Warm this native session.')))!
+      await app.host.control({
+        kind: 'event',
+        nativeId: native.id,
+        event: {
+          type: 'result',
+          turn: native.turn!,
+          inputIds: native.input.map(input => input.id),
+          status: 'completed',
+          final: 'Ready.',
+          queued: 0,
+        },
+      })
+      await until({ check: () => app.state().cards['$hydra']?.sessionActivity === 'finished' })
+      await app.cli({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Wake admission gap',
+          '--key',
+          'wake-gap',
+          '--folder',
+          app.folder,
+        ],
+      })
+      await app.cli({
+        args: [
+          'task',
+          'start',
+          'wake-gap',
+          '--via',
+          'pnyx',
+          '--harness',
+          harness,
+          '--model',
+          'fixture',
+          '--folder',
+          app.folder,
+        ],
+      })
+      await app.cli({
+        args: [
+          'task',
+          'status',
+          'wake-gap',
+          'blocked',
+          '--note',
+          'Needs a new main turn.',
+        ],
+      })
+      const pendingWake = () => readFileSync(
+        join(
+          app.home,
+          'hydras/default/events.jsonl',
+        ),
+        'utf8',
+      )
+        .trim()
+        .split('\n')
+        .map(line => JSON.parse(line) as { nativeInput?: { id: string } })
+        .find(event => event.nativeInput?.id.startsWith('wake:'))?.nativeInput
+
+      await until({ check: () => !!pendingWake() })
+
+      const id = pendingWake()!.id
+      await until({ check: () => held.heldInputs.some(input => input.id === id) })
+      assert.equal(
+        (await app.host.stats()).find(state => state.id === native.id)!.input.length,
+        1,
+      )
+      held.child.kill('SIGKILL')
+      await held.exited
+      const resumed = await app.start()
+      await until({
+        check: async () => {
+          const current = (await app.host.stats()).find(state => state.id === native.id)!
+
+          return current.input.some(input => input.id === id)
+        },
+      })
+      resumed.child.kill('SIGKILL')
+      await resumed.exited
+      await app.start()
+      const current = (await app.host.stats()).find(state => state.id === native.id)!
+      assert.equal(
+        current.input.filter(input => input.id === id).length,
+        1,
+      )
+    },
+  )
+}

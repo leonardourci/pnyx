@@ -7,7 +7,7 @@ import type { HydraState } from '#app/model.ts'
 import { deferred } from '#agent-host/deferred.ts'
 import { fixtureHost } from './harness.ts'
 
-const READY_MS = 10000
+const READY_MS = 15000
 
 export async function fixtureApplication({ t }: { t: TestContext }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-app-'))
@@ -107,7 +107,7 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
     'utf8',
   )).state
 
-  const start = async () => {
+  const start = async ({ holdInputs = false }: { holdInputs?: boolean | 'wake' } = {}) => {
     const child = fork(
       join(
         import.meta.dirname,
@@ -123,10 +123,17 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
       {
         silent: true,
         execArgv: ['--conditions=source'],
-        env,
+        env: {
+          ...env,
+          PNYX_FIXTURE_HOLD_INPUTS: String(holdInputs),
+        },
       },
     )
     const ready = deferred<void>(), exited = deferred<void>()
+    const heldInputs: {
+      epoch: string
+      id: string
+    }[] = []
     let errors = ''
     child.stderr!.on(
       'data',
@@ -143,6 +150,19 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
     child.on(
       'message',
       message => {
+        const held = message as {
+          type: string
+          epoch: string
+          inputId: string
+        }
+
+        if (held.type === 'input-held') {
+          heldInputs.push({
+            epoch: held.epoch,
+            id: held.inputId,
+          })
+        }
+
         if ((message as { type: string }).type === 'ready') {
           ready.resolve()
         }
@@ -175,6 +195,7 @@ export async function fixtureApplication({ t }: { t: TestContext }) {
 
     return {
       child,
+      heldInputs,
       exited: exited.promise,
     }
   }
