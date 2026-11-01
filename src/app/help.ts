@@ -49,13 +49,15 @@ flags:
 `
 
 const COMMAND_HELP: Record<string, string> = {
-  apply: `usage: pnyx-axi apply --file <path|-> [--check] [--event-id <id>] [--hydra <hydra>]
+  apply: `usage: pnyx-axi apply --file <path|-> [--check [--full]] [--event-id <id>] [--hydra <hydra>]
 Read one version: 1 JSON document with changes and optional expected.tasks revisions.
 Operations: task.create, task.brief, task.owner-ask, task.depend, task.undepend, task.status,
 task.hold, task.release, link and outcome. Unknown operations and fields are rejected.
 task.create/task.brief accept intent for the card goal; task.owner-ask saves exact owner words.
 A task.create as alias can be referenced later as $alias. References stay in this Hydra.
---check prints the before/after diff, aliases, base and resulting task revisions without writing.
+--check previews changed fields, aliases, base and resulting task revisions without writing.
+Default receipts summarize changed fields and collection counts, never whole task histories.
+--check --full explicitly includes complete before/after records. task history <id> --full retrieves event data.
 Apply validates the whole document again under the writer lock and appends one atomic log record.
 Errors include zero-based operation indexes, field paths, codes and reasons; nothing is written.
 An identical --event-id retry returns the original receipt. Different contents or actor are refused.
@@ -85,6 +87,7 @@ in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 pnyx-axi hydra send --task <id> [--action send|worker] [--text <message>] [--details <text>]
 pnyx-axi hydra send --text <message> [--details <text>]
 pnyx-axi hydra send --task <id> --kind progress --text <message>
+Omit --kind progress for actionable results: queue a report for Hydra to relay; this does not confirm owner delivery.
 --kind progress is a worker's routine progress: it updates the task's card and joins Hydra's next wake without waking Hydra.
 pnyx-axi hydra stop
 hydra stop ends the turn Pnyx's hosted Hydra is running; its workers keep going.
@@ -155,11 +158,14 @@ pnyx-axi task hide|unhide <id> [--reason <text>] [--details <text>]
 pnyx-axi task list [--fields <field,...>]
 Rows show id, title, project and column; --fields adds any of attention, parent, status, worker, hold, queue.
 pnyx-axi task show <id> [--full]
-Long fields are cut to 1,000 characters with their total length; --full shows the whole record.
+Long fields are cut to 1,000 characters with their total length. The newest five owner asks and up to five questions (unresolved first) are shown with total/open counts; --full shows the whole record.
 pnyx-axi task rename <id> [--title <title>] [--project <name>]
 --project adds a compact project label; an empty value clears it.
 Rename accepts only title/project edits; use task brief for the brief. Repeated scalar flags are refused.
 pnyx-axi task status <id> working|needs_you|paused|blocked|done [--note <text>] [--until <time> | --hold]
+Records lifecycle state. working/paused do not wake Hydra. A status note is not a result report.
+Before pausing with a ready result, run hydra send --task <id> --text "<result with links>" without --kind progress.
+Questions use task ask; blocked/needs_you wake Hydra but do not confirm owner delivery.
 A paused worker's --until (ISO time, "in 2 hours" or "tomorrow 9:00") ends its wait: Hydra is woken once then.
 --hold marks a pause the owner or Hydra asked for: it waits for their word and never wakes Hydra on a timer. A pause with neither wakes Hydra after 4 hours.
 done is refused while the task's work has not landed by its project's rule (uncommitted files, or a pull request not yet merged),

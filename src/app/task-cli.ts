@@ -37,6 +37,8 @@ import { askRows, askCommand } from '#tasks/asks.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 
+const TASK_DETAIL_LIMIT = 5
+
 export const TASK_OPTIONS: Options = {
   ...WRITE,
   title: { type: 'string' },
@@ -538,15 +540,16 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
         attention: attentionLabel({ card: task }),
         key: task.key,
         ...(task.copy ? { copy: `${task.copy.path} (${task.copy.state}${task.copy.reason ? `: ${task.copy.reason}` : ''})` } : {}),
-        ask: task.ask?.length ? task.ask.map(ask => ({
+        ask: task.ask?.length ? task.ask.slice(-TASK_DETAIL_LIMIT).map(ask => ({
           ...ask,
           text: clip({ text: ask.text }),
         })) : 'none: no owner words recorded',
+        ownerAsks: task.ask?.length ?? 0,
         spend,
         intent: task.intent === undefined ? 'none' : clip({ text: task.intent }),
         brief: task.brief === undefined ? 'none' : clip({ text: task.brief }),
         parent: task.parentId ?? 'none',
-        status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${task.status.note}` : ''}` : 'none: no declaration yet',
+        status: task.status ? `${declaredState({ declaration: task.status })}${task.status.note ? `: ${clip({ text: task.status.note })}` : ''}` : 'none: no declaration yet',
         worker: task.sessionIds?.[0] ?? 'none',
         ...(task.queue ? {
           queue: queuePosition({
@@ -575,10 +578,43 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
         })) : [],
         declarations: task.statusLog?.length ?? 0,
         ...(task.hold ? { hold: task.hold } : {}),
-        ...(task.asks?.length ? { questions: askRows({ card: task }) } : {}),
         firstmate: task.mirror ? 'mirrored' : 'none',
       },
       help: [`Run \`pnyx-axi task show ${task.id} --full --hydra ${hydraId}\` for the full record, or \`pnyx-axi task history ${task.id} --hydra ${hydraId}\` for its events`],
+    }
+
+    if (task.asks?.length) {
+      shown.task.questionCount = task.asks.length
+      const unresolved = task.asks.filter(ask => !ask.answered && !ask.closed)
+      const resolved = task.asks.filter(ask => ask.answered || ask.closed).slice()
+        .reverse()
+      shown.task.openQuestions = unresolved.length
+      const questions = askRows({
+        card: {
+          ...task,
+          asks: [
+            ...unresolved,
+            ...resolved,
+          ],
+        },
+      })
+      shown.task.questions = questions.slice(
+        0,
+        TASK_DETAIL_LIMIT,
+      )
+        .map(question => {
+          const row = {
+            ...question,
+            question: clip({ text: question.question }),
+            state: clip({ text: question.state }),
+          }
+
+          if ('choices' in row && row.choices) {
+            row.choices = clip({ text: row.choices })
+          }
+
+          return row
+        })
     }
 
     if (task.queueNote) {

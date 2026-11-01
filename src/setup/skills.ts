@@ -6,7 +6,7 @@ import {
   GLOBAL_SKILLS,
 } from './skill-names.ts'
 import {
-  existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync,
+  cpSync, existsSync, lstatSync, mkdirSync, readFileSync, readdirSync, readlinkSync, realpathSync,
   rmSync, symlinkSync, unlinkSync, writeFileSync,
 } from 'node:fs'
 import { homedir } from 'node:os'
@@ -142,6 +142,22 @@ export function copySkills({
       ),
       content,
     )
+    const references = join(
+      dirname(source),
+      'references',
+    )
+
+    if (existsSync(references)) {
+      cpSync(
+        references,
+        join(
+          dir,
+          'references',
+        ),
+        { recursive: true },
+      )
+    }
+
     installed.push(dir)
   }
 
@@ -185,6 +201,10 @@ export function prepareHydraFolder({
       /^---\n[\s\S]*?\n---\n+/,
       '',
     )
+      .replaceAll(
+        '(references/',
+        `(.agents/skills/${ORCHESTRATE_SKILL}/references/`,
+      )
   }
 
   writeFileSync(

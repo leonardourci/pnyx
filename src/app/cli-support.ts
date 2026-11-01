@@ -318,6 +318,30 @@ function receipt({
 
   const card = state.cards[event.cardId]!
 
+  if (event.type === 'task.declared') {
+    const phase = declaredState({ declaration: card.status! })
+
+    return {
+      event: {
+        seq: event.seq,
+        id: event.id,
+        type: event.type,
+      },
+      card: {
+        id: card.id,
+        column: card.column,
+        revision: card.revision,
+      },
+      state: 'recorded',
+      notification: [
+        'needs_you',
+        'blocked',
+        'done',
+      ].includes(phase) ? 'Hydra wake eligible; owner delivery not confirmed' : 'No Hydra wake from this lifecycle declaration',
+      help: [`Run \`pnyx-axi hydra send --task ${card.id} --text "<actionable result with links>"\` to queue a result for Hydra; lifecycle status does not deliver a result to the owner`],
+    }
+  }
+
   return {
     event: {
       seq: event.seq,

@@ -46,3 +46,31 @@ test(
     )
   },
 )
+
+test(
+  'nested help selects the requested action without sibling actions',
+  () => {
+    const help = `usage: pnyx-axi task source list <id>
+List sources.
+pnyx-axi task source read <id> <source>
+Read retained output.
+pnyx-axi task show <id>`
+    const result = focusedHelp({
+      help,
+      command: 'task',
+      sub: 'source',
+      rest: [
+        'read',
+        'synthetic-task',
+      ],
+    })
+    assert.match(
+      result,
+      /source read/,
+    )
+    assert.doesNotMatch(
+      result,
+      /source list|task show/,
+    )
+  },
+)

@@ -1991,3 +1991,246 @@ test(
     )
   },
 )
+
+test(
+  'a small edit never re-emits unchanged task histories, including retries; full preview remains opt-in',
+  async t => {
+    const f = fixture({ t })
+    const created = await commands.task([
+      'create',
+      '--title',
+      'Synthetic task',
+      '--brief',
+      'x'.repeat(12000),
+    ])
+    const task = (created.card as { id: string }).id
+
+    for (let index = 0; index < 12; index++) {
+      await commands.task([
+        'owner-ask',
+        task,
+        '--text',
+        `Synthetic history ${index}: ${'z'.repeat(8000)}`,
+      ])
+    }
+
+    const shown = await commands.task([
+      'show',
+      task,
+    ])
+    const detail = shown.task as {
+      ask: unknown[]
+      ownerAsks: number
+    }
+    assert.equal(
+      detail.ownerAsks,
+      12,
+    )
+    assert.equal(
+      detail.ask.length,
+      5,
+    )
+    const document = {
+      version: 1,
+      changes: [
+        {
+          op: 'task.brief',
+          task,
+          brief: 'Small correction',
+        },
+      ],
+    }
+    const preview = f.apply({
+      document,
+      flags: [
+        '--check',
+        '--full',
+      ],
+    })
+    assert.match(
+      JSON.stringify(preview),
+      /x{12000}/,
+    )
+    const result = f.apply({
+      document,
+      flags: [
+        '--event-id',
+        'small-edit',
+      ],
+    })
+    assert.ok(JSON.stringify(result).length < 5000)
+    assert.match(
+      JSON.stringify(result),
+      /Small correction/,
+    )
+    assert.match(
+      JSON.stringify(result),
+      /brief/,
+    )
+    const retried = f.apply({
+      document,
+      flags: [
+        '--event-id',
+        'small-edit',
+      ],
+    })
+    assert.equal(
+      retried.duplicate,
+      true,
+    )
+    assert.ok(JSON.stringify(retried).length < 5000)
+    assert.throws(
+      () => f.apply({
+        document,
+        flags: [
+          '--event-id',
+          'small-edit',
+          '--check',
+          '--full',
+        ],
+      }),
+      /already has a recorded receipt/,
+    )
+    assert.match(
+      JSON.stringify(await commands.task([
+        'show',
+        task,
+        '--full',
+      ])),
+      /Small correction/,
+    )
+  },
+)
+
+test(
+  'lifecycle receipts tell workers to publish ready results separately before pausing',
+  async t => {
+    fixture({ t })
+    const created = await commands.task([
+      'create',
+      '--title',
+      'Synthetic trial',
+    ])
+    const task = (created.card as { id: string }).id
+    const result = await commands.task([
+      'status',
+      task,
+      'paused',
+      '--note',
+      'Trial ready',
+    ])
+    assert.equal(
+      result.state,
+      'recorded',
+    )
+    assert.match(
+      String(result.notification),
+      /No Hydra wake/,
+    )
+    assert.match(
+      JSON.stringify(result.help),
+      /hydra send --task/,
+    )
+    assert.match(
+      JSON.stringify(result.help),
+      /does not deliver a result to the owner/,
+    )
+    const progress = await commands.hydra([
+      'send',
+      '--task',
+      task,
+      '--kind',
+      'progress',
+      '--text',
+      'Synthetic progress',
+      '--actor',
+      `worker:${task}`,
+    ])
+    assert.match(
+      JSON.stringify(progress.help),
+      /omit --kind progress/,
+    )
+    assert.doesNotMatch(
+      JSON.stringify(progress.help),
+      /results through task ask or task status/,
+    )
+    const skill = readFileSync(
+      new URL(
+        '../../../skills/pnyx-report-progress/SKILL.md',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    assert.match(
+      skill,
+      /without `--kind progress`, before pausing/,
+    )
+    assert.doesNotMatch(
+      skill,
+      /Questions, blockers and results never go this way/,
+    )
+  },
+)
+
+test(
+  'routine task details keep older open questions discoverable and full details opt-in',
+  async t => {
+    fixture({ t })
+    const created = await commands.task([
+      'create',
+      '--title',
+      'Synthetic questions',
+    ])
+    const task = (created.card as { id: string }).id
+
+    for (let index = 0; index < 8; index++) {
+      await commands.task([
+        'ask',
+        task,
+        '--question',
+        `Question ${index}: ${'x'.repeat(250)}`,
+        '--actor',
+        `worker:${task}`,
+      ])
+    }
+
+    const output = await commands.task([
+      'show',
+      task,
+    ])
+    const detail = output.task as {
+      questionCount: number
+      openQuestions: number
+      questions: { question: string }[]
+    }
+    assert.equal(
+      detail.questionCount,
+      8,
+    )
+    assert.equal(
+      detail.openQuestions,
+      8,
+    )
+    assert.equal(
+      detail.questions.length,
+      5,
+    )
+    assert.match(
+      detail.questions[0]!.question,
+      /Question 0/,
+    )
+    const full = await commands.task([
+      'show',
+      task,
+      '--full',
+    ])
+    assert.match(
+      JSON.stringify(full),
+      /Question 7/,
+    )
+    assert.match(
+      JSON.stringify(full),
+      /x{250}/,
+    )
+  },
+)
