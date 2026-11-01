@@ -1,3 +1,4 @@
+import { taskDiff } from './receipt.ts'
 import { createHash } from 'node:crypto'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -9,6 +10,8 @@ import { planTaskChange } from '#tasks/plans.ts'
 import { planDeliveryChange } from '#tasks/delivery/plans.ts'
 import { refuseEarlyDone } from '#tasks/delivery/done.ts'
 import { ApplyError, type ApplyDocument, type ApplyIssue, type Operation } from './schema.ts'
+
+const RECEIPT_HINT_LIMIT = 5
 
 interface ApplyReceipt extends Output {
   operations: Output[]
@@ -34,6 +37,7 @@ export function planDocument({
   hydraId,
   meta,
   id,
+  full = false,
 }: {
   document: ApplyDocument
   state: HydraState
@@ -41,6 +45,7 @@ export function planDocument({
   hydraId: string
   meta: Meta
   id: string
+  full?: boolean
 }): {
   events: HydraEvent[]
   receipt: ApplyReceipt
@@ -292,15 +297,38 @@ export function planDocument({
   }
 
   const targets = [...new Set(events.map(event => event.cardId))].filter(id => current.cards[id])
-  const diff = targets.map(task => ({
-    task,
-    before: state.cards[task] ?? null,
-    after: current.cards[task],
-  }))
+  const diff = targets.map(task => {
+    const before = state.cards[task]
+    const after = current.cards[task]!
+
+    if (full) {
+      return {
+        task,
+        before: before ?? null,
+        after,
+      }
+    }
+
+    return taskDiff({
+      task,
+      before: before ? { ...before } : null,
+      after: { ...after },
+    })
+  })
   const revisions = Object.fromEntries(targets.map(task => [
     task,
     current.cards[task]!.revision,
   ]))
+
+  const help = targets.slice(
+    0,
+    RECEIPT_HINT_LIMIT,
+  )
+    .map(task => `Run \`pnyx-axi task history ${task} --hydra ${hydraId}\` for changed events; add --full for event data`)
+
+  if (!help.length) {
+    help.push(`Run \`pnyx-axi task list --hydra ${hydraId}\` for current tasks`)
+  }
 
   return {
     events,
@@ -312,6 +340,7 @@ export function planDocument({
       revisions,
       operations,
       diff,
+      help,
     },
   }
 }

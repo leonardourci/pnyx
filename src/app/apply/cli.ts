@@ -8,6 +8,7 @@ import { base } from '#app/command-meta.ts'
 import { transactionReceipt } from '#app/transactions.ts'
 import { parseDocument, ApplyError } from './schema.ts'
 import { parseApplyJson } from './json.ts'
+import { compactReceipt } from './receipt.ts'
 import { planDocument } from './plan.ts'
 
 function canonicalDocument({ value }: { value: unknown }): unknown {
@@ -46,10 +47,20 @@ export const apply = guard({
         ...COMMON,
         file: { type: 'string' },
         check: { type: 'boolean' },
+        full: { type: 'boolean' },
         'event-id': { type: 'string' },
       },
       positionals: 0,
     })
+
+    if (values.full && !values.check) {
+      throw new AxiError(
+        '--full requires --check',
+        'VALIDATION_ERROR',
+        ['Use --check --full for complete before/after records without writing'],
+      )
+    }
+
     const file = required({
       value: values.file as string | undefined,
       what: '--file <path|->',
@@ -103,8 +114,16 @@ export const apply = guard({
       })
 
       if (duplicate) {
+        if (values.full) {
+          throw new AxiError(
+            'This apply already has a recorded receipt; full preview requires a fresh event id',
+            'VALIDATION_ERROR',
+            ['Run task history <task> --full for original event data, or omit --event-id to preview current state'],
+          )
+        }
+
         return {
-          ...duplicate,
+          ...compactReceipt({ output: duplicate }),
           applied: false,
           check: true,
         }
@@ -117,6 +136,7 @@ export const apply = guard({
       const planned = planDocument({
         document,
         ...loaded,
+        full: Boolean(values.full),
         hydraId,
         meta: m,
         id,
@@ -128,7 +148,7 @@ export const apply = guard({
       }
     }
 
-    return withWriter({
+    const output = withWriter({
       hydraId,
       transaction: {
         id,
@@ -178,6 +198,8 @@ export const apply = guard({
         }
       },
     })
+
+    return compactReceipt({ output })
   },
 })
 
