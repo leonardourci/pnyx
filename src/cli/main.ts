@@ -72,7 +72,7 @@ const hinted = ({ run }: { run: AxiCliCommand<undefined> }): AxiCliCommand<undef
         context,
       )
 
-      if (output && typeof output === 'object' && !Array.isArray(output) && !('help' in output)) {
+      if (output && typeof output === 'object' && !Array.isArray(output) && Object.keys(output).length > 0 && !('help' in output)) {
         return {
           ...output,
           help: nextCommands({
