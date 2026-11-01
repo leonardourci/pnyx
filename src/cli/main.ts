@@ -12,7 +12,7 @@ import { TOP_LEVEL_HELP, commandHelp } from '#app/help.ts'
 import { helpHint, invocation } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
 import { home } from '#hydra/cli.ts'
-import { focusedHelp } from './help.ts'
+import { focusedHelp, nextCommands } from './help.ts'
 import { version } from './version.ts'
 import { AGENT_HELP, REPLY_HELP, agent, reply } from '#workers/reply.ts'
 import { workerCommands } from '#workers/workers.ts'
@@ -37,12 +37,19 @@ const help = ({ command }: { command: string }) => commandHelp({ command })
 const [
   command,
   sub,
+  ...rest
 ] = process.argv.slice(2)
+const nextFlag = rest.findIndex(word => word.startsWith('-'))
+const helpPath = nextFlag < 0 ? rest : rest.slice(
+  0,
+  nextFlag,
+)
 const full = command ? help({ command }) : undefined
 const focused = full && sub ? focusedHelp({
   help: full,
   command,
   sub,
+  rest: helpPath,
 }) : full
 
 // Named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
@@ -60,10 +67,24 @@ const hinted = ({ run }: { run: AxiCliCommand<undefined> }): AxiCliCommand<undef
     context,
   ) => {
     try {
-      return await run(
+      const output = await run(
         args,
         context,
       )
+
+      if (output && typeof output === 'object' && !Array.isArray(output) && !('help' in output)) {
+        return {
+          ...output,
+          help: nextCommands({
+            output,
+            fallback: helpHint(),
+            hydraId: process.env.PNYX_HYDRA ?? 'default',
+            args,
+          }),
+        }
+      }
+
+      return output
     } catch (error) {
       if (error instanceof AxiError && error.code === 'VALIDATION_ERROR' && !error.suggestions.length) {
         throw new AxiError(

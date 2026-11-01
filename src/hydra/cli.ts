@@ -41,12 +41,13 @@ import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
 
 export async function home(): Promise<Output> {
-  hideDone({ hydraId: DEFAULT_HYDRA })
+  const hydraId = process.env.PNYX_HYDRA || DEFAULT_HYDRA
+  hideDone({ hydraId })
   const {
     dir,
     state,
     tornBytes,
-  } = loadHydra({ hydraId: DEFAULT_HYDRA })
+  } = loadHydra({ hydraId })
   const cards = Object.values(state.cards).filter(card => liveTask({ card }))
   const config = hydraConfig({ state })
   const columns = Object.fromEntries(
@@ -55,10 +56,10 @@ export async function home(): Promise<Output> {
       cards.filter(card => card.column === c.id).length,
     ]),
   )
-  const server = await readServer({ hydraId: DEFAULT_HYDRA })
+  const server = await readServer({ hydraId })
   const out: Output = {
     projects: projectRows({ state }),
-    hydraId: DEFAULT_HYDRA,
+    hydraId,
     hydra: config.hydra.id,
     server: server ? `running at ${server.url}` : 'not running',
     columns,
@@ -68,7 +69,7 @@ export async function home(): Promise<Output> {
     out.warning = 'events.jsonl has a torn tail; run `pnyx-axi repair`'
   }
 
-  const serveHint = server ? [] : ['Run `pnyx-axi serve` to start the Hydra server']
+  const serveHint = server ? [] : [`Run \`pnyx-axi serve --hydra ${hydraId}\` to start the Hydra server`]
   const spooled = spoolFiles({ dir }).length
 
   if (spooled > 0) {
@@ -78,7 +79,8 @@ export async function home(): Promise<Output> {
   if (cards.length === 0) {
     out.cards = 'none: no cards yet'
     out.help = [
-      'Run `pnyx-axi task create --title <title>` to add work',
+      `Run \`pnyx-axi task create --title <title> --hydra ${hydraId}\` to add work`,
+      'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
       ...serveHint,
     ]
 
@@ -102,8 +104,9 @@ export async function home(): Promise<Output> {
     card,
   }))
   out.help = [
-    'Run `pnyx-axi card <id>` for details',
-    'Run `pnyx-axi history` for recent events',
+    `Run \`pnyx-axi task show ${sorted[0]!.id} --hydra ${hydraId}\` for task details`,
+    'Run `pnyx-axi --help` for command groups; add --help to any command for syntax',
+    `Run \`pnyx-axi history --hydra ${hydraId}\` for recent events`,
     ...serveHint,
   ]
 
@@ -935,7 +938,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   if (progress && result.event !== 'none: duplicate') {
     return {
       ...result,
-      help: ['Saved on the card without waking Hydra; send questions, blockers and results through task ask or task status'],
+      help: ['Progress recorded on the card; Hydra reads it on its next wake. Send actionable results with hydra send --task <id> --text <result> (omit --kind progress); questions use task ask, blockers use task status blocked'],
     }
   }
 
