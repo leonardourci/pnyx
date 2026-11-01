@@ -197,3 +197,37 @@ test(
     )
   },
 )
+
+test(
+  'prepared Hydra bootstrap retains its on-demand orchestration reference',
+  t => {
+    const root = folder({ t })
+    prepareHydraFolder({ folder: root })
+    const contract = readFileSync(
+      join(
+        root,
+        'AGENTS.md',
+      ),
+      'utf8',
+    )
+    assert.match(
+      contract,
+      /\.agents\/skills\/pnyx-orchestrate\/references\/workflows\.md/,
+    )
+    const reference = readFileSync(
+      join(
+        root,
+        '.agents/skills/pnyx-orchestrate/references/workflows.md',
+      ),
+      'utf8',
+    )
+    assert.match(
+      reference,
+      /## Questions and scope/,
+    )
+    assert.match(
+      reference,
+      /## Supervise/,
+    )
+  },
+)
