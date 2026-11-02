@@ -5,6 +5,7 @@ import type { Operation, Result, SessionRef, ToClient, ToHost } from './protocol
 import { MAX_FRAME_BYTES, PROTOCOL, fail } from './protocol.ts'
 
 const REQUEST_MS = 30000
+const HANDSHAKE_MS = 5000
 
 export async function connectHost({
   socket: path,
@@ -29,7 +30,7 @@ export async function connectHost({
       ready.reject(new Error('The native host handshake timed out'))
       socket.destroy()
     },
-    REQUEST_MS,
+    HANDSHAKE_MS,
   )
 
   const send = ({ frame }: { frame: ToHost }) => {
