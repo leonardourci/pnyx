@@ -240,6 +240,7 @@ test(
       },
     })
     const states = await app.host.stats()
+    const observer = await app.host.connect()
     const release = acquireLock({
       dir: join(
         app.home,
@@ -264,12 +265,24 @@ test(
 
       await until({
         timeout: 15000,
+        check: async () => {
+          const pending = await Promise.all(observer.ready.sessions.map(async session => snapshot({
+            client: observer,
+            ref: session.ref,
+          })))
+
+          return pending.length === 2 && pending.every(frame => frame.pendingFacts.some(fact => fact.event.type === 'turn-ended'))
+        },
+      })
+      await until({
+        timeout: 15000,
         check: () => app.errors().includes('native attachment: Hydra is locked'),
       }).catch(error => {
         t.diagnostic(app.errors()); throw error
       })
     } finally {
       release()
+      observer.detach()
     }
 
     const hydraId = app.state().cards.$hydra?.agent?.sessionId
@@ -344,6 +357,85 @@ test(
         1,
       )
     }
+  },
+)
+
+test(
+  'a retained completion is applied after a later app observation',
+  async t => {
+    const app = await fixtureApplication({
+      t,
+      built: false,
+    })
+    await app.start()
+    await app.cli({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.cli({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Finish this turn',
+      ],
+    })
+    await until({ check: async () => (await app.host.stats())[0]?.input.length === 1 })
+    const session = (await app.host.stats())[0]!
+    const card = Object.values(app.state().cards).find(value => value.agent?.sessionId === session.id && value.key !== '$hydra')
+    assert.ok(card)
+    const observation = join(
+      app.home,
+      'later-observation.json',
+    )
+    writeFileSync(
+      observation,
+      JSON.stringify({
+        activity: 'working',
+        agent: card.agent,
+        source: {
+          adapter: 'pnyx',
+          objectId: session.id,
+          observedAt: '2999-01-01T00:00:00.000Z',
+        },
+      }),
+    )
+    await app.cli({
+      args: [
+        'push',
+        '--key',
+        card.key,
+        '--file',
+        observation,
+      ],
+    })
+    await app.host.control({
+      kind: 'event',
+      nativeId: session.id,
+      event: {
+        type: 'result',
+        turn: session.turn!,
+        inputIds: session.input.map(input => input.id),
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    await until({ check: () => app.state().cards.$hydra?.sessionActivity === 'finished' })
   },
 )
 
