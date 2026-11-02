@@ -31,11 +31,13 @@ export async function nativeProviders({
   installation,
   reconnect,
   desiredBuild,
+  restartInstance,
 }: {
   directory: string
   journal: string
   installation: string
   desiredBuild?: string
+  restartInstance?: string
   reconnect?(): Promise<void>
 }) {
   privateDir({ dir: journal })
@@ -146,8 +148,10 @@ export async function nativeProviders({
   const activation = setInterval(
     async () => {
       const selectedIsRunning = client.available() && client.ready.build === desiredBuild
+      const restartRequested = client.available() && client.ready.instance === restartInstance
+      const needsActivation = !selectedIsRunning || restartRequested
 
-      if (!desiredBuild || !client.available() || selectedIsRunning || activating) {
+      if (!desiredBuild || !client.available() || activating || !needsActivation) {
         return
       }
 
