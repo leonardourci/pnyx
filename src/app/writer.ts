@@ -212,7 +212,10 @@ export function eventWriter({
       event,
       effects = true,
     }) {
-      if (!agentActor({ actor: event.actor }) && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
+      const harvestedNote = event.actor === 'harvest' && event.type === 'card.noted'
+
+      if (!agentActor({ actor: event.actor }) && !harvestedNote
+        && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
         const task = event.type === 'hydra.message' ? event.data.task : event.cardId
 
         if (task && state.cards[task]) {
