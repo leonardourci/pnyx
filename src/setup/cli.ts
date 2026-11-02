@@ -35,7 +35,6 @@ export const setup = guard({
 
     if (positionals[0] === undefined || [
       'hooks',
-      'service',
       'skills',
     ].includes(positionals[0] ?? '')) {
       requireSetupHome({ allowCustomHome: !!values['allow-custom-home'] })
@@ -48,10 +47,10 @@ export const setup = guard({
       })
     }
 
-    if (positionals[0] === undefined || positionals[0] === 'service') {
+    if (positionals[0] === undefined) {
       if (values.home !== undefined || args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
         throw new AxiError(
-          'setup service runs every Hydra; it takes no --hydra or --home',
+          'setup runs every Hydra; it takes no --hydra or --home',
           'VALIDATION_ERROR',
           ['Run `pnyx-axi setup hydra --home <firstmate home> --hydra <id>` to link a Firstmate home to its Hydra'],
         )
@@ -82,7 +81,7 @@ export const setup = guard({
       throw new AxiError(
         `unknown setup target: ${positionals[0] ?? '(none)'}`,
         'VALIDATION_ERROR',
-        ['Run `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
+        ['Run `pnyx-axi setup`, `pnyx-axi setup check`, `pnyx-axi setup skills`, `pnyx-axi setup hooks` or `pnyx-axi setup hydra --home <firstmate home>`'],
       )
     }
 

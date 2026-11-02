@@ -307,7 +307,7 @@ type ServiceResult = {
 
 const INSTALLED_HELP = [
   'The server of every Hydra starts at login and restarts after exit',
-  'Run `pnyx-axi setup service --remove` to stop and uninstall it',
+  'Run `pnyx-axi setup --remove` to stop and uninstall it',
 ]
 
 // A systemd unit does not inherit the login shell's environment, so it carries the PATH and login folders setup ran with.

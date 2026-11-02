@@ -152,7 +152,7 @@ export function setupCheck({
       name: 'service',
       missing: 'no login service, so Hydras stop when this server stops',
       by: 'owner',
-      fix: 'pnyx-axi setup service',
+      fix: 'pnyx-axi setup',
     })
   }
 
