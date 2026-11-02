@@ -10,11 +10,13 @@ import { join } from 'node:path'
 import { serviceFile } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
+import { Socket } from 'node:net'
 
 // Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
+const NATIVE_IDLE_WAIT_MS = 5000
 
-export function prepareNativeRestart() {
+export function prepareNativeRestart({ force = false }: { force?: boolean } = {}) {
   const paths = nativePaths()
 
   if (!existsSync(paths.selected)) {
@@ -53,6 +55,7 @@ export function prepareNativeRestart() {
     path: paths.selected,
     bundle: selected.bundle,
     restartInstance,
+    restartDeadline: force && restartInstance ? Date.now() + NATIVE_IDLE_WAIT_MS : undefined,
   })
 }
 
@@ -190,11 +193,81 @@ function launch({ args }: { args: string[] }) {
   }
 }
 
-export function requestRestart() {
-  launch({ args: ['restart'] })
+export function requestRestart({ force }: { force: boolean }) {
+  const log = openSync(
+    join(
+      pnyxHome(),
+      'service.log',
+    ),
+    'a',
+    0o600,
+  )
+  let child: ReturnType<typeof spawn>
+
+  try {
+    child = spawn(
+      process.execPath,
+      [
+        join(
+          PNYX_ROOT,
+          'dist/cli/pnyx-axi.js',
+        ),
+        'restart',
+      ],
+      {
+        detached: true,
+        env: {
+          ...process.env,
+          PNYX_ACTOR: 'cli',
+          PNYX_RESTART_SAFE: force ? '0' : '1',
+        },
+        stdio: [
+          'ignore',
+          'pipe',
+          log,
+        ],
+      },
+    )
+  } finally {
+    closeSync(log)
+  }
+
+  child.unref()
+  let output = ''
+
+  if (child.stdout instanceof Socket) {
+    child.stdout.unref()
+  }
+
+  child.stdout?.on(
+    'data',
+    chunk => {
+      output = (output + String(chunk)).slice(-8192)
+    },
+  )
+
+  return new Promise<void>((
+    resolve,
+    reject,
+  ) => {
+    child.once(
+      'error',
+      reject,
+    )
+    child.once(
+      'close',
+      code => {
+        if (code === 0) {
+          resolve()
+        } else {
+          reject(new Error(output.trim() || 'The restart process failed'))
+        }
+      },
+    )
+  })
 }
 
-export async function restartPnyx() {
+export async function restartPnyx({ force = false }: { force?: boolean } = {}) {
   const ids = [
     ...new Set([
       'default',
@@ -211,7 +284,7 @@ export async function restartPnyx() {
   ]
   const target = unique[0]
   const managed = target ? target.info.service ?? existsSync(serviceFile().path) : false
-  prepareNativeRestart()
+  prepareNativeRestart({ force })
 
   for (const item of unique) {
     if (processStart({ pid: item.info.pid }) === item.start) {
@@ -293,9 +366,12 @@ export async function restartPnyx() {
   }
 
   if (!managed) {
-    const args = ['serve']
+    const args = [
+      'serve',
+      ...target?.info.serveArgs ?? [],
+    ]
 
-    if (target?.info.port !== undefined) {
+    if (target?.info.port !== undefined && !target.info.serveArgs?.some(arg => arg === '--port' || arg.startsWith('--port='))) {
       args.push(
         '--port',
         String(target.info.port),
@@ -320,12 +396,12 @@ export async function restartPnyx() {
 
   return {
     server: unique.length ? 'restarting: ready' : 'starting: ready',
-    native: 'restarts when idle and outcomes are applied',
+    native: force ? 'restarts when idle or forces verified host recovery after a short wait' : 'restarts when idle and outcomes are applied',
   }
 }
 
 export const RESTART_HELP = `usage: pnyx-axi restart
-Restart the application on its current code, or start it if stopped. A responsive native host switches bundles once live turns, background work and pending outcomes settle.
+Restart the application on its current code, or start it if stopped. The native host switches bundles when idle; after a short wait, a verified busy host is stopped and its sessions recover as after a crash.
 A stuck application is stopped only when its process identity is verified; restart confirms the replacement is ready. A host that fails its handshake or stalls on claim or status is stopped only when its identity is verified. Its sessions then recover as after a crash; an unverified owner remains pending.
 No upgrade, model call or agent instruction is involved. /restart in Hydra's composer does the same.
 `
@@ -349,5 +425,5 @@ export async function restart(args: string[]): Promise<Record<string, unknown>> 
     )
   }
 
-  return restartPnyx()
+  return restartPnyx({ force: process.env.PNYX_RESTART_SAFE !== '1' })
 }

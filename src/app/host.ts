@@ -145,7 +145,7 @@ export function createHost({
   helperBound?: number
   // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
   upgradeRoot?: string
-  restart?(): void
+  restart?({ force }: { force: boolean }): void | Promise<void>
 }): Host {
   const providers = native ?? {
     'claude-code': claudeProvider({ query }),
