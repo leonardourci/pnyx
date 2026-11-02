@@ -63,7 +63,21 @@ test(
           PNYX_ACTOR: actor,
         },
       },
-    )
+    ).catch(error => {
+      const log = join(
+        root,
+        'service.log',
+      )
+
+      if (existsSync(log)) {
+        t.diagnostic(readFileSync(
+          log,
+          'utf8',
+        ))
+      }
+
+      throw error
+    })
     t.after(async () => {
       if (existsSync(serverPath)) {
         const saved = JSON.parse(readFileSync(

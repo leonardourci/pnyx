@@ -258,7 +258,21 @@ test(
     const started = performance.now()
     const first = await ensureNativeHost({ source })
     connections.push(first)
-    await until({ check: () => first.client.available() && first.client.ready.build !== oldBuild })
+    await until({
+      timeout: 30000,
+      check: () => first.client.available() && first.client.ready.build !== oldBuild,
+    }).catch(error => {
+      t.diagnostic(`available: ${first.client.available()} status: ${JSON.stringify(first.status())}`)
+
+      if (existsSync(paths.log)) {
+        t.diagnostic(readFileSync(
+          paths.log,
+          'utf8',
+        ))
+      }
+
+      throw error
+    })
     assert.notEqual(
       first.client.ready.instance,
       oldInstance,
