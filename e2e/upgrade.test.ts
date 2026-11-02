@@ -75,6 +75,43 @@ const stop = ({ s }: { s: Scenario }) => s.owner({
 })
 
 test(
+  '/restart restarts without sending a turn to Hydra',
+  async () => {
+    const s = await pnyx.scenario()
+    const restarts = pnyx.restarts()
+    await send({
+      s,
+      text: '/restart',
+      id: 'up',
+    })
+    await waitFor({
+      s,
+      state: 'restarting',
+    })
+    assert.equal(
+      pnyx.restarts(),
+      restarts + 1,
+    )
+    assert.equal(
+      heard({
+        s,
+        text: '/restart',
+      }),
+      false,
+    )
+    await pnyx.restart()
+    await waitFor({
+      s,
+      state: 'done',
+    })
+    assert.deepEqual(
+      upgrade({ s })!.steps.map(step => `${step.step}:${step.state}`),
+      ['restart:done'],
+    )
+  },
+)
+
+test(
   '/upgrade waits behind Hydra\'s running turn, later messages wait behind it, and Hydra never sees it',
   async () => {
     const s = await pnyx.scenario()
