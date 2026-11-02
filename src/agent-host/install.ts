@@ -285,9 +285,11 @@ export function installBundle({
 export function selectBundle({
   path,
   bundle,
+  restartInstance,
 }: {
   path: string
   bundle: string
+  restartInstance?: string
 }) {
   validateBundle({ directory: bundle })
   replaceFile({
@@ -295,6 +297,7 @@ export function selectBundle({
     text: JSON.stringify({
       bundle,
       revision: randomUUID(),
+      restartInstance,
     }),
   })
 }
