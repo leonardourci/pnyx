@@ -12,7 +12,7 @@ import { PNYX_ROOT } from '#upgrade/runner.ts'
 import { HydraError } from '#store/errors.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
-import { RESTART_SIGNAL, relaunch, prepareNativeRestart } from '#upgrade/restart.ts'
+import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import { hydraIds } from './home-migration.ts'
 
 function serveFlags({ args }: { args: string[] }) {
@@ -106,24 +106,9 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
     }
   })
 
-  if (signal === RESTART_SIGNAL) {
-    try {
-      prepareNativeRestart()
-    } catch (error) {
-      console.error(
-        'Native host restart preparation failed:',
-        error,
-      )
-    }
-  }
-
   const watched = firstmate?.close()
   await server.close()
   native.detach()
-
-  if (signal === RESTART_SIGNAL) {
-    relaunch()
-  }
 
   return {
     server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped',

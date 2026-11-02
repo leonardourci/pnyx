@@ -9,7 +9,7 @@ import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
-import { RESTART_SIGNAL } from '#upgrade/restart.ts'
+import { requestRestart } from '#upgrade/restart.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
@@ -120,10 +120,7 @@ export function createHost({
   retryDelays = RETRY_MS,
   helperBound,
   upgradeRoot,
-  restart = () => process.kill(
-    process.pid,
-    RESTART_SIGNAL,
-  ),
+  restart = requestRestart,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
