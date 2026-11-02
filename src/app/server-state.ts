@@ -19,6 +19,7 @@ export interface ServerInfo {
   // Null when the ingest socket could not be bound; hooks then spool.
   socket: string | null
   service?: boolean
+  serveArgs?: string[]
 }
 
 // Only the path of the recorded address is used, so a request (and the token sent with it) never leaves this machine.

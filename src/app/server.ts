@@ -189,7 +189,7 @@ export async function mountOwnedHydra({
   release(): void
   hydrasChanged(): void
   upgradeRoot?: string
-  restart?(): void
+  restart?({ force }: { force: boolean }): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   if (await readServer({ hydraId })) {
@@ -2841,6 +2841,7 @@ export async function mountOwnedHydra({
     socket: ingest && socketPath({ hydraId }),
     service: process.env.PNYX_SERVICE_ROLE === 'application'
       || process.env.XPC_SERVICE_NAME === serviceFile().label,
+    serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
   }
 
   // A mount that fails partway stops what it started; the caller releases the claim.
