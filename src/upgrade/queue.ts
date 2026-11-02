@@ -1,3 +1,4 @@
+import { HydraError } from '#store/errors.ts'
 import { homedir } from 'node:os'
 import type { HydraState } from '#app/model.ts'
 import type { HeldMessage, UpgradeOperation } from './model.ts'
@@ -212,6 +213,38 @@ export function upgradeQueue({
   })
 
   return {
+    restart({ id }: { id: string }) {
+      if (state().upgrades?.some(operation => operation.id === id)) {
+        return
+      }
+
+      if (active()) {
+        throw new HydraError({
+          code: 'UPGRADE_BUSY',
+          message: 'Wait for the current upgrade or restart to finish',
+        })
+      }
+
+      record({
+        operation: {
+          id,
+          state: 'restarting',
+          folder: root ? shortHome({ path: root }) : '',
+          queuedAt: at(),
+          startedAt: at(),
+          steps: [
+            {
+              step: 'restart',
+              state: 'running',
+              seconds: 0,
+            },
+          ],
+        },
+        eventId: `${id}:hosted`,
+      })
+      restart()
+    },
+
     request({ id }: { id: string }) {
       // One upgrade at a time: a second /upgrade while one waits or runs changes nothing.
       if (active() || state().upgrades?.some(operation => operation.id === id)) {

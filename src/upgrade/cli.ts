@@ -1,13 +1,12 @@
 import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { flagError } from '#app/cli-support.ts'
-import { serverPids } from '#app/server.ts'
-import { RESTART_SIGNAL } from './restart.ts'
+import { restartPnyx } from './restart.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { STEP_WORDS } from './model.ts'
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check]
-Pulls main into the Pnyx folder, installs and builds, then restarts the running server. Any failed step goes back to the previous version without restarting.
+Pulls main into the Pnyx folder, installs and builds, then runs the same restart as \`pnyx-axi restart\`. Live native turns keep running until a safe host swap. Any failed step goes back to the previous version without restarting.
 A folder off main or with local changes is refused. --check only says whether main has something newer.
 Ctrl-C stops it and goes back to the previous version; \`pnyx-axi hydra stop\` does the same for a /upgrade sent in Hydra's chat.
 `
@@ -107,22 +106,7 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
     }
   }
 
-  const pids = await serverPids()
-
-  for (const pid of pids) {
-    process.kill(
-      pid,
-      RESTART_SIGNAL,
-    )
-  }
-
-  if (!pids.length) {
-    return {
-      steps: result.steps,
-      result: 'Upgraded',
-      help: ['Run `pnyx-axi serve` to start the server'],
-    }
-  }
+  await restartPnyx()
 
   return {
     steps: [
