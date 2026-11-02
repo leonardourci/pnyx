@@ -5,7 +5,7 @@ import { stopNative, nativeClient } from '#setup/native-maintenance.ts'
 
 export const NATIVE_HELP = `usage: pnyx-axi native status|stop
 status reads native readiness, pending work and unapplied outcomes.
-stop ends an idle host only after queued input, permissions, controls, background work and unapplied outcomes are clear. Busy or uncertain ownership defers the stop. Host updates are manual and separate from app upgrades.
+stop ends an idle host only after queued input, permissions, controls, background work and unapplied outcomes are clear. Busy or uncertain ownership defers the stop. Upgrades activate their native bundle at the same idle boundary.
 `
 
 // eslint-disable-next-line pnyx/object-params -- runAxiCli owns this signature.

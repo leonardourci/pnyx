@@ -18,6 +18,7 @@ import { AGENT_HELP, REPLY_HELP, agent, reply } from '#workers/reply.ts'
 import { workerCommands } from '#workers/workers.ts'
 import { INTEGRATIONS_HELP, integrationsCommand } from '#integrations/cli.ts'
 import { ownerOnly } from '#hydra/hydra-session.ts'
+import { RESTART_HELP, restart } from '#upgrade/restart.ts'
 import { UPGRADE_HELP, upgrade } from '#upgrade/cli.ts'
 
 const HELP: Record<string, string> = {
@@ -29,6 +30,7 @@ const HELP: Record<string, string> = {
   ...DISPATCH_HELP,
   integrations: INTEGRATIONS_HELP,
   upgrade: UPGRADE_HELP,
+  restart: RESTART_HELP,
   native: NATIVE_HELP,
 }
 
@@ -110,6 +112,7 @@ const all = ownerOnly({
         serve,
         stop,
         upgrade,
+        restart,
         native,
         ...firstmateCommands,
         reply,
