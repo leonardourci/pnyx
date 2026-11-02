@@ -396,6 +396,11 @@ export async function remoteSession({
         }
       }
 
+      // A closed notification carries no outcome; consumers may stop at this yield.
+      if (typeof event === 'object' && event.type === 'ended' && event.reason === 'closed') {
+        await applied()
+      }
+
       yield event
 
       if (next.fact) {

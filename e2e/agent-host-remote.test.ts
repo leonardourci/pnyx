@@ -2044,3 +2044,97 @@ test(
     )
   },
 )
+
+test(
+  'closed sessions acknowledge terminal facts before consumers stop and admit messages after host restart',
+  async t => {
+    const host = await fixtureHost({ t })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'terminal-bindings',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    t.after(first.detach)
+    const open = {
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    }
+
+    for (const actor of [
+      'one',
+      'two',
+      'three',
+    ]) {
+      const session = await first.providers.codex.open({
+        ...open,
+        env: { PNYX_ACTOR: actor },
+      })
+      const reading = (async () => {
+        for await (const event of session.attach!()) {
+          if (typeof event === 'object' && event.type === 'ended') {
+            break
+          }
+        }
+      })()
+      await session.close()
+      await reading
+      const observer = await host.connect()
+      const summary = observer.ready.sessions.find(saved => saved.nativeId === session.id)!
+      const retained = await snapshot({
+        client: observer,
+        ref: summary.ref,
+      })
+      assert.deepEqual(
+        retained.pendingFacts,
+        [],
+      )
+      observer.detach()
+      session.detach!()
+    }
+
+    first.detach()
+    host.child.kill('SIGKILL')
+    await host.exited
+    const replacement = await fixtureHost({
+      t,
+      directory: host.root,
+    })
+    const second = await nativeProviders(options)
+    t.after(second.detach)
+    assert.equal(
+      second.providers.codex.canOpen?.(),
+      true,
+    )
+    const session = await second.providers.codex.open(open)
+    t.after(() => session.detach!())
+    const reading = (async () => {
+      for await (const event of session.run({
+        input: (async function* () {
+          yield {
+            id: 'fresh-message',
+            text: 'After closed sessions',
+            images: [],
+          }
+        })(),
+        permission: async () => ({
+          behavior: 'deny',
+          message: 'fixture',
+        }),
+      })) {
+        if (event === 'working') {
+          break
+        }
+      }
+    })()
+    await until({ check: async () => (await replacement.stats()).some(state => state.input[0]?.id === 'fresh-message') })
+    session.detach!()
+    await reading
+  },
+)
+
