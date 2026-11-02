@@ -105,6 +105,10 @@ export function requireSafeActivation() {
         })
       }
 
+      if (previous.pid === process.pid) {
+        continue
+      }
+
       try {
         process.kill(
           previous.pid,
@@ -128,32 +132,29 @@ export function requireSafeActivation() {
 
 export function selectedNativeBundle({ source }: { source: string }): {
   bundle: string
+  build: string
   entry: string
 } {
   const paths = nativePaths()
-  let bundle: string
 
-  if (existsSync(paths.selected)) {
-    bundle = JSON.parse(readFileSync(
-      paths.selected,
-      'utf8',
-    )).bundle
-  } else {
+  if (!existsSync(paths.selected)) {
     requireSafeActivation()
-    bundle = installBundle({
-      source,
-      directory: paths.bundles,
-    })
-    selectBundle({
-      path: paths.selected,
-      bundle,
-    })
   }
+
+  const bundle = installBundle({
+    source,
+    directory: paths.bundles,
+  })
+  selectBundle({
+    path: paths.selected,
+    bundle,
+  })
 
   const manifest = validateBundle({ directory: bundle })
 
   return {
     bundle,
+    build: manifest.build,
     entry: join(
       bundle,
       manifest.entry,
@@ -167,25 +168,23 @@ export async function ensureNativeHost({
   source: string
 }) {
   const paths = nativePaths()
+  const selected = selectedNativeBundle({ source })
   await startNativeHost({
-    source,
     paths,
   })
 
   return nativeProviders({
     ...paths,
+    desiredBuild: selected.build,
     reconnect: () => startNativeHost({
-      source,
       paths,
     }),
   })
 }
 
 async function startNativeHost({
-  source,
   paths,
 }: {
-  source: string
   paths: ReturnType<typeof nativePaths>
 }) {
   const connect = () => connectHost({
@@ -245,10 +244,15 @@ async function startNativeHost({
   }
 
   if (!owned) {
-    const {
+    const bundle = JSON.parse(readFileSync(
+      paths.selected,
+      'utf8',
+    )).bundle as string
+    const manifest = validateBundle({ directory: bundle })
+    const entry = join(
       bundle,
-      entry,
-    } = selectedNativeBundle({ source })
+      manifest.entry,
+    )
     const log = openSync(
       paths.log,
       'a',

@@ -16,6 +16,7 @@ import { durableWriter } from '#agent-host/durable.ts'
 import { privateDir } from '#store/storage.ts'
 
 const SNAPSHOT_MS = 5000
+const ACTIVATION_MS = 1000
 
 type Binding = {
   request: string
@@ -29,10 +30,12 @@ export async function nativeProviders({
   journal,
   installation,
   reconnect,
+  desiredBuild,
 }: {
   directory: string
   journal: string
   installation: string
+  desiredBuild?: string
   reconnect?(): Promise<void>
 }) {
   privateDir({ dir: journal })
@@ -59,6 +62,7 @@ export async function nativeProviders({
       'live-owners',
       'volatile-inputs',
       'host-status',
+      'idle-stop',
     ],
     attached: async ({ client: connection }) => {
       const claim = checked({
@@ -138,6 +142,50 @@ export async function nativeProviders({
       }
     },
   })
+  let activating = false
+  const activation = setInterval(
+    async () => {
+      const selectedIsRunning = client.available() && client.ready.build === desiredBuild
+
+      if (!desiredBuild || !client.available() || selectedIsRunning || activating) {
+        return
+      }
+
+      activating = true
+
+      try {
+        const status = checked({
+          result: await client.call({
+            id: randomUUID(),
+            operation: { kind: 'status' },
+          }),
+        })
+
+        if (status.kind !== 'maintenance' || status.status.blockers.length) {
+          return
+        }
+
+        checked({
+          result: await client.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'shutdown',
+              controller,
+              when: 'quiescent',
+            },
+          }),
+        })
+      } catch (error) {
+        console.error(
+          'Native bundle activation deferred:',
+          error,
+        )
+      } finally {
+        activating = false
+      }
+    },
+    ACTIVATION_MS,
+  ).unref()
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
     canOpen: () => client.available() && !inventory.some(session => session.phase === 'recovery_required'),
@@ -464,7 +512,10 @@ export async function nativeProviders({
       return () => listeners.delete(changed)
     },
     providers: adapters,
-    detach: () => client.detach(),
+    detach: () => {
+      clearInterval(activation)
+      client.detach()
+    },
   }
 }
 
