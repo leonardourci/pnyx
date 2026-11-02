@@ -107,7 +107,14 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   })
 
   if (signal === RESTART_SIGNAL) {
-    await prepareNativeRestart()
+    try {
+      prepareNativeRestart()
+    } catch (error) {
+      console.error(
+        'Native host restart preparation failed:',
+        error,
+      )
+    }
   }
 
   const watched = firstmate?.close()

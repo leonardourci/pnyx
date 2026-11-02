@@ -1,11 +1,10 @@
 import { AxiError } from 'axi-sdk-js'
 import { serverPids } from '#app/server.ts'
-import { nativeClient } from '#setup/native-maintenance.ts'
-import { nativePaths, selectedNativeBundle } from '#setup/native-host.ts'
+import { nativePaths } from '#setup/native-host.ts'
 import { selectBundle } from '#agent-host/install.ts'
 import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
-import { closeSync, openSync } from 'node:fs'
+import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { serviceFile } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
@@ -44,31 +43,49 @@ export function relaunch() {
   ).unref()
 }
 
-export async function prepareNativeRestart({ source = PNYX_ROOT }: { source?: string } = {}) {
-  const selected = selectedNativeBundle({ source })
+export function prepareNativeRestart() {
+  const paths = nativePaths()
+
+  if (!existsSync(paths.selected)) {
+    return
+  }
+
+  const selected = JSON.parse(readFileSync(
+    paths.selected,
+    'utf8',
+  )) as { bundle: string }
+  const ledgerPath = join(
+    paths.directory,
+    'ledger.json',
+  )
   let restartInstance: string | undefined
 
-  try {
-    const client = await nativeClient()
-    restartInstance = client.ready.instance
-    client.detach()
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
+  if (existsSync(ledgerPath)) {
+    try {
+      const ledger = JSON.parse(readFileSync(
+        ledgerPath,
+        'utf8',
+      )) as { instance?: unknown }
 
-    if (code !== 'ENOENT' && code !== 'ECONNREFUSED') {
-      throw error
+      if (typeof ledger.instance === 'string') {
+        restartInstance = ledger.instance
+      }
+    } catch (error) {
+      console.error(
+        'Native host restart identity unavailable:',
+        error,
+      )
     }
   }
 
   selectBundle({
-    path: nativePaths().selected,
+    path: paths.selected,
     bundle: selected.bundle,
     restartInstance,
   })
 }
 
 export async function restartPnyx() {
-  await prepareNativeRestart()
   const pids = await serverPids()
 
   for (const pid of pids) {
@@ -85,6 +102,7 @@ export async function restartPnyx() {
     }
   }
 
+  prepareNativeRestart()
   const log = openSync(
     join(
       pnyxHome(),
@@ -129,7 +147,8 @@ export async function restartPnyx() {
 }
 
 export const RESTART_HELP = `usage: pnyx-axi restart
-Restart the application on its current code, or start it if stopped. The native host switches to the current bundle once live turns, background work and pending outcomes settle.
+Restart the application on its current code, or start it if stopped. A responsive native host switches bundles once live turns, background work and pending outcomes settle.
+A host that fails its handshake is stopped only when its process identity is verified. Its sessions then recover as after a crash; an unverified owner remains pending.
 No upgrade, model call or agent instruction is involved. /restart in Hydra's composer does the same.
 `
 
