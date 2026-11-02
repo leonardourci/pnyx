@@ -387,6 +387,8 @@ export function scenarioGroup({
   const upgrade = upgradeRepo({ root })
   // A real restart signals this process, which the flows share; a flow restarts with pnyx.restart() instead.
   let restarts = 0
+  let restartForce: boolean | undefined
+  let restartFailure: string | undefined
   let server: RunningServer | undefined
 
   const start = async ({ port }: { port?: number }) => {
@@ -398,7 +400,17 @@ export function scenarioGroup({
       retryDelays,
       followDelay: FOLLOW_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
-      restart: () => restarts++,
+      restart: ({ force }) => {
+        restarts++
+        restartForce = force
+
+        if (restartFailure) {
+          const error = restartFailure
+          restartFailure = undefined
+
+          throw new Error(error)
+        }
+      },
     })
   }
 
@@ -420,6 +432,10 @@ export function scenarioGroup({
     upgrade,
     // How many times an upgrade asked the server to restart.
     restarts: () => restarts,
+    restartForce: () => restartForce,
+    failRestart: ({ message }: { message: string }) => {
+      restartFailure = message
+    },
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,
     // so an open page reconnects to it.

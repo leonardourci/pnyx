@@ -93,6 +93,10 @@ test(
       restarts + 1,
     )
     assert.equal(
+      pnyx.restartForce(),
+      true,
+    )
+    assert.equal(
       heard({
         s,
         text: '/restart',
@@ -426,6 +430,10 @@ test(
       restarts + 1,
     )
     assert.equal(
+      pnyx.restartForce(),
+      false,
+    )
+    assert.equal(
       repo.built(),
       'two',
     )
@@ -466,6 +474,53 @@ test(
         'build:done',
         'restart:done',
       ],
+    )
+  },
+)
+
+test(
+  'a failed upgrade restart releases held messages and records the error',
+  async () => {
+    const s = await pnyx.scenario()
+    repo.publish({
+      files: { 'build.sh': `sleep 1\n${building({ version: 'restart-failure' })}` },
+      message: 'restart failure',
+    })
+    pnyx.failRestart({ message: 'restart refused by fixture' })
+    pnyx.claude.plan({ text: 'Sent during failed restart' })
+    await send({
+      s,
+      text: '/upgrade',
+      id: 'up',
+    })
+    await buildRunning({ s })
+    await send({
+      s,
+      text: 'Sent during failed restart',
+      id: 'during',
+    })
+    await waitFor({
+      s,
+      state: 'failed',
+    })
+    assert.match(
+      upgrade({ s })!.error!,
+      /restart refused by fixture/,
+    )
+    assert.equal(
+      upgrade({ s })!.failed,
+      'restart',
+    )
+    await until({
+      what: 'Hydra to hear the held message',
+      check: () => heard({
+        s,
+        text: 'Sent during failed restart',
+      }),
+    })
+    assert.deepEqual(
+      upgrade({ s })!.held,
+      [],
     )
   },
 )

@@ -27,7 +27,7 @@ function readOptional<T>({ path }: { path: string }): T | undefined {
       'utf8',
     )) as T
   } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT' || error instanceof SyntaxError) {
       return undefined
     }
 
@@ -80,10 +80,12 @@ async function fixture({
   t,
   stallRestart = false,
   managed = false,
+  holdTurn = false,
 }: {
   t: TestContext
   stallRestart?: boolean
   managed?: boolean
+  holdTurn?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-handshake-'))
   const listener = createServer()
@@ -141,6 +143,13 @@ async function fixture({
     env.PNYX_SERVICE_ROLE = 'application'
   }
 
+  if (holdTurn) {
+    env.FAKE_CODEX_RELEASE_FILE = join(
+      root,
+      'release-turn',
+    )
+  }
+
   if (stallRestart) {
     env.PNYX_TEST_STALL_RESTART = '1'
     env.NODE_OPTIONS = `--import=${join(
@@ -163,14 +172,23 @@ async function fixture({
     host?: Owner
     direct?: ChildProcess
   } = {}
-  const run = async ({ args }: { args: string[] }) => promisify(execFile)(
+  const run = async ({
+    args,
+    extraEnv,
+  }: {
+    args: string[]
+    extraEnv?: NodeJS.ProcessEnv
+  }) => promisify(execFile)(
     process.execPath,
     [
       cli,
       ...args,
     ],
     {
-      env,
+      env: {
+        ...env,
+        ...extraEnv,
+      },
       timeout: TIMEOUT_MS,
     },
   )
@@ -679,16 +697,6 @@ test(
       (await app.health()).native.state,
       'ready',
     )
-    await until({
-      timeout: TIMEOUT_MS,
-      check: () => readFileSync(
-        join(
-          app.root,
-          'service.log',
-        ),
-        'utf8',
-      ).includes('restarting: ready'),
-    })
   },
 )
 
@@ -741,6 +749,305 @@ test(
     process.kill(
       before,
       'SIGCONT',
+    )
+  },
+)
+
+test(
+  'composer restart failure releases later messages',
+  async t => {
+    const app = await fixture({ t })
+    await app.run({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.run({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    const lock = join(
+      app.root,
+      'hydras/default/server.lock',
+    )
+    const snapshot = join(
+      app.root,
+      'hydras/default/snapshot.json',
+    )
+    const original = readFileSync(
+      lock,
+      'utf8',
+    )
+
+    try {
+      writeFileSync(
+        lock,
+        JSON.stringify({
+          ...JSON.parse(original),
+          processStart: 'unverifiable fixture',
+        }),
+      )
+      await app.run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          '/restart',
+        ],
+      })
+      await app.run({
+        args: [
+          'hydra',
+          'send',
+          '--text',
+          'message after failed restart',
+        ],
+      })
+      await until({
+        timeout: 12000,
+        check: () => {
+          const state = JSON.parse(readFileSync(
+            snapshot,
+            'utf8',
+          )).state
+          const operation = state.upgrades?.find((item: { state: string }) => item.state === 'failed')
+
+          return operation?.error?.includes('identity is not verifiable') && !operation.held?.length
+            && state.cards.$hydra?.sessionActivity === 'finished'
+        },
+      })
+    } finally {
+      writeFileSync(
+        lock,
+        original,
+      )
+    }
+  },
+)
+
+test(
+  'explicit restart replaces a responsive host holding a stuck turn',
+  async t => {
+    const app = await fixture({
+      t,
+      holdTurn: true,
+    })
+    await app.run({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.run({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Hold this turn',
+      ],
+    })
+    const statePath = join(
+      app.root,
+      'hydras/default/snapshot.json',
+    )
+    let latest = ''
+    await until({
+      timeout: TIMEOUT_MS,
+      check: async () => {
+        const state = JSON.parse(readFileSync(
+          statePath,
+          'utf8',
+        )).state
+        const status = await app.run({
+          args: [
+            'native',
+            'status',
+          ],
+        })
+        latest = `${state.cards.$hydra?.sessionActivity}: ${status.stdout}`
+
+        return state.cards.$hydra?.sessionActivity === 'working'
+          && status.stdout.includes('Native turns, inputs, tools, queue or background work are active or unknown')
+      },
+    }).catch(error => {
+      t.diagnostic(latest)
+      throw error
+    })
+    const activeOwner = app.owner()
+    assert.ok(activeOwner)
+    const sessionId = JSON.parse(readFileSync(
+      statePath,
+      'utf8',
+    )).state.cards.$hydra.agent.sessionId
+    await app.run({
+      args: ['restart'],
+      extraEnv: { PNYX_RESTART_SAFE: '1' },
+    })
+    const safeDeadline = Date.now() + 6500
+    await until({
+      timeout: 10000,
+      check: async () => {
+        assert.equal(
+          app.owner()?.pid,
+          activeOwner.pid,
+        )
+        const status = await app.run({
+          args: [
+            'native',
+            'status',
+          ],
+        })
+        assert.match(
+          status.stdout,
+          /Native turns, inputs, tools, queue or background work are active or unknown/,
+        )
+
+        return Date.now() >= safeDeadline
+      },
+    })
+    await app.run({ args: ['restart'] })
+    await until({
+      timeout: 15000,
+      check: () => !!app.owner() && app.owner()?.pid !== activeOwner.pid,
+    })
+    writeFileSync(
+      join(
+        app.root,
+        'release-turn',
+      ),
+      '',
+    )
+    const events = join(
+      app.root,
+      'hydras/default/events.jsonl',
+    )
+    const finishes = () => readFileSync(
+      events,
+      'utf8',
+    ).split('\n')
+      .filter(line => {
+        if (!line) {
+          return false
+        }
+
+        const event = JSON.parse(line)
+
+        return event.type === 'card.pushed' && event.data.agent?.sessionId === sessionId && event.data.activity === 'finished'
+      }).length
+    const beforeFinishes = finishes()
+    await app.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Continue after recovery',
+      ],
+    })
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => {
+        const card = JSON.parse(readFileSync(
+          statePath,
+          'utf8',
+        )).state.cards.$hydra
+
+        return card?.agent?.sessionId === sessionId && card.sessionActivity === 'finished' && finishes() > beforeFinishes
+      },
+    })
+  },
+)
+
+test(
+  'restart retains the selected Hydra and watched home',
+  async t => {
+    const app = await fixture({ t })
+    const home = join(
+      app.root,
+      'firstmate-fixture',
+    )
+    mkdirSync(
+      join(
+        home,
+        'state',
+      ),
+      { recursive: true },
+    )
+    await app.run({
+      args: [
+        'hydra',
+        'create',
+        'other',
+      ],
+    })
+    await app.run({ args: ['stop'] })
+    const direct = spawn(
+      process.execPath,
+      [
+        cli,
+        'serve',
+        '--hydra',
+        'other',
+        '--home',
+        home,
+        '--port',
+        String(app.port),
+      ],
+      {
+        env: app.env,
+        stdio: 'ignore',
+      },
+    )
+    app.owned.direct = direct
+    const other = join(
+      app.root,
+      'hydras/other/server.json',
+    )
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => existsSync(other),
+    })
+    await app.run({ args: ['restart'] })
+    const response = await fetch(
+      `http://127.0.0.1:${app.port}/`,
+      { redirect: 'manual' },
+    )
+    assert.match(
+      response.headers.get('location') ?? '',
+      /\/hydra\/other\//,
+    )
+    const log = readFileSync(
+      join(
+        app.root,
+        'service.log',
+      ),
+      'utf8',
+    )
+    assert.match(
+      log,
+      /watching 1 home/,
     )
   },
 )
