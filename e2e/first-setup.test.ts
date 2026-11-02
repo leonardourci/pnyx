@@ -79,7 +79,6 @@ test(
     const port = address.port
     await new Promise<void>(resolve => socket.close(() => resolve()))
     const env: NodeJS.ProcessEnv = {
-      ...process.env,
       HOME: home,
       PNYX_HOME: pnyx,
       CODEX_HOME: join(
@@ -96,6 +95,15 @@ test(
       ),
       PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin`,
       PNYX_ACTOR: 'cli',
+      PNYX_GH_AXI: 'false',
+      PNYX_PASEO_URL: 'ws://127.0.0.1:1/ws',
+      TMPDIR: root,
+      LANG: 'en_US.UTF-8',
+      GIT_CONFIG_NOSYSTEM: '1',
+      GIT_CONFIG_GLOBAL: join(
+        root,
+        'gitconfig',
+      ),
     }
     const serverPath = join(
       pnyx,
