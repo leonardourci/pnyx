@@ -568,6 +568,8 @@ export async function remoteSession({
           return
         }
 
+        await replay.promise
+
         for await (const original of input) {
           if (detached) {
             return
