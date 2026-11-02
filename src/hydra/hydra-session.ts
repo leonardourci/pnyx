@@ -107,6 +107,7 @@ export function ownerOnly<T extends Record<string, Command>>({
           order: { type: 'string' },
           project: { type: 'string' },
           main: { type: 'string' },
+          port: { type: 'string' },
         },
         strict: false,
         allowPositionals: true,
@@ -139,8 +140,8 @@ export function ownerOnly<T extends Record<string, Command>>({
           hydraId,
           env,
         })) {
-          // setup service serves every Hydra and refuses --hydra, which only routed the question; Confirm drops it too.
-          const service = name === 'setup' && positionals[0] === 'service'
+          // Setup without a target serves every Hydra and refuses --hydra.
+          const service = name === 'setup' && positionals.length === 0
           const serviceArgs = args.filter((
             arg,
             index,

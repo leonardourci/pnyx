@@ -290,7 +290,7 @@ export const approval = guard({
           ENTRY,
           target.name,
           ...target.args,
-          // setup service runs every Hydra and refuses --hydra.
+          // Setup without a target runs every Hydra and refuses --hydra.
           ...(target.name === 'setup' && parseArgs({
             args: target.args,
             options: {
@@ -299,7 +299,7 @@ export const approval = guard({
             },
             strict: false,
             allowPositionals: true,
-          }).positionals[0] === 'service' ? [] : [
+          }).positionals.length === 0 ? [] : [
               '--hydra',
               hydraId,
             ]),
