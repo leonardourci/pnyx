@@ -63,6 +63,7 @@ export async function remoteSession({
     throw new Error('Missing session controller')
   }
 
+  summary.controllerRevision = attached.control.revision
   const controller = attached.control.generation
   let publishedContext: string | undefined
   let contextWrite = Promise.resolve()
@@ -214,7 +215,10 @@ export async function remoteSession({
         })
       }
 
-      if (frame.snapshot.activity === 'working') {
+      const work = frame.snapshot.native?.work
+      const running = !work || work.runningTurns.length > 0 || work.unsettledInputs.length > 0
+
+      if (frame.snapshot.activity === 'working' && running) {
         enqueue({ event: 'working' })
       }
 
@@ -245,6 +249,7 @@ export async function remoteSession({
 
   const detach = () => {
     detached = true
+    replay.reject(new Error('The native reader detached before retained facts were applied'))
     unsubscribe()
     unwatchDisconnect()
     // Detachment abandons only application callbacks; no decision is sent to the native owner.

@@ -152,6 +152,55 @@ test(
 )
 
 test(
+  'the activity snapshot follows a completed turn and a later turn',
+  async t => {
+    const directory = mkdtempSync('/tmp/pnyx-output-activity-')
+    t.after(() => rmSync(
+      directory,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    const stream = output({
+      directory,
+      session: {
+        ref: {
+          id: 'session',
+          epoch: 'epoch',
+        },
+        provider: 'codex',
+        phase: 'live',
+        controllerRevision: 1,
+      },
+    })
+    stream.publish({ event: 'working' })
+    stream.publish({
+      event: {
+        type: 'turn-ended',
+        outcome: {
+          turn: 'turn',
+          inputIds: [],
+          status: 'completed',
+          at: '2026-01-01T00:00:00Z',
+          assistant: [],
+        },
+      },
+    })
+    assert.equal(
+      stream.baseline({}).activity,
+      'finished',
+    )
+    stream.publish({ event: 'working' })
+    assert.equal(
+      stream.baseline({}).activity,
+      'working',
+    )
+    await stream.flush()
+  },
+)
+
+test(
   'view events preserve sequence across the durable outcome barrier',
   async t => {
     const directory = mkdtempSync('/tmp/pnyx-output-order-')
