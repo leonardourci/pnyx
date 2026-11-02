@@ -124,6 +124,10 @@ test(
           'Built-in',
         ],
         [
+          '/restart',
+          'Built-in',
+        ],
+        [
           '/add-project',
           'Built-in',
         ],

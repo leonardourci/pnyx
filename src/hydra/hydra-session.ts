@@ -51,6 +51,7 @@ const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
       name: '--discard',
     })),
   approval: () => true,
+  restart: () => true,
   upgrade: ({ args }) => !args.includes('--check'),
 }
 
