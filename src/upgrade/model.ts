@@ -6,7 +6,7 @@ export const RESTART_COMMAND = '/restart'
 
 export const RESTART_SUGGESTION: Suggestion = {
   command: RESTART_COMMAND,
-  description: 'Restart Pnyx on its current code. Live turns continue until the native host can restart safely.',
+  description: 'Restart Pnyx on its current code. A busy native host is restarted after a short wait and its sessions recover.',
   source: 'Built-in',
   kind: 'command',
 }

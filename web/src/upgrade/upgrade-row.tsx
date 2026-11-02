@@ -77,12 +77,16 @@ export function UpgradeRow({
             'Upgrade not started.',
             `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
           ]
-            : [
-              `Upgrade failed while ${stoppedWhile({ operation })}.`,
-              operation.rolledBack === false
-                ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
-                : 'Went back to the previous version; nothing changed.',
+            : operation.failed === 'restart' ? restartOnly ? ['Restart failed.'] : [
+              'Upgrade finished, but restart failed.',
+              'The upgraded code remains on disk.',
             ]
+              : [
+                `Upgrade failed while ${stoppedWhile({ operation })}.`,
+                operation.rolledBack === false
+                  ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+                  : 'Went back to the previous version; nothing changed.',
+              ]
 
   return (
     <div className="compaction-row upgrade-row" data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
@@ -107,7 +111,7 @@ export function UpgradeRow({
           </span>
         )}
         {needsFix && operation.error && <pre className="upgrade-error">{operation.error}</pre>}
-        {needsFix && (
+        {needsFix && !restartOnly && (
           <Button variant="surface" className="upgrade-fix" onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
             <Icon name="fix" size={14} />Ask Hydra to fix
           </Button>
