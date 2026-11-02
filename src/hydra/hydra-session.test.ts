@@ -153,7 +153,8 @@ test(
       'default',
     ])
     hydra.setup([
-      'service',
+      '--port',
+      '4748',
       '--hydra',
       'lab',
     ])
@@ -178,7 +179,10 @@ test(
           'mode',
           'default',
         ],
-        ['service'],
+        [
+          '--port',
+          '4748',
+        ],
       ],
     )
     hydra.rule([
