@@ -206,6 +206,39 @@ test(
       existsSync(pnyx),
       false,
     )
+    const customHome = join(
+      root,
+      'custom-pnyx',
+    )
+    await assert.rejects(
+      promisify(execFile)(
+        process.execPath,
+        [
+          cli,
+          'setup',
+          '--preview',
+        ],
+        {
+          env: {
+            ...env,
+            PNYX_HOME: customHome,
+          },
+          timeout: WAIT_MS,
+        },
+      ),
+      (error: Error & { stdout?: string }) => {
+        assert.match(
+          error.stdout ?? '',
+          /CUSTOM_HOME_SETUP/,
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      existsSync(customHome),
+      false,
+    )
     await run({ args: ['setup'] })
     assert.ok(existsSync(selectedPath))
     assert.ok(existsSync(managerLog))
