@@ -27,8 +27,14 @@ export type NativeStats = {
   context: string
 }
 
-export async function until({ check }: { check(): boolean | Promise<boolean> }) {
-  const deadline = Date.now() + WAIT_MS
+export async function until({
+  check,
+  timeout = WAIT_MS,
+}: {
+  check(): boolean | Promise<boolean>
+  timeout?: number
+}) {
+  const deadline = Date.now() + timeout
 
   while (!await check()) {
     assert.ok(
