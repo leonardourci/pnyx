@@ -132,15 +132,16 @@ To keep it running in the background:
 
 ```sh
 mkdir -p ~/.pnyx
-pnyx-axi setup service                     # start now and at login, restart after exit
+pnyx-axi setup                             # install server and native login services
+pnyx-axi setup service                     # same as setup
 pnyx-axi setup service --port 4748         # on another port
 pnyx-axi setup service --preview           # inspect the launchd job or systemd unit
 pnyx-axi setup service --remove            # stop and uninstall the service
 ```
 
-On macOS the service is a launchd job in `~/Library/LaunchAgents`. On Linux it is a systemd user unit in `~/.config/systemd/user` (or `$XDG_CONFIG_HOME/systemd/user` when absolute), managed with `systemctl --user`; it runs while you are logged in, and `loginctl enable-linger` keeps it running after you log out.
+On macOS the services are launchd jobs in `~/Library/LaunchAgents`. On Linux they are systemd user units in `~/.config/systemd/user` (or `$XDG_CONFIG_HOME/systemd/user` when absolute), managed with `systemctl --user`; they run while you are logged in, and `loginctl enable-linger` keeps them running after you log out.
 
-There is one login service for every Hydra. Setting it up replaces the one-per-Hydra services older versions installed for the same data folder.
+One application login service runs every Hydra, and a separate native login service runs the agent host. Setting up the application service replaces the one-per-Hydra services older versions installed for the same data folder.
 
 ### Upgrade
 

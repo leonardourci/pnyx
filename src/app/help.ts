@@ -323,14 +323,16 @@ Newest first, ${HISTORY_LIMIT} per page (max ${HISTORY_MAX}). --updates keeps on
 Appends an event that reverses a manual push edit, move, link or outcome. Refused when the card changed since.
 Source observations, card creation and merges cannot be undone.
 `,
-  setup: `usage: pnyx-axi setup check [--hydra <id>]
+  setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
+pnyx-axi setup check [--hydra <id>]
 pnyx-axi setup service [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup without a target installs the server and native login services, like setup service.
+setup, hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
 setup service refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
