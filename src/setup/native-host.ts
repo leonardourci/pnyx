@@ -134,11 +134,18 @@ export function selectedNativeBundle({ source }: { source: string }): {
   bundle: string
   build: string
   entry: string
+  restartInstance?: string
 } {
   const paths = nativePaths()
+  let restartInstance: string | undefined
 
   if (!existsSync(paths.selected)) {
     requireSafeActivation()
+  } else {
+    restartInstance = JSON.parse(readFileSync(
+      paths.selected,
+      'utf8',
+    )).restartInstance
   }
 
   const bundle = installBundle({
@@ -148,6 +155,7 @@ export function selectedNativeBundle({ source }: { source: string }): {
   selectBundle({
     path: paths.selected,
     bundle,
+    restartInstance,
   })
 
   const manifest = validateBundle({ directory: bundle })
@@ -155,6 +163,7 @@ export function selectedNativeBundle({ source }: { source: string }): {
   return {
     bundle,
     build: manifest.build,
+    restartInstance,
     entry: join(
       bundle,
       manifest.entry,
@@ -176,6 +185,7 @@ export async function ensureNativeHost({
   return nativeProviders({
     ...paths,
     desiredBuild: selected.build,
+    restartInstance: selected.restartInstance,
     reconnect: () => startNativeHost({
       paths,
     }),
