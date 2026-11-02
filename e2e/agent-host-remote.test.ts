@@ -156,6 +156,119 @@ for (const provider of [
   )
 }
 
+test(
+  'reattachment applies retained completion before admitting another input',
+  async t => {
+    const host = await fixtureHost({ t })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'application',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    t.after(first.detach)
+    const open = {
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    }
+    const initial = await first.providers.codex.open(open)
+    const permission = async () => ({
+      behavior: 'deny' as const,
+      message: 'fixture',
+    })
+    const reading = (async () => {
+      for await (const event of initial.run({
+        input: (async function* () {
+          yield {
+            id: 'first',
+            text: 'first',
+            images: [],
+          }
+        })(),
+        permission,
+      })) {
+        assert.notEqual(
+          event,
+          undefined,
+        )
+      }
+    })()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    const running = (await host.stats())[0]!
+    initial.detach!()
+    await reading
+    first.detach()
+    await host.control({
+      kind: 'event',
+      nativeId: running.id,
+      event: {
+        type: 'result',
+        turn: running.turn!,
+        inputIds: ['first'],
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    const second = await nativeProviders(options)
+    t.after(second.detach)
+    const resumed = await second.providers.codex.open({
+      ...open,
+      agent: {
+        provider: 'codex',
+        sessionId: running.id,
+      },
+    })
+    t.after(() => resumed.detach!())
+    let requested = false
+    const events = resumed.run({
+      input: (async function* () {
+        requested = true
+        yield {
+          id: 'second',
+          text: 'second',
+          images: [],
+        }
+      })(),
+      permission,
+    })[Symbol.asyncIterator]()
+    let event = await events.next()
+
+    while (!event.done && (typeof event.value !== 'object' || event.value.type !== 'turn-ended')) {
+      event = await events.next()
+    }
+
+    assert.equal(
+      event.done,
+      false,
+    )
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(
+      requested,
+      false,
+    )
+    assert.equal(
+      (await host.stats())[0]!.input.length,
+      1,
+    )
+    const drain = (async () => {
+      let next = await events.next()
+
+      while (!next.done) {
+        next = await events.next()
+      }
+    })()
+    await resumed.replayed!()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 2 })
+    resumed.detach!()
+    await drain
+  },
+)
+
 for (const harness of [
   'claude',
   'codex',
