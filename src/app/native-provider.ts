@@ -38,7 +38,7 @@ export async function nativeProviders({
   installation: string
   desiredBuild?: string
   restartInstance?: string
-  reconnect?(): Promise<void>
+  reconnect?({ failedInstance }: { failedInstance?: string }): Promise<void>
 }) {
   privateDir({ dir: journal })
   let controller = ''

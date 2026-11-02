@@ -193,16 +193,19 @@ export async function ensureNativeHost({
     ...paths,
     desiredBuild: selected.build,
     restartInstance: selected.restartInstance,
-    reconnect: () => startNativeHost({
+    reconnect: ({ failedInstance }) => startNativeHost({
       paths,
+      failedInstance,
     }),
   })
 }
 
 async function startNativeHost({
   paths,
+  failedInstance,
 }: {
   paths: ReturnType<typeof nativePaths>
+  failedInstance?: string
 }) {
   const socket = join(
     paths.directory,
@@ -223,16 +226,39 @@ async function startNativeHost({
 
   let failedHandshake: boolean
 
-  try {
-    const client = await connect()
-    client.detach()
+  if (failedInstance) {
+    try {
+      const ledger = JSON.parse(readFileSync(
+        join(
+          paths.directory,
+          'ledger.json',
+        ),
+        'utf8',
+      )) as { instance?: string }
 
-    return
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
+      if (ledger.instance !== failedInstance) {
+        return
+      }
 
-    failedHandshake = code !== 'ENOENT' && code !== 'ECONNREFUSED'
-      || code === 'ENOENT' && existsSync(socket)
+      failedHandshake = true
+    } catch {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host instance is not verifiable',
+      })
+    }
+  } else {
+    try {
+      const client = await connect()
+      client.detach()
+
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
+      failedHandshake = code !== 'ENOENT' && code !== 'ECONNREFUSED'
+        || code === 'ENOENT' && existsSync(socket)
+    }
   }
 
   let owned = false
@@ -298,10 +324,25 @@ async function startNativeHost({
     if (alive && failedHandshake) {
       const stillOwned = () => {
         try {
-          return readFileSync(
+          const sameOwner = readFileSync(
             ownerPath,
             'utf8',
-          ) === saved && processStart({ pid: owner.pid }) === owner.start
+          ) === saved
+            && processStart({ pid: owner.pid }) === owner.start
+
+          if (!sameOwner || !failedInstance) {
+            return sameOwner
+          }
+
+          const ledger = JSON.parse(readFileSync(
+            join(
+              paths.directory,
+              'ledger.json',
+            ),
+            'utf8',
+          )) as { instance?: string }
+
+          return ledger.instance === failedInstance
         } catch {
           return false
         }

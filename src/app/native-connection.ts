@@ -16,7 +16,7 @@ export async function nativeConnection({
   installation: string
   token(): string
   capabilities: string[]
-  reconnect?(): Promise<void>
+  reconnect?({ failedInstance }: { failedInstance?: string }): Promise<void>
   attached({ client }: { client: HostClient }): Promise<void>
 }) {
   const readers = new Set<({ frame }: { frame: ToClient }) => void>()
@@ -24,6 +24,7 @@ export async function nativeConnection({
   let current: HostClient | undefined
   let available = false, stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined
+  let failedInstance: string | undefined
 
   const connect = async () => {
     const establish = () => connectHost({
@@ -34,6 +35,15 @@ export async function nativeConnection({
     })
 
     let next: HostClient
+
+    if (failedInstance && reconnect) {
+      const failed = failedInstance
+      await reconnect({ failedInstance: failed })
+
+      if (failedInstance === failed) {
+        failedInstance = undefined
+      }
+    }
 
     try {
       next = await establish()
@@ -46,7 +56,7 @@ export async function nativeConnection({
         return
       }
 
-      await reconnect()
+      await reconnect({})
 
       if (stopped) {
         return
@@ -66,6 +76,10 @@ export async function nativeConnection({
     try {
       await attached({ client: next })
     } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === 'NATIVE_TIMEOUT') {
+        failedInstance = next.ready.instance
+      }
+
       next.detach()
       throw error
     } finally {
@@ -166,7 +180,21 @@ export async function nativeConnection({
       return current.ready
     },
     available: () => available,
-    call: ({ ...request }) => live().call(request),
+    async call({ ...request }) {
+      const connection = live()
+
+      try {
+        return await connection.call(request)
+      } catch (error) {
+        if ((error as NodeJS.ErrnoException).code === 'NATIVE_TIMEOUT'
+          && request.operation.kind === 'status') {
+          failedInstance = connection.ready.instance
+          connection.detach()
+        }
+
+        throw error
+      }
+    },
     result: ({ ...request }) => live().result(request),
     acknowledge: ({ ...request }) => live().acknowledge(request),
     watch: ({ ...request }) => live().watch(request),
