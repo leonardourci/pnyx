@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
-import { execFile, spawn, type ChildProcess } from 'node:child_process'
+import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { promisify } from 'node:util'
 import { createServer } from 'node:net'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { processStart } from '#agent-host/discovery.ts'
+import { serviceFile } from '#setup/service.ts'
 import { until } from '#agent-host/fixtures/harness.ts'
 
 const TIMEOUT_MS = 40000
@@ -75,7 +76,15 @@ async function stopOwned({
   }
 }
 
-async function fixture({ t }: { t: TestContext }) {
+async function fixture({
+  t,
+  stallRestart = false,
+  managed = false,
+}: {
+  t: TestContext
+  stallRestart?: boolean
+  managed?: boolean
+}) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-handshake-'))
   const listener = createServer()
   listener.listen(
@@ -107,7 +116,7 @@ async function fixture({ t }: { t: TestContext }) {
     `#!/bin/sh\nexec '${process.execPath}' --conditions=source '${fake}' "$@"\n`,
     { mode: 0o755 },
   )
-  const env = {
+  const env: NodeJS.ProcessEnv = {
     ...process.env,
     PNYX_HOME: root,
     HOME: root,
@@ -119,10 +128,27 @@ async function fixture({ t }: { t: TestContext }) {
       root,
       'claude',
     ),
+    XDG_CONFIG_HOME: join(
+      root,
+      'config',
+    ),
     PATH: `${bin}:/usr/bin:/bin`,
     PORT: String(port),
     PNYX_ACTOR: 'cli',
   }
+
+  if (managed) {
+    env.PNYX_SERVICE_ROLE = 'application'
+  }
+
+  if (stallRestart) {
+    env.PNYX_TEST_STALL_RESTART = '1'
+    env.NODE_OPTIONS = `--import=${join(
+      import.meta.dirname,
+      '../src/test-harness/fakes/stall-restart.mjs',
+    )}`
+  }
+
   const serverPath = join(
     root,
     'hydras/default/server.json',
@@ -495,6 +521,370 @@ test(
         'utf8',
       )).state.cards.$hydra.agent.sessionId,
       original,
+    )
+  },
+)
+
+test(
+  'restart replaces a frozen application and confirms the replacement is available',
+  async t => {
+    const app = await fixture({ t })
+    const before = app.pid()
+    assert.ok(before)
+    process.kill(
+      before,
+      'SIGSTOP',
+    )
+    const result = await app.run({ args: ['restart'] })
+    assert.match(
+      result.stdout,
+      /restart/,
+    )
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => {
+        const current = app.pid()
+
+        return current !== undefined && current !== before
+      },
+    })
+    assert.equal(
+      (await app.health()).native.state,
+      'ready',
+    )
+  },
+)
+
+async function stallHost({
+  app,
+  t,
+  operation,
+}: {
+  app: Awaited<ReturnType<typeof fixture>>
+  t: TestContext
+  operation: 'claim' | 'status'
+}) {
+  const socket = join(
+    app.root,
+    'native/host.sock',
+  )
+  const upstream = join(
+    app.root,
+    'native/real.sock',
+  )
+  renameSync(
+    socket,
+    upstream,
+  )
+  const proxy = fork(
+    join(
+      import.meta.dirname,
+      '../src/test-harness/fakes/native-stall-proxy.ts',
+    ),
+    [
+      socket,
+      upstream,
+      app.ownerPath,
+      operation,
+    ],
+    {
+      execArgv: ['--conditions=source'],
+      stdio: [
+        'ignore',
+        'ignore',
+        'ignore',
+        'ipc',
+      ],
+    },
+  )
+  t.after(async () => {
+    if (proxy.exitCode === null && proxy.signalCode === null) {
+      const exited = once(
+        proxy,
+        'exit',
+      )
+      proxy.kill('SIGTERM')
+      await exited
+    }
+  })
+  await once(
+    proxy,
+    'message',
+  )
+}
+
+for (const operation of [
+  'claim',
+  'status',
+] as const) {
+  test(
+    `restart recovers a host that stalls its ${operation} response`,
+    async t => {
+      const app = await fixture({ t })
+      await stallHost({
+        app,
+        t,
+        operation,
+      })
+      const before = app.pid()
+      await app.run({ args: ['restart'] })
+      await until({
+        timeout: TIMEOUT_MS,
+        check: () => {
+          const current = app.pid()
+
+          return current !== undefined && current !== before
+        },
+      })
+      await until({
+        timeout: TIMEOUT_MS,
+        check: async () => {
+          try {
+            return (await app.health()).native.state === 'ready' && app.owner()?.pid !== app.host.pid
+          } catch {
+            return false
+          }
+        },
+      })
+    },
+  )
+}
+
+test(
+  'composer restart replaces an application whose shutdown hangs',
+  async t => {
+    const app = await fixture({
+      t,
+      stallRestart: true,
+    })
+    const before = app.pid()
+    assert.ok(before)
+    await app.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/restart',
+      ],
+    })
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => {
+        const current = app.pid()
+
+        return current !== undefined && current !== before
+      },
+    })
+    assert.equal(
+      (await app.health()).native.state,
+      'ready',
+    )
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => readFileSync(
+        join(
+          app.root,
+          'service.log',
+        ),
+        'utf8',
+      ).includes('restarting: ready'),
+    })
+  },
+)
+
+test(
+  'restart leaves an application with an unverifiable identity untouched',
+  async t => {
+    const app = await fixture({ t })
+    const before = app.pid()
+    assert.ok(before)
+    const start = processStart({ pid: before })
+    assert.ok(start)
+    const lock = join(
+      app.root,
+      'hydras/default/server.lock',
+    )
+    const original = readFileSync(
+      lock,
+      'utf8',
+    )
+    process.kill(
+      before,
+      'SIGSTOP',
+    )
+    writeFileSync(
+      lock,
+      JSON.stringify({
+        ...JSON.parse(original),
+        processStart: 'unverifiable fixture',
+      }),
+    )
+    await assert.rejects(
+      app.run({ args: ['restart'] }),
+      (error: Error & { stdout?: string }) => {
+        assert.match(
+          error.stdout ?? '',
+          /identity is not verifiable/,
+        )
+
+        return true
+      },
+    )
+    assert.equal(
+      processStart({ pid: before }),
+      start,
+    )
+    writeFileSync(
+      lock,
+      original,
+    )
+    process.kill(
+      before,
+      'SIGCONT',
+    )
+  },
+)
+
+for (const legacy of [
+  false,
+  true,
+]) {
+  test(
+    `restart waits for ${legacy ? 'a legacy' : 'a'} service-managed application to be replaced`,
+    async t => {
+      const app = await fixture({
+        t,
+        managed: true,
+      })
+      const before = app.pid()
+      assert.ok(before)
+
+      if (legacy) {
+        const info = JSON.parse(readFileSync(
+          app.serverPath,
+          'utf8',
+        )) as { service?: boolean }
+        delete info.service
+        writeFileSync(
+          app.serverPath,
+          JSON.stringify(info),
+        )
+        const previous = process.env.PNYX_HOME
+        let path: string
+
+        try {
+          process.env.PNYX_HOME = app.root
+          path = serviceFile({
+            userHome: app.root,
+            configHome: join(
+              app.root,
+              'config',
+            ),
+          }).path
+        } finally {
+          if (previous === undefined) {
+            delete process.env.PNYX_HOME
+          } else {
+            process.env.PNYX_HOME = previous
+          }
+        }
+
+        mkdirSync(
+          dirname(path),
+          { recursive: true },
+        )
+        writeFileSync(
+          path,
+          'fixture',
+        )
+      }
+
+      process.kill(
+        before,
+        'SIGSTOP',
+      )
+      const restarting = app.run({ args: ['restart'] })
+      restarting.catch(() => {})
+      await until({
+        timeout: TIMEOUT_MS,
+        check: () => !processStart({ pid: before }),
+      })
+      app.owned.direct = spawn(
+        process.execPath,
+        [
+          cli,
+          'serve',
+          '--port',
+          String(app.port),
+        ],
+        {
+          env: app.env,
+          stdio: 'ignore',
+        },
+      )
+      const result = await restarting
+      assert.match(
+        result.stdout,
+        /restarting: ready/,
+      )
+      assert.equal(
+        app.pid(),
+        app.owned.direct.pid,
+      )
+      assert.equal(
+        (await app.health()).native.state,
+        'ready',
+      )
+    },
+  )
+}
+
+test(
+  'a stalled status with unverifiable ownership remains pending without a signal',
+  async t => {
+    const app = await fixture({ t })
+    await stallHost({
+      app,
+      t,
+      operation: 'status',
+    })
+    const owner = readFileSync(
+      app.ownerPath,
+      'utf8',
+    )
+    writeFileSync(
+      app.ownerPath,
+      JSON.stringify({
+        ...JSON.parse(owner),
+        start: 'unverifiable fixture',
+      }),
+    )
+    await app.run({ args: ['restart'] })
+    const log = join(
+      app.root,
+      'service.log',
+    )
+    await until({
+      timeout: TIMEOUT_MS,
+      check: async () => {
+        try {
+          return (await app.health()).native.state === 'unavailable'
+        && readFileSync(
+          log,
+          'utf8',
+        ).includes('Native host reconnect failed:')
+        } catch {
+          return false
+        }
+      },
+    })
+    assert.equal(
+      processStart({ pid: app.host.pid }),
+      app.host.start,
+    )
+    assert.equal(
+      app.owner()?.pid,
+      app.host.pid,
     )
   },
 )
