@@ -33,7 +33,7 @@ export const setup = guard({
       return setupCheckOutput({ hydraId })
     }
 
-    if ([
+    if (positionals[0] === undefined || [
       'hooks',
       'service',
       'skills',
@@ -48,7 +48,7 @@ export const setup = guard({
       })
     }
 
-    if (positionals[0] === 'service') {
+    if (positionals[0] === undefined || positionals[0] === 'service') {
       if (values.home !== undefined || args.some(a => a === '--hydra' || a.startsWith('--hydra='))) {
         throw new AxiError(
           'setup service runs every Hydra; it takes no --hydra or --home',
