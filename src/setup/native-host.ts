@@ -9,10 +9,11 @@ import { connectHost } from '#agent-host/client.ts'
 import { installBundle, selectBundle } from '#agent-host/install.ts'
 import { validateBundle } from '#agent-host/bundle.ts'
 import { processStart } from '#agent-host/discovery.ts'
-import { fail } from '#agent-host/protocol.ts'
+import { CAPABILITIES, fail } from '#agent-host/protocol.ts'
 import { pnyxHome, privateDir } from '#store/storage.ts'
 
 const READY_MS = 30000
+const STOP_MS = 2000
 const POLL_MS = 50
 
 export function nativePaths() {
@@ -178,9 +179,15 @@ export async function ensureNativeHost({
 }) {
   const paths = nativePaths()
   const selected = selectedNativeBundle({ source })
-  await startNativeHost({
-    paths,
-  })
+
+  try {
+    await startNativeHost({ paths })
+  } catch (error) {
+    console.error(
+      'Native host startup deferred:',
+      error,
+    )
+  }
 
   return nativeProviders({
     ...paths,
@@ -197,11 +204,12 @@ async function startNativeHost({
 }: {
   paths: ReturnType<typeof nativePaths>
 }) {
+  const socket = join(
+    paths.directory,
+    'host.sock',
+  )
   const connect = () => connectHost({
-    socket: join(
-      paths.directory,
-      'host.sock',
-    ),
+    socket,
     token: readFileSync(
       join(
         paths.directory,
@@ -210,7 +218,10 @@ async function startNativeHost({
       'utf8',
     ),
     installation: paths.installation,
+    capabilities: CAPABILITIES,
   })
+
+  let failedHandshake: boolean
 
   try {
     const client = await connect()
@@ -220,9 +231,8 @@ async function startNativeHost({
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code
 
-    if (code !== 'ENOENT' && code !== 'ECONNREFUSED') {
-      throw error
-    }
+    failedHandshake = code !== 'ENOENT' && code !== 'ECONNREFUSED'
+      || code === 'ENOENT' && existsSync(socket)
   }
 
   let owned = false
@@ -232,25 +242,115 @@ async function startNativeHost({
   )
 
   if (existsSync(ownerPath)) {
-    const owner = JSON.parse(readFileSync(
-      ownerPath,
-      'utf8',
-    )) as {
+    let owner: {
       pid: number
       start: string
+      installation: string
     }
-    const start = processStart({ pid: owner.pid })
+    let saved: string
 
-    if (start) {
-      if (start !== owner.start) {
-        fail({
+    try {
+      saved = readFileSync(
+        ownerPath,
+        'utf8',
+      )
+      owner = JSON.parse(saved)
+    } catch {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host identity is not verifiable',
+      })
+    }
+
+    if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || owner.pid === process.pid
+      || typeof owner.start !== 'string' || !owner.start || owner.installation !== paths.installation) {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host identity is not verifiable',
+      })
+    }
+
+    const start = processStart({ pid: owner.pid })
+    let alive = false
+
+    try {
+      process.kill(
+        owner.pid,
+        0,
+      )
+      alive = true
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+        return fail({
           code: 'RECOVERY_REQUIRED',
-          message: 'Native host PID ownership is uncertain',
+          message: 'Native host identity is not verifiable',
+        })
+      }
+    }
+
+    if (alive && start !== owner.start) {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host PID ownership is uncertain',
+      })
+    }
+
+    if (alive && failedHandshake) {
+      const stillOwned = () => {
+        try {
+          return readFileSync(
+            ownerPath,
+            'utf8',
+          ) === saved && processStart({ pid: owner.pid }) === owner.start
+        } catch {
+          return false
+        }
+      }
+
+      if (!stillOwned()) {
+        return fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'Native host ownership changed during recovery',
         })
       }
 
-      owned = true
+      process.kill(
+        owner.pid,
+        'SIGTERM',
+      )
+      const deadline = Date.now() + STOP_MS
+
+      while (Date.now() < deadline && stillOwned()) {
+        await delay(POLL_MS)
+      }
+
+      if (stillOwned()) {
+        process.kill(
+          owner.pid,
+          'SIGKILL',
+        )
+      }
+
+      const stopped = Date.now() + STOP_MS
+
+      while (Date.now() < stopped && processStart({ pid: owner.pid }) === owner.start) {
+        await delay(POLL_MS)
+      }
+
+      if (processStart({ pid: owner.pid }) === owner.start) {
+        return fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'Native host did not stop after failed handshake',
+        })
+      }
+    } else {
+      owned = alive
     }
+  } else if (failedHandshake) {
+    return fail({
+      code: 'RECOVERY_REQUIRED',
+      message: 'Native host identity is not verifiable',
+    })
   }
 
   if (!owned) {
