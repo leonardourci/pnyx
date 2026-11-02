@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { WebSocket } from 'ws'
@@ -482,46 +483,66 @@ test(
   'a failed upgrade restart releases held messages and records the error',
   async () => {
     const s = await pnyx.scenario()
+    const gate = join(
+      process.env.PNYX_HOME!,
+      `restart-gate-${s.hydraId}`,
+    )
     repo.publish({
-      files: { 'build.sh': `sleep 1\n${building({ version: 'restart-failure' })}` },
+      files: { 'build.sh': `n=0\nwhile [ ! -f '${gate}' ] && [ "$n" -lt 600 ]; do n=$((n+1)); sleep 0.1; done\ntest -f '${gate}' || exit 1\n${building({ version: 'restart-failure' })}` },
       message: 'restart failure',
     })
     pnyx.failRestart({ message: 'restart refused by fixture' })
     pnyx.claude.plan({ text: 'Sent during failed restart' })
-    await send({
-      s,
-      text: '/upgrade',
-      id: 'up',
-    })
-    await buildRunning({ s })
-    await send({
-      s,
-      text: 'Sent during failed restart',
-      id: 'during',
-    })
-    await waitFor({
-      s,
-      state: 'failed',
-    })
-    assert.match(
-      upgrade({ s })!.error!,
-      /restart refused by fixture/,
-    )
-    assert.equal(
-      upgrade({ s })!.failed,
-      'restart',
-    )
-    await until({
-      what: 'Hydra to hear the held message',
-      check: () => heard({
+
+    try {
+      await send({
+        s,
+        text: '/upgrade',
+        id: 'up',
+      })
+      await buildRunning({ s })
+      await send({
         s,
         text: 'Sent during failed restart',
-      }),
-    })
-    assert.deepEqual(
-      upgrade({ s })!.held,
-      [],
-    )
+        id: 'during',
+      })
+      await until({
+        what: 'the upgrade to hold the message',
+        check: () => upgrade({ s })?.held?.some(message => message.id === 'during'),
+      })
+      writeFileSync(
+        gate,
+        '',
+      )
+      await waitFor({
+        s,
+        state: 'failed',
+      })
+      assert.match(
+        upgrade({ s })!.error!,
+        /restart refused by fixture/,
+      )
+      assert.equal(
+        upgrade({ s })!.failed,
+        'restart',
+      )
+      await until({
+        what: 'Hydra to hear the held message',
+        check: () => heard({
+          s,
+          text: 'Sent during failed restart',
+        }),
+      })
+      assert.deepEqual(
+        upgrade({ s })!.held,
+        [],
+      )
+    } finally {
+      writeFileSync(
+        gate,
+        '',
+      )
+    }
   },
 )
 
