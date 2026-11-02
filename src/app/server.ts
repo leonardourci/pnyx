@@ -61,6 +61,7 @@ import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
+import { serviceFile } from '#setup/service.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import type { NativeConnection } from './native-provider.ts'
@@ -2838,6 +2839,8 @@ export async function mountOwnedHydra({
     port: Number(new URL(url).port),
     url,
     socket: ingest && socketPath({ hydraId }),
+    service: process.env.PNYX_SERVICE_ROLE === 'application'
+      || process.env.XPC_SERVICE_NAME === serviceFile().label,
   }
 
   // A mount that fails partway stops what it started; the caller releases the claim.
