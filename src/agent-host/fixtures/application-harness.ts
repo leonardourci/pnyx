@@ -36,10 +36,25 @@ export async function fixtureApplication({
       exited,
     } of children) {
       if (child.exitCode === null && child.signalCode === null) {
-        child.kill('SIGKILL')
-      }
+        if (child.connected) {
+          child.send({ kind: 'stop' })
+        } else {
+          child.kill('SIGKILL')
+        }
 
-      await exited
+        const timer = setTimeout(
+          () => child.kill('SIGKILL'),
+          READY_MS,
+        )
+
+        try {
+          await exited
+        } finally {
+          clearTimeout(timer)
+        }
+      } else {
+        await exited
+      }
     }
   })
   const host = await fixtureHost({
