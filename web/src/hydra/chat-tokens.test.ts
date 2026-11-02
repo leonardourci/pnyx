@@ -251,6 +251,10 @@ test(
           'Built-in',
         ],
         [
+          '/restart',
+          'Built-in',
+        ],
+        [
           '/add-project',
           'Built-in',
         ],
@@ -277,6 +281,14 @@ test(
         suggestions: catalog.suggestions,
       }).map(match => match.item.command),
       ['/inscribe'],
+    )
+    assert.deepEqual(
+      knownCommands({
+        text: '/restart then /restart',
+        suggestions: catalog.suggestions,
+      })
+        .map(match => match.item.command),
+      ['/restart'],
     )
   },
 )

@@ -10,7 +10,7 @@ import { matchingTasks, mentionQuery, reference, taskMention } from '#hydra/ment
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
 import { imageLine, imagePaths } from '#hydra/images.ts'
-import { isUpgradeSuggestion } from '#upgrade/model.ts'
+import { isServerCommand, RESTART_COMMAND } from '#upgrade/model.ts'
 import { MentionPicker, type MentionItem } from '#web-hydra/mention-picker.tsx'
 import { SkillBadge } from '#web-hydra/skill-badge.tsx'
 import { ReferenceBadge } from '#web-hydra/reference-badge.tsx'
@@ -266,8 +266,8 @@ function markedPaths({
 }
 
 function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
-  if (isUpgradeSuggestion({ item })) {
-    return ['upgrade']
+  if (isServerCommand({ item })) {
+    return [item.command === RESTART_COMMAND ? 'restart' : 'upgrade']
   }
 
   return item.command === ADD_PROJECT_COMMAND ? ['attach'] : undefined
