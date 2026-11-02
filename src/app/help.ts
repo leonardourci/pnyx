@@ -36,7 +36,7 @@ commands:
   native status|stop                         Read host readiness or stop an idle host for manual maintenance
   restart                                    Restart the app and switch native host when idle
   upgrade [--check]                          Pull, install and build the latest main, then restart the server
-  setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the login service
+  setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
   integrations                               Show which integrations are ready and how to set each up
   reply <id> --text <text> [--home <path>]   Send a reply through the card's Firstmate home or its session's terminal
@@ -325,15 +325,14 @@ Source observations, card creation and merges cannot be undone.
 `,
   setup: `usage: pnyx-axi setup [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup check [--hydra <id>]
-pnyx-axi setup service [--port <n>] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hooks [--harness claude|codex] [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup without a target installs the server and native login services, like setup service.
-setup, hooks, service and skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
-setup service refuses a port reserved by another Pnyx home; choose a different --port.
+setup installs the server and native login services.
+setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
+setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
 (or $CLAUDE_CONFIG_DIR/skills) and ~/.agents/skills. Updates to the installation apply to the links.
 Existing files and unrelated links are never replaced. Legacy Pnyx skill links are removed.
@@ -343,7 +342,7 @@ every other hook. Without --harness it sets up each harness whose config folder 
 changes nothing; --remove takes out only Pnyx's entries. The hooks always exit 0 and print nothing,
 except at session start in a folder inside an attached project, where they print that project's open tasks.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
-setup service installs one login service running the server of every Hydra: a launchd job on macOS, a systemd user unit on Linux.
+setup installs login services for the server of every Hydra and the native host: launchd jobs on macOS, systemd user units on Linux.
 It replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
@@ -368,7 +367,7 @@ gets {"type":"receipt","id":"<id>",...} or {"type":"error","id":"<id>",...}. The
 GET /health answers {"pid","build","hydras","skipped"}.
 `,
   stop: `usage: pnyx-axi stop
-Stops the one server of every Hydra. A login service starts it again; \`pnyx-axi setup service --remove\` keeps it stopped.
+Stops the one server of every Hydra. A login service starts it again; \`pnyx-axi setup --remove\` keeps it stopped.
 `,
 }
 
