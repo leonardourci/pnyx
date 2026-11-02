@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
-import { ensureNativeHost, nativePaths } from '#setup/native-host.ts'
+import { ensureNativeHost, nativePaths, requireSafeActivation } from '#setup/native-host.ts'
 import { withWriter } from '#app/writer.ts'
 import { startServer } from '#app/server-daemon.ts'
 import { infoPath } from '#app/server-state.ts'
@@ -136,6 +136,19 @@ test(
       existsSync(paths.selected),
       false,
     )
+    const exitedPid = Number(execFileSync(
+      process.execPath,
+      [
+        '-e',
+        'process.stdout.write(String(process.pid))',
+      ],
+      { encoding: 'utf8' },
+    ))
+    writeFileSync(
+      serverPath,
+      JSON.stringify({ pid: exitedPid }),
+    )
+    assert.doesNotThrow(() => requireSafeActivation())
     writeFileSync(
       serverPath,
       JSON.stringify({ pid: process.pid }),
