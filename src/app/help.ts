@@ -34,6 +34,7 @@ commands:
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application; native turns keep running
   native status|stop                         Read host readiness or stop an idle host for manual maintenance
+  restart                                    Restart the app and switch native host when idle
   upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup check|skills|hooks|service          List what setup still needs, or install global skills, reporting hooks or the login service
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill

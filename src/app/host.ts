@@ -7,7 +7,7 @@ import { attachedImages } from '#hydra/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { upgradeCommand } from '#upgrade/model.ts'
+import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
@@ -3542,6 +3542,13 @@ export function createHost({
     }) => {
       if (reportActor({ actor })) {
         changed()
+
+        return Promise.resolve({ state: 'queued' })
+      }
+
+      if (ownerActor({ actor }) && restartCommand({ text })) {
+        upgrades.restart({ id })
+        queued()
 
         return Promise.resolve({ state: 'queued' })
       }
