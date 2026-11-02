@@ -2,7 +2,7 @@ import { connectHost, type HostClient } from '#agent-host/client.ts'
 import type { ToClient } from '#agent-host/protocol.ts'
 import { fail } from '#agent-host/protocol.ts'
 
-const RECONNECT_MS = 250
+const RECONNECT_MS = 1000
 
 export async function nativeConnection({
   socket,
@@ -14,14 +14,14 @@ export async function nativeConnection({
 }: {
   socket: string
   installation: string
-  token: string
+  token(): string
   capabilities: string[]
   reconnect?(): Promise<void>
   attached({ client }: { client: HostClient }): Promise<void>
 }) {
   const readers = new Set<({ frame }: { frame: ToClient }) => void>()
   const disconnects = new Set<() => void>()
-  let current: HostClient
+  let current: HostClient | undefined
   let available = false, stopped = false
   let timer: ReturnType<typeof setTimeout> | undefined
 
@@ -29,7 +29,7 @@ export async function nativeConnection({
     const establish = () => connectHost({
       socket,
       installation,
-      token,
+      token: token(),
       capabilities,
     })
 
@@ -38,9 +38,7 @@ export async function nativeConnection({
     try {
       next = await establish()
     } catch (error) {
-      const code = (error as NodeJS.ErrnoException).code
-
-      if (!reconnect || code !== 'ENOENT' && code !== 'ECONNREFUSED') {
+      if (!reconnect) {
         throw error
       }
 
@@ -135,7 +133,7 @@ export async function nativeConnection({
   }
 
   const live = () => {
-    if (!available) {
+    if (!available || !current) {
       fail({
         code: 'DISCONNECTED',
         message: 'Wait for native inventory reconciliation before another action',
@@ -145,9 +143,26 @@ export async function nativeConnection({
     return current
   }
 
-  await connect()
+  try {
+    await connect()
+  } catch (error) {
+    if (!reconnect) {
+      throw error
+    }
+
+    console.error(
+      'Native host unavailable; retrying:',
+      error,
+    )
+    schedule()
+  }
+
   const client: HostClient & { available(): boolean } = {
     get ready() {
+      if (!current) {
+        return live().ready
+      }
+
       return current.ready
     },
     available: () => available,
@@ -168,7 +183,7 @@ export async function nativeConnection({
     detach() {
       stopped = true
       clearTimeout(timer)
-      current.detach()
+      current?.detach()
     },
   }
 

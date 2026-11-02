@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider, HostedSession } from '#workers/provider.ts'
 import type { ProviderId, Result, Summary } from '#agent-host/protocol.ts'
-import { fail } from '#agent-host/protocol.ts'
+import { CAPABILITIES, fail } from '#agent-host/protocol.ts'
 import { nativeConnection } from './native-connection.ts'
 import { checked, remoteSession } from '#agent-host/remote.ts'
 import { fingerprint } from '#agent-host/ledger.ts'
@@ -50,22 +50,14 @@ export async function nativeProviders({
     ),
     installation,
     reconnect,
-    token: readFileSync(
+    token: () => readFileSync(
       join(
         directory,
         'token',
       ),
       'utf8',
     ),
-    capabilities: [
-      'controllers',
-      'named-requests',
-      'critical-outbox',
-      'live-owners',
-      'volatile-inputs',
-      'host-status',
-      'idle-stop',
-    ],
+    capabilities: CAPABILITIES,
     attached: async ({ client: connection }) => {
       const claim = checked({
         result: await connection.call({
@@ -97,11 +89,16 @@ export async function nativeProviders({
   })
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
   const openings = new Map<string, Promise<HostedSession>>()
-  let status = nativeStatus({
+  let status: NativeStatus = client.available() ? nativeStatus({
     readiness: client.ready.readiness,
     build: client.ready.build,
     instance: client.ready.instance,
-  })
+  }) : {
+    state: 'unavailable',
+    build: '',
+    instance: '',
+    reasons: ['The native owner is unavailable. Reconcile ownership before restarting agents.'],
+  }
   const listeners = new Set<() => void>()
   client.subscribe({
     receive({ frame }) {
