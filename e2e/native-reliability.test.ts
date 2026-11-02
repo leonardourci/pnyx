@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { join } from 'node:path'
-import { mkdirSync, readFileSync, rmSync } from 'node:fs'
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { acquireLock } from '#store/storage.ts'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
 import { nativeProviders } from '#app/native-provider.ts'
+import { taskMention } from '#hydra/mentions.ts'
 import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
 for (const provider of [
@@ -343,6 +344,113 @@ test(
         1,
       )
     }
+  },
+)
+
+test(
+  'a tagged Hydra reply is applied while its task has a helper lease',
+  async t => {
+    const app = await fixtureApplication({
+      t,
+      built: false,
+    })
+    await app.start()
+    await app.cli({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'off',
+      ],
+    })
+    await app.cli({
+      args: [
+        'rule',
+        'set',
+        'hydra',
+        '--harness',
+        'codex',
+        '--model',
+        'fixture',
+      ],
+    })
+    await app.cli({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'leased',
+        '--title',
+        'Leased task',
+      ],
+    })
+    const task = Object.values(app.state().cards).find(card => card.key === 'leased')
+    assert.ok(task)
+    const lease = join(
+      app.home,
+      'hydras/default',
+      `helper-lease-${encodeURIComponent(task.id)}.json`,
+    )
+    writeFileSync(
+      lease,
+      JSON.stringify({
+        actor: 'helper:fixture',
+        holders: [
+          {
+            id: 'fixture',
+            pid: process.pid,
+            durable: true,
+          },
+        ],
+      }),
+    )
+    await app.cli({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        'Report on the task',
+      ],
+    })
+    await until({ check: async () => (await app.host.stats())[0]?.input.length === 1 })
+    const session = (await app.host.stats())[0]!
+    await app.host.control({
+      kind: 'event',
+      nativeId: session.id,
+      event: {
+        type: 'text',
+        id: 'reply',
+        text: `${taskMention({
+          id: task.id,
+          title: task.title,
+        })} The work is ready.`,
+      },
+    })
+    await app.host.control({
+      kind: 'event',
+      nativeId: session.id,
+      event: {
+        type: 'result',
+        turn: session.turn!,
+        inputIds: session.input.map(input => input.id),
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    await until({ check: () => app.state().cards[task.id]?.notes?.some(note => note.source === 'hydra') === true })
+    assert.equal(
+      app.state().cards.$hydra?.sessionActivity,
+      'finished',
+    )
+    await assert.rejects(app.cli({
+      args: [
+        'task',
+        'rename',
+        task.id,
+        '--title',
+        'Changed',
+      ],
+    }))
   },
 )
 
