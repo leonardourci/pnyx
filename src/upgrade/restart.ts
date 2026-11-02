@@ -60,7 +60,7 @@ export function prepareNativeRestart({ force = false }: { force?: boolean } = {}
 }
 
 const STOP_MS = 5000
-const START_MS = 45000
+const START_MS = 120000
 const POLL_MS = 100
 
 type Running = {
