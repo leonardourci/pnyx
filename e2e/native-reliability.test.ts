@@ -442,15 +442,25 @@ test(
       app.state().cards.$hydra?.sessionActivity,
       'finished',
     )
-    await assert.rejects(app.cli({
-      args: [
-        'task',
-        'rename',
-        task.id,
-        '--title',
-        'Changed',
-      ],
-    }))
+    await assert.rejects(
+      app.cli({
+        args: [
+          'task',
+          'rename',
+          task.id,
+          '--title',
+          'Changed',
+        ],
+      }),
+      (error: Error & { stdout?: string }) => {
+        assert.match(
+          error.stdout ?? '',
+          /TASK_LEASED/,
+        )
+
+        return true
+      },
+    )
   },
 )
 
