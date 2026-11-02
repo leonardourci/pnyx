@@ -286,10 +286,12 @@ export function selectBundle({
   path,
   bundle,
   restartInstance,
+  restartDeadline,
 }: {
   path: string
   bundle: string
   restartInstance?: string
+  restartDeadline?: number
 }) {
   validateBundle({ directory: bundle })
   replaceFile({
@@ -298,6 +300,7 @@ export function selectBundle({
       bundle,
       revision: randomUUID(),
       restartInstance,
+      restartDeadline,
     }),
   })
 }

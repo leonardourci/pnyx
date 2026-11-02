@@ -32,12 +32,14 @@ export async function nativeProviders({
   reconnect,
   desiredBuild,
   restartInstance,
+  restartDeadline,
 }: {
   directory: string
   journal: string
   installation: string
   desiredBuild?: string
   restartInstance?: string
+  restartDeadline?: number
   reconnect?({ failedInstance }: { failedInstance?: string }): Promise<void>
 }) {
   privateDir({ dir: journal })
@@ -162,7 +164,15 @@ export async function nativeProviders({
           }),
         })
 
-        if (status.kind !== 'maintenance' || status.status.blockers.length) {
+        if (status.kind !== 'maintenance') {
+          return
+        }
+
+        if (status.status.blockers.length) {
+          if (restartRequested && restartDeadline && Date.now() >= restartDeadline && reconnect) {
+            await reconnect({ failedInstance: restartInstance })
+          }
+
           return
         }
 

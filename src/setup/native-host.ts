@@ -136,17 +136,24 @@ export function selectedNativeBundle({ source }: { source: string }): {
   build: string
   entry: string
   restartInstance?: string
+  restartDeadline?: number
 } {
   const paths = nativePaths()
   let restartInstance: string | undefined
+  let restartDeadline: number | undefined
 
   if (!existsSync(paths.selected)) {
     requireSafeActivation()
   } else {
-    restartInstance = JSON.parse(readFileSync(
+    const selected = JSON.parse(readFileSync(
       paths.selected,
       'utf8',
-    )).restartInstance
+    )) as {
+      restartInstance?: string
+      restartDeadline?: number
+    }
+    restartInstance = selected.restartInstance
+    restartDeadline = selected.restartDeadline
   }
 
   const bundle = installBundle({
@@ -157,6 +164,7 @@ export function selectedNativeBundle({ source }: { source: string }): {
     path: paths.selected,
     bundle,
     restartInstance,
+    restartDeadline,
   })
 
   const manifest = validateBundle({ directory: bundle })
@@ -165,6 +173,7 @@ export function selectedNativeBundle({ source }: { source: string }): {
     bundle,
     build: manifest.build,
     restartInstance,
+    restartDeadline,
     entry: join(
       bundle,
       manifest.entry,
@@ -193,6 +202,7 @@ export async function ensureNativeHost({
     ...paths,
     desiredBuild: selected.build,
     restartInstance: selected.restartInstance,
+    restartDeadline: selected.restartDeadline,
     reconnect: ({ failedInstance }) => startNativeHost({
       paths,
       failedInstance,
