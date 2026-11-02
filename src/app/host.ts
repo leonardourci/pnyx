@@ -711,18 +711,48 @@ export function createHost({
     ).unref()
   }
 
+  // App-side observations must not make a retained host fact look stale before replay.
+  const nativeObservedAt = ({
+    writer,
+    agent,
+    completion = false,
+  }: {
+    writer: Writer
+    agent: AgentRef
+    completion?: boolean
+  }) => {
+    const session = writer.state.sessions?.[sessionId({ agent })]
+    const cardId = session?.taskId ?? session?.originCardId
+      ?? writer.state.keys[sessionKey({ agent })]
+    const card = cardId ? writer.state.cards[cardId] : undefined
+
+    const source = card?.sourceRefs.find(ref => ref.adapter === 'pnyx' && ref.objectId === agent.sessionId)
+
+    if (applying) {
+      if (completion && source?.observedAt && source.observedAt > applying.at) {
+        return source.observedAt
+      }
+
+      return applying.at
+    }
+
+    return source?.observedAt
+  }
+
   const record = ({
     writer,
     agent,
     input,
     actor,
     eventId,
+    completion = false,
   }: {
     writer: Writer
     agent: AgentRef
     input: Record<string, unknown>
     actor: string
     eventId?: string
+    completion?: boolean
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -739,7 +769,11 @@ export function createHost({
           source: {
             adapter: 'pnyx',
             objectId: agent.sessionId,
-            observedAt: at(),
+            observedAt: nativeObservedAt({
+              writer,
+              agent,
+              completion,
+            }),
           },
         },
         meta: {
@@ -1634,6 +1668,7 @@ export function createHost({
                 input: { activity: 'finished' },
                 actor: 'pnyx',
                 eventId: `native:${applying?.id ?? outcome.turn}:finished`,
+                completion: true,
               }),
             })
 
@@ -3843,7 +3878,10 @@ export function createHost({
                     source: {
                       adapter: 'pnyx',
                       objectId: ref.sessionId,
-                      observedAt: meta.at,
+                      observedAt: nativeObservedAt({
+                        writer,
+                        agent: ref,
+                      }),
                     },
                   },
                   meta,
@@ -4440,7 +4478,10 @@ export function createHost({
                   source: {
                     adapter: 'pnyx',
                     objectId: agent.sessionId,
-                    observedAt: meta.at,
+                    observedAt: nativeObservedAt({
+                      writer,
+                      agent,
+                    }),
                   },
                 },
                 meta: {
@@ -4612,7 +4653,10 @@ export function createHost({
               source: {
                 adapter: 'pnyx',
                 objectId: agent.sessionId,
-                observedAt: meta.at,
+                observedAt: nativeObservedAt({
+                  writer,
+                  agent,
+                }),
               },
               attention: card.attention.filter(a => !a.key.startsWith('hook:')),
             },
