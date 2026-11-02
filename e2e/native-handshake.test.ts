@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { execFile, fork, spawn, type ChildProcess } from 'node:child_process'
 import { once } from 'node:events'
 import { promisify } from 'node:util'
+import { setTimeout as delay } from 'node:timers/promises'
 import { createServer } from 'node:net'
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join } from 'node:path'
@@ -175,9 +176,11 @@ async function fixture({
   const run = async ({
     args,
     extraEnv,
+    timeout = TIMEOUT_MS,
   }: {
     args: string[]
     extraEnv?: NodeJS.ProcessEnv
+    timeout?: number
   }) => promisify(execFile)(
     process.execPath,
     [
@@ -189,7 +192,7 @@ async function fixture({
         ...env,
         ...extraEnv,
       },
-      timeout: TIMEOUT_MS,
+      timeout,
     },
   )
   const health = async () => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { native: { state: string } }
@@ -1193,5 +1196,83 @@ test(
       app.owner()?.pid,
       app.host.pid,
     )
+  },
+)
+
+test(
+  'restart waits for a slow but healthy replacement application',
+  async t => {
+    const app = await fixture({ t })
+    const before = app.pid()
+    const marker = join(
+      app.root,
+      'slow-serve.pid',
+    )
+    const preload = join(
+      import.meta.dirname,
+      '../src/test-harness/fakes/slow-serve.mjs',
+    )
+    const pending = app.run({
+      args: ['restart'],
+      timeout: 150000,
+      extraEnv: {
+        NODE_OPTIONS: `--import=${preload}`,
+        PNYX_TEST_SLOW_SERVE: marker,
+      },
+    })
+    const outcome = (async () => {
+      try {
+        return { value: await pending }
+      } catch (error) {
+        return { error }
+      }
+    })()
+    let replacement = 0
+    let start: string | undefined
+
+    try {
+      await until({
+        timeout: TIMEOUT_MS,
+        check: () => existsSync(marker),
+      })
+      replacement = Number(readFileSync(
+        marker,
+        'utf8',
+      ))
+      start = processStart({ pid: replacement })
+      assert.ok(start)
+      await delay(48000)
+      assert.equal(
+        processStart({ pid: replacement }),
+        start,
+      )
+      process.kill(
+        replacement,
+        'SIGCONT',
+      )
+      await until({
+        timeout: TIMEOUT_MS,
+        check: () => app.pid() === replacement && app.pid() !== before,
+      })
+      const result = await outcome
+
+      if ('error' in result) {
+        const error = result.error
+        const detail = error instanceof Error && 'stdout' in error ? String(error.stdout) : String(error)
+        assert.fail(`restart failed: ${detail}`)
+      }
+
+      assert.equal(
+        (await app.health()).native.state,
+        'ready',
+      )
+    } finally {
+      if (start && processStart({ pid: replacement }) === start) {
+        process.kill(
+          replacement,
+          'SIGCONT',
+        )
+      }
+    }
   },
 )
