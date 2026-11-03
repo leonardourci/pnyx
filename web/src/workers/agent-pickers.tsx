@@ -48,6 +48,7 @@ export function AgentPickers({
   onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
   // The agent with every value the pickers show filled in, once the catalog names them.
   onResolved?({ next }: { next: AgentConfig }): void
+  // What a model's pin does: save it as Hydra's default, only select it because these pickers already edit that default, or show no pin.
   defaultAction?: 'save' | 'edit' | 'none'
   // The pickers shown beside the model; the routine helper has no permissions.
   fields?: readonly (typeof ALL_FIELDS)[number][]

@@ -49,6 +49,7 @@ function createShared({ scope }: { scope: string }) {
         === JSON.stringify(state.settings[key as SettingKey]))
     },
     read: ({ receipt }) => {
+      // view set nests the settings receipt under settings when it also saves the Hydra's own view.
       const nested = receipt.settings as Receipt | undefined
       const saved = nested?.settings ? nested : receipt
 

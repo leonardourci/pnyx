@@ -153,7 +153,7 @@ const fitting = ({ widths }: { widths: Widths }) => {
   return count
 }
 
-// The same widths drive the board and the live Settings preview.
+// The same widths drive the Hydra and the live Settings preview.
 function boardWidths({
   state,
   view,

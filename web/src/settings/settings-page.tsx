@@ -731,7 +731,7 @@ export function SettingsPage({
                 />
               )
 
-              // Heads dispatch is a whole editor, so it fills the box instead of sitting in a row.
+              // Heads dispatch and Accounts are whole editors, so they fill the box instead of sitting in a row.
               if (match.entry.id === 'headsDispatch' || match.entry.id === 'accounts') {
                 return <div key={match.entry.id} className="settings-wide">{control}</div>
               }
