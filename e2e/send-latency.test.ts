@@ -33,9 +33,10 @@ async function timed({
 }): Promise<number> {
   const before = received()
   const start = performance.now()
-  void send()
+  const sending = send()
+  const end = Date.now() + TIMEOUT_MS
 
-  for (const end = Date.now() + TIMEOUT_MS; received() === before;) {
+  while (received() === before) {
     assert.ok(
       Date.now() < end,
       'the agent never received the message',
@@ -43,7 +44,10 @@ async function timed({
     await delay(1)
   }
 
-  return performance.now() - start
+  const took = performance.now() - start
+  await sending
+
+  return took
 }
 
 test(
