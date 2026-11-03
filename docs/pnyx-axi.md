@@ -203,7 +203,7 @@ pnyx-axi apply --file - --check --hydra work < changes.json
 }
 ```
 
-Duplicate JSON member names, including escaped spellings of the same name, are refused with their field paths before schema validation. The top-level fields are exactly `version` (currently `1`), optional `expected` and a nonempty `changes` array. `expected` contains only `tasks`, a map from existing task IDs or keys to their expected non-negative integer revisions. These revisions refer to the state before the document; several changes to the same task need only one entry. Unrelated events do not conflict. Applying revalidates against current state under the writer lock.
+Duplicate JSON member names, including escaped spellings of the same name, are refused with their field paths before schema validation. The top-level fields are exactly `version` (currently `1`), optional `expected` and a nonempty `changes` array. `expected` contains only `tasks`, a map from existing task IDs or keys to their expected non-negative integer revisions. These revisions refer to the state before the document; several changes to the same task need only one entry. Unrelated events do not conflict. Applying revalidates against current state at write time.
 
 Every operation accepts an optional nonempty `reason`. Required fields appear in bold below. Text fields are strings; brief and note may be empty. `task`, `parent` and each `on` reference name an existing task ID/key in this Hydra, or `$alias` from an earlier successful create in this document. `as` must be unique and match `[a-zA-Z][a-zA-Z0-9_-]*`. Forward aliases are refused.
 

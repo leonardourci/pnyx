@@ -58,7 +58,7 @@ A task.create as alias can be referenced later as $alias. References stay in thi
 --check previews changed fields, aliases, base and resulting task revisions without writing.
 Default receipts summarize changed fields and collection counts, never whole task histories.
 --check --full explicitly includes complete before/after records. task history <id> --full retrieves event data.
-Apply validates the whole document again under the writer lock and appends one atomic log record.
+Apply validates the whole document again at write time and appends one atomic log record.
 Errors include zero-based operation indexes, field paths, codes and reasons; nothing is written.
 An identical --event-id retry returns the original receipt. Different contents or actor are refused.
 Each change can carry reason; Hydra must explain creates, brief/Intent edits and owner asks.
