@@ -1,6 +1,7 @@
-import { hydraDefault, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import type { HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
 import type { Command } from '#web-app/connection.ts'
 
@@ -24,11 +25,15 @@ export function HydraAgent({
 }) {
   const {
     effective,
-    saveHydra,
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
-  const inherited = rule?.harness === agent.harness ? rule : undefined
+  const ruleAccount = rule?.account ?? (effective && rule ? harnessAccount({
+    effective,
+    harness: rule.harness,
+  }) : undefined)
+  const sameAccount = !agent.account || agent.account === ruleAccount
+  const inherited = rule?.harness === agent.harness && sameAccount ? rule : undefined
   const firstmate = state.config?.hydra.kind === 'firstmate'
 
   const save = ({ next }: { next: AgentConfig }) => {
@@ -42,29 +47,6 @@ export function HydraAgent({
   if (firstmate) {
     return null
   }
-
-  // The hydra rule is what every new Hydra starts with.
-  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' }) => ({
-    defaultValue: rule?.harness !== agent.harness ? undefined
-      : field === 'model' ? rule.model && `${rule.harness}:${rule.model}` : rule[field],
-    onDefault: ({
-      value,
-      harness = agent.harness,
-    }: {
-      value: string
-      harness?: AgentConfig['harness']
-    }) => void saveHydra({
-      patch: hydraDefault({
-        rule,
-        harness,
-        field,
-        value,
-      }),
-    }).then(
-      () => notify({ text: 'New Hydras will start with this.' }),
-      (error: Error) => notify({ text: error.message }),
-    ),
-  })
 
   return (
     <AgentPickers
@@ -80,7 +62,6 @@ export function HydraAgent({
           save({ next })
         }
       }}
-      startsWith={startsWith}
     />
   )
 }

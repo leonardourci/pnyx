@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { providerIdOf } from '#workers/providers.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
@@ -6,8 +6,11 @@ import type { Command } from '#web-app/connection.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { hasIcon, Icon } from '#web-shared/ui/icon.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
-import { ModelPicker, PickerField, useModels, type CellMark } from './agent-picker.tsx'
+import { PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
+import { AccountModelPicker } from './account-model-picker.tsx'
+import { harnessAccount } from '#workers/account-choice.ts'
+import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
 
 // The composer's control icons, one size so they read alike.
 export const COMPOSER_ICON = 18
@@ -17,43 +20,6 @@ const ALL_FIELDS = [
   'mode',
   'fast',
 ] as const
-
-const HARNESSES = [
-  {
-    harness: 'claude',
-    label: 'Claude Code',
-    icon: 'claude-code',
-  },
-  {
-    harness: 'codex',
-    label: 'Codex',
-    icon: 'codex',
-  },
-] as const
-
-// A combined choice is the agent and its model, as harness:model.
-const splitChoice = ({ value }: { value: string }) => {
-  const at = value.indexOf(':')
-
-  return [
-    value.slice(
-      0,
-      at,
-    ) as AgentConfig['harness'],
-    value.slice(at + 1),
-  ] as const
-}
-
-export interface PickerDefault {
-  defaultValue?: string
-  onDefault?({
-    value,
-    harness,
-  }: {
-    value: string
-    harness?: AgentConfig['harness']
-  }): void
-}
 
 // The composer's model, effort, permission and Fast pickers for one agent; Hydra's composer and Settings both draw these.
 export function AgentPickers({
@@ -65,9 +31,11 @@ export function AgentPickers({
   label,
   onChange,
   onResolved,
-  startsWith,
+  defaultAction = 'save',
   fields = ALL_FIELDS,
   marks,
+  describedBy,
+  selectionLabel = 'Model',
 }: {
   agent: AgentConfig
   // Values the agent falls back to when it names none, such as its rule's.
@@ -77,33 +45,41 @@ export function AgentPickers({
   // Whether to read the harness catalogs; a Firstmate Hydra has none.
   load?: boolean
   label: string
-  onChange({ next }: { next: AgentConfig }): void
+  onChange({ next }: { next: AgentConfig }): void | Promise<unknown>
   // The agent with every value the pickers show filled in, once the catalog names them.
   onResolved?({ next }: { next: AgentConfig }): void
-  startsWith?({ field }: { field: 'model' | 'effort' | 'mode' }): PickerDefault
+  defaultAction?: 'save' | 'edit' | 'none'
   // The pickers shown beside the model; the routine helper has no permissions or Fast mode.
   fields?: readonly (typeof ALL_FIELDS)[number][]
   // Set when each picker is a cell of a table, such as Settings' heads dispatch rules.
   marks?: Partial<Record<'model' | 'effort' | 'mode' | 'fast', CellMark>>
+  describedBy?: string
+  selectionLabel?: string
 }) {
   const controls = harnessControls({
     provider: providerIdOf({ harness: agent.harness }),
     hosted: true,
   })
-  // Both catalogs load, so the one picker can switch agent and model together.
-  const catalogs = {
-    claude: useModels({
-      harness: 'claude',
-      command,
-      connected: connected && load,
-    }),
-    codex: useModels({
-      harness: 'codex',
-      command,
-      connected: connected && load,
-    }),
-  }
-  const catalog = catalogs[agent.harness]
+  const {
+    effective,
+    error: dispatchError,
+    saveHydra,
+  } = useHeadsDispatch({ command })
+  const [
+    saveError,
+    setSaveError,
+  ] = useState('')
+  const account = agent.account ?? inherited?.account ?? (effective ? harnessAccount({
+    effective,
+    harness: agent.harness,
+  }) : undefined)
+  const catalog = useModels({
+    harness: agent.harness,
+    account,
+    folder: account ? effective?.accounts[account]?.folder : undefined,
+    command,
+    connected: connected && load && !!account,
+  })
   const picker = modelOptions({
     models: catalog.models ?? [],
     selected: agent.model ?? inherited?.model,
@@ -118,6 +94,7 @@ export function AgentPickers({
   }
   const resolved: AgentConfig = {
     ...agent,
+    account,
     // Fast mode starts off; only the toggle turns it on.
     fast: agent.fast ?? false,
   }
@@ -143,57 +120,71 @@ export function AgentPickers({
     }
   })
 
-  const modelDefault = startsWith?.({ field: 'model' })
+  const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
+  const defaultAgent = rule && effective ? {
+    ...rule,
+    account: rule.account ?? harnessAccount({
+      effective,
+      harness: rule.harness,
+    }),
+  } : undefined
+
+  const change = async ({ next }: { next: AgentConfig }) => {
+    setSaveError('')
+
+    try {
+      await onChange({ next })
+    } catch (error) {
+      setSaveError((error as Error).message)
+    }
+  }
+
+  const saveDefault = async ({ next }: { next: AgentConfig }) => {
+    if (defaultAction === 'edit') {
+      return
+    }
+
+    setSaveError('')
+
+    try {
+      await saveHydra({
+        patch: hydraDefault({
+          rule: defaultAgent,
+          next,
+        }),
+      })
+    } catch (error) {
+      setSaveError((error as Error).message)
+    }
+  }
+
+  const modelLabel = picker.options.find(option => option.value === picker.value)?.label ?? agent.model ?? 'Model'
 
   return (
     <div className="hydra-agent-pickers" aria-label={label}>
-      <ModelPicker
-        {...catalog}
-        iconSize={COMPOSER_ICON}
-        value={picker.value && `${agent.harness}:${picker.value}`}
-        options={HARNESSES.flatMap(({
-          harness,
-          label: group,
-          icon,
-        }) => (harness === agent.harness ? picker
-          : modelOptions({ models: catalogs[harness].models ?? [] })).options
-          .map(option => ({
-            value: `${harness}:${option.value}`,
-            label: option.label,
-            icon,
-            group,
-          })))}
-        disabled={!connected}
-        connected={connected}
-        mark={marks?.model}
-        onChange={({ value }) => {
-          const [
-            harness,
-            model,
-          ] = splitChoice({ value })
-
-          onChange({
-            next: harness === agent.harness ? {
+      {effective ? (
+        <div className="picker-field" data-changed={marks?.model?.changed || undefined} data-invalid={marks?.model?.invalid || undefined}>
+          <AccountModelPicker
+            label={selectionLabel}
+            modelLabel={modelLabel}
+            agent={{
               ...agent,
-              model,
-            } : {
-              harness,
-              model,
-            },
-          })
-        }}
-        defaultValue={modelDefault?.defaultValue}
-        onDefault={modelDefault?.onDefault && (({ value }) => {
-          const [
-            harness,
-            model,
-          ] = splitChoice({ value })
-          modelDefault.onDefault?.({
-            value: model,
-            harness,
-          })
-        })}
-      />
+              model: picker.value,
+            }}
+            account={account}
+            effective={effective}
+            command={command}
+            connected={connected}
+            disabled={!connected}
+            invalid={marks?.model?.invalid}
+            describedBy={describedBy}
+            change={change}
+            defaultAgent={defaultAgent}
+            saveDefault={defaultAction === 'none' ? undefined : saveDefault}
+          />
+        </div>
+      ) : <small role="status">{dispatchError ?? 'Loading accounts…'}</small>}
+      {saveError && <small role="alert">{saveError}</small>}
       {([
         'effort',
         'mode',
@@ -223,13 +214,12 @@ export function AgentPickers({
             options={options}
             disabled={!connected || !catalog.models}
             mark={marks?.[field]}
-            onChange={({ value }) => onChange({
+            onChange={({ value }) => change({
               next: {
                 ...agent,
                 [field]: value,
               },
             })}
-            {...startsWith?.({ field })}
           />
         )
       })}
@@ -241,7 +231,7 @@ export function AgentPickers({
             aria-label="Fast mode"
             aria-pressed={agent.fast === true}
             disabled={!connected}
-            onClick={() => onChange({
+            onClick={() => change({
               next: {
                 ...agent,
                 fast: !agent.fast,

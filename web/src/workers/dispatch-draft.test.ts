@@ -165,7 +165,10 @@ test(
         ],
         under: true,
       }).map(issue => issue.path),
-      ['/rules/new-rule/when'],
+      [
+        '/rules/new-rule/when',
+        '/rules/new-rule/candidates',
+      ],
     )
 
     const shared = withRule({
@@ -331,6 +334,62 @@ test(
         },
       }),
       undefined,
+    )
+  },
+)
+
+test(
+  'duplicate candidate add/edit marks its model/account field and blocks the draft until repaired',
+  () => {
+    const initial = draft()
+    const add = withCandidates({
+      draft: initial,
+      rule: 'default',
+      candidates: [
+        { harness: 'claude' },
+        {
+          harness: 'claude',
+          model: 'sonnet',
+        },
+      ],
+    })
+    const issues = draftIssues({ draft: add })
+    assert.ok(issues.some(issue => issue.path === '/default/1/account' && issue.level === 'error'))
+    assert.equal(
+      candidateMarks({
+        candidate: add.default[1]!,
+        issues,
+        segments: [
+          'default',
+          '1',
+        ],
+      }).model.invalid,
+      true,
+    )
+    const valid = withCandidates({
+      draft: add,
+      rule: 'default',
+      candidates: [
+        { harness: 'claude' },
+        {
+          harness: 'claude',
+          account: 'claude:personal',
+          model: 'sonnet',
+        },
+      ],
+    })
+    assert.equal(
+      draftIssues({ draft: valid }).some(issue => issue.path === '/default/1/account'),
+      false,
+    )
+    const repaired = withCandidates({
+      draft: add,
+      rule: 'default',
+      candidates: [add.default[0]!],
+    })
+    assert.equal(
+      draftIssues({ draft: repaired }).some(issue => issue.path.includes('/default/')),
+      false,
     )
   },
 )

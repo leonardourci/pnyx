@@ -1,8 +1,18 @@
 import type { Card } from '#tasks/model.ts'
+import { accountLabel } from '#workers/account-choice.ts'
+import type { Command } from '#web-app/connection.ts'
 import { TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
+import { useHeadsDispatch } from './heads-dispatch.ts'
 import { harnessName } from './view.ts'
 
-export function AgentDetails({ card }: { card: Card }) {
+export function AgentDetails({
+  card,
+  command,
+}: {
+  card: Card
+  command: Command
+}) {
+  const { effective } = useHeadsDispatch({ command })
   const agent = card.agent
 
   if (!agent) {
@@ -18,7 +28,10 @@ export function AgentDetails({ card }: { card: Card }) {
     ],
     [
       'Account',
-      agent.account,
+      agent.account ? accountLabel({
+        name: agent.account,
+        account: effective?.accounts[agent.account],
+      }) : undefined,
     ],
     [
       'Host',

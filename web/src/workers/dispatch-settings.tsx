@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
-import type { Candidate } from '#workers/dispatch-config.ts'
+import type { Account, Candidate } from '#workers/dispatch-config.ts'
+import { accountLabel } from '#workers/account-choice.ts'
 import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -11,12 +12,13 @@ import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
+import { AccountModelPicker } from './account-model-picker.tsx'
 import { useDispatchProposals } from './dispatch-proposals.tsx'
 import type { SavedDispatch } from './dispatch-resource.ts'
-import { DISPATCH_CHANGED, useDispatchDocument } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
 import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
 
-// Asking for Now waits until typing pauses; quota is read on the server.
+// Refreshing the resolved account waits until typing pauses; quota is read on the server.
 const NOW_DELAY_MS = 600
 
 const VIEWS = [
@@ -241,8 +243,8 @@ function HowPicked() {
       <h4 id="dispatch-how"><Icon name="about" size={14} />How a worker’s agent is picked</h4>
       <ol>
         <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
-        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>Each candidate takes the first account in its harness’s configured order that is signed in and has quota left.</li>
-        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The Now column shows the result.</li>
+        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
+        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. Account names stay visible; the checkmark identifies the candidate that would start.</li>
       </ol>
     </section>
   )
@@ -269,16 +271,18 @@ function placeOf({
 function Problems({
   issues,
   prefix,
+  id,
 }: {
   issues: DispatchIssue[]
   prefix: string
+  id: string
 }) {
   if (!issues.length) {
     return null
   }
 
   return (
-    <ul className="dispatch-problems">
+    <ul className="dispatch-problems" id={id}>
       {issues.map((
         issue,
         index,
@@ -297,18 +301,34 @@ function Problems({
 function NowCell({
   starts,
   index,
+  candidate,
+  accounts,
 }: {
   starts?: RuleNow
   index: number
+  candidate: Candidate
+  accounts: Record<string, Account>
 }) {
-  if (starts?.candidate !== index) {
-    return <span className="dispatch-now" />
+  const chosen = starts?.candidate === index
+  const account = candidate.account ?? (chosen ? starts.account : undefined)
+  const name = account ? accountLabel({
+    name: account,
+    account: accounts[account],
+  }) : 'Automatic'
+  let reason = 'Automatic account follows the configured order; its resolved account appears when this candidate is chosen.'
+
+  if (candidate.account) {
+    reason = 'Configured account; the checkmark identifies the candidate that would start.'
+  }
+
+  if (chosen) {
+    reason = starts.reason
   }
 
   return (
     <span className="dispatch-now">
-      <Tooltip content={starts.reason}>
-        <span className="dispatch-starts"><Icon name="check" size={14} /><span>{starts.account}</span></span>
+      <Tooltip content={reason}>
+        <span className={chosen ? 'dispatch-starts' : undefined}>{chosen && <Icon name="check" size={14} />}<span>{name}</span></span>
       </Tooltip>
     </span>
   )
@@ -331,6 +351,8 @@ function RuleGroup({
   command: Command
   edit: Edit
 }) {
+  const { effective } = useHeadsDispatch({ command })
+  const problemsId = useId()
   const fixed = at === 'default'
   const rule = fixed ? undefined : draft.rules[at]
   const name = rule?.name ?? 'default'
@@ -413,7 +435,7 @@ function RuleGroup({
             />
           </>
         )}
-        <Problems issues={mine} prefix={pointer({ segments: place })} />
+        <Problems issues={mine} prefix={pointer({ segments: place })} id={problemsId} />
         {blocked && <p className="dispatch-blocked">{blocked}</p>}
         {!fixed && (
           <Button
@@ -431,55 +453,75 @@ function RuleGroup({
       {candidates.map((
         candidate,
         index,
-      ) => (
-        <div key={index} className="dispatch-candidate" data-starts={result?.candidate === index || undefined}>
-          <AgentPickers
-            label={`${name} candidate ${index + 1}`}
-            agent={candidate}
+      ) => {
+        const firstAccount = draft.workers[candidate.harness]?.[0]
+        const account = result?.candidate === index ? result.account : firstAccount
+
+        return (
+          <div key={index} className="dispatch-candidate" data-starts={result?.candidate === index || undefined}>
+            <AgentPickers
+              label={`${name} candidate ${index + 1}`}
+              agent={candidate}
+              inherited={{ account }}
+              command={command}
+              // Settings shows its rows only while connected.
+              connected
+              describedBy={mine.length ? problemsId : undefined}
+              marks={candidateMarks({
+                saved: savedCandidates[index],
+                candidate,
+                issues,
+                segments: [
+                  ...segments,
+                  String(index),
+                ],
+              })}
+              onChange={({ next }) => setCandidates({
+                next: candidates.map((
+                  item,
+                  position,
+                ) => position === index ? next : item),
+              })}
+            />
+            <NowCell
+              starts={result}
+              index={index}
+              candidate={candidate}
+              accounts={draft.accounts}
+            />
+            <Button
+              className="dispatch-remove"
+              aria-label={`Remove ${name} candidate ${index + 1}`}
+              disabled={candidates.length < 2}
+              onClick={() => setCandidates({
+                next: candidates.filter((
+                  _,
+                  position,
+                ) => position !== index),
+              })}
+            ><Icon name="close" size={14} />
+            </Button>
+          </div>
+        )
+      })}
+      <div className="dispatch-add">
+        {effective && (
+          <AccountModelPicker
+            label={`Add ${name} candidate`}
+            modelLabel="Model"
+            agent={{ harness: 'claude' }}
+            effective={effective}
             command={command}
-            // Settings shows its rows only while connected.
             connected
-            marks={candidateMarks({
-              saved: savedCandidates[index],
-              candidate,
-              issues,
-              segments: [
-                ...segments,
-                String(index),
+            trigger={<><Icon name="plus" size={14} />Add candidate</>}
+            change={({ next }) => setCandidates({
+              next: [
+                ...candidates,
+                next,
               ],
             })}
-            onChange={({ next }) => setCandidates({
-              next: candidates.map((
-                item,
-                position,
-              ) => position === index ? next : item),
-            })}
           />
-          <NowCell starts={result} index={index} />
-          <Button
-            className="dispatch-remove"
-            aria-label={`Remove ${name} candidate ${index + 1}`}
-            disabled={candidates.length < 2}
-            onClick={() => setCandidates({
-              next: candidates.filter((
-                _,
-                position,
-              ) => position !== index),
-            })}
-          ><Icon name="close" size={14} />
-          </Button>
-        </div>
-      ))}
-      <div className="dispatch-add">
-        <Button
-          onClick={() => setCandidates({
-            next: [
-              ...candidates,
-              { harness: 'claude' },
-            ],
-          })}
-        ><Icon name="plus" size={14} />Add candidate
-        </Button>
+        )}
       </div>
     </div>
   )
@@ -537,11 +579,11 @@ function RulesTable({
       <div className="dispatch-table">
         <div className="dispatch-head">
           <span>Rule · when Hydra picks it</span>
-          <span><Icon name="model" size={14} />Model</span>
+          <span><Icon name="model" size={14} />Account and model</span>
           <span><Icon name="effort" size={14} />Effort</span>
           <span>Permissions</span>
           <span>Fast</span>
-          <span title="Which candidate would start now, from current quota">Now</span>
+          <span title="The resolved account for the candidate that would start from current quota">Account</span>
           <span />
         </div>
         <RuleGroup

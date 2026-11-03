@@ -5,26 +5,24 @@ import type { Command } from '#web-app/connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
 
-// A default for another agent drops the rule's settings that belonged to the old one.
 export const hydraDefault = ({
   rule,
-  harness,
-  field,
-  value,
+  next,
 }: {
   rule?: AgentConfig
-  harness: AgentConfig['harness']
-  field: 'model' | 'effort' | 'mode'
-  value: string
-}): Partial<AgentConfig> => ({
-  harness,
-  ...(rule?.harness === harness ? {} : {
-    model: undefined,
-    effort: undefined,
-    mode: undefined,
-  }),
-  [field]: value,
-})
+  next: AgentConfig
+}): Partial<AgentConfig> => {
+  const sameAccount = rule?.harness === next.harness && rule?.account === next.account
+
+  return {
+    harness: next.harness,
+    account: next.account,
+    model: next.model,
+    effort: sameAccount ? rule?.effort : undefined,
+    mode: sameAccount ? rule?.mode : undefined,
+    fast: sameAccount ? rule?.fast : undefined,
+  }
+}
 
 type Readable = Pick<ReturnType<typeof dispatchSettings>, 'refresh'>
 
@@ -100,6 +98,11 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     resource.subscribe,
     resource.snapshot,
   )
+  const document = dispatchDocument()
+  const saved = useSyncExternalStore(
+    document.subscribe,
+    document.snapshot,
+  ).view
   useRefreshed({
     resource,
     command,
@@ -114,6 +117,7 @@ export function useHeadsDispatch({ command }: { command: Command }) {
 
     for (const field of [
       'harness',
+      'account',
       'model',
       'effort',
       'mode',
@@ -140,8 +144,22 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     window.dispatchEvent(new Event(DISPATCH_CHANGED))
   }
 
+  const listed = snapshot.view
+  let effective = listed ?? undefined
+
+  const newerAccounts = listed && saved && saved.revision >= (listed.revision ?? 0)
+    && Object.keys(saved.document.accounts).length > 0
+
+  if (listed && saved && newerAccounts) {
+    effective = {
+      ...listed,
+      accounts: saved.document.accounts,
+      fallback: undefined,
+    }
+  }
+
   return {
-    effective: snapshot.view ?? undefined,
+    effective,
     error: snapshot.error,
     saveHydra,
   }
