@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:net'
-import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
@@ -56,39 +56,48 @@ async function isolated({ t }: { t: TestContext }) {
     root,
     'server.json',
   )
+
   const run = async ({
     args,
     actor = 'cli',
+    input = '',
   }: {
     args: string[]
     actor?: string
-  }) => promisify(execFile)(
-    process.execPath,
-    [
-      cli,
-      ...args,
-    ],
-    {
-      env: {
-        ...env,
-        PNYX_ACTOR: actor,
+    input?: string
+  }) => {
+    const running = promisify(execFile)(
+      process.execPath,
+      [
+        cli,
+        ...args,
+      ],
+      {
+        env: {
+          ...env,
+          PNYX_ACTOR: actor,
+        },
       },
-    },
-  ).catch(error => {
-    const log = join(
-      root,
-      'service.log',
     )
+    running.child.stdin?.end(input)
 
-    if (existsSync(log)) {
-      t.diagnostic(readFileSync(
-        log,
-        'utf8',
-      ))
-    }
+    return running.catch(error => {
+      const log = join(
+        root,
+        'service.log',
+      )
 
-    throw error
-  })
+      if (existsSync(log)) {
+        t.diagnostic(readFileSync(
+          log,
+          'utf8',
+        ))
+      }
+
+      throw error
+    })
+  }
+
   t.after(async () => {
     if (existsSync(serverPath)) {
       const saved = JSON.parse(readFileSync(
@@ -115,6 +124,7 @@ async function isolated({ t }: { t: TestContext }) {
   })
 
   return {
+    root,
     run,
     serverPath,
     port,
@@ -207,6 +217,115 @@ test(
     assert.equal(
       existsSync(serverPath),
       false,
+    )
+  },
+)
+
+test(
+  'the CLI runs each kind of command line in the server: output, stdin, home, context and owner-only refusals',
+  async t => {
+    const {
+      root,
+      run,
+      serverPath,
+    } = await isolated({ t })
+    await run({ args: ['restart'] })
+    await until({
+      check: () => existsSync(serverPath),
+      timeout: START_TIMEOUT_MS,
+    })
+    const shop = join(
+      root,
+      'shop',
+    )
+    mkdirSync(shop)
+    await run({
+      args: [
+        'project',
+        'add',
+        shop,
+      ],
+    })
+    const created = await run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Fix the cart total',
+        '--project',
+        'shop',
+      ],
+    })
+    const id = /id: (task-[\w-]+)/.exec(created.stdout)?.[1]
+    assert.ok(id)
+    assert.match(
+      (await run({
+        args: [
+          'task',
+          'list',
+        ],
+      })).stdout,
+      /Fix the cart total/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'apply',
+          '--file',
+          '-',
+        ],
+        input: '{"version":999,"version":1,"changes":[{"op":"task.brief","op":"task.create","title":"First","ti\\u0074le":"Second","key":"json-dupe"}],"changes":[{"op":"task.create","title":"Other","key":"other"}]}',
+      }),
+      (error: Error & {
+        code?: number
+        stdout?: string
+      }) => {
+        assert.equal(
+          error.code,
+          2,
+        )
+        assert.match(
+          error.stdout ?? '',
+          /errors\[4\]/,
+        )
+
+        return true
+      },
+    )
+    assert.match(
+      (await run({ args: [] })).stdout,
+      new RegExp(`task show ${id}`),
+    )
+    const context = await run({
+      args: [
+        'context',
+        '--cwd',
+        shop,
+      ],
+    })
+    assert.match(
+      context.stdout,
+      /Fix the cart total,queued/,
+    )
+    await assert.rejects(
+      run({
+        args: [
+          'task',
+          'hold',
+          id,
+          '--reason',
+          'Worker hold',
+        ],
+        actor: 'worker:fixture',
+      }),
+      (error: Error & { stdout?: string }) => {
+        assert.match(
+          error.stdout ?? '',
+          /code: OWNER_ONLY/,
+        )
+
+        return true
+      },
     )
   },
 )
