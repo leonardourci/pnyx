@@ -1,4 +1,5 @@
 import { open, readdir, realpath, stat } from 'node:fs/promises'
+import { skillPrefix } from '#workers/providers.ts'
 import { constants } from 'node:fs'
 import { homedir } from 'node:os'
 import { basename, dirname, isAbsolute, join, relative, resolve } from 'node:path'
@@ -496,7 +497,7 @@ async function readLocalCatalog({
     }
   }
 
-  const prefix = provider === 'codex' ? '$' : '/'
+  const prefix = skillPrefix({ provider })
 
   const activeProjects = projects.filter(project => !project.detached)
   const attached = await Promise.all(activeProjects.map(async project => {

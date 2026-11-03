@@ -1,4 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
+import { providerIdOf } from '#workers/providers.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { commandTimeout, retryable } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -2147,7 +2148,7 @@ export async function mountOwnedHydra({
 
           // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
           if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
-            && running.provider === (agent.harness === 'codex' ? 'codex' : 'claude-code')) {
+            && running.provider === providerIdOf({ harness: agent.harness })) {
             void agents.set({
               card: HYDRA_CARD,
               setting: 'mode',

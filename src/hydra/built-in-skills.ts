@@ -1,4 +1,5 @@
 import { INSCRIBE_SKILL, SET_UP_SKILL } from '#setup/skill-names.ts'
+import { skillPrefix } from '#workers/providers.ts'
 import { isServerCommand, UPGRADE_SUGGESTION, RESTART_SUGGESTION } from '#upgrade/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { Catalog, Suggestion } from './transcripts-catalog.ts'
@@ -36,7 +37,7 @@ export function withBuiltInSkills({
     return catalog
   }
 
-  const prefix = provider === 'codex' ? '$' : '/'
+  const prefix = skillPrefix({ provider })
   const builtins: Suggestion[] = BUILT_IN_SKILLS.map(skill => ({
     command: `${prefix}${skill.name}`,
     description: skill.description,
