@@ -1053,16 +1053,6 @@ export function createHydraConnection() {
         updateHydras({ rows: message.hydras as HydraSummary[] })
       }
 
-      const waitingOnLock = message.type === 'error' && message.code === 'LOCKED' && request.retry
-
-      if (message.type === 'checking' || waitingOnLock) {
-        request.checking = true
-        request.unconfirmed()
-        publish()
-
-        return
-      }
-
       if (message.type === 'error' && request.saveId && message.saved !== false) {
         request.checking = true
         request.unconfirmed()
