@@ -31,26 +31,7 @@ export const MAX_BODY = 1 << 20
 
 export const STOP_TIMEOUT_MS = 5000
 
-// CLI commands exposed to the browser; history and card only read. push and repair stay CLI-only: push reads a file path, repair is maintenance.
-export const CLI_COMMANDS = [
-  'approval',
-  'project',
-  'task',
-  'column',
-  'hydra',
-  'layout',
-  'rule',
-  'account',
-  'move',
-  'link',
-  'outcome',
-  'undo',
-  'view',
-  'settings',
-  'history',
-  'card',
-  'integrations',
-] as const
+export { CLI_COMMANDS } from './command-registry.ts'
 
 export const WEB_ROOT = join(
   import.meta.dirname,

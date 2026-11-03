@@ -1,4 +1,5 @@
 import { agentInput } from './agent-input.ts'
+import { HYDRA_COMMANDS } from './command-registry.ts'
 import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
@@ -959,7 +960,7 @@ export function createHost({
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
   const hydraSession = () => ({
     instructions: hydraInstructions(),
-    allow: ['pnyx-axi'],
+    allow: HYDRA_COMMANDS,
     context: digest,
   })
 

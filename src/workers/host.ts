@@ -34,17 +34,7 @@ export const UNCONFIRMED_QUOTE_CHARS = 80
 
 export const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 
-// A worker runs the worker reporting skill's own commands without asking; any other pnyx-axi command still asks.
-export const WORKER_COMMANDS = [
-  'task show',
-  'task history',
-  'task status',
-  'task chat',
-  'task inbox read',
-  'task inbox ack',
-  'hydra send',
-  'link',
-].map(command => `pnyx-axi ${command}`)
+export { WORKER_COMMANDS } from '#app/command-registry.ts'
 
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
