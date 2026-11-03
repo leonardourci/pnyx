@@ -35,6 +35,9 @@ const send = ({
 })
 
 const upgrade = ({ s }: { s: Scenario }) => s.state().upgrades?.find(operation => operation.id === 'up')
+// The chat's dividers for the operations that stopped Hydra.
+const dividers = ({ s }: { s: Scenario }) => (s.state().hydraMessages ?? []).filter(message => message.kind === 'divider')
+  .map(message => message.text)
 
 const waitFor = ({
   s,
@@ -76,10 +79,11 @@ const stop = ({ s }: { s: Scenario }) => s.owner({
 })
 
 test(
-  '/restart restarts without sending a turn to Hydra',
+  '/restart restarts without sending a turn to Hydra, and a message sent meanwhile reaches it in one recap after',
   async () => {
     const s = await pnyx.scenario()
     const restarts = pnyx.restarts()
+    pnyx.claude.plan({ text: 'Sent during the restart' })
     await send({
       s,
       text: '/restart',
@@ -89,6 +93,15 @@ test(
       s,
       state: 'restarting',
     })
+    await send({
+      s,
+      text: 'Sent during the restart',
+      id: 'during',
+    })
+    assert.equal(
+      s.state().hydraOperation?.kind,
+      'restart',
+    )
     assert.equal(
       pnyx.restarts(),
       restarts + 1,
@@ -108,6 +121,21 @@ test(
     assert.deepEqual(
       upgrade({ s })!.steps.map(step => `${step.step}:${step.state}`),
       ['restart:done'],
+    )
+    await until({
+      what: 'Hydra to hear the message in its recap on the new server',
+      check: () => heard({
+        s,
+        text: 'Sent during the restart',
+      }),
+    })
+    assert.ok(heard({
+      s,
+      text: 'back after a stop (Restarted)',
+    }))
+    assert.deepEqual(
+      dividers({ s }),
+      ['Restarted'],
     )
   },
 )
@@ -345,8 +373,8 @@ test(
       id: 'during',
     })
     await until({
-      what: 'the upgrade to hold the message',
-      check: () => upgrade({ s })?.held?.some(message => message.id === 'during'),
+      what: 'the message to wait while the upgrade stops Hydra',
+      check: () => s.state().hydraOperation?.kind === 'upgrade' && 'during' in s.state().eventIds,
     })
 
     assert.equal(
@@ -389,8 +417,8 @@ test(
       }),
     })
     assert.deepEqual(
-      upgrade({ s })!.held,
-      [],
+      dividers({ s }),
+      ['Upgrade failed'],
     )
   },
 )
@@ -468,6 +496,10 @@ test(
         'restart:done',
       ],
     )
+    assert.deepEqual(
+      dividers({ s }),
+      ['Upgraded'],
+    )
   },
 )
 
@@ -499,8 +531,8 @@ test(
         id: 'during',
       })
       await until({
-        what: 'the upgrade to hold the message',
-        check: () => upgrade({ s })?.held?.some(message => message.id === 'during'),
+        what: 'the message to wait while the upgrade stops Hydra',
+        check: () => s.state().hydraOperation?.kind === 'upgrade' && 'during' in s.state().eventIds,
       })
       writeFileSync(
         gate,
@@ -526,8 +558,8 @@ test(
         }),
       })
       assert.deepEqual(
-        upgrade({ s })!.held,
-        [],
+        dividers({ s }),
+        ['Upgrade failed'],
       )
     } finally {
       writeFileSync(

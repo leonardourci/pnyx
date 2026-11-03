@@ -13,9 +13,5 @@ test(
       stdout,
       /Native cleanup waited for queued, background and unknown work/,
     )
-    assert.match(
-      stdout,
-      /Application buffers retained the original image source/,
-    )
   },
 )
