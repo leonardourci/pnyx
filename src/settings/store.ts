@@ -277,7 +277,7 @@ export function saveSettings({
 }: {
   patch: unknown
   meta: Meta
-  // Reserve and validate the shared write before a combined command changes its Hydra.
+  // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Hydra only when the shared write goes ahead.
   beforeSave?(): void
 }): SettingsSave {
   return withRegistryLock({
