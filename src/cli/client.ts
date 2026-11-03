@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import { pnyxHome } from '#store/paths.ts'
 import { IDENTITY } from '#app/request-context.ts'
 import type { RunAnswer } from '#app/api-run.ts'
@@ -93,7 +93,7 @@ async function send({
   return await response.json() as RunAnswer
 }
 
-// Sends one command line to the running server and prints its answer; starts the server first when it is down.
+// Sends one command line to the running server and prints its answer; when it is down, its login service starts it.
 // `context`, which the session-start hook runs, never starts it and prints nothing when it is down.
 export async function forward({ argv }: { argv: string[] }): Promise<void> {
   const stdin = stdinText({ argv })
@@ -129,6 +129,15 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
     } else if (!started) {
       started = true
       const { restartPnyx } = await import('#upgrade/restart.ts')
+      const { serviceFile } = await import('#setup/service.ts')
+
+      // Only the login service starts it; a server nobody installed is started by its owner.
+      if (!existsSync(serviceFile().path)) {
+        process.stdout.write('error: "Pnyx is not running"\ncode: NOT_RUNNING\nhelp[1]: "Run `pnyx-axi serve`, or `pnyx-axi setup` to start it at login"\n')
+        process.exitCode = 1
+
+        return
+      }
 
       try {
         await restartPnyx()
