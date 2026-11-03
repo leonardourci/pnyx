@@ -661,6 +661,94 @@ const startLongTurn = async ({
 }
 
 test(
+  'a worker whose reopen is slow after a restart gets its resume and then an owner reply once each, Hydra hears nothing, and the server answers meanwhile',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'slow' })
+    const job = pnyx.claude.plan({
+      text: 'Run the slow job',
+      hold: true,
+    })
+
+    try {
+      await startLongTurn({
+        s,
+        key: 'slow',
+        folder,
+      })
+      const heard = hydraHeard({ s })
+      const opening = pnyx.claude.holdOpen({ cwd: folder })
+
+      try {
+        await pnyx.restart()
+        const health = await fetch(`http://127.0.0.1:${pnyx.port()}/hydra/${s.hydraId}/health`)
+        assert.equal(
+          health.status,
+          200,
+        )
+        const page = await openPage({
+          port: pnyx.port(),
+          hydraId: s.hydraId,
+        })
+        page.close()
+        const other = await pnyx.scenario()
+        await other.owner({
+          args: [
+            'task',
+            'list',
+          ],
+        })
+        await s.owner({
+          args: [
+            'reply',
+            s.task({ key: 'slow' }).id,
+            '--text',
+            'Owner words during the reopen',
+          ],
+        })
+        await delay(SETTLE_MS)
+        assert.equal(
+          hydraHeard({ s }),
+          heard,
+          'Hydra is not told about a worker Pnyx is resuming',
+        )
+        assert.equal(
+          s.task({ key: 'slow' }).attention.some(item => item.kind === 'interrupted'),
+          false,
+        )
+      } finally {
+        opening.release()
+      }
+
+      const received = () => s.received({ cwd: folder })
+      await until({
+        what: 'the resume and the reply to reach the worker',
+        check: () => received().some(text => text.includes('Owner words during the reopen')),
+      })
+      const resume = received().findIndex(text => text.endsWith(WORKER_RESUME))
+      const reply = received().findIndex(text => text.includes('Owner words during the reopen'))
+      assert.deepEqual(
+        [
+          received().filter(text => text.endsWith(WORKER_RESUME)).length,
+          received().filter(text => text.includes('Owner words during the reopen')).length,
+          resume >= 0 && resume < reply,
+          pnyx.claude.sessions.filter(session => session.cwd === folder).length,
+        ],
+        [
+          1,
+          1,
+          true,
+          2,
+        ],
+        'one reopened session gets the resume, then the reply',
+      )
+    } finally {
+      job.release()
+    }
+  },
+)
+
+test(
   'a worker whose reopen fails after a restart shows the interrupted question and wakes Hydra once',
   async () => {
     const s = await pnyx.scenario()
