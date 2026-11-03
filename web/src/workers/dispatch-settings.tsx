@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
-import type { Account, Candidate } from '#workers/dispatch-config.ts'
-import { accountLabel } from '#workers/account-choice.ts'
+import type { Candidate } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -10,7 +9,6 @@ import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
-import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
 import { AccountModelPicker } from './account-model-picker.tsx'
 import { useDispatchProposals } from './dispatch-proposals.tsx'
@@ -244,7 +242,7 @@ function HowPicked() {
       <ol>
         <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
         <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
-        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. Account names stay visible; the checkmark identifies the candidate that would start.</li>
+        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The highlighted row is the candidate that would start now.</li>
       </ol>
     </section>
   )
@@ -295,42 +293,6 @@ function Problems({
         return <li key={index} data-level={issue.level}>{place ? `${place}: ` : ''}{issue.problem}</li>
       })}
     </ul>
-  )
-}
-
-function NowCell({
-  starts,
-  index,
-  candidate,
-  accounts,
-}: {
-  starts?: RuleNow
-  index: number
-  candidate: Candidate
-  accounts: Record<string, Account>
-}) {
-  const chosen = starts?.candidate === index
-  const account = candidate.account ?? (chosen ? starts.account : undefined)
-  const name = account ? accountLabel({
-    name: account,
-    account: accounts[account],
-  }) : 'Automatic'
-  let reason = 'Automatic account follows the configured order; its resolved account appears when this candidate is chosen.'
-
-  if (candidate.account) {
-    reason = 'Configured account; the checkmark identifies the candidate that would start.'
-  }
-
-  if (chosen) {
-    reason = starts.reason
-  }
-
-  return (
-    <span className="dispatch-now">
-      <Tooltip content={reason}>
-        <span className={chosen ? 'dispatch-starts' : undefined}>{chosen && <Icon name="check" size={14} />}<span>{name}</span></span>
-      </Tooltip>
-    </span>
   )
 }
 
@@ -483,12 +445,6 @@ function RuleGroup({
                 ) => position === index ? next : item),
               })}
             />
-            <NowCell
-              starts={result}
-              index={index}
-              candidate={candidate}
-              accounts={draft.accounts}
-            />
             <Button
               className="dispatch-remove"
               aria-label={`Remove ${name} candidate ${index + 1}`}
@@ -583,7 +539,6 @@ function RulesTable({
           <span><Icon name="effort" size={14} />Effort</span>
           <span>Permissions</span>
           <span>Fast</span>
-          <span title="The resolved account for the candidate that would start from current quota">Account</span>
           <span />
         </div>
         <RuleGroup
