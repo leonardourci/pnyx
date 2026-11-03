@@ -42,7 +42,7 @@ import { paseoConversation, type PaseoConversation } from '#integrations/paseo/t
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
@@ -54,22 +54,22 @@ import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { reduce } from './reducer.ts'
 import { traces } from '#preferences/view.ts'
-import { hydraDir, hydraIds } from './home-migration.ts'
+import { hydraDir } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
-import { serviceFile } from '#setup/service.ts'
+import { hydraIdentity, localToken, offerHost, readServer, socketPath } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
+import { runPageCommand } from './page-command.ts'
 import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { readBytes, readBody, buildId, reply, serveStatic } from './server-http.ts'
+import { readBytes, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
 
 const ORACLE_LIMIT = 100
@@ -102,17 +102,9 @@ const EVENT_POLL_MS = 500
 const REPLY_POLL_MS = 30_000
 // A worker mid-write gets this long to finish on shutdown before it is killed.
 const WORKER_GRACE_MS = 5000
-// The CLI owns reply writes and delivery; a child keeps slow sends off the server event loop.
-const REPLY_WORKER = join(
-  import.meta.dirname,
-  '..',
-  'workers',
-  import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
-)
-const COMMAND_WORKER = join(
-  import.meta.dirname,
-  import.meta.url.endsWith('.ts') ? 'command-process.ts' : 'command-process.js',
-)
+// Replies and page commands run in the server itself; only the Oracle index catch-up runs in a child.
+const REPLY_WORKER = 'reply'
+const COMMAND_WORKER = 'command'
 const REPLY_WORKER_TIMEOUT_MS = 130_000
 const OWNER_WRITE_RETRY_MS = 100
 const OWNER_WRITE_RETRY_MAX_MS = 1000
@@ -162,7 +154,6 @@ export async function mountOwnedHydra({
   reviewClock,
   reminderScheduler = systemReminderScheduler,
   open,
-  release,
   hydrasChanged,
   upgradeRoot,
   restart,
@@ -184,20 +175,11 @@ export async function mountOwnedHydra({
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
-  release(): void
   hydrasChanged(): void
   upgradeRoot?: string
   restart?(): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
-  if (await readServer({ hydraId })) {
-    throw new HydraError({
-      message: `a server is already running for Hydra ${hydraId}`,
-      code: 'ALREADY_RUNNING',
-      help: ['Run `pnyx-axi` to see its address'],
-    })
-  }
-
   let homes = (given ?? []).map(path => resolveHome({ path }))
   type Subscription = {
     card: string
@@ -1028,6 +1010,7 @@ export async function mountOwnedHydra({
   // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
   // The value says whether shutdown may kill the worker: a follow or an index catch-up, which the next run repeats.
   const workers = new Map<ChildProcess, boolean>()
+  const inProcess = new Set<Promise<void>>()
 
   const startWorker = ({
     args,
@@ -1056,6 +1039,20 @@ export async function mountOwnedHydra({
           },
         }),
       })
+
+      return
+    }
+
+    if (file === REPLY_WORKER || file === COMMAND_WORKER) {
+      const running = runPageCommand({ argv: args }).then(({
+        failed,
+        stdout,
+      }) => done({
+        error: failed ? new Error(`${args[0]} failed`) : null,
+        stdout,
+      }))
+      inProcess.add(running)
+      void running.finally(() => inProcess.delete(running))
 
       return
     }
@@ -1148,6 +1145,8 @@ export async function mountOwnedHydra({
         resolve,
       ))
     }
+
+    await Promise.all(inProcess)
 
     clearTimeout(killer)
   }
@@ -1423,6 +1422,14 @@ export async function mountOwnedHydra({
     },
   })
 
+  const withdrawHost = offerHost({
+    hydraId,
+    ask: ({ body }) => hostRequest({
+      host: agents,
+      body,
+    }),
+  })
+
   const sources = createSourceRunner({
     hydraId,
     changed: kick,
@@ -1447,47 +1454,6 @@ export async function mountOwnedHydra({
   }: HydraRequest) => {
     // The CLI asks here to start or message an agent this server runs. A page cannot
     // send this header cross-origin without a preflight, which this server never answers.
-    if (req.method === 'POST' && path === '/host') {
-      if (!authorized({
-        given: req.headers.authorization?.replace(
-          /^Bearer /,
-          '',
-        ) ?? null,
-      })) {
-        return reply({
-          res,
-          status: 401,
-          body: {
-            error: 'missing or wrong token',
-            code: 'UNAUTHORIZED',
-          },
-        })
-      }
-
-      return readBody({ req }).then(async body => {
-        return hostRequest({
-          host: agents,
-          body,
-        })
-      })
-        .then(
-          answer => reply({
-            res,
-            status: 200,
-            body: answer,
-          }),
-          (error: Error) => reply({
-            res,
-            status: 400,
-            body: {
-              error: error.message,
-              code: error instanceof HydraError ? error.code : 'UNKNOWN',
-              help: error instanceof HydraError ? error.help : [],
-            },
-          }),
-        )
-    }
-
     // An image dropped or pasted into a composer; the message then carries its path.
     if (req.method === 'POST' && path === '/attachments') {
       if (!authorized({
@@ -2715,6 +2681,7 @@ export async function mountOwnedHydra({
 
   const stop = async () => {
     closed = true
+    withdrawHost()
     historyIndex.stop()
 
     for (const timer of writeRetries) {
@@ -2773,10 +2740,6 @@ export async function mountOwnedHydra({
 
     clients.clear()
     await (ingest && new Promise(r => ingest.close(r)))
-    rmSync(
-      infoPath({ hydraId }),
-      { force: true },
-    )
 
     if (ingest) {
       rmSync(
@@ -2786,17 +2749,7 @@ export async function mountOwnedHydra({
     }
   }
 
-  const info: ServerInfo = {
-    pid: process.pid,
-    port: Number(new URL(url).port),
-    url,
-    socket: ingest && socketPath({ hydraId }),
-    service: process.env.PNYX_SERVICE_ROLE === 'application'
-      || process.env.XPC_SERVICE_NAME === serviceFile().label,
-    serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
-  }
-
-  // A mount that fails partway stops what it started; the caller releases the claim.
+  // A mount that fails partway stops what it started.
   try {
     watchers.push(
       watchPath({
@@ -2818,15 +2771,6 @@ export async function mountOwnedHydra({
       kick,
     )
     followHome()
-    const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
-    writeFileSync(
-      tmp,
-      JSON.stringify(info),
-    )
-    renameSync(
-      tmp,
-      infoPath({ hydraId }),
-    )
   } catch (error) {
     await stop()
     throw error
@@ -2843,7 +2787,7 @@ export async function mountOwnedHydra({
 
   return {
     url,
-    socket: info.socket,
+    socket: ingest && socketPath({ hydraId }),
     request,
     connect,
     summaries({ hydras }) {
@@ -2896,7 +2840,6 @@ export async function mountOwnedHydra({
       }
 
       await stop()
-      release()
     },
   }
 }
@@ -2913,9 +2856,8 @@ export const SERVE_OPTIONS = {
 // A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
 export { DEFAULT_PORT } from './server-state.ts'
 
-// Usually one process; a server an older version started for a single Hydra counts too.
 export async function serverPids(): Promise<number[]> {
-  const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
+  const info = await readServer({ hydraId: 'default' })
 
-  return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
+  return info ? [info.pid] : []
 }

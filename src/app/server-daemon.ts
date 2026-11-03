@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { unwatchFile, existsSync, watchFile, mkdirSync } from 'node:fs'
+import { unwatchFile, existsSync, watchFile, mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import type { QueryFn } from './host.ts'
@@ -15,15 +15,31 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydraDir, hydrasDir } from './home-migration.ts'
-import { localToken, hydraIdentity, claimServer } from './server-state.ts'
+import { localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { serviceFile } from '#setup/service.ts'
+import { runForRequest } from './api-run.ts'
+import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
 import { watchPath } from './watch.ts'
 import { readSettings, settingsLogPath } from '#settings/store.ts'
-import { privateDir } from '#store/storage.ts'
+import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
+const bearer = ({ req }: { req: IncomingMessage }) => {
+  const token = Buffer.from(localToken())
+  const given = Buffer.from(req.headers.authorization?.replace(
+    /^Bearer /,
+    '',
+  ) ?? '')
+
+  return given.length === token.length && timingSafeEqual(
+    given,
+    token,
+  )
+}
+
 export async function startServer({
   hydraId = 'default',
   port = 0,
@@ -52,6 +68,7 @@ export async function startServer({
   upgradeRoot?: string
   restart?(): void | Promise<void>
 }): Promise<RunningServer> {
+  const releaseClaim = claimServer()
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: MAX_MESSAGE_BYTES,
@@ -167,6 +184,26 @@ export async function startServer({
         res,
         path: rest,
         search,
+      })
+    }
+
+    // A pnyx-axi command line from a client; the CLI sends every command but the few that must work while the server is down.
+    if (req.method === 'POST' && path === '/api/run') {
+      if (!bearer({ req })) {
+        return reply({
+          res,
+          status: 401,
+          body: {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        })
+      }
+
+      return reply({
+        res,
+        status: 200,
+        body: await runForRequest({ body: await readBody({ req }) }),
       })
     }
 
@@ -471,20 +508,26 @@ export async function startServer({
     },
   )
 
-  await new Promise<void>((
-    resolve,
-    reject,
-  ) => {
-    http.once(
-      'error',
+  try {
+    await new Promise<void>((
+      resolve,
       reject,
-    )
-    http.listen(
-      port,
-      '127.0.0.1',
-      () => resolve(),
-    )
-  })
+    ) => {
+      http.once(
+        'error',
+        reject,
+      )
+      http.listen(
+        port,
+        '127.0.0.1',
+        () => resolve(),
+      )
+    })
+  } catch (error) {
+    releaseClaim()
+    throw error
+  }
+
   const bound = (http.address() as { port: number }).port
 
   for (const host of [
@@ -697,12 +740,29 @@ export async function startServer({
       wss.close()
       http.closeAllConnections()
       await new Promise(r => http.close(r))
+      rmSync(
+        infoPath(),
+        { force: true },
+      )
+      releaseClaim()
     }
   }
 
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+    replaceFile({
+      path: infoPath(),
+      text: JSON.stringify({
+        pid: process.pid,
+        port: bound,
+        url: named.url,
+        socket: named.socket,
+        service: process.env.PNYX_SERVICE_ROLE === 'application'
+          || process.env.XPC_SERVICE_NAME === serviceFile().label,
+        serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
+      } satisfies ServerInfo),
+    })
   } catch (error) {
     await close()
     throw error
@@ -768,34 +828,26 @@ async function mountHydra({
   restart?(): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
-  const release = claimServer({ hydraId })
-
-  try {
-    return await mountOwnedHydra({
-      hydraId,
-      url,
-      homes,
-      catalogLocations,
-      query,
-      spawnCodex,
-      wakeDelay,
-      stallDelay,
-      busyDelay,
-      stallRepeatMax,
-      pauseDelay,
-      retryDelays,
-      followDelay,
-      reviewClock,
-      reminderScheduler,
-      open,
-      release,
-      hydrasChanged,
-      upgradeRoot,
-      restart,
-      upgradeStatus,
-    })
-  } catch (error) {
-    release()
-    throw error
-  }
+  return mountOwnedHydra({
+    hydraId,
+    url,
+    homes,
+    catalogLocations,
+    query,
+    spawnCodex,
+    wakeDelay,
+    stallDelay,
+    busyDelay,
+    stallRepeatMax,
+    pauseDelay,
+    retryDelays,
+    followDelay,
+    reviewClock,
+    reminderScheduler,
+    open,
+    hydrasChanged,
+    upgradeRoot,
+    restart,
+    upgradeStatus,
+  })
 }

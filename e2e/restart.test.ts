@@ -55,7 +55,7 @@ test(
     }
     const serverPath = join(
       root,
-      'hydras/default/server.json',
+      'server.json',
     )
     const run = async ({
       args,
