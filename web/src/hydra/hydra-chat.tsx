@@ -308,8 +308,12 @@ export function HydraChat({
   const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const stopped = state.hydraOperation
   // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
-  const waiting = stopped ? messages.filter(m => (state.eventIds[m.id] ?? 0) > stopped.seq
-    && !(`${m.id}:hosted` in state.eventIds)) : []
+  // A message whose Hydra turn started has been taken.
+  const taken = ({ id }: { id: string }) => `${id}:hosted` in state.eventIds
+  const stopSeq = stopped?.seq
+  const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
+    && (state.eventIds[id] ?? 0) > stopSeq
+  const waiting = messages.filter(m => sentSince(m) && !taken(m))
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
     ...waiting.map(message => message.id),
