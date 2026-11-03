@@ -349,7 +349,8 @@ function RuleGroup({
   })
 
   return (
-    <div className="dispatch-rule" data-rule={name}>
+    // The add row takes any height a long rule description needs, so candidate rows keep one height.
+    <div className="dispatch-rule" data-rule={name} style={{ gridTemplateRows: `${'auto '.repeat(candidates.length)}1fr` }}>
       <div className="dispatch-rule-cell" style={span}>
         {fixed ? (
           <>
