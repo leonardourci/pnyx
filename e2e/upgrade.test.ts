@@ -55,6 +55,16 @@ const buildRunning = ({ s }: { s: Scenario }) => until({
   check: () => upgrade({ s })?.steps.some(step => step.step === 'build' && step.state === 'running'),
 })
 
+// Every message Hydra was handed, in any of its sessions.
+const hydraReceived = ({ s }: { s: Scenario }) => s.received({
+  cwd: join(
+    process.env.PNYX_HOME!,
+    'hydras',
+    s.hydraId,
+    'agent',
+  ),
+})
+
 // Whether Hydra was handed this text, in any of its sessions.
 const heard = ({
   s,
@@ -83,7 +93,8 @@ test(
   async () => {
     const s = await pnyx.scenario()
     const restarts = pnyx.restarts()
-    pnyx.claude.plan({ text: 'Sent during the restart' })
+    // Longer than the outage recap's clip, with an image line, so it must reach Hydra whole.
+    const during = `Sent during the restart. ${'Keep every word of this message. '.repeat(12)}\n[image: /tmp/during-restart.png]`
     await send({
       s,
       text: '/restart',
@@ -95,7 +106,7 @@ test(
     })
     await send({
       s,
-      text: 'Sent during the restart',
+      text: during,
       id: 'during',
     })
     assert.equal(
@@ -123,16 +134,16 @@ test(
       ['restart:done'],
     )
     await until({
-      what: 'Hydra to hear the message in its recap on the new server',
+      what: 'Hydra to hear the whole message in its recap on the new server',
       check: () => heard({
         s,
-        text: 'Sent during the restart',
+        text: during,
       }),
     })
-    assert.ok(heard({
-      s,
-      text: 'back after a stop (Restarted)',
-    }))
+    assert.equal(
+      hydraReceived({ s }).filter(text => text.includes('back after a stop (Restarted)')).length,
+      1,
+    )
     assert.deepEqual(
       dividers({ s }),
       ['Restarted'],
@@ -346,6 +357,14 @@ test(
       pnyx.restarts(),
       restarts,
     )
+    // Nothing waited, yet Hydra is told the upgrade failed.
+    await until({
+      what: 'Hydra to hear that the upgrade failed',
+      check: () => heard({
+        s,
+        text: 'back after a stop (Upgrade failed',
+      }),
+    })
   },
 )
 
@@ -620,5 +639,80 @@ test(
       (await hint({ s })).available,
       true,
     )
+  },
+)
+
+test(
+  'a message waiting behind a /upgrade that restarts the server reaches Hydra once after the restart',
+  async () => {
+    const s = await pnyx.scenario()
+    const held = pnyx.claude.plan({
+      text: 'Look first',
+      hold: true,
+    })
+    repo.publish({
+      files: { 'build.sh': building({ version: 'behind' }) },
+      message: 'behind',
+    })
+    pnyx.claude.plan({ text: 'Waiting behind the upgrade' })
+
+    try {
+      await send({
+        s,
+        text: 'Look first',
+        id: 'look',
+      })
+      await until({
+        what: 'Hydra to hear the first message',
+        check: () => heard({
+          s,
+          text: 'Look first',
+        }),
+      })
+      await send({
+        s,
+        text: '/upgrade',
+        id: 'up',
+      })
+      await waitFor({
+        s,
+        state: 'queued',
+      })
+      await send({
+        s,
+        text: 'Waiting behind the upgrade',
+        id: 'waiting',
+      })
+      held.release()
+      await waitFor({
+        s,
+        state: 'restarting',
+      })
+      assert.equal(
+        heard({
+          s,
+          text: 'Waiting behind the upgrade',
+        }),
+        false,
+      )
+      await pnyx.restart()
+      await waitFor({
+        s,
+        state: 'done',
+      })
+      await until({
+        what: 'Hydra to hear the waiting message on the new server',
+        check: () => heard({
+          s,
+          text: 'Waiting behind the upgrade',
+        }),
+      })
+      assert.equal(
+        hydraReceived({ s }).filter(text => text.includes('Waiting behind the upgrade')).length,
+        1,
+      )
+    } finally {
+      held.release()
+    }
   },
 )
