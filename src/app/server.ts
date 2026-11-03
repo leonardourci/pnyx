@@ -2665,8 +2665,14 @@ export async function mountOwnedHydra({
     await spend.close()
     const live = heldHydra({ hydraId })
 
+    // The log holds every change; a snapshot that cannot be written only makes the next start slower,
+    // so the rest of shutdown runs regardless.
     if (live) {
-      saveSnapshot({ live })
+      try {
+        saveSnapshot({ live })
+      } catch (error) {
+        console.error(`pnyx-axi snapshot of Hydra ${hydraId} at shutdown: ${(error as Error).message}`)
+      }
     }
 
     releaseHold()

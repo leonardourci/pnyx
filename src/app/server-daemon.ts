@@ -731,7 +731,14 @@ export async function startServer({
 
     try {
       const all = await Promise.allSettled(mounts.values())
-      await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+      // Every Hydra finishes its cleanup before the claim goes, even when one of them fails.
+      const closes = await Promise.allSettled(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+
+      for (const failed of closes) {
+        if (failed.status === 'rejected') {
+          console.error(`pnyx-axi serve: a Hydra did not close cleanly: ${(failed.reason as Error).message}`)
+        }
+      }
     } finally {
       for (const ws of wss.clients) {
         ws.terminate()
