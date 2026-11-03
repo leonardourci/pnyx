@@ -1,4 +1,4 @@
-import { spawnSync } from 'node:child_process'
+import { runProcess } from '#app/run-process.ts'
 import { join } from 'node:path'
 import type { ReplyState } from '#workers/model.ts'
 
@@ -12,7 +12,7 @@ type Sent = {
 
 // fm-send's exit contract as read here: 0 delivered; 1 and 3 may have landed (a
 // remote send that lost its transport exits 1); any other status nothing delivered.
-export function fmSend(
+export async function fmSend(
   {
     route,
     text,
@@ -25,7 +25,7 @@ export function fmSend(
     text: string
     resolveKey: string | undefined
   },
-): Sent {
+): Promise<Sent> {
   const args = [
     route.task,
     ...(resolveKey ? [
@@ -34,7 +34,7 @@ export function fmSend(
     ] : []),
     text,
   ]
-  const result = run({
+  const result = await run({
     home: route.home,
     command: 'fm-send.sh',
     args,
@@ -67,7 +67,7 @@ export function fmSend(
   }
 }
 
-function run({
+async function run({
   home,
   command,
   args,
@@ -76,22 +76,19 @@ function run({
   command: string
   args: string[]
 }) {
-  const result = spawnSync(
-    join(
+  const result = await runProcess({
+    command: join(
       home,
       'bin',
       command,
     ),
     args,
-    {
-      env: {
-        ...process.env,
-        FM_HOME: home,
-      },
-      encoding: 'utf8',
-      timeout: SEND_TIMEOUT_MS,
+    env: {
+      ...process.env,
+      FM_HOME: home,
     },
-  )
+    timeout: SEND_TIMEOUT_MS,
+  })
   const detail = `${result.stderr ?? ''}\n${result.stdout ?? ''}`.trim().split('\n')
     .at(-1)
     ?.slice(
@@ -114,7 +111,7 @@ function run({
 // `fm-inbox.sh note --request-id <id> --json -- <text>`. The same request id replays
 // the note it saved first. Its exit contract: 0 saved and announced; 3 saved but not
 // announced, which `fm-inbox.sh announce <note>` repairs; 1 nothing saved.
-export function fmNote({
+export async function fmNote({
   home,
   requestId,
   text,
@@ -122,8 +119,8 @@ export function fmNote({
   home: string
   requestId: string
   text: string
-}): Sent {
-  const result = run({
+}): Promise<Sent> {
+  const result = await run({
     home,
     command: 'fm-inbox.sh',
     args: [

@@ -113,7 +113,7 @@ export async function hostRequestUnlocked({
           config,
           project,
         })
-        : chooseCandidate({
+        : await chooseCandidate({
           config,
           project,
           rule,
@@ -151,12 +151,12 @@ export async function hostRequestUnlocked({
           }
         }
 
-        if (readQuota({
+        if ((await readQuota({
           account: {
             provider: dispatch.provider,
             folder: dispatch.folder,
           },
-        }).auth === 'signed-out') {
+        })).auth === 'signed-out') {
           throw new HydraError({
             message: `account ${dispatch.account} is signed out`,
             code: 'ACCOUNT_SIGNED_OUT',

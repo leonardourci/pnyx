@@ -1,4 +1,5 @@
 import { HydraError } from '#store/errors.ts'
+import { landingGaps } from '#tasks/delivery/done.ts'
 import { randomUUID } from 'node:crypto'
 import type { EventType } from '#app/model.ts'
 import { commit, required, withHelp, type Output } from '#app/cli-support.ts'
@@ -102,7 +103,7 @@ export function validateLocalTaskFlags({
   }
 }
 
-export function localTaskCommand({
+export async function localTaskCommand({
   action,
   values,
   positionals,
@@ -114,7 +115,7 @@ export function localTaskCommand({
   positionals: string[]
   hydraId: string
   meta: Meta
-}): Output | undefined {
+}): Promise<Output | undefined> {
   if (!action || action === 'rename' || !Object.hasOwn(
     ACTION_FLAGS,
     action,
@@ -169,6 +170,10 @@ export function localTaskCommand({
   }
 
   const card = operation.op === 'task.create' ? operation.key! : operation.task
+  const landing = await landingGaps({
+    hydraId,
+    refs: operation.op === 'task.status' && operation.status === 'done' ? [operation.task] : [],
+  })
   const output = commit({
     hydraId,
     meta,
@@ -184,6 +189,7 @@ export function localTaskCommand({
       operation,
       meta: current,
       hydraId,
+      landing,
     }),
   })
 

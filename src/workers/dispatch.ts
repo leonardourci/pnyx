@@ -1,4 +1,4 @@
-import { execFile, execFileSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
 import { providerIdOf } from './providers.ts'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
@@ -41,7 +41,7 @@ export interface QuotaReading {
   models?: ModelQuota[]
   effective?: EffectiveQuota
 }
-export type ReadQuota = ({ account }: { account: Account }) => QuotaReading
+export type ReadQuota = ({ account }: { account: Account }) => QuotaReading | Promise<QuotaReading>
 export type Override = StartOverride
 export const OVERRIDE_FIELDS: readonly (keyof Override)[] = [
   'model',
@@ -91,7 +91,7 @@ const QUOTA_RUN = {
   maxBuffer: 4 * 1024 * 1024,
 }
 
-export function readQuota({ account }: { account: Account }): QuotaReading {
+export async function readQuota({ account }: { account: Account }): Promise<QuotaReading> {
   if (!existsSync(loginFolder({ account }))) {
     return { auth: 'signed-out' }
   }
@@ -99,32 +99,29 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
   const env = accountEnvironment({ account })
   // quota-axi reads one named login folder only through quota; a default login is read as its harness reads it.
   const profileOnly = Boolean(env[loginVariable({ provider: account.provider })])
-  const run = ({ command }: { command?: string }): unknown => JSON.parse(execFileSync(
-    'quota-axi',
-    [
-      ...(command ? [command] : []),
-      '--provider',
-      account.provider,
-      ...(!command && profileOnly ? ['--profile-only'] : []),
-      '--no-credential-refresh',
-      '--full',
-      '--json',
-    ],
-    {
-      ...QUOTA_RUN,
-      encoding: 'utf8',
-      stdio: [
-        'ignore',
-        'pipe',
-        'ignore',
+  const quotaAxi = promisify(execFile)
+  const run = async ({ command }: { command?: string }): Promise<unknown> =>
+    JSON.parse((await quotaAxi(
+      'quota-axi',
+      [
+        ...(command ? [command] : []),
+        '--provider',
+        account.provider,
+        ...(!command && profileOnly ? ['--profile-only'] : []),
+        '--no-credential-refresh',
+        '--full',
+        '--json',
       ],
-      env,
-    },
-  ))
+      {
+        ...QUOTA_RUN,
+        encoding: 'utf8',
+        env,
+      },
+    )).stdout)
   let reading: QuotaReading = { auth: 'unknown' }
 
   try {
-    const report = run({}) as { providers?: ProviderQuota[] }
+    const report = await run({}) as { providers?: ProviderQuota[] }
     const row = report.providers?.find(p => p.provider === account.provider)
     const state = row?.state
     reading = {
@@ -139,7 +136,7 @@ export function readQuota({ account }: { account: Account }): QuotaReading {
   }
 
   try {
-    const report = run({ command: 'models' }) as { models?: ModelQuota[] }
+    const report = await run({ command: 'models' }) as { models?: ModelQuota[] }
     reading.models = report.models?.filter(row => row.provider === account.provider)
 
     if (reading.models?.some(row => row.state?.authStatus === 'unusable' || (!row.state?.authStatus && row.state?.status === 'auth_required'))) {
@@ -384,7 +381,7 @@ function howChosen({
 }
 
 // Known spendPriority ranks first and unknown quota after it; list order breaks a tie.
-export function chooseCandidate({
+export async function chooseCandidate({
   config,
   rule = 'default',
   project,
@@ -400,7 +397,7 @@ export function chooseCandidate({
   override?: Override
   quota?: ReadQuota
   offers?: Partial<Record<Harness, string[]>>
-}): DispatchChoice {
+}): Promise<DispatchChoice> {
   const {
     dispatch,
     accounts,
@@ -504,7 +501,7 @@ export function chooseCandidate({
         })
       }
 
-      const reading = readings.get(key) ?? quota({ account })
+      const reading = readings.get(key) ?? await quota({ account })
       readings.set(
         key,
         reading,
@@ -599,7 +596,7 @@ export function chooseCandidate({
   }
 }
 
-export function dispatchTask({
+export async function dispatchTask({
   rule,
   project,
   harness,
@@ -611,7 +608,7 @@ export function dispatchTask({
   harness?: string
   override?: Override
   offers?: Partial<Record<Harness, string[]>>
-}): DispatchChoice {
+}): Promise<DispatchChoice> {
   return chooseCandidate({
     config: effectiveDispatch(),
     rule,
@@ -637,7 +634,7 @@ const recentQuota = new Map<string, {
   reading: QuotaReading
 }>()
 
-const keptQuota: ReadQuota = ({ account }) => {
+const keptQuota: ReadQuota = async ({ account }) => {
   const key = `${account.provider}:${loginFolder({ account })}`
   const kept = recentQuota.get(key)
 
@@ -645,7 +642,7 @@ const keptQuota: ReadQuota = ({ account }) => {
     return kept.reading
   }
 
-  const reading = readQuota({ account })
+  const reading = await readQuota({ account })
   recentQuota.set(
     key,
     {
@@ -657,7 +654,7 @@ const keptQuota: ReadQuota = ({ account }) => {
   return reading
 }
 
-export function startsNow({
+export async function startsNow({
   config,
   offers,
   quota = keptQuota,
@@ -665,13 +662,13 @@ export function startsNow({
   config: EffectiveDispatch
   offers?: Partial<Record<Harness, string[]>>
   quota?: ReadQuota
-}): RuleNow[] {
-  return [
+}): Promise<RuleNow[]> {
+  return Promise.all([
     'default',
     ...Object.keys(config.dispatch.rules),
-  ].map(rule => {
+  ].map(async rule => {
     try {
-      const choice = chooseCandidate({
+      const choice = await chooseCandidate({
         config,
         rule,
         offers,
@@ -697,7 +694,7 @@ export function startsNow({
         reason: error.message,
       }
     }
-  })
+  }))
 }
 
 // A Pnyx-hosted agent takes only the values its own setting pickers offer.

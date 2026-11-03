@@ -3318,7 +3318,7 @@ export function createHost({
           const account = main ? effective.accounts[main] : undefined
           const provider = providerIdOf({ harness: candidate.harness })
           const dispatch = previous?.agent?.provider !== provider
-            && account && main ? chooseCandidate({
+            && account && main ? await chooseCandidate({
               config: {
                 ...effective,
                 dispatch: {
