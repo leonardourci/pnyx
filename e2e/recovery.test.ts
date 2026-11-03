@@ -12,6 +12,7 @@ import { snapshotPath } from '#store/storage.ts'
 import { spoolWrite } from '#app/spool.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
+import { MAX_RESUMES, WORKER_RESUME } from '#workers/host.ts'
 
 // A history like a Hydra used for weeks, where every needless load parses and copies megabytes.
 const HISTORY_TASKS = 120
@@ -498,5 +499,93 @@ test(
       ],
       'the Stop stamped before the newest repeat is stale across the restart',
     )
+  },
+)
+
+test(
+  'a worker turn a restart cuts resumes from its saved session, up to three restarts in a row, and never gets the owner\'s message twice',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'long' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Long work',
+        '--key',
+        'long',
+        '--folder',
+        folder,
+      ],
+    })
+    const holds = [
+      pnyx.claude.plan({
+        text: 'Run the long job',
+        hold: true,
+      }),
+      ...Array.from(
+        { length: MAX_RESUMES },
+        () => pnyx.claude.plan({
+          text: WORKER_RESUME,
+          hold: true,
+        }),
+      ),
+    ]
+
+    try {
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          'long',
+          '--harness',
+          'claude',
+          '--prompt',
+          'Run the long job',
+        ],
+      })
+      const first = await s.agent({ cwd: folder })
+      const resumes = () => s.received({ cwd: folder }).filter(text => text.endsWith(WORKER_RESUME)).length
+
+      for (let restart = 1; restart <= MAX_RESUMES + 1; restart++) {
+        await until({
+          what: 'the worker to be mid-turn',
+          check: () => s.task({ key: 'long' }).sessionActivity === 'working',
+        })
+        await pnyx.restart()
+
+        if (restart <= MAX_RESUMES) {
+          await until({
+            what: `resume ${restart} to reach the worker`,
+            check: () => resumes() === restart,
+          })
+        }
+      }
+
+      await until({
+        what: 'the fourth cut turn to stay interrupted',
+        check: () => s.task({ key: 'long' }).sessionActivity === 'interrupted',
+      })
+      const resumed = await s.agent({ cwd: folder })
+      assert.deepEqual(
+        [
+          resumed.id,
+          resumed.resumed,
+          resumes(),
+          s.received({ cwd: folder }).filter(text => text.endsWith('Run the long job')).length,
+        ],
+        [
+          first.id,
+          true,
+          MAX_RESUMES,
+          1,
+        ],
+      )
+    } finally {
+      for (const held of holds) {
+        held.release()
+      }
+    }
   },
 )
