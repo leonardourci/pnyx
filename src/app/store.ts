@@ -27,7 +27,7 @@ const held = new Map<string, Held>()
 
 export const heldHydra = ({ hydraId }: { hydraId: string }) => held.get(hydraId)
 
-// The server keeps the Hydra in memory from here until the returned release, which saves its snapshot.
+// The server keeps the Hydra in memory from here until the returned release; the server saves its snapshot when it stops.
 export function holdHydra({
   hydraId,
   changed,
