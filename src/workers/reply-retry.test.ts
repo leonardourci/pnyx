@@ -606,7 +606,7 @@ test(
       task().steering![0]!.ack,
       undefined,
     )
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         ...read,
         '--actor',
@@ -749,7 +749,7 @@ test(
     t.after(() => {
       delete process.env.PNYX_STEERING_WORKER
     })
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'inbox',
         'read',

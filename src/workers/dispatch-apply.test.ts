@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { chmodSync, existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,6 +7,7 @@ import { test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { ApplyError } from '#app/apply/schema.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
+import { pnyxAxi, serve } from '#test-harness/served.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -1278,7 +1278,7 @@ test(
     )
 
     try {
-      assert.throws(
+      await assert.rejects(
         confirm,
         { code: 'EACCES' },
       )
@@ -1537,13 +1537,11 @@ test(
 
 test(
   'the CLI prints every problem of a refused patch read from stdin with its path, and exits 2',
-  () => {
+  async t => {
     lab()
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    await serve({ t })
+    const result = await pnyxAxi({
+      args: [
         'rule',
         'apply',
         '--file',
@@ -1551,27 +1549,23 @@ test(
         '--hydra',
         'lab',
       ],
-      {
-        env: process.env,
-        input: JSON.stringify({
-          version: 1,
-          patch: {
-            rules: {
-              build: {
-                candidates: [
-                  {
-                    harness: 'claude',
-                    effort: 'ultra',
-                  },
-                ],
-              },
+      input: JSON.stringify({
+        version: 1,
+        patch: {
+          rules: {
+            build: {
+              candidates: [
+                {
+                  harness: 'claude',
+                  effort: 'ultra',
+                },
+              ],
             },
-            main: 'claude:gone',
           },
-        }),
-        encoding: 'utf8',
-      },
-    )
+          main: 'claude:gone',
+        },
+      }),
+    })
     assert.equal(
       result.status,
       2,

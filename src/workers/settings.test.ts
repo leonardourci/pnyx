@@ -1,22 +1,14 @@
 // Agent settings: model, effort, mode, fast mode and harness-specific settings read
 // from hook payloads and recorded transcripts. Fixtures and a temp PNYX_HOME only.
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
 import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { loadHydra } from '#app/store.ts'
 import { spoolWrite } from '#app/spool.ts'
+import { ingestSpool } from '#integrations/hooks/ingest.ts'
 
-const BIN = join(
-  import.meta.dirname,
-  '..',
-  '..',
-  'dist',
-  'cli',
-  'pnyx-axi.js',
-)
 const FIXTURES = join(
   import.meta.dirname,
   '..',
@@ -35,54 +27,8 @@ function hydraId() {
     'pnyx-settings-',
   ))
   process.env.PNYX_HOME = home
-  const env = {
-    ...process.env,
-    PNYX_HOME: home,
-  }
-  const run = ({ args = [] }: { args?: string[] } = {}) => execFileSync(
-    process.execPath,
-    [
-      BIN,
-      ...args,
-    ],
-    {
-      env,
-      encoding: 'utf8',
-      stdio: [
-        'ignore',
-        'pipe',
-        'pipe',
-      ],
-    },
-  )
 
-  const nudge = () => {
-    writeFileSync(
-      join(
-        home,
-        'other.json',
-      ),
-      '{}',
-    )
-    run({
-      args: [
-        'push',
-        '--key',
-        'other',
-        '--file',
-        join(
-          home,
-          'other.json',
-        ),
-      ],
-    })
-  }
-
-  return {
-    home,
-    run,
-    nudge,
-  }
+  return { home }
 }
 
 const settingsOf = ({ key }: { key: string }) => {
@@ -94,10 +40,7 @@ const settingsOf = ({ key }: { key: string }) => {
 test(
   'a subagent card reports the settings its own transcript records',
   () => {
-    const {
-      home,
-      nudge,
-    } = hydraId()
+    const { home } = hydraId()
     const path = join(
       home,
       'agent-a1.jsonl',
@@ -135,7 +78,7 @@ test(
         },
       },
     })
-    nudge()
+    ingestSpool({ hydraId: 'default' })
     assert.deepEqual(
       settingsOf({ key: 'claude:s1/agent-a1' }),
       {

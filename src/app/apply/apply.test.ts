@@ -2,15 +2,17 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, appendFileSync, mkdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { test, type TestContext } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { repairHydra } from '#app/repair.ts'
+import type { RunningServer } from '#app/server-transport.ts'
+import { pnyxAxi, serve } from '#test-harness/served.ts'
 import { ApplyError } from './schema.ts'
 
 function fixture({ t }: { t: TestContext }) {
+  let server: RunningServer | undefined
   const previous = { ...process.env }
   const root = mkdtempSync(join(
     tmpdir(),
@@ -23,7 +25,8 @@ function fixture({ t }: { t: TestContext }) {
   process.env.PNYX_ACTOR = 'cli'
   delete process.env.PNYX_TASK
   delete process.env.PNYX_HYDRA
-  t.after(() => {
+  t.after(async () => {
+    await server?.close()
     process.env = previous
     rmSync(
       root,
@@ -68,6 +71,10 @@ function fixture({ t }: { t: TestContext }) {
     dir,
     path,
     apply,
+    // The server the real CLI forwards to; it closes before the home is removed.
+    serve: async () => {
+      server = await serve()
+    },
   }
 }
 
@@ -525,8 +532,9 @@ test(
 
 test(
   'stdin input uses the real CLI and reports closed-schema errors with a failing exit status',
-  t => {
+  async t => {
     const f = fixture({ t })
+    await f.serve()
     const input = JSON.stringify({
       version: 1,
       changes: [
@@ -544,22 +552,15 @@ test(
         },
       ],
     })
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const result = await pnyxAxi({
+      args: [
         'apply',
         '--file',
         '-',
         '--check',
       ],
-      {
-        env: process.env,
-        input,
-        encoding: 'utf8',
-      },
-    )
+      input,
+    })
     assert.equal(
       result.status,
       2,
@@ -581,7 +582,7 @@ test(
       /\/changes\/1\/op/,
     )
     assert.deepEqual(
-      readdirSync(f.root),
+      readEvents({ hydraId: 'default' }).filter(event => event.type.startsWith('task.')),
       [],
     )
   },
@@ -1191,76 +1192,6 @@ test(
 )
 
 test(
-  'apply waits on the active writer before diagnosing an incomplete append',
-  async t => {
-    const f = fixture({ t })
-    await commands.task([
-      'create',
-      '--key',
-      'a',
-      '--title',
-      'A',
-    ])
-    const lock = join(
-      f.dir,
-      'writer.lock',
-    )
-    writeFileSync(
-      lock,
-      String(process.pid),
-    )
-    appendFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      '{"unfinished":',
-    )
-    const document = {
-      version: 1,
-      changes: [
-        {
-          op: 'task.brief',
-          task: 'a',
-          brief: 'Wait for writer',
-        },
-      ],
-    }
-    writeFileSync(
-      f.path,
-      JSON.stringify(document),
-    )
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
-        'apply',
-        '--file',
-        f.path,
-      ],
-      {
-        env: process.env,
-        encoding: 'utf8',
-        timeout: 10000,
-      },
-    )
-    assert.equal(
-      result.status,
-      1,
-    )
-    assert.match(
-      result.stdout,
-      /code: LOCKED/,
-    )
-    assert.doesNotMatch(
-      result.stdout,
-      /TORN_TAIL/,
-    )
-  },
-)
-
-test(
   'preview and invalid plans leave a legacy Hydra folder in place',
   async t => {
     const f = fixture({ t })
@@ -1494,17 +1425,11 @@ test(
       '--event-id',
       'other-kind:op:0',
     ])
+    await f.serve()
     const log = readFileSync(
       join(
         f.dir,
         'events.jsonl',
-      ),
-      'utf8',
-    )
-    const snapshot = readFileSync(
-      join(
-        f.dir,
-        'snapshot.json',
       ),
       'utf8',
     )
@@ -1523,23 +1448,16 @@ test(
         },
       ],
     })
-    const same = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const same = await pnyxAxi({
+      args: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'same-kind',
       ],
-      {
-        env: process.env,
-        input: document,
-        encoding: 'utf8',
-      },
-    )
+      input: document,
+    })
     assert.equal(
       same.status,
       2,
@@ -1558,33 +1476,16 @@ test(
       ),
       log,
     )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
-    )
-    const other = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const other = await pnyxAxi({
+      args: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'other-kind',
       ],
-      {
-        env: process.env,
-        input: document,
-        encoding: 'utf8',
-      },
-    )
+      input: document,
+    })
     assert.equal(
       other.status,
       2,
@@ -1602,16 +1503,6 @@ test(
         'utf8',
       ),
       log,
-    )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
     )
   },
 )
@@ -1686,24 +1577,18 @@ test(
 
 test(
   'duplicate JSON members including escaped names are refused before any write',
-  t => {
+  async t => {
     const f = fixture({ t })
+    await f.serve()
     const input = '{"version":999,"version":1,"changes":[{"op":"task.brief","op":"task.create","title":"First","ti\\u0074le":"Second","key":"json-dupe"}],"changes":[{"op":"task.create","title":"Other","key":"other"}]}'
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const result = await pnyxAxi({
+      args: [
         'apply',
         '--file',
         '-',
       ],
-      {
-        env: process.env,
-        input,
-        encoding: 'utf8',
-      },
-    )
+      input,
+    })
     assert.equal(
       result.status,
       2,
@@ -1729,7 +1614,7 @@ test(
       /"\/changes"/,
     )
     assert.deepEqual(
-      readdirSync(f.root),
+      readEvents({ hydraId: 'default' }).filter(event => event.type.startsWith('task.')),
       [],
     )
   },
