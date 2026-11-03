@@ -94,10 +94,6 @@ test(
       restarts + 1,
     )
     assert.equal(
-      pnyx.restartForce(),
-      true,
-    )
-    assert.equal(
       heard({
         s,
         text: '/restart',
@@ -429,10 +425,6 @@ test(
     assert.equal(
       pnyx.restarts(),
       restarts + 1,
-    )
-    assert.equal(
-      pnyx.restartForce(),
-      false,
     )
     assert.equal(
       repo.built(),

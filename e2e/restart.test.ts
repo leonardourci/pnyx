@@ -5,17 +5,33 @@ import { createServer } from 'node:net'
 import { existsSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { processStart } from '#agent-host/discovery.ts'
-import { until } from '#agent-host/fixtures/harness.ts'
+import { setTimeout as delay } from 'node:timers/promises'
 
 const START_TIMEOUT_MS = 30000
+
+async function until({
+  check,
+  timeout = 5000,
+}: {
+  check(): boolean
+  timeout?: number
+}) {
+  for (const end = Date.now() + timeout; !check();) {
+    if (Date.now() > end) {
+      throw new Error('condition not met in time')
+    }
+
+    await delay(50)
+  }
+}
+
 const cli = join(
   import.meta.dirname,
   '../dist/cli/pnyx-axi.js',
 )
 
 test(
-  'restart starts a stopped app and rotates an idle native host on the same build',
+  'restart starts a stopped app and replaces a running one on the same build',
   async t => {
     const root = realpathSync(mkdtempSync('/tmp/pnyx-restart-'))
     const socket = createServer()
@@ -40,10 +56,6 @@ test(
     const serverPath = join(
       root,
       'hydras/default/server.json',
-    )
-    const ownerPath = join(
-      root,
-      'native/owner.json',
     )
     const run = async ({
       args,
@@ -94,22 +106,6 @@ test(
         })
       }
 
-      if (existsSync(ownerPath)) {
-        const owner = JSON.parse(readFileSync(
-          ownerPath,
-          'utf8',
-        ))
-
-        if (processStart({ pid: owner.pid }) === owner.start) {
-          process.kill(
-            owner.pid,
-            'SIGTERM',
-          )
-        }
-
-        await until({ check: () => !existsSync(ownerPath) })
-      }
-
       rmSync(
         root,
         {
@@ -145,17 +141,11 @@ test(
       serverPath,
       'utf8',
     ))
-    const owner = JSON.parse(readFileSync(
-      ownerPath,
-      'utf8',
-    ))
-    const initialHealth = await (await fetch(`http://127.0.0.1:${port}/health`)).json()
     const restarted = await run({ args: ['restart'] })
     assert.match(
       restarted.stdout,
       /restarting/,
     )
-    let restartedInstance = ''
     await until({
       timeout: START_TIMEOUT_MS,
       check: () => existsSync(serverPath) && JSON.parse(readFileSync(
@@ -167,39 +157,6 @@ test(
     assert.equal(
       health.status,
       200,
-    )
-    await until({
-      timeout: START_TIMEOUT_MS,
-      check: async () => {
-        const response = await fetch(`http://127.0.0.1:${port}/health`)
-        const health = await response.json()
-
-        restartedInstance = health.native?.instance
-
-        return restartedInstance !== initialHealth.native.instance && health.native.state === 'ready'
-      },
-    }).catch(async error => {
-      const response = await fetch(`http://127.0.0.1:${port}/health`)
-      t.diagnostic(`owner: ${readFileSync(
-        ownerPath,
-        'utf8',
-      )} health: ${await response.text()}`)
-      t.diagnostic(readFileSync(
-        join(
-          root,
-          'service.log',
-        ),
-        'utf8',
-      ))
-      throw error
-    })
-    const currentOwner = JSON.parse(readFileSync(
-      ownerPath,
-      'utf8',
-    ))
-    assert.notEqual(
-      currentOwner.pid,
-      owner.pid,
     )
   },
 )

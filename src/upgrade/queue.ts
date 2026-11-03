@@ -45,7 +45,7 @@ export function upgradeQueue({
   // Hydra's turn or a compaction is running.
   working(): boolean
   closing(): boolean
-  restart({ force }: { force: boolean }): void | Promise<void>
+  restart(): void | Promise<void>
   // Hands a held message to Hydra, behind anything already queued.
   deliver({ message }: { message: HeldMessage }): void
   at(): string
@@ -102,18 +102,12 @@ export function upgradeQueue({
     }
   }
 
-  const monitorRestart = async ({
-    id,
-    force,
-  }: {
-    id: string
-    force: boolean
-  }) => {
+  const monitorRestart = async ({ id }: { id: string }) => {
     const deadline = Date.now() + RESTART_WAIT_MS
     let failure: string | undefined
 
     try {
-      const result = restart({ force })
+      const result = restart()
 
       if (result) {
         await Promise.race([
@@ -233,10 +227,7 @@ export function upgradeQueue({
         ],
       },
     })
-    await monitorRestart({
-      id: running.id,
-      force: false,
-    })
+    await monitorRestart({ id: running.id })
   }
 
   const enqueue = ({ queued }: { queued: UpgradeOperation }) => schedule({
@@ -291,10 +282,7 @@ export function upgradeQueue({
       })
       background({
         name: 'restart',
-        run: () => monitorRestart({
-          id,
-          force: true,
-        }),
+        run: () => monitorRestart({ id }),
       })
     },
 

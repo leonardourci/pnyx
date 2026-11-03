@@ -1,4 +1,3 @@
-import type { NativeStatus } from './native-status.ts'
 import { join } from 'node:path'
 import type { IncomingMessage, ServerResponse } from 'node:http'
 import { commands as cliCommands } from './cli.ts'
@@ -75,10 +74,6 @@ export const MIME: Record<string, string> = {
 // Server to browser. A snapshot replaces whatever the tab held; events then follow in sequence.
 // Each command gets a receipt or an error carrying its id.
 type ServerPayload =
-  | {
-    type: 'native-status'
-    native: NativeStatus
-  }
   | {
     type: 'hello'
     build: string

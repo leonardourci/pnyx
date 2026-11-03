@@ -12,7 +12,6 @@ interface Lease {
   holders: {
     id: string
     pid: number
-    durable?: true
   }[]
 }
 
@@ -51,10 +50,6 @@ function readLease({
   }
 
   lease.holders = lease.holders.filter(holder => {
-    if (holder.durable) {
-      return true
-    }
-
     try {
       process.kill(
         holder.pid,
@@ -142,14 +137,12 @@ export function taskLease({
   task,
   actor,
   pid = process.pid,
-  durable,
   lockTimeout,
 }: {
   hydraId: string
   task: string
   actor: string
   pid?: number
-  durable?: true
   lockTimeout?: number
 }): () => void {
   const holder = randomUUID()
@@ -189,7 +182,6 @@ export function taskLease({
       {
         id: holder,
         pid,
-        durable,
       },
     ]
     writeLease({
@@ -242,7 +234,7 @@ export function releaseTask({
 
     if (lease?.actor === actor) {
       lease.holders = lease.holders.filter(entry =>
-        holder ? entry.id !== holder : !entry.durable && entry.pid !== process.pid)
+        holder ? entry.id !== holder : entry.pid !== process.pid)
 
       if (lease.holders.length) {
         writeLease({
