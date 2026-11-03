@@ -23,7 +23,10 @@ if (!tryFastPath(
     },
   },
 )) {
-  if (LOCAL.has(argv[0] ?? '') || argv.includes('--help') || argv[0]?.startsWith('-')) {
+  // `setup hydra` writes Hydra events, so it goes to the server like any other write.
+  const local = LOCAL.has(argv[0] ?? '') && !(argv[0] === 'setup' && argv[1] === 'hydra')
+
+  if (local || argv.includes('--help') || argv[0]?.startsWith('-')) {
     await import('./main.ts')
   } else {
     const { forward } = await import('./client.ts')
