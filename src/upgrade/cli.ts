@@ -1,29 +1,36 @@
 import { parseArgs } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
 import { flagError } from '#app/cli-support.ts'
-import { restartPnyx } from './restart.ts'
+import { restartPnyx, untilAgentsIdle } from './restart.ts'
+import { RESTART_PENDING_MS } from './queue.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { STEP_WORDS } from './model.ts'
 import { requestEnv } from '#app/request-context.ts'
 
-export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check]
-Pulls main into the Pnyx folder, installs and builds, then runs the same restart as \`pnyx-axi restart\`. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting.
+export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check] [--now]
+Pulls main into the Pnyx folder, installs and builds, then restarts the server once no agent is mid-turn, or after 15 minutes at most; --now restarts right after the build. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting.
 A folder off main or with local changes is refused. --check only says whether main has something newer.
 Ctrl-C stops it and goes back to the previous version; \`pnyx-axi hydra stop\` does the same for a /upgrade sent in Hydra's chat.
 `
 
-const OPTIONS = { check: { type: 'boolean' } } as const
+const OPTIONS = {
+  check: { type: 'boolean' },
+  now: { type: 'boolean' },
+} as const
 
 // eslint-disable-next-line pnyx/object-params -- runAxiCli owns the command signature.
 export async function upgrade(args: string[]): Promise<Record<string, unknown>> {
   let check: boolean | undefined
+  let now: boolean | undefined
 
   try {
-    check = parseArgs({
+    const { values } = parseArgs({
       args,
       options: OPTIONS,
       strict: true,
-    }).values.check
+    })
+    check = values.check
+    now = values.now
   } catch (error) {
     throw flagError({
       error,
@@ -105,6 +112,10 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
       steps: result.steps,
       result: 'none: Pnyx is already up to date',
     }
+  }
+
+  if (!now) {
+    await untilAgentsIdle({ deadline: Date.now() + RESTART_PENDING_MS })
   }
 
   await restartPnyx()

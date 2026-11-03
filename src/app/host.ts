@@ -93,6 +93,11 @@ const RETRY_MS = [
 // A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 
+// Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
+const midTurnChecks = new Set<() => boolean>()
+
+export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
+
 export function createHost({
   hydraId,
   query,
@@ -143,6 +148,8 @@ export function createHost({
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
+  midTurnChecks.add(midTurn)
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
     .map(card => [
       card.id,
@@ -315,44 +322,24 @@ export function createHost({
       })
       queued()
 
-      // An upgrade stops Hydra from its start, a /restart from its restart; the end recaps what waited.
-      if (operation.state === 'running' || operation.state === 'restarting') {
+      // Only the restart stops Hydra, of a /restart or of a built upgrade; the end recaps what waited.
+      if (operation.state === 'restarting') {
         startOperation({
           id: operation.id,
-          kind: operation.state === 'running' ? 'upgrade' : 'restart',
+          kind: operation.steps.some(step => step.step !== 'restart') ? 'upgrade' : 'restart',
         })
-      } else if (operation.state !== 'queued') {
+      } else if (![
+        'queued',
+        'running',
+        'waiting',
+      ].includes(operation.state)) {
         endOperation({
           id: operation.id,
           error: operation.state === 'done' ? undefined : operation.error ?? `upgrade ${operation.state}`,
         })
       }
     },
-    schedule: ({
-      id,
-      run,
-    }) => {
-      queuedHydra.add(id)
-      const previous = hydraTurn
-      hydraTurn = (async () => {
-        await previous
-
-        // Hydra's later turns wait on this one, so it never rejects.
-        try {
-          await run()
-        } catch (error) {
-          console.error(`pnyx-axi serve: /upgrade could not run: ${(error as Error).message}`)
-        } finally {
-          queuedHydra.delete(id)
-        }
-      })()
-    },
-    working: () => {
-      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-      return Boolean(activeCompaction({ card }))
-        || (card?.agent ? live.get(sessionId({ agent: card.agent }))?.activity === 'working' : false)
-    },
+    midTurn: agentsMidTurn,
     closing: () => closing,
     restart,
     at,
@@ -4415,6 +4402,7 @@ export function createHost({
 
     close: () => {
       closing = true
+      midTurnChecks.delete(midTurn)
       helper.close()
       clearTimeout(wakeTimer)
       clearTimeout(retryTimer)

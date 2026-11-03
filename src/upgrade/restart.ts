@@ -34,6 +34,8 @@ export function serverEnvironment(): NodeJS.ProcessEnv {
 const STOP_MS = 5000
 const START_MS = 120000
 const POLL_MS = 100
+// How often an upgrade from a terminal asks whether an agent is still mid-turn.
+const IDLE_POLL_MS = 1000
 
 type Running = {
   info: ServerInfo
@@ -236,6 +238,35 @@ export function requestRestart() {
       },
     )
   })
+}
+
+// A running server's agents get to finish their turns before an upgrade restarts it: this waits until none is
+// mid-turn, or until the deadline. With no server running there is nothing to wait for.
+export async function untilAgentsIdle({ deadline }: { deadline: number }) {
+  while (Date.now() < deadline) {
+    const found = running()
+
+    if (!found) {
+      return
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${found.info.port}/health`,
+        { signal: AbortSignal.timeout(POLL_MS * 10) },
+      )
+      const health = await response.json() as { midTurn?: boolean }
+
+      if (!health.midTurn) {
+        return
+      }
+    } catch {
+      // A server that does not answer has no agent to wait for; restart deals with it.
+      return
+    }
+
+    await delay(IDLE_POLL_MS)
+  }
 }
 
 export async function restartPnyx() {

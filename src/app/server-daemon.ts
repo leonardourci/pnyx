@@ -4,7 +4,7 @@ import { dirname, join } from 'node:path'
 import { unwatchFile, existsSync, watchFile, mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
-import type { QueryFn } from './host.ts'
+import { agentsMidTurn, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -225,6 +225,8 @@ export async function startServer({
         build: buildId(),
         hydras,
         skipped,
+        // Whether an agent on any Hydra is mid-turn; an upgrade run from a terminal waits for none to be.
+        midTurn: agentsMidTurn(),
       }
 
       return reply({

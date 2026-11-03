@@ -58,6 +58,7 @@ import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot, withWriter } from './writer.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { upgradeUnderway } from '#upgrade/queue.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
@@ -1119,6 +1120,13 @@ export async function mountOwnedHydra({
 
   const historyIndex = indexRuns({
     start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
+      // The next change, or the restarted server, catches the index up.
+      if (upgradeUnderway()) {
+        resolve(undefined)
+
+        return
+      }
+
       harvestForIndex()
       startWorker({
         file: INDEX_WORKER,

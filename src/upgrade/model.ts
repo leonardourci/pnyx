@@ -67,7 +67,8 @@ export interface UpgradeStep {
 export interface UpgradeOperation {
   // The Hydra message that asked for it.
   id: string
-  state: 'queued' | 'running' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
+  // waiting: built, and restarting once no agent is mid-turn, on Restart now, or at restartBy.
+  state: 'queued' | 'running' | 'waiting' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
   // The Pnyx folder, with the home folder shortened to ~.
   folder: string
   queuedAt: string
@@ -83,6 +84,8 @@ export interface UpgradeOperation {
   rolledBack?: boolean
   // Why a refused upgrade did not start.
   reasons?: string[]
+  // When a built upgrade restarts even if an agent is still mid-turn.
+  restartBy?: string
 }
 
 export type UpgradeEvent = EventBase & {
