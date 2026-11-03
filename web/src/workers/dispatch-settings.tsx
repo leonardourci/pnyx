@@ -244,6 +244,7 @@ function HowPicked() {
         <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
         <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The highlighted row is the candidate that would start now.</li>
       </ol>
+      <p className="dispatch-desc">Fast on in a Hydra’s composer puts every worker that Hydra starts on Fast, whatever its candidate says, where the model has Fast.</p>
     </section>
   )
 }

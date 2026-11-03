@@ -36,6 +36,7 @@ export function AgentPickers({
   marks,
   describedBy,
   selectionLabel = 'Model',
+  fastNote,
 }: {
   agent: AgentConfig
   // Values the agent falls back to when it names none, such as its rule's.
@@ -49,12 +50,14 @@ export function AgentPickers({
   // The agent with every value the pickers show filled in, once the catalog names them.
   onResolved?({ next }: { next: AgentConfig }): void
   defaultAction?: 'save' | 'edit' | 'none'
-  // The pickers shown beside the model; the routine helper has no permissions or Fast mode.
+  // The pickers shown beside the model; the routine helper has no permissions.
   fields?: readonly (typeof ALL_FIELDS)[number][]
   // Set when each picker is a cell of a table, such as Settings' heads dispatch rules.
   marks?: Partial<Record<'model' | 'effort' | 'mode' | 'fast', CellMark>>
   describedBy?: string
   selectionLabel?: string
+  // What Fast reaches beyond this agent, added to its tooltip.
+  fastNote?: string
 }) {
   const controls = harnessControls({
     provider: providerIdOf({ harness: agent.harness }),
@@ -110,6 +113,8 @@ export function AgentPickers({
   }
 
   const ready = !!catalog.models
+  // Fast shows for a model with a Fast tier, and while it is on so it can be turned off.
+  const fastShown = fields.includes('fast') && (!ready || defaults?.fast || agent.fast)
   const key = JSON.stringify(resolved)
   const reported = useRef('')
 
@@ -223,8 +228,13 @@ export function AgentPickers({
           />
         )
       })}
-      {fields.includes('fast') && (
-        <Tooltip content={agent.fast ? 'Fast mode on' : 'Fast mode off'}>
+      {fastShown && (
+        <Tooltip
+          content={[
+            agent.fast ? 'Fast mode on.' : 'Fast mode off.',
+            fastNote,
+          ].filter(Boolean).join(' ')}
+        >
           <Button
             className="fast-toggle"
             data-changed={marks?.fast?.changed || undefined}
