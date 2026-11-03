@@ -352,20 +352,17 @@ test(
         === 'Retain historical cache entries?',
     })
     page.close()
-    await pnyx.restart({
-      whileStopped: async () => {
-        await s.owner({
-          args: [
-            'task',
-            'answer',
-            'clean',
-            retention.id,
-            '--text',
-            'Retain for 30 days.',
-          ],
-        })
-      },
+    await s.owner({
+      args: [
+        'task',
+        'answer',
+        'clean',
+        retention.id,
+        '--text',
+        'Retain for 30 days.',
+      ],
     })
+    await pnyx.restart()
     page = await openPage({
       port: pnyx.port(),
       hydraId: s.hydraId,

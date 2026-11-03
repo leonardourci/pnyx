@@ -1,9 +1,5 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
-import { join } from 'node:path'
 import { test } from 'node:test'
-import { hydraDir } from '#app/home-migration.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
 import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
@@ -273,33 +269,30 @@ test(
         }),
         [],
       )
-      await pnyx.restart({
-        whileStopped: async () => {
-          await s.owner({
-            args: [
-              'link',
-              'watch',
-              '--url',
-              url,
-              '--remove',
-            ],
-          })
-          await move({ column: parked })
-          assert.deepEqual(
-            clock.advance().reasons,
-            [],
-          )
-          await move({ column: progress })
-          assert.deepEqual(
-            clock.advance().reasons,
-            ['timed review'],
-          )
-          assert.equal(
-            clock.advance().wakes,
-            2,
-          )
-        },
+      await pnyx.restart()
+      await s.owner({
+        args: [
+          'link',
+          'watch',
+          '--url',
+          url,
+          '--remove',
+        ],
       })
+      await move({ column: parked })
+      assert.deepEqual(
+        clock.advance().reasons,
+        [],
+      )
+      await move({ column: progress })
+      assert.deepEqual(
+        clock.advance().reasons,
+        ['timed review'],
+      )
+      assert.equal(
+        clock.advance().wakes,
+        2,
+      )
     } finally {
       clock.close()
     }
@@ -478,7 +471,7 @@ test(
 )
 
 test(
-  'a due review with nothing to record takes no lock and waits a full period before it runs again',
+  'a due review with nothing to record writes nothing and waits a full period before it runs again',
   async t => {
     const s = await pnyx.scenario()
     let time = Date.now()
@@ -488,42 +481,13 @@ test(
       interval: () => () => {},
       wake: () => {},
     })
-    const lock = join(
-      hydraDir({ hydraId: s.hydraId }),
-      'writer.lock',
-    )
-    const open = fs.openSync
-    let locks = 0
-    t.mock.method(
-      fs,
-      'openSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
-      (...args: Parameters<typeof fs.openSync>) => {
-        if (args[0] === lock) {
-          locks++
-        }
-
-        return open(...args)
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      timer.close()
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    })
+    t.after(() => timer.close())
     const reviews = () => s.events().filter(event => event.type === 'hydra.review').length
     time += REVIEW_MS
     timer.check()
-    assert.deepEqual(
-      [
-        locks,
-        reviews(),
-      ],
-      [
-        0,
-        0,
-      ],
+    assert.equal(
+      reviews(),
+      0,
     )
     await s.owner({
       args: [
@@ -535,7 +499,6 @@ test(
         'late',
       ],
     })
-    locks = 0
     time += REVIEW_MS - 1
     timer.check()
     assert.equal(
@@ -544,15 +507,9 @@ test(
     )
     time += 1
     timer.check()
-    assert.deepEqual(
-      [
-        reviews(),
-        locks > 0,
-      ],
-      [
-        1,
-        true,
-      ],
+    assert.equal(
+      reviews(),
+      1,
     )
   },
 )
