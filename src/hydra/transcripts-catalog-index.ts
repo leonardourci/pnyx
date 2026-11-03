@@ -1,5 +1,4 @@
-import { watchFile, unwatchFile } from 'node:fs'
-import { watchPath, type PathWatch } from '#app/watch.ts'
+import { pollPath, watchPath, type PathWatch } from '#app/watch.ts'
 import { background } from '#app/background.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { HydraProject } from '#projects/model.ts'
@@ -35,7 +34,7 @@ export function createCatalogIndex({
     file?: PathWatch
     users: Set<Entry>
     poll(): void
-    stat(): void
+    stat?: PathWatch
   }>()
   let timer: ReturnType<typeof setTimeout> | undefined
   let closed = false
@@ -130,10 +129,7 @@ export function createCatalogIndex({
 
     if (record && record.users.size === 0) {
       record.file?.close()
-      unwatchFile(
-        path,
-        record.stat,
-      )
+      record.stat?.close()
       watches.delete(path)
     }
   }
@@ -165,13 +161,9 @@ export function createCatalogIndex({
       file?: PathWatch
       users: Set<Entry>
       poll(): void
-      stat(): void
+      stat?: PathWatch
     } = {
       users: new Set([entry]),
-      stat: () => background({
-        name: 'catalog poll',
-        run: () => record.poll(),
-      }),
       poll: () => {
         if (closed || record.users.size === 0) {
           return
@@ -195,14 +187,11 @@ export function createCatalogIndex({
       path,
       record,
     )
-    watchFile(
+    record.stat = pollPath({
       path,
-      {
-        persistent: false,
-        interval: STAT_INTERVAL_MS,
-      },
-      record.stat,
-    )
+      interval: STAT_INTERVAL_MS,
+      changed: () => record.poll(),
+    })
 
     try {
       record.file = watchPath({
@@ -292,15 +281,9 @@ export function createCatalogIndex({
         entry.active = false
       }
 
-      for (const [
-        path,
-        record,
-      ] of watches) {
+      for (const record of watches.values()) {
         record.file?.close()
-        unwatchFile(
-          path,
-          record.stat,
-        )
+        record.stat?.close()
       }
 
       watches.clear()
