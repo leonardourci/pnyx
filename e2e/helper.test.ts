@@ -1501,3 +1501,57 @@ test(
     }
   },
 )
+
+test(
+  'the helper’s own Fast puts its session on Fast while Fast in Hydra’s composer is off',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'claude',
+        '--helper-model',
+        'opus',
+        '--helper-fast',
+        'on',
+      ],
+    })
+    const held = await busyMain({
+      s,
+      text: 'Keep main busy for the Fast helper.',
+    })
+
+    try {
+      pnyx.claude.plan({
+        text: HELPER_PROMPT,
+        reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'the Fast helper batch to finish',
+        check: () => finishes({ s }).length === 1,
+      })
+    } finally {
+      held.release()
+    }
+
+    const helper = pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+    assert.equal(
+      s.state().config?.hydra.agent?.fast,
+      undefined,
+    )
+    assert.equal(
+      helper?.fast,
+      true,
+    )
+    assert.equal(
+      grants({ s })[0]?.agent?.fast,
+      true,
+    )
+  },
+)

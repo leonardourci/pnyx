@@ -248,6 +248,29 @@ export const fastModel = ({
   return option?.fast === true
 }
 
+// Fast in a Hydra's composer reaches an agent only where its model has a Fast tier.
+export async function hydraFastReaches({
+  hydraFast,
+  models,
+  model,
+}: {
+  hydraFast?: boolean
+  models(): Promise<ModelOption[]>
+  model?: string
+}): Promise<boolean> {
+  if (!hydraFast) {
+    return false
+  }
+
+  // A catalog that cannot load leaves the agent off Fast; it must not stop the run.
+  const offered = await models().catch(() => [])
+
+  return fastModel({
+    models: offered,
+    model,
+  })
+}
+
 export interface Provider {
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.

@@ -79,7 +79,7 @@ At start the server names, once, every Hydra still called by its id or by no nam
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
---helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its independent global agent; Fast is off unless set here or on in the Hydra's composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
+--helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its agent, separate from Hydra’s own. Fast is off unless --helper-fast on is set or Fast is on in the Hydra’s composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
 --done-after-hours hides cards after continuous time in Done (default 24); off keeps them visible and 0 hides them right away. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
@@ -257,7 +257,8 @@ Repeating the same --event-id never starts a second agent.
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
 --account chooses exactly one registered login and its harness, without another-account fallback.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
-must be in the harness's catalog and the task records the override.
+must be in the harness's catalog and the task records the override. An explicit --fast wins for that start; otherwise
+Fast in the Hydra's composer puts every worker on Fast where the model has it.
 --via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
 --via command --command <name> selects the assigned project’s named command (project list); without --command it runs the configured Hydra command. It runs in the task's folder with PNYX_TASK and the rest of its context in the
 environment; the session it starts attaches to the task when its hooks first report.

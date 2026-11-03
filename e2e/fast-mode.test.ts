@@ -97,3 +97,104 @@ test(
     )
   },
 )
+
+test(
+  'Fast in Hydra’s composer reaches a candidate saved with Fast off, while task start --fast off keeps that start off Fast',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            model: 'opus',
+            fast: true,
+          }),
+        ],
+      })
+    } finally {
+      page.close()
+    }
+
+    await s.owner({
+      args: [
+        'rule',
+        'set',
+        'saved-slow',
+        '--when',
+        'Work without Fast',
+        '--harness',
+        'claude',
+        '--model',
+        'opus',
+        '--fast',
+        'off',
+      ],
+    })
+
+    const start = async ({
+      key,
+      flags,
+    }: {
+      key: string
+      flags: string[]
+    }) => {
+      const folder = s.folder({ name: key })
+      await s.owner({
+        args: [
+          'task',
+          'create',
+          '--key',
+          key,
+          '--title',
+          key,
+          '--folder',
+          folder,
+        ],
+      })
+      await s.owner({
+        args: [
+          'task',
+          'start',
+          key,
+          '--rule',
+          'saved-slow',
+          ...flags,
+          '--reason',
+          'Check Fast',
+        ],
+      })
+      const worker = await s.agent({ cwd: folder })
+      await until({
+        what: `the ${key} worker to finish`,
+        check: () => s.task({ key }).sessionActivity === 'finished',
+      })
+
+      return worker
+    }
+
+    assert.equal(
+      (await start({
+        key: 'saved-off',
+        flags: [],
+      })).fast,
+      true,
+    )
+    assert.equal(
+      (await start({
+        key: 'started-off',
+        flags: [
+          '--fast',
+          'off',
+        ],
+      })).fast,
+      false,
+    )
+  },
+)
