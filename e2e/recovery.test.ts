@@ -788,3 +788,159 @@ test(
     }
   },
 )
+
+// A worker started with one finished turn, its folder, and its latest reply's receipt.
+// A slash command goes to the agent directly, not through its inbox.
+const idleWorker = async ({
+  s,
+  key,
+  harness,
+}: {
+  s: Awaited<ReturnType<typeof pnyx.scenario>>
+  key: string
+  harness: 'claude' | 'codex'
+}) => {
+  const folder = s.folder({ name: key })
+  await s.owner({
+    args: [
+      'task',
+      'create',
+      '--title',
+      `Direct ${key}`,
+      '--key',
+      key,
+      '--folder',
+      folder,
+    ],
+  })
+  await s.owner({
+    args: [
+      'task',
+      'start',
+      key,
+      '--harness',
+      harness,
+      '--prompt',
+      `First part of ${key}`,
+    ],
+  })
+  await until({
+    what: 'the first turn to finish',
+    check: () => s.task({ key }).sessionActivity === 'finished',
+  })
+
+  return {
+    folder,
+    reply: () => s.task({ key }).replies?.at(-1),
+    send: ({ text }: { text: string }) => s.owner({
+      args: [
+        'reply',
+        s.task({ key }).id,
+        '--text',
+        text,
+      ],
+    }),
+  }
+}
+
+test(
+  'a direct message is delivered only once the agent confirms it, after a slow reopen',
+  async () => {
+    const s = await pnyx.scenario()
+    const worker = await idleWorker({
+      s,
+      key: 'confirmed',
+      harness: 'claude',
+    })
+    // After a restart the idle worker stays closed, so the next message reopens it.
+    await pnyx.restart()
+    const opening = pnyx.claude.holdOpen({ cwd: worker.folder })
+
+    try {
+      await worker.send({ text: '/review for a reopening agent' })
+      assert.equal(
+        worker.reply()?.state,
+        'queued',
+      )
+    } finally {
+      opening.release()
+    }
+
+    await until({
+      what: 'the reply to be delivered once the agent takes it',
+      check: () => worker.reply()?.state === 'delivered',
+    })
+    assert.equal(
+      s.received({ cwd: worker.folder }).filter(text => text.includes('/review for a reopening agent')).length,
+      1,
+    )
+  },
+)
+
+test(
+  'a direct message a restart cut before the agent confirmed it may not have arrived and is never sent again',
+  async () => {
+    const s = await pnyx.scenario()
+    const worker = await idleWorker({
+      s,
+      key: 'cut-direct',
+      harness: 'claude',
+    })
+    await pnyx.restart()
+    const opening = pnyx.claude.holdOpen({ cwd: worker.folder })
+
+    try {
+      await worker.send({ text: '/review the restart cuts' })
+      assert.equal(
+        worker.reply()?.state,
+        'queued',
+      )
+      await pnyx.restart()
+      await until({
+        what: 'the cut reply to be marked as possibly not arrived',
+        check: () => worker.reply()?.state === 'delivery_unknown',
+      })
+    } finally {
+      opening.release()
+    }
+
+    await delay(SETTLE_MS)
+    assert.ok(
+      s.received({ cwd: worker.folder }).filter(text => text.includes('/review the restart cuts')).length <= 1,
+      'Pnyx never sends the cut message again by itself',
+    )
+  },
+)
+
+test(
+  'a direct message the agent refuses is failed, and stays failed across a restart',
+  async () => {
+    const s = await pnyx.scenario()
+    const worker = await idleWorker({
+      s,
+      key: 'refused',
+      harness: 'codex',
+    })
+    pnyx.codex.control.refuse = 'turn/start'
+
+    try {
+      await worker.send({ text: '/review Codex refuses' })
+      await until({
+        what: 'the refused reply to fail',
+        check: () => worker.reply()?.state === 'failed',
+      })
+    } finally {
+      pnyx.codex.control.refuse = undefined
+    }
+
+    await pnyx.restart()
+    assert.equal(
+      worker.reply()?.state,
+      'failed',
+    )
+    assert.equal(
+      s.received({ cwd: worker.folder }).filter(text => text.includes('/review Codex refuses')).length,
+      0,
+    )
+  },
+)
