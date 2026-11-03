@@ -29,6 +29,13 @@ const record = () => {
   }
 }
 
+// Whether this home's server is up; a command that must work without one runs here when it is not.
+export const serverRunning = () => {
+  const server = record()
+
+  return Boolean(server && alive(server))
+}
+
 const alive = ({ pid }: { pid: number }) => {
   try {
     process.kill(

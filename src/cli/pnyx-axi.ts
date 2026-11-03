@@ -12,6 +12,9 @@ const LOCAL = new Set([
   'update',
 ])
 
+// Repairs a log the server cannot load, so it also runs here when no server is up: a torn log can be what stops one.
+const OFFLINE = new Set(['repair'])
+
 const argv = process.argv.slice(2)
 
 if (!tryFastPath(
@@ -23,10 +26,12 @@ if (!tryFastPath(
     },
   },
 )) {
-  if (LOCAL.has(argv[0] ?? '') || argv.includes('--help') || argv[0]?.startsWith('-')) {
+  const local = LOCAL.has(argv[0] ?? '') || argv.includes('--help') || argv[0]?.startsWith('-')
+  const client = local ? undefined : await import('./client.ts')
+
+  if (!client || (OFFLINE.has(argv[0] ?? '') && !client.serverRunning())) {
     await import('./main.ts')
   } else {
-    const { forward } = await import('./client.ts')
-    await forward({ argv })
+    await client.forward({ argv })
   }
 }
