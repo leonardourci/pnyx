@@ -1,6 +1,10 @@
 // The route a reply takes into a hook session's terminal.
 import assert from 'node:assert/strict'
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
+import { typeInto } from './terminal.ts'
 import type { Card } from '#tasks/model.ts'
 import { replyRoute, terminalFacts } from '#workers/reply-route.ts'
 
@@ -213,6 +217,84 @@ test(
         },
       }),
       { tty: TTY },
+    )
+  },
+)
+
+test(
+  'two replies sent at once to panes of one tmux server each paste their own words',
+  async t => {
+    const dir = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-terminal-',
+    ))
+    const path = process.env.PATH
+    process.env.PATH = `${join(
+      import.meta.dirname,
+      'fixtures',
+      'terminal',
+    )}:${path}`
+    process.env.FAKE_TERMINAL_DIR = dir
+    t.after(() => {
+      process.env.PATH = path
+      delete process.env.FAKE_TERMINAL_DIR
+      rmSync(
+        dir,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const send = ({
+      pane,
+      text,
+    }: {
+      pane: string
+      text: string
+    }) => typeInto({
+      route: {
+        kind: 'tmux',
+        socket: '/tmp/fake-tmux',
+        pane,
+        tty: '/dev/ttys001',
+        pid: 1,
+      },
+      text,
+    })
+
+    const results = await Promise.all([
+      send({
+        pane: '%1',
+        text: 'OWNER_A',
+      }),
+      send({
+        pane: '%2',
+        text: 'OWNER_B',
+      }),
+    ])
+
+    assert.deepEqual(
+      results.map(result => result.state),
+      [
+        'delivered',
+        'delivered',
+      ],
+    )
+    assert.deepEqual(
+      readFileSync(
+        join(
+          dir,
+          'pasted',
+        ),
+        'utf8',
+      ).trim()
+        .split('\n')
+        .sort(),
+      [
+        '%1\tOWNER_A',
+        '%2\tOWNER_B',
+      ],
     )
   },
 )
