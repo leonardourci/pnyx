@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs'
+// Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
+import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -158,8 +160,6 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
 // The settings a new session starts from, with repo-committed escalating modes dropped as Claude Code drops them.
 // ponytail: read with this process's CLAUDE_CONFIG_DIR, so a second login folder's own settings are not seen.
 const userSettings: ReadSettings = async ({ cwd }) => {
-  const sdk = await import('@anthropic-ai/claude-agent-sdk')
-
   return sdk.filterEscalatingDefaultMode(await sdk.resolveSettings({
     cwd,
     settingSources: [
@@ -183,7 +183,7 @@ export function claudeProvider({
       cwd,
       env,
     }) {
-      const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+      const run = query ?? sdk.query
       const abortController = new AbortController()
       const timer = setTimeout(
         () => abortController.abort(),
@@ -294,7 +294,7 @@ export function claudeProvider({
           permission,
           emit,
         }) {
-          const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+          const run = query ?? sdk.query
 
           if (closed) {
             return
