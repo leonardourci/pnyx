@@ -98,7 +98,7 @@ test(
 )
 
 test(
-  'a failed snapshot write during a helper grant is contained without killing the daemon or losing the batch',
+  'a failed snapshot save during a helper grant is logged without killing the daemon or losing the batch',
   async t => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -151,8 +151,9 @@ test(
       'renameSync',
       // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
       (...args: Parameters<typeof fs.renameSync>) => {
-        if (!blocked && String(args[1]).endsWith('/snapshot.json')
-          && new Error().stack?.includes('/routine-helper/runner.ts') && Object.keys(s.state().helper?.runs ?? {}).length > 0) {
+        // The server saves the snapshot in the background after writes; fail the first save after the grant.
+        if (!blocked && String(args[1]).endsWith(`/${s.hydraId}/snapshot.json`)
+          && s.events().some(event => event.type === 'hydra.helper-started')) {
           blocked = true
           throw Object.assign(
             new Error('snapshot replace failed'),
@@ -192,7 +193,10 @@ test(
       what: 'the helper lease to release',
       check: () => !fs.existsSync(`${process.env.PNYX_HOME}/hydras/${s.hydraId}/helper-lease-${encodeURIComponent(task.id)}.json`),
     })
-    assert.ok(blocked)
+    await until({
+      what: 'the background snapshot save to fail once',
+      check: () => blocked,
+    })
     assert.equal(
       s.events().filter(event => event.type === 'hydra.helper-started').length,
       1,
@@ -308,7 +312,7 @@ test(
 )
 
 test(
-  'a server over a long Hydra history stops loading it once nothing changes, and still follows the next change',
+  'a server holding a long Hydra history never reloads it, and still follows the next change',
   async t => {
     const s = await pnyx.scenario()
     const page = await openPage({
@@ -348,7 +352,7 @@ test(
       })
     }
 
-    // Every Hydra load reads its snapshot, so the reads count the server's work on this Hydra.
+    // Every Hydra load from disk reads its snapshot; the server holds the Hydra in memory, so it reads none.
     const snapshot = snapshotPath({ dir: hydraDir({ hydraId: s.hydraId }) })
     let loads = 0
     let loadedAt = Date.now()
@@ -394,8 +398,17 @@ test(
       check: ({ state }) => state.keys.next,
     })
     await settled()
-    // The server loaded the new task, so the mock sees its loads and the quiet wait above was real.
-    assert.ok(loads > idle)
+    // The server followed the new task from memory: nothing read the snapshot while idle or for the change.
+    assert.deepEqual(
+      [
+        idle,
+        loads,
+      ],
+      [
+        0,
+        0,
+      ],
+    )
   },
 )
 
