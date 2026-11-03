@@ -4823,7 +4823,8 @@ export function createHost({
     },
 
     recover: async () => {
-      children.sweep()
+      // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
+      const fenced = await children.sweep()
       upgrades.recover()
       let cutHydraTurn: {
         resumeAttemptId: string
@@ -4894,8 +4895,11 @@ export function createHost({
             let resumeAttemptId: string | undefined
             const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
-            if (!cutCompactions.has(session.id) && session.id === writer.state.config?.hydra.session
-              && hostedHydra({ state: writer.state })) {
+            const isHydra = session.id === writer.state.config?.hydra.session
+
+            const resumable = fenced && !cutCompactions.has(session.id)
+
+            if (resumable && isHydra && hostedHydra({ state: writer.state })) {
               cutHydraTurn = findHydraTurnToResume({
                 hydraId,
                 state: writer.state,
@@ -4905,7 +4909,7 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
-            } else if (!cutCompactions.has(session.id) && task && liveTask({ card: task })
+            } else if (resumable && task && liveTask({ card: task })
               && !steeringHeld({ card: task })
               && session.id !== writer.state.config?.hydra.session) {
               resumeAttemptId = findWorkerTurnToResume({

@@ -844,6 +844,8 @@ export function codexProvider({
       cwd,
       env,
       stdio: 'pipe',
+      // Its own process group, so a later start can stop it together with the tools it ran.
+      detached: true,
     },
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {

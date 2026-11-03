@@ -7,6 +7,50 @@ import { processStart } from '#app/server-state.ts'
 import { pnyxHome, replaceFile } from '#store/storage.ts'
 
 const OLD_HOST_STOP_MS = 30_000
+// How long the start waits for an earlier server's agents and their tools to be gone.
+const SWEEP_WAIT_MS = 10_000
+const SWEEP_POLL_MS = 50
+
+// Agents run in a process group of their own, so the tools they start go with them.
+const signalTree = ({
+  pid,
+  signal,
+}: {
+  pid: number
+  signal: NodeJS.Signals | 0
+}) => {
+  for (const target of [
+    -pid,
+    pid,
+  ]) {
+    try {
+      process.kill(
+        target,
+        signal,
+      )
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+        console.error(`pnyx-axi serve: could not signal leftover agent ${pid}: ${(error as Error).message}`)
+      }
+    }
+  }
+}
+
+const treeAlive = ({ pid }: { pid: number }) => [
+  -pid,
+  pid,
+].some(target => {
+  try {
+    process.kill(
+      target,
+      0,
+    )
+
+    return true
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === 'EPERM'
+  }
+})
 
 // Agent processes the server started, by pid and start time. A server that died without stopping them
 // leaves them here; the next start stops them before it resumes their sessions, so no session runs twice.
@@ -49,30 +93,38 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
   })
 
   return {
-    // Stops what an earlier server left running. Call before resuming any session.
-    sweep() {
-      for (const child of read({ path })) {
-        if (!verified(child)) {
-          continue
+    // Stops what an earlier server left running, with every tool it started, and waits until they are gone.
+    // Resolves false when one would not stop: its sessions must not resume while it may still be working.
+    async sweep() {
+      const left = read({ path }).filter(child => verified(child))
+
+      for (const child of left) {
+        signalTree({
+          pid: child.pid,
+          signal: 'SIGKILL',
+        })
+      }
+
+      const end = Date.now() + SWEEP_WAIT_MS
+
+      while (left.some(child => treeAlive({ pid: child.pid }))) {
+        if (Date.now() > end) {
+          console.error(`pnyx-axi serve: leftover agents did not stop: ${left.filter(child => treeAlive({ pid: child.pid }))
+            .map(child => child.pid)
+            .join(', ')}`)
+
+          return false
         }
 
-        // A child that exited between the check and the kill needs nothing; another failure is logged, and recovery goes on.
-        try {
-          process.kill(
-            child.pid,
-            'SIGKILL',
-          )
-        } catch (error) {
-          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
-            console.error(`pnyx-axi serve: could not stop leftover agent ${child.pid}: ${(error as Error).message}`)
-          }
-        }
+        await delay(SWEEP_POLL_MS)
       }
 
       rmSync(
         path,
         { force: true },
       )
+
+      return true
     },
     spawned({ child }: { child: ChildProcess }) {
       const pid = child.pid

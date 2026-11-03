@@ -267,6 +267,8 @@ export function claudeProvider({
               env,
               signal,
               stdio: 'pipe',
+              // Its own process group, so a later start can stop it together with the tools it ran.
+              detached: true,
             },
           )
 
