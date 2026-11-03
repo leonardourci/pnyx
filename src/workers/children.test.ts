@@ -1,10 +1,11 @@
 import assert from 'node:assert/strict'
 import { spawn, type ChildProcess } from 'node:child_process'
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { once } from 'node:events'
+import { setTimeout as delay } from 'node:timers/promises'
 import { hydraDir } from '#app/home-migration.ts'
 import { processStart } from '#app/server-state.ts'
 import { stopOldHost, trackChildren } from './children.ts'
@@ -97,7 +98,10 @@ test(
       ]),
     )
 
-    trackChildren({ hydraId: 'default' }).sweep()
+    assert.equal(
+      await trackChildren({ hydraId: 'default' }).sweep(),
+      true,
+    )
 
     assert.equal(
       await ended({ child: left }),
@@ -166,6 +170,81 @@ test(
     assert.equal(
       await ended({ child: host }),
       'SIGTERM',
+    )
+  },
+)
+
+test(
+  'a start stops a leftover agent together with a tool it was running, before any session resumes',
+  async t => {
+    const home = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-children-tree-',
+    ))
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = home
+    const gate = join(
+      home,
+      'gate',
+    )
+    const marker = join(
+      home,
+      'written-after-recovery',
+    )
+    // The tool waits for the gate, then writes; the agent started it and keeps running.
+    const tool = `const fs = require('node:fs'); setInterval(() => { if (fs.existsSync(${JSON.stringify(gate)})) { fs.writeFileSync(${JSON.stringify(marker)}, 'old tool'); process.exit(0) } }, 20)`
+    const agent = spawn(
+      process.execPath,
+      [
+        '-e',
+        `require('node:child_process').spawn(process.execPath, ['-e', ${JSON.stringify(tool)}], { stdio: 'ignore' }); setInterval(() => {}, 1000)`,
+      ],
+      {
+        stdio: 'ignore',
+        // As the providers start their agents.
+        detached: true,
+      },
+    )
+    t.after(() => {
+      try {
+        process.kill(
+          -agent.pid!,
+          'SIGKILL',
+        )
+      } catch {
+        // Already gone, as the test expects.
+      }
+
+      process.env.PNYX_HOME = previous
+      rmSync(
+        home,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    mkdirSync(
+      hydraDir({ hydraId: 'default' }),
+      { recursive: true },
+    )
+    trackChildren({ hydraId: 'default' }).spawned({ child: agent })
+    await delay(300)
+
+    assert.equal(
+      await trackChildren({ hydraId: 'default' }).sweep(),
+      true,
+    )
+    writeFileSync(
+      gate,
+      '',
+    )
+    await delay(300)
+
+    assert.equal(
+      existsSync(marker),
+      false,
+      'the old tool wrote after recovery',
     )
   },
 )
