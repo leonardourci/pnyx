@@ -27,6 +27,7 @@ import { askWording, openAsks } from '#tasks/questions.ts'
 import { lifecycleMove } from '#tasks/lifecycle.ts'
 import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-support.ts'
 import { commands } from '#app/cli.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
@@ -87,7 +88,7 @@ export async function hydraCheck({
   }) ?? 0
 
   // A shell call inside a turn holds every message to Hydra until it returns; Pnyx wakes the Hydra it runs instead.
-  if (wait > 0 && process.env.PNYX_HOSTED === 'hydra') {
+  if (wait > 0 && requestEnv().PNYX_HOSTED === 'hydra') {
     throw new AxiError(
       '--wait would block your turn, and the owner\'s messages with it; Pnyx wakes you when something changes',
       'VALIDATION_ERROR',

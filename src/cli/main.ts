@@ -8,7 +8,8 @@ import { serve, stop } from '#app/server-cli.ts'
 import { firstmateCommands, firstmateHelp } from '#integrations/firstmate/cli.ts'
 import { ORACLE_HELP, oracleCommands } from '#oracle/cli.ts'
 import { TOP_LEVEL_HELP, commandHelp } from '#app/help.ts'
-import { helpHint, invocation } from '#app/cli-support.ts'
+import { helpHint } from '#app/cli-support.ts'
+import { requestInvocation } from '#app/request-context.ts'
 import { commands } from '#app/cli.ts'
 import { home } from '#hydra/cli.ts'
 import { focusedHelp, nextCommands } from './help.ts'
@@ -55,6 +56,7 @@ const focused = full && sub ? focusedHelp({
 // Named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
 // The server runs other commands in its own process for the web, so serve sets nothing.
 if (command !== 'serve') {
+  const invocation = requestInvocation()
   invocation.name = focused !== full ? `${command} ${sub}` : command
   invocation.help = focused
 }

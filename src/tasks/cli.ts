@@ -1,4 +1,5 @@
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync } from 'node:fs'
+import { readInput } from '#app/request-context.ts'
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { AxiError } from 'axi-sdk-js'
@@ -27,6 +28,7 @@ import { parseColumnRule } from './columns.ts'
 import { lifecycleMoves } from './lifecycle.ts'
 import { answerPrompt } from '#workers/answers.ts'
 import { decideMove } from './columns-decisions.ts'
+import { requestCwd } from '#app/request-context.ts'
 
 const INTENT_LIMIT = 4000
 
@@ -162,7 +164,7 @@ export const context = guard({
       },
       positionals: 0,
     })
-    const folder = canonical({ path: String(values.cwd ?? process.cwd()) })
+    const folder = canonical({ path: String(values.cwd ?? requestCwd()) })
     const { state } = loadHydra({ hydraId })
     const project = folder ? projectsFor({ state }).find(p => !p.detached
       && (folder === p.path || folder.startsWith(`${p.path}/`))) : undefined
@@ -229,10 +231,7 @@ export const push = guard({
     let input: unknown
 
     try {
-      input = JSON.parse(readFileSync(
-        file === '-' ? 0 : file,
-        'utf8',
-      ))
+      input = JSON.parse(readInput({ file: file }))
     } catch (error) {
       throw new AxiError(
         `cannot read card JSON from ${file}: ${(error as Error).message}`,

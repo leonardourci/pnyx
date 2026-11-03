@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readInput } from '#app/request-context.ts'
 import { landingGaps } from '#tasks/delivery/done.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { AxiError, exitCodeForError } from 'axi-sdk-js'
@@ -69,10 +69,7 @@ export const apply = guard({
     let input: unknown
 
     try {
-      const contents = readFileSync(
-        file === '-' ? 0 : file,
-        'utf8',
-      )
+      const contents = readInput({ file: file })
       input = parseApplyJson({ contents })
     } catch (error) {
       if (error instanceof ApplyError) {

@@ -1,6 +1,6 @@
 import { setTimeout as delay } from 'node:timers/promises'
-import { readFileSync } from 'node:fs'
 import { compactCommand } from '#workers/compaction/state.ts'
+import { readInput } from '#app/request-context.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { notificationReceipt } from './inbox-notice.ts'
@@ -875,10 +875,7 @@ export const reply = guard({
 
     if (file !== undefined) {
       try {
-        text = readFileSync(
-          file === '-' ? 0 : file,
-          'utf8',
-        )
+        text = readInput({ file: file })
       } catch (error) {
         throw new AxiError(
           `cannot read reply text from ${file}: ${(error as Error).message}`,

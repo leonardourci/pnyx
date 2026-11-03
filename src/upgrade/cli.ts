@@ -4,6 +4,7 @@ import { flagError } from '#app/cli-support.ts'
 import { restartPnyx } from './restart.ts'
 import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { STEP_WORDS } from './model.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check]
 Pulls main into the Pnyx folder, installs and builds, then runs the same restart as \`pnyx-axi restart\`. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting.
@@ -43,7 +44,7 @@ export async function upgrade(args: string[]): Promise<Record<string, unknown>> 
   }
 
   // Hydra can only propose it (owner-only); a worker cannot restart the server under everyone.
-  if (process.env.PNYX_ACTOR?.startsWith('worker:')) {
+  if (requestEnv().PNYX_ACTOR?.startsWith('worker:')) {
     throw new AxiError(
       'Only the owner can upgrade Pnyx',
       'OWNER_ONLY',

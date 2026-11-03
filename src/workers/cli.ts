@@ -8,6 +8,7 @@ import { sendReply } from './reply.ts'
 import { taskPrompt } from './start.ts'
 import { selfSession } from './session-attachments.ts'
 import { readEvents } from '#app/event-log.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 export function startOverride({
   values,
@@ -113,9 +114,9 @@ export function sessionRef({
     ? selfSession({
       state,
       here: {
-        paseoTerminal: process.env.PASEO_TERMINAL_ID,
-        tmuxPane: process.env.TMUX_PANE,
-        herdrPane: process.env.HERDR_PANE_ID,
+        paseoTerminal: requestEnv().PASEO_TERMINAL_ID,
+        tmuxPane: requestEnv().TMUX_PANE,
+        herdrPane: requestEnv().HERDR_PANE_ID,
       },
     }).id
     : ref

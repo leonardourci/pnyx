@@ -7,13 +7,14 @@ import { hydraBypasses } from './hydra.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { guard, WRITE } from '#app/cli-support.ts'
 import { ownerOnlyCommand } from '#app/command-registry.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 type Command = ReturnType<typeof guard>
 
 // Bypass counts only for the Hydra the command runs in, never one it names with --hydra.
 export function runsInBypass({
   hydraId,
-  env = process.env,
+  env = requestEnv(),
 }: {
   hydraId: string
   env?: NodeJS.ProcessEnv
@@ -24,7 +25,7 @@ export function runsInBypass({
 // Hydra may propose owner-only actions, but only the owner can confirm them.
 export function ownerOnly<T extends Record<string, Command>>({
   commands,
-  env = process.env,
+  env = requestEnv(),
 }: {
   commands: T
   env?: NodeJS.ProcessEnv
