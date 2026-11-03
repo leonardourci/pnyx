@@ -387,7 +387,10 @@ export async function hostRequest({
   const ref = request.task ?? request.card
   let release = () => {}
 
-  if (typeof ref === 'string' && [
+  // A message from main or the owner queues for the agent; it never takes or waits on the helper's lease.
+  const message = action === 'send' && !helper
+
+  if (typeof ref === 'string' && !message && [
     'start',
     'continue',
     'send',

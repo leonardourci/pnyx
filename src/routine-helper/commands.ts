@@ -140,6 +140,11 @@ export function commandLease({
     }
   }
 
+  // A message from main or the owner queues for the agent; it never waits on or takes the helper's lease.
+  if (!helper && name === 'reply') {
+    return () => {}
+  }
+
   return taskLease({
     hydraId,
     task: card.id,

@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks'
 import { randomUUID } from 'node:crypto'
 import { helperGrant } from './route.ts'
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
@@ -103,6 +104,9 @@ function writeLease({
     )
   }
 }
+
+// Set while Pnyx delivers a message to a task's agent; the delivery's own writes pass a helper's lease.
+export const deliveringMessage = new AsyncLocalStorage<true>()
 
 export function guardTaskLease({
   dir,

@@ -10,7 +10,7 @@ import { privateDir, acquireLock, writeDurably, logPath } from '#store/storage.t
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { agentActor } from '#hydra/hydra.ts'
-import { isHelper, guardTaskLease } from '#routine-helper/leases.ts'
+import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/leases.ts'
 import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
@@ -20,6 +20,12 @@ import { reconcileAsks } from '#tasks/questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
 import { decideMove } from '#tasks/columns-decisions.ts'
 import { writeSnapshot } from './snapshot.ts'
+
+const MESSAGE_EVENTS = new Set<string>([
+  'card.replied',
+  'task.steering.queued',
+  'task.steering.notified',
+])
 
 export interface Writer {
   readonly state: HydraState
@@ -213,8 +219,11 @@ export function eventWriter({
       effects = true,
     }) {
       const harvestedNote = event.actor === 'harvest' && event.type === 'card.noted'
+      // A message to a task's agent is never refused for the routine helper's lease; it queues like any message.
+      const message = !isHelper({ actor: event.actor })
+        && (MESSAGE_EVENTS.has(event.type) || deliveringMessage.getStore() === true)
 
-      if (!agentActor({ actor: event.actor }) && !harvestedNote
+      if (!agentActor({ actor: event.actor }) && !harvestedNote && !message
         && (event.type !== 'hydra.message' || isHelper({ actor: event.actor }))) {
         const task = event.type === 'hydra.message' ? event.data.task : event.cardId
 
