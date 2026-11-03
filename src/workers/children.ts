@@ -52,11 +52,20 @@ export function trackChildren({ hydraId }: { hydraId: string }) {
     // Stops what an earlier server left running. Call before resuming any session.
     sweep() {
       for (const child of read({ path })) {
-        if (verified(child)) {
+        if (!verified(child)) {
+          continue
+        }
+
+        // A child that exited between the check and the kill needs nothing; another failure is logged, and recovery goes on.
+        try {
           process.kill(
             child.pid,
             'SIGKILL',
           )
+        } catch (error) {
+          if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+            console.error(`pnyx-axi serve: could not stop leftover agent ${child.pid}: ${(error as Error).message}`)
+          }
         }
       }
 
