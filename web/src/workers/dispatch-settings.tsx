@@ -524,7 +524,7 @@ function ConfirmRemove({
         onClick={() => setOpen(true)}
       ><Icon name="close" size={14} />
       </Button>
-      {/* Always mounted so it can fade in and out; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
+      {/* Always mounted so it can unfold from the x; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
       <div
         className="dispatch-confirm"
         role="group"
