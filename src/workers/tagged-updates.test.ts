@@ -12,16 +12,16 @@ import { copyTagged } from './tagged-updates.ts'
 
 test(
   'two Hydra turns that finish in the same millisecond both copy their tagged reply',
-  () => {
+  async () => {
     process.env.PNYX_HOME = realpathSync(mkdtempSync(join(
       tmpdir(),
       'pnyx-tagged-updates-',
     )))
-    commands.hydra([
+    await commands.hydra([
       'create',
       'default',
     ])
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'quick',

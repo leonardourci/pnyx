@@ -22,18 +22,18 @@ const run = ({ args }: { args: string[] }) => commands.task([
   hydraId,
 ])
 
-beforeEach(() => {
+beforeEach(async () => {
   previous = process.env.PNYX_HOME
   home = mkdtempSync(join(
     tmpdir(),
     'pnyx-reminders-',
   ))
   process.env.PNYX_HOME = home
-  commands.hydra([
+  await commands.hydra([
     'create',
     hydraId,
   ])
-  run({
+  await run({
     args: [
       'create',
       '--key',
@@ -128,7 +128,7 @@ test(
 
 test(
   'an expanded-year reminder cannot delay a nearer due reminder',
-  () => {
+  async () => {
     const far = reminderTime({
       when: 'in 4000000 days',
       now,
@@ -144,14 +144,14 @@ test(
       }),
       far,
     )
-    run({
+    await run({
       args: [
         'remind',
         'work',
         far,
       ],
     })
-    run({
+    await run({
       args: [
         'create',
         '--key',
@@ -160,7 +160,7 @@ test(
         'Near reminder',
       ],
     })
-    run({
+    await run({
       args: [
         'remind',
         'near',

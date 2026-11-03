@@ -14,7 +14,7 @@ async function fixture() {
     'pnyx-mentions-',
   )))
   process.env.PNYX_HOME = home
-  commands.hydra([
+  await commands.hydra([
     'create',
     'default',
   ])
@@ -27,14 +27,14 @@ async function fixture() {
     'add',
     api,
   ])
-  commands.task([
+  await commands.task([
     'create',
     '--key',
     'receiver',
     '--title',
     'Receiving task',
   ])
-  commands.task([
+  await commands.task([
     'create',
     '--key',
     'reference',
@@ -138,7 +138,7 @@ test(
     const title = 'commands and skills are not showing up properly in the composer when I type "/"'
 
     try {
-      commands.task([
+      await commands.task([
         'rename',
         'reference',
         '--title',

@@ -1,39 +1,62 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { pnyxAxi, serve } from '#test-harness/served.ts'
 import { serviceFile } from './service.ts'
-
-const CLI = join(
-  import.meta.dirname,
-  '..',
-  'cli',
-  'pnyx-axi.ts',
-)
 
 test(
   'setup check and Hydra digest report the missing login service until its file is installed',
   {
     skip: process.platform !== 'darwin' && process.platform !== 'linux',
   },
-  t => {
+  async t => {
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-check-service-',
     ))
-    t.after(() => rmSync(
-      root,
+    const previous = {
+      PNYX_HOME: process.env.PNYX_HOME,
+      HOME: process.env.HOME,
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+    }
+    // The server runs in this process and looks for the login service under its own HOME.
+    Object.assign(
+      process.env,
       {
-        recursive: true,
-        force: true,
+        PNYX_HOME: join(
+          root,
+          'pnyx',
+        ),
+        HOME: root,
+        XDG_CONFIG_HOME: join(
+          root,
+          'config',
+        ),
       },
-    ))
-    process.env.PNYX_HOME = join(
-      root,
-      'pnyx',
     )
+    await serve({ t })
+    t.after(() => {
+      for (const [
+        name,
+        value,
+      ] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[name]
+        } else {
+          process.env[name] = value
+        }
+      }
+
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
     const env = {
       ...process.env,
       HOME: root,
@@ -50,25 +73,17 @@ test(
         'codex',
       ),
     }
-    const run = ({ args }: { args: string[] }) => spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        CLI,
-        ...args,
-      ],
-      {
-        env,
-        encoding: 'utf8',
-      },
-    )
-    const fresh = run({
+    const run = ({ args }: { args: string[] }) => pnyxAxi({
+      args,
+      env,
+    })
+    const fresh = await run({
       args: [
         'setup',
         'check',
       ],
     })
-    const removed = run({
+    const removed = await run({
       args: [
         'setup',
         'service',
@@ -93,16 +108,16 @@ test(
       /^ {2}service,[^\n]*,owner,pnyx-axi setup$/m,
     )
     assert.match(
-      run({
+      (await run({
         args: [
           'hydra',
           'digest',
         ],
-      }).stdout,
+      })).stdout,
       /- service: no login service/,
     )
 
-    const proposal = run({
+    const proposal = await run({
       args: [
         'setup',
         '--preview',
@@ -121,7 +136,7 @@ test(
     )
     const token = /^token: (\S+)$/m.exec(proposal.stdout)?.[1]
     assert.ok(token)
-    const confirmed = run({
+    const confirmed = await run({
       args: [
         'approval',
         'confirm',
@@ -160,21 +175,21 @@ test(
       '',
     )
     assert.doesNotMatch(
-      run({
+      (await run({
         args: [
           'setup',
           'check',
         ],
-      }).stdout,
+      })).stdout,
       /^ {2}service,/m,
     )
     assert.doesNotMatch(
-      run({
+      (await run({
         args: [
           'hydra',
           'digest',
         ],
-      }).stdout,
+      })).stdout,
       /- service:/,
     )
   },

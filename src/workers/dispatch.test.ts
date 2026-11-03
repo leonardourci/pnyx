@@ -458,9 +458,9 @@ test(
 
     assert.deepEqual(
       [
-        pick(),
-        pick(),
-        pick(),
+        await pick(),
+        await pick(),
+        await pick(),
       ],
       [
         'claude',
@@ -470,7 +470,7 @@ test(
     )
     priorities.claude = -1.2
     assert.equal(
-      pick(),
+      await pick(),
       'codex',
     )
   },
@@ -789,7 +789,7 @@ test(
       chosen.reason,
       /not offered/,
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: config(),
         rule: 'build',

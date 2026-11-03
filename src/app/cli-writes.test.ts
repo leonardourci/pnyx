@@ -8,7 +8,7 @@ import { readEvents } from './event-log.ts'
 
 test(
   'a repeated hydra create is a no-op, other settings conflict, and task create needs an attached project',
-  () => {
+  async () => {
     process.env.PNYX_HOME = realpathSync(mkdtempSync(join(
       tmpdir(),
       'pnyx-cli-writes-',
@@ -43,8 +43,8 @@ test(
         message: /Hydra already exists with other settings: default/,
       },
     )
-    assert.throws(
-      () => commands.task([
+    await assert.rejects(
+      async () => commands.task([
         'create',
         '--title',
         'Fix the cart total',

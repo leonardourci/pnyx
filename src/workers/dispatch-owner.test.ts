@@ -54,7 +54,7 @@ test(
       'lab',
     ])) as { token: string }
     await assert.rejects(
-      () => hydra.rule([
+      async () => hydra.rule([
         'propose',
         'confirm',
         request.token,
@@ -68,7 +68,7 @@ test(
       /propose set/,
     )
     await assert.rejects(
-      () => hydra.rule([
+      async () => hydra.rule([
         '--hydra',
         'lab',
         'confirm',
