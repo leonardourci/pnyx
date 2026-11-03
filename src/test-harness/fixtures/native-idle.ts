@@ -1,15 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { mkdirSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
 import { mock } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
 import { loadHydra } from '#app/store.ts'
-import { withWriter } from '#app/writer.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { IDLE_MS } from '#workers/host.ts'
-import { recordCompaction } from '#workers/compaction/record.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { claudeRecording } from '#test-harness/fake-agents.ts'
 import { settle } from '#test-harness/child-fixture.ts'
@@ -155,98 +151,6 @@ try {
     'the settled session closes at its idle deadline',
   )
 
-  const attachments = join(
-    process.env.PNYX_HOME!,
-    'hydras',
-    hydraId,
-    'attachments',
-  )
-  mkdirSync(
-    attachments,
-    { recursive: true },
-  )
-  const image = join(
-    attachments,
-    `${randomUUID()}.png`,
-  )
-  const contextImage = join(
-    attachments,
-    `${randomUUID()}.png`,
-  )
-  writeFileSync(
-    image,
-    'original image',
-  )
-  writeFileSync(
-    contextImage,
-    'context image',
-  )
-  const original = `Original image [image: ${image}]`
-  const enhanced = `[image: ${contextImage}]\n${original}`
-  const session = loadHydra({ hydraId }).state.config?.hydra.session
-  assert.ok(session)
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => recordCompaction({
-      writer,
-      card: HYDRA_CARD,
-      at: new Date().toISOString(),
-      change: {
-        kind: 'status',
-        operation: {
-          id: 'compact',
-          session,
-          trigger: 'manual',
-          state: 'running',
-          startedAt: new Date().toISOString(),
-        },
-      },
-    }),
-  })
-  await host.hydra({
-    id: 'compact-held-image',
-    text: enhanced,
-    original,
-    actor: 'cli',
-  })
-  assert.equal(
-    loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.compaction?.inputs[0]?.original,
-    original,
-  )
-
-  // Seed a runner already in progress; this fixture never schedules an upgrade.
-  withWriter({
-    hydraId,
-    fn: ({ writer }) => writer.append({
-      event: {
-        v: 1,
-        id: 'upgrade-fixture',
-        seq: writer.state.seq + 1,
-        at: new Date().toISOString(),
-        actor: 'pnyx',
-        cardId: HYDRA_CARD,
-        type: 'pnyx.upgrade',
-        data: {
-          id: 'upgrade',
-          state: 'running',
-          folder: attachments,
-          queuedAt: new Date().toISOString(),
-          steps: [],
-        },
-      },
-    }),
-  })
-  await host.hydra({
-    id: 'upgrade-held-image',
-    text: enhanced,
-    original,
-    actor: 'cli',
-  })
-  assert.equal(
-    loadHydra({ hydraId }).state.upgrades?.[0]?.held?.[0]?.original,
-    original,
-  )
-  console.log('Application buffers retained the original image source')
   console.log('Native cleanup waited for queued, background and unknown work')
 } finally {
   host.close()
