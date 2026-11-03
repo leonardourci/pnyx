@@ -295,6 +295,11 @@ async function hostReply({
       }
     }
 
+    // A direct input is delivered only once the provider confirms the agent got it.
+    if (accepted.pending) {
+      return { state: 'queued' }
+    }
+
     return { state: 'delivered' }
   } catch (error) {
     const known = error instanceof HydraError

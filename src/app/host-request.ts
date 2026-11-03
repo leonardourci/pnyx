@@ -321,6 +321,7 @@ export async function hostRequestUnlocked({
         sent: !result?.deferred,
         deferred: result?.deferred ?? false,
         queued: result?.queued ?? false,
+        pending: result?.pending ?? false,
       }
     }
     case 'set': {

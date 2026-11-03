@@ -1185,6 +1185,19 @@ export function codexProvider({
                 })
               } catch (error) {
                 if (!manualCompact || (error as { code?: unknown }).code !== METHOD_NOT_FOUND) {
+                  // Codex answered with an error, so it did not take this input.
+                  for (const inputId of inputIds) {
+                    emit({
+                      event: {
+                        type: 'input',
+                        receipt: {
+                          inputId,
+                          phase: 'refused',
+                        },
+                      },
+                    })
+                  }
+
                   throw error
                 }
 

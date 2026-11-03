@@ -70,6 +70,7 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
+import type { InputReceipt } from '#workers/provider.ts'
 import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
@@ -1590,6 +1591,14 @@ export function createHost({
       })) {
         const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
 
+        if (typeof activity === 'object' && activity.type === 'input' && entry.pendingDirect.has(activity.receipt.inputId)) {
+          settleDirect({
+            entry,
+            inputId: activity.receipt.inputId,
+            phase: activity.receipt.phase,
+          })
+        }
+
         if (typeof activity === 'object' && activity.type === 'input' && activity.receipt.phase === 'confirmed'
           && entry.delivered.has(activity.receipt.inputId)) {
           const ids = entry.delivered.get(activity.receipt.inputId)!
@@ -2011,6 +2020,31 @@ export function createHost({
       failure = (error as Error).message
     }
 
+    // A session that ended before confirming a direct input: an input the agent took may have arrived; one it never took did not.
+    if (!closing && !entry.replaced) {
+      for (const [
+        inputId,
+        pending,
+      ] of entry.pendingDirect) {
+        directReply({
+          card: pending.card,
+          inputId,
+          state: pending.taken ? 'delivery_unknown' : 'failed',
+          detail: pending.taken
+            ? `the agent stopped before confirming this message${failure ? `: ${failure.slice(
+              0,
+              300,
+            )}` : ''}; check the conversation, and send it again if it did not arrive`
+            : `the agent stopped before taking this message${failure ? `: ${failure.slice(
+              0,
+              300,
+            )}` : ''}; nothing was delivered`,
+        })
+      }
+
+      entry.pendingDirect.clear()
+    }
+
     const compactCard = (() => {
       const state = loadHydra({ hydraId }).state
 
@@ -2132,6 +2166,7 @@ export function createHost({
       activity: 'finished',
       steering: new Set(),
       delivered: new Map(),
+      pendingDirect: new Map(),
       task: card.id,
       generation: card.steeringGeneration,
       session,
@@ -2150,6 +2185,85 @@ export function createHost({
     })
 
     return entry
+  }
+
+  // A direct input's reply moves on from queued only on what the provider says about it.
+  const directReply = ({
+    card,
+    inputId,
+    state,
+    detail,
+  }: {
+    card: string
+    inputId: string
+    state: 'delivered' | 'failed' | 'delivery_unknown'
+    detail?: string
+  }) => note({
+    fn: ({ writer }) => {
+      const reply = writer.state.cards[card]?.replies?.find(item => item.id === inputId)
+
+      if (!reply || reply.state !== 'queued') {
+        return
+      }
+
+      const data: Parameters<typeof decideReply>[0]['data'] = {
+        reply: inputId,
+        state,
+        route: 'pnyx',
+      }
+
+      if (detail) {
+        data.detail = detail
+      }
+
+      apply({
+        writer,
+        decision: decideReply({
+          state: writer.state,
+          ref: card,
+          data,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+            id: `direct:${inputId}:${state}`,
+          },
+        }),
+      })
+    },
+  })
+
+  const settleDirect = ({
+    entry,
+    inputId,
+    phase,
+  }: {
+    entry: Live
+    inputId: string
+    phase: InputReceipt['phase']
+  }) => {
+    const pending = entry.pendingDirect.get(inputId)
+
+    if (!pending) {
+      return
+    }
+
+    if (phase === 'taken') {
+      pending.taken = true
+
+      return
+    }
+
+    if (phase !== 'confirmed' && phase !== 'carried' && phase !== 'settled' && phase !== 'refused') {
+      return
+    }
+
+    entry.pendingDirect.delete(inputId)
+    directReply({
+      card: pending.card,
+      inputId,
+      state: phase === 'refused' ? 'failed' : 'delivered',
+      detail: phase === 'refused' ? 'the agent refused this message; nothing was delivered' : undefined,
+    })
   }
 
   // eventId names the turn's working record, as a resumed turn's does.
@@ -2299,6 +2413,19 @@ export function createHost({
         original,
         id: inputId,
       })
+
+      // Its reply stays queued until the provider confirms the agent got it.
+      if (inputId && card.id !== HYDRA_CARD) {
+        entry.pendingDirect.set(
+          inputId,
+          {
+            card: card.id,
+            taken: false,
+          },
+        )
+
+        return { pending: true }
+      }
     } else {
       ringSteering({
         card,
@@ -4950,7 +5077,8 @@ export function createHost({
             ])
 
             for (const reply of card.replies ?? []) {
-              if (reply.state !== 'queued' || reply.route !== 'pnyx' || held.has(reply.id)) {
+              // The card's agent is Pnyx-hosted, so a reply still queued for it went the Pnyx route.
+              if (reply.state !== 'queued' || held.has(reply.id)) {
                 continue
               }
 

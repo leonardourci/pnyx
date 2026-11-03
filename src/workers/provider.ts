@@ -82,7 +82,8 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
-  phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'unknown'
+  // refused: the provider answered the start of its turn with an error, so the agent never got it.
+  phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
 }
 // Submitted means handed to the SDK callback or native pipe, not acknowledged by the model.
