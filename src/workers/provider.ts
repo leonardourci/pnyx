@@ -222,6 +222,8 @@ export interface ModelOption {
   // The effort and permission mode the harness runs this model with when none is chosen.
   defaultEffort?: string
   defaultMode?: string
+  // The model has a Fast tier.
+  fast?: true
 }
 
 // The model names a catalog answers to: each option and the model it resolves to.
@@ -230,6 +232,21 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
     model.value,
     ...(model.resolvedModel ? [model.resolvedModel] : []),
   ])
+
+// Whether the model an agent runs, or the harness default when it names none, has a Fast tier.
+export const fastModel = ({
+  models,
+  model,
+}: {
+  models: ModelOption[]
+  model?: string
+}) => {
+  const option = model && model !== 'default'
+    ? models.find(option => option.value === model || option.resolvedModel === model)
+    : models.find(option => option.isDefault || option.value === 'default') ?? models[0]
+
+  return option?.fast === true
+}
 
 export interface Provider {
   compact?: true

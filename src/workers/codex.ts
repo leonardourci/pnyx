@@ -889,6 +889,7 @@ export function codexProvider({
                 label: model.displayName,
                 ...(model.isDefault === true ? { isDefault: true } : {}),
                 ...(typeof model.defaultReasoningEffort === 'string' ? { defaultEffort: model.defaultReasoningEffort } : {}),
+                ...(Array.isArray(model.additionalSpeedTiers) && model.additionalSpeedTiers.includes('fast') ? { fast: true as const } : {}),
               })
             }
           }
