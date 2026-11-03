@@ -10,12 +10,15 @@ import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from
 import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
 import { startsNow } from './dispatch.ts'
 import { storedOffers } from './model-catalog.ts'
+import { accountRegistration } from './account-choice.ts'
 
 const OPTIONS = {
   ...WRITE,
   when: { type: 'string' },
   candidates: { type: 'string' },
   harness: { type: 'string' },
+  account: { type: 'string' },
+  label: { type: 'string' },
   model: { type: 'string' },
   effort: { type: 'string' },
   mode: { type: 'string' },
@@ -107,11 +110,15 @@ function candidateList({
   existing: Candidate[]
 }): Candidate[] {
   if (values.candidates !== undefined) {
+    let parsed: unknown
+
     try {
-      return candidates({ value: JSON.parse(String(values.candidates)) })
+      parsed = JSON.parse(String(values.candidates))
     } catch {
       return invalid({ message: '--candidates must be a JSON array of harness/model/effort candidates' })
     }
+
+    return candidates({ value: parsed })
   }
 
   const first = existing[0]
@@ -119,6 +126,7 @@ function candidateList({
   const agent: Candidate = first?.harness === harness ? structuredClone(first) : { harness }
 
   for (const field of [
+    'account',
     'model',
     'effort',
     'mode',
@@ -278,6 +286,7 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
     return {
       hydraId,
       ...effectiveDispatch(),
+      revision: dispatchRevision(),
       proposals: proposalStatus({ state }),
       help,
     }
@@ -305,10 +314,11 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
 
   if (action === 'schema') {
     return {
-      document: 'rules{<name>:{when,candidates[]}}, default[], main, workers{claude[],codex[]}, projects{<absolute path>:{claude[],codex[]}}, accounts{<name>:{provider,folder}}',
+      document: 'rules{<name>:{when,candidates[]}}, default[], main, workers{claude[],codex[]}, projects{<absolute path>:{claude[],codex[]}}, accounts{<name>:{provider,folder,label?}}',
       required: 'rules, workers, projects and accounts are objects that may be empty; default lists at least one candidate; main is optional',
       names: 'main and account orders name registered accounts of the matching provider; with no registered accounts, only claude:default and codex:default, the harnesses\' own logins',
-      candidate: '{harness, model?, effort?, mode?, fast?}',
+      candidate: '{harness, account?, model?, effort?, mode?, fast?}',
+      uniqueness: 'Each provider/account pair appears once per rule; an unset automatic account is distinct from named accounts',
       values: Object.fromEntries(HARNESSES.map(harness => [
         harness,
         {
@@ -490,20 +500,21 @@ function accountCommand({ args }: { args: string[] }): Output {
   const patch: Record<string, unknown> = action === 'remove' ? withoutAccount({
     document: savedDocument(),
     name: key,
-  }) : {
-    accounts: {
-      [key]: {
-        provider: required({
-          value: values.provider as string | undefined,
-          what: '--provider',
-        }),
-        folder: required({
-          value: values.folder as string | undefined,
-          what: '--folder',
-        }),
-      },
+  }) : accountRegistration({
+    effective: effectiveDispatch(),
+    name: key,
+    account: {
+      provider: required({
+        value: values.provider as string | undefined,
+        what: '--provider',
+      }) as Harness,
+      folder: required({
+        value: values.folder as string | undefined,
+        what: '--folder',
+      }),
+      ...(values.label !== undefined ? { label: String(values.label) } : {}),
     },
-  }
+  })
 
   return apply({
     hydraId,
@@ -523,7 +534,7 @@ export const DISPATCH_HELP = {
 pnyx-axi rule now [--json '<document>']
 pnyx-axi rule apply --file <patch.json|-> | --json '<envelope>' [--check] [--propose] [--if-revision <revision>] [--event-id <id>]
 pnyx-axi rule set <name> --when "<work description>" --candidates '<JSON array>'
-pnyx-axi rule set <name> [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
+pnyx-axi rule set <name> [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off|default]
 pnyx-axi rule propose set|remove|accounts <same arguments>
 pnyx-axi rule confirm <token> --confirm <token> | dismiss <token>
 pnyx-axi rule remove <name>
@@ -531,10 +542,10 @@ pnyx-axi rule accounts [--main <account>] [--provider claude|codex --order <acco
 Heads dispatch is one document every Hydra shares: rules, the default list, accounts, the main account and account orders; every section but main is required. It is saved as a change log in the Pnyx home, and the two JSON files beside it are rewritten from that log, so change it only through rule apply or its shortcuts. rule show prints it with its revision; rule schema lists every field and allowed value.
 rule now shows which candidate of each rule would start right now from current quota, for the saved document or the one --json gives; each login's reading is kept for a minute.
 rule apply takes {"version":1,"expected":{"revision":<n>},"patch":{...}} from a file, stdin or --json, a JSON Merge Patch naming only what changes (null removes a key). It checks the whole result and saves all or nothing, refusing any problem the patch adds; --check previews the changes and remaining issues, --propose asks the owner to confirm, and a repeated --event-id returns its first receipt. Hydra proposes outside bypass.
-set, remove and accounts are shortcuts for one patch. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
+set, remove and accounts are shortcuts for one patch. Each provider/account pair appears once within a rule, regardless of model or controls; an unset automatic account stays distinct from named accounts. Duplicate add/edit refuses without saving. Existing duplicates stay readable for removal. Single-candidate flags edit a rule's first candidate and keep its fallbacks. With no registered accounts, main and orders may name only claude:default and codex:default, the harnesses' own logins. rule init saves the templates as the first change, keeping a file that exists and taking login folders from CLAUDE_CONFIG_DIR and CODEX_HOME when set; it never replaces a saved document.`,
   account: `usage: pnyx-axi account list
-pnyx-axi account set <name> --provider claude|codex --folder <login folder>
+pnyx-axi account set <name> --provider claude|codex --folder <login folder> [--label <display name>]
 pnyx-axi account propose set|remove <same arguments>
 pnyx-axi account remove <name>
-Only login folders are stored. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first. To remove the last account, rule apply one patch that also sets main to claude:default or codex:default.`,
+Only names, display labels and login folders are stored, never credentials. The first registration preserves implicit native logins and their main/worker choices. A candidate account names one matching login, with no fallback to a different account. Account order is set through rule accounts or rule apply. Removing an account also takes it out of every order; the main account needs a new main first. To remove the last account, rule apply one patch that also sets main to claude:default or codex:default.`,
 }

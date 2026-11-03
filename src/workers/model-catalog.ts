@@ -89,13 +89,18 @@ export function storeModels({
 export async function catalogOffers({
   host,
   harnesses,
+  account,
 }: {
   host: Host
   harnesses: Harness[]
+  account?: string
 }) {
   const offers: Partial<Record<Harness, string[]>> = {}
 
-  await Promise.all([...new Set(harnesses)].map(harness => host.models({ harness })
+  await Promise.all([...new Set(harnesses)].map(harness => host.models({
+    harness,
+    account,
+  })
     .then(
       models => {
         offers[harness] = modelIds({ models })

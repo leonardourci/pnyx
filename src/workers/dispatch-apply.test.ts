@@ -904,7 +904,10 @@ test(
           'max',
         ],
       }),
-      paths: ['/rules/build/candidates/0/effort'],
+      paths: [
+        '/rules/build/candidates/0/effort',
+        '/rules/build/candidates/1/account',
+      ],
     })
     await failsWith({
       run: async () => dispatchCommands.account([
@@ -1765,6 +1768,144 @@ test(
         ],
       }),
       { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'AXI rejects duplicate add/edit without writes, and legacy duplicates remain readable and removable',
+  () => {
+    lab()
+    const before = show()
+    const saved = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    const journal = readFileSync(
+      changesPath(),
+      'utf8',
+    )
+    const duplicated = [
+      {
+        harness: 'claude',
+        account: 'claude:test',
+        model: 'opus',
+      },
+      {
+        harness: 'claude',
+        account: 'claude:test',
+        model: 'sonnet',
+      },
+    ]
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--json',
+          JSON.stringify({
+            version: 1,
+            patch: { default: duplicated },
+          }),
+        ],
+      }),
+      paths: ['/default/1/account'],
+    })
+    assert.throws(
+      () => rule({
+        args: [
+          'set',
+          'duplicate',
+          '--when',
+          'Duplicate',
+          '--candidates',
+          JSON.stringify(duplicated),
+        ],
+      }),
+      /\/1\/account.*already used/,
+    )
+    assert.equal(
+      readFileSync(
+        configPath(),
+        'utf8',
+      ),
+      saved,
+    )
+    assert.equal(
+      readFileSync(
+        changesPath(),
+        'utf8',
+      ),
+      journal,
+    )
+    const added = rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: {
+            accounts: { 'claude:other': { ...before.document.accounts['claude:test'] } },
+            default: [
+              duplicated[0],
+              {
+                harness: 'claude',
+                account: 'claude:other',
+                model: 'sonnet',
+              },
+            ],
+          },
+        }),
+      ],
+    })
+    assert.equal(
+      added.applied,
+      true,
+    )
+    const valid = show()
+    failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--json',
+          JSON.stringify({
+            version: 1,
+            patch: { default: duplicated },
+          }),
+        ],
+      }),
+      paths: ['/default/1/account'],
+    })
+    assert.deepEqual(
+      show(),
+      valid,
+    )
+    // A legacy file can contain duplicates; reading preserves it for explicit repair.
+    rmSync(changesPath())
+    writeFileSync(
+      configPath(),
+      JSON.stringify({
+        ...before.document,
+        accounts: undefined,
+        default: duplicated,
+      }),
+    )
+    assert.equal(
+      show().document.default.length,
+      2,
+    )
+    rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: { default: [duplicated[0]] },
+        }),
+      ],
+    })
+    assert.equal(
+      show().document.default.length,
+      1,
     )
   },
 )

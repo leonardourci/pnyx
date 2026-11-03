@@ -269,3 +269,92 @@ test(
     )
   },
 )
+
+test(
+  'each rule accepts a provider/account pair once, keeping automatic distinct from named accounts',
+  () => {
+    const document = {
+      accounts: {
+        ...ACCOUNTS,
+        'claude:work': {
+          provider: 'claude',
+          folder: '/logins/claude',
+        },
+      },
+      main: 'claude:main',
+      workers: { claude: ['claude:main'] },
+      projects: {},
+      rules: {},
+      default: [
+        { harness: 'claude' },
+        {
+          harness: 'claude',
+          account: 'claude:main',
+          model: 'opus',
+        },
+        {
+          harness: 'claude',
+          account: 'claude:work',
+          model: 'sonnet',
+        },
+      ],
+    }
+    assert.deepEqual(
+      checkDispatch({ document }).filter(issue => issue.level === 'error'),
+      [],
+    )
+
+    for (const candidate of [
+      {
+        harness: 'claude',
+        model: 'sonnet',
+        effort: 'high',
+      },
+      {
+        harness: 'claude',
+        account: 'claude:main',
+        model: 'sonnet',
+        mode: 'default',
+      },
+    ]) {
+      const issues = checkDispatch({
+        document: {
+          ...document,
+          default: [
+            ...document.default,
+            candidate,
+          ],
+        },
+      })
+      const duplicate = issues.find(issue => issue.path === '/default/3/account')
+      assert.ok(duplicate)
+      assert.equal(
+        duplicate.level,
+        'error',
+      )
+      assert.equal(
+        duplicate.readable,
+        true,
+      )
+      assert.match(
+        duplicate.problem,
+        /already used in this rule/,
+      )
+    }
+
+    assert.deepEqual(
+      checkDispatch({
+        document: {
+          ...document,
+          rules: {
+            other: {
+              when: 'Other',
+              candidates: document.default,
+            },
+          },
+        },
+      }).filter(issue => issue.level === 'error'),
+      [],
+    )
+  },
+)

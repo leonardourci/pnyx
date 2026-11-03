@@ -44,6 +44,7 @@ export interface QuotaReading {
 export type ReadQuota = ({ account }: { account: Account }) => QuotaReading | Promise<QuotaReading>
 export type Override = StartOverride
 export const OVERRIDE_FIELDS: readonly (keyof Override)[] = [
+  'account',
   'model',
   'effort',
   'mode',
@@ -403,7 +404,17 @@ export async function chooseCandidate({
     accounts,
   } = config
   // Only a harness or model chooses; effort, mode and Fast ride on the candidate quota chose.
-  const ownerOverride = Boolean(harness || override?.model)
+  const ownerOverride = Boolean(harness || override?.model || override?.account)
+  const requested = override?.account ? accounts[override.account] : undefined
+
+  if (override?.account && (!requested || (harness && requested.provider !== harness))) {
+    throw new HydraError({
+      code: 'NO_ACCOUNTS',
+      message: `account ${override.account} is not registered for the requested harness`,
+    })
+  }
+
+  harness = harness ?? requested?.provider
   const candidates = startCandidates({
     dispatch,
     rule,
@@ -458,7 +469,9 @@ export async function chooseCandidate({
       continue
     }
 
-    const available = offers?.[candidate.harness]
+    const selectedAccount = override?.account ?? candidate.account
+    // A named account's catalog is checked after selection, never against another home's list.
+    const available = selectedAccount ? undefined : offers?.[candidate.harness]
     const model = override?.model ?? candidate.model
 
     // A harness whose catalog could not be read leaves the model to the harness rather than to a guess.
@@ -481,7 +494,7 @@ export async function chooseCandidate({
       project,
     }) : undefined
     const listedOrder = projectOrder?.length ? projectOrder : dispatch.workers[candidate.harness]
-    const order = explicit?.order ?? listedOrder ?? []
+    const order = selectedAccount ? [selectedAccount] : explicit?.order ?? listedOrder ?? []
     const logins = explicit?.accounts ?? accounts
 
     if (!order.length) {
@@ -737,7 +750,7 @@ export function overrideOf({ value }: { value: unknown }): Override | undefined 
 
   if (!given || Object.keys(given).some(key => !OVERRIDE_FIELDS.includes(key as keyof Override))) {
     throw new HydraError({
-      message: 'an override may only set model, effort, mode and fast',
+      message: 'an override may only set account, model, effort, mode and fast',
       code: 'VALIDATION_ERROR',
     })
   }
@@ -795,10 +808,12 @@ export function validateChoice({
       ? config.dispatch.rules[choice.rule]?.candidates : undefined
   const projectOrder = project && config.dispatch.projects[project]?.[account?.provider ?? 'claude']
   const order = projectOrder?.length ? projectOrder : config.dispatch.workers[account?.provider ?? 'claude']
+  const selectedAccount = choice?.override?.account ?? choice?.candidate?.account
+  const allowedOrder = selectedAccount ? [selectedAccount] : logins?.order ?? order
 
   if (!choice || !account || account.provider !== choice.provider
     || account.provider !== choice.candidate?.harness || loginFolder({ account }) !== choice.folder
-    || typeof choice.reason !== 'string' || !(logins?.order ?? order)?.includes(choice.account)
+    || typeof choice.reason !== 'string' || !allowedOrder?.includes(choice.account)
     || (choice.ownerOverride !== true && !rule?.some(candidate => isDeepStrictEqual(
       candidate,
       choice.candidate,
@@ -826,12 +841,14 @@ export function validateChoice({
 export function chosenSettings({ choice }: { choice: DispatchChoice }): Record<string, string> {
   const {
     harness: _harness,
+    account: _account,
     ...candidate
   } = {
     ...choice.candidate,
     ...choice.override,
   }
   void _harness
+  void _account
 
   return Object.fromEntries(Object.entries(candidate).filter(([
     , value,

@@ -1,4 +1,3 @@
-import { effectiveDispatch, type Harness } from './dispatch-config.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { steeringHeld } from './steering.ts'
@@ -39,24 +38,7 @@ export { WORKER_COMMANDS } from '#app/command-registry.ts'
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
-// The account a harness runs under: the one asked for, else the main one, else the first for that harness.
-export const harnessAccount = ({
-  effective,
-  harness,
-  prefer,
-}: {
-  effective: ReturnType<typeof effectiveDispatch>
-  harness: Harness
-  prefer?: string
-}) => {
-  const ours = ({ name }: { name?: string }) =>
-    !!name && effective.accounts[name]?.provider === harness
-
-  return [
-    prefer,
-    effective.dispatch.main,
-  ].find(name => ours({ name })) ?? Object.keys(effective.accounts).find(name => ours({ name }))
-}
+export { harnessAccount } from './account-choice.ts'
 
 // Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
 export function sameChosenSettings({
