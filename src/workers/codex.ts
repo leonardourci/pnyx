@@ -884,12 +884,14 @@ export function codexProvider({
             const model = object({ value: raw })
 
             if (typeof model.model === 'string' && typeof model.displayName === 'string') {
+              const fast = Array.isArray(model.additionalSpeedTiers) && model.additionalSpeedTiers.includes('fast')
+
               models.push({
                 value: model.model,
                 label: model.displayName,
                 ...(model.isDefault === true ? { isDefault: true } : {}),
                 ...(typeof model.defaultReasoningEffort === 'string' ? { defaultEffort: model.defaultReasoningEffort } : {}),
-                ...(Array.isArray(model.additionalSpeedTiers) && model.additionalSpeedTiers.includes('fast') ? { fast: true as const } : {}),
+                ...(fast ? { fast: true as const } : {}),
               })
             }
           }

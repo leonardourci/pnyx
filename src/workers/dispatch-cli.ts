@@ -7,7 +7,7 @@ import { loadHydra, requireHydra } from '#app/store.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { applyDispatch, DISPATCH_HELP_LINE, dispatchIssues, dispatchRevision, parseEnvelope, proposalStatus, resolveProposal } from './dispatch-apply.ts'
 import { harnessValues, HARNESSES, NAME, NAME_RULE, type DispatchDocument } from './dispatch-check.ts'
-import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
+import { candidates, effectiveDispatch, initConfig, invalid, lockedDocument, onTemplate, savedDocument, type Account, type AccountOrder, type Candidate, type Harness } from './dispatch-config.ts'
 import { startsNow } from './dispatch.ts'
 import { storedOffers } from './model-catalog.ts'
 import { accountRegistration } from './account-choice.ts'
@@ -464,6 +464,25 @@ async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   })
 }
 
+function accountFlags({ values }: { values: Record<string, unknown> }): Account {
+  const account: Account = {
+    provider: required({
+      value: values.provider as string | undefined,
+      what: '--provider',
+    }) as Harness,
+    folder: required({
+      value: values.folder as string | undefined,
+      what: '--folder',
+    }),
+  }
+
+  if (values.label !== undefined) {
+    account.label = String(values.label)
+  }
+
+  return account
+}
+
 function accountCommand({ args }: { args: string[] }): Output {
   const propose = args[0] === 'propose'
   args = propose ? args.slice(1) : args
@@ -503,17 +522,7 @@ function accountCommand({ args }: { args: string[] }): Output {
   }) : accountRegistration({
     effective: effectiveDispatch(),
     name: key,
-    account: {
-      provider: required({
-        value: values.provider as string | undefined,
-        what: '--provider',
-      }) as Harness,
-      folder: required({
-        value: values.folder as string | undefined,
-        what: '--folder',
-      }),
-      ...(values.label !== undefined ? { label: String(values.label) } : {}),
-    },
+    account: accountFlags({ values }),
   })
 
   return apply({
