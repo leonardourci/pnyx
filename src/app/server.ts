@@ -2026,6 +2026,7 @@ export async function mountOwnedHydra({
           const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
 
           if (agent.account) {
+            // Refuses an account not registered for this harness.
             harnessAccount({
               effective: effectiveDispatch(),
               harness: agent.harness,

@@ -46,6 +46,7 @@ export const accountLabel = ({
   account?: Account
 }) => typeof account?.label === 'string' && account.label.trim() ? account.label : name
 
+// The account a harness runs under: the one asked for, which must be registered for it, else the main one, else the first for that harness.
 export function harnessAccount({
   effective,
   harness,
