@@ -53,7 +53,8 @@ export function AccountSettings({
 
   useEffect(
     () => {
-      if (visibleFailure) {
+      // A refusal from the server moves focus to its message; a field's own error stays beside it.
+      if (visibleFailure?.field === 'form') {
         form.current?.querySelector<HTMLElement>(`[data-account-field="${visibleFailure.field}"]`)?.focus()
       }
     },
@@ -80,13 +81,28 @@ export function AccountSettings({
     }
   }
 
-  const save = async () => {
+  // Saves the account once both fields are valid; leaving a blank field of a new account is not an error yet.
+  const save = async ({ left }: { left: boolean }) => {
     if (!draft || !base) {
       return
     }
 
     const label = draft.label.trim()
     const folder = draft.folder.trim()
+    const saved = draft.key ? accounts[draft.key] : undefined
+
+    if (saved && saved.provider === draft.provider && saved.folder === folder && accountLabel({
+      name: draft.key ?? '',
+      account: saved,
+    }) === label) {
+      setFailure(undefined)
+
+      return
+    }
+
+    if (left && !draft.key && (!label || !folder)) {
+      return
+    }
 
     if (!label || label.length > 80 || /[\r\n\0]/.test(label)) {
       reject({
@@ -150,7 +166,12 @@ export function AccountSettings({
       patch,
       targets: [`account:${key}`],
     })
-    setDraft(undefined)
+
+    // A new account becomes its own row; an edited one stays open for the next field.
+    if (!draft.key) {
+      setDraft(undefined)
+    }
+
     setFailure(undefined)
 
     try {
@@ -177,7 +198,7 @@ export function AccountSettings({
       id={`${errorId}-form`}
       className="setting-stack account-form"
       onSubmit={async event => {
-        event.preventDefault(); await save()
+        event.preventDefault(); await save({ left: false })
       }}
     >
       <div className="account-form-field">
@@ -212,6 +233,7 @@ export function AccountSettings({
             ...draft,
             label: event.target.value,
           })}
+          onBlur={() => save({ left: true })}
         />
       </div>
       <div className="account-form-field">
@@ -229,6 +251,7 @@ export function AccountSettings({
             ...draft,
             folder: event.target.value,
           })}
+          onBlur={() => save({ left: true })}
         />
       </div>
       {visibleFailure && (
@@ -241,15 +264,16 @@ export function AccountSettings({
         >{visibleFailure.message}
         </p>
       )}
-      <div className="account-form-actions">
-        <Button type="submit" variant="primary" disabled={!base}>{draft.key ? 'Save account' : 'Add account'}</Button>
-        <Button
-          onClick={() => {
-            setDraft(undefined); setFailure(undefined)
-          }}
-        >Cancel
-        </Button>
-      </div>
+      {!draft.key && (
+        <div className="account-form-actions">
+          <Button
+            onClick={() => {
+              setDraft(undefined); setFailure(undefined)
+            }}
+          >Cancel
+          </Button>
+        </div>
+      )}
     </form>
   )
   const adding = draft && !draft.key
@@ -289,7 +313,7 @@ export function AccountSettings({
                       folder: String(account?.folder ?? ''),
                     })
                   }}
-                ><Icon name="edit" size={14} />Edit
+                >{editing ? <><Icon name="check" size={14} />Done</> : <><Icon name="edit" size={14} />Edit</>}
                 </Button>
               )}
             >{editing && editor}
