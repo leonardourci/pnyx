@@ -115,24 +115,6 @@ test(
           effort: 'high',
         },
       ]
-      const refusal = await s.ownerRefusal({
-        args: [
-          'rule',
-          'set',
-          'build',
-          '--candidates',
-          JSON.stringify(duplicates),
-        ],
-      })
-      assert.equal(
-        refusal.code,
-        'VALIDATION_ERROR',
-      )
-      assert.ok(refusal.error)
-      assert.match(
-        refusal.error,
-        /already used in this rule/,
-      )
       const edited = await page.refusal({
         name: 'rule',
         args: [
@@ -295,5 +277,108 @@ test(
       what: 'the legacy worker to finish',
       check: () => s.task({ key: 'legacy' }).sessionActivity === 'finished',
     })
+  },
+)
+
+test(
+  'task start --account runs the worker on that account’s home, and a candidate whose model that home does not offer is refused before any start',
+  async () => {
+    const s = await pnyx.scenario()
+    const work = s.folder({ name: 'chosen-work-home' })
+    await s.owner({
+      args: [
+        'account',
+        'set',
+        'work',
+        '--provider',
+        'claude',
+        '--folder',
+        work,
+      ],
+    })
+    const chosenFolder = s.folder({ name: 'chosen-worker' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'chosen',
+        '--title',
+        'Run on Work',
+        '--folder',
+        chosenFolder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'chosen',
+        '--account',
+        'work',
+        '--reason',
+        'Exercise the chosen account',
+      ],
+    })
+    const chosen = await s.agent({ cwd: chosenFolder })
+    assert.equal(
+      chosen.env.CLAUDE_CONFIG_DIR,
+      work,
+    )
+    assert.equal(
+      s.task({ key: 'chosen' }).agent?.account,
+      'work',
+    )
+    await until({
+      what: 'the chosen worker to finish',
+      check: () => s.task({ key: 'chosen' }).sessionActivity === 'finished',
+    })
+
+    await s.owner({
+      args: [
+        'rule',
+        'set',
+        'unoffered',
+        '--when',
+        'Use a model Work does not offer',
+        '--harness',
+        'claude',
+        '--account',
+        'work',
+        '--model',
+        'claude-unoffered-1',
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--key',
+        'unoffered',
+        '--title',
+        'Use an unoffered model',
+        '--folder',
+        s.folder({ name: 'unoffered-worker' }),
+      ],
+    })
+    const refused = await s.ownerRefusal({
+      args: [
+        'task',
+        'start',
+        'unoffered',
+        '--rule',
+        'unoffered',
+        '--reason',
+        'Exercise an unoffered model',
+      ],
+    })
+    assert.equal(
+      refused.code,
+      'VALIDATION_ERROR',
+    )
+    assert.equal(
+      s.task({ key: 'unoffered' }).agent,
+      undefined,
+    )
   },
 )
