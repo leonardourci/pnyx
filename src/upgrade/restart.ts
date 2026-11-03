@@ -1,6 +1,4 @@
 import { AxiError } from 'axi-sdk-js'
-import { requestEnv } from '#app/request-context.ts'
-import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { infoPath, processStart, type ServerInfo } from '#app/server-state.ts'
 import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
@@ -10,6 +8,7 @@ import { serviceFile } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
+import { requestEnv } from '#app/request-context.ts'
 
 // Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
@@ -23,12 +22,12 @@ type Running = {
   start: string
 }
 
-function running({ hydraId }: { hydraId: string }): Running | undefined {
+function running(): Running | undefined {
   let info: ServerInfo
 
   try {
     info = JSON.parse(readFileSync(
-      infoPath({ hydraId }),
+      infoPath(),
       'utf8',
     ))
   } catch (error) {
@@ -60,7 +59,7 @@ function running({ hydraId }: { hydraId: string }): Running | undefined {
   try {
     claim = JSON.parse(readFileSync(
       join(
-        hydraDir({ hydraId }),
+        pnyxHome(),
         'server.lock',
       ),
       'utf8',
@@ -222,21 +221,9 @@ export function requestRestart() {
 }
 
 export async function restartPnyx() {
-  const ids = [
-    ...new Set([
-      'default',
-      ...hydraIds(),
-    ]),
-  ]
-  const found = ids.map(hydraId => running({ hydraId }))
-    .filter((item): item is Running => item !== undefined)
-  const unique = [
-    ...new Map(found.map(item => [
-      item.info.pid,
-      item,
-    ])).values(),
-  ]
-  const target = unique[0]
+  const found = running()
+  const unique = found ? [found] : []
+  const target = found
   const managed = target ? target.info.service ?? existsSync(serviceFile().path) : false
 
   for (const item of unique) {
@@ -275,47 +262,33 @@ export async function restartPnyx() {
   }
 
   const ready = async () => {
-    for (const hydraId of ids) {
-      let candidate: Running | undefined
+    let candidate: Running | undefined
 
-      try {
-        candidate = running({ hydraId })
-      } catch {
-        continue
-      }
-
-      if (!candidate) {
-        continue
-      }
-
-      const {
-        info,
-        start,
-      } = candidate
-
-      if (unique.some(item => item.info.pid === info.pid && item.start === start)) {
-        continue
-      }
-
-      try {
-        const response = await fetch(
-          `http://127.0.0.1:${candidate.info.port}/hydra/${encodeURIComponent(hydraId)}/health`,
-          {
-            signal: AbortSignal.timeout(1000),
-          },
-        )
-        const health = await response.json() as {
-          pid?: number
-          hydraId?: string
-        }
-
-        if (response.ok && health.pid === candidate.info.pid && health.hydraId === hydraId) {
-          return true
-        }
-      } catch { /* The new application is not ready yet. */ }
+    try {
+      candidate = running()
+    } catch {
+      return false
     }
 
-    return false
+    const replaced = unique.some(item =>
+      item.info.pid === candidate?.info.pid && item.start === candidate.start)
+
+    if (!candidate || replaced) {
+      return false
+    }
+
+    try {
+      const response = await fetch(
+        `http://127.0.0.1:${candidate.info.port}/health`,
+        { signal: AbortSignal.timeout(1000) },
+      )
+      const health = await response.json() as { pid?: number }
+
+      return response.ok && health.pid === candidate.info.pid
+    } catch {
+      // The new application is not ready yet.
+      return false
+    }
   }
 
   if (!managed) {

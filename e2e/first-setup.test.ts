@@ -123,7 +123,7 @@ test(
     }
     const serverPath = join(
       pnyx,
-      'hydras/default/server.json',
+      'server.json',
     )
     const snapshot = join(
       pnyx,

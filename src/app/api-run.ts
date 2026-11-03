@@ -1,0 +1,92 @@
+import { Writable } from 'node:stream'
+import { HydraError } from '#store/errors.ts'
+import { nonblockingLocks } from '#store/storage.ts'
+import { runCli } from '#cli/run.ts'
+import { IDENTITY, requestExitCode, runForClient } from './request-context.ts'
+
+export type RunRequest = {
+  argv: string[]
+  cwd: string
+  env: Partial<Record<(typeof IDENTITY)[number], string>>
+  stdin?: string
+}
+
+export type RunAnswer = {
+  stdout: string
+  exitCode: number
+}
+
+const strings = ({ value }: { value: unknown }) => Array.isArray(value) && value.every(item => typeof item === 'string')
+
+function request({ body }: { body: unknown }): RunRequest {
+  const given = (body ?? {}) as Partial<Record<keyof RunRequest, unknown>>
+  const env = (given.env ?? {}) as Record<string, unknown>
+
+  if (!strings({ value: given.argv }) || typeof given.cwd !== 'string' || !given.cwd.startsWith('/')
+    || (given.stdin !== undefined && typeof given.stdin !== 'string')
+    || typeof env !== 'object' || Object.values(env).some(value => typeof value !== 'string')) {
+    throw new HydraError({
+      message: 'a run needs argv, an absolute cwd, string identity variables and optional stdin text',
+      code: 'VALIDATION_ERROR',
+    })
+  }
+
+  return {
+    argv: given.argv as string[],
+    cwd: given.cwd,
+    env: Object.fromEntries(IDENTITY.flatMap(name => typeof env[name] === 'string' ? [
+      [
+        name,
+        env[name],
+      ],
+    ] : [])),
+    stdin: given.stdin as string | undefined,
+  }
+}
+
+// Runs a pnyx-axi command line for a client, in the client's identity and folder, and answers with exactly what it printed.
+export async function runForRequest({ body }: { body: unknown }): Promise<RunAnswer> {
+  const {
+    argv,
+    cwd,
+    env,
+    stdin,
+  } = request({ body })
+  let stdout = ''
+  const sink = new Writable({
+    // eslint-disable-next-line pnyx/object-params -- Node's Writable owns the write signature.
+    write(
+      chunk,
+      _encoding,
+      done,
+    ) {
+      stdout += String(chunk)
+      done()
+    },
+  })
+
+  return runForClient({
+    identity: env,
+    cwd,
+    stdin,
+    run: async () => {
+      const before = process.exitCode
+      // Inside the server a held lock is refused at once, never waited on with the event loop blocked.
+      await nonblockingLocks.run(
+        true,
+        () => runCli({
+          argv,
+          stdout: sink,
+        }),
+      )
+      // The SDK sets the process exit code itself for an unknown command or a misplaced flag; the server keeps its own.
+      const set = process.exitCode
+      process.exitCode = before
+
+      return {
+        stdout,
+        exitCode: requestExitCode() ?? (set !== before ? Number(set) : 0),
+      }
+    },
+  })
+}

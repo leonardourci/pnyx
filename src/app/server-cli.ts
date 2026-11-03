@@ -11,7 +11,6 @@ import { HydraError } from '#store/errors.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
-import { hydraIds } from './home-migration.ts'
 import { stopOldHost } from '#workers/children.ts'
 
 function serveFlags({ args }: { args: string[] }) {
@@ -138,10 +137,10 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
   // Files and pids, not /health, so a stopping server too busy to answer cannot outlast the deadline.
-  const recorded = () => new Set(hydraIds().flatMap(hydraId => {
+  const recorded = () => {
     try {
       const { pid } = JSON.parse(readFileSync(
-        infoPath({ hydraId }),
+        infoPath(),
         'utf8',
       )) as ServerInfo
       process.kill(
@@ -149,11 +148,11 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
         0,
       )
 
-      return [pid]
+      return new Set([pid])
     } catch {
-      return []
+      return new Set<number>()
     }
-  }))
+  }
 
   for (let left = pids; left.length > 0; left = left.filter(pid => recorded().has(pid))) {
     if (Date.now() > deadline) {
