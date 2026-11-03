@@ -57,7 +57,7 @@ export function AccountSettings({
     () => {
       // A refusal from the server moves focus to its message; a field's own error stays beside it.
       if (visibleFailure?.field === 'form') {
-        form.current?.querySelector<HTMLElement>(`[data-account-field="${visibleFailure.field}"]`)?.focus()
+        form.current?.querySelector<HTMLElement>('[data-account-field="form"]')?.focus()
       }
     },
     [visibleFailure],
@@ -206,7 +206,7 @@ export function AccountSettings({
             label: item.label,
             icon: item.icon,
           }))}
-          disabled={!!draft.key && PROVIDERS.some(item => item.harness === draft.provider)}
+          disabled={!!draft.key}
           onChange={({ value }) => setDraft({
             ...draft,
             provider: value as Harness,
@@ -280,7 +280,7 @@ export function AccountSettings({
           key,
           account,
         ]) => {
-          const provider = PROVIDERS.find(item => item.harness === account?.provider)
+          const provider = PROVIDERS.find(item => item.harness === account.provider)!
           const label = accountLabel({
             name: key,
             account,
@@ -290,9 +290,9 @@ export function AccountSettings({
           return (
             <SettingRow
               key={key}
-              icon={provider?.icon ?? 'agent'}
+              icon={provider.icon}
               label={label}
-              description={`${provider?.label ?? account?.provider ?? 'Unknown provider'} · ${account?.folder ?? 'Home not configured'}`}
+              description={`${provider.label} · ${account.folder}`}
               action={(
                 <Button
                   aria-label={`Edit ${label}`}
@@ -303,9 +303,9 @@ export function AccountSettings({
                     setFailure(undefined); setDraft(editing ? undefined : {
                       id: crypto.randomUUID(),
                       key,
-                      provider: account?.provider ?? 'claude',
+                      provider: account.provider,
                       label,
-                      folder: String(account?.folder ?? ''),
+                      folder: account.folder,
                     })
                   }}
                 >{editing ? <><Icon name="check" size={14} />Done</> : <><Icon name="edit" size={14} />Edit</>}

@@ -180,13 +180,12 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     window.dispatchEvent(new Event(DISPATCH_CHANGED))
   }
 
-  const listed = snapshot.view
-  let effective = listed ?? undefined
+  const listed = snapshot.view ?? undefined
+  let effective = listed
 
-  const newerAccounts = listed && saved && saved.revision >= (listed.revision ?? 0)
-    && Object.keys(saved.document.accounts).length > 0
-
-  if (listed && saved && newerAccounts) {
+  // An account saved in Settings reaches the saved document before this view refreshes; the newer accounts win.
+  if (listed && saved && saved.revision >= (listed.revision ?? 0)
+    && Object.keys(saved.document.accounts).length > 0) {
     effective = {
       ...listed,
       accounts: saved.document.accounts,

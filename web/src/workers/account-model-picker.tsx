@@ -129,13 +129,23 @@ function SelectionMenu({
     account: 'accounts',
     model: 'models',
   }[step]
-  const title = step === 'account' ? `${provider.label} accounts` : stepName[0]!.toUpperCase() + stepName.slice(1)
+  const title = {
+    provider: 'Providers',
+    account: `${provider.label} accounts`,
+    model: 'Models',
+  }[step]
   const loading = step === 'model' && !catalog.models && !catalog.error
   const error = step === 'model' ? catalog.error : ''
   const savedModel = modelOptions({
     models: catalog.models ?? [],
     selected: defaultAgent?.model,
   }).value
+  const onModels = step === 'model'
+  const onAgentAccount = onModels && harness === agent.harness && selectedAccount === account
+  const onDefaultAccount = onModels && harness === defaultAgent?.harness
+    && selectedAccount === defaultAgent.account
+  const backTo = step === 'model' ? 'account' : 'provider'
+  const addLabel = step === 'provider' ? 'Add provider in Settings' : 'Add account in Settings'
 
   useEffect(
     () => {
@@ -238,7 +248,12 @@ function SelectionMenu({
         0,
         filtered.length - 1,
       )
-      const next = event.key === 'Home' ? 0 : event.key === 'End' ? last : active + (event.key === 'ArrowDown' ? 1 : -1)
+      const next = {
+        Home: 0,
+        End: last,
+        ArrowDown: active + 1,
+        ArrowUp: active - 1,
+      }[event.key]!
       setActive(Math.max(
         0,
         Math.min(
@@ -266,7 +281,11 @@ function SelectionMenu({
   return (
     <div className="account-model-menu" onKeyDown={event => keyboard({ event })}>
       <div className="account-model-head">
-        {step !== 'provider' && <Button aria-label="Back" onClick={() => navigate({ next: step === 'model' ? 'account' : 'provider' })}><Icon name="arrow_left" size={16} /></Button>}
+        {step !== 'provider' && (
+          <Button aria-label="Back" onClick={() => navigate({ next: backTo })}>
+            <Icon name="arrow_left" size={16} />
+          </Button>
+        )}
         <strong>{title}</strong>
       </div>
       <SearchBar
@@ -290,15 +309,27 @@ function SelectionMenu({
         aria-label={title}
       >
         {loading && <p role="status">Loading models…</p>}
-        {error && <div role="alert"><p>{error}</p><Button onClick={catalog.retry}>Retry models</Button></div>}
-        {!loading && !error && filtered.length === 0 && <p role="status">{query ? 'No matches.' : 'No options available.'}</p>}
+        {error && (
+          <div role="alert">
+            <p>{error}</p>
+            <Button onClick={catalog.retry}>Retry models</Button>
+          </div>
+        )}
+        {!loading && !error && filtered.length === 0 && (
+          <p role="status">{query ? 'No matches.' : 'No options available.'}</p>
+        )}
         {filtered.map((
           choice,
           index,
         ) => {
-          const current = step === 'model' && harness === agent.harness && selectedAccount === account && choice.value === agent.model
-          const pinned = step === 'model' && harness === defaultAgent?.harness && selectedAccount === defaultAgent.account && choice.value === savedModel
-          const defaultText = pinned ? 'Default for new sessions' : 'Set as default for new sessions'
+          const current = onAgentAccount && choice.value === agent.model
+          const pinned = onDefaultAccount && choice.value === savedModel
+          const defaultText = pinned
+            ? 'Default for new sessions'
+            : 'Set as default for new sessions'
+          const mark = onModels
+            ? current && <Icon name="check" size={16} />
+            : <Icon name="chevron_right" size={16} />
 
           return (
             <MenuOption
@@ -345,7 +376,7 @@ function SelectionMenu({
               >
                 {choice.icon && <Icon name={choice.icon} size={18} />}
                 <span>{choice.label}</span>
-                {step === 'model' ? current && <Icon name="check" size={16} /> : <Icon name="chevron_right" size={16} />}
+                {mark}
               </Button>
               {step === 'model' && saveDefault && (
                 <Tooltip content={defaultText}>
@@ -366,7 +397,12 @@ function SelectionMenu({
           )
         })}
       </div>
-      {step !== 'model' && <div className="account-model-add"><Button variant="surface" onClick={add}><Icon name="plus" size={16} />{step === 'provider' ? 'Add provider in Settings' : 'Add account in Settings'}</Button><p>Or ask Hydra to add it for you.</p></div>}
+      {step !== 'model' && (
+        <div className="account-model-add">
+          <Button variant="surface" onClick={add}><Icon name="plus" size={16} />{addLabel}</Button>
+          <p>Or ask Hydra to add it for you.</p>
+        </div>
+      )}
     </div>
   )
 }
@@ -401,7 +437,16 @@ export function AccountModelPicker({
       disabled={disabled}
       invalid={invalid}
       describedBy={describedBy}
-      trigger={trigger ?? <><Icon name={provider.icon} size={20} /><span className="account-model-label"><span>{modelLabel}</span><small>{name}</small></span><Icon name="chevron_down" size={14} /></>}
+      trigger={trigger ?? (
+        <>
+          <Icon name={provider.icon} size={20} />
+          <span className="account-model-label">
+            <span>{modelLabel}</span>
+            <small>{name}</small>
+          </span>
+          <Icon name="chevron_down" size={14} />
+        </>
+      )}
     >
       {({ close }) => <SelectionMenu {...selection} close={close} />}
     </Popover>

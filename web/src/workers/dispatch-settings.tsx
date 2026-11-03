@@ -19,6 +19,9 @@ import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, fo
 // Refreshing the resolved account waits until typing pauses; quota is read on the server.
 const NOW_DELAY_MS = 600
 
+// Problems a rule shows beside itself.
+const BESIDE_A_RULE = /^\/(rules|default)(\/|$)/
+
 const VIEWS = [
   {
     value: 'table',
@@ -388,48 +391,46 @@ function RuleGroup({
       {candidates.map((
         candidate,
         index,
-      ) => {
-        return (
-          <div key={index} className="dispatch-candidate">
-            <AgentPickers
-              label={`${name} candidate ${index + 1}`}
-              agent={candidate}
-              inherited={{ account: draft.workers[candidate.harness]?.[0] }}
-              command={command}
-              // Settings shows its rows only while connected.
-              connected
-              describedBy={mine.length ? problemsId : undefined}
-              marks={candidateMarks({
-                saved: savedCandidates[index],
-                candidate,
-                issues,
-                segments: [
-                  ...segments,
-                  String(index),
-                ],
-              })}
-              onChange={({ next }) => setCandidates({
-                next: candidates.map((
-                  item,
-                  position,
-                ) => position === index ? next : item),
-              })}
-            />
-            <ConfirmRemove
-              label={`Remove ${name} candidate ${index + 1}`}
-              question="Remove?"
-              then=".dispatch-add button"
-              disabled={candidates.length < 2}
-              remove={() => setCandidates({
-                next: candidates.filter((
-                  _,
-                  position,
-                ) => position !== index),
-              })}
-            />
-          </div>
-        )
-      })}
+      ) => (
+        <div key={index} className="dispatch-candidate">
+          <AgentPickers
+            label={`${name} candidate ${index + 1}`}
+            agent={candidate}
+            inherited={{ account: draft.workers[candidate.harness]?.[0] }}
+            command={command}
+            // Settings shows its rows only while connected.
+            connected
+            describedBy={mine.length ? problemsId : undefined}
+            marks={candidateMarks({
+              saved: savedCandidates[index],
+              candidate,
+              issues,
+              segments: [
+                ...segments,
+                String(index),
+              ],
+            })}
+            onChange={({ next }) => setCandidates({
+              next: candidates.map((
+                item,
+                position,
+              ) => position === index ? next : item),
+            })}
+          />
+          <ConfirmRemove
+            label={`Remove ${name} candidate ${index + 1}`}
+            question="Remove?"
+            then=".dispatch-add button"
+            disabled={candidates.length < 2}
+            remove={() => setCandidates({
+              next: candidates.filter((
+                _,
+                position,
+              ) => position !== index),
+            })}
+          />
+        </div>
+      ))}
       <div className="dispatch-add">
         {effective && (
           <AccountModelPicker
@@ -579,7 +580,7 @@ function RulesTable({
           />
         ))}
       </div>
-      <IssueList issues={issues.filter(issue => !/^\/(rules|default)(\/|$)/.test(issue.path))} />
+      <IssueList issues={issues.filter(issue => !BESIDE_A_RULE.test(issue.path))} />
       {starts?.error && <p className="dispatch-desc" role="status">{starts.error}</p>}
       <Button variant="surface" className="dispatch-add-rule" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={14} />Add rule</Button>
     </section>
