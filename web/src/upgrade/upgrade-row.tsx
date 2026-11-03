@@ -13,7 +13,7 @@ const STEPS: UpgradeStepName[] = [
 
 // Every step while it runs, so the ones still to come show too; only the steps that ran once it stopped.
 function Steps({ operation }: { operation: UpgradeOperation }) {
-  const active = operation.state === 'running' || operation.state === 'restarting'
+  const active = operation.state === 'running' || operation.state === 'waiting' || operation.state === 'restarting'
   const restartOnly = operation.steps.length === 1 && operation.steps[0]?.step === 'restart'
   const shown = active && !restartOnly ? STEPS : operation.steps.map(step => step.step)
 
@@ -46,12 +46,15 @@ export function UpgradeRow({
   operation,
   askHydra,
   stop,
+  restartNow,
 }: {
   operation: UpgradeOperation
   askHydra({ text }: { text: string }): void
   stop(): Promise<void>
+  // Restarts a built upgrade without waiting for agents between turns.
+  restartNow(): Promise<void>
 }) {
-  const active = operation.state === 'running' || operation.state === 'restarting'
+  const active = operation.state === 'running' || operation.state === 'waiting' || operation.state === 'restarting'
   const elapsed = useElapsed({
     startedAt: operation.startedAt ?? operation.queuedAt,
     endedAt: operation.endedAt,
@@ -66,27 +69,37 @@ export function UpgradeRow({
   const [
     title,
     detail,
-  ] = active ? [`${progressTitle}… ${elapsed}`]
-    : operation.state === 'done' ? [`${finishedTitle} · ${elapsed}`]
-      : operation.state === 'current' ? ['Pnyx is already up to date']
-        : operation.state === 'stopped' ? brokenBack ? [
-          'Upgrade stopped.',
-          'Going back to the previous version failed, so the Pnyx folder may be partly upgraded.',
-        ] : ['Upgrade stopped; nothing changed.']
-          : operation.state === 'refused' ? [
-            'Upgrade not started.',
-            `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
-          ]
-            : operation.failed === 'restart' ? restartOnly ? ['Restart failed.'] : [
-              'Upgrade finished, but restart failed.',
-              'The upgraded code remains on disk.',
+  ] = operation.state === 'waiting' ? [
+    'Upgraded; restarting once no agent is mid-turn',
+    `Pnyx restarts by ${new Date(operation.restartBy ?? Date.now()).toLocaleTimeString(
+      [],
+      {
+        hour: '2-digit',
+        minute: '2-digit',
+      },
+    )} at the latest.`,
+  ]
+    : active ? [`${progressTitle}… ${elapsed}`]
+      : operation.state === 'done' ? [`${finishedTitle} · ${elapsed}`]
+        : operation.state === 'current' ? ['Pnyx is already up to date']
+          : operation.state === 'stopped' ? brokenBack ? [
+            'Upgrade stopped.',
+            'Going back to the previous version failed, so the Pnyx folder may be partly upgraded.',
+          ] : ['Upgrade stopped; nothing changed.']
+            : operation.state === 'refused' ? [
+              'Upgrade not started.',
+              `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
             ]
-              : [
-                `Upgrade failed while ${stoppedWhile({ operation })}.`,
-                operation.rolledBack === false
-                  ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
-                  : 'Went back to the previous version; nothing changed.',
+              : operation.failed === 'restart' ? restartOnly ? ['Restart failed.'] : [
+                'Upgrade finished, but restart failed.',
+                'The upgraded code remains on disk.',
               ]
+                : [
+                  `Upgrade failed while ${stoppedWhile({ operation })}.`,
+                  operation.rolledBack === false
+                    ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+                    : 'Went back to the previous version; nothing changed.',
+                ]
 
   return (
     <div className="compaction-row upgrade-row" data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
@@ -102,6 +115,11 @@ export function UpgradeRow({
         {operation.state === 'running' && (
           <Button variant="surface" className="upgrade-fix" onClick={stop}>
             <Icon name="stop" size={12} />Stop
+          </Button>
+        )}
+        {operation.state === 'waiting' && (
+          <Button variant="surface" className="upgrade-fix" onClick={restartNow}>
+            <Icon name="restart" size={12} />Restart now
           </Button>
         )}
         {operation.state === 'restarting' && (

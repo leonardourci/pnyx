@@ -432,6 +432,19 @@ export function HydraChat({
         operation={operation}
         askHydra={setDraft}
         stop={stop}
+        restartNow={async () => {
+          try {
+            await command({
+              name: 'compact',
+              args: [
+                HYDRA_CARD,
+                operation.id,
+              ],
+            })
+          } catch (error) {
+            notify({ text: (error as Error).message })
+          }
+        }}
       />,
     )
   }
