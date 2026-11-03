@@ -35,6 +35,8 @@ exit 79
   }
 
   const env: NodeJS.ProcessEnv = {
+    // The opt-in latency measure is the one switch a run takes from outside.
+    ...(process.env.PNYX_LATENCY ? { PNYX_LATENCY: process.env.PNYX_LATENCY } : {}),
     PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
     HOME: join(
       root,
