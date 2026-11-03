@@ -96,6 +96,41 @@ const message = ({
   })
 
 test(
+  'an operation that stopped Hydra shows as a divider with its label, even beside turn boundaries',
+  () => {
+    const entries = hydraMessages({
+      messages: [
+        {
+          ...message({
+            id: 'operation:up:finished',
+            actor: 'pnyx',
+            text: 'Restarted',
+          }),
+          kind: 'divider',
+        },
+      ],
+      transcript: [],
+      boundaries: true,
+    })
+
+    assert.deepEqual(
+      entries.map(entry => ({
+        kind: entry.kind,
+        text: entry.text,
+        hidden: entry.hidden,
+      })),
+      [
+        {
+          kind: 'divider',
+          text: 'Restarted',
+          hidden: false,
+        },
+      ],
+    )
+  },
+)
+
+test(
   'Hydra chat labels system lines and matches user transcript copies once despite whitespace',
   () => {
     const transcript: ThreadEntry[] = [
