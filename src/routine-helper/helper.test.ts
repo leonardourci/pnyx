@@ -18,6 +18,7 @@ import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
+import type { HelperAgent } from './state.ts'
 
 let root = ''
 let restore: NodeJS.ProcessEnv
@@ -352,9 +353,11 @@ function deferred() {
 function helperLab({
   failClose = false,
   cost,
+  agentFor,
 }: {
   failClose?: boolean
   cost?: number
+  agentFor?(): HelperAgent | undefined
 } = {}) {
   let reply = ''
   let fail = false
@@ -440,15 +443,22 @@ function helperLab({
   }
   const helper = createRoutineHelper({
     hydraId: 'lab',
+    agentFor,
     provider: ({ harness }) => {
       harnesses.push(harness)
 
       return provider
     },
-    environment: ({ actor }) => ({
+    environment: ({
+      actor,
+      account,
+      loginFolder,
+    }) => ({
       PNYX_HOME: root,
       PNYX_HYDRA: 'lab',
       PNYX_ACTOR: actor,
+      TEST_ACCOUNT: account,
+      TEST_ACCOUNT_HOME: loginFolder,
     }),
     context: async () => 'Hydra rules',
     changed: () => {
@@ -516,6 +526,70 @@ function helperLab({
     },
   }
 }
+
+test(
+  'a helper batch keeps its selected account and home if configuration changes before launch',
+  async t => {
+    let selected: HelperAgent = {
+      harness: 'claude',
+      account: 'work',
+      loginFolder: '/synthetic/work',
+      model: 'sonnet',
+    }
+    const lab = helperLab({ agentFor: () => selected })
+    t.after(() => lab.helper.close())
+    const task = state().keys.work!
+    const text = JSON.stringify({
+      outcomes: [
+        {
+          task,
+          audience: 'routine',
+          summary: 'Nudged.',
+        },
+      ],
+    })
+    const first = lab.run({ text })
+    selected = {
+      harness: 'claude',
+      account: 'personal',
+      loginFolder: '/synthetic/personal',
+      model: 'sonnet',
+    }
+    await (await first).finished
+    assert.equal(
+      lab.opens[0]!.env.TEST_ACCOUNT,
+      'work',
+    )
+    assert.equal(
+      lab.opens[0]!.env.TEST_ACCOUNT_HOME,
+      '/synthetic/work',
+    )
+    const recorded = readEvents({ hydraId: 'lab' }).find(event => event.type === 'hydra.helper-started')
+    assert.ok(recorded?.type === 'hydra.helper-started')
+    assert.equal(
+      recorded.data.agent?.loginFolder,
+      '/synthetic/work',
+    )
+    assert.equal(
+      recorded.data.agent?.account,
+      'work',
+    )
+
+    await (await lab.run({ text })).finished
+    assert.equal(
+      lab.opens[1]!.env.TEST_ACCOUNT,
+      'personal',
+    )
+    assert.equal(
+      lab.opens[1]!.env.TEST_ACCOUNT_HOME,
+      '/synthetic/personal',
+    )
+    assert.equal(
+      lab.opens[1]!.agent,
+      undefined,
+    )
+  },
+)
 
 test(
   'a terminal-only helper result is persisted without streamed text',
@@ -1025,6 +1099,148 @@ test(
     assert.deepEqual(
       state().helper?.outcomes.map(outcome => outcome.summary),
       ['Nudged.'],
+    )
+  },
+)
+
+test(
+  'completion recovery reattaches with the recorded helper account home after settings change',
+  async t => {
+    const task = state().keys.work!
+    const folder = join(
+      root,
+      'original-home',
+    )
+    const pending = join(
+      root,
+      'hydras/lab/helper-pending',
+    )
+    fs.mkdirSync(
+      pending,
+      { recursive: true },
+    )
+    fs.writeFileSync(
+      join(
+        pending,
+        'original.json',
+      ),
+      JSON.stringify({
+        tasks: [task],
+        change: {
+          type: 'hydra.helper-finished',
+          data: {
+            batch: 'original',
+            outcomes: [],
+          },
+        },
+        native: {
+          harness: 'claude',
+          agent: {
+            provider: 'claude-code',
+            sessionId: 'original-native',
+            cwd: join(
+              root,
+              'hydras/lab/helper',
+            ),
+            host: 'pnyx',
+            account: 'old-work',
+            loginFolder: folder,
+          },
+        },
+      }),
+    )
+    const environments: {
+      account?: string
+      loginFolder?: string
+    }[] = []
+    let settled = false
+    const fixture: Provider = {
+      remote: true,
+      models: async () => [],
+      defaults: async ({ models }) => models,
+      // eslint-disable-next-line pnyx/object-params -- The provider owns this callback signature.
+      open: async options => {
+        assert.equal(
+          options.reattach,
+          true,
+        )
+        assert.equal(
+          options.agent?.account,
+          'old-work',
+        )
+        assert.equal(
+          options.env.TEST_ACCOUNT_HOME,
+          folder,
+        )
+
+        return {
+          id: 'original-native',
+          remote: true,
+          settle: async () => {
+            settled = true
+          },
+          detach: () => {},
+          close: () => {},
+          run: () => {
+            throw new Error('Recovery must not send new input')
+          },
+          attach: () => {
+            throw new Error('Recovery must only settle completion')
+          },
+          snapshot: () => {
+            throw new Error('Recovery must not reconstruct a session snapshot')
+          },
+          set: async () => {
+            throw new Error('Recovery must not change settings')
+          },
+          interrupt: async () => {
+            throw new Error('Recovery must not interrupt')
+          },
+        }
+      },
+    }
+    const helper = createRoutineHelper({
+      hydraId: 'lab',
+      provider: () => fixture,
+      agentFor: () => ({
+        harness: 'codex',
+        account: 'new-personal',
+        model: 'gpt-6-luna',
+        loginFolder: '/synthetic/new-home',
+      }),
+      environment: ({
+        account,
+        loginFolder,
+      }) => {
+        environments.push({
+          account,
+          loginFolder,
+        })
+
+        return {
+          PNYX_HOME: root,
+          TEST_ACCOUNT_HOME: loginFolder,
+        }
+      },
+      context: () => '',
+      changed: () => {},
+      handback: () => {},
+      outcomesReady: () => {},
+    })
+    t.after(() => helper.close())
+    await helper.recover()
+    assert.equal(
+      settled,
+      true,
+    )
+    assert.deepEqual(
+      environments,
+      [
+        {
+          account: 'old-work',
+          loginFolder: folder,
+        },
+      ],
     )
   },
 )

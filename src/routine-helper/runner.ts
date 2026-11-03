@@ -11,7 +11,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import type { HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
-import type { AgentConfig, AgentRef, AgentSettings } from '#workers/model.ts'
+import type { AgentRef, AgentSettings } from '#workers/model.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { background } from '#app/background.ts'
 import { prepareHydraFolder } from '#setup/skills.ts'
@@ -22,7 +22,7 @@ import { replaceFile } from '#store/storage.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
 import { helperAgent, helperScope } from './route.ts'
 import { releaseTask, taskLease } from './leases.ts'
-import { handbackId, type HelperBatch, type HelperChange, type HelperOutcome, type HelperUsage } from './state.ts'
+import { handbackId, type HelperAgent, type HelperBatch, type HelperChange, type HelperOutcome, type HelperUsage } from './state.ts'
 
 type Completion = {
   change: Extract<HelperChange, { type: 'hydra.helper-finished' }>
@@ -163,9 +163,13 @@ export function createRoutineHelper({
   environment({
     harness,
     actor,
+    account,
+    loginFolder,
   }: {
     harness: 'claude' | 'codex'
     actor: string
+    account?: string
+    loginFolder?: string
   }): NodeJS.ProcessEnv
   context(): Promise<string>
   changed(): void
@@ -178,7 +182,7 @@ export function createRoutineHelper({
   }): void
   outcomesReady(): void
   bound?: number
-  agentFor?(): AgentConfig | undefined
+  agentFor?(): HelperAgent | undefined
   deadline?({ expire }: { expire(): void }): () => void
   spawned?: Parameters<Provider['open']>[0]['spawned']
 }) {
@@ -190,6 +194,9 @@ export function createRoutineHelper({
   let selection = ''
   let sessionCost = 0
   let sessionTurns = 0
+
+  const configuredAgent = ({ state }: { state: HydraState }): HelperAgent | undefined =>
+    agentFor ? agentFor() : helperAgent({ state })
 
   const stopping = new AbortController()
   const pendingDir = join(
@@ -334,9 +341,10 @@ export function createRoutineHelper({
 
     try {
       const state = loadHydra({ hydraId }).state
-      const candidate = agentFor ? agentFor() : helperAgent({ state })
+      const current = reattachOnly && batch.agent ? batch.agent : configuredAgent({ state })
+      const candidate: HelperAgent | undefined = batch.agent ?? current
 
-      if (!candidate || !batch.tasks.every(task => helperScope({
+      if ((!current && !reattachOnly) || !candidate || !batch.tasks.every(task => helperScope({
         state,
         task,
       }))) {
@@ -404,6 +412,8 @@ export function createRoutineHelper({
           env: environment({
             harness: candidate.harness,
             actor,
+            account: candidate.account,
+            loginFolder: candidate.loginFolder,
           }),
           instructions: HELPER_INSTRUCTIONS,
           outputSchema: outcomeSchema({ tasks: batch.tasks }),
@@ -425,6 +435,8 @@ export function createRoutineHelper({
           cwd,
           host: 'pnyx',
           transcriptPath: active.path,
+          account: candidate.account,
+          loginFolder: candidate.loginFolder,
         }
 
         const input = async function* () {
@@ -662,12 +674,20 @@ export function createRoutineHelper({
         return false
       }
 
+      const state = loadHydra({ hydraId }).state
+      const candidate = configuredAgent({ state })
+
+      if (!candidate) {
+        return false
+      }
+
       const batch: HelperBatch = {
         id: randomUUID(),
         tasks: [...new Set(tasks)],
         prompt,
         seqs,
         once,
+        agent: candidate,
       }
       busy = true
 
