@@ -131,6 +131,11 @@ async function isolated({ t }: { t: TestContext }) {
   }
 }
 
+const server = ({ serverPath }: { serverPath: string }) => JSON.parse(readFileSync(
+  serverPath,
+  'utf8',
+)) as { pid: number }
+
 test(
   'restart starts a stopped app and replaces a running one on the same build',
   async t => {
@@ -326,6 +331,81 @@ test(
 
         return true
       },
+    )
+  },
+)
+
+test(
+  'a change the server accepted survives the server being killed before it saves a snapshot',
+  async t => {
+    const {
+      root,
+      run,
+      serverPath,
+    } = await isolated({ t })
+    await run({ args: ['restart'] })
+    await until({
+      check: () => existsSync(serverPath),
+      timeout: START_TIMEOUT_MS,
+    })
+    await run({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Kept through a crash',
+        '--key',
+        'kept',
+      ],
+    })
+    const snapshot = join(
+      root,
+      'hydras',
+      'default',
+      'snapshot.json',
+    )
+    // The snapshot is saved in the background a while after a change, so the change is only in the log yet.
+    assert.equal(
+      existsSync(snapshot) && readFileSync(
+        snapshot,
+        'utf8',
+      ).includes('Kept through a crash'),
+      false,
+    )
+    const { pid } = server({ serverPath })
+    process.kill(
+      pid,
+      'SIGKILL',
+    )
+    await until({
+      check: () => {
+        try {
+          process.kill(
+            pid,
+            0,
+          )
+
+          return false
+        } catch {
+          return true
+        }
+      },
+    })
+    await run({ args: ['restart'] })
+    await until({
+      timeout: START_TIMEOUT_MS,
+      check: () => existsSync(serverPath) && server({ serverPath }).pid !== pid,
+    })
+    const shown = await run({
+      args: [
+        'task',
+        'show',
+        'kept',
+      ],
+    })
+    assert.match(
+      shown.stdout,
+      /Kept through a crash/,
     )
   },
 )
