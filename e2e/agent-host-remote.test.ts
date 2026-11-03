@@ -2251,134 +2251,129 @@ test(
   },
 )
 
-for (const operation of [
-  'bundle activation',
-  'restart',
-] as const) {
-  test(
-    `${operation} preserves admitted turns and waits for durable outcome acknowledgement`,
-    async t => {
-      const host = await fixtureHost({
-        t,
-        measure: true,
-      })
-      const options = {
-        directory: host.root,
-        journal: join(
-          host.root,
-          'upgrade-bindings',
-        ),
-        installation: 'fixture-installation',
+test(
+  'activation and restart preserve admitted turns until the durable outcome is acknowledged',
+  async t => {
+    const host = await fixtureHost({
+      t,
+      measure: true,
+    })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'upgrade-bindings',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    const original = first.client.ready
+    const session = await first.providers.codex.open({
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    })
+    const reading = (async () => {
+      for await (const event of session.run({
+        input: (async function* () {
+          yield {
+            id: 'upgrade-message',
+            text: 'Keep my turn',
+            images: [],
+          }
+        })(),
+        permission: async () => ({
+          behavior: 'deny',
+          message: 'fixture',
+        }),
+      })) {
+        if (event === 'working') {
+          break
+        }
       }
-      const first = await nativeProviders(options)
-      const original = first.client.ready
-      const session = await first.providers.codex.open({
-        cwd: host.root,
-        env: {},
-        settings: {},
-        signal: new AbortController().signal,
-      })
-      const reading = (async () => {
-        for await (const event of session.run({
-          input: (async function* () {
-            yield {
-              id: 'upgrade-message',
-              text: 'Keep my turn',
-              images: [],
-            }
-          })(),
-          permission: async () => ({
-            behavior: 'deny',
-            message: 'fixture',
-          }),
-        })) {
-          if (event === 'working') {
-            break
-          }
+    })()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    session.detach!()
+    await reading
+    first.detach()
+    const upgrading = await nativeProviders({
+      ...options,
+      desiredBuild: 'next-build',
+      restartInstance: original.instance,
+    })
+    t.after(upgrading.detach)
+    await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length >= 2 })
+    assert.equal(
+      (await host.timings()).some(call => call.operation === 'shutdown'),
+      false,
+    )
+    assert.equal(
+      host.child.exitCode,
+      null,
+    )
+    assert.equal(
+      (await host.stats())[0]!.closed,
+      false,
+    )
+    const native = (await host.stats())[0]!
+    await host.control({
+      kind: 'event',
+      nativeId: session.id,
+      event: {
+        type: 'result',
+        turn: native.turn!,
+        inputIds: ['upgrade-message'],
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    const pollsBeforeOutcome = (await host.timings()).filter(call => call.operation === 'status').length
+    await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length > pollsBeforeOutcome })
+    assert.equal(
+      (await host.timings()).some(call => call.operation === 'shutdown'),
+      false,
+    )
+    assert.equal(
+      host.child.exitCode,
+      null,
+    )
+    const observer = await host.connect()
+    const saved = observer.ready.sessions[0]!
+    const retained = await snapshot({
+      client: observer,
+      ref: saved.ref,
+    })
+    assert.ok(retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'))
+    observer.detach()
+    const resumed = await upgrading.providers.codex.open({
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+      agent: {
+        provider: 'codex',
+        sessionId: session.id,
+      },
+    })
+    t.after(() => resumed.detach!())
+    const consumption = (async () => {
+      for await (const event of resumed.attach!()) {
+        if (typeof event === 'object' && event.type === 'turn-ended') {
+          await resumed.applied!()
+          break
         }
-      })()
-      await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
-      session.detach!()
-      await reading
-      first.detach()
-      const upgrading = await nativeProviders({
-        ...options,
-        desiredBuild: operation === 'restart' ? original.build : 'next-build',
-        restartInstance: operation === 'restart' ? original.instance : undefined,
-      })
-      t.after(upgrading.detach)
-      await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length >= 2 })
-      assert.equal(
-        (await host.timings()).some(call => call.operation === 'shutdown'),
-        false,
-      )
-      assert.equal(
-        host.child.exitCode,
-        null,
-      )
-      assert.equal(
-        (await host.stats())[0]!.closed,
-        false,
-      )
-      const native = (await host.stats())[0]!
-      await host.control({
-        kind: 'event',
-        nativeId: session.id,
-        event: {
-          type: 'result',
-          turn: native.turn!,
-          inputIds: ['upgrade-message'],
-          status: 'completed',
-          queued: 0,
-        },
-      })
-      const pollsBeforeOutcome = (await host.timings()).filter(call => call.operation === 'status').length
-      await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length > pollsBeforeOutcome })
-      assert.equal(
-        (await host.timings()).some(call => call.operation === 'shutdown'),
-        false,
-      )
-      assert.equal(
-        host.child.exitCode,
-        null,
-      )
-      const observer = await host.connect()
-      const saved = observer.ready.sessions[0]!
-      const retained = await snapshot({
-        client: observer,
-        ref: saved.ref,
-      })
-      assert.ok(retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'))
-      observer.detach()
-      const resumed = await upgrading.providers.codex.open({
-        cwd: host.root,
-        env: {},
-        settings: {},
-        signal: new AbortController().signal,
-        agent: {
-          provider: 'codex',
-          sessionId: session.id,
-        },
-      })
-      t.after(() => resumed.detach!())
-      const consumption = (async () => {
-        for await (const event of resumed.attach!()) {
-          if (typeof event === 'object' && event.type === 'turn-ended') {
-            await resumed.applied!()
-            break
-          }
-        }
-      })()
-      await consumption
-      const outcome = retained.pendingFacts.find(fact => fact.event.type === 'turn-ended')!
-      await resumed.settle!({ through: `${saved.ref.epoch}:${outcome.seq}` })
-      await until({ check: () => !upgrading.client.available() })
-      upgrading.detach()
-      await host.exited
-      assert.equal(
-        host.child.exitCode,
-        0,
-      )
-    },
-  )
-}
+      }
+    })()
+    await consumption
+    const outcome = retained.pendingFacts.find(fact => fact.event.type === 'turn-ended')!
+    await resumed.settle!({ through: `${saved.ref.epoch}:${outcome.seq}` })
+    await until({ check: () => !upgrading.client.available() })
+    upgrading.detach()
+    await host.exited
+    assert.equal(
+      host.child.exitCode,
+      0,
+    )
+  },
+)

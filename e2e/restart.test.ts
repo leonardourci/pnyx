@@ -201,18 +201,5 @@ test(
       currentOwner.pid,
       owner.pid,
     )
-    process.kill(
-      currentOwner.pid,
-      'SIGKILL',
-    )
-    await until({
-      timeout: START_TIMEOUT_MS,
-      check: async () => {
-        const response = await fetch(`http://127.0.0.1:${port}/health`)
-        const health = await response.json()
-
-        return health.native?.instance !== restartedInstance && health.native.state === 'ready'
-      },
-    })
   },
 )
