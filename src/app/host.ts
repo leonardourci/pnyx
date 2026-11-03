@@ -1551,6 +1551,11 @@ export function createHost({
           continue
         }
 
+        // A turn the server's own stop cuts stays working, so the next start resumes it.
+        if (closing && typeof received === 'object' && received.type === 'turn-ended' && received.outcome.status !== 'completed') {
+          continue
+        }
+
         if (typeof received === 'object' && received.type === 'turn-ended') {
           const outcome = received.outcome
           note({
