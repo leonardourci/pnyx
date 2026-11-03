@@ -1,6 +1,6 @@
 import { join } from 'node:path'
 import { readFileSync, writeFileSync, renameSync, rmSync } from 'node:fs'
-import { effectiveDispatch, type Harness } from './dispatch-config.ts'
+import { effectiveDispatch, loginFolder, type Harness } from './dispatch-config.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { modelIds, type HostedSession, type ModelOption, type Provider } from './provider.ts'
 import { HARNESSES, harnessOf, providerIdOf, type ProviderId } from './providers.ts'
@@ -236,11 +236,12 @@ export function createCatalogs({
     }
   }
 
-  const models: Host['models'] = ({ harness }) => {
+  const models: Host['models'] = ({ harness, account: selectedAccount }) => {
     const effective = effectiveDispatch()
     const main = harnessAccount({
       effective,
       harness,
+      prefer: selectedAccount,
     })
     const account = main ? effective.accounts[main] : undefined
     const env = account ? accountEnvironment({
@@ -248,7 +249,7 @@ export function createCatalogs({
       env: environment(),
     }) : environment()
 
-    const key = `${harness}:${account?.folder ?? ''}`
+    const key = `${harness}:${account ? loginFolder({ account }) : ''}`
     let catalog = modelCatalogs.get(key)
 
     if (!catalog) {

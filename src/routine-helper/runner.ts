@@ -341,10 +341,10 @@ export function createRoutineHelper({
 
     try {
       const state = loadHydra({ hydraId }).state
-      const current = reattachOnly && batch.agent ? batch.agent : configuredAgent({ state })
+      const current = configuredAgent({ state })
       const candidate: HelperAgent | undefined = batch.agent ?? current
 
-      if ((!current && !reattachOnly) || !candidate || !batch.tasks.every(task => helperScope({
+      if (!current || !candidate || !batch.tasks.every(task => helperScope({
         state,
         task,
       }))) {

@@ -133,11 +133,16 @@ export async function hostRequestUnlocked({
         override: dispatch.override,
       })
 
-      if (dispatch.ownerOverride) {
+      if (dispatch.ownerOverride || dispatch.candidate.account) {
         const settings = chosenSettings({ choice: dispatch })
 
         if (settings.model) {
-          const models = modelIds({ models: await host.models({ harness: dispatch.provider }) })
+          const models = modelIds({
+            models: await host.models({
+              harness: dispatch.provider,
+              account: dispatch.account,
+            }),
+          })
           const model = dispatch.provider === 'claude' ? settings.model.replace(
             /\[1m\]$/,
             '',
@@ -222,7 +227,16 @@ export async function hostRequestUnlocked({
         })
       }
 
-      return { models: await host.models({ harness }) }
+      return {
+        models: await host.models({
+          harness,
+          account: field({
+            body,
+            name: 'account',
+            optional: true,
+          }),
+        }),
+      }
     }
 
     case 'permission': {

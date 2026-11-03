@@ -24,7 +24,7 @@ import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
-import { defaultLogin, effectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
+import { defaultLogin, effectiveDispatch, loginFolder, type Harness } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -2271,17 +2271,31 @@ export function createHost({
     environment: ({
       harness,
       actor,
+      account: selectedAccount,
+      loginFolder: selectedFolder,
     }) => {
-      const effective = effectiveDispatch()
-      const name = harnessAccount({
-        effective,
-        harness,
-      })
-      const account = name ? effective.accounts[name] : undefined
       const env = {
         ...environment({ hydra: true }),
         PNYX_ACTOR: actor,
       }
+
+      if (selectedFolder) {
+        return accountEnvironment({
+          account: {
+            provider: harness,
+            folder: selectedFolder,
+          },
+          env,
+        })
+      }
+
+      const effective = effectiveDispatch()
+      const name = harnessAccount({
+        effective,
+        harness,
+        prefer: selectedAccount,
+      })
+      const account = name ? effective.accounts[name] : undefined
 
       return account ? accountEnvironment({
         account,
@@ -2301,10 +2315,30 @@ export function createHost({
         ?? effective.dispatch.rules.hydra?.candidates[0]
         ?? effective.dispatch.default[0]
 
-      return helperAgent({
+      const candidate = helperAgent({
         state,
         main,
       })
+
+      if (!candidate) {
+        return undefined
+      }
+
+      const name = harnessAccount({
+        effective,
+        harness: candidate.harness,
+        prefer: candidate.account,
+      })
+      const account = name ? effective.accounts[name] : undefined
+
+      const nativeDefault = defaultLogin({ provider: candidate.harness })
+      const folder = account ? loginFolder({ account }) : nativeDefault
+
+      return {
+        ...candidate,
+        account: name,
+        loginFolder: folder,
+      }
     },
     handback: armWake,
     outcomesReady: armWake,
@@ -2729,6 +2763,7 @@ export function createHost({
           const main = harnessAccount({
             effective,
             harness: candidate.harness,
+            prefer: candidate.account,
           })
           const account = main ? effective.accounts[main] : undefined
           const provider = providerIdOf({ harness: candidate.harness })
@@ -2747,12 +2782,13 @@ export function createHost({
                 ? await catalogOffers({
                   host,
                   harnesses: [candidate.harness],
+                  account: main,
                 }) : undefined,
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([
             key,
             value,
-          ]) => key !== 'harness' && value !== undefined)
+          ]) => key !== 'harness' && key !== 'account' && value !== undefined)
             .map(([
               key,
               value,
@@ -3232,16 +3268,17 @@ export function createHost({
 
       const harness: Harness = harnessOf({ provider: agent.provider })
       const effective = effectiveDispatch()
-      const name = harnessAccount({
+      const name = agent.account ?? harnessAccount({
         effective,
         harness,
-        prefer: agent.account,
       })
       const account = name ? effective.accounts[name] : undefined
+      const configuredFolder = account?.provider === harness ? account.folder : undefined
+      const folder = agent.loginFolder ?? configuredFolder ?? defaultLogin({ provider: harness })
       const plan = await readUsage({
-        account: account ?? {
+        account: {
           provider: harness,
-          folder: agent.loginFolder ?? defaultLogin({ provider: harness }),
+          folder,
         },
       })
 

@@ -79,7 +79,7 @@ At start the server names, once, every Hydra still called by its id or by no nam
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
---helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-effort <value>] selects its agent; --helper off routes all wakes to main.
+--helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] selects its independent global agent; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
 --done-after-hours hides cards after continuous time in Done (default 24); off keeps them visible and 0 hides them right away. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
@@ -217,7 +217,7 @@ pnyx-axi task project <task> --project <name|path>
 pnyx-axi task remind <task> <when|clear>
 pnyx-axi task reminders
 pnyx-axi task continue <task> [--check]
-pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
+pnyx-axi task start <task> [--via pnyx|paseo] [--rule <name>] [--harness claude|codex] [--account <name>] [--model <model>] [--effort <effort>] [--mode <mode>] [--fast on|off] [--prompt <text>] [--folder <path>] [--in-place] [--paseo-url <url>] [--replace-session <session>]
 pnyx-axi task start <task> --via firstmate [--prompt <text>]
 pnyx-axi task start <task> --via command [--command <project-command-name>] [--prompt <text>] [--harness <name>] [--folder <path>] [--in-place]
 pnyx-axi task copy <task> [remove [--safe | --discard]]
@@ -252,9 +252,10 @@ never) with its sandbox: never, or bypassPermissions, runs with full access, the
 Claude Code or Codex agent instead, then attaches it; replies and the conversation go through Paseo,
 and the agent stays in Paseo too. task paseo checks the daemon. --folder also records the task's folder.
 Repeating the same --event-id never starts a second agent.
---rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness or
---model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
+--rule chooses the heads dispatch candidate list (default: default); an explicit owner --harness,
+--account or --model wins outside that list, checked against its own catalog and login. --prompt sets its opening message, which otherwise names the task and the ${REPORT_PROGRESS_SKILL} skill. Known quota ranks
 by spendPriority above unknown quota; a tie, or several candidates with unknown quota, stops the start.
+--account chooses exactly one registered login and its harness, without another-account fallback.
 --model, --effort, --mode and --fast on|off replace the chosen candidate's settings from the first turn; the model
 must be in the harness's catalog and the task records the override.
 --via firstmate puts a worker request in Hydra's chat and sends it to the Hydra's Firstmate home as an inbox note.
@@ -376,11 +377,11 @@ export function commandHelp({ command }: { command: string }): string | undefine
   }
 
   if (command === 'view') {
-    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]\nKeys every Hydra shares (theme, text sizes, cards and chat toggles, keyboard, default widths) are saved with settings set; the rest stay with the board.'
+    return 'usage: pnyx-axi view show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>] [--hydra <name>]\nShared keys (theme, text sizes, cards and chat toggles, keyboard, saved widths) go to the shared settings. Width keys also resize the named Hydra and replace its relevant dragged/per-column widths; other Hydras keep their own overrides. settings set changes only shared settings.'
   }
 
   if (command === 'settings') {
-    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, model, effort }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. A repeated --event-id saves once, even when nothing changed.'
+    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, model, effort }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. A repeated --event-id saves once, even when nothing changed.'
   }
 
   return COMMAND_HELP[command]
