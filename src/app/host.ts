@@ -2104,8 +2104,7 @@ export function createHost({
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
 
-  // The helper's agent, or none when it is off or names an account no longer registered for its harness:
-  // then main takes the routine updates, and the helper never runs on another login.
+  // No helper agent when it is off or its account is no longer registered, so main takes the updates and no other login is used.
   const usableHelper = ({
     state,
     effective,
