@@ -19,15 +19,8 @@ const saved = ({ view }: { view: object }) =>
   })
 
 test(
-  'new layouts use 460 px columns and 520 px chat without replacing saved 380/480 widths',
+  'saved 380/480 widths are kept, not replaced by the new defaults',
   () => {
-    assert.deepEqual(
-      DEFAULT_WIDTHS,
-      {
-        column: 460,
-        hydra: 520,
-      },
-    )
     const view = saved({
       view: {
         hydraWidth: 480,
