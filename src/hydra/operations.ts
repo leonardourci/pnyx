@@ -68,6 +68,7 @@ export function operationRecap({
     since: operation.since,
     after: operation.seq,
     now,
+    whole: true,
     why: `Why you are woken: back after a stop (${label}${error ? `: ${error}` : ''}). Everything addressed to you waited from ${operation.since} until now (${minutes} min).`,
   })
 }
