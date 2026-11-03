@@ -169,9 +169,7 @@ export function RoutineHelper({
           },
         })}
       />
-      <p className="setting-help">Fast stays off unless you turn it on here. Turning Fast on in a Hydra's composer also puts that Hydra's helper on Fast, where its model has it.</p>
-      <p className="setting-help">Keep the helper enabled for efficient coordination.</p>
-      <p className="setting-help">Pnyx suggests a lightweight model; you can choose its harness, account and model independently.</p>
+      <Help text="Keep the helper on for efficient coordination. Pnyx suggests a lightweight model; you can choose its harness, account and model independently. Fast stays off unless you turn it on here, or turn Fast on in a Hydra's composer, which also puts that Hydra's helper on Fast where its model has it." />
     </div>
   )
 }
