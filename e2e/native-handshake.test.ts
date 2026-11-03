@@ -1245,13 +1245,33 @@ test(
     try {
       await until({
         timeout: TIMEOUT_MS,
-        check: () => existsSync(marker),
+        check: () => {
+          if (!existsSync(marker)) {
+            return false
+          }
+
+          const value = readFileSync(
+            marker,
+            'utf8',
+          )
+
+          if (!/^[1-9]\d*$/.test(value)) {
+            return false
+          }
+
+          const pid = Number(value)
+          const identity = processStart({ pid })
+
+          if (!Number.isSafeInteger(pid) || !identity) {
+            return false
+          }
+
+          replacement = pid
+          start = identity
+
+          return true
+        },
       })
-      replacement = Number(readFileSync(
-        marker,
-        'utf8',
-      ))
-      start = processStart({ pid: replacement })
       assert.ok(start)
       await delay(48000)
       assert.equal(
