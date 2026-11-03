@@ -33,7 +33,7 @@ commands:
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
   stop                                       Stop the application and the agents it runs
-  restart                                    Restart the application; agents cut mid-turn resume once
+  restart                                    Restart the application; a turn it cut resumes from its saved session
   upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill

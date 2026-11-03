@@ -203,7 +203,7 @@ export function hydraIdentity({ hydraId }: { hydraId: string }): string {
     )
 }
 
-// The old native host recorded its start in the machine's own time zone; everything else uses UTC.
+// The agent host of earlier builds recorded its start in local time (see stopOldHost); everything else uses UTC.
 export function processStart({
   pid,
   localTime = false,
