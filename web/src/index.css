@@ -1903,12 +1903,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-how li strong { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; color: var(--color-ink); font-size: var(--text-ui); }
 .dispatch-how > .dispatch-desc { margin: 8px 0 0; }
 .dispatch-rules, .dispatch-json { display: flex; flex-direction: column; gap: 8px; }
-.dispatch-table { display: grid; grid-template-columns: minmax(130px, 180px) max-content max-content max-content max-content minmax(max-content, 1fr); border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
+.dispatch-table { display: grid; grid-template-columns: minmax(130px, 180px) max-content max-content max-content max-content minmax(max-content, 1fr); column-gap: var(--settings-column-gap); border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
 .dispatch-head, .dispatch-rule, .dispatch-hydra-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .dispatch-head { padding: 6px 0; border-bottom: 1px solid var(--color-line); border-radius: 8px 8px 0 0; background: var(--color-raised); color: var(--color-muted); font-size: var(--text-meta); font-weight: 600; }
-.dispatch-head > span { display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; white-space: nowrap; }
+.dispatch-head > span { display: inline-flex; align-items: center; gap: 4px; padding: 0 5px; white-space: nowrap; }
+.dispatch-head > span:first-child { padding-left: 8px; }
 .dispatch-rule + .dispatch-rule, .dispatch-hydra-row { border-top: 2px solid var(--color-line); }
-.dispatch-rule-cell { grid-column: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px; border-right: 1px solid var(--color-subtle); background: var(--color-background); }
+.dispatch-rule-cell { grid-column: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; margin-right: calc(-1 * var(--settings-column-gap)); padding: 8px; border-right: 1px solid var(--color-subtle); background: var(--color-background); }
 .dispatch-rule-name { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-weight: 600; }
 .dispatch-rule-name svg { color: var(--color-muted); }
 .dispatch-when-fixed { color: var(--color-muted); font-size: var(--text-meta); }
@@ -1917,7 +1918,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-cell:focus { border-color: var(--color-gold-line); background: var(--color-surface); outline: none; }
 .dispatch-rule-input { font-family: var(--font-mono); font-weight: 600; }
 .dispatch-when { min-height: 2.6em; resize: none; field-sizing: content; color: var(--color-muted); font-size: var(--text-meta); }
-.dispatch-candidate, .dispatch-add { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; column-gap: var(--settings-column-gap); align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
+.dispatch-candidate, .dispatch-add { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
 .dispatch-candidate > .hydra-agent-pickers { grid-column: span 4; display: grid; grid-template-columns: subgrid; }
 .dispatch-candidate .select-menu { top: calc(100% + 4px); bottom: auto; }
 .dispatch-add { border-bottom: 0; }
@@ -1926,6 +1927,10 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-remove, .dispatch-remove-rule { min-height: 24px; gap: 4px; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-remove-rule { align-self: flex-start; padding: 0 4px; }
 .dispatch-candidate > .dispatch-remove { justify-self: end; }
+.dispatch-candidate :is(.account-model-picker, .account-model-picker > .button) { width: 100%; }
+.dispatch-candidate :is(.select, .account-model-picker) > .button { justify-content: flex-start; }
+.dispatch-candidate :is(.select, .account-model-picker) > .button > svg:last-child { margin-left: auto; }
+.dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: start; }
 .fast-unavailable { display: inline-flex; align-items: center; justify-content: center; width: var(--agent-control-h); min-height: var(--agent-control-h); color: var(--color-muted); opacity: .6; cursor: default; }
 .dispatch-hydra-row { align-items: center; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-hydra-row > :first-child { padding: 8px; }
@@ -1948,7 +1953,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
   .dispatch-how ol, .dispatch-table { grid-template-columns: minmax(0, 1fr); }
   .dispatch-head { display: none; }
   .dispatch-rule { display: block; }
-  .dispatch-rule-cell { border-right: 0; border-bottom: 1px solid var(--color-subtle); padding: var(--settings-column-gap); }
+  .dispatch-rule-cell { margin-right: 0; border-right: 0; border-bottom: 1px solid var(--color-subtle); padding: var(--settings-column-gap); }
   .dispatch-candidate, .dispatch-add, .dispatch-hydra-row { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); padding: var(--settings-column-gap); }
   .dispatch-candidate > .hydra-agent-pickers { display: flex; flex-basis: 100%; }
 }
