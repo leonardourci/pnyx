@@ -867,6 +867,18 @@ export async function taskFolder({
           state: writer.state,
           ref: card.id,
         })
+        // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
+        const startedMeanwhile = Boolean(now.sessionIds?.length)
+        const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
+          && now.copy.path !== copy.path
+
+        if (startedMeanwhile || copiedMeanwhile) {
+          throw new HydraError({
+            message: `task ${card.id} was started meanwhile; its session keeps ${now.copy?.path ?? now.folder ?? 'its folder'}`,
+            code: 'SESSION_CONFLICT',
+          })
+        }
+
         const id = meta.id && !(`${meta.id}:copy` in writer.state.eventIds) ? `${meta.id}:copy` : undefined
         const recorded = {
           ...meta,
