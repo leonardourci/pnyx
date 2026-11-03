@@ -244,13 +244,15 @@ function heldWrite<T>({
   // Another process (a CLI that ran while the server was down) appended; take its lines first.
   if ((existsSync(path) ? statSync(path).size : 0) !== live.offset) {
     // A log that no longer starts where it did, as after repair, is read again from its start.
-    const tail = readLog({
+    let tail = readLog({
       dir: live.dir,
       from: live.offset,
     }) ?? readLog({ dir: live.dir })!
 
+    // New lines that do not follow the held state mean the log changed under it: rebuild from the start.
     if (tail.events[0] && tail.events[0].seq !== live.state.seq + 1) {
       live.state = emptyHydra()
+      tail = readLog({ dir: live.dir })!
     }
 
     if (tail.size !== tail.end) {
