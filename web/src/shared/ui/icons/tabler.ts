@@ -1,5 +1,6 @@
 import {
-  IconAlertCircle, IconArrowDown, IconArrowFork, IconArrowRight, IconArrowsSplit2, IconArrowUpRight,
+  IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
+  IconArrowsSplit2, IconArrowUpRight,
   IconAt,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
   IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
@@ -7,8 +8,8 @@ import {
   IconEyeCheck, IconFileText, IconFolder, IconGauge, IconGitFork, IconGitPullRequest, IconHammer,
   IconHourglass, IconLink, IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize,
   IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
-  IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerStopFilled, IconPlug, IconPlus,
-  IconQuote, IconRobot, IconRotateClockwise, IconSearch, IconSettings, IconStar, IconTag,
+  IconPencilCheck, IconPhoto, IconPinned, IconPinnedFilled, IconPlayerStopFilled, IconPlug,
+  IconPlus, IconQuote, IconRobot, IconRotateClockwise, IconSearch, IconSettings, IconStar, IconTag,
   IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
   IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
   IconMoon, IconPalette, IconRefresh, IconSparkles, IconSun, IconTypography, IconUsers,
@@ -36,6 +37,8 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   model: IconCpu,
   effort: IconGauge,
   pinned: IconPinnedFilled,
+  pin: IconPinned,
+  arrow_left: IconArrowLeft,
   // What each permission mode lets the agent do on its own.
   fast: IconBolt,
   stop: IconPlayerStopFilled,

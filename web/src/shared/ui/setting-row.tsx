@@ -36,6 +36,7 @@ export function SettingRow({
   reset,
   resetTo,
   preview,
+  action,
   children,
 }: {
   icon: string
@@ -49,7 +50,8 @@ export function SettingRow({
   resetTo?: string
   // A live picture of what the setting changes.
   preview?: ReactNode
-  children: ReactNode
+  action?: ReactNode
+  children?: ReactNode
 }) {
   return (
     <div className="setting-row" data-changed={changed || undefined} data-preview={preview ? '' : undefined}>
@@ -58,9 +60,10 @@ export function SettingRow({
         <div className="setting-head">
           <span className="setting-name"><Highlight text={label} terms={terms} /></span>
           {changed && <span className="setting-changed">changed</span>}
+          {action && <span className="setting-action">{action}</span>}
         </div>
         <p className="setting-description"><Highlight text={description} terms={terms} /></p>
-        <div className="setting-control">{children}</div>
+        {children && <div className="setting-control">{children}</div>}
         {changed && reset && (
           <Button className="setting-reset" onClick={reset}>
             <Icon name="reset" size={12} />Reset to default{resetTo ? ` (${resetTo})` : ''}
