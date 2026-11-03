@@ -546,7 +546,8 @@ test(
         ],
       })
       const first = await s.agent({ cwd: folder })
-      const resumes = () => s.received({ cwd: folder }).filter(text => text.endsWith(WORKER_RESUME)).length
+      const resumes = () => s.received({ cwd: folder })
+        .filter(text => text.endsWith(WORKER_RESUME)).length
 
       for (let restart = 1; restart <= MAX_RESUMES + 1; restart++) {
         await until({
