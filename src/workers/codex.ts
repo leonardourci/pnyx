@@ -1127,7 +1127,7 @@ export function codexProvider({
                 },
               })
               const manualCompact = compactCommand({ text: said })
-              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
+              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${await context()}\n\n${said}` : said
 
               if (!manualCompact) {
                 fresh = false

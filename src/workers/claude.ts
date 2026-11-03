@@ -310,7 +310,7 @@ export function claudeProvider({
               const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
-              const message = fresh && context && !compact ? `${context()}\n\n${text}` : text
+              const message = fresh && context && !compact ? `${await context()}\n\n${text}` : text
 
               if (!compact) {
                 fresh = false
@@ -384,7 +384,7 @@ export function claudeProvider({
                         async () => ({
                           hookSpecificOutput: {
                             hookEventName: 'SessionStart' as const,
-                            additionalContext: context(),
+                            additionalContext: await context(),
                           },
                         }),
                       ],

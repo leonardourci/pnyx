@@ -390,7 +390,7 @@ const hydraCheckHandler = guard({
 })
 
 const hydraDigestHandler = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const { hydraId } = parse({
       args,
       options: COMMON,
@@ -399,19 +399,24 @@ const hydraDigestHandler = guard({
 
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
+    const [
+      projects,
+      items,
+    ] = await Promise.all([
+      projectDigest({ state }),
+      setupCheck({
+        hydraId,
+        state,
+      }),
+    ])
 
     return hydraDigest({
       conditions: memoryConditions(),
       hydraId,
       owner,
       state,
-      projects: projectDigest({ state }),
-      setup: setupDigest({
-        items: setupCheck({
-          hydraId,
-          state,
-        }),
-      }),
+      projects,
+      setup: setupDigest({ items }),
     })
   },
 })

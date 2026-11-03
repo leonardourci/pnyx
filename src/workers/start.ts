@@ -224,7 +224,7 @@ function replacingNote({
   return lines.join(' ')
 }
 
-export function taskPrompt({
+export async function taskPrompt({
   hydraId,
   card,
   prompt,
@@ -234,7 +234,7 @@ export function taskPrompt({
   card: Card
   prompt?: string
   replacing?: string
-}): string {
+}): Promise<string> {
   const instructions = prompt ?? workerPrompt({
     hydraId,
     id: card.id,
@@ -246,11 +246,18 @@ export function taskPrompt({
       project,
       ref: card.project,
     }))
-  let projectNotes = ''
-
-  if (attachedProject) {
-    projectNotes = readProjectMemory(projectIdentity({ path: attachedProject.path })).documents.workers ?? ''
-  }
+  const [
+    identity,
+    project,
+  ] = await Promise.all([
+    attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
+    projectWorkerContext({
+      hydraId,
+      state,
+      project: card.project,
+    }),
+  ])
+  const projectNotes = identity ? readProjectMemory(identity).documents.workers ?? '' : ''
 
   const header = workerHeader({
     hydraId,
@@ -262,12 +269,6 @@ export function taskPrompt({
       hydraId,
       card,
     }),
-  })
-
-  const project = projectWorkerContext({
-    hydraId,
-    state,
-    project: card.project,
   })
 
   let progress: string | undefined
@@ -565,7 +566,7 @@ export async function startTask({
         dispatch,
         task: card.id,
         ...(replacement ? { replacement } : {}),
-        prompt: taskPrompt({
+        prompt: await taskPrompt({
           hydraId,
           card,
           prompt,
@@ -588,7 +589,7 @@ export async function startTask({
       ...dispatch?.override,
     },
     dispatch,
-    prompt: taskPrompt({
+    prompt: await taskPrompt({
       hydraId,
       card,
       prompt,
@@ -618,7 +619,7 @@ async function askFirstmate({
     state: loadHydra({ hydraId }).state,
     ref: task,
   })
-  const brief = taskPrompt({
+  const brief = await taskPrompt({
     hydraId,
     card: initial,
     prompt: prompt ? `Request: ${prompt}` : undefined,
@@ -720,7 +721,7 @@ async function askFirstmate({
 
 // Runs the Hydra's command with the task in its environment, then notes the start;
 // a repeated event id runs nothing again.
-function startCommand({
+async function startCommand({
   hydraId,
   role,
   task,
@@ -738,7 +739,7 @@ function startCommand({
   harness?: string
   commandName?: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const id = meta.id ?? randomUUID()
   const claimed = withWriter({
     hydraId,
@@ -836,7 +837,7 @@ function startCommand({
       PNYX_ROLE: role,
       PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',
       PNYX_PROMPT: claimed.card
-        ? taskPrompt({
+        ? await taskPrompt({
           hydraId,
           card: claimed.card,
           prompt,

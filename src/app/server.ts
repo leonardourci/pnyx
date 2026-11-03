@@ -1296,7 +1296,10 @@ export async function mountOwnedHydra({
         }
 
         sources.reconcile()
-        review.check()
+        background({
+          name: 'review',
+          run: review.check,
+        })
         fireReminders({
           hydraId,
           at: new Date(reminderScheduler.now()).toISOString(),

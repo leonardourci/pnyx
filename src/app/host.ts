@@ -916,11 +916,19 @@ export function createHost({
 
   let memoryStamp: string | undefined
 
-  const digest = ({ remember = true }: { remember?: boolean } = {}) => {
+  const digest = async ({ remember = true }: { remember?: boolean } = {}) => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
-
-    const projects = projectDigest({ state })
+    const [
+      projects,
+      items,
+    ] = await Promise.all([
+      projectDigest({ state }),
+      setupCheck({
+        hydraId,
+        state,
+      }),
+    ])
 
     if (remember) {
       memoryStamp = JSON.stringify({
@@ -936,22 +944,17 @@ export function createHost({
       state,
       owner,
       projects,
-      setup: setupDigest({
-        items: setupCheck({
-          hydraId,
-          state,
-        }),
-      }),
+      setup: setupDigest({ items }),
     })
   }
 
-  const memoryChangeNote = () => {
+  const memoryChangeNote = async () => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
     const stamp = JSON.stringify({
       owner,
       hydra: state.hydraMemory,
-      projects: projectDigest({ state }),
+      projects: await projectDigest({ state }),
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
@@ -3600,7 +3603,7 @@ export function createHost({
           }
 
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
-          const memoryNote = waking ? memoryChangeNote() : ''
+          const memoryNote = waking ? await memoryChangeNote() : ''
           const recap = outage && id === `back:${outage.seq}` ? recapText({
             state: loadHydra({ hydraId }).state,
             since: outage.since,

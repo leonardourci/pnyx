@@ -25,9 +25,9 @@ function reviewClock({
   let timer = start()
 
   return {
-    advance: ({ ms = REVIEW_MS }: { ms?: number } = {}) => {
+    advance: async ({ ms = REVIEW_MS }: { ms?: number } = {}) => {
       time += ms
-      timer.check()
+      await timer.check()
       const event = s.events().findLast(event => event.type === 'hydra.review')
       assert.ok(event)
       assert.equal(
@@ -71,11 +71,11 @@ test(
 
     try {
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         [],
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       await s.owner({
@@ -89,7 +89,7 @@ test(
           '0',
         ],
       })
-      const memory = clock.advance()
+      const memory = await clock.advance()
       assert.match(
         memory.block,
         /memory behind/,
@@ -104,7 +104,7 @@ test(
       )
       clock.restart()
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       assert.equal(
@@ -191,7 +191,7 @@ test(
     const clock = reviewClock({ s })
 
     try {
-      const first = clock.advance()
+      const first = await clock.advance()
       assert.match(
         first.block,
         /no live worker/,
@@ -214,7 +214,7 @@ test(
         check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
         && s.received({ cwd: agent.cwd }).some(text => text.includes('Timed review:')),
       })
-      const repeated = clock.advance()
+      const repeated = await clock.advance()
       assert.equal(
         repeated.wakes,
         1,
@@ -226,11 +226,11 @@ test(
       clock.restart()
       await pnyx.restart()
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         [],
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         1,
       )
       s.pullRequest({
@@ -247,7 +247,7 @@ test(
         what: 'Hydra to finish acknowledging the pending decision',
         check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
-      const overdue = clock.advance({ ms: QUESTION_REMINDER_MS })
+      const overdue = await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.deepEqual(
         overdue.reasons,
         [],
@@ -281,16 +281,16 @@ test(
       })
       await move({ column: parked })
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         [],
       )
       await move({ column: progress })
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         ['timed review'],
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         2,
       )
     } finally {
@@ -342,14 +342,14 @@ test(
 
     try {
       assert.deepEqual(
-        clock.advance({ ms: QUESTION_REMINDER_MS - REVIEW_MS }).reasons,
+        (await clock.advance({ ms: QUESTION_REMINDER_MS - REVIEW_MS })).reasons,
         [],
       )
       assert.equal(
         s.state().hydraMessages?.length ?? 0,
         0,
       )
-      const due = clock.advance({ ms: REVIEW_MS + 1 })
+      const due = await clock.advance({ ms: REVIEW_MS + 1 })
       assert.equal(
         due.wakes,
         0,
@@ -379,18 +379,18 @@ test(
         undefined,
       )
       clock.restart()
-      clock.advance()
+      await clock.advance()
       assert.equal(
         s.state().hydraMessages?.length,
         1,
       )
-      clock.advance({ ms: QUESTION_REMINDER_MS })
+      await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
         s.state().hydraMessages?.length,
         2,
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       await s.owner({
@@ -409,7 +409,7 @@ test(
         check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
       const messages = s.state().hydraMessages?.length
-      clock.advance({ ms: QUESTION_REMINDER_MS })
+      await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
         s.state().hydraMessages?.length,
         messages,
@@ -448,7 +448,7 @@ test(
 
     try {
       time += REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.match(
         reviews().at(-1)?.data.block ?? '',
         /stale left-off: Hydra memory `left-off` is over 7 days old/,
@@ -458,7 +458,7 @@ test(
         1,
       )
       time += REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.deepEqual(
         [
           reviews().length,
@@ -489,7 +489,7 @@ test(
     t.after(() => timer.close())
     const reviews = () => s.events().filter(event => event.type === 'hydra.review').length
     time += REVIEW_MS
-    timer.check()
+    await timer.check()
     assert.equal(
       reviews(),
       0,
@@ -505,13 +505,13 @@ test(
       ],
     })
     time += REVIEW_MS - 1
-    timer.check()
+    await timer.check()
     assert.equal(
       reviews(),
       0,
     )
     time += 1
-    timer.check()
+    await timer.check()
     assert.equal(
       reviews(),
       1,
@@ -558,13 +558,13 @@ test(
 
     try {
       time += 10 * MINUTE_MS - 1
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         0,
       )
       time += 1
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         1,
@@ -578,7 +578,7 @@ test(
         ],
       })
       time += 2 * REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         1,

@@ -6,24 +6,25 @@ import { projectsFor } from '#projects/read.ts'
 import { readProjectMemory } from './project-memory.ts'
 import { projectIdentity } from '#projects/sources.ts'
 
-export function memoryReview({
+export async function memoryReview({
   state,
   now,
 }: {
   state: HydraState
   now: string
-}): string[] {
+}): Promise<string[]> {
   const conditions = memoryConditions()
+  const attached = projectsFor({ state }).filter(project => !project.detached)
+  const projectLayers = await Promise.all(attached.map(async project => ({
+    name: `Project ${project.name}`,
+    lines: readProjectMemory(await projectIdentity(project)).learnings ?? [],
+  })))
   const layers = [
     {
       name: 'Owner',
       lines: ownerMemory().learnings?.lines ?? [],
     },
-    ...projectsFor({ state }).filter(project => !project.detached)
-      .map(project => ({
-        name: `Project ${project.name}`,
-        lines: readProjectMemory(projectIdentity(project)).learnings ?? [],
-      })),
+    ...projectLayers,
   ]
 
   return layers.flatMap(layer => {

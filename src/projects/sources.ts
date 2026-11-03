@@ -1,46 +1,35 @@
-import { execFileSync } from 'node:child_process'
 import { createHash } from 'node:crypto'
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { isAbsolute, join, resolve } from 'node:path'
 import { canonical } from '#store/paths.ts'
+import { runProcess } from '#app/run-process.ts'
 
 const GIT_TIMEOUT_MS = 5000
-const GIT_MAX_BUFFER = 8 * 1024 * 1024
 const ROOT_SOURCES = /^(AGENTS\.md|CLAUDE\.md|README(?:\.[^/]+)?)$/i
 const SKILL_SOURCE = /^(?:\.agents\/skills|\.claude\/skills|skills)\/.*\.md$/
 
 export const contentHash = ({ text }: { text: string }) => createHash('sha256').update(text)
   .digest('hex')
 
-function git({
+// Off the event loop: the server answers every other client while git reads a project.
+async function git({
   path,
   args,
 }: {
   path: string
   args: string[]
-}): string | undefined {
-  try {
-    return execFileSync(
-      'git',
-      [
-        '-C',
-        path,
-        ...args,
-      ],
-      {
-        encoding: 'utf8',
-        timeout: GIT_TIMEOUT_MS,
-        maxBuffer: GIT_MAX_BUFFER,
-        stdio: [
-          'ignore',
-          'pipe',
-          'ignore',
-        ],
-      },
-    ).trimEnd()
-  } catch {
-    return undefined
-  }
+}): Promise<string | undefined> {
+  const result = await runProcess({
+    command: 'git',
+    args: [
+      '-C',
+      path,
+      ...args,
+    ],
+    timeout: GIT_TIMEOUT_MS,
+  })
+
+  return result.status === 0 ? result.stdout.trimEnd() : undefined
 }
 
 export function normalizedRemote({
@@ -87,20 +76,20 @@ export function normalizedRemote({
   }
 }
 
-function projectRemote({ path }: { path: string }): string | undefined {
-  const names = git({
+async function projectRemote({ path }: { path: string }): Promise<string | undefined> {
+  const names = (await git({
     path,
     args: ['remote'],
-  })?.split('\n')
+  }))?.split('\n')
     .filter(Boolean)
     .sort() ?? []
 
   return names.includes('origin') ? 'origin' : names[0]
 }
 
-export function projectIdentity({ path }: { path: string }) {
-  const name = projectRemote({ path })
-  const remote = name ? git({
+export async function projectIdentity({ path }: { path: string }) {
+  const name = await projectRemote({ path })
+  const remote = name ? await git({
     path,
     args: [
       'remote',
@@ -108,7 +97,7 @@ export function projectIdentity({ path }: { path: string }) {
       name,
     ],
   }) : undefined
-  const root = git({
+  const root = await git({
     path,
     args: [
       'rev-parse',
@@ -195,7 +184,7 @@ function localSources({
   return hashes
 }
 
-export function projectSources({ path }: { path: string }) {
+export async function projectSources({ path }: { path: string }) {
   try {
     if (!statSync(path).isDirectory()) {
       return {
@@ -218,8 +207,8 @@ export function projectSources({ path }: { path: string }) {
     }
   }
 
-  const remote = projectRemote({ path })
-  const remoteHead = remote ? git({
+  const remote = await projectRemote({ path })
+  const remoteHead = remote ? await git({
     path,
     args: [
       'symbolic-ref',
@@ -236,15 +225,23 @@ export function projectSources({ path }: { path: string }) {
     'refs/heads/main',
     'refs/heads/master',
   ].filter((ref): ref is string => Boolean(ref))
-  const ref = candidates.find(candidate => git({
-    path,
-    args: [
-      'rev-parse',
-      '--verify',
-      `${candidate}^{commit}`,
-    ],
-  }))
-  const isRepo = git({
+  let ref: string | undefined
+
+  for (const candidate of candidates) {
+    if (await git({
+      path,
+      args: [
+        'rev-parse',
+        '--verify',
+        `${candidate}^{commit}`,
+      ],
+    })) {
+      ref = candidate
+      break
+    }
+  }
+
+  const isRepo = await git({
     path,
     args: [
       'rev-parse',
@@ -264,7 +261,7 @@ export function projectSources({ path }: { path: string }) {
   let hashes: Record<string, string> = {}
 
   if (ref) {
-    const tree = git({
+    const tree = await git({
       path,
       args: [
         'ls-tree',

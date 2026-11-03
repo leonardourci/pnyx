@@ -450,7 +450,7 @@ function helperLab({
       PNYX_HYDRA: 'lab',
       PNYX_ACTOR: actor,
     }),
-    context: () => 'Hydra rules',
+    context: async () => 'Hydra rules',
     changed: () => {
       if (!helper.busy()) {
         idle.resolve()

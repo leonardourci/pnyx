@@ -617,7 +617,7 @@ export async function advanceQueues({
       }
 
       const branch = `pnyx/${hydraId}-${next.id}`
-      const brief = taskPrompt({
+      const brief = await taskPrompt({
         hydraId,
         card: next,
         prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,

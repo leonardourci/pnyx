@@ -7,7 +7,7 @@ import { loadHydra } from '#app/store.ts'
 import { findProject } from '#projects/read.ts'
 import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_FULL, projectMemoryView, writeProjectMemory, type ProjectMemoryKey } from './project-memory.ts'
 
-export function projectMemoryCommand({ args }: { args: string[] }): Output {
+export async function projectMemoryCommand({ args }: { args: string[] }): Promise<Output> {
   const {
     values,
     positionals,
@@ -44,7 +44,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
   })
 
   if (action === 'list') {
-    const view = projectMemoryView(project)
+    const view = await projectMemoryView(project)
 
     return {
       project: project.name,
@@ -90,7 +90,7 @@ export function projectMemoryCommand({ args }: { args: string[] }): Output {
   }
 
   if (action === 'confirm') {
-    const view = projectMemoryView(project)
+    const view = await projectMemoryView(project)
 
     return writeProjectMemory({
       path: project.path,

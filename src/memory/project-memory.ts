@@ -198,14 +198,39 @@ function profileStatus({
   return changed ? 'out of date' : 'current'
 }
 
-export function projectMemoryView({ path }: { path: string }) {
-  return withRegistryLock({ fn: () => projectMemoryViewUnderLock({ path }) })
+// What git says about a project, read off the event loop before any lock is taken.
+export type ProjectFacts = {
+  identity: Awaited<ReturnType<typeof projectIdentity>>
+  sources: Awaited<ReturnType<typeof projectSources>>
 }
 
-export function projectMemoryViewUnderLock({ path }: { path: string }) {
-  const identity = projectIdentity({ path })
+export async function projectFacts({ path }: { path: string }): Promise<ProjectFacts> {
+  const [
+    identity,
+    sources,
+  ] = await Promise.all([
+    projectIdentity({ path }),
+    projectSources({ path }),
+  ])
+
+  return {
+    identity,
+    sources,
+  }
+}
+
+export async function projectMemoryView({ path }: { path: string }) {
+  const facts = await projectFacts({ path })
+
+  return withRegistryLock({ fn: () => projectMemoryViewUnderLock({ facts }) })
+}
+
+export function projectMemoryViewUnderLock({ facts }: { facts: ProjectFacts }) {
+  const {
+    identity,
+    sources,
+  } = facts
   const memory = readProjectMemoryLog(identity)
-  const sources = projectSources({ path })
   const changed = [
     ...new Set([
       ...Object.keys(memory.sources),
@@ -229,7 +254,7 @@ export function projectMemoryViewUnderLock({ path }: { path: string }) {
   }
 }
 
-export function writeProjectMemory({
+export async function writeProjectMemory({
   path,
   hydraId,
   key,
@@ -255,9 +280,11 @@ export function writeProjectMemory({
     })
   }
 
+  const facts = await projectFacts({ path })
+
   return withRegistryLock({
     fn: () => {
-      const view = projectMemoryViewUnderLock({ path })
+      const view = projectMemoryViewUnderLock({ facts })
 
       const previous = view.events.find(event => event.id === meta.id)
 

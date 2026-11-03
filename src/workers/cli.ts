@@ -76,7 +76,7 @@ export async function afterAttach({
       hydraId,
       request: {
         card: attachment.cardId,
-        text: taskPrompt({
+        text: await taskPrompt({
           hydraId,
           card: state.cards[attachment.cardId]!,
         }),

@@ -168,7 +168,7 @@ export function createRoutineHelper({
     harness: 'claude' | 'codex'
     actor: string
   }): NodeJS.ProcessEnv
-  context(): string
+  context(): Promise<string>
   changed(): void
   handback({
     id,

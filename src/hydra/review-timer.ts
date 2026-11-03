@@ -11,6 +11,7 @@ import { taskMention } from './mentions.ts'
 import { hydraConfig } from './config.ts'
 import { readSettings } from '#settings/store.ts'
 import { DEFAULT_REVIEW_MINUTES } from '#settings/settings.ts'
+import { background } from '#app/background.ts'
 
 export const REVIEW_MS = DEFAULT_REVIEW_MINUTES * MINUTE_MS
 const REVIEW_POLL_MS = 15_000
@@ -102,8 +103,16 @@ export function startReviewTimer({
   const started = now()
   // An empty review records nothing, so the next one counts its period from here.
   let emptyAt = 0
+  // Memory review reads git; the server's loop keeps calling while one read is out.
+  let reviewing = false
 
-  const check = () => {
+  const check = async () => {
+    if (reviewing) {
+      return
+    }
+
+    reviewing = true
+
     try {
       const state = shared()
       const minutes = readSettings().settings.reviewMinutes
@@ -118,7 +127,7 @@ export function startReviewTimer({
         return
       }
 
-      const memory = memoryReview({
+      const memory = await memoryReview({
         state,
         now: new Date(time).toISOString(),
       })
@@ -224,11 +233,16 @@ export function startReviewTimer({
       }
     } catch (error) {
       console.error(`pnyx-axi review: ${(error as Error).message}`)
+    } finally {
+      reviewing = false
     }
   }
 
   const cancel = interval({
-    run: check,
+    run: () => background({
+      name: 'review',
+      run: check,
+    }),
     ms: REVIEW_POLL_MS,
   })
 
