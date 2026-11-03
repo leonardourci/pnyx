@@ -624,6 +624,28 @@ export function HydraChat({
     },
     [],
   )
+
+  const sendAgain = async ({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }) => {
+    try {
+      await command({
+        name: 'reply',
+        args: [
+          task,
+          text,
+          crypto.randomUUID(),
+        ],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const deliver = useCallback<Command>(
     async ({
       name,
@@ -811,6 +833,7 @@ export function HydraChat({
               })}
               toolDetails={view.toolDetails}
               thinkingDetails={view.thinkingDetails}
+              sendAgain={sendAgain}
             />
             <DispatchProposals
               state={state}

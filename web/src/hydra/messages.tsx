@@ -105,7 +105,16 @@ export function Messages({
   timings,
   catalog,
   labelColors,
+  sendAgain,
 }: {
+  // Sends a task message that may not have arrived again, as a new message with its own id.
+  sendAgain?({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }): void
   catalog?: Catalog | null
   labelColors?: SavedLabelColor[]
   timings?: Map<string, TurnTiming>
@@ -1002,6 +1011,17 @@ export function Messages({
                   ))}
                 </span>
               ) : entry.receipt && <span className={`receipt receipt-${entry.receipt}`}>{receiptLabel({ state: entry.receipt })}</span>}
+              {sendAgain && entry.task && (entry.delivery?.agent?.state ?? entry.receipt) === 'delivery_unknown' && (
+                <Button
+                  className="send-again"
+                  aria-label="Send this message again"
+                  onClick={() => sendAgain({
+                    task: entry.task!,
+                    text: entry.text,
+                  })}
+                >Send again
+                </Button>
+              )}
             </article>
             {ownMessage({ entry }) && !entry.role.endsWith('continued') && (
               <div className="message-meta" contentEditable={false}>
