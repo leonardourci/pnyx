@@ -190,7 +190,11 @@ export async function ensureNativeHost({
   const selected = selectedNativeBundle({ source })
 
   try {
-    await startNativeHost({ paths })
+    await startNativeHost({
+      paths,
+      restartInstance: selected.restartInstance,
+      restartDeadline: selected.restartDeadline,
+    })
   } catch (error) {
     console.error(
       'Native host startup deferred:',
@@ -206,6 +210,8 @@ export async function ensureNativeHost({
     reconnect: ({ failedInstance }) => startNativeHost({
       paths,
       failedInstance,
+      restartInstance: selected.restartInstance,
+      restartDeadline: selected.restartDeadline,
     }),
   })
 }
@@ -213,9 +219,13 @@ export async function ensureNativeHost({
 async function startNativeHost({
   paths,
   failedInstance,
+  restartInstance,
+  restartDeadline,
 }: {
   paths: ReturnType<typeof nativePaths>
   failedInstance?: string
+  restartInstance?: string
+  restartDeadline?: number
 }) {
   const socket = join(
     paths.directory,
@@ -329,6 +339,42 @@ async function startNativeHost({
         code: 'RECOVERY_REQUIRED',
         message: 'Native host PID ownership is uncertain',
       })
+    }
+
+    if (alive && !failedHandshake && restartInstance && restartDeadline) {
+      const sameInstance = () => {
+        try {
+          const ledger = JSON.parse(readFileSync(
+            join(
+              paths.directory,
+              'ledger.json',
+            ),
+            'utf8',
+          )) as { instance?: string }
+
+          return ledger.instance === restartInstance
+        } catch {
+          return false
+        }
+      }
+
+      while (sameInstance() && Date.now() < restartDeadline) {
+        await delay(POLL_MS)
+
+        try {
+          const client = await connect()
+          client.detach()
+
+          return
+        } catch {
+          // Wait for the explicit restart grace period before forcing recovery.
+        }
+      }
+
+      if (sameInstance() && Date.now() >= restartDeadline) {
+        failedInstance = restartInstance
+        failedHandshake = true
+      }
     }
 
     if (alive && failedHandshake) {
