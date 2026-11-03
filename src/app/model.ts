@@ -7,7 +7,7 @@ import type { Column, HydraColumn } from '#tasks/columns-model.ts'
 import type { OwnerAsk, TaskKind, AnswerMessage, TaskDeclaration, Ask, PushedEvent, ObservedEvent, MovedEvent, RepliedEvent, NotedEvent, SavedLabelColor, Card } from '#tasks/model.ts'
 import type { LandingRule, LinkedEvent, OutcomeEvent } from '#tasks/delivery/model.ts'
 import type { TaskQueue, AgentLaunch, DispatchProposal, AgentConfig, SteeringEvent, SessionEvent, PermissionEvent, AgentSession } from '#workers/model.ts'
-import type { HydraConfig, HydraMessage, HydraStatus, ChatEvent } from '#hydra/model.ts'
+import type { HydraConfig, HydraMessage, HydraOperation, HydraStatus, ChatEvent } from '#hydra/model.ts'
 import type { ProjectRefresh } from '#projects/refresh-types.ts'
 import type { HelperChange, HelperState } from '#routine-helper/state.ts'
 import type { ExternalSourceEvent } from '#task-sources/model.ts'
@@ -263,6 +263,10 @@ export type HydraChange = EventBase & (
     data: HydraStatus
   }
   | {
+    type: 'hydra.operation'
+    data: HydraOperation
+  }
+  | {
     type: 'hydra.dispatch-proposed'
     data: DispatchProposal
   }
@@ -352,6 +356,7 @@ export const EVENT_TYPES: readonly EventType[] = [
   'task.mirrored',
   'hydra.message',
   'hydra.status',
+  'hydra.operation',
   'hydra.review',
   'hydra.helper-started',
   'hydra.helper-finished',
@@ -399,6 +404,11 @@ export interface HydraState {
   upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
   // seq is the event that set it, so a recap can list what came after Hydra went down.
   hydraStatus?: HydraStatus & { seq: number }
+  // The operation stopping Hydra now; everything addressed to Hydra waits until it ends. seq is its start.
+  hydraOperation?: Pick<HydraOperation, 'id' | 'kind'> & {
+    since: string
+    seq: number
+  }
   hydraMemory?: Record<string, {
     text: string
     at: string

@@ -155,11 +155,14 @@ export function recapText({
   since,
   after,
   now,
+  why,
 }: {
   state: HydraState
   since: string
   after: number
   now: number
+  // Why Hydra was stopped; an outage when not given.
+  why?: string
 }): string {
   const minutes = outageMinutes({
     since,
@@ -185,12 +188,12 @@ export function recapText({
   const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
 
   return `<pnyx-wake>${[
-    `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
+    why ?? `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
     ...unread.length ? [
       'The owner wrote to you meanwhile and has had no reply; answer these:',
       ...unread,
     ] : ['The owner sent you nothing meanwhile.'],
-    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from the outage reach you in your next wake.`] : [],
+    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from meanwhile reach you in your next wake.`] : [],
     decisionsText({
       state,
       now,
