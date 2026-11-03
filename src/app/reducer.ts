@@ -61,7 +61,8 @@ export function applyHydra({
           text: operationLabel(event.data),
           at: event.at,
           actor: 'pnyx',
-          hydra: '',
+          // The chat shows the messages of the Hydra it is configured as.
+          hydra: hydraConfig({ state }).hydra.id,
         },
       ]
     }
