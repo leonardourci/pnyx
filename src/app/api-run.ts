@@ -1,5 +1,4 @@
 import { Writable } from 'node:stream'
-import { setTimeout as delay } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { runCli } from '#cli/run.ts'
@@ -45,25 +44,8 @@ function request({ body }: { body: unknown }): RunRequest {
   }
 }
 
-// While a Hydra's log still has a writer lock, a command can meet a write the server itself has under way;
-// a command refused at the lock is tried again shortly, up to a bound.
-const LOCKED_RETRY_MS = 50
-const LOCKED_WAIT_MS = 5000
-
 // Runs a pnyx-axi command line for a client, in the client's identity and folder, and answers with exactly what it printed.
 export async function runForRequest({ body }: { body: unknown }): Promise<RunAnswer> {
-  const end = Date.now() + LOCKED_WAIT_MS
-  let answer = await runOnce({ body })
-
-  while (answer.exitCode !== 0 && /^code: LOCKED$/m.test(answer.stdout) && Date.now() < end) {
-    await delay(LOCKED_RETRY_MS)
-    answer = await runOnce({ body })
-  }
-
-  return answer
-}
-
-async function runOnce({ body }: { body: unknown }): Promise<RunAnswer> {
   const {
     argv,
     cwd,
