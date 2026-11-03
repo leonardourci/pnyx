@@ -32,9 +32,8 @@ commands:
   view show|schema|set; layout show|reset      Inspect or save a board's view (shared keys go to settings); reset widths
   repair                                     Set aside a torn log tail and rebuild the snapshot
   serve [--port <n>]                         Run the one server of every Hydra until stopped
-  stop                                       Stop the application; native turns keep running
-  native status|stop                         Read host readiness or stop an idle host for manual maintenance
-  restart                                    Restart the app and switch native host when idle
+  stop                                       Stop the application and the agents it runs
+  restart                                    Restart the application; agents cut mid-turn resume once
   upgrade [--check]                          Pull, install and build the latest main, then restart the server
   setup [check|skills|hooks]                 Install login services, list missing setup, or install skills or hooks
   setup hydra --home <firstmate home>        Make a Firstmate home Hydra and give it the ${ORCHESTRATE_SKILL} skill
@@ -242,8 +241,8 @@ task remind sets one reminder per task; use a future ISO timestamp with a timezo
 
 task continue adopts an ended outside Claude Code or Codex session; --check only reads its current presence.
 It refuses a running or unverified terminal session; the next message resumes the same session in its recorded folder.
-task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder through the Hydra's
-Pnyx native host connected to the server (\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its native session, folder
+task start runs Claude Code (Agent SDK) or Codex (app-server) in the task's folder inside the server
+(\`pnyx-axi serve\`), with your own provider settings, skills and hooks, and records its session, folder
 and settings on the task. Replies and setting changes from the Hydra or \`pnyx-axi reply\` and \`pnyx-axi agent\`
 go straight to it; after a server restart the next message resumes the same session. A turn that was
 running when the server stopped is marked interrupted and waits for a message. Permission prompts and
@@ -330,7 +329,7 @@ pnyx-axi setup skills [--remove] [--preview] [--allow-custom-home]
 pnyx-axi setup hydra --home <firstmate home> [--hydra <id>]
 setup check lists what is still missing (local config, logins, hooks, skills, quota-axi, the login service,
 project profiles) and who fixes each; it exits 1 while anything is missing. A Hydra's digest lists the same.
-setup installs the server and native login services.
+setup installs the server's login service.
 setup, setup hooks and setup skills refuse a non-default PNYX_HOME unless --allow-custom-home is given.
 setup refuses a port reserved by another Pnyx home; choose a different --port.
 setup skills links only ${REPORT_PROGRESS_SKILL} and ${CLI_SKILL} from this installation into ~/.claude/skills
@@ -342,7 +341,7 @@ every other hook. Without --harness it sets up each harness whose config folder 
 changes nothing; --remove takes out only Pnyx's entries. The hooks always exit 0 and print nothing,
 except at session start in a folder inside an attached project, where they print that project's open tasks.
 Hook events go to the default Hydra, or to PNYX_HOME and PNYX_HYDRA when a session has them.
-setup installs login services for the server of every Hydra and the native host: launchd jobs on macOS, systemd user units on Linux.
+setup installs one login service for the server of every Hydra: a launchd job on macOS, a systemd user unit on Linux.
 It replaces the older one-per-Hydra services.
 setup hydra makes the Firstmate home the Hydra, copies the ${ORCHESTRATE_SKILL} skill into the home's
 .agents/skills (kept out of the clone through .git/info/exclude) and leaves Firstmate an inbox note about it.
