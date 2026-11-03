@@ -26,7 +26,9 @@ if (!tryFastPath(
     },
   },
 )) {
-  const local = LOCAL.has(argv[0] ?? '') || argv.includes('--help') || argv[0]?.startsWith('-')
+  // `setup hydra` writes Hydra events, so it goes to the server like any other write.
+  const own = LOCAL.has(argv[0] ?? '') && !(argv[0] === 'setup' && argv[1] === 'hydra')
+  const local = own || argv.includes('--help') || argv[0]?.startsWith('-')
   const client = local ? undefined : await import('./client.ts')
 
   if (!client || (OFFLINE.has(argv[0] ?? '') && !client.serverRunning())) {
