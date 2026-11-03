@@ -1,4 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs'
+import { request as httpRequest } from 'node:http'
+import { setTimeout as delay } from 'node:timers/promises'
 import { pnyxHome } from '#store/paths.ts'
 import { IDENTITY } from '#app/request-context.ts'
 import type { RunAnswer } from '#app/api-run.ts'
@@ -7,6 +9,8 @@ import { join } from 'node:path'
 // How long a command waits for a server that is starting; restart waits on its own.
 const STARTING_MS = 10_000
 const RETRY_MS = 100
+// The session-start hook's one try at the server.
+const CONTEXT_MS = 1000
 
 const record = () => {
   try {
@@ -53,54 +57,129 @@ async function send({
   port,
   argv,
   stdin,
+  timeout,
 }: {
   port: number
   argv: string[]
   stdin?: string
+  // Milliseconds of silence before giving up; without it a long `--wait` keeps the request open as long as it needs.
+  timeout?: number
 }): Promise<RunAnswer> {
-  const response = await fetch(
-    `http://127.0.0.1:${port}/api/run`,
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        'authorization': `Bearer ${readFileSync(
-          join(
-            pnyxHome(),
-            'token',
-          ),
-          'utf8',
-        ).trim()}`,
-      },
-      body: JSON.stringify({
-        argv,
-        cwd: process.cwd(),
-        env: Object.fromEntries(IDENTITY.flatMap(name => process.env[name] === undefined ? [] : [
-          [
-            name,
-            process.env[name],
-          ],
-        ])),
-        stdin,
-      }),
-    },
-  )
+  const body = JSON.stringify({
+    argv,
+    cwd: process.cwd(),
+    env: Object.fromEntries(IDENTITY.flatMap(name => process.env[name] === undefined ? [] : [
+      [
+        name,
+        process.env[name],
+      ],
+    ])),
+    stdin,
+  })
 
-  if (!response.ok) {
-    throw new Error(`the Pnyx server answered ${response.status}`)
+  // node:http rather than fetch, whose five-minute header timeout would cut a long `hydra check --wait`.
+  return new Promise((
+    resolve,
+    reject,
+  ) => {
+    const request = httpRequest(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/api/run',
+        method: 'POST',
+        timeout,
+        headers: {
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(body),
+          'authorization': `Bearer ${readFileSync(
+            join(
+              pnyxHome(),
+              'token',
+            ),
+            'utf8',
+          ).trim()}`,
+        },
+      },
+      // eslint-disable-next-line pnyx/object-params -- node:http owns the response callback signature.
+      response => {
+        let text = ''
+        response.setEncoding('utf8')
+        response.on(
+          'data',
+          (chunk: string) => {
+            text += chunk
+          },
+        )
+        response.on(
+          'end',
+          () => {
+            if (response.statusCode !== 200) {
+              reject(new Error(`the Pnyx server answered ${response.statusCode}`))
+
+              return
+            }
+
+            try {
+              resolve(JSON.parse(text) as RunAnswer)
+            } catch (error) {
+              reject(error)
+            }
+          },
+        )
+      },
+    )
+    request.on(
+      'timeout',
+      () => request.destroy(new Error('the Pnyx server did not answer in time')),
+    )
+    request.on(
+      'error',
+      reject,
+    )
+    request.end(body)
+  })
+}
+
+const unavailable = ({ message }: { message: string }) => {
+  process.stdout.write(`error: ${JSON.stringify(`The Pnyx server did not answer: ${message}`)}\ncode: SERVER_UNAVAILABLE\nhelp[1]: "Run \`pnyx-axi restart\`"\n`)
+  process.exitCode = 1
+}
+
+// The session-start hook runs `context`: one quick try, and nothing printed or started when the server is down.
+async function context({ argv }: { argv: string[] }) {
+  const server = record()
+
+  if (!server || !alive(server)) {
+    return
   }
 
-  return await response.json() as RunAnswer
+  try {
+    const answer = await send({
+      port: server.port,
+      argv,
+      timeout: CONTEXT_MS,
+    })
+    process.stdout.write(answer.stdout)
+  } catch {
+    // A hook prints nothing but its summary and never fails the session it runs in.
+  }
 }
 
 // Sends one command line to the running server and prints its answer; when it is down, its login service starts it.
-// `context`, which the session-start hook runs, never starts it and prints nothing when it is down.
 export async function forward({ argv }: { argv: string[] }): Promise<void> {
-  const stdin = stdinText({ argv })
-  const quiet = argv[0] === 'context'
-  let started = false
+  if (argv[0] === 'context') {
+    await context({ argv })
 
-  for (const end = Date.now() + STARTING_MS; ;) {
+    return
+  }
+
+  const stdin = stdinText({ argv })
+  const end = Date.now() + STARTING_MS
+  let started = false
+  let last = 'it is not running'
+
+  while (Date.now() <= end) {
     const server = record()
 
     if (server && alive(server)) {
@@ -115,17 +194,15 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
 
         return
       } catch (error) {
-        if (Date.now() > end) {
-          if (!quiet) {
-            process.stdout.write(`error: ${JSON.stringify(`The Pnyx server did not answer: ${(error as Error).message}`)}\ncode: SERVER_UNAVAILABLE\nhelp[1]: "Run \`pnyx-axi restart\`"\n`)
-            process.exitCode = 1
-          }
+        // Only a refused connection is safe to send again: any other failure may come after the server ran the command.
+        if ((error as NodeJS.ErrnoException).code !== 'ECONNREFUSED') {
+          unavailable({ message: (error as Error).message })
 
           return
         }
+
+        last = (error as Error).message
       }
-    } else if (quiet) {
-      return
     } else if (!started) {
       started = true
       const { restartPnyx } = await import('#upgrade/restart.ts')
@@ -149,9 +226,8 @@ export async function forward({ argv }: { argv: string[] }): Promise<void> {
       }
     }
 
-    await new Promise(resolve => setTimeout(
-      resolve,
-      RETRY_MS,
-    ))
+    await delay(RETRY_MS)
   }
+
+  unavailable({ message: last })
 }
