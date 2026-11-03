@@ -227,6 +227,15 @@ export const KEY_ACTIONS = [
     ],
   }),
   action({
+    id: 'settings',
+    label: 'Open Settings',
+    keys: ['Mod+,'],
+    scopes: [
+      ...navigation,
+      'composer',
+    ],
+  }),
+  action({
     id: 'help',
     label: 'Keyboard help',
     keys: ['?'],
@@ -575,6 +584,7 @@ export function resolveKey(
     && (!context.editing || [
       'send',
       'palette',
+      'settings',
       'topbar',
     ].includes(a.id) || (a.id === 'cancel' && context.scope !== 'navigation')))
   const candidates = progress.scope === context.scope && context.now <= progress.until
