@@ -156,6 +156,7 @@ export function recapText({
   after,
   now,
   why,
+  whole = false,
 }: {
   state: HydraState
   since: string
@@ -163,6 +164,8 @@ export function recapText({
   now: number
   // Why Hydra was stopped; an outage when not given.
   why?: string
+  // The owner's messages in full, as after a stop that held them; an outage recap shortens them.
+  whole?: boolean
 }): string {
   const minutes = outageMinutes({
     since,
@@ -179,6 +182,10 @@ export function recapText({
         id: card.id,
         title: card.title,
       })}` : ''
+
+      if (whole) {
+        return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
+      }
 
       return `- ${message.at}${task}: ${clip({
         text: message.text,
