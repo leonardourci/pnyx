@@ -2216,6 +2216,11 @@ export function createHost({
         data.detail = detail
       }
 
+      // A delivered answer marks its questions answered, as the reply's first record would have.
+      if (reply.answers) {
+        data.answers = reply.answers
+      }
+
       apply({
         writer,
         decision: decideReply({
