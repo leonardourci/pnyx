@@ -11,7 +11,8 @@ import { processStart } from '#agent-host/discovery.ts'
 import { serviceFile } from '#setup/service.ts'
 import { until } from '#agent-host/fixtures/harness.ts'
 
-const TIMEOUT_MS = 40000
+// The fixture must outlast the product's bounded shutdown and startup.
+const TIMEOUT_MS = 150000
 const cli = join(
   import.meta.dirname,
   '../dist/cli/pnyx-axi.js',
@@ -82,11 +83,13 @@ async function fixture({
   stallRestart = false,
   managed = false,
   holdTurn = false,
+  slowReplacement = false,
 }: {
   t: TestContext
   stallRestart?: boolean
   managed?: boolean
   holdTurn?: boolean
+  slowReplacement?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-handshake-'))
   const listener = createServer()
@@ -159,6 +162,21 @@ async function fixture({
     )}`
   }
 
+  if (slowReplacement) {
+    env.PNYX_TEST_SLOW_SERVE = join(
+      root,
+      'slow-serve.pid',
+    )
+    env.PNYX_TEST_SLOW_ARM = join(
+      root,
+      'slow-serve.arm',
+    )
+    env.NODE_OPTIONS = `--import=${join(
+      import.meta.dirname,
+      '../src/test-harness/fakes/slow-serve.mjs',
+    )}`
+  }
+
   const serverPath = join(
     root,
     'hydras/default/server.json',
@@ -195,7 +213,10 @@ async function fixture({
       timeout,
     },
   )
-  const health = async () => (await (await fetch(`http://127.0.0.1:${port}/health`)).json()) as { native: { state: string } }
+  const health = async () => (await (await fetch(
+    `http://127.0.0.1:${port}/health`,
+    { signal: AbortSignal.timeout(1000) },
+  )).json()) as { native: { state: string } }
   t.after(async () => {
     if (owned.direct && owned.direct.exitCode === null && owned.direct.signalCode === null) {
       const exited = once(
@@ -1268,6 +1289,89 @@ test(
       )
     } finally {
       if (start && processStart({ pid: replacement }) === start) {
+        process.kill(
+          replacement,
+          'SIGCONT',
+        )
+      }
+    }
+  },
+)
+
+test(
+  'composer observes a replacement that takes longer than the old fixture deadline',
+  async t => {
+    const app = await fixture({
+      t,
+      slowReplacement: true,
+    })
+    const arm = join(
+      app.root,
+      'slow-serve.arm',
+    )
+    const marker = join(
+      app.root,
+      'slow-serve.pid',
+    )
+    writeFileSync(
+      arm,
+      '',
+    )
+    await app.run({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        '/restart',
+      ],
+    })
+    await until({
+      timeout: TIMEOUT_MS,
+      check: () => existsSync(marker),
+    })
+    const replacement = Number(readFileSync(
+      marker,
+      'utf8',
+    ))
+    const start = processStart({ pid: replacement })
+    assert.ok(start)
+    const observed = (async () => {
+      try {
+        await until({
+          timeout: TIMEOUT_MS,
+          check: () => app.pid() === replacement,
+        })
+
+        return true
+      } catch {
+        return false
+      }
+    })()
+
+    try {
+      await delay(48000)
+      assert.equal(
+        processStart({ pid: replacement }),
+        start,
+      )
+      process.kill(
+        replacement,
+        'SIGCONT',
+      )
+      await until({
+        timeout: 120000,
+        check: () => app.pid() === replacement,
+      })
+      assert.equal(
+        await observed,
+        true,
+      )
+      assert.equal(
+        (await app.health()).native.state,
+        'ready',
+      )
+    } finally {
+      if (processStart({ pid: replacement }) === start) {
         process.kill(
           replacement,
           'SIGCONT',
