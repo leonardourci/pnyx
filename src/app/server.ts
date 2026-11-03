@@ -55,8 +55,8 @@ import type { ReplyState } from '#workers/model.ts'
 import { reduce } from './reducer.ts'
 import { traces } from '#preferences/view.ts'
 import { hydraDir } from './home-migration.ts'
-import { loadHydra } from './store.ts'
-import { withWriter } from './writer.ts'
+import { heldHydra, holdHydra, loadHydra } from './store.ts'
+import { saveSnapshot, withWriter } from './writer.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
@@ -414,13 +414,14 @@ export async function mountOwnedHydra({
   }
 
   const dir = hydraDir({ hydraId })
-  const eventsPath = join(
-    dir,
-    'events.jsonl',
-  )
   privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
+  // The server holds the Hydra in memory; its own writes call kick in the same step.
+  const releaseHold = holdHydra({
+    hydraId,
+    changed: () => kick(),
+  })
   let {
     state,
     offset,
@@ -942,15 +943,25 @@ export async function mountOwnedHydra({
       return reload()
     }
 
+    const live = heldHydra({ hydraId })
+
     for (const event of read.events) {
-      if (event.seq !== state.seq + 1) {
+      // A held Hydra's writer has already applied the event to the state this server reads.
+      if (live) {
+        state = live.state
+
+        if (event.seq > state.seq) {
+          return reload()
+        }
+      } else if (event.seq !== state.seq + 1) {
         return reload()
+      } else {
+        state = reduce({
+          state,
+          event,
+        })
       }
 
-      state = reduce({
-        state,
-        event,
-      })
       recent.push(event)
 
       if (event.type === 'hydra.project') {
@@ -2701,10 +2712,6 @@ export async function mountOwnedHydra({
     }
 
     writeRetries.clear()
-    unwatchFile(
-      eventsPath,
-      kick,
-    )
     await Promise.all([
       queueRun,
       replyRun,
@@ -2718,6 +2725,13 @@ export async function mountOwnedHydra({
     catalogIndex.close()
     agents.close()
     await spend.close()
+    const live = heldHydra({ hydraId })
+
+    if (live) {
+      saveSnapshot({ live })
+    }
+
+    releaseHold()
 
     const threads = threadSubscriptions.flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
@@ -2772,15 +2786,6 @@ export async function mountOwnedHydra({
         path: spoolDir({ dir }),
         changed: kick,
       }),
-    )
-    // Directory notifications can coalesce rapid appends; stat polling recovers the missed tail.
-    watchFile(
-      eventsPath,
-      {
-        interval: EVENT_POLL_MS,
-        persistent: false,
-      },
-      kick,
     )
     followHome()
   } catch (error) {

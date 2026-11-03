@@ -5,7 +5,9 @@ import type { HydraState, HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { LABEL_COLORS } from '#tasks/model.ts'
 import { hydraDir } from './home-migration.ts'
-import { requireHydra, loadTail } from './store.ts'
+import { requireHydra, loadTail, heldHydra, type Held } from './store.ts'
+import { readLog } from './event-log.ts'
+import { statSync } from 'node:fs'
 import { privateDir, acquireLock, writeDurably, logPath } from '#store/storage.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
@@ -14,7 +16,7 @@ import { isHelper, guardTaskLease, deliveringMessage } from '#routine-helper/lea
 import { helperGrant } from '#routine-helper/route.ts'
 import { labelsForEvent } from '#tasks/labels.ts'
 import { randomInt } from 'node:crypto'
-import { replayOwned } from './reducer.ts'
+import { emptyHydra, replayOwned } from './reducer.ts'
 import { preimage, type PreimageObserver } from './preimage.ts'
 import { reconcileAsks } from '#tasks/questions.ts'
 import { operationDeclarations, lifecycleMoves, lifecycleMoveId } from '#tasks/lifecycle.ts'
@@ -68,6 +70,18 @@ export function withWriter<T>({
   transaction,
   migrate = true,
 }: WriterOptions<T>): T | Output {
+  const live = heldHydra({ hydraId })
+
+  if (live) {
+    return heldWrite({
+      live,
+      hydraId,
+      fn,
+      transaction,
+      migrate,
+    })
+  }
+
   const dir = hydraDir({
     hydraId,
     migrate,
@@ -189,6 +203,164 @@ export function withWriter<T>({
     }
   } finally {
     release()
+  }
+}
+
+// How long after a write the server saves the Hydra's snapshot; the log already holds every change.
+const SNAPSHOT_DELAY_MS = 2000
+const snapshotTimers = new WeakMap<Held, ReturnType<typeof setTimeout>>()
+
+// Saves a held Hydra's snapshot now; the server calls it when it lets the Hydra go.
+export function saveSnapshot({ live }: { live: Held }): void {
+  clearTimeout(snapshotTimers.get(live))
+  snapshotTimers.delete(live)
+  writeSnapshot({
+    dir: live.dir,
+    state: live.state,
+    offset: live.offset,
+  })
+}
+
+// A write to a Hydra the server holds: no lock and no reload. Each line is fsynced before it applies; a transaction
+// works on a copy that replaces the live state only once its line is on disk.
+function heldWrite<T>({
+  live,
+  hydraId,
+  fn,
+  transaction,
+  migrate,
+}: {
+  live: Held
+  hydraId: string
+  fn({ writer }: { writer: Writer }): T
+  transaction?: {
+    id: string
+    digest: string
+  }
+  migrate: boolean
+}): T | Output {
+  const path = logPath({ dir: live.dir })
+
+  // Another process (a CLI that ran while the server was down) appended; take its lines first.
+  if (statSync(path).size !== live.offset) {
+    // A log that no longer starts where it did, as after repair, is read again from its start.
+    const tail = readLog({
+      dir: live.dir,
+      from: live.offset,
+    }) ?? readLog({ dir: live.dir })!
+
+    if (tail.events[0] && tail.events[0].seq !== live.state.seq + 1) {
+      live.state = emptyHydra()
+    }
+
+    if (tail.size !== tail.end) {
+      throw new HydraError({
+        message: `events.jsonl ends with ${tail.size - tail.end} bytes of a torn append`,
+        code: 'TORN_TAIL',
+        help: ['Run `pnyx-axi repair` to set them aside and continue'],
+      })
+    }
+
+    replayOwned({
+      state: live.state,
+      events: tail.events,
+    })
+    live.offset = tail.end
+  }
+
+  if (transaction) {
+    const previous = transactionReceipt({
+      hydraId,
+      ...transaction,
+      migrate,
+    })
+
+    if (previous) {
+      return previous
+    }
+  }
+
+  let offset = live.offset
+  let dirty = false
+  const pending: HydraEvent[] = []
+  const writer = eventWriter({
+    state: transaction ? structuredClone(live.state) : live.state,
+    dir: live.dir,
+    hydraId,
+    owned: true,
+    transaction: transaction?.id,
+    onAppend: ({ event }) => {
+      if (transaction) {
+        pending.push(event)
+
+        return
+      }
+
+      const line = `${JSON.stringify(event)}\n`
+      writeDurably({
+        path,
+        data: line,
+        flag: 'a',
+      })
+      offset += Buffer.byteLength(line)
+      live.offset = offset
+      dirty = true
+    },
+  })
+
+  try {
+    const migrated = migrate ? migrateColumns({
+      state: writer.state,
+      meta: {
+        at: new Date().toISOString(),
+        actor: 'pnyx',
+      },
+    }) : { skipped: 'unchanged' }
+
+    if ('event' in migrated) {
+      writer.append({ event: migrated.event })
+    }
+
+    const result = fn({ writer })
+
+    if (transaction) {
+      const line = `${JSON.stringify({
+        v: EVENT_VERSION,
+        type: 'log.transaction',
+        ...transaction,
+        events: pending,
+        receipt: result,
+      })}\n`
+      writeDurably({
+        path,
+        data: line,
+        flag: 'a',
+      })
+      live.state = writer.state
+      live.offset = offset + Buffer.byteLength(line)
+      dirty = true
+    }
+
+    return result
+  } finally {
+    if (dirty) {
+      clearTimeout(snapshotTimers.get(live))
+      snapshotTimers.set(
+        live,
+        setTimeout(
+          () => {
+            // The log holds the change; a snapshot that cannot be written is only a slower next start.
+            try {
+              saveSnapshot({ live })
+            } catch (error) {
+              console.error(`pnyx-axi snapshot of Hydra ${hydraId}: ${(error as Error).message}`)
+            }
+          },
+          SNAPSHOT_DELAY_MS,
+        ).unref(),
+      )
+      live.changed()
+    }
   }
 }
 
