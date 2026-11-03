@@ -3,6 +3,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import { steeringClaim } from '#workers/steering.ts'
 import { armLavish } from './lavish.ts'
+import { requestEnv } from '#app/request-context.ts'
 import {
   captureResult, commandIdentity, handleResult, invalidSource, registerSource,
   SOURCE_MAX_BYTES, SOURCE_TIMEOUT_MS, sourceById, sourceTask,
@@ -46,7 +47,7 @@ export function sourceCommand({ args }: { args: string[] }): Output {
     what: 'task',
   })
   const actor = meta({ values })
-  const worker = process.env.PNYX_STEERING_WORKER
+  const worker = requestEnv().PNYX_STEERING_WORKER
 
   if (action === 'list' || action === 'read') {
     const state = loadHydra({ hydraId }).state

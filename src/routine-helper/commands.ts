@@ -10,6 +10,7 @@ import { loadHydra } from '#app/store.ts'
 import { helperGrant } from './route.ts'
 import { HELPER_TASK_WRITES, helperReads } from '#app/command-registry.ts'
 import { isHelper, taskLease } from './leases.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 const TASK_READS = helperReads({ name: 'task' })
 const TASK_WRITES = HELPER_TASK_WRITES
@@ -24,7 +25,7 @@ function denied(): never {
 export function commandLease({
   name,
   args,
-  env = process.env,
+  env = requestEnv(),
 }: {
   name: string
   args: string[]

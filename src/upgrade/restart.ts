@@ -1,4 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
+import { requestEnv } from '#app/request-context.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { infoPath, processStart, type ServerInfo } from '#app/server-state.ts'
 import { PNYX_ROOT } from './runner.ts'
@@ -367,7 +368,7 @@ export async function restart(args: string[]): Promise<Record<string, unknown>> 
     )
   }
 
-  const actor = process.env.PNYX_ACTOR ?? 'cli'
+  const actor = requestEnv().PNYX_ACTOR ?? 'cli'
 
   if (actor !== 'cli' && actor !== 'owner') {
     throw new AxiError(

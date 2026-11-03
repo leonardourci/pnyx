@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readInput } from '#app/request-context.ts'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-support.ts'
 import { ApplyError } from '#app/apply/schema.ts'
@@ -196,10 +196,7 @@ function readEnvelope({ values }: { values: Values }): unknown {
 
   try {
     return parseApplyJson({
-      contents: file === undefined ? String(values.json) : readFileSync(
-        file === '-' ? 0 : file,
-        'utf8',
-      ),
+      contents: file === undefined ? String(values.json) : readInput({ file: file }),
     })
   } catch (error) {
     if (error instanceof ApplyError) {

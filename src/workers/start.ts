@@ -50,6 +50,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Output } from '#app/cli-support.ts'
+import { requestCwd } from '#app/request-context.ts'
 
 export const VIAS = [
   'pnyx',
@@ -484,7 +485,7 @@ export async function startTask({
             const { models } = await client.providers.listModels(
               candidate.harness,
               {
-                cwd: given ?? card.folder ?? process.cwd(),
+                cwd: given ?? card.folder ?? requestCwd(),
               },
             )
             offers[candidate.harness] = models?.map(m => m.id) ?? []
@@ -777,7 +778,7 @@ function startCommand({
         })
       }
 
-      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? process.cwd() : undefined)
+      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? requestCwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
         throw new HydraError({
@@ -994,7 +995,7 @@ export async function startHydra({
   try {
     const { models } = await client.providers.listModels(
       chosen,
-      { cwd: folder ?? process.cwd() },
+      { cwd: folder ?? requestCwd() },
     )
     offered = models?.map(m => m.id) ?? []
   } finally {
@@ -1037,7 +1038,7 @@ export async function startHydra({
   const agent = dispatch.candidate
 
   const id = meta.id ?? randomUUID()
-  const cwd = canonical({ path: folder }) ?? process.cwd()
+  const cwd = canonical({ path: folder }) ?? requestCwd()
   const endpoint = paseoUrl({ url })
   const free = withWriter({
     hydraId,

@@ -12,6 +12,7 @@ import { withWriter } from './writer.ts'
 import { loadHydra } from './store.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
+import { requestCwd, requestEnv } from '#app/request-context.ts'
 
 const exec = promisify(execFile)
 const ENTRY = join(
@@ -106,7 +107,7 @@ export function proposeOwnerCommand({
   const target: Target = {
     name,
     args: safe,
-    cwd: process.cwd(),
+    cwd: requestCwd(),
   }
   const value = JSON.stringify(target)
   const summary = `Approve pnyx-axi ${name} ${safe.map(arg => JSON.stringify(arg)).join(' ')}`
@@ -169,7 +170,7 @@ export const approval = guard({
     })
     const actor = meta({ values })
 
-    if (actor.actor === 'hydra' || process.env.PNYX_ACTOR === 'hydra') {
+    if (actor.actor === 'hydra' || requestEnv().PNYX_ACTOR === 'hydra') {
       throw new HydraError({
         message: 'Only the owner can answer an approval question',
         code: 'OWNER_ONLY',
