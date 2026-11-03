@@ -3405,6 +3405,14 @@ export function createHost({
       card,
       provider = card.agent?.provider ?? 'claude-code',
     }) {
+      if (![
+        'claude',
+        'claude-code',
+        'codex',
+      ].includes(provider)) {
+        return []
+      }
+
       const harness = provider === 'codex' ? 'codex' : 'claude-code'
       const cacheKey = JSON.stringify([
         harness,

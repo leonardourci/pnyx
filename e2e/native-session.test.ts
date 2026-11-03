@@ -411,64 +411,78 @@ test(
   },
 )
 
-test(
-  'a failed Codex compaction retains the native turn ID, error and failed terminal status',
-  async t => {
-    const root = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-native-compact-',
-    ))
-    const native = replayCodex({ hydra: () => 'fixture' })
-    native.control.compact = 'failed'
-    const session = await codexProvider({ spawnCodex: native.spawnCodex }).open({
-      cwd: root,
-      env: {
-        PNYX_HOME: root,
-        PNYX_HYDRA: 'fixture',
-      },
-      settings: {},
-      signal: new AbortController().signal,
-    })
-    const input = inbox()
-    const observed = observe({
-      session,
-      input,
-    })
-    t.after(async () => {
-      input.end(); session.close(); await observed.done; rmSync(
-        root,
-        {
-          recursive: true,
-          force: true,
+for (const {
+  status,
+  error,
+} of [
+    {
+      status: 'failed',
+      error: 'Synthetic compaction failure',
+    },
+    {
+      status: 'completed',
+      error: undefined,
+    },
+  ] as const) {
+  test(
+    `a ${status} Codex compaction retains the native turn ID, error and terminal status`,
+    async t => {
+      const root = mkdtempSync(join(
+        tmpdir(),
+        'pnyx-native-compact-',
+      ))
+      const native = replayCodex({ hydra: () => 'fixture' })
+      native.control.compact = status
+      const session = await codexProvider({ spawnCodex: native.spawnCodex }).open({
+        cwd: root,
+        env: {
+          PNYX_HOME: root,
+          PNYX_HYDRA: 'fixture',
         },
+        settings: {},
+        signal: new AbortController().signal,
+      })
+      const input = inbox()
+      const observed = observe({
+        session,
+        input,
+      })
+      t.after(async () => {
+        input.end(); session.close(); await observed.done; rmSync(
+          root,
+          {
+            recursive: true,
+            force: true,
+          },
+        )
+      })
+      input.push({
+        id: 'compact',
+        text: '/compact',
+      })
+      await until({
+        what: 'the compact outcome',
+        check: () => observed.outcomes().length === 1,
+      })
+      assert.equal(
+        observed.outcomes()[0]!.status,
+        status,
       )
-    })
-    input.push({
-      id: 'compact',
-      text: '/compact',
-    })
-    await until({
-      what: 'the failed compact outcome',
-      check: () => observed.outcomes().length === 1,
-    })
-    assert.equal(
-      observed.outcomes()[0]!.status,
-      'failed',
-    )
-    assert.equal(
-      observed.outcomes()[0]!.error,
-      'Synthetic compaction failure',
-    )
-    assert.equal(
-      observed.outcomes()[0]!.turn,
-      native.control.compactTurn,
-    )
-    assert.deepEqual(
-      observed.outcomes()[0]!.inputIds,
-      ['compact'],
-    )
-  },
-)
+      assert.equal(
+        observed.outcomes()[0]!.error,
+        error,
+      )
+      assert.equal(
+        observed.outcomes()[0]!.turn,
+        native.control.compactTurn,
+      )
+      assert.deepEqual(
+        observed.outcomes()[0]!.inputIds,
+        ['compact'],
+      )
+    },
+  )
+}
 
 test(
   'a Claude transport failure retains consumed input IDs and leaves its queued input uncertain',

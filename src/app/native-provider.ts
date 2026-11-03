@@ -199,6 +199,7 @@ export async function nativeProviders({
   ).unref()
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
+    compact: true,
     canOpen: () => client.available() && !inventory.some(session => session.phase === 'recovery_required'),
     owns: ({ agent }) => inventory.some(session => {
       const same = session.provider === provider && session.nativeId === agent.sessionId
