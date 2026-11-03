@@ -5,6 +5,9 @@ import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
 import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { until } from '#test-harness/harness.ts'
+
+// How many times one review is offered while Hydra keeps starting turns.
+const REVIEW_ATTEMPTS = 5
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 function reviewClock({
@@ -27,7 +30,18 @@ function reviewClock({
   return {
     advance: async ({ ms = REVIEW_MS }: { ms?: number } = {}) => {
       time += ms
-      await timer.check()
+      const at = new Date(time).toISOString()
+      const recorded = () => s.events().findLast(event => event.type === 'hydra.review')?.at === at
+
+      // A review waits while Hydra works, and a wake may start one meanwhile; the server's poll tries again, as this does.
+      for (let attempt = 0; attempt < REVIEW_ATTEMPTS && !recorded(); attempt++) {
+        await until({
+          what: 'Hydra to be idle before the review',
+          check: () => s.state().cards[HYDRA_CARD]?.sessionActivity !== 'working',
+        })
+        await timer.check()
+      }
+
       const event = s.events().findLast(event => event.type === 'hydra.review')
       assert.ok(event)
       assert.equal(
