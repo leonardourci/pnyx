@@ -228,7 +228,7 @@ export const KEY_ACTIONS = [
   }),
   action({
     id: 'settings',
-    label: 'Open Settings',
+    label: 'Open or close Settings',
     keys: ['Mod+,'],
     scopes: [
       ...navigation,
