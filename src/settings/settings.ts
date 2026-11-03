@@ -2,6 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
+import { NAME } from '#workers/dispatch-check.ts'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
@@ -96,10 +97,11 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
 
   if (!agent || typeof agent.model !== 'string' || Object.keys(agent).some(key => ![
     'harness',
+    'account',
     'model',
     'effort',
   ].includes(key))) {
-    return invalid({ detail: 'helper takes auto, off or { harness, model, effort }' })
+    return invalid({ detail: 'helper takes auto, off or { harness, account?, model, effort? }' })
   }
 
   if (agent.harness !== 'claude' && agent.harness !== 'codex') {
@@ -113,9 +115,17 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
     return invalid({ detail: 'helper model and effort take characters a harness flag accepts' })
   }
 
+  if (agent.account !== undefined && (typeof agent.account !== 'string' || !NAME.test(agent.account))) {
+    return invalid({ detail: 'helper account must name a registered account' })
+  }
+
   const helper: AgentConfig = {
     harness: agent.harness,
     model: agent.model,
+  }
+
+  if (agent.account) {
+    helper.account = agent.account as string
   }
 
   if (agent.effort) {

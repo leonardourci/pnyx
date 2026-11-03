@@ -19,6 +19,43 @@ const saved = ({ view }: { view: object }) =>
   })
 
 test(
+  'new layouts use 460 px columns and 520 px chat without replacing saved 380/480 widths',
+  () => {
+    assert.deepEqual(
+      DEFAULT_WIDTHS,
+      {
+        column: 460,
+        hydra: 520,
+      },
+    )
+    const view = saved({
+      view: {
+        hydraWidth: 480,
+        defaultHydraWidth: 480,
+        defaultColumnWidth: 380,
+        columnWidths: { queued: 380 },
+      },
+    })
+    assert.equal(
+      view.hydraWidth,
+      480,
+    )
+    assert.equal(
+      view.defaultHydraWidth,
+      480,
+    )
+    assert.equal(
+      view.defaultColumnWidth,
+      380,
+    )
+    assert.equal(
+      view.columnWidths.queued,
+      380,
+    )
+  },
+)
+
+test(
   'a saved view carrying the old built-in defaults picks up the new ones',
   () => {
     const view = saved({

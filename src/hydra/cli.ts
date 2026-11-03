@@ -124,6 +124,7 @@ const SETTING_FLAGS = [
   'review-minutes',
   'helper',
   'helper-model',
+  'helper-account',
   'helper-effort',
 ]
 
@@ -155,7 +156,7 @@ function sharedSettingFlags({
     patch.reviewMinutes = Number(raw)
   }
 
-  if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined) {
+  if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined || values['helper-account'] !== undefined) {
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
     const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
@@ -168,6 +169,12 @@ function sharedSettingFlags({
       const helper: AgentConfig = {
         harness,
         model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
+      }
+
+      const account = values['helper-account'] ?? previous?.account
+
+      if (account) {
+        helper.account = String(account)
       }
 
       if (effort !== undefined) {
@@ -208,6 +215,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       'review-minutes': { type: 'string' },
       helper: { type: 'string' },
       'helper-model': { type: 'string' },
+      'helper-account': { type: 'string' },
       'helper-effort': { type: 'string' },
     },
     positionals: 2,

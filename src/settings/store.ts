@@ -8,13 +8,15 @@ import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { DEFAULT_COLUMN_WIDTH, viewFor } from '#preferences/view.ts'
+import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
+import { effectiveDispatch, lockedDocument } from '#workers/dispatch-config.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -178,7 +180,7 @@ function migrate(): void {
     migrated.defaultColumnWidths = Object.fromEntries(Object.entries(migrated.defaultColumnWidths)
       .filter(([
         , width,
-      ]) => width !== DEFAULT_COLUMN_WIDTH))
+      ]) => width !== migrated.defaultColumnWidth))
     Object.assign(
       after,
       migrated,
@@ -243,9 +245,12 @@ export type SettingsSave = {
 export function saveSettings({
   patch,
   meta,
+  beforeSave,
 }: {
   patch: unknown
   meta: Meta
+  // Reserve and validate the shared write before a combined command changes its Hydra.
+  beforeSave?(): void
 }): SettingsSave {
   return withRegistryLock({
     fn: () => {
@@ -253,6 +258,8 @@ export function saveSettings({
       const current = readFolded()
 
       if (meta.id && current.ids.has(meta.id)) {
+        beforeSave?.()
+
         return {
           skipped: 'duplicate' as const,
           settings: current.settings,
@@ -271,6 +278,19 @@ export function saveSettings({
         current: current.settings,
         input: patch,
       })
+
+      if (!isDeepStrictEqual(
+        current.settings.helper,
+        after.helper,
+      ) && typeof after.helper === 'object' && after.helper.account) {
+        harnessAccount({
+          effective: effectiveDispatch({ document: lockedDocument() }),
+          harness: after.helper.harness,
+          prefer: after.helper.account,
+        })
+      }
+
+      beforeSave?.()
 
       if (isDeepStrictEqual(
         after,

@@ -3,10 +3,11 @@ import { HydraError } from '#store/errors.ts'
 import type { ViewPreferences } from './model.ts'
 import { COLUMNS } from '#tasks/columns-model.ts'
 import { DEFAULT_KEYBOARD, KEY_ACTIONS, keyboardError } from './keyboard.ts'
+import { hydraConfig } from '#hydra/config.ts'
 
 export const DEFAULT_WIDTHS = {
-  column: 380,
-  hydra: 480,
+  column: 460,
+  hydra: 520,
 } as const
 export const DEFAULT_COLUMN_WIDTH = DEFAULT_WIDTHS.column
 // Views saved before the defaults widened carry these as stored defaults; they count as unset.
@@ -268,6 +269,52 @@ export const resetLayoutWidths = ({ view }: { view: ViewPreferences }) => ({
     ])),
   },
 })
+
+// Saved widths also resize the named Hydra; settings set deliberately does not use this patch.
+export function resizeViewPatch({
+  state,
+  patch,
+}: {
+  state: HydraState
+  patch: Record<string, unknown>
+}): Record<string, unknown> {
+  const columns = hydraConfig({ state }).columns.map(column => column.id)
+  const defaults = record({ value: patch.defaultColumnWidths })
+
+  if ((patch.defaultColumnWidths !== undefined && !defaults)
+    || (patch.columnWidths !== undefined && !record({ value: patch.columnWidths }))) {
+    return patch
+  }
+
+  const widths = Object.fromEntries(columns
+    .filter(id => patch.defaultColumnWidth !== undefined || (defaults && id in defaults))
+    .map(id => [
+      id,
+      defaults?.[id] ?? patch.defaultColumnWidth ?? null,
+    ]))
+
+  return {
+    ...patch,
+    ...(patch.defaultHydraWidth !== undefined ? {
+      hydraWidth: patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth,
+    } : {}),
+    ...(patch.defaultColumnWidth !== undefined ? {
+      defaultColumnWidths: {
+        ...Object.fromEntries(columns.map(id => [
+          id,
+          null,
+        ])),
+        ...defaults,
+      },
+    } : {}),
+    ...(Object.keys(widths).length ? {
+      columnWidths: {
+        ...widths,
+        ...record({ value: patch.columnWidths }),
+      },
+    } : {}),
+  }
+}
 
 const invalid = ({ detail }: { detail: string }): never => {
   throw new HydraError({
