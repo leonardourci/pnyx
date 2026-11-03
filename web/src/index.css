@@ -1920,7 +1920,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-candidate, .dispatch-add { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; column-gap: var(--settings-column-gap); align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
 .dispatch-candidate > .hydra-agent-pickers { grid-column: span 4; display: grid; grid-template-columns: subgrid; }
 .dispatch-candidate .select-menu { top: calc(100% + 4px); bottom: auto; }
-.dispatch-candidate[data-starts] { background: var(--color-raised); }
 .dispatch-add { border-bottom: 0; }
 .dispatch-add > .account-model-picker { grid-column: 1 / -1; justify-self: start; }
 .dispatch-add > .account-model-picker > .button { min-height: 24px; gap: 4px; font-size: var(--text-meta); }

@@ -242,7 +242,7 @@ function HowPicked() {
       <ol>
         <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
         <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
-        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The highlighted row is the candidate that would start now.</li>
+        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts.</li>
       </ol>
       <p className="dispatch-desc">Fast on in a Hydra’s composer puts every worker that Hydra starts on Fast, whatever its candidate says, where the model has Fast.</p>
     </section>
@@ -417,15 +417,12 @@ function RuleGroup({
         candidate,
         index,
       ) => {
-        const firstAccount = draft.workers[candidate.harness]?.[0]
-        const account = result?.candidate === index ? result.account : firstAccount
-
         return (
-          <div key={index} className="dispatch-candidate" data-starts={result?.candidate === index || undefined}>
+          <div key={index} className="dispatch-candidate">
             <AgentPickers
               label={`${name} candidate ${index + 1}`}
               agent={candidate}
-              inherited={{ account }}
+              inherited={{ account: draft.workers[candidate.harness]?.[0] }}
               command={command}
               // Settings shows its rows only while connected.
               connected
@@ -484,29 +481,10 @@ function RuleGroup({
   )
 }
 
-function nowStatus({
-  ready,
-  starts,
-}: {
-  ready: boolean
-  starts?: Starts
-}): string | undefined {
-  if (!ready) {
-    return 'Fix the problems to see which candidate starts now.'
-  }
-
-  if (!starts) {
-    return 'Checking quota…'
-  }
-
-  return starts.error
-}
-
 function RulesTable({
   draft,
   base,
   issues,
-  ready,
   starts,
   command,
   edit,
@@ -514,7 +492,6 @@ function RulesTable({
   draft: Draft
   base: DispatchDocument
   issues: DispatchIssue[]
-  ready: boolean
   starts?: Starts
   command: Command
   edit: Edit
@@ -524,10 +501,6 @@ function RulesTable({
     index,
   ) => rule.name === HYDRA_RULE ? [] : [index])
   const hydra = draft.rules.some(rule => rule.name === HYDRA_RULE)
-  const status = nowStatus({
-    ready,
-    starts,
-  })
 
   return (
     <section className="dispatch-rules" aria-labelledby="dispatch-rules">
@@ -570,7 +543,7 @@ function RulesTable({
           </div>
         )}
       </div>
-      {status && <p className="dispatch-desc" role="status">{status}</p>}
+      {starts?.error && <p className="dispatch-desc" role="status">{starts.error}</p>}
       <Button variant="surface" className="dispatch-add-rule" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={14} />Add rule</Button>
     </section>
   )
@@ -900,7 +873,6 @@ export function DispatchSettings({
           draft={draft}
           base={base.document}
           issues={issues}
-          ready={ready}
           starts={starts}
           command={command}
           edit={edit}
