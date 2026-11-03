@@ -403,6 +403,11 @@ test(
           'Hold',
         ],
       })
+      // The answer goes to Hydra, and a review never runs while Hydra's turn does.
+      await until({
+        what: 'Hydra to finish its turn on the answer',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
       const messages = s.state().hydraMessages?.length
       clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
