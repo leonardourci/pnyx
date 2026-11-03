@@ -57,7 +57,7 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 ## Design rules
 
 - Pnyx is a view plus a reply queue over existing tools. Pnyx runs the agents it is asked to start; Hydra still decides what to do. `task start` runs Claude Code through the Agent SDK or Codex through its app-server inside the Pnyx server, which stops them when it stops and resumes a turn it cut from the saved session when it starts again; a start can instead go through the local Paseo daemon, a Firstmate home or the Hydra's own command, and Pnyx never watches over those.
-- `pnyx-axi` is the only writer of Hydra state. Every change is an event appended to the Hydra's `events.jsonl`, which is append-only and never rewritten. `snapshot.json` is a cache rebuilt from the log and replaced atomically.
+- The server (`pnyx-axi serve`) is the only writer of Hydra state, and `pnyx-axi` is its client: every command except `serve`, `stop`, `restart`, `setup`, `upgrade` and help runs in the server. Every change is an event appended to the Hydra's `events.jsonl`, which is append-only and never rewritten. The server keeps each Hydra in memory; `snapshot.json` is a cache of the log, saved in the background and replaced atomically.
 - The reducer is pure and deterministic: no I/O, clock or randomness inside it. Replaying the same log gives the same Hydra.
 - No database for Hydra state, and no AI model calls or model tokens anywhere in the Hydra's logic. `search.db` is a derived, deletable full-text index (SQLite FTS5 through `node:sqlite`), not a store: it is rebuilt from the log and transcripts and never read as Hydra state. The server's only token is a local per-install auth token for writes. Updates are pushed, and the browser uses one WebSocket.
 - Hooks are fast and always exit 0, and they never wait on a network call, browser or model. They print nothing, except the session-start hook, which prints a short summary of the Hydra's open work for the session's project.
@@ -67,4 +67,4 @@ Repo skills for contributors live in `.agents/skills/`; `.claude/skills` links t
 
 ## Runtime data
 
-Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock, the spool, the `search.db` index, the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. Nothing at runtime writes inside the repository.
+Hydras live in `~/.pnyx/hydras/<hydra>/` (`$PNYX_HOME/hydras/<hydra>/` when `PNYX_HOME` is set): `events.jsonl`, `snapshot.json`, the lock a process without the server takes, the spool, the `search.db` index, the `harvest.json` transcript cursors, and `agent/`, the hosted Hydra's folder, whose contract and skills Pnyx rewrites before each Hydra turn. Nothing at runtime writes inside the repository.
