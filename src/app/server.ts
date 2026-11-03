@@ -1019,6 +1019,7 @@ export async function mountOwnedHydra({
   let queueCheckedAt = 0
   let queueNeedsRetry = false
   let followRun: Promise<void> | undefined
+  let settling: Promise<void> | undefined
   let followCheckedAt = 0
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
@@ -1309,10 +1310,15 @@ export async function mountOwnedHydra({
           pump()
         }
 
-        // ponytail: git runs synchronously here; move it off the event loop if copies get slow to settle.
-        if (Object.values(state.cards).some(card => settles({ card }))) {
-          settleDone({ hydraId })
-          pump()
+        // One settle at a time; it reads the copies with git, off the event loop.
+        if (!settling && Object.values(state.cards).some(card => settles({ card }))) {
+          settling = settleDone({ hydraId }).then(
+            () => pump(),
+            error => console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`),
+          )
+            .finally(() => {
+              settling = undefined
+            })
         }
       } catch (error) {
         // A held lock or a damaged log; the next change retries.
@@ -2724,6 +2730,7 @@ export async function mountOwnedHydra({
       queueRun,
       replyRun,
       followRun,
+      settling,
       joinWorkers(),
     ])
     await sources.close()

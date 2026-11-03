@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs'
+import { landingGaps } from '#tasks/delivery/done.ts'
 import { createHash, randomUUID } from 'node:crypto'
 import { AxiError, exitCodeForError } from 'axi-sdk-js'
 import { guard, parse, meta, required, COMMON, type Output } from '#app/cli-support.ts'
@@ -37,7 +38,7 @@ function canonicalDocument({ value }: { value: unknown }): unknown {
 }
 
 export const apply = guard({
-  handler: ({ args }): Output => {
+  handler: async ({ args }): Promise<Output> => {
     const {
       values,
       hydraId,
@@ -104,6 +105,11 @@ export const apply = guard({
       hydraId,
       migrate: false,
     })
+    const landing = await landingGaps({
+      hydraId,
+      refs: document.changes.flatMap(change => change.op === 'task.status' && change.status === 'done'
+        && !change.task.startsWith('$') ? [change.task] : []),
+    })
 
     if (values.check) {
       const duplicate = transactionReceipt({
@@ -136,6 +142,7 @@ export const apply = guard({
       const planned = planDocument({
         document,
         ...loaded,
+        landing,
         full: Boolean(values.full),
         hydraId,
         meta: m,
@@ -158,6 +165,7 @@ export const apply = guard({
       fn: ({ writer }) => {
         const checked = planDocument({
           document,
+          landing,
           state: writer.state,
           dir: writer.dir,
           hydraId,

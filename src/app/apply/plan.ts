@@ -38,6 +38,7 @@ export function planDocument({
   meta,
   id,
   full = false,
+  landing,
 }: {
   document: ApplyDocument
   state: HydraState
@@ -46,6 +47,8 @@ export function planDocument({
   meta: Meta
   id: string
   full?: boolean
+  // landingGaps for its done declarations, read before the write.
+  landing: ReadonlyMap<string, string[]>
 }): {
   events: HydraEvent[]
   receipt: ApplyReceipt
@@ -210,6 +213,7 @@ export function planDocument({
           meta: operationMeta,
           hydraId,
           cardId,
+          landing,
         })
 
       if ('event' in decision) {
@@ -274,6 +278,7 @@ export function planDocument({
             ref,
           }),
           hydraId,
+          landing,
         })
       }
     } catch (error) {

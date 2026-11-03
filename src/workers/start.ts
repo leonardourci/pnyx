@@ -495,7 +495,7 @@ export async function startTask({
       }
     }
 
-    dispatch = dispatchTask({
+    dispatch = await dispatchTask({
       project: card.project,
       rule,
       harness,
@@ -534,7 +534,7 @@ export async function startTask({
   })
 
   const folder = replacement ? given
-    : taskFolder({
+    : await taskFolder({
       hydraId,
       task,
       folder: given,
@@ -602,7 +602,7 @@ export async function startTask({
 // Puts the request in Hydra's chat, then hands it to the Firstmate home that is
 // this Hydra as an inbox note, which wakes Firstmate. The note's request id
 // is the message's, so a retry replays the same note.
-function askFirstmate({
+async function askFirstmate({
   hydraId,
   task,
   prompt,
@@ -612,7 +612,7 @@ function askFirstmate({
   task: string
   prompt?: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const initial = findCard({
     state: loadHydra({ hydraId }).state,
     ref: task,
@@ -699,7 +699,7 @@ function askFirstmate({
       }
     },
   })
-  const sent = fmNote({
+  const sent = await fmNote({
     home: queued.home,
     requestId: `pnyx:${hydraId}:${queued.id}`,
     text: queued.text,
@@ -1019,7 +1019,7 @@ export async function startHydra({
       },
     }
     : config.dispatch.rules
-  const dispatch = chooseCandidate({
+  const dispatch = await chooseCandidate({
     config: {
       ...config,
       dispatch: {
@@ -1165,7 +1165,7 @@ export async function startHydra({
   })
 }
 
-export function setupHydra({
+export async function setupHydra({
   hydraId,
   home,
   meta,
@@ -1173,13 +1173,14 @@ export function setupHydra({
   hydraId: string
   home: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const real = resolveHome({ path: home })
   const dir = join(
     real,
     HOME_SKILL,
   )
 
+  // ponytail: local `git check-ignore` and `rev-parse` stay synchronous; they take milliseconds and only the owner's setup runs them.
   const owns = ({ path }: { path: string }) => {
     const ignored = spawnSync(
       'git',
@@ -1278,7 +1279,7 @@ export function setupHydra({
     )}) and follow it for that Hydra.`,
     `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
   ].join('\n')
-  const sent = fmNote({
+  const sent = await fmNote({
     home: real,
     requestId: `pnyx:${hydraId}:hydra-skill`,
     text,

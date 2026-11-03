@@ -232,7 +232,7 @@ function parsedDocument({ json }: { json?: string }): unknown {
   }
 }
 
-function ruleCommand({ args }: { args: string[] }): Output {
+async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   const propose = args[0] === 'propose'
   args = propose ? args.slice(1) : args
   const {
@@ -346,7 +346,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
 
   if (action === 'now') {
     return {
-      now: startsNow({
+      now: await startsNow({
         config: effectiveDispatch({
           document: parsedDocument({ json: values.json as string | undefined }),
         }),

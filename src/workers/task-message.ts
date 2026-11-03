@@ -153,7 +153,7 @@ export async function sendTaskMessage({
     })
 
     if (target.home && (hydra.state === 'queued' || hydra.state === 'failed')) {
-      hydra = fmNote({
+      hydra = await fmNote({
         home: target.home,
         requestId: `pnyx:${hydraId}:${target.id}:${reply}`,
         text: `Message on task ${target.id}: ${target.title}\n\n${[

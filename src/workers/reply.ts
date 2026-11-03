@@ -1,3 +1,5 @@
+import { setTimeout as delay } from 'node:timers/promises'
+import { readFileSync } from 'node:fs'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -6,7 +8,6 @@ import { steeringHeld } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'
 import { enqueueSteering } from './inbox.ts'
 import { mentionContext } from '#hydra/mentions.ts'
-import { readFileSync } from 'node:fs'
 import { AxiError } from 'axi-sdk-js'
 import { answerPrompt, answerText, checkAnswer, requestId } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
@@ -130,7 +131,7 @@ function waiting({ card }: { card: Card | undefined }): boolean {
   return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
 }
 
-function deliver({
+async function deliver({
   hydraId,
   card,
   reply,
@@ -144,7 +145,7 @@ function deliver({
   route: ReplyRoute
   request: ReplyRequest
   keys?: KeyStep[]
-}): Delivery | Promise<Delivery> {
+}): Promise<Delivery> {
   const {
     text,
     key,
@@ -153,7 +154,7 @@ function deliver({
   } = request
 
   if (keys && route.kind === 'tmux') {
-    return pressKeys({
+    return await pressKeys({
       route,
       steps: keys,
     })
@@ -198,10 +199,10 @@ function deliver({
     })
   }
 
-  const sent = key ? pressKey({
+  const sent = key ? await pressKey({
     route,
     key,
-  }) : typeInto({
+  }) : await typeInto({
     route,
     text,
   })
@@ -213,12 +214,7 @@ function deliver({
   // Claude Code asks to confirm a model or effort change while its prompt cache is
   // warm, with Yes selected, and an Enter at an empty prompt does nothing. A request
   // the session opened meanwhile would take that Enter instead, so then none is pressed.
-  Atomics.wait(
-    new Int32Array(new SharedArrayBuffer(4)),
-    0,
-    0,
-    CONFIRM_SETTLE_MS,
-  )
+  await delay(CONFIRM_SETTLE_MS)
 
   if (withWriter({
     hydraId,
@@ -234,7 +230,7 @@ function deliver({
     }
   }
 
-  const answered = pressKey({
+  const answered = await pressKey({
     route,
     key: 'enter',
   })
@@ -1191,12 +1187,7 @@ export const agent = guard({
     if (receipt.state === 'delivered' && !firstmate) {
       // A harness that records the change at once, as Codex does, confirms it here;
       // otherwise the session's next hook or turn does.
-      Atomics.wait(
-        new Int32Array(new SharedArrayBuffer(4)),
-        0,
-        0,
-        READBACK_MS,
-      )
+      await delay(READBACK_MS)
       now = settled()
     }
 

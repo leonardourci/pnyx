@@ -8,7 +8,7 @@ import { loadHydra } from '#app/store.ts'
 
 test(
   'rename rejects ignored fields and repeated scalar flags without changing the task',
-  t => {
+  async t => {
     const previous = process.env.PNYX_HOME
     process.env.PNYX_HOME = mkdtempSync(join(
       tmpdir(),
@@ -25,7 +25,7 @@ test(
         },
       )
     })
-    const created = taskCommand({
+    const created = await taskCommand({
       args: [
         'create',
         '--title',
@@ -38,7 +38,7 @@ test(
     })
     assert.ok(!(created instanceof Promise))
     const id = (created.card as { id: string }).id
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           'rename',
@@ -51,7 +51,7 @@ test(
       }),
       /brief/,
     )
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           'rename',
@@ -64,7 +64,7 @@ test(
       }),
       /title/,
     )
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           '--hydra',
@@ -79,7 +79,7 @@ test(
       }),
       /brief/,
     )
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           '--hydra',
@@ -93,7 +93,7 @@ test(
       }),
       /on/,
     )
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           'rename',
@@ -105,7 +105,7 @@ test(
       }),
       /unexpected argument/,
     )
-    assert.throws(
+    await assert.rejects(
       () => taskCommand({
         args: [
           'brief',

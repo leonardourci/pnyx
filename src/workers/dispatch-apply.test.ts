@@ -55,13 +55,13 @@ function lab() {
   return { file }
 }
 
-const rule = ({ args }: { args: string[] }) => dispatchCommands.rule([
+const rule = async ({ args }: { args: string[] }) => (await dispatchCommands.rule([
   ...args,
   '--hydra',
   'lab',
-]) as Receipt
+])) as Receipt
 
-const show = () => rule({ args: ['show'] }) as {
+const show = async () => (await rule({ args: ['show'] })) as {
   revision: number
   document: DispatchDocument
 }
@@ -71,13 +71,13 @@ const dispatchFile = () => JSON.parse(readFileSync(
   'utf8',
 )) as HeadsDispatch
 
-const failsWith = ({
+const failsWith = async ({
   run,
   paths,
 }: {
-  run(): unknown
+  run(): Promise<unknown>
   paths: string[]
-}) => assert.throws(
+}) => assert.rejects(
   run,
   (error: unknown) => {
     assert.ok(error instanceof ApplyError)
@@ -92,14 +92,14 @@ const failsWith = ({
 
 test(
   'rule apply previews with --check, and a bad patch names every problem and writes nothing',
-  () => {
+  async () => {
     const { file } = lab()
     effectiveDispatch()
     const saved = readFileSync(
       configPath(),
       'utf8',
     )
-    const preview = rule({
+    const preview = await rule({
       args: [
         'apply',
         '--check',
@@ -120,7 +120,7 @@ test(
       (preview.changes as { path: string }[]).map(change => change.path),
       ['/rules/build/candidates'],
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -140,7 +140,7 @@ test(
         '/patch',
       ],
     })
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -182,7 +182,7 @@ test(
 
 test(
   'the first apply checks and reports the revision after legacy dispatch migration',
-  () => {
+  async () => {
     const { file } = lab()
     writeFileSync(
       join(
@@ -211,7 +211,7 @@ test(
         },
       },
     })
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'apply',
@@ -223,7 +223,7 @@ test(
       }),
       { code: 'REVISION_CONFLICT' },
     )
-    const saved = rule({
+    const saved = await rule({
       args: [
         'apply',
         '--file',
@@ -236,7 +236,7 @@ test(
       saved.revision,
       2,
     )
-    const shown = show()
+    const shown = await show()
     assert.equal(
       shown.revision,
       2,
@@ -254,7 +254,7 @@ test(
 
 test(
   'rule apply saves the whole patch at once, refuses a stale revision and answers a retried event id with its first receipt',
-  () => {
+  async () => {
     const { file } = lab()
     const patch = file({
       value: {
@@ -277,7 +277,7 @@ test(
         },
       },
     })
-    const saved = rule({
+    const saved = await rule({
       args: [
         'apply',
         '--file',
@@ -300,7 +300,7 @@ test(
       ['codex:docs'],
     )
     assert.deepEqual(
-      rule({
+      await rule({
         args: [
           'apply',
           '--file',
@@ -314,7 +314,7 @@ test(
         duplicate: true,
       },
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'apply',
@@ -331,7 +331,7 @@ test(
       }),
       { code: 'IDEMPOTENCY_CONFLICT' },
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'apply',
@@ -341,7 +341,7 @@ test(
       }),
       { code: 'REVISION_CONFLICT' },
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'set',
@@ -359,7 +359,7 @@ test(
 
 test(
   'a retried event id whose first attempt changed nothing returns that receipt and never reapplies after a later edit',
-  () => {
+  async () => {
     const { file } = lab()
     const template = readTemplate() as unknown as HeadsDispatch
     const unchanged = file({
@@ -368,7 +368,7 @@ test(
         patch: { rules: { build: { when: template.rules.build!.when } } },
       },
     })
-    const retry = ({ path }: { path: string }) => rule({
+    const retry = async ({ path }: { path: string }) => rule({
       args: [
         'apply',
         '--file',
@@ -378,13 +378,13 @@ test(
       ],
     })
     assert.deepEqual(
-      retry({ path: unchanged }),
+      await retry({ path: unchanged }),
       {
         event: 'none: unchanged',
         revision: 0,
       },
     )
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -393,7 +393,7 @@ test(
       ],
     })
     assert.deepEqual(
-      retry({ path: unchanged }),
+      await retry({ path: unchanged }),
       {
         event: 'none: unchanged',
         revision: 0,
@@ -401,14 +401,14 @@ test(
       },
     )
     assert.equal(
-      show().document.rules.build?.when,
+      (await show()).document.rules.build?.when,
       'Later owner change',
     )
     assert.equal(
-      show().revision,
+      (await show()).revision,
       1,
     )
-    assert.throws(
+    await assert.rejects(
       () => retry({
         path: file({
           value: {
@@ -424,9 +424,9 @@ test(
 
 test(
   'a save the change log refuses leaves both files and the revision as they were',
-  () => {
+  async () => {
     lab()
-    show()
+    await show()
     const dispatch = readFileSync(
       configPath(),
       'utf8',
@@ -441,7 +441,7 @@ test(
     )
 
     try {
-      assert.throws(
+      await assert.rejects(
         () => rule({
           args: [
             'set',
@@ -474,7 +474,7 @@ test(
       accounts,
     )
     assert.equal(
-      show().revision,
+      (await show()).revision,
       0,
     )
   },
@@ -482,13 +482,13 @@ test(
 
 test(
   'a save cut short between its two file renames reads as the logged change and rewrites the stale file',
-  () => {
+  async () => {
     const { file } = lab()
     const before = readFileSync(
       configPath(),
       'utf8',
     )
-    rule({
+    await rule({
       args: [
         'apply',
         '--file',
@@ -522,7 +522,7 @@ test(
       ['codex:docs'],
     )
     assert.equal(
-      show().revision,
+      (await show()).revision,
       1,
     )
   },
@@ -530,9 +530,9 @@ test(
 
 test(
   'a change log line cut short is not saved: reads return the change before it and its event id applies again',
-  () => {
+  async () => {
     const { file } = lab()
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -546,7 +546,7 @@ test(
         patch: { rules: { build: { when: 'Second wording' } } },
       },
     })
-    const apply = () => rule({
+    const apply = async () => rule({
       args: [
         'apply',
         '--file',
@@ -555,7 +555,7 @@ test(
         'second',
       ],
     })
-    apply()
+    await apply()
     const [
       first,
       torn,
@@ -573,7 +573,7 @@ test(
     const {
       document,
       revision,
-    } = show()
+    } = await show()
     assert.equal(
       revision,
       1,
@@ -586,7 +586,7 @@ test(
       dispatchFile().rules.build?.when,
       'First wording',
     )
-    const retried = apply()
+    const retried = await apply()
     assert.deepEqual(
       [
         retried.revision,
@@ -598,7 +598,7 @@ test(
       ],
     )
     assert.equal(
-      show().document.rules.build?.when,
+      (await show()).document.rules.build?.when,
       'Second wording',
     )
   },
@@ -606,9 +606,9 @@ test(
 
 test(
   'a read while another holder has the registry lock returns the logged document at once and leaves the files for later',
-  () => {
+  async () => {
     lab()
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -638,9 +638,9 @@ test(
 
 test(
   'an unreadable line inside the change log is reported and skipped, and the lines around it still count',
-  t => {
+  async t => {
     lab()
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -648,7 +648,7 @@ test(
         'First wording',
       ],
     })
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -675,7 +675,7 @@ test(
     const {
       document,
       revision,
-    } = show()
+    } = await show()
     assert.deepEqual(
       [
         document.rules.build?.when,
@@ -695,9 +695,9 @@ test(
 
 test(
   'deleting every rule saves an empty rules object later reads keep, and the default list cannot be removed',
-  () => {
+  async () => {
     const { file } = lab()
-    rule({
+    await rule({
       args: [
         'apply',
         '--file',
@@ -716,7 +716,7 @@ test(
       ],
     })
     assert.deepEqual(
-      show().document.rules,
+      (await show()).document.rules,
       {},
     )
     rmSync(configPath())
@@ -728,7 +728,7 @@ test(
       dispatchFile().rules,
       {},
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -746,7 +746,7 @@ test(
   },
 )
 
-const refuses = ({
+const refuses = async ({
   patch,
   paths,
 }: {
@@ -754,7 +754,7 @@ const refuses = ({
   paths: string[]
 }) => {
   const { file } = lab()
-  failsWith({
+  await failsWith({
     run: () => rule({
       args: [
         'apply',
@@ -812,7 +812,7 @@ test(
 
 test(
   'removing the last account is refused while main or an order names it, and the harness logins stand in once none is registered',
-  () => {
+  async () => {
     const { file } = lab()
     dispatchCommands.account([
       'remove',
@@ -820,7 +820,7 @@ test(
       '--hydra',
       'lab',
     ])
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -838,7 +838,7 @@ test(
         '/workers/claude/0',
       ],
     })
-    rule({
+    await rule({
       args: [
         'apply',
         '--file',
@@ -854,7 +854,7 @@ test(
         }),
       ],
     })
-    const { document } = show()
+    const { document } = await show()
     assert.deepEqual(
       [
         document.accounts,
@@ -872,10 +872,10 @@ test(
 
 test(
   'single-candidate flags keep a rule’s fallbacks, an effort the harness lacks is refused, and a removed account leaves every order',
-  () => {
+  async () => {
     lab()
     const template = readTemplate() as unknown as HeadsDispatch
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -893,7 +893,7 @@ test(
         template.rules.build!.candidates[1]!,
       ],
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'set',
@@ -906,8 +906,8 @@ test(
       }),
       paths: ['/rules/build/candidates/0/effort'],
     })
-    failsWith({
-      run: () => dispatchCommands.account([
+    await failsWith({
+      run: async () => dispatchCommands.account([
         'remove',
         'claude:test',
         '--hydra',
@@ -930,10 +930,10 @@ test(
 
 test(
   'a proposal checked against a revision confirms only the values it showed, keeping a later change to the same rule',
-  () => {
+  async () => {
     lab()
-    const { revision } = rule({ args: ['show'] }) as { revision: number }
-    const { token } = rule({
+    const { revision } = (await rule({ args: ['show'] })) as { revision: number }
+    const { token } = (await rule({
       args: [
         'propose',
         'set',
@@ -945,8 +945,8 @@ test(
         '--actor',
         'hydra',
       ],
-    }) as { token: string }
-    rule({
+    })) as { token: string }
+    await rule({
       args: [
         'set',
         'build',
@@ -954,7 +954,7 @@ test(
         'Owner wording',
       ],
     })
-    rule({
+    await rule({
       args: [
         'confirm',
         token,
@@ -976,16 +976,16 @@ test(
 
 test(
   'Hydra proposes; queued proposals each confirm, and one whose values changed shows out of date and only dismisses',
-  () => {
+  async () => {
     lab()
-    const hydra = ({ args }: { args: string[] }) => rule({
+    const hydra = async ({ args }: { args: string[] }) => rule({
       args: [
         ...args,
         '--actor',
         'hydra',
       ],
     })
-    assert.throws(
+    await assert.rejects(
       () => hydra({
         args: [
           'set',
@@ -1000,7 +1000,7 @@ test(
       docs,
       review,
       build,
-    ] = [
+    ] = await Promise.all([
       [
         'set',
         'docs',
@@ -1023,13 +1023,13 @@ test(
         '--effort',
         'low',
       ],
-    ].map(args => hydra({
+    ].map(async args => (await hydra({
       args: [
         'propose',
         ...args,
       ],
-    }).token as string)
-    rule({
+    })).token as string))
+    await rule({
       args: [
         'set',
         'build',
@@ -1038,7 +1038,7 @@ test(
       ],
     })
     assert.deepEqual(
-      (rule({ args: ['list'] }).proposals as {
+      ((await rule({ args: ['list'] })).proposals as {
         token: string
         outOfDate: boolean
       }[])
@@ -1067,14 +1067,14 @@ test(
       review!,
     ]) {
       assert.equal(
-        rule({
+        (await rule({
           args: [
             'confirm',
             token,
             '--confirm',
             token,
           ],
-        }).state,
+        })).state,
         'confirmed',
       )
     }
@@ -1088,7 +1088,7 @@ test(
       rules.review?.when,
       'Review',
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'confirm',
@@ -1100,12 +1100,12 @@ test(
       /out of date/,
     )
     assert.equal(
-      rule({
+      (await rule({
         args: [
           'dismiss',
           build!,
         ],
-      }).state,
+      })).state,
       'dismissed',
     )
     assert.equal(
@@ -1113,7 +1113,7 @@ test(
       'medium',
     )
     assert.deepEqual(
-      rule({ args: ['list'] }).proposals,
+      (await rule({ args: ['list'] })).proposals,
       [],
     )
   },
@@ -1121,7 +1121,7 @@ test(
 
 test(
   'a proposal that no longer checks, and one saved before proposals held patches, cannot be confirmed',
-  () => {
+  async () => {
     lab()
     const account = ({ args }: { args: string[] }) => dispatchCommands.account([
       ...args,
@@ -1138,7 +1138,7 @@ test(
         '~/.codex-docs',
       ],
     })
-    const { token } = rule({
+    const { token } = (await rule({
       args: [
         'propose',
         'accounts',
@@ -1147,7 +1147,7 @@ test(
         '--actor',
         'hydra',
       ],
-    }) as { token: string }
+    })) as { token: string }
     account({
       args: [
         'remove',
@@ -1155,7 +1155,7 @@ test(
       ],
     })
     assert.deepEqual(
-      (rule({ args: ['list'] }).proposals as ProposalStatus[]).map(({
+      ((await rule({ args: ['list'] })).proposals as ProposalStatus[]).map(({
         outOfDate,
         reason,
       }) => ({
@@ -1169,7 +1169,7 @@ test(
         },
       ],
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'confirm',
@@ -1211,14 +1211,14 @@ test(
       },
     })
     assert.equal(
-      (rule({ args: ['list'] }).proposals as {
+      ((await rule({ args: ['list'] })).proposals as {
         token: string
         outOfDate: boolean
       }[])
         .find(proposal => proposal.token === 'old-proposal')?.outOfDate,
       true,
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'confirm',
@@ -1230,12 +1230,12 @@ test(
       /out of date/,
     )
     assert.equal(
-      rule({
+      (await rule({
         args: [
           'dismiss',
           'old-proposal',
         ],
-      }).state,
+      })).state,
       'dismissed',
     )
     assert.deepEqual(
@@ -1247,9 +1247,9 @@ test(
 
 test(
   'a confirm whose save landed but whose resolution was not recorded only records it when retried',
-  () => {
+  async () => {
     lab()
-    const { token } = rule({
+    const { token } = (await rule({
       args: [
         'propose',
         'set',
@@ -1259,8 +1259,8 @@ test(
         '--actor',
         'hydra',
       ],
-    }) as { token: string }
-    const confirm = () => rule({
+    })) as { token: string }
+    const confirm = async () => rule({
       args: [
         'confirm',
         token,
@@ -1290,13 +1290,13 @@ test(
     }
 
     assert.equal(
-      confirm().state,
+      (await confirm()).state,
       'confirmed',
     )
     const {
       document,
       revision,
-    } = show()
+    } = await show()
     assert.deepEqual(
       [
         document.rules.build?.candidates[0]?.effort,
@@ -1308,7 +1308,7 @@ test(
       ],
     )
     assert.deepEqual(
-      rule({ args: ['list'] }).proposals,
+      (await rule({ args: ['list'] })).proposals,
       [],
     )
   },
@@ -1316,7 +1316,7 @@ test(
 
 test(
   'an error an older Pnyx saved still reads, and a patch may fix it but not add another',
-  () => {
+  async () => {
     const { file } = lab()
     const saved = JSON.parse(readFileSync(
       configPath(),
@@ -1344,10 +1344,10 @@ test(
       'max',
     )
     assert.match(
-      String(rule({ args: ['show'] }).issues),
+      String((await rule({ args: ['show'] })).issues),
       /error \/rules\/docs\/candidates\/0\/effort/,
     )
-    rule({
+    await rule({
       args: [
         'apply',
         '--file',
@@ -1366,7 +1366,7 @@ test(
         }),
       ],
     })
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'set',
@@ -1377,7 +1377,7 @@ test(
       }),
       paths: ['/rules/review/candidates/0/effort'],
     })
-    rule({
+    await rule({
       args: [
         'set',
         'docs',
@@ -1386,7 +1386,7 @@ test(
       ],
     })
     assert.deepEqual(
-      rule({ args: ['show'] }).issues,
+      (await rule({ args: ['show'] })).issues,
       [],
     )
   },
@@ -1394,7 +1394,7 @@ test(
 
 test(
   'a merged rule with a bad name stops reads with the rule apply hint until a patch removes it, and a patch cannot add another',
-  () => {
+  async () => {
     const { file } = lab()
     writeFileSync(
       join(
@@ -1427,10 +1427,10 @@ test(
       },
     )
     assert.equal(
-      show().document.rules['Bad Name!']?.when,
+      (await show()).document.rules['Bad Name!']?.when,
       'Old rule',
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -1453,7 +1453,7 @@ test(
       }),
       paths: ['/rules/Also Bad'],
     })
-    rule({
+    await rule({
       args: [
         'apply',
         '--file',
@@ -1474,9 +1474,9 @@ test(
 
 test(
   'rule remove and rule accounts are patches through the same checks',
-  () => {
+  async () => {
     lab()
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'remove',
@@ -1485,7 +1485,7 @@ test(
       }),
       /default list cannot be removed/,
     )
-    rule({
+    await rule({
       args: [
         'remove',
         'build',
@@ -1495,7 +1495,7 @@ test(
       effectiveDispatch().dispatch.rules.build,
       undefined,
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'accounts',
@@ -1507,7 +1507,7 @@ test(
       }),
       paths: ['/workers/claude/0'],
     })
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'accounts',
@@ -1521,7 +1521,7 @@ test(
       }),
       paths: ['/projects/relative'],
     })
-    rule({
+    await rule({
       args: [
         'accounts',
         '--main',
@@ -1585,14 +1585,14 @@ test(
 
 test(
   'rule apply takes the envelope inline with --json, as the page sends it, and refuses both sources or bad JSON',
-  () => {
+  async () => {
     const { file } = lab()
     const envelope = JSON.stringify({
       version: 1,
       expected: { revision: 0 },
       patch: { default: [{ harness: 'codex' }] },
     })
-    const saved = rule({
+    const saved = await rule({
       args: [
         'apply',
         '--json',
@@ -1610,7 +1610,7 @@ test(
       [{ harness: 'codex' }],
     )
     assert.equal(
-      rule({
+      (await rule({
         args: [
           'apply',
           '--json',
@@ -1618,10 +1618,10 @@ test(
           '--event-id',
           'page-1',
         ],
-      }).duplicate,
+      })).duplicate,
       true,
     )
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'apply',
@@ -1633,7 +1633,7 @@ test(
       }),
       { code: 'VALIDATION_ERROR' },
     )
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -1648,7 +1648,7 @@ test(
 
 test(
   'rule now names the candidate each rule would start from current quota, for the saved document or a draft',
-  () => {
+  async () => {
     lab()
     const { accounts } = effectiveDispatch()
     const quota = ({
@@ -1688,7 +1688,7 @@ test(
       folder: accounts['codex:test']!.folder,
       priority: 5,
     })
-    rule({
+    await rule({
       args: [
         'set',
         'build',
@@ -1698,12 +1698,12 @@ test(
         '[{"harness":"claude"},{"harness":"codex"}]',
       ],
     })
-    const now = ({ args = [] }: { args?: string[] } = {}) => (rule({
+    const now = async ({ args = [] }: { args?: string[] } = {}) => ((await rule({
       args: [
         'now',
         ...args,
       ],
-    }).now as {
+    })).now as {
       rule: string
       candidate?: number
       account?: string
@@ -1722,7 +1722,7 @@ test(
       }))
 
     assert.deepEqual(
-      now(),
+      await now(),
       [
         {
           rule: 'default',
@@ -1737,11 +1737,11 @@ test(
       ],
     )
 
-    const draft = show().document
+    const draft = (await show()).document
     draft.rules.build!.candidates = [{ harness: 'claude' }]
     draft.workers = { claude: [] }
     assert.deepEqual(
-      now({
+      await now({
         args: [
           '--json',
           JSON.stringify(draft),
@@ -1760,7 +1760,7 @@ test(
         },
       ],
     )
-    assert.throws(
+    await assert.rejects(
       () => now({
         args: [
           '--json',

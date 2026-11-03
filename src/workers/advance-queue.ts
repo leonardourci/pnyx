@@ -1,7 +1,8 @@
 import { sameProjectPath } from '#projects/identity.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
-import { execFile, spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { runProcess } from '#app/run-process.ts'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
 import type { Decision, HydraState } from '#app/model.ts'
@@ -171,22 +172,58 @@ function unsafeWorker({
   return undefined
 }
 
-function checkoutRoot({ cwd }: { cwd: string }): string | undefined {
-  const result = spawnSync(
-    'git',
-    [
+async function checkoutRoot({ cwd }: { cwd: string }): Promise<string | undefined> {
+  const result = await runProcess({
+    command: 'git',
+    args: [
       '-C',
       cwd,
       'rev-parse',
       '--show-toplevel',
     ],
-    {
-      encoding: 'utf8',
-      timeout: GIT_TIMEOUT_MS,
-    },
-  )
+    timeout: GIT_TIMEOUT_MS,
+  })
 
   return result.status === 0 ? realpathSync(result.stdout.trim()) : undefined
+}
+
+const otherWorkers = ({
+  hydraId,
+  state,
+  session,
+}: {
+  hydraId: string
+  state: HydraState
+  session: AgentSession
+}) => hydraIds().flatMap(id => {
+  const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
+
+  return Object.values(current.sessions ?? {})
+    .filter(s => (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
+})
+
+// The checkout each other live worker's folder belongs to, read before the write.
+async function workerRoots({
+  hydraId,
+  session,
+}: {
+  hydraId: string
+  session: AgentSession
+}): Promise<Map<string, string | undefined>> {
+  const roots = new Map<string, string | undefined>()
+
+  for (const other of otherWorkers({
+    hydraId,
+    state: loadHydra({ hydraId }).state,
+    session,
+  })) {
+    roots.set(
+      other.agent.cwd!,
+      await checkoutRoot({ cwd: other.agent.cwd! }),
+    )
+  }
+
+  return roots
 }
 
 function assertUnshared({
@@ -194,22 +231,20 @@ function assertUnshared({
   state,
   session,
   root,
+  roots,
 }: {
   hydraId: string
   state: HydraState
   session: AgentSession
   root: string
+  roots: ReadonlyMap<string, string | undefined>
 }) {
-  for (const id of hydraIds()) {
-    const current = id === hydraId ? state : loadHydra({ hydraId: id }).state
-    const others = Object.values(current.sessions ?? {}).filter(s =>
-      (id !== hydraId || s.id !== session.id) && s.taskId && s.agent.cwd && s.activity !== 'ended')
-
-    for (const other of others) {
-      if (checkoutRoot({ cwd: other.agent.cwd! }) === root) {
-        throw new Error('Another worker uses this folder')
-      }
-    }
+  if (otherWorkers({
+    hydraId,
+    state,
+    session,
+  }).some(other => roots.get(other.agent.cwd!) === root)) {
+    throw new Error('Another worker uses this folder')
   }
 }
 
@@ -254,6 +289,10 @@ async function landedBranch({
     state: loadHydra({ hydraId }).state,
     session,
     root,
+    roots: await workerRoots({
+      hydraId,
+      session,
+    }),
   })
 
   if (await git({
@@ -286,7 +325,7 @@ async function landedBranch({
       ],
     }),
   }
-  const context = landingContext({
+  const context = await landingContext({
     copy: {
       ...copy,
       base: undefined,
@@ -305,7 +344,7 @@ async function landedBranch({
     root,
   }
 
-  if (provesLanding({
+  if (await provesLanding({
     copy,
     head,
     context,
@@ -322,7 +361,7 @@ async function landedBranch({
   for (const pr of merged) {
     const landing = await readLanding({ url: pr.url })
 
-    if (provesLanding({
+    if (await provesLanding({
       copy,
       head,
       context,
@@ -584,6 +623,65 @@ export async function advanceQueues({
         prompt: `The previous task "${card.title}" has landed. Your folder is ${prepared.cwd}, on fresh branch ${branch} from fetched ${prepared.base}. Verify the branch and clean status before editing. Use this task's id for all declarations; the previous task is complete.`,
       })
 
+      if (await checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
+        throw new Error('The worker checkout changed during branch preparation')
+      }
+
+      const roots = await workerRoots({
+        hydraId,
+        session: session!,
+      })
+      assertUnshared({
+        hydraId,
+        state: loadHydra({ hydraId }).state,
+        session: session!,
+        root: prepared.root,
+        roots,
+      })
+      const status = await runProcess({
+        command: 'git',
+        args: [
+          '-C',
+          prepared.cwd,
+          'status',
+          '--porcelain',
+        ],
+        timeout: GIT_TIMEOUT_MS,
+      })
+      const head = await runProcess({
+        command: 'git',
+        args: [
+          '-C',
+          prepared.cwd,
+          'rev-parse',
+          'HEAD',
+        ],
+        timeout: GIT_TIMEOUT_MS,
+      })
+
+      if (status.status !== 0 || status.stdout.trim() || head.stdout.trim() !== prepared.head) {
+        throw new Error('The worker folder changed during branch preparation')
+      }
+
+      // ponytail: the branch is made before the write; a task that changed meanwhile leaves it unused, and a retry reports it exists.
+      const run = await runProcess({
+        command: 'git',
+        args: [
+          '-C',
+          prepared.cwd,
+          'switch',
+          '--no-track',
+          '-c',
+          branch,
+          prepared.tip,
+        ],
+        timeout: GIT_TIMEOUT_MS,
+      })
+
+      if (run.status !== 0) {
+        throw new Error(`Cannot create a fresh branch: ${run.stderr.trim()}`)
+      }
+
       withWriter({
         hydraId,
         fn: ({ writer }) => {
@@ -603,62 +701,13 @@ export async function advanceQueues({
             return
           }
 
-          if (checkoutRoot({ cwd: prepared.cwd }) !== prepared.root) {
-            throw new Error('The worker checkout changed during branch preparation')
-          }
-
           assertUnshared({
             hydraId,
             state: writer.state,
             session: session!,
             root: prepared.root,
+            roots,
           })
-          const status = spawnSync(
-            'git',
-            [
-              '-C',
-              prepared.cwd,
-              'status',
-              '--porcelain',
-            ],
-            { encoding: 'utf8' },
-          )
-          const head = spawnSync(
-            'git',
-            [
-              '-C',
-              prepared.cwd,
-              'rev-parse',
-              'HEAD',
-            ],
-            { encoding: 'utf8' },
-          )
-
-          if (status.status !== 0 || status.stdout.trim() || head.stdout.trim() !== prepared.head) {
-            throw new Error('The worker folder changed during branch preparation')
-          }
-
-          const run = spawnSync(
-            'git',
-            [
-              '-C',
-              prepared.cwd,
-              'switch',
-              '--no-track',
-              '-c',
-              branch,
-              prepared.tip,
-            ],
-            {
-              encoding: 'utf8',
-              timeout: GIT_TIMEOUT_MS,
-            },
-          )
-
-          if (run.status !== 0) {
-            throw new Error(`Cannot create a fresh branch: ${run.stderr?.trim()}`)
-          }
-
           const decision = decideSession({
             state: writer.state,
             fromQueue: id,

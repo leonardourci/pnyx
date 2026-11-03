@@ -1,5 +1,6 @@
 import { promisify } from 'node:util'
-import { execFile, spawnSync } from 'node:child_process'
+import { execFile } from 'node:child_process'
+import { runProcess } from '#app/run-process.ts'
 import type { SourceNote } from '#tasks/model.ts'
 import { failedChecks, pendingChecks, type LinkState } from '#tasks/delivery/model.ts'
 
@@ -62,7 +63,7 @@ function description({ body }: { body: string }): string {
 // The pull request as a context note, or null when it is not a GitHub pull request
 // URL or gh-axi cannot read it. The ref carries the text, so an edited description
 // becomes a new note and the earlier one stays.
-export function pullRequestNote({ url }: { url: string }): SourceNote | null {
+export async function pullRequestNote({ url }: { url: string }): Promise<SourceNote | null> {
   const pr = PR_URL.exec(url)
 
   if (!pr) {
@@ -74,9 +75,9 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
     repo,
     number,
   ] = pr
-  const result = spawnSync(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
+  const result = await runProcess({
+    command: process.env.PNYX_GH_AXI || 'gh-axi',
+    args: [
       'pr',
       'view',
       number!,
@@ -84,13 +85,10 @@ export function pullRequestNote({ url }: { url: string }): SourceNote | null {
       `${owner}/${repo}`,
       '--full',
     ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
+    timeout: VIEW_TIMEOUT_MS,
+  })
 
-  if (result.status !== 0 || typeof result.stdout !== 'string') {
+  if (result.status !== 0) {
     return null
   }
 
@@ -168,47 +166,6 @@ function landingFromDetails({ details }: {
   }
 
   return landing
-}
-
-export function pullRequestLandingSync({ url }: { url: string }): PullRequestLanding | undefined {
-  const pr = pullRequestRef({ url })
-
-  if (!pr) {
-    return undefined
-  }
-
-  const result = spawnSync(
-    process.env.PNYX_GH_AXI || 'gh-axi',
-    [
-      'api',
-      `/repos/${pr.repo}/pulls/${pr.number}`,
-      '--jq',
-      '{payload: tojson}',
-      '--full',
-    ],
-    {
-      encoding: 'utf8',
-      timeout: VIEW_TIMEOUT_MS,
-    },
-  )
-
-  if (result.status !== 0) {
-    return undefined
-  }
-
-  try {
-    const encoded = /^payload: (.+)$/m.exec(result.stdout)?.[1]
-
-    if (!encoded) {
-      return undefined
-    }
-
-    const details = parsePullRequestDetails({ input: JSON.parse(JSON.parse(encoded) as string) })
-
-    return landingFromDetails({ details })
-  } catch {
-    return undefined
-  }
 }
 
 export async function githubApi({ args }: { args: string[] }): Promise<unknown> {
