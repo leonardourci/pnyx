@@ -1189,3 +1189,124 @@ test(
     }
   },
 )
+
+test(
+  'main and helper execute on independently selected homes for the same provider',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    const personal = s.folder({ name: 'personal-login' })
+    const work = s.folder({ name: 'work-login' })
+
+    for (const [
+      name,
+      folder,
+    ] of [
+        [
+          'claude:personal',
+          personal,
+        ],
+        [
+          'claude:work',
+          work,
+        ],
+      ]) {
+      await s.owner({
+        args: [
+          'account',
+          'set',
+          name!,
+          '--provider',
+          'claude',
+          '--folder',
+          folder!,
+        ],
+      })
+    }
+
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            account: 'claude:personal',
+            model: 'opus',
+          }),
+        ],
+      })
+    } finally {
+      page.close()
+    }
+
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:work',
+            model: 'sonnet',
+          },
+        }),
+      ],
+    })
+    const held = await busyMain({
+      s,
+      text: 'Keep main on Personal.',
+    })
+
+    try {
+      pnyx.claude.plan({
+        text: HELPER_PROMPT,
+        reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'the helper on Work to finish',
+        check: () => finishes({ s }).length === 1,
+      })
+      const main = await s.agent({ hydra: true })
+      const helper = pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+      assert.equal(
+        main.env.CLAUDE_CONFIG_DIR,
+        personal,
+      )
+      assert.equal(
+        helper?.env.CLAUDE_CONFIG_DIR,
+        work,
+      )
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.agent?.account,
+        'claude:personal',
+      )
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.settings?.account,
+        undefined,
+      )
+      assert.equal(
+        grants({ s })[0]?.agent?.account,
+        'claude:work',
+      )
+      assert.equal(
+        grants({ s })[0]?.agent?.loginFolder,
+        work,
+      )
+      assert.equal(
+        finishes({ s })[0]?.error,
+        undefined,
+      )
+    } finally {
+      held.release()
+    }
+  },
+)
