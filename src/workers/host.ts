@@ -38,8 +38,6 @@ export { WORKER_COMMANDS } from '#app/command-registry.ts'
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
 
-export { harnessAccount } from './account-choice.ts'
-
 // Hooks report settings of their own, such as the client version or the effort in use; only what Pnyx chooses calls for a new session.
 export function sameChosenSettings({
   current,

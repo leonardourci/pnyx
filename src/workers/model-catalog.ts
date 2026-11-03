@@ -8,7 +8,7 @@ import type { Host } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { accountEnvironment } from './dispatch.ts'
-import { harnessAccount } from './host.ts'
+import { harnessAccount } from './account-choice.ts'
 import { sessionId } from './session-attachments.ts'
 
 const modelsPath = () => join(

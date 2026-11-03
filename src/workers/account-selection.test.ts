@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { EffectiveDispatch } from './dispatch-config.ts'
 import { checkDispatch } from './dispatch-check.ts'
 import { chooseCandidate, chosenSettings, validateChoice } from './dispatch.ts'
-import { harnessAccount } from './host.ts'
+import { harnessAccount } from './account-choice.ts'
 import { accountRegistration } from './account-choice.ts'
 import { DEFAULT_SETTINGS, patchSettings } from '#settings/settings.ts'
 
