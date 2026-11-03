@@ -19,6 +19,7 @@ import { settingsLogPath } from './store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
 import type { Settings } from './model.ts'
+import type { AgentConfig } from '#workers/model.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -737,6 +738,82 @@ test(
         'main',
       ]),
       { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'the helper’s Fast is off unless set, survives other helper flags and takes only on or off',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    await commands.hydra([
+      'set',
+      '--helper',
+      'claude',
+      '--helper-model',
+      'opus',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).fast,
+      undefined,
+    )
+    await commands.hydra([
+      'set',
+      '--helper-fast',
+      'on',
+      '--hydra',
+      'main',
+    ])
+    await commands.hydra([
+      'set',
+      '--helper-effort',
+      'high',
+      '--hydra',
+      'main',
+    ])
+    assert.deepEqual(
+      (await settings()).settings.helper,
+      {
+        harness: 'claude',
+        model: 'opus',
+        effort: 'high',
+        fast: true,
+      },
+    )
+    assert.throws(
+      () => commands.hydra([
+        'set',
+        '--helper-fast',
+        'yes',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"helper":{"harness":"claude","model":"opus","fast":"on"}}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await commands.hydra([
+      'set',
+      '--helper-fast',
+      'off',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).fast,
+      undefined,
     )
   },
 )

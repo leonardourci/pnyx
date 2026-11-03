@@ -100,8 +100,13 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
     'account',
     'model',
     'effort',
+    'fast',
   ].includes(key))) {
-    return invalid({ detail: 'helper takes auto, off or { harness, account?, model, effort? }' })
+    return invalid({ detail: 'helper takes auto, off or { harness, account?, model, effort?, fast? }' })
+  }
+
+  if (agent.fast !== undefined && typeof agent.fast !== 'boolean') {
+    return invalid({ detail: 'helper fast is true or false' })
   }
 
   if (agent.harness !== 'claude' && agent.harness !== 'codex') {
@@ -130,6 +135,11 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
 
   if (agent.effort) {
     helper.effort = agent.effort as string
+  }
+
+  // Fast is off unless chosen, so only true is kept.
+  if (agent.fast) {
+    helper.fast = true
   }
 
   return helper

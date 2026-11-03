@@ -118,14 +118,19 @@ export async function home(): Promise<Output> {
   return out
 }
 
-// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
-const SETTING_FLAGS = [
-  'done-after-hours',
-  'review-minutes',
+const HELPER_FLAGS = [
   'helper',
   'helper-model',
   'helper-account',
   'helper-effort',
+  'helper-fast',
+]
+
+// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
+const SETTING_FLAGS = [
+  'done-after-hours',
+  'review-minutes',
+  ...HELPER_FLAGS,
 ]
 
 function sharedSettingFlags({
@@ -156,7 +161,7 @@ function sharedSettingFlags({
     patch.reviewMinutes = Number(raw)
   }
 
-  if (values.helper !== undefined || values['helper-model'] !== undefined || values['helper-effort'] !== undefined || values['helper-account'] !== undefined) {
+  if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
     const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
@@ -179,6 +184,19 @@ function sharedSettingFlags({
 
       if (effort !== undefined) {
         helper.effort = String(effort)
+      }
+
+      const fast = values['helper-fast']
+
+      if (fast !== undefined && fast !== 'on' && fast !== 'off') {
+        throw new HydraError({
+          message: '--helper-fast takes on or off',
+          code: 'VALIDATION_ERROR',
+        })
+      }
+
+      if (fast === undefined ? previous?.fast : fast === 'on') {
+        helper.fast = true
       }
 
       patch.helper = helper
@@ -217,6 +235,7 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
       'helper-model': { type: 'string' },
       'helper-account': { type: 'string' },
       'helper-effort': { type: 'string' },
+      'helper-fast': { type: 'string' },
     },
     positionals: 2,
   })

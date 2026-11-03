@@ -79,7 +79,7 @@ At start the server names, once, every Hydra still called by its id or by no nam
 hydra create --firstmate names the Hydra after the home's folder. hydra homes lists the Firstmate homes
 in --base (or FIRSTMATE_FACTORY_BASE) and each one's Hydra.
 --done-after-hours, --review-minutes and --helper* change settings every Hydra shares (see \`pnyx-axi settings\`).
---helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] selects its independent global agent; --helper off routes all wakes to main.
+--helper auto uses a lighter model on Hydra’s harness (Sonnet on Claude, gpt-6-luna on Codex). --helper claude|codex --helper-model <id> [--helper-account <name>] [--helper-effort <value>] [--helper-fast on|off] selects its independent global agent; Fast is off unless set here or on in the Hydra's composer, which turns it on for every worker and helper run that Hydra starts where the model has Fast; --helper off routes all wakes to main.
 --review-minutes sets the timed review cadence (default 30 minutes); 0 turns it off. Reviews wake Hydra only for new actionable flags. Memory lag stays quiet; overdue owner questions get chat reminders without waking Hydra.
 --done-after-hours hides cards after continuous time in Done (default 24); off keeps them visible and 0 hides them right away. Hidden cards remain in History and Oracle. task unhide brings one back until it leaves Done and returns.
 --command sets the shell command task start --via command and hydra start --via command run; an empty value clears it.
@@ -381,7 +381,7 @@ export function commandHelp({ command }: { command: string }): string | undefine
   }
 
   if (command === 'settings') {
-    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, model, effort }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. A repeated --event-id saves once, even when nothing changed.'
+    return 'usage: pnyx-axi settings show|schema|set [--json <patch>] [--if-revision <n>] [--event-id <id>]\nOne store every Hydra reads; this command never resizes a Hydra. Use view set --hydra <name> for saved widths that also resize that Hydra. doneAfterHours takes off or hours (0 hides right away), reviewMinutes 0 turns reviews off, helper takes auto, off or { harness, account?, model, effort?, fast? }, oracleRememberFilters takes true or false and hydraOrder the whole list of Hydra ids, each once. A repeated --event-id saves once, even when nothing changed.'
   }
 
   return COMMAND_HELP[command]
