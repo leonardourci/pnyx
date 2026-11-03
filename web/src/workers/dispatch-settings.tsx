@@ -39,14 +39,6 @@ interface Starts {
   error?: string
 }
 
-const counted = ({
-  count,
-  word,
-}: {
-  count: number
-  word: string
-}) => `${count} ${word}${count === 1 ? '' : 's'}`
-
 const errorsIn = ({ issues }: { issues: DispatchIssue[] }) => issues.filter(issue => issue.level === 'error')
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? '' : JSON.stringify(value)
@@ -505,7 +497,7 @@ function RulesTable({
   return (
     <section className="dispatch-rules" aria-labelledby="dispatch-rules">
       <h4 id="dispatch-rules"><Icon name="dispatch" size={14} />Rules</h4>
-      <p className="dispatch-desc">Every rule and candidate in one table. Change any cell in place; changes are marked and wait below until you apply them.</p>
+      <p className="dispatch-desc">Every rule and candidate in one table. Change any cell in place. A valid change saves as soon as you pick it or leave the field; a problem shows beside its rule and saves nothing.</p>
       <div className="dispatch-table">
         <div className="dispatch-head">
           <span>Rule · when Hydra picks it</span>
@@ -543,29 +535,49 @@ function RulesTable({
           </div>
         )}
       </div>
+      <IssueList issues={issues.filter(issue => !/^\/(rules|default)(\/|$)/.test(issue.path))} />
       {starts?.error && <p className="dispatch-desc" role="status">{starts.error}</p>}
       <Button variant="surface" className="dispatch-add-rule" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={14} />Add rule</Button>
     </section>
   )
 }
 
+// Problems no rule row shows, listed by their place in the document.
+function IssueList({ issues }: { issues: DispatchIssue[] }) {
+  if (!issues.length) {
+    return null
+  }
+
+  return (
+    <ul className="dispatch-issues">
+      {issues.map((
+        issue,
+        index,
+      ) => (
+        <li key={index}>
+          <span className="dispatch-tag" data-level={issue.level}>{issue.level}</span>
+          <span><code>{issue.path || '/'}</code> {issue.problem}</span>
+        </li>
+      ))}
+    </ul>
+  )
+}
+
 function JsonView({
   text,
   write,
-  changes,
+  issues,
 }: {
   text: string
   write({ text }: { text: string }): void
-  changes?: DispatchChange[]
+  issues: DispatchIssue[]
 }) {
-  const removed = changes?.filter(change => changeKind({ change }) === 'removed').length ?? 0
-  const empty = changes === undefined ? 'Fix the JSON to see the changes.' : 'None yet. Delete a rule or an account to see exactly what goes.'
-
   return (
     <section className="dispatch-json" aria-label="Heads dispatch JSON">
-      <p className="dispatch-desc">The whole document. It formats itself when you leave the box, with the same checks, Review and Apply as the table.</p>
+      <p className="dispatch-desc">The whole document, with the same checks as the table. It formats itself and saves when you leave the box, if it is valid.</p>
       <Textarea
         aria-label="Heads dispatch document"
+        aria-invalid={errorsIn({ issues }).length > 0 || undefined}
         spellCheck={false}
         value={text}
         onChange={event => write({ text: event.target.value })}
@@ -577,106 +589,8 @@ function JsonView({
           }
         }}
       />
-      <div className="dispatch-json-changes">
-        <h5>Changes from what is saved{removed > 0 && (
-          <span data-kind="removed"> · {counted({
-            count: removed,
-            word: 'removal',
-          })}
-          </span>
-        )}
-        </h5>
-        {changes?.length ? <ChangeList changes={changes} /> : <p className="dispatch-desc">{empty}</p>}
-      </div>
+      <IssueList issues={issues} />
     </section>
-  )
-}
-
-function saveStatus({
-  errors,
-  changes,
-}: {
-  errors: number
-  changes: number
-}): string {
-  if (errors) {
-    return `${counted({
-      count: errors,
-      word: 'problem',
-    })} to fix before saving`
-  }
-
-  return changes ? `${counted({
-    count: changes,
-    word: 'change',
-  })} ready` : 'No changes yet'
-}
-
-function SaveBar({
-  issues,
-  changes,
-  revision,
-  reviewing,
-  json,
-  review,
-  discard,
-  apply,
-}: {
-  issues: DispatchIssue[]
-  changes: DispatchChange[]
-  revision: number
-  reviewing: boolean
-  json: boolean
-  review({ on }: { on: boolean }): void
-  discard(): void
-  apply(): void
-}) {
-  const errors = errorsIn({ issues }).length
-  const warnings = issues.length - errors
-  const status = saveStatus({
-    errors,
-    changes: changes.length,
-  })
-  const warned = warnings ? ` · ${counted({
-    count: warnings,
-    word: 'warning',
-  })}` : ''
-  const listed = (json || errors > 0) && issues.length > 0
-
-  return (
-    <div className="dispatch-savebar" role="region" aria-label="Heads dispatch changes">
-      <span className="dispatch-savebar-status" data-errors={errors > 0 || undefined}>{status}{warned}</span>
-      <Button variant="surface" onClick={discard}><Icon name="close" size={14} />Discard</Button>
-      {reviewing ? (
-        <>
-          <Button variant="surface" onClick={() => review({ on: false })}>Back to editing</Button>
-          <Button variant="primary" disabled={errors > 0} onClick={apply}><Icon name="check" size={14} />Apply {counted({
-            count: changes.length,
-            word: 'change',
-          })}
-          </Button>
-        </>
-      ) : <Button variant="primary" disabled={errors > 0 || !changes.length} onClick={() => review({ on: true })}>Review changes</Button>}
-      {listed && (
-        <ul className="dispatch-issues">
-          {issues.map((
-            issue,
-            index,
-          ) => (
-            <li key={index}>
-              <span className="dispatch-tag" data-level={issue.level}>{issue.level}</span>
-              <span><code>{issue.path || '/'}</code> {issue.problem}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {reviewing && (
-        <div className="dispatch-review">
-          <ChangeList changes={changes} />
-          <p className="dispatch-desc">Saves on revision {revision}. If heads dispatch changed since, Apply refuses and saves nothing.</p>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -718,9 +632,18 @@ export function DispatchSettings({
     setEditor,
   ] = useState<Editor>()
   const [
-    reviewing,
-    setReviewing,
-  ] = useState(false)
+    view,
+    setView,
+  ] = useState('table')
+  // Bumped when focus leaves a field, so an edit typed there saves once it is left.
+  const [
+    left,
+    setLeft,
+  ] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const save = useRef<() => void>(undefined)
+  // A change the server refused is not sent again until it changes.
+  const refused = useRef('')
   // One event id per envelope, so applying the same change again after an uncertain answer never saves it twice.
   const attempt = useRef<{
     key: string
@@ -730,9 +653,9 @@ export function DispatchSettings({
   const base = editor?.base ?? saved
   const savedDraft = saved ? toDraft({ document: saved.document }) : undefined
   const edited = editor && 'draft' in editor ? editor.draft : undefined
-  const draft = editor ? edited : savedDraft
+  const json = view === 'json' || !(edited ?? savedDraft)
+  const draft = json ? undefined : edited ?? savedDraft
   const text = editor && 'text' in editor ? editor.text : undefined
-  const json = !draft
   const shownText = text ?? formatted({ document: saved?.document })
   const parsed = json ? parseDocument({ text: shownText }) : undefined
   const tableDocument = draft ? documentOf({ draft }) : undefined
@@ -751,6 +674,28 @@ export function DispatchSettings({
     document,
     ready,
   })
+  const pending = editor && ready && changes?.length ? canonical({
+    value: {
+      revision: base?.revision,
+      document,
+    },
+  }) : ''
+
+  useEffect(
+    () => {
+      const focused = window.document.activeElement
+      // A field being typed in saves when it is left, so a renamed rule never moves mid-word.
+      const typing = !!focused && !!root.current?.contains(focused) && focused.matches('input, textarea')
+
+      if (pending && pending !== refused.current && !typing) {
+        save.current?.()
+      }
+    },
+    [
+      pending,
+      left,
+    ],
+  )
 
   if (!saved || !base) {
     return (
@@ -765,7 +710,6 @@ export function DispatchSettings({
       base,
       draft: next,
     })
-    setReviewing(false)
   }
 
   const write = ({ text }: { text: string }) => {
@@ -773,12 +717,12 @@ export function DispatchSettings({
       base,
       text,
     })
-    setReviewing(false)
   }
 
   const show = ({ value }: { value: string }) => {
     if (value === 'json') {
       write({ text: formatted({ document }) })
+      setView('json')
 
       return
     }
@@ -792,11 +736,7 @@ export function DispatchSettings({
     }
 
     edit({ next })
-  }
-
-  const discard = () => {
-    setEditor(undefined)
-    setReviewing(false)
+    setView('table')
   }
 
   const apply = async () => {
@@ -822,7 +762,8 @@ export function DispatchSettings({
     }
 
     const applying = editor
-    discard()
+    const sent = pending
+    setEditor(undefined)
 
     try {
       await resource.write({
@@ -846,15 +787,16 @@ export function DispatchSettings({
 
       // The section shows the reason; a refused draft comes back unless a newer edit started.
       if (error.outcome === 'refused') {
+        refused.current = sent
         setEditor(current => current ?? applying)
       }
     }
   }
 
-  const unsaved = json || (changes?.length ?? 0) > 0
+  save.current = () => void apply()
 
   return (
-    <div className="dispatch-settings">
+    <div className="dispatch-settings" ref={root} onBlur={() => setLeft(count => count + 1)}>
       <div className="dispatch-top">
         <span className="dispatch-source"><Icon name="file" size={14} />Shared by every Hydra · revision <code>{saved.revision}</code></span>
         <Segmented
@@ -878,19 +820,7 @@ export function DispatchSettings({
           edit={edit}
         />
       ) : (
-        <JsonView text={shownText} write={write} changes={changes} />
-      )}
-      {unsaved && (
-        <SaveBar
-          issues={issues}
-          changes={changes ?? []}
-          revision={base.revision}
-          reviewing={reviewing}
-          json={json}
-          review={({ on }) => setReviewing(on)}
-          discard={discard}
-          apply={() => void apply()}
-        />
+        <JsonView text={shownText} write={write} issues={issues} />
       )}
     </div>
   )
