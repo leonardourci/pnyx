@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
-import { rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { taskReadiness } from '#tasks/dependencies.ts'
@@ -927,5 +928,127 @@ test(
     } finally {
       page.close()
     }
+  },
+)
+
+test(
+  'two starts of one task while its copy is prepared leave one session, in the copy the task records',
+  async t => {
+    const s = await pnyx.scenario()
+    const path = await s.project({ name: 'race' })
+    const gates = mkdtempSync(join(
+      tmpdir(),
+      'pnyx-start-race-',
+    ))
+    t.after(() => rmSync(
+      gates,
+      {
+        recursive: true,
+        force: true,
+      },
+    ))
+    // Each copy announces itself, then waits for its own gate before printing its folder.
+    await s.owner({
+      args: [
+        'project',
+        'set',
+        'race',
+        '--copy',
+        `d=$(mktemp -d "${gates}/copy-XXXXXX"); touch "${gates}/entered-$$"; while [ ! -f "${gates}/go-$$" ]; do sleep 0.05; done; echo "$d"`,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Race',
+        '--key',
+        'race',
+        '--project',
+        path,
+      ],
+    })
+
+    const start = async () => {
+      try {
+        await s.owner({
+          args: [
+            'task',
+            'start',
+            'race',
+            '--harness',
+            'claude',
+            '--prompt',
+            'Start once',
+          ],
+        })
+
+        return 'started'
+      } catch (error) {
+        return (error as Error).message
+      }
+    }
+
+    const starts = [
+      start(),
+      start(),
+    ]
+    const entered = () => readdirSync(gates).filter(name => name.startsWith('entered-'))
+      .map(name => name.slice('entered-'.length))
+    await until({
+      what: 'both copies to be under way',
+      check: () => entered().length === 2,
+    })
+    const [
+      first,
+      second,
+    ] = entered()
+    writeFileSync(
+      join(
+        gates,
+        `go-${first}`,
+      ),
+      '',
+    )
+    await until({
+      what: 'the first start to attach its agent',
+      check: () => Boolean(s.task({ key: 'race' }).sessionIds?.length),
+    })
+    writeFileSync(
+      join(
+        gates,
+        `go-${second}`,
+      ),
+      '',
+    )
+    const outcomes = await Promise.all(starts)
+
+    assert.equal(
+      outcomes.filter(outcome => outcome === 'started').length,
+      1,
+    )
+    assert.match(
+      outcomes.find(outcome => outcome !== 'started') ?? '',
+      /SESSION_CONFLICT/,
+    )
+    const task = s.task({ key: 'race' })
+    const agent = await s.agent({ cwd: task.copy!.path })
+    assert.deepEqual(
+      [
+        task.folder,
+        agent.cwd,
+        existsSync(task.copy!.path),
+      ],
+      [
+        task.copy!.path,
+        task.copy!.path,
+        true,
+      ],
+    )
+    assert.equal(
+      s.events().filter(event => event.type === 'task.copy' && event.cardId === task.id).length,
+      1,
+    )
   },
 )
