@@ -88,6 +88,8 @@ async function send({
         port,
         path: '/api/run',
         method: 'POST',
+        // A connection of its own: the shared agent's idle timeout would cut a command that takes longer than five seconds.
+        agent: false,
         timeout,
         headers: {
           'content-type': 'application/json',
