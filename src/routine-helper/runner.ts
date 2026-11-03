@@ -18,7 +18,7 @@ import { prepareHydraFolder } from '#setup/skills.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { lockIsStale, replaceFile } from '#store/storage.ts'
+import { replaceFile } from '#store/storage.ts'
 import type { HostedSession, Provider } from '#workers/provider.ts'
 import { helperAgent, helperScope } from './route.ts'
 import { releaseTask, taskLease } from './leases.ts'
@@ -32,7 +32,6 @@ type Completion = {
 const TURN_MS = 120_000
 const WRITE_ATTEMPTS = 5
 const WRITE_RETRY_MS = 250
-const WRITE_POLL_MS = 1000
 const SUMMARY_CHARS = 600
 const DIALOG_MESSAGES = 20
 const DIALOG_CHARS = 12_000
@@ -213,7 +212,7 @@ export function createRoutineHelper({
       try {
         return run()
       } catch (error) {
-        const contended = error instanceof HydraError && (error.code === 'LOCKED' || error.code === 'TASK_LEASED')
+        const contended = error instanceof HydraError && error.code === 'TASK_LEASED'
 
         if (!contended || closed) {
           throw error
@@ -236,63 +235,7 @@ export function createRoutineHelper({
           continue
         }
 
-        const lockPath = join(
-          hydraDir({ hydraId }),
-          'writer.lock',
-        )
-
-        if (error.code !== 'LOCKED' || !existsSync(lockPath)) {
-          throw error
-        }
-
-        // A held lock gets availability probes, never repeated synchronous writer waits.
-        await new Promise<void>((
-          resolve,
-          reject,
-        ) => {
-          const finish = ({ error }: { error?: unknown } = {}) => {
-            clearInterval(timer)
-            stopping.signal.removeEventListener(
-              'abort',
-              cancelled,
-            )
-
-            if (error) {
-              reject(error)
-            } else {
-              resolve()
-            }
-          }
-
-          const cancelled = () => finish({ error: new Error('Helper turn was stopped') })
-
-          const check = () => {
-            try {
-              if (!existsSync(lockPath) || lockIsStale({ path: lockPath })) {
-                finish()
-              }
-            } catch (error) {
-              finish({ error })
-            }
-          }
-
-          const timer = setInterval(
-            check,
-            WRITE_POLL_MS,
-          )
-          timer.unref()
-          stopping.signal.addEventListener(
-            'abort',
-            cancelled,
-            { once: true },
-          )
-
-          if (closed) {
-            cancelled()
-          } else {
-            check()
-          }
-        })
+        throw error
       }
     }
   }
