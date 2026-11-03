@@ -97,13 +97,13 @@ async function runOnce({ body }: { body: unknown }): Promise<RunAnswer> {
           stdout: sink,
         }),
       )
-      // The SDK sets the process exit code itself for an unknown command or a misplaced flag; the server keeps its own.
-      const set = process.exitCode
+      // The SDK also sets the process exit code for a refused command line; the server keeps its own, and the
+      // request's status comes only from its own record.
       process.exitCode = before
 
       return {
         stdout,
-        exitCode: requestExitCode() ?? (set !== before ? Number(set) : 0),
+        exitCode: requestExitCode() ?? 0,
       }
     },
   })

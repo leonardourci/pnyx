@@ -144,6 +144,20 @@ export async function runCli({
     },
   })
 
+  // The SDK refuses a leading flag or an unknown command itself, through the process exit code;
+  // the status is recorded for the request too, as concurrent commands share that process.
+  const known = [
+    '--help',
+    '--version',
+    '-v',
+    '-V',
+    ...Object.keys(all),
+  ]
+
+  if (command !== undefined && !known.includes(command)) {
+    recordExitCode({ code: 2 })
+  }
+
   await runAxiCli({
     argv,
     stdout,
