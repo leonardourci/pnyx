@@ -4924,11 +4924,16 @@ export function createHost({
         },
       })
 
+      // Startup never waits on an agent reopening; each resumes on its own and a failure stays on its card.
       if (cutHydraTurn) {
-        await host.hydra({
-          id: cutHydraTurn.resumeAttemptId,
-          text: cutHydraTurn.resumeMessage,
-          actor: 'pnyx',
+        const resume = cutHydraTurn
+        background({
+          name: 'Hydra resume',
+          run: () => host.hydra({
+            id: resume.resumeAttemptId,
+            text: resume.resumeMessage,
+            actor: 'pnyx',
+          }),
         })
       }
 
