@@ -3,6 +3,7 @@ import { HARNESSES, providerIdOf } from './providers.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { harnessControls } from './controls.ts'
 import { AGENT_FLAG } from './model.ts'
+import { ACCOUNT_LABEL_MAX, homeFolderValid, LINE_BREAK } from './account-choice.ts'
 
 // The one document Settings, the CLI and Hydra read and change: heads dispatch and its accounts.
 export interface DispatchDocument extends HeadsDispatch {
@@ -470,18 +471,21 @@ function checkAccounts({
 
     const folder = account.folder
 
-    if (account.label !== undefined && (typeof account.label !== 'string'
-      || !account.label.trim() || account.label.length > 80 || /[\r\n\0]/.test(account.label))) {
+    const label = account.label
+    const labelValid = label === undefined || (typeof label === 'string'
+      && !!label.trim() && label.length <= ACCOUNT_LABEL_MAX && !LINE_BREAK.test(label))
+
+    if (!labelValid) {
       error({
         segments: [
           ...at,
           'label',
         ],
-        problem: 'account label takes 1 to 80 characters on one line',
+        problem: `account label takes 1 to ${ACCOUNT_LABEL_MAX} characters on one line`,
       })
     }
 
-    if (typeof folder !== 'string' || !(folder.startsWith('/') || folder.startsWith('~/')) || /[\r\n\0]/.test(folder)) {
+    if (typeof folder !== 'string' || !homeFolderValid({ folder })) {
       error({
         segments: [
           ...at,

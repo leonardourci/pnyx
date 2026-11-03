@@ -2,6 +2,16 @@ import { HydraError } from '#store/errors.ts'
 import type { Account, EffectiveDispatch, Harness } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
 
+export const ACCOUNT_LABEL_MAX = 80
+export const LINE_BREAK = /[\r\n\0]/
+
+// A login home is an absolute path or one under ~/, on one line.
+export function homeFolderValid({ folder }: { folder: string }): boolean {
+  const rooted = folder.startsWith('/') || folder.startsWith('~/')
+
+  return rooted && !LINE_BREAK.test(folder)
+}
+
 export function accountRegistration({
   effective,
   name,
