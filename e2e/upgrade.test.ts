@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
+import { hydraConfig } from '#hydra/config.ts'
 import { test } from 'node:test'
 import { WebSocket } from 'ws'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -36,7 +37,9 @@ const send = ({
 
 const upgrade = ({ s }: { s: Scenario }) => s.state().upgrades?.find(operation => operation.id === 'up')
 // The chat's dividers for the operations that stopped Hydra.
-const dividers = ({ s }: { s: Scenario }) => (s.state().hydraMessages ?? []).filter(message => message.kind === 'divider')
+// The chat's dividers, selected as the chat selects its messages: by the Hydra it shows.
+const dividers = ({ s }: { s: Scenario }) => (s.state().hydraMessages ?? [])
+  .filter(message => message.hydra === hydraConfig({ state: s.state() }).hydra.id && message.kind === 'divider')
   .map(message => message.text)
 
 const waitFor = ({
