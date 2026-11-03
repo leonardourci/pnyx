@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 import { setTimeout as delay } from 'node:timers/promises'
 import { runProcess, type ProcessResult } from '#app/run-process.ts'
 import type { Key } from '#workers/controls.ts'
@@ -244,7 +245,56 @@ async function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmu
   return undefined
 }
 
+// Sends to one pane go one at a time, so two replies' paste and Enter never interleave.
+const paneTurns = new Map<string, Promise<void>>()
+
+async function onePerPane({
+  key,
+  send,
+}: {
+  key: string
+  send(): Promise<Delivery>
+}): Promise<Delivery> {
+  const previous = paneTurns.get(key)
+  let finished = () => {}
+  const turn = new Promise<void>(resolve => {
+    finished = resolve
+  })
+  paneTurns.set(
+    key,
+    turn,
+  )
+
+  try {
+    await previous
+
+    return await send()
+  } finally {
+    finished()
+
+    if (paneTurns.get(key) === turn) {
+      paneTurns.delete(key)
+    }
+  }
+}
+
 async function tmux({
+  route,
+  text,
+}: {
+  route: Extract<TerminalRoute, { kind: 'tmux' }>
+  text: string
+}): Promise<Delivery> {
+  return await onePerPane({
+    key: `${route.socket}\n${route.pane}`,
+    send: () => tmuxSend({
+      route,
+      text,
+    }),
+  })
+}
+
+async function tmuxSend({
   route,
   text,
 }: {
@@ -261,8 +311,9 @@ async function tmux({
     return moved
   }
 
+  // Each send loads its own buffer, since sends to other panes of the same tmux server run at once.
   // paste-buffer -p brackets the paste only when the program asked for it.
-  const buffer = `pnyx-${process.pid}`
+  const buffer = `pnyx-${process.pid}-${randomUUID()}`
   const loaded = outcome({
     result: await run({
       command: 'tmux',
@@ -283,7 +334,7 @@ async function tmux({
     return loaded
   }
 
-  return await typeThenEnter({
+  const delivery = await typeThenEnter({
     command: 'tmux',
     type: [
       ...sock,
@@ -305,6 +356,21 @@ async function tmux({
     options: {},
     text,
   })
+
+  // paste-buffer -d removes the buffer once pasted; one left by a failed paste is removed here.
+  if (delivery.state === 'failed') {
+    await run({
+      command: 'tmux',
+      args: [
+        ...sock,
+        'delete-buffer',
+        '-b',
+        buffer,
+      ],
+    })
+  }
+
+  return delivery
 }
 
 async function paseo({
