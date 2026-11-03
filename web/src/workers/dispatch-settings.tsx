@@ -371,10 +371,11 @@ function RuleGroup({
           <Problems issues={mine} prefix={pointer({ segments: place })} id={problemsId} />
           {blocked && <p className="dispatch-blocked">{blocked}</p>}
         </div>
-        {at !== 'default' && (
+        {!fixed && (
           <ConfirmRemove
             label={`Remove the ${name} rule`}
             question="Remove rule?"
+            then=".dispatch-add-rule"
             remove={() => edit({
               next: withoutRule({
                 draft,
@@ -417,6 +418,7 @@ function RuleGroup({
             <ConfirmRemove
               label={`Remove ${name} candidate ${index + 1}`}
               question="Remove?"
+              then=".dispatch-add button"
               disabled={candidates.length < 2}
               remove={() => setCandidates({
                 next: candidates.filter((
@@ -456,11 +458,14 @@ function ConfirmRemove({
   label,
   question,
   disabled = false,
+  then,
   remove,
 }: {
   label: string
   question: string
   disabled?: boolean
+  // Where focus lands once the row is gone: the nearest element matching this selector.
+  then: string
   remove(): void
 }) {
   const [
@@ -515,7 +520,10 @@ function ConfirmRemove({
         <Button
           variant="primary"
           onClick={() => {
-            setOpen(false); remove()
+            setOpen(false)
+            trigger.current?.closest(`:has(${then})`)?.querySelector<HTMLElement>(then)
+              ?.focus()
+            remove()
           }}
         >Remove
         </Button>
