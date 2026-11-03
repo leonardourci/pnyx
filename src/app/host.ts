@@ -25,7 +25,7 @@ import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
-import { defaultLogin, effectiveDispatch, loginFolder, type Harness } from '#workers/dispatch-config.ts'
+import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
@@ -2104,8 +2104,33 @@ export function createHost({
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
 
+  // The helper's agent, or none when it is off or names an account no longer registered for its harness:
+  // then main takes the routine updates, and the helper never runs on another login.
+  const usableHelper = ({
+    state,
+    effective,
+  }: {
+    state: HydraState
+    effective?: EffectiveDispatch
+  }) => {
+    const candidate = helperAgent({
+      state,
+      main: effective && (state.config?.hydra.agent
+        ?? effective.dispatch.rules.hydra?.candidates[0]
+        ?? effective.dispatch.default[0]),
+    })
+
+    if (candidate?.account === undefined) {
+      return candidate
+    }
+
+    const known = effective ?? effectiveDispatch()
+
+    return known.accounts[candidate.account]?.provider === candidate.harness ? candidate : undefined
+  }
+
   // A failed batch sends routine work to main until main has seen the failure.
-  const helperOpen = ({ state }: { state: HydraState }) => !!helperAgent({ state })
+  const helperOpen = ({ state }: { state: HydraState }) => !!usableHelper({ state })
     && !helperFailed({ state })
 
   // Tasks main's running turn was woken for; the helper leaves them until that turn ends.
@@ -2312,13 +2337,9 @@ export function createHost({
     agentFor: async () => {
       const state = loadHydra({ hydraId }).state
       const effective = effectiveDispatch()
-      const main = state.config?.hydra.agent
-        ?? effective.dispatch.rules.hydra?.candidates[0]
-        ?? effective.dispatch.default[0]
-
-      const candidate = helperAgent({
+      const candidate = usableHelper({
         state,
-        main,
+        effective,
       })
 
       if (!candidate) {

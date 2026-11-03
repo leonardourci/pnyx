@@ -1410,3 +1410,80 @@ test(
     )
   },
 )
+
+test(
+  'a helper whose account was removed leaves routine updates to main and never runs on another login',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    const task = s.task({ key: 'work' }).id
+    await s.owner({
+      args: [
+        'account',
+        'set',
+        'claude:work',
+        '--provider',
+        'claude',
+        '--folder',
+        s.folder({ name: 'removed-login' }),
+      ],
+    })
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:work',
+            model: 'sonnet',
+          },
+        }),
+      ],
+    })
+    await s.owner({
+      args: [
+        'account',
+        'remove',
+        'claude:work',
+      ],
+    })
+
+    try {
+      await s.chat({ text: 'Start watching.' })
+      const hydra = await s.agent({ hydra: true })
+      await until({
+        what: 'main to finish its first turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'main to take the routine update',
+        check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      assert.ok(hydra.received[1]!.includes(`pnyx-task:${task}) declared: blocked`))
+      assert.equal(
+        grants({ s }).length,
+        0,
+      )
+    } finally {
+      // The shared helper setting would otherwise keep naming the removed account for later flows.
+      await s.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({
+            helper: {
+              harness: 'claude',
+              model: 'sonnet',
+            },
+          }),
+        ],
+      })
+    }
+  },
+)
