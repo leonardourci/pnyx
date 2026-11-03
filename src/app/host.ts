@@ -72,6 +72,8 @@ import { isFolder } from '#workers/folders.ts'
 import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
+import { arrivedSince, operationEvent, operationRecap } from '#hydra/operations.ts'
+import type { HydraOperation } from '#hydra/model.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
@@ -311,6 +313,19 @@ export function createHost({
         }),
       })
       queued()
+
+      // An upgrade stops Hydra from its start, a /restart from its restart; the end recaps what waited.
+      if (operation.state === 'running' || operation.state === 'restarting') {
+        startOperation({
+          id: operation.id,
+          kind: operation.state === 'running' ? 'upgrade' : 'restart',
+        })
+      } else if (operation.state !== 'queued') {
+        endOperation({
+          id: operation.id,
+          error: operation.state === 'done' ? undefined : operation.error ?? `upgrade ${operation.state}`,
+        })
+      }
     },
     schedule: ({
       id,
@@ -339,20 +354,122 @@ export function createHost({
     },
     closing: () => closing,
     restart,
-    deliver: async ({ message }) => {
-      try {
-        await host.hydra({
-          text: message.text,
-          original: message.original,
-          actor: message.actor,
-          id: message.id,
-        })
-      } catch (error) {
-        console.error(`pnyx-axi serve: a message held during the upgrade could not reach Hydra: ${(error as Error).message}`)
-      }
-    },
     at,
   })
+
+  // One machinery for whatever stops Hydra for a while: it records the start and the end, holds nothing of its own,
+  // and when it ends Hydra's first turn is the recap of what arrived meanwhile.
+  // The first of back-to-back operations: the recap after the last one covers everything since it began.
+  let stoppedSince: NonNullable<HydraState['hydraOperation']> | undefined
+
+  const stoppedFor = ({ id }: { id: string }) => {
+    const running = loadHydra({ hydraId }).state.hydraOperation
+
+    return Boolean(running) && !id.startsWith('operation:')
+  }
+
+  const startOperation = ({
+    id,
+    kind,
+  }: {
+    id: string
+    kind: HydraOperation['kind']
+  }) => note({
+    fn: ({ writer }) => {
+      // A second compaction straight after the first, or a restart inside an upgrade, continues the same stop.
+      if (writer.state.hydraOperation) {
+        return
+      }
+
+      stoppedSince ??= {
+        id,
+        kind,
+        since: at(),
+        seq: writer.state.seq + 1,
+      }
+      apply({
+        writer,
+        decision: operationEvent({
+          state: writer.state,
+          operation: {
+            id,
+            kind,
+            state: 'started',
+          },
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+        }),
+      })
+    },
+  })
+
+  const endOperation = ({
+    id,
+    error,
+  }: {
+    id: string
+    error?: string
+  }) => {
+    const running = loadHydra({ hydraId }).state.hydraOperation
+
+    if (running?.id !== id) {
+      return
+    }
+
+    note({
+      fn: ({ writer }) => apply({
+        writer,
+        decision: operationEvent({
+          state: writer.state,
+          operation: {
+            id,
+            kind: running.kind,
+            state: error ? 'failed' : 'finished',
+            ...(error ? { error } : {}),
+          },
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+        }),
+      }),
+    })
+    background({
+      name: 'Hydra back after a stop',
+      run: async () => {
+        const state = loadHydra({ hydraId }).state
+
+        // Another operation started meanwhile; the recap waits for the last one to end.
+        if (state.hydraOperation) {
+          return
+        }
+
+        const since = stoppedSince ?? running
+        stoppedSince = undefined
+
+        // A clean stop that nothing waited on needs no turn of its own.
+        if (error || arrivedSince({
+          state,
+          after: since.seq,
+        })) {
+          await host.hydra({
+            id: `operation:${id}`,
+            actor: 'pnyx',
+            text: operationRecap({
+              state,
+              operation: since,
+              error,
+              now: Date.now(),
+            }),
+          })
+        }
+
+        armWake()
+      },
+    })
+  }
 
   const compaction = createCompactionControl({
     hydraId,
@@ -365,6 +482,36 @@ export function createHost({
     send: ({ ...input }) => send(input),
     host: () => host,
     helperPending: () => helperPending(),
+    statusChanged: ({
+      card,
+      operation,
+    }) => {
+      if (card !== HYDRA_CARD) {
+        return
+      }
+
+      if (operation.state === 'running') {
+        startOperation({
+          id: operation.id,
+          kind: 'compaction',
+        })
+      }
+    },
+    // Hydra is back once its compactions settle, including one that followed straight after.
+    released: ({ card }) => {
+      const state = loadHydra({ hydraId }).state
+      const running = state.hydraOperation
+      const last = state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)
+
+      if (card !== HYDRA_CARD || running?.kind !== 'compaction') {
+        return
+      }
+
+      endOperation({
+        id: running.id,
+        error: !last || last.state === 'done' ? undefined : last.error ?? `compaction ${last.state}`,
+      })
+    },
   })
   const {
     compactChange,
@@ -2352,16 +2499,8 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
-      // Hydra waits for a running upgrade, so a message sent meanwhile queues behind it.
-      if (!release && upgrades.hold({
-        message: {
-          id,
-          text,
-          original,
-          actor,
-          at: at(),
-        },
-      })) {
+      // While a restart, an upgrade or a compaction stops Hydra, everything for it waits in its queue; the recap when it ends tells Hydra.
+      if (stoppedFor({ id })) {
         queued()
 
         return Promise.resolve({ state: 'queued' })
@@ -2373,21 +2512,6 @@ export function createHost({
         ?? queuedDispatch.rules.hydra?.candidates[0] ?? queuedDispatch.default[0]
         ?? { harness: 'claude' as const }
       const deliveryId = release ? `${id}:compact:hosted` : `${id}:hosted`
-      const current = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-      if (current && holdCompact({
-        card: current,
-        input: {
-          id,
-          text,
-          original,
-          actor,
-          route: 'hydra',
-          agent: requestedAgent,
-        },
-      })) {
-        return Promise.resolve({ state: 'queued' })
-      }
 
       if (queuedHydra.has(id)) {
         return Promise.resolve({ state: 'queued' })
@@ -2400,19 +2524,8 @@ export function createHost({
         }
 
         let state = loadHydra({ hydraId }).state
-        const compactCard = state.cards[HYDRA_CARD]
 
-        if (compactCard && holdCompact({
-          card: compactCard,
-          input: {
-            id,
-            text,
-            original,
-            actor,
-            route: 'hydra',
-            agent: requestedAgent,
-          },
-        })) {
+        if (stoppedFor({ id })) {
           return { state: 'queued' }
         }
 
@@ -3848,6 +3961,17 @@ export function createHost({
     recover: async () => {
       children.sweep()
       upgrades.recover()
+
+      // A compaction of Hydra the stop cut ended with it; Hydra gets the recap and its queue.
+      const cut = loadHydra({ hydraId }).state.hydraOperation
+
+      if (cut?.kind === 'compaction') {
+        endOperation({
+          id: cut.id,
+          error: 'Pnyx restarted during compaction',
+        })
+      }
+
       let cutHydraTurn: {
         resumeAttemptId: string
         resumeMessage: string
@@ -4068,8 +4192,6 @@ export function createHost({
           releaseCompact({ card: card.id })
         }
       }
-
-      upgrades.release()
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state

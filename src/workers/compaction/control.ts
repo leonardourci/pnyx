@@ -25,6 +25,8 @@ export function createCompactionControl({
   send,
   host,
   helperPending,
+  statusChanged,
+  released,
 }: {
   hydraId: string
   compactionDelay: number
@@ -51,6 +53,16 @@ export function createCompactionControl({
   }): unknown
   host(): Host
   helperPending(): boolean
+  // A compaction's status changed; for Hydra's own it starts or ends the operation that stops Hydra.
+  statusChanged({
+    card,
+    operation,
+  }: {
+    card: string
+    operation: Compaction
+  }): void
+  // The card's compactions have settled: none runs, and none follows at once.
+  released({ card }: { card: string }): void
 }) {
   const compactionDeadlines = new Map<string, NodeJS.Timeout>()
 
@@ -72,6 +84,10 @@ export function createCompactionControl({
 
     if (change.kind === 'status') {
       resetCompactionDeadline({ operation: change.operation })
+      statusChanged({
+        card,
+        operation: change.operation,
+      })
     }
   }
 
@@ -267,6 +283,7 @@ export function createCompactionControl({
             return
           }
 
+          released({ card: id })
           const inputs = [...(card.compaction?.inputs ?? [])].sort((
             a,
             b,
