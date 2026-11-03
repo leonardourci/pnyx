@@ -63,15 +63,6 @@ export interface UpgradeStep {
   seconds: number
 }
 
-// A Hydra message sent while the upgrade ran; it reaches Hydra once the upgrade ends.
-export interface HeldMessage {
-  id: string
-  text: string
-  original?: string
-  actor: string
-  at: string
-}
-
 // One /upgrade the owner sent to Hydra, from its place in the queue to the restarted server.
 export interface UpgradeOperation {
   // The Hydra message that asked for it.
@@ -92,7 +83,6 @@ export interface UpgradeOperation {
   rolledBack?: boolean
   // Why a refused upgrade did not start.
   reasons?: string[]
-  held?: HeldMessage[]
 }
 
 export type UpgradeEvent = EventBase & {

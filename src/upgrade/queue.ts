@@ -1,7 +1,7 @@
 import { HydraError } from '#store/errors.ts'
 import { homedir } from 'node:os'
 import type { HydraState } from '#app/model.ts'
-import type { HeldMessage, UpgradeOperation } from './model.ts'
+import type { UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 import { background } from '#app/background.ts'
 
@@ -20,7 +20,6 @@ export function upgradeQueue({
   working,
   closing,
   restart,
-  deliver,
   at,
 }: {
   // The Pnyx folder; a server without one refuses /upgrade.
@@ -46,8 +45,6 @@ export function upgradeQueue({
   working(): boolean
   closing(): boolean
   restart(): void | Promise<void>
-  // Hands a held message to Hydra, behind anything already queued.
-  deliver({ message }: { message: HeldMessage }): void
   at(): string
 }) {
   const sendNow = new Set<string>()
@@ -59,7 +56,6 @@ export function upgradeQueue({
     'restarting',
   ].includes(operation.state))
 
-  // Messages held while the upgrade ran are kept on the operation, so a write made from an older copy must not drop them.
   const save = ({
     operation,
     eventId,
@@ -67,40 +63,9 @@ export function upgradeQueue({
     operation: UpgradeOperation
     eventId?: string
   }) => record({
-    operation: {
-      ...operation,
-      held: operation.held ?? state().upgrades?.find(saved => saved.id === operation.id)?.held,
-    },
+    operation,
     eventId,
   })
-
-  // Once an upgrade has ended, the messages it held go to Hydra in the order they were sent.
-  const release = () => {
-    // A closing server leaves them held for the next one.
-    if (closing()) {
-      return
-    }
-
-    for (const operation of state().upgrades ?? []) {
-      if (!operation.held?.length || [
-        'running',
-        'restarting',
-      ].includes(operation.state)) {
-        continue
-      }
-
-      for (const message of operation.held) {
-        deliver({ message })
-      }
-
-      record({
-        operation: {
-          ...operation,
-          held: [],
-        },
-      })
-    }
-  }
 
   const monitorRestart = async ({ id }: { id: string }) => {
     const deadline = Date.now() + RESTART_WAIT_MS
@@ -149,7 +114,6 @@ export function upgradeQueue({
           } : step),
         },
       })
-      release()
     }
   }
 
@@ -207,7 +171,6 @@ export function upgradeQueue({
           endedAt: at(),
         },
       })
-      release()
 
       return
     }
@@ -245,7 +208,6 @@ export function upgradeQueue({
             endedAt: at(),
           },
         })
-        release()
       }
     },
   })
@@ -334,29 +296,6 @@ export function upgradeQueue({
       return true
     },
 
-    // Holds a Hydra message sent while an upgrade runs or restarts; false when none does.
-    hold({ message }: { message: HeldMessage }) {
-      const operation = active()
-
-      if (!operation || operation.state === 'queued') {
-        return false
-      }
-
-      if (!operation.held?.some(held => held.id === message.id)) {
-        record({
-          operation: {
-            ...operation,
-            held: [
-              ...operation.held ?? [],
-              message,
-            ],
-          },
-        })
-      }
-
-      return true
-    },
-
     // Stops the running upgrade, which goes back as a failed step does; a restart already under way cannot be stopped.
     stop() {
       const operation = active()
@@ -374,11 +313,8 @@ export function upgradeQueue({
       return 'stopping'
     },
 
-    release,
-
     // After a restart: the upgrade that restarted this server is done, a queued one queues again,
     // and one a stop cut mid-run failed and may have left the folder partly upgraded.
-    // Their held messages wait for release, once the server is ready for Hydra again.
     recover() {
       for (const operation of state().upgrades ?? []) {
         if (operation.state === 'restarting') {
