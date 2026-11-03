@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { setImmediate } from 'node:timers/promises'
 import { test } from 'node:test'
-import { readOwnedTree } from './fixtures/harness.ts'
+import { readOwnedTree } from '#agent-host/fixtures/harness.ts'
 
 test(
   'waits for the fixture process tree to be fully written',
