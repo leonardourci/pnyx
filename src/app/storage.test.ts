@@ -10,10 +10,10 @@ import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import { emptyHydra, replay } from './reducer.ts'
 import { hydraDir, hydraIds } from './home-migration.ts'
-import { loadHydra } from './store.ts'
+import { holdHydra, loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { repairHydra } from './repair.ts'
-import { withWriter } from './writer.ts'
+import { withWriter, type Writer } from './writer.ts'
 import { acquireLock } from '#store/storage.ts'
 import { STREAMS, assertGolden, readStream } from '#test-harness/streams.ts'
 
@@ -112,6 +112,80 @@ test(
     assert.deepEqual(
       snapshot.state,
       expected,
+    )
+    const create = ({
+      writer,
+      key,
+    }: {
+      writer: Writer
+      key: string
+    }) => writer.append({
+      event: {
+        v: 1,
+        seq: writer.state.seq + 1,
+        id: key,
+        cardId: key,
+        type: 'task.created',
+        at: '2026-11-03T20:00:00Z',
+        actor: 'cli',
+        data: {
+          key,
+          title: key,
+        },
+      },
+    })
+    const release = holdHydra({
+      hydraId: 'default',
+      changed: () => {},
+    })
+
+    try {
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => {
+          withWriter({
+            hydraId: 'default',
+            fn: ({ writer: nested }) => create({
+              writer: nested,
+              key: 'nested',
+            }),
+          })
+          create({
+            writer,
+            key: 'outer',
+          })
+        },
+      })
+      withWriter({
+        hydraId: 'default',
+        fn: ({ writer }) => create({
+          writer,
+          key: 'following',
+        }),
+      })
+    } finally {
+      release()
+    }
+
+    const restored = loadHydra({ hydraId: 'default' }).state
+    assert.deepEqual(
+      [
+        'nested',
+        'outer',
+        'following',
+      ].map(key => restored.cards[key]?.title),
+      [
+        'nested',
+        'outer',
+        'following',
+      ],
+    )
+    assert.deepEqual(
+      restored,
+      replay({
+        state: emptyHydra(),
+        events: readEvents({ hydraId: 'default' }),
+      }),
     )
   },
 )

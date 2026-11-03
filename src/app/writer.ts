@@ -282,7 +282,6 @@ function heldWrite<T>({
     }
   }
 
-  let offset = live.offset
   let dirty = false
   const pending: HydraEvent[] = []
   const writer = eventWriter({
@@ -304,8 +303,7 @@ function heldWrite<T>({
         data: line,
         flag: 'a',
       })
-      offset += Buffer.byteLength(line)
-      live.offset = offset
+      live.offset += Buffer.byteLength(line)
       dirty = true
     },
   })
@@ -339,7 +337,7 @@ function heldWrite<T>({
         flag: 'a',
       })
       live.state = writer.state
-      live.offset = offset + Buffer.byteLength(line)
+      live.offset += Buffer.byteLength(line)
       dirty = true
     }
 
