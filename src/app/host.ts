@@ -31,7 +31,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { mergeWindows, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision } from '#workers/provider.ts'
+import { mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { seenAt, terminalPresence, type Presence } from '#workers/presence.ts'
@@ -70,7 +70,7 @@ import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
-import { storedModels, storeModels, catalogOffers } from '#workers/model-catalog.ts'
+import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, decisionsText, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import type { StallItem } from '#hydra/stalls.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -151,13 +151,6 @@ export function createHost({
     codex: codexProvider({ spawnCodex }),
   }
   const children = trackChildren({ hydraId })
-  const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
-  const commandCatalogs = new Map<string, {
-    command: string
-    description: string
-    source: string
-    kind: 'command'
-  }[]>()
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
@@ -3142,167 +3135,29 @@ export function createHost({
   )
   stallTimer.unref()
 
-  const host: Host = {
-    async catalogCommands({
+  const catalogs = createCatalogs({
+    hydraId,
+    providers,
+    liveSession: ({ key }) => live.get(key)?.session,
+    closing: () => closing,
+    environment: () => environment(),
+    saveCatalog: ({
       card,
-      provider = card.agent?.provider ?? 'claude-code',
-    }) {
-      const harness = providerIdOf({ harness: harnessOf({ provider }) })
-      const cacheKey = JSON.stringify([
-        harness,
-        card.agent?.loginFolder,
-        card.agent?.cwd ?? card.folder,
-      ])
+      key,
+      commands,
+    }) => compactChange({
+      card,
+      change: {
+        kind: 'catalog',
+        key,
+        commands,
+      },
+    }),
+  })
 
-      const retained = () => {
-        const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
-        const commands = commandCatalogs.get(cacheKey) ?? saved?.[cacheKey] ?? []
-        const matches = card.agent?.provider === harness
-        const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
-        const operation = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.operations
-          .findLast(operation => operation.session === session)
-        const unavailable = operation?.state === 'failed' && operation.unsupported ? operation.error : undefined
-        const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
-          ...commands,
-          {
-            command: '/compact',
-            description: 'Compact the conversation',
-            source: 'Agent commands',
-            kind: 'command' as const,
-          },
-        ]
-
-        return native.map(item => item.command === '/compact' && unavailable ? {
-          ...item,
-          unavailable,
-          description: `Unavailable: ${unavailable}`,
-        } : item)
-      }
-
-      const matchesProvider = card.agent?.provider === harness
-      const session = matchesProvider && card.agent ? sessionId({ agent: card.agent }) : undefined
-      const entry = session ? live.get(session) : undefined
-
-      if (!entry?.session?.commands) {
-        return retained()
-      }
-
-      let timer: ReturnType<typeof setTimeout> | undefined
-
-      try {
-        const lookup = entry.session.commands().then(commands => {
-          const found = commands.filter(item => item.builtin).map(item => ({
-            command: `/${item.name}`,
-            description: item.description,
-            source: 'Agent commands',
-            kind: 'command' as const,
-          }))
-
-          if (found.length && !closing) {
-            commandCatalogs.set(
-              cacheKey,
-              found,
-            )
-            const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
-            const previous = saved?.[cacheKey]
-
-            if (JSON.stringify(previous) !== JSON.stringify(found)) {
-              compactChange({
-                card: card.id,
-                change: {
-                  kind: 'catalog',
-                  key: cacheKey,
-                  commands: found,
-                },
-              })
-            }
-          }
-        })
-        await Promise.race([
-          lookup,
-          new Promise<void>(resolve => {
-            timer = setTimeout(
-              resolve,
-              100,
-            )
-          }),
-        ])
-
-        return retained()
-      } catch {
-        // The disk index remains usable when the native command list is unavailable.
-        return retained()
-      } finally {
-        clearTimeout(timer)
-      }
-    },
-    async models({ harness }) {
-      const effective = effectiveDispatch()
-      const main = harnessAccount({
-        effective,
-        harness,
-      })
-      const account = main ? effective.accounts[main] : undefined
-      const env = account ? accountEnvironment({
-        account,
-        env: environment(),
-      }) : environment()
-
-      const key = `${harness}:${account?.folder ?? ''}`
-      let catalog = modelCatalogs.get(key)
-
-      if (!catalog) {
-        const provider = providerOf({ provider: providerIdOf({ harness }) })
-        const cwd = hydraDir({ hydraId })
-        const stored = storedModels({ key })
-
-        // The folder's own settings apply on top of the shared list; a failed read is dropped so the picker can retry.
-        const settle = ({ models }: { models: ModelOption[] | Promise<ModelOption[]> }) => {
-          const settled = Promise.resolve(models)
-            .then(models => provider.defaults({
-              cwd,
-              env,
-              models,
-            }))
-          modelCatalogs.set(
-            key,
-            settled,
-          )
-          void settled.catch(() => {
-            if (modelCatalogs.get(key) === settled) {
-              modelCatalogs.delete(key)
-            }
-          })
-
-          return settled
-        }
-
-        // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
-        const read = provider.models({
-          cwd,
-          env,
-        }).then(models => {
-          const changed = JSON.stringify(models) !== JSON.stringify(stored)
-
-          if (changed) {
-            storeModels({
-              key,
-              models,
-            })
-          }
-
-          if (changed && stored) {
-            void settle({ models })
-          }
-
-          return models
-        })
-        void read.catch(() => {})
-        catalog = settle({ models: stored ?? read })
-      }
-
-      return catalog
-    },
+  const host: Host = {
+    catalogCommands: catalogs.commands,
+    models: catalogs.models,
     hydraId,
     hydra: ({
       text,
