@@ -7,11 +7,9 @@ import { HydraError } from '#store/errors.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { liveTask } from '#tasks/select.ts'
 import { cardSessionId, sessionId } from '#workers/session-attachments.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
-import { withWriter } from '#app/writer.ts'
 import { privateDir } from '#store/storage.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
@@ -169,15 +167,7 @@ function openWriter(
     removeIndex({ path })
   }
 
-  withWriter({
-    hydraId,
-    fn: ({ writer }) =>
-      harvestTranscripts({
-        writer,
-        cardIds: Object.keys(writer.state.cards),
-        at: new Date().toISOString(),
-      }),
-  })
+  // The server harvests transcripts before it starts a build; this process writes only the search index.
   const db = new DatabaseSync(path)
   // Transcript text is as private as the transcripts.
   chmodSync(

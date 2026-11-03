@@ -57,6 +57,7 @@ import { traces } from '#preferences/view.ts'
 import { hydraDir } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { withWriter } from './writer.ts'
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
@@ -1091,27 +1092,46 @@ export async function mountOwnedHydra({
   }
 
   // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
-  const historyIndex = indexRuns({
-    start: () => new Promise<ReturnType<typeof workerError>>(resolve => startWorker({
-      file: INDEX_WORKER,
-      timeout: INDEX_WORKER_TIMEOUT_MS,
-      args: [hydraId],
-      done: ({
-        error,
-        stdout,
-      }) => {
-        if (!error) {
-          return resolve(undefined)
-        }
+  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
+  const harvestForIndex = () => {
+    try {
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => harvestTranscripts({
+          writer,
+          cardIds: Object.keys(writer.state.cards),
+          at: new Date().toISOString(),
+        }),
+      })
+    } catch (error) {
+      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
+    }
+  }
 
-        const failure = workerError({ stdout }) ?? {
-          message: error.message,
-          code: 'UNKNOWN',
-        }
-        console.error(`pnyx oracle index: ${failure.message}`)
-        resolve(failure)
-      },
-    })),
+  const historyIndex = indexRuns({
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
+      harvestForIndex()
+      startWorker({
+        file: INDEX_WORKER,
+        timeout: INDEX_WORKER_TIMEOUT_MS,
+        args: [hydraId],
+        done: ({
+          error,
+          stdout,
+        }) => {
+          if (!error) {
+            return resolve(undefined)
+          }
+
+          const failure = workerError({ stdout }) ?? {
+            message: error.message,
+            code: 'UNKNOWN',
+          }
+          console.error(`pnyx oracle index: ${failure.message}`)
+          resolve(failure)
+        },
+      })
+    }),
   })
   historyIndex.changed()
 
