@@ -3,7 +3,7 @@ import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
 
 test(
-  'the test launcher discards hostile agent, model, port and browser settings',
+  'the test launcher isolates its environment and fails on listener leaks',
   () => {
     const result = spawnSync(
       process.execPath,
@@ -31,6 +31,23 @@ test(
       result.status,
       0,
       `${result.stdout}\n${result.stderr}`,
+    )
+    const leaking = spawnSync(
+      process.execPath,
+      [
+        'scripts/verification/test.ts',
+        'scripts/verification/fixtures/listener-leak.ts',
+      ],
+      { encoding: 'utf8' },
+    )
+    assert.match(
+      `${leaking.stdout}\n${leaking.stderr}`,
+      /MaxListenersExceededWarning/,
+    )
+    assert.notEqual(
+      leaking.status,
+      0,
+      `${leaking.stdout}\n${leaking.stderr}`,
     )
   },
 )
