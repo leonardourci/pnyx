@@ -74,7 +74,7 @@ The flows:
 - `helper.test.ts` covers the routine helper's routing: progress that wakes nobody, batches while main works, capped batches and a failed batch's hand-back.
 - `recovery.test.ts` covers restart and recovery, including interrupted worker turns and failed background snapshot saves.
 - `oracle.test.ts` covers Oracle queries from the page: a query waits for the index only when it is missing or behind the log, a change catches it up without a query, and a catch-up that fails reaches the page as an error.
-- `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
+- `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): a build that runs while Hydra works, a failed build, Stop, the wait for agents on any Hydra to be between turns, Restart now, messages sent during the restart and a failed restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
 - `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
 - `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
