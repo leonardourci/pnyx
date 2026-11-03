@@ -115,6 +115,8 @@ export function AgentPickers({
   const ready = !!catalog.models
   // Fast shows for a model with a Fast tier, and while it is on so it can be turned off.
   const fastShown = fields.includes('fast') && (!ready || defaults?.fast || agent.fast)
+  // A table cell keeps its place with a dash instead.
+  const fastDash = fields.includes('fast') && !fastShown && marks !== undefined
   const key = JSON.stringify(resolved)
   const reported = useRef('')
 
@@ -228,6 +230,11 @@ export function AgentPickers({
           />
         )
       })}
+      {fastDash && (
+        <Tooltip content="Fast isn't available for this model">
+          <span className="fast-unavailable" tabIndex={0} aria-label="Fast isn't available for this model">–</span>
+        </Tooltip>
+      )}
       {fastShown && (
         <Tooltip
           content={[

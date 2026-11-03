@@ -1926,6 +1926,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-remove, .dispatch-remove-rule { min-height: 24px; gap: 4px; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-remove-rule { align-self: flex-start; padding: 0 4px; }
 .dispatch-candidate > .dispatch-remove { justify-self: end; }
+.fast-unavailable { display: inline-flex; align-items: center; justify-content: center; width: var(--agent-control-h); min-height: var(--agent-control-h); color: var(--color-muted); opacity: .6; cursor: default; }
 .dispatch-hydra-row { align-items: center; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-hydra-row > :first-child { padding: 8px; }
 .dispatch-hydra-row > :last-child { grid-column: 2 / -1; padding: 0 8px; }
