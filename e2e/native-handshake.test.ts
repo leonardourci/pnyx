@@ -991,6 +991,34 @@ test(
 
         return card?.agent?.sessionId === sessionId && card.sessionActivity === 'finished' && finishes() > beforeFinishes
       },
+    }).catch(error => {
+      t.diagnostic(`snapshot: ${readFileSync(
+        statePath,
+        'utf8',
+      )}`)
+      t.diagnostic(`events: ${readFileSync(
+        events,
+        'utf8',
+      )}`)
+
+      for (const name of [
+        'service.log',
+        'native.log',
+      ]) {
+        const path = join(
+          app.root,
+          name,
+        )
+
+        if (existsSync(path)) {
+          t.diagnostic(`${name}: ${readFileSync(
+            path,
+            'utf8',
+          )}`)
+        }
+      }
+
+      throw error
     })
   },
 )
