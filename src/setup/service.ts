@@ -338,6 +338,8 @@ function setupSystemdService({
   const unitName = `${label}.service`
   const variables = [
     `PNYX_HOME=${home}`,
+    // Tells the server its service started it, so a restart leaves the replacement to systemd.
+    'PNYX_SERVICE_ROLE=application',
     `PATH=${searchPath}`,
     ...[
       'CLAUDE_CONFIG_DIR',
@@ -636,7 +638,7 @@ export function setupService({
 <plist version="1.0"><dict>
 <key>Label</key><string>${label}</string>
 <key>ProgramArguments</key><array>${args.map(arg => `<string>${xml({ text: arg })}</string>`).join('')}</array>
-<key>EnvironmentVariables</key><dict>${homeEntry}<key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
+<key>EnvironmentVariables</key><dict>${homeEntry}<key>PNYX_SERVICE_ROLE</key><string>application</string><key>PATH</key><string>${xml({ text: searchPath })}</string></dict>
 <key>WorkingDirectory</key><string>${xml({ text: home })}</string>
 <key>RunAtLoad</key><true/><key>KeepAlive</key><true/>
 <key>ThrottleInterval</key><integer>5</integer>
