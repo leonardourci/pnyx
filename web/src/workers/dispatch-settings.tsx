@@ -1,4 +1,4 @@
-import { Fragment, useEffect, useId, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Candidate } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
@@ -338,11 +338,6 @@ function RuleGroup({
   }).length > 0
   const result = starts?.now?.find(item => item.rule === name)
   const blocked = result && result.candidate === undefined ? `Cannot start now: ${result.reason}` : undefined
-  // The removal waiting for its confirmation: the whole rule or one candidate's position.
-  const [
-    confirming,
-    setConfirming,
-  ] = useState<'rule' | number>()
 
   const setCandidates = ({ next }: { next: Candidate[] }) => edit({
     next: withCandidates({
@@ -351,18 +346,9 @@ function RuleGroup({
       candidates: next,
     }),
   })
-  const toggle = ({ target }: { target: 'rule' | number }) => setConfirming(current => current === target ? undefined : target)
 
   return (
-    <div
-      className="dispatch-rule"
-      data-rule={name}
-      onKeyDown={event => {
-        if (event.key === 'Escape' && confirming !== undefined) {
-          event.stopPropagation(); setConfirming(undefined)
-        }
-      }}
-    >
+    <div className="dispatch-rule" data-rule={name}>
       <div className="dispatch-rule-head">
         <div className="dispatch-rule-text">
           {fixed ? (
@@ -407,88 +393,61 @@ function RuleGroup({
           <Problems issues={mine} prefix={pointer({ segments: place })} id={problemsId} />
           {blocked && <p className="dispatch-blocked">{blocked}</p>}
         </div>
-        {!fixed && (
-          <Button
-            className="dispatch-remove-rule"
-            aria-expanded={confirming === 'rule'}
-            onClick={() => toggle({ target: 'rule' })}
-          ><Icon name="close" size={14} />Remove rule
-          </Button>
-        )}
-      </div>
-      {confirming === 'rule' && at !== 'default' && (
-        <Confirm
-          message={`Remove the ${name} rule and its ${candidates.length === 1 ? 'candidate' : `${candidates.length} candidates`}?`}
-          action="Remove rule"
-          cancel={() => setConfirming(undefined)}
-          confirm={() => {
-            setConfirming(undefined)
-            edit({
+        {at !== 'default' && (
+          <ConfirmRemove
+            label={`Remove the ${name} rule`}
+            question="Remove rule?"
+            remove={() => edit({
               next: withoutRule({
                 draft,
                 rule: at,
               }),
-            })
-          }}
-        />
-      )}
+            })}
+          />
+        )}
+      </div>
       {candidates.map((
         candidate,
         index,
       ) => {
         return (
-          <Fragment key={index}>
-            <div className="dispatch-candidate">
-              <AgentPickers
-                label={`${name} candidate ${index + 1}`}
-                agent={candidate}
-                inherited={{ account: draft.workers[candidate.harness]?.[0] }}
-                command={command}
-                // Settings shows its rows only while connected.
-                connected
-                describedBy={mine.length ? problemsId : undefined}
-                marks={candidateMarks({
-                  saved: savedCandidates[index],
-                  candidate,
-                  issues,
-                  segments: [
-                    ...segments,
-                    String(index),
-                  ],
-                })}
-                onChange={({ next }) => setCandidates({
-                  next: candidates.map((
-                    item,
-                    position,
-                  ) => position === index ? next : item),
-                })}
-              />
-              <Button
-                className="dispatch-remove"
-                aria-label={`Remove ${name} candidate ${index + 1}`}
-                aria-expanded={confirming === index}
-                disabled={candidates.length < 2}
-                onClick={() => toggle({ target: index })}
-              ><Icon name="close" size={14} />
-              </Button>
-            </div>
-            {confirming === index && (
-              <Confirm
-                message={`Remove candidate ${index + 1} from ${name}?`}
-                action="Remove"
-                cancel={() => setConfirming(undefined)}
-                confirm={() => {
-                  setConfirming(undefined)
-                  setCandidates({
-                    next: candidates.filter((
-                      _,
-                      position,
-                    ) => position !== index),
-                  })
-                }}
-              />
-            )}
-          </Fragment>
+          <div key={index} className="dispatch-candidate">
+            <AgentPickers
+              label={`${name} candidate ${index + 1}`}
+              agent={candidate}
+              inherited={{ account: draft.workers[candidate.harness]?.[0] }}
+              command={command}
+              // Settings shows its rows only while connected.
+              connected
+              describedBy={mine.length ? problemsId : undefined}
+              marks={candidateMarks({
+                saved: savedCandidates[index],
+                candidate,
+                issues,
+                segments: [
+                  ...segments,
+                  String(index),
+                ],
+              })}
+              onChange={({ next }) => setCandidates({
+                next: candidates.map((
+                  item,
+                  position,
+                ) => position === index ? next : item),
+              })}
+            />
+            <ConfirmRemove
+              label={`Remove ${name} candidate ${index + 1}`}
+              question="Remove?"
+              disabled={candidates.length < 2}
+              remove={() => setCandidates({
+                next: candidates.filter((
+                  _,
+                  position,
+                ) => position !== index),
+              })}
+            />
+          </div>
         )
       })}
       <div className="dispatch-add">
@@ -514,24 +473,61 @@ function RuleGroup({
   )
 }
 
-// A removal asks in place, on its own line under what it removes.
-function Confirm({
-  message,
-  action,
-  confirm,
-  cancel,
+// A remove button that asks in its own spot: the question covers the button instead of adding a line.
+function ConfirmRemove({
+  label,
+  question,
+  disabled = false,
+  remove,
 }: {
-  message: string
-  action: string
-  confirm(): void
-  cancel(): void
+  label: string
+  question: string
+  disabled?: boolean
+  remove(): void
 }) {
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+
+  const cancel = () => {
+    setOpen(false); trigger.current?.focus()
+  }
+
   return (
-    <div className="dispatch-confirm" role="group" aria-label={message}>
-      <span>{message}</span>
-      <Button variant="primary" onClick={confirm}>{action}</Button>
-      {/* Focus starts on the safe choice, so Enter right after opening keeps everything. */}
-      <Button autoFocus onClick={cancel}>Cancel</Button>
+    <div
+      className="dispatch-remove-slot"
+      onKeyDown={event => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation(); cancel()
+        }
+      }}
+    >
+      <Button
+        ref={trigger}
+        className="dispatch-remove"
+        aria-label={label}
+        title={label}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      ><Icon name="close" size={14} />
+      </Button>
+      {open && (
+        <div className="dispatch-confirm" role="group" aria-label={label}>
+          <span>{question}</span>
+          {/* Focus starts on the safe choice, so Enter right after opening keeps everything. */}
+          <Button autoFocus onClick={cancel}>Cancel</Button>
+          <Button
+            variant="primary"
+            onClick={() => {
+              setOpen(false); remove()
+            }}
+          >Remove
+          </Button>
+        </div>
+      )}
     </div>
   )
 }
