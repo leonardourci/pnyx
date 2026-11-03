@@ -1,5 +1,5 @@
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
-import { useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { DEFAULT_REVIEW_MINUTES, MAX_REVIEW_MINUTES } from '#settings/settings.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -125,9 +125,15 @@ export function RoutineHelper({
 }) {
   const lastEnabled = useRef<Exclude<HelperSetting, 'off'>>('auto')
 
-  if (helper !== 'off') {
-    lastEnabled.current = helper
-  }
+  // Turning the helper back on restores the agent it had before it was turned off.
+  useEffect(
+    () => {
+      if (helper !== 'off') {
+        lastEnabled.current = helper
+      }
+    },
+    [helper],
+  )
 
   const selected = helper === 'off' ? lastEnabled.current : helper
   const agent = typeof selected === 'object' ? selected : {

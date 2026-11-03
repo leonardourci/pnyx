@@ -664,12 +664,10 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         writes.push(saveSharedSettings({
           command,
           patch: sharedPatch,
-          ...(resize ? {
-            view: {
-              patch: applied,
-              revision: state.viewRevision ?? 0,
-            },
-          } : {}),
+          view: resize ? {
+            patch: applied,
+            revision: state.viewRevision ?? 0,
+          } : undefined,
         }))
       }
 

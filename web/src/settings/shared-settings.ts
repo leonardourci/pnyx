@@ -102,6 +102,11 @@ export function saveSharedSettings({
     revision: number
   }
 }) {
+  const revisionGuard = view ? [
+    '--if-revision',
+    String(view.revision),
+  ] : []
+
   return sharedSettings().write({
     command,
     name: view ? 'view' : 'settings',
@@ -109,10 +114,7 @@ export function saveSharedSettings({
       'set',
       '--json',
       JSON.stringify(view?.patch ?? patch),
-      ...(view ? [
-        '--if-revision',
-        String(view.revision),
-      ] : []),
+      ...revisionGuard,
       '--event-id',
       crypto.randomUUID(),
     ],

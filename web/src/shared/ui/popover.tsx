@@ -58,9 +58,8 @@ export function Popover({
           )}px`
           const above = anchor.top - element.offsetHeight - 6
           const under = anchor.bottom + 6
-          const roomBelow = innerHeight - under
-          const fitsBelow = roomBelow >= element.offsetHeight
-          const top = below && fitsBelow || above < 8 && fitsBelow ? under : above
+          const fitsBelow = innerHeight - under >= element.offsetHeight
+          const top = fitsBelow && (below || above < 8) ? under : above
           element.style.top = `${Math.max(
             8,
             Math.min(
