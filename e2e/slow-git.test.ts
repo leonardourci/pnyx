@@ -5,11 +5,11 @@ import { test } from 'node:test'
 import { until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
-// The fake git waits this long on every call; project show makes five calls in a row,
-// and the CLI's HTTP agent gives up on a server silent for five seconds.
+// The fake git waits this long on every call, and project show makes five calls in a row.
 const SLOW_GIT_MS = 500
 const TICK_MS = 25
-const MAX_STALL_MS = 200
+// Below one git call: a synchronous call stalls the loop at least SLOW_GIT_MS, while a busy machine's ordinary work stays well under it.
+const MAX_STALL_MS = SLOW_GIT_MS * 0.8
 
 test(
   'a project show waiting on a slow git leaves the server answering other clients',
@@ -81,7 +81,7 @@ test(
       'project show finished before the other client asked',
     )
     assert.ok(
-      answered < SLOW_GIT_MS / 2,
+      answered < MAX_STALL_MS,
       `health took ${answered} ms while git was slow`,
     )
 
