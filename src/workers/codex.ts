@@ -940,6 +940,7 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
+      spawned,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
@@ -950,6 +951,7 @@ export function codexProvider({
         cwd,
         env,
       })
+      spawned?.({ child })
 
       const rpc = connection({ child })
 

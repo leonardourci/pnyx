@@ -155,6 +155,7 @@ export function createRoutineHelper({
   bound = TURN_MS,
   agentFor,
   deadline,
+  spawned,
 }: {
   hydraId: string
   provider({ harness }: { harness: 'claude' | 'codex' }): Provider
@@ -178,6 +179,7 @@ export function createRoutineHelper({
   bound?: number
   agentFor?(): AgentConfig | undefined
   deadline?({ expire }: { expire(): void }): () => void
+  spawned?: Parameters<Provider['open']>[0]['spawned']
 }) {
   let busy = false
   let closed = false
@@ -463,6 +465,7 @@ export function createRoutineHelper({
           context,
           allow: ['pnyx-axi'],
           signal,
+          spawned,
         })
 
         if (signal.aborted) {

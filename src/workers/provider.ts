@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import type { HelperUsageTotal } from '#routine-helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
 
@@ -258,6 +259,7 @@ export interface Provider {
     outputSchema,
     allow,
     context,
+    spawned,
   }: {
     cwd: string
     instructions?: string
@@ -270,5 +272,7 @@ export interface Provider {
     settings: AgentSettings
     env: NodeJS.ProcessEnv
     signal: AbortSignal
+    // Each agent process the session starts, so the server can stop one an earlier server left behind.
+    spawned?({ child }: { child: ChildProcess }): void
   }): Promise<HostedSession>
 }

@@ -12,6 +12,7 @@ import { resolveHome } from '#integrations/firstmate/home.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
 import { hydraIds } from './home-migration.ts'
+import { stopOldHost } from '#workers/children.ts'
 
 function serveFlags({ args }: { args: string[] }) {
   try {
@@ -47,6 +48,7 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
   let server: RunningServer
 
   try {
+    await stopOldHost()
     server = await startServer({
       hydraId,
       port,

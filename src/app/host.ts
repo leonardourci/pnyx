@@ -10,6 +10,7 @@ import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
+import { trackChildren } from '#workers/children.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
@@ -148,6 +149,7 @@ export function createHost({
     'claude-code': claudeProvider({ query }),
     codex: codexProvider({ spawnCodex }),
   }
+  const children = trackChildren({ hydraId })
   const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
   const commandCatalogs = new Map<string, {
     command: string
@@ -1276,6 +1278,7 @@ export function createHost({
           env,
         }) : env,
         signal: controller.signal,
+        spawned: children.spawned,
       })
 
       if (closing || live.get(key) !== entry) {
@@ -2395,6 +2398,7 @@ export function createHost({
   const helperBatchesPresented = new Set<string>()
   const helper = createRoutineHelper({
     hydraId,
+    spawned: children.spawned,
     provider: ({ harness }) => providers[harness === 'claude' ? 'claude-code' : 'codex'],
     environment: ({
       harness,
@@ -3538,6 +3542,7 @@ export function createHost({
                 env: environment({ hydra: true }),
               }) : environment({ hydra: true }),
               signal: controller.signal,
+              spawned: children.spawned,
             })
           }
 
@@ -4076,6 +4081,7 @@ export function createHost({
             steeringWorker: `${id}:session`,
           }),
           signal: controller.signal,
+          spawned: children.spawned,
         })
         session = prepared
 
@@ -4809,6 +4815,7 @@ export function createHost({
     },
 
     recover: async () => {
+      children.sweep()
       upgrades.recover()
       let cutHydraTurn: {
         resumeAttemptId: string

@@ -203,7 +203,14 @@ export function hydraIdentity({ hydraId }: { hydraId: string }): string {
     )
 }
 
-export function processStart({ pid }: { pid: number }): string | null {
+// The old native host recorded its start in the machine's own time zone; everything else uses UTC.
+export function processStart({
+  pid,
+  localTime = false,
+}: {
+  pid: number
+  localTime?: boolean
+}): string | null {
   try {
     return execFileSync(
       '/bin/ps',
@@ -223,7 +230,7 @@ export function processStart({ pid }: { pid: number }): string | null {
         ],
         env: {
           ...process.env,
-          TZ: 'UTC',
+          ...localTime ? {} : { TZ: 'UTC' },
           LC_ALL: 'C',
         },
       },
