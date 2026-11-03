@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { ApplyError } from '#app/apply/schema.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
-import { pnyxAxi, serve } from '#test-harness/served.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -1537,37 +1537,40 @@ test(
 
 test(
   'the CLI prints every problem of a refused patch read from stdin with its path, and exits 2',
-  async t => {
+  async () => {
     lab()
-    await serve({ t })
-    const result = await pnyxAxi({
-      args: [
-        'rule',
-        'apply',
-        '--file',
-        '-',
-        '--hydra',
-        'lab',
-      ],
-      input: JSON.stringify({
-        version: 1,
-        patch: {
-          rules: {
-            build: {
-              candidates: [
-                {
-                  harness: 'claude',
-                  effort: 'ultra',
-                },
-              ],
+    const result = await runForRequest({
+      body: {
+        argv: [
+          'rule',
+          'apply',
+          '--file',
+          '-',
+          '--hydra',
+          'lab',
+        ],
+        cwd: tmpdir(),
+        env: {},
+        stdin: JSON.stringify({
+          version: 1,
+          patch: {
+            rules: {
+              build: {
+                candidates: [
+                  {
+                    harness: 'claude',
+                    effort: 'ultra',
+                  },
+                ],
+              },
             },
+            main: 'claude:gone',
           },
-          main: 'claude:gone',
-        },
-      }),
+        }),
+      },
     })
     assert.equal(
-      result.status,
+      result.exitCode,
       2,
     )
     assert.match(

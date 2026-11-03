@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
-import { pnyxAxi, serve } from '#test-harness/served.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { serviceFile } from './service.ts'
 
 test(
@@ -20,8 +20,10 @@ test(
       PNYX_HOME: process.env.PNYX_HOME,
       HOME: process.env.HOME,
       XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      CODEX_HOME: process.env.CODEX_HOME,
     }
-    // The server runs in this process and looks for the login service under its own HOME.
+    // Commands run in this process and look for the login service under its own HOME.
     Object.assign(
       process.env,
       {
@@ -34,9 +36,16 @@ test(
           root,
           'config',
         ),
+        CLAUDE_CONFIG_DIR: join(
+          root,
+          'claude',
+        ),
+        CODEX_HOME: join(
+          root,
+          'codex',
+        ),
       },
     )
-    await serve({ t })
     t.after(() => {
       for (const [
         name,
@@ -57,25 +66,12 @@ test(
         },
       )
     })
-    const env = {
-      ...process.env,
-      HOME: root,
-      XDG_CONFIG_HOME: join(
-        root,
-        'config',
-      ),
-      CLAUDE_CONFIG_DIR: join(
-        root,
-        'claude',
-      ),
-      CODEX_HOME: join(
-        root,
-        'codex',
-      ),
-    }
-    const run = ({ args }: { args: string[] }) => pnyxAxi({
-      args,
-      env,
+    const run = ({ args }: { args: string[] }) => runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {},
+      },
     })
     const fresh = await run({
       args: [
@@ -92,7 +88,7 @@ test(
       ],
     })
     assert.notEqual(
-      removed.status,
+      removed.exitCode,
       0,
     )
     assert.match(
@@ -100,7 +96,7 @@ test(
       /unknown setup target: service/,
     )
     assert.equal(
-      fresh.status,
+      fresh.exitCode,
       1,
     )
     assert.match(
@@ -131,7 +127,7 @@ test(
       ],
     })
     assert.equal(
-      proposal.status,
+      proposal.exitCode,
       0,
     )
     const token = /^token: (\S+)$/m.exec(proposal.stdout)?.[1]
@@ -146,7 +142,7 @@ test(
       ],
     })
     assert.equal(
-      confirmed.status,
+      confirmed.exitCode,
       0,
     )
     assert.match(
@@ -160,7 +156,7 @@ test(
 
     const { path } = serviceFile({
       userHome: root,
-      configHome: env.XDG_CONFIG_HOME,
+      configHome: process.env.XDG_CONFIG_HOME,
     })
     assert.equal(
       existsSync(path),
