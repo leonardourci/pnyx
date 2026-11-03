@@ -9,6 +9,7 @@ import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { HELPER_INSTRUCTIONS } from '#routine-helper/runner.ts'
+import { taskLease } from '#routine-helper/leases.ts'
 import type { HelperChange } from '#routine-helper/state.ts'
 import { permissionEvent } from '#workers/permission-rules.ts'
 import type { PermissionRequest } from '#workers/model.ts'
@@ -1099,6 +1100,92 @@ test(
           },
         },
       })
+    }
+  },
+)
+
+test(
+  'an owner message to a worker whose task the routine helper holds is accepted and reaches the worker, not refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'held' })
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Held by the helper',
+        '--key',
+        'held',
+        '--folder',
+        folder,
+      ],
+    })
+    await s.owner({
+      args: [
+        'task',
+        'start',
+        'held',
+        '--harness',
+        'claude',
+      ],
+    })
+    const worker = await s.agent({ cwd: folder })
+    await until({
+      what: 'the worker to finish its opening turn',
+      check: () => s.task({ key: 'held' }).sessionActivity === 'finished',
+    })
+    // A running helper batch: granted the task, and holding the lease it takes on each task it was granted.
+    const task = s.task({ key: 'held' }).id
+    withWriter({
+      hydraId: s.hydraId,
+      fn: ({ writer }) => {
+        const decision = hydraEvent({
+          state: writer.state,
+          cardId: HYDRA_CARD,
+          meta: {
+            at: new Date().toISOString(),
+            actor: 'pnyx',
+          },
+          change: {
+            type: 'hydra.helper-started',
+            data: {
+              id: 'batch-held',
+              tasks: [task],
+              prompt: '',
+              seqs: [],
+            },
+          },
+        })
+        assert.ok('event' in decision)
+        writer.append({ event: decision.event })
+      },
+    })
+    const release = taskLease({
+      hydraId: s.hydraId,
+      task,
+      actor: 'helper:batch-held',
+    })
+
+    try {
+      await s.owner({
+        args: [
+          'reply',
+          'held',
+          '--text',
+          'Owner words while the helper works',
+        ],
+      })
+      await until({
+        what: 'the worker to receive the owner words',
+        check: () => s.received({ cwd: folder }).some(text => text.includes('Owner words while the helper works')),
+      })
+      assert.equal(
+        worker.received.filter(text => text.includes('Owner words while the helper works')).length,
+        1,
+      )
+    } finally {
+      release()
     }
   },
 )
