@@ -7,7 +7,7 @@ import { LABEL_COLORS } from '#tasks/model.ts'
 import { hydraDir } from './home-migration.ts'
 import { requireHydra, loadTail, heldHydra, type Held } from './store.ts'
 import { readLog } from './event-log.ts'
-import { statSync } from 'node:fs'
+import { existsSync, statSync } from 'node:fs'
 import { privateDir, acquireLock, writeDurably, logPath } from '#store/storage.ts'
 import { migrateColumns } from '#tasks/column-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
@@ -242,7 +242,7 @@ function heldWrite<T>({
   const path = logPath({ dir: live.dir })
 
   // Another process (a CLI that ran while the server was down) appended; take its lines first.
-  if (statSync(path).size !== live.offset) {
+  if ((existsSync(path) ? statSync(path).size : 0) !== live.offset) {
     // A log that no longer starts where it did, as after repair, is read again from its start.
     const tail = readLog({
       dir: live.dir,
