@@ -168,11 +168,20 @@ test(
         },
       )
     })
-    fs.writeFileSync(
-      path,
-      'second',
-    )
-    await until({ check: () => seen.size === SUBSCRIBERS })
+    // fs.watchFile reads its first stat asynchronously, so a write before that reading is its baseline, not a change;
+    // writing again until every subscriber has seen one keeps the test from racing that first reading.
+    await until({
+      check: () => {
+        if (seen.size < SUBSCRIBERS) {
+          fs.writeFileSync(
+            path,
+            'second',
+          )
+        }
+
+        return seen.size === SUBSCRIBERS
+      },
+    })
     assert.deepEqual(
       new Set(seen.values()),
       new Set(['second']),
