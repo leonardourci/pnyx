@@ -281,8 +281,11 @@ export function resizeViewPatch({
   const columns = hydraConfig({ state }).columns.map(column => column.id)
   const defaults = record({ value: patch.defaultColumnWidths })
 
-  if ((patch.defaultColumnWidths !== undefined && !defaults)
-    || (patch.columnWidths !== undefined && !record({ value: patch.columnWidths }))) {
+  const malformed = (patch.defaultColumnWidths !== undefined && !defaults)
+    || (patch.columnWidths !== undefined && !record({ value: patch.columnWidths }))
+
+  // A malformed width map passes through unchanged so view validation reports it.
+  if (malformed) {
     return patch
   }
 
@@ -293,27 +296,30 @@ export function resizeViewPatch({
       defaults?.[id] ?? patch.defaultColumnWidth ?? null,
     ]))
 
-  return {
-    ...patch,
-    ...(patch.defaultHydraWidth !== undefined ? {
-      hydraWidth: patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth,
-    } : {}),
-    ...(patch.defaultColumnWidth !== undefined ? {
-      defaultColumnWidths: {
-        ...Object.fromEntries(columns.map(id => [
-          id,
-          null,
-        ])),
-        ...defaults,
-      },
-    } : {}),
-    ...(Object.keys(widths).length ? {
-      columnWidths: {
-        ...widths,
-        ...record({ value: patch.columnWidths }),
-      },
-    } : {}),
+  const resized = { ...patch }
+
+  if (patch.defaultHydraWidth !== undefined) {
+    resized.hydraWidth = patch.hydraWidth === undefined ? patch.defaultHydraWidth : patch.hydraWidth
   }
+
+  if (patch.defaultColumnWidth !== undefined) {
+    resized.defaultColumnWidths = {
+      ...Object.fromEntries(columns.map(id => [
+        id,
+        null,
+      ])),
+      ...defaults,
+    }
+  }
+
+  if (Object.keys(widths).length) {
+    resized.columnWidths = {
+      ...widths,
+      ...record({ value: patch.columnWidths }),
+    }
+  }
+
+  return resized
 }
 
 const invalid = ({ detail }: { detail: string }): never => {
