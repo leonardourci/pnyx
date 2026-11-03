@@ -37,7 +37,11 @@ export function PickerField({
         disabled={disabled || !!reason}
         onChange={onChange}
         {...look}
-        title={reason ?? label}
+        // Hovering names the setting and its value, since a table of these may have no heading.
+        title={reason ?? [
+          label,
+          options.find(option => option.value === value)?.label ?? value,
+        ].filter(Boolean).join(': ')}
       />
       {reason && <small>{reason}</small>}
     </div>
