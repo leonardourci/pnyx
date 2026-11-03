@@ -6,6 +6,7 @@ import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { attachedImages } from '#hydra/images.ts'
+import { decideReply } from '#workers/reply-rules.ts'
 import { acknowledgeSteering, enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
@@ -4923,6 +4924,47 @@ export function createHost({
           console.error(`pnyx-axi serve: ${card.id} inbox could not resume: ${(error as Error).message}`)
         }
       }
+
+      // A direct message handed to an agent the restart stopped may or may not have arrived; Pnyx never sends it again by itself.
+      note({
+        fn: ({ writer }) => {
+          for (const card of Object.values(writer.state.cards)) {
+            if (card.agent?.host !== 'pnyx') {
+              continue
+            }
+
+            const held = new Set([
+              ...(card.steering ?? []).flatMap(message => message.reply ? [message.reply] : []),
+              ...(card.compaction?.inputs ?? []).map(input => input.id),
+            ])
+
+            for (const reply of card.replies ?? []) {
+              if (reply.state !== 'queued' || reply.route !== 'pnyx' || held.has(reply.id)) {
+                continue
+              }
+
+              apply({
+                writer,
+                decision: decideReply({
+                  state: writer.state,
+                  ref: card.id,
+                  data: {
+                    reply: reply.id,
+                    state: 'delivery_unknown',
+                    route: 'pnyx',
+                    detail: 'Pnyx restarted before the agent confirmed this message; send it again if it did not arrive',
+                  },
+                  meta: {
+                    at: at(),
+                    actor: 'pnyx',
+                    id: `unconfirmed:${reply.id}`,
+                  },
+                }),
+              })
+            }
+          }
+        },
+      })
 
       await helper.recover()
 
