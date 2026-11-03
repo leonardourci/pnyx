@@ -19,7 +19,8 @@ export interface ThreadEntry {
   id: string
   hidden?: boolean
   role: string
-  kind: 'message' | 'tool' | 'thinking'
+  // divider: where an operation that stopped Hydra ended, drawn as a line across the chat.
+  kind: 'message' | 'tool' | 'thinking' | 'divider'
   text: string
   at?: string
   session?: string

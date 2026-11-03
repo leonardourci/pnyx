@@ -305,13 +305,15 @@ export function HydraChat({
   )
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
-  // Messages a running upgrade holds wait in the same queue as compaction's.
-  const upgradeHeld = upgrades.flatMap(operation => operation.held ?? [])
+  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
+  const stopped = state.hydraOperation
+  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
+  const waiting = stopped ? messages.filter(m => (state.eventIds[m.id] ?? 0) > stopped.seq
+    && !(`${m.id}:hosted` in state.eventIds)) : []
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
-    ...upgradeHeld.map(message => message.id),
+    ...waiting.map(message => message.id),
   ])
-  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const compactOperations = card?.compaction?.operations ?? []
   // Only the newest result shows; a new attempt replaces the last one.
   const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
@@ -321,7 +323,7 @@ export function HydraChat({
     ) => a.queuedAt.localeCompare(b.queuedAt))
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
-  const holding = Boolean(compacting) || upgrading
+  const holding = Boolean(compacting) || upgrading || Boolean(stopped)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
@@ -347,8 +349,11 @@ export function HydraChat({
       route: 'hydra' as const,
       at: operation.queuedAt,
     })),
-    ...upgradeHeld.filter(message => ownerActor({ actor: message.actor })).map(message => ({
-      ...message,
+    ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
+      id: message.id,
+      text: message.text,
+      actor: message.actor,
+      at: message.at,
       route: 'hydra' as const,
     })),
     ...pending.filter(item => holding && !held.has(item.id)).map(item => ({

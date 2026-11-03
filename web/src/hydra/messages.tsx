@@ -899,7 +899,16 @@ export function Messages({
           }
         }}
       >
-        {entries.map(entry => (
+        {entries.map(entry => entry.kind === 'divider' ? (
+          <div
+            key={entry.renderKey ?? entry.id}
+            className="chat-divider"
+            role="separator"
+            aria-label={entry.text}
+          >
+            <span>{entry.text}</span>
+          </div>
+        ) : (
           <Fragment key={entry.renderKey ?? entry.id}>
             <article
               data-entry-id={entry.id}
