@@ -1936,7 +1936,13 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-remove { min-height: 24px; gap: 4px; color: var(--color-muted); font-size: var(--text-meta); }
 /* The question covers its remove button, growing leftwards over the row so nothing else moves. */
 .dispatch-remove-slot { position: relative; display: flex; justify-content: flex-end; }
-.dispatch-confirm { position: absolute; top: 50%; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; transform: translateY(-50%); background: var(--color-surface); box-shadow: -14px 0 12px -2px var(--color-surface); font-size: var(--text-meta); white-space: nowrap; }
+.dispatch-confirm { position: absolute; top: 50%; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; visibility: hidden; opacity: 0; transform: translate(8px, -50%); transition: opacity 180ms ease, transform 180ms ease, visibility 0s 180ms; background: var(--color-surface); box-shadow: -14px 0 12px -2px var(--color-surface); font-size: var(--text-meta); white-space: nowrap; }
+.dispatch-confirm[data-open] { visibility: visible; opacity: 1; transform: translate(0, -50%); transition: opacity 180ms ease, transform 180ms ease; }
+.dispatch-remove-slot:has(> .dispatch-confirm[data-open]) > .dispatch-remove { opacity: 0; }
+.dispatch-remove { transition: opacity 180ms ease; }
+@media (prefers-reduced-motion: reduce) {
+  .dispatch-confirm, .dispatch-confirm[data-open], .dispatch-remove { transition: none; }
+}
 .dispatch-rule-head > .dispatch-remove-slot { grid-row: 1; grid-column: 2; }
 .dispatch-confirm .button { min-height: 26px; padding: 2px 10px; font-size: var(--text-meta); }
 .dispatch-candidate > .dispatch-remove-slot { grid-column: -2; justify-self: end; }

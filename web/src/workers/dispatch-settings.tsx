@@ -490,6 +490,16 @@ function ConfirmRemove({
     setOpen,
   ] = useState(false)
   const trigger = useRef<HTMLButtonElement>(null)
+  const keep = useRef<HTMLButtonElement>(null)
+
+  useEffect(
+    () => {
+      if (open) {
+        keep.current?.focus()
+      }
+    },
+    [open],
+  )
 
   const cancel = () => {
     setOpen(false); trigger.current?.focus()
@@ -514,20 +524,24 @@ function ConfirmRemove({
         onClick={() => setOpen(true)}
       ><Icon name="close" size={14} />
       </Button>
-      {open && (
-        <div className="dispatch-confirm" role="group" aria-label={label}>
-          <span>{question}</span>
-          {/* Focus starts on the safe choice, so Enter right after opening keeps everything. */}
-          <Button autoFocus onClick={cancel}>Cancel</Button>
-          <Button
-            variant="primary"
-            onClick={() => {
-              setOpen(false); remove()
-            }}
-          >Remove
-          </Button>
-        </div>
-      )}
+      {/* Always mounted so it can fade in and out; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
+      <div
+        className="dispatch-confirm"
+        role="group"
+        aria-label={label}
+        data-open={open || undefined}
+        aria-hidden={!open}
+      >
+        <span>{question}</span>
+        <Button ref={keep} onClick={cancel}>Cancel</Button>
+        <Button
+          variant="primary"
+          onClick={() => {
+            setOpen(false); remove()
+          }}
+        >Remove
+        </Button>
+      </div>
     </div>
   )
 }
