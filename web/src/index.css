@@ -1903,19 +1903,20 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-how li strong { display: flex; align-items: center; gap: 5px; margin-bottom: 2px; color: var(--color-ink); font-size: var(--text-ui); }
 .dispatch-how > .dispatch-desc { margin: 8px 0 0; }
 .dispatch-rules, .dispatch-json { display: flex; flex-direction: column; gap: 8px; }
-.dispatch-table { display: grid; grid-template-columns: minmax(130px, 180px) max-content repeat(3, minmax(var(--settings-column-gap), 1fr) max-content) minmax(var(--settings-column-gap), 1fr) max-content; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
+.dispatch-table { display: grid; --dispatch-space: minmax(calc(var(--settings-column-gap) / 2), 1fr); grid-template-columns: minmax(130px, 180px) repeat(4, var(--dispatch-space) max-content) var(--dispatch-space) max-content; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
 .dispatch-head, .dispatch-rule, .dispatch-hydra-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .dispatch-head { padding: 6px 0; border-bottom: 1px solid var(--color-line); border-radius: 8px 8px 0 0; background: var(--color-raised); color: var(--color-muted); font-size: var(--text-meta); font-weight: 600; }
 .dispatch-head > span { display: inline-flex; align-items: center; gap: 4px; padding: 0 5px; white-space: nowrap; }
 /* The first column's text sits 20px in, like the rows of every settings box. */
 .dispatch-head > span:first-child { padding-left: 20px; }
-/* The 1fr tracks between columns hold the free width, so every pair of columns sits the same distance apart. */
-.dispatch-head > span:nth-child(n+3) { grid-column: calc(var(--column) * 2); }
+/* The 1fr tracks around the columns after the rule hold the free width, so those columns sit evenly spaced. */
+.dispatch-head > span:nth-child(n+2) { grid-column: calc(var(--column) * 2 + 1); }
 /* A heading wider than its column spills into the space after it instead of widening the column. */
 .dispatch-head > span:nth-child(n+2) { width: 0; }
+.dispatch-head > span:nth-child(2) { --column: 1; }
 .dispatch-head > span:nth-child(3) { --column: 2; }
 .dispatch-head > span:nth-child(4) { --column: 3; }
-.dispatch-head > span:nth-child(5) { --column: 4; }
+.dispatch-head > span:nth-child(5) { --column: 4; justify-self: center; justify-content: center; padding: 0; }
 .dispatch-head > span:nth-child(6) { --column: 5; }
 .dispatch-rule + .dispatch-rule, .dispatch-hydra-row { border-top: 2px solid var(--color-line); }
 .dispatch-rule-cell { grid-column: 1; display: flex; flex-direction: column; gap: 4px; min-width: 0; padding: 8px 8px 8px 14px; border-right: 1px solid var(--color-subtle); background: var(--color-background); }
@@ -1930,22 +1931,21 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-rule-input { font-family: var(--font-mono); font-weight: 600; }
 .dispatch-when { min-height: 2.6em; resize: none; field-sizing: content; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-candidate, .dispatch-add { grid-column: 2 / -1; display: grid; grid-template-columns: subgrid; align-items: center; padding: 8px 0; border-bottom: 1px solid var(--color-subtle); }
-.dispatch-candidate > .hydra-agent-pickers { grid-column: 1 / span 7; display: grid; grid-template-columns: subgrid; column-gap: normal; }
+.dispatch-candidate > .hydra-agent-pickers { grid-column: 2 / span 7; display: grid; grid-template-columns: subgrid; column-gap: normal; }
 .dispatch-candidate > .hydra-agent-pickers > :nth-child(2 of .picker-field) { grid-column: 3; }
 .dispatch-candidate > .hydra-agent-pickers > :nth-child(3 of .picker-field) { grid-column: 5; }
 .dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { grid-column: 7; }
 .dispatch-candidate > .hydra-agent-pickers > [role=alert] { grid-column: 1 / -1; }
 .dispatch-candidate .select-menu { top: calc(100% + 4px); bottom: auto; }
 .dispatch-add { align-self: start; border-bottom: 0; }
-.dispatch-add > .account-model-picker { grid-column: 1 / -1; justify-self: start; }
+.dispatch-add > .account-model-picker { grid-column: 2 / -1; justify-self: start; }
 .dispatch-add > .account-model-picker > .button { min-height: 24px; gap: 4px; font-size: var(--text-meta); }
 .dispatch-remove, .dispatch-remove-rule { min-height: 24px; gap: 4px; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-remove-rule { align-self: flex-start; padding: 0 4px; }
 .dispatch-candidate > .dispatch-remove { grid-column: -2; justify-self: end; }
-.dispatch-candidate :is(.account-model-picker, .account-model-picker > .button) { width: 100%; }
-.dispatch-candidate :is(.select, .account-model-picker) > .button { justify-content: flex-start; }
-.dispatch-candidate :is(.select, .account-model-picker) > .button > svg:last-child { margin-left: auto; }
-.dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: start; }
+/* Each cell starts at its column's left edge; Fast sits in the middle of its column. */
+.dispatch-candidate > .hydra-agent-pickers > * { justify-self: start; }
+.dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: center; }
 .fast-unavailable { display: inline-flex; align-items: center; justify-content: center; width: var(--agent-control-h); min-height: var(--agent-control-h); color: var(--color-muted); opacity: .6; cursor: default; }
 .dispatch-hydra-row { align-items: center; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-hydra-row > :first-child { padding: 8px 8px 8px 14px; }
