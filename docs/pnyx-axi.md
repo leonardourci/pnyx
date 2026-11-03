@@ -440,6 +440,8 @@ The server runs every agent Pnyx starts as its own child process, and `stop`, `r
 
 Use `pnyx-axi restart` or `/restart` in Hydra chat to restart the server without upgrading or calling an agent. It starts a stopped server, stops a stuck one only after verifying its process identity, and confirms the replacement is ready.
 
+While a restart, an upgrade or Hydra's own compaction stops Hydra, everything sent to it (owner messages, worker replies, helper results and wakes) waits in its one queue and shows in the queue box. When the stop ends, the chat shows one divider (Restarted, Upgraded, Compacted, or the failure), and Hydra's next turn is one recap of what waited, with the owner's messages in full; back-to-back stops recap once, after the last. A clean stop that nothing waited on starts no turn.
+
 ## Discovery and bounded receipts
 
 Run `pnyx-axi` for live state, `--help` for command groups, and a command with `--help` for its syntax. Output hints describe relevant next steps; they grant no authority. Routine output stays compact. `task show` shows the newest five owner asks and up to five questions, unresolved first, with total and open counts; `task show --full` explicitly retrieves the complete record.
