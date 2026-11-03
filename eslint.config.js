@@ -14,6 +14,7 @@ export default tseslint.config(
     ignores: [
       'dist/**',
       'node_modules/**',
+      '.lavish/**',
     ],
   },
   js.configs.recommended,
