@@ -56,17 +56,6 @@ export function upgradeQueue({
     'restarting',
   ].includes(operation.state))
 
-  const save = ({
-    operation,
-    eventId,
-  }: {
-    operation: UpgradeOperation
-    eventId?: string
-  }) => record({
-    operation,
-    eventId,
-  })
-
   const monitorRestart = async ({ id }: { id: string }) => {
     const deadline = Date.now() + RESTART_WAIT_MS
     let failure: string | undefined
@@ -101,7 +90,7 @@ export function upgradeQueue({
     const operation = state().upgrades?.find(item => item.id === id && item.state === 'restarting')
 
     if (operation) {
-      save({
+      record({
         operation: {
           ...operation,
           state: 'failed',
@@ -138,7 +127,7 @@ export function upgradeQueue({
       state: 'running',
       startedAt: at(),
     }
-    save({ operation: running })
+    record({ operation: running })
     stopping = new AbortController()
     let result: Awaited<ReturnType<typeof runUpgrade>>
 
@@ -146,7 +135,7 @@ export function upgradeQueue({
       result = await runUpgrade({
         root: root!,
         signal: stopping.signal,
-        progress: ({ steps }) => save({
+        progress: ({ steps }) => record({
           operation: {
             ...running,
             steps: structuredClone(steps),
@@ -163,7 +152,7 @@ export function upgradeQueue({
     } = result
 
     if (outcome !== 'upgraded') {
-      save({
+      record({
         operation: {
           ...running,
           ...rest,
@@ -175,7 +164,7 @@ export function upgradeQueue({
       return
     }
 
-    save({
+    record({
       operation: {
         ...running,
         ...rest,
@@ -199,7 +188,7 @@ export function upgradeQueue({
       try {
         await run({ queued })
       } catch (error) {
-        save({
+        record({
           operation: {
             ...queued,
             state: 'failed',
