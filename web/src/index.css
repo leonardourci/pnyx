@@ -1905,8 +1905,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-rules, .dispatch-json { display: flex; flex-direction: column; gap: 8px; }
 /* One grid for every rule's candidates: account, effort, permissions and Fast evenly spaced, then the remove button. */
 .dispatch-table { --dispatch-space: minmax(calc(var(--settings-column-gap) / 2), 1fr); display: grid; grid-template-columns: repeat(4, max-content var(--dispatch-space)) max-content; padding: 0 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
-.dispatch-rule { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
-.dispatch-rule { padding-bottom: 6px; }
+.dispatch-rule { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; padding-bottom: 6px; }
 .dispatch-rule + .dispatch-rule { border-top: 1px solid var(--color-line); }
 /* The rule's remove button ends its name line; the description and any problems take the full width below. */
 .dispatch-rule-head { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding-top: 12px; }
@@ -1937,7 +1936,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 /* The question covers its remove button, growing leftwards over the row so nothing else moves. */
 .dispatch-remove-slot { position: relative; display: flex; justify-content: flex-end; }
 /* Closed, the question is clipped down to the x's own footprint; opening unclips it leftwards, so it grows out of the x. */
-.dispatch-confirm { --closed: inset(-4px 0 -4px calc(100% - var(--agent-control-h))); position: absolute; top: 50%; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; visibility: hidden; clip-path: var(--closed); transform: translateY(-50%); transition: clip-path 180ms ease-out, visibility 0s 180ms; background: var(--color-surface); box-shadow: -14px 0 12px -2px var(--color-surface); font-size: var(--text-meta); white-space: nowrap; }
+.dispatch-confirm { position: absolute; top: 50%; right: 0; z-index: 2; display: flex; align-items: center; gap: 6px; padding: 2px 0 2px 10px; visibility: hidden; clip-path: inset(-4px 0 -4px calc(100% - var(--agent-control-h))); transform: translateY(-50%); transition: clip-path 180ms ease-out, visibility 0s 180ms; background: var(--color-surface); box-shadow: -14px 0 12px -2px var(--color-surface); font-size: var(--text-meta); white-space: nowrap; }
 .dispatch-confirm[data-open] { visibility: visible; clip-path: inset(-4px 0 -4px -24px); transition: clip-path 180ms ease-out; }
 /* The x hides at once when the question opens and comes back only once it has folded away. */
 .dispatch-remove { transition: opacity 0s 180ms; }
