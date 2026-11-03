@@ -31,15 +31,22 @@ export function runProcess({
       status,
       error,
     }: Pick<ProcessResult, 'status' | 'error'>) => {
-      if (!settled) {
-        settled = true
-        resolve({
-          status,
-          stdout,
-          stderr,
-          ...(error ? { error } : {}),
-        })
+      if (settled) {
+        return
       }
+
+      settled = true
+      const result: ProcessResult = {
+        status,
+        stdout,
+        stderr,
+      }
+
+      if (error) {
+        result.error = error
+      }
+
+      resolve(result)
     }
 
     const child = spawn(

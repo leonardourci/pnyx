@@ -17,7 +17,11 @@ export type PageAnswer = {
 const handlerOf = ({ name }: { name: string }) => {
   if (name === 'inbox-follow') {
     // eslint-disable-next-line pnyx/object-params -- the same shape as the CLI commands beside it.
-    return (args: string[]) => followUpSteering({ hydraId: args[0]! }).then(() => ({}))
+    return async (args: string[]) => {
+      await followUpSteering({ hydraId: args[0]! })
+
+      return {}
+    }
   }
 
   if (name === 'agent' || name === 'reply') {
