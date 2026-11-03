@@ -7,7 +7,6 @@ import { test } from 'node:test'
 import type { Card } from '#tasks/model.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { steeringMessages } from '#workers/inbox-notice.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -143,13 +142,29 @@ test(
     })
     await finished({ turns: 3 })
     // Each instruction reaches the worker once, as its words; the restart sends neither again.
+    const [
+      firstInstruction,
+      secondInstruction,
+    ] = s.task({ key: 'notes' }).steering!
+    const asDelivered = ({
+      id,
+      text,
+    }: {
+      id: string
+      text: string
+    }) => `New instructions for task ${card.id}, in order (Pnyx inbox IDs ["${id}"]):\n\n${text}\n\nPnyx marks them read once you receive this; \`pnyx-axi task inbox read ${card.id} --hydra ${s.hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`
     assert.deepEqual(
       s.received({ cwd: folder }).slice(1),
-      s.task({ key: 'notes' }).steering!.map(message => steeringMessages({
-        task: card.id,
-        hydraId: s.hydraId,
-        messages: [message],
-      })),
+      [
+        asDelivered({
+          id: firstInstruction!.id,
+          text: commented,
+        }),
+        asDelivered({
+          id: secondInstruction!.id,
+          text: 'Ship it.',
+        }),
+      ],
     )
     const resumed = await s.agent({ cwd: folder })
     assert.notEqual(
