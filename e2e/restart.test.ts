@@ -61,10 +61,12 @@ async function isolated({ t }: { t: TestContext }) {
     args,
     actor = 'cli',
     input = '',
+    cwd,
   }: {
     args: string[]
     actor?: string
     input?: string
+    cwd?: string
   }) => {
     const running = promisify(execFile)(
       process.execPath,
@@ -73,6 +75,7 @@ async function isolated({ t }: { t: TestContext }) {
         ...args,
       ],
       {
+        cwd,
         env: {
           ...env,
           PNYX_ACTOR: actor,
@@ -326,6 +329,45 @@ test(
 
         return true
       },
+    )
+  },
+)
+
+test(
+  'a relative project path is the caller\'s folder, not the server\'s',
+  async t => {
+    const {
+      root,
+      run,
+      serverPath,
+    } = await isolated({ t })
+    await run({ args: ['restart'] })
+    await until({
+      check: () => existsSync(serverPath),
+      timeout: START_TIMEOUT_MS,
+    })
+    const caller = join(
+      root,
+      'caller',
+    )
+    mkdirSync(caller)
+    await run({
+      args: [
+        'project',
+        'add',
+        '.',
+      ],
+      cwd: caller,
+    })
+    const listed = await run({
+      args: [
+        'project',
+        'list',
+      ],
+    })
+    assert.match(
+      listed.stdout,
+      new RegExp(`${caller}\\b`),
     )
   },
 )
