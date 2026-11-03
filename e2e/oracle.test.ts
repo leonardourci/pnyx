@@ -44,7 +44,7 @@ const createTask = ({
 })
 
 test(
-  'a query waits for the index when it is missing or behind the log, and a change catches it up with no query',
+  'Oracle serves fresh results, catches up after changes and reports a failed catch-up',
   async t => {
     const s = await pnyx.scenario()
     await createTask({
@@ -98,27 +98,6 @@ test(
 
         return index !== null && index.builtThrough >= created
       },
-    })
-  },
-)
-
-test(
-  'a query whose index cannot catch up gets an error instead of stale results',
-  async t => {
-    const s = await pnyx.scenario()
-    await createTask({
-      s,
-      title: 'Deploy the billing service',
-      key: 'billing',
-    })
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    t.after(() => page.close())
-    await ask({
-      page,
-      words: 'billing',
     })
     chmodSync(
       searchPath({ hydraId: s.hydraId }),

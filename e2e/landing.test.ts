@@ -1170,7 +1170,7 @@ test(
 )
 
 test(
-  'refresh lock churn cannot bypass its deadline',
+  'project refresh times out through lock churn, then waits through EMFILE and advances after release',
   async t => {
     const s = await pnyx.scenario()
     const {
@@ -1269,18 +1269,7 @@ test(
       t.mock.restoreAll()
       syncBuiltinESMExports()
     }
-  },
-)
 
-test(
-  'project refresh waits for its owner under EMFILE and advances after release',
-  async t => {
-    const s = await pnyx.scenario()
-    const {
-      path,
-      target,
-      before,
-    } = await prepare({ s })
     // Fault injection needs a free native slot, independent of earlier Hydras.
     await pnyx.restart({
       whileStopped: async () => {
