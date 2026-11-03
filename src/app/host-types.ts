@@ -178,6 +178,8 @@ export interface Live {
   session?: HostedSession
   activity: string
   steering: Set<string>
+  // Steering inputs sent with their words, by input id; the agent taking one marks those messages read.
+  delivered: Map<string, string[]>
   task: string
   generation?: number
   replaced?: boolean

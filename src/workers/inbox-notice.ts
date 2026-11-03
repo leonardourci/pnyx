@@ -22,6 +22,26 @@ export function notificationReceipt({ result }: NotificationResult): ReplyState 
   }
 }
 
+// The owner's instructions themselves, first time they reach the worker; the inbox keeps them as the record.
+export function steeringMessages({
+  task,
+  hydraId,
+  messages,
+}: {
+  task: string
+  hydraId: string
+  messages: {
+    id: string
+    text: string
+  }[]
+}): string {
+  return [
+    `New instructions for task ${task}, in order (Pnyx inbox IDs ${JSON.stringify(messages.map(message => message.id))}):`,
+    messages.map(message => message.text).join('\n\n---\n\n'),
+    `Pnyx marks them read once you receive this; \`pnyx-axi task inbox read ${task} --hydra ${hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`,
+  ].join('\n\n')
+}
+
 export function steeringNotice({
   task,
   hydraId,

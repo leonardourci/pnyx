@@ -6,7 +6,7 @@ import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { attachedImages } from '#hydra/images.ts'
-import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
+import { acknowledgeSteering, enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
@@ -15,7 +15,7 @@ import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
-import { steeringNotice } from '#workers/inbox-notice.ts'
+import { steeringMessages, steeringNotice } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
 import { helperAgent, helperBatch, helperEvent, helperPermission, helperReason } from '#routine-helper/route.ts'
@@ -1165,6 +1165,48 @@ export function createHost({
     })
   }
 
+  // The worker took instructions that carried their words, so they count as read for it, oldest first.
+  const markRead = ({
+    card: ref,
+    ids,
+  }: {
+    card: string
+    ids: string[]
+  }) => note({
+    fn: ({ writer }) => {
+      const card = writer.state.cards[ref]
+      const claim = card && steeringClaim({ card })
+
+      if (!card || !claim) {
+        return
+      }
+
+      const worker = `worker:${card.id}`
+
+      for (const message of pendingSteering({ card }).filter(message => ids.includes(message.id))) {
+        acknowledgeSteering({
+          writer,
+          ref: card.id,
+          id: message.id,
+          ack: {
+            at: at(),
+            actor: worker,
+            claim,
+            outcome: 'read',
+          },
+          meta: {
+            actor: worker,
+            at: at(),
+          },
+          worker: steeringWorkerIdentity({
+            state: writer.state,
+            card,
+          }),
+        })
+      }
+    },
+  })
+
   const ringSteering = ({
     card,
     entry,
@@ -1204,6 +1246,7 @@ export function createHost({
       entry.steering.add(id)
     }
 
+    // Messages never tried before go in as their words; a repeat only names their IDs.
     entry.input.push({
       id: `steering:${keyForSteering({
         card,
@@ -1211,6 +1254,7 @@ export function createHost({
       })}`,
       text: '',
       steeringIds: ids,
+      inline: messages.every(message => !message.attempts.length),
     })
     write({
       fn: ({ writer }) => {
@@ -1423,10 +1467,22 @@ export function createHost({
               continue
             }
 
-            item.text = inboxNotice({
-              card: current,
-              ids,
-            })
+            if (item.inline && item.id) {
+              item.text = steeringMessages({
+                task: current.id,
+                hydraId,
+                messages: (current.steering ?? []).filter(message => ids.includes(message.id)),
+              })
+              entry.delivered.set(
+                item.id,
+                ids,
+              )
+            } else {
+              item.text = inboxNotice({
+                card: current,
+                ids,
+              })
+            }
           }
 
           if (!turnRunning) {
@@ -1528,6 +1584,17 @@ export function createHost({
         }),
       })) {
         const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
+
+        if (typeof activity === 'object' && activity.type === 'input' && activity.receipt.phase === 'confirmed'
+          && entry.delivered.has(activity.receipt.inputId)) {
+          const ids = entry.delivered.get(activity.receipt.inputId)!
+          entry.delivered.delete(activity.receipt.inputId)
+          markRead({
+            card: card.id,
+            ids,
+          })
+          continue
+        }
 
         if (typeof activity === 'object' && activity.type === 'answer') {
           write({
@@ -2059,6 +2126,7 @@ export function createHost({
       replies: liveReplies(),
       activity: 'finished',
       steering: new Set(),
+      delivered: new Map(),
       task: card.id,
       generation: card.steeringGeneration,
       session,
