@@ -8,7 +8,8 @@ import { isAbsolute } from 'node:path'
 import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
-import { catalogOffers, providerName } from '#workers/model-catalog.ts'
+import { catalogOffers } from '#workers/model-catalog.ts'
+import { providerIdOf } from '#workers/providers.ts'
 import { modelIds } from '#workers/provider.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
@@ -166,7 +167,7 @@ export async function hostRequestUnlocked({
       // A setting changed after the start would reach only the next turn.
       const settings: Record<string, string> = {
         ...chosenSettings({ choice: dispatch }),
-        provider: providerName({ harness: dispatch.provider }),
+        provider: providerIdOf({ harness: dispatch.provider }),
       }
       const inherited = hydraMode({ state: current })
 

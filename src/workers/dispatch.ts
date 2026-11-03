@@ -1,4 +1,5 @@
 import { execFile, execFileSync } from 'node:child_process'
+import { providerIdOf } from './providers.ts'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
@@ -708,7 +709,7 @@ export function hostedOverride({
   override?: Override
 }): void {
   const controls = harnessControls({
-    provider: harness === 'codex' ? 'codex' : 'claude-code',
+    provider: providerIdOf({ harness }),
     hosted: true,
   })
 

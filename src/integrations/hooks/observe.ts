@@ -6,16 +6,14 @@ import { type Attention } from '#workers/model.ts'
 import { terminalFacts } from '#workers/reply-route.ts'
 import { hookSettings } from './settings.ts'
 
-export const HARNESSES = [
-  'claude',
-  'codex',
-] as const
+import type { Harness } from '#workers/providers.ts'
+
+export { HARNESSES, type Harness } from '#workers/providers.ts'
 // The events whose hook looks for the session's terminal; any other carries at most its Paseo terminal.
 export const TERMINAL_EVENTS = [
   'SessionStart',
   'UserPromptSubmit',
 ]
-export type Harness = (typeof HARNESSES)[number]
 
 export interface HookEnvelope {
   v: 1

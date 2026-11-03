@@ -1,4 +1,5 @@
 import { FILE_BLOCK } from './attachments.ts'
+import { skillPrefix } from '#workers/providers.ts'
 import { decodeValue, REFERENCE } from './mentions.ts'
 import { readSkillReference } from './transcripts-skill-reference.ts'
 import { BUILT_IN_SKILLS } from './built-in-skills.ts'
@@ -47,7 +48,7 @@ export function resolveSkillReferences({
         return `Read and follow the skill ${JSON.stringify(skill.name)} at ${JSON.stringify(skill.file)}.`
       }
 
-      return skill.command ?? `${provider === 'codex' ? '$' : '/'}${skill.name}`
+      return skill.command ?? `${skillPrefix({ provider })}${skill.name}`
     },
   )
 }

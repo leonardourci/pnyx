@@ -1,4 +1,5 @@
 import type { HydraState } from '#app/model.ts'
+import { PROVIDERS } from '#workers/providers.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
@@ -262,7 +263,7 @@ export function pnyxSentence({
         case 'start': return [
           'Started a worker on ',
           target,
-          `${flags.harness ? ` with ${flags.harness === 'codex' ? 'Codex' : 'Claude Code'}` : ''}${because}`,
+          `${flags.harness ? ` with ${PROVIDERS[flags.harness === 'codex' ? 'codex' : 'claude'].name}` : ''}${because}`,
         ]
         case 'continue': return flags.check !== undefined ? [
           'Checked whether the agent of ',

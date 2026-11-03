@@ -1,4 +1,5 @@
 import type { RepliedEvent } from '#tasks/model.ts'
+import type { Harness } from './providers.ts'
 import type { EventBase } from '#store/events.ts'
 import type { Outcome } from '#tasks/delivery/model.ts'
 import type { SourceRef } from '#app/model.ts'
@@ -201,11 +202,6 @@ export type PermissionEvent = EventBase & {
   data: PermissionRequest
 }
 
-export const HARNESS_NAMES = [
-  'claude',
-  'codex',
-] as const
-
 export const QUOTA_BUCKETS = [
   'high',
   'medium',
@@ -213,7 +209,7 @@ export const QUOTA_BUCKETS = [
 ] as const
 
 export interface AgentConfig {
-  harness: (typeof HARNESS_NAMES)[number]
+  harness: Harness
   model?: string
   effort?: string
   mode?: string

@@ -1,4 +1,5 @@
 import { pnyxHome } from '#store/paths.ts'
+import { providerIdOf } from '#workers/providers.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
 import { randomUUID } from 'node:crypto'
@@ -475,7 +476,7 @@ export function createRoutineHelper({
 
         active = session
         agent = {
-          provider: candidate.harness === 'claude' ? 'claude-code' : 'codex',
+          provider: providerIdOf({ harness: candidate.harness }),
           sessionId: active.id,
           cwd,
           host: 'pnyx',

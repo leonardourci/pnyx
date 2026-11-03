@@ -1,4 +1,5 @@
 import { requireReady } from '#tasks/dependencies.ts'
+import { PROVIDERS, providerIdOf, type Harness } from '#workers/providers.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '#workers/dispatch.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -19,11 +20,6 @@ import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { openPaseo, type Connect } from './client.ts'
 
-export const HARNESSES = {
-  claude: 'claude-code',
-  codex: 'codex',
-} as const
-export type Harness = keyof typeof HARNESSES
 const MAX_PROMPT = 32000
 
 export async function startAgent({
@@ -50,7 +46,7 @@ export async function startAgent({
   connect?: Connect
 }): Promise<Output> {
   if (!Object.hasOwn(
-    HARNESSES,
+    PROVIDERS,
     harness,
   )) {
     throw new HydraError({
@@ -402,7 +398,7 @@ export async function createPaseoAgent({
   }
 
   const ref = {
-    provider: HARNESSES[harness],
+    provider: providerIdOf({ harness }),
     sessionId: agent.id,
     paseoAgentId: agent.id,
     paseoUrl: url,

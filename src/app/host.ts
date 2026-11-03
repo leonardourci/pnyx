@@ -1,4 +1,5 @@
 import { agentInput } from './agent-input.ts'
+import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
@@ -69,7 +70,7 @@ import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
-import { providerName, storedModels, storeModels, catalogOffers } from '#workers/model-catalog.ts'
+import { storedModels, storeModels, catalogOffers } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, decisionsText, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import type { StallItem } from '#hydra/stalls.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -218,7 +219,7 @@ export function createHost({
     }
   }
 
-  const sessionKey = ({ agent }: { agent: AgentRef }) => `${agent.provider === 'claude-code' ? 'claude' : agent.provider}:${agent.sessionId}`
+  const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
 
   const expire = ({ id }: { id: string }) => {
     const waiting = pending.get(id)
@@ -1280,7 +1281,7 @@ export function createHost({
         ...(card.id === HYDRA_CARD ? hydraSession() : { allow: WORKER_COMMANDS }),
         env: card.agent.loginFolder ? accountEnvironment({
           account: {
-            provider: card.agent.provider === 'codex' ? 'codex' : 'claude',
+            provider: harnessOf({ provider: card.agent.provider }),
             folder: card.agent.loginFolder,
           },
           env,
@@ -1988,7 +1989,7 @@ export function createHost({
     }
 
     if (!closing && entry.activity === 'working') {
-      const name = card.agent.provider === 'codex' ? 'Codex' : 'Claude Code'
+      const name = providerLabel({ provider: card.agent.provider })
       const text = `${name} stopped during this turn${failure ? `: ${failure.slice(
         0,
         300,
@@ -2407,7 +2408,7 @@ export function createHost({
   const helper = createRoutineHelper({
     hydraId,
     spawned: children.spawned,
-    provider: ({ harness }) => providers[harness === 'claude' ? 'claude-code' : 'codex'],
+    provider: ({ harness }) => providers[providerIdOf({ harness })],
     environment: ({
       harness,
       actor,
@@ -3142,7 +3143,7 @@ export function createHost({
       card,
       provider = card.agent?.provider ?? 'claude-code',
     }) {
-      const harness = provider === 'codex' ? 'codex' : 'claude-code'
+      const harness = providerIdOf({ harness: harnessOf({ provider }) })
       const cacheKey = JSON.stringify([
         harness,
         card.agent?.loginFolder,
@@ -3249,7 +3250,7 @@ export function createHost({
       let catalog = modelCatalogs.get(key)
 
       if (!catalog) {
-        const provider = providerOf({ provider: providerName({ harness }) })
+        const provider = providerOf({ provider: providerIdOf({ harness }) })
         const cwd = hydraDir({ hydraId })
         const stored = storedModels({ key })
 
@@ -3457,7 +3458,7 @@ export function createHost({
             harness: candidate.harness,
           })
           const account = main ? effective.accounts[main] : undefined
-          const provider = providerName({ harness: candidate.harness })
+          const provider = providerIdOf({ harness: candidate.harness })
           const dispatch = previous?.agent?.provider !== provider
             && account && main ? chooseCandidate({
               config: {
@@ -3956,7 +3957,7 @@ export function createHost({
         return { usage: 'none: Hydra has not started a session' }
       }
 
-      const harness: Harness = agent.provider === 'codex' ? 'codex' : 'claude'
+      const harness: Harness = harnessOf({ provider: agent.provider })
       const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
@@ -4280,7 +4281,7 @@ export function createHost({
         return {
           task: claimed.card.id,
           agent: {
-            harness: provider === 'codex' ? 'codex' : 'claude',
+            harness: harnessOf({ provider }),
             session: claimed.card.agent.sessionId,
             folder: claimed.card.agent.cwd,
             host: 'pnyx',
@@ -4415,7 +4416,7 @@ export function createHost({
         return {
           task: card.id,
           agent: {
-            harness: agent.provider === 'codex' ? 'codex' : 'claude',
+            harness: harnessOf({ provider: agent.provider }),
             session: agent.sessionId,
             folder: agent.cwd,
             host: 'pnyx',
