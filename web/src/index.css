@@ -1905,9 +1905,9 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-rules, .dispatch-json { display: flex; flex-direction: column; gap: 8px; }
 /* One grid for every rule's candidates: account, effort, permissions and Fast evenly spaced, then the remove button. */
 .dispatch-table { --dispatch-space: minmax(calc(var(--settings-column-gap) / 2), 1fr); display: grid; grid-template-columns: repeat(4, max-content var(--dispatch-space)) max-content; padding: 0 20px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); }
-.dispatch-rule, .dispatch-hydra-row { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
+.dispatch-rule { grid-column: 1 / -1; display: grid; grid-template-columns: subgrid; }
 .dispatch-rule { padding-bottom: 6px; }
-.dispatch-rule + .dispatch-rule, .dispatch-hydra-row { border-top: 1px solid var(--color-line); }
+.dispatch-rule + .dispatch-rule { border-top: 1px solid var(--color-line); }
 /* The rule's remove button ends its name line; the description and any problems take the full width below. */
 .dispatch-rule-head { grid-column: 1 / -1; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 2px 12px; padding-top: 12px; }
 .dispatch-rule-text { display: contents; }
@@ -1944,7 +1944,6 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-candidate > .hydra-agent-pickers > * { justify-self: start; }
 .dispatch-candidate > .hydra-agent-pickers > .tooltip-anchor { justify-self: center; }
 .fast-unavailable { display: inline-flex; align-items: center; justify-content: center; width: var(--agent-control-h); min-height: var(--agent-control-h); color: var(--color-muted); opacity: .6; cursor: default; }
-.dispatch-hydra-row { display: flex; align-items: baseline; gap: 12px; padding: 10px 0; color: var(--color-muted); font-size: var(--text-meta); }
 .dispatch-problems { margin: 0; padding: 0; list-style: none; color: var(--color-red); font-size: var(--text-meta); line-height: 1.35; }
 .dispatch-problems li[data-level=warning], .dispatch-blocked { color: var(--color-gold); font-size: var(--text-meta); }
 .dispatch-table .dispatch-cell[data-changed], :where(.dispatch-table) .picker-field[data-changed] > :is(.select, .account-model-picker) > .button, .dispatch-table .fast-toggle[data-changed] { background: var(--color-gold-wash); }

@@ -551,7 +551,6 @@ function RulesTable({
     rule,
     index,
   ) => rule.name === HYDRA_RULE ? [] : [index])
-  const hydra = draft.rules.some(rule => rule.name === HYDRA_RULE)
 
   return (
     <section className="dispatch-rules" aria-labelledby="dispatch-rules">
@@ -579,12 +578,6 @@ function RulesTable({
             edit={edit}
           />
         ))}
-        {hydra && (
-          <div className="dispatch-hydra-row">
-            <span className="dispatch-rule-name"><Icon name="agent" size={14} />hydra</span>
-            <span>Hydra’s own agent, not used for workers.</span>
-          </div>
-        )}
       </div>
       <IssueList issues={issues.filter(issue => !/^\/(rules|default)(\/|$)/.test(issue.path))} />
       {starts?.error && <p className="dispatch-desc" role="status">{starts.error}</p>}
