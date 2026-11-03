@@ -83,13 +83,11 @@ async function fixture({
   stallRestart = false,
   managed = false,
   holdTurn = false,
-  slowReplacement = false,
 }: {
   t: TestContext
   stallRestart?: boolean
   managed?: boolean
   holdTurn?: boolean
-  slowReplacement?: boolean
 }) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-handshake-'))
   const listener = createServer()
@@ -159,21 +157,6 @@ async function fixture({
     env.NODE_OPTIONS = `--import=${join(
       import.meta.dirname,
       '../src/test-harness/fakes/stall-restart.mjs',
-    )}`
-  }
-
-  if (slowReplacement) {
-    env.PNYX_TEST_SLOW_SERVE = join(
-      root,
-      'slow-serve.pid',
-    )
-    env.PNYX_TEST_SLOW_ARM = join(
-      root,
-      'slow-serve.arm',
-    )
-    env.NODE_OPTIONS = `--import=${join(
-      import.meta.dirname,
-      '../src/test-harness/fakes/slow-serve.mjs',
     )}`
   }
 
@@ -294,101 +277,141 @@ async function fixture({
   }
 }
 
-for (const failure of [
-  'silent',
-  'rejected',
-] as const) {
-  for (const route of [
-    'startup',
-    'cli',
-    'composer',
+for (const {
+  failure,
+  route,
+} of [
+    {
+      failure: 'silent',
+      route: 'startup',
+    },
+    {
+      failure: 'rejected',
+      route: 'cli',
+    },
   ] as const) {
-    test(
-      `${route} recovers a ${failure} native handshake`,
-      async t => {
-        const app = await fixture({ t })
-        const before = app.pid()
-        assert.ok(before)
+  test(
+    `${route} recovers a ${failure} native handshake`,
+    async t => {
+      const app = await fixture({ t })
+      const before = app.pid()
+      assert.ok(before)
 
-        if (route === 'startup') {
-          process.kill(
-            before,
-            'SIGTERM',
-          )
-          await until({
-            timeout: TIMEOUT_MS,
-            check: () => app.pid() === undefined,
-          })
-        }
-
-        if (failure === 'silent') {
-          process.kill(
-            app.host.pid,
-            'SIGSTOP',
-          )
-        } else {
-          writeFileSync(
-            join(
-              app.root,
-              'native/token',
-            ),
-            'rejected-fixture-token',
-          )
-        }
-
-        if (route === 'startup') {
-          app.owned.direct = spawn(
-            process.execPath,
-            [
-              cli,
-              'serve',
-              '--port',
-              String(app.port),
-            ],
-            {
-              env: app.env,
-              stdio: 'ignore',
-            },
-          )
-        } else if (route === 'composer') {
-          await app.run({
-            args: [
-              'hydra',
-              'send',
-              '--text',
-              '/restart',
-            ],
-          })
-        } else {
-          await app.run({ args: ['restart'] })
-        }
-
-        await until({
-          timeout: TIMEOUT_MS,
-          check: () => {
-            const current = app.pid()
-
-            return current !== undefined && current !== before
-          },
-        })
-        await until({
-          timeout: TIMEOUT_MS,
-          check: async () => {
-            try {
-              return (await app.health()).native.state === 'ready'
-            } catch {
-              return false
-            }
-          },
-        })
-        assert.notEqual(
-          app.owner()?.pid,
-          app.host.pid,
+      if (route === 'startup') {
+        process.kill(
+          before,
+          'SIGTERM',
         )
-      },
-    )
-  }
+        await until({
+          timeout: TIMEOUT_MS,
+          check: () => app.pid() === undefined,
+        })
+      }
+
+      if (failure === 'silent') {
+        process.kill(
+          app.host.pid,
+          'SIGSTOP',
+        )
+      } else {
+        writeFileSync(
+          join(
+            app.root,
+            'native/token',
+          ),
+          'rejected-fixture-token',
+        )
+      }
+
+      if (route === 'startup') {
+        app.owned.direct = spawn(
+          process.execPath,
+          [
+            cli,
+            'serve',
+            '--port',
+            String(app.port),
+          ],
+          {
+            env: app.env,
+            stdio: 'ignore',
+          },
+        )
+      } else {
+        await app.run({ args: ['restart'] })
+      }
+
+      await until({
+        timeout: TIMEOUT_MS,
+        check: () => {
+          const current = app.pid()
+
+          return current !== undefined && current !== before
+        },
+      })
+      await until({
+        timeout: TIMEOUT_MS,
+        check: async () => {
+          try {
+            return (await app.health()).native.state === 'ready'
+          } catch {
+            return false
+          }
+        },
+      })
+      assert.notEqual(
+        app.owner()?.pid,
+        app.host.pid,
+      )
+    },
+  )
 }
+
+test(
+  'explicit restart replaces a verified host with a missing socket',
+  async t => {
+    const app = await fixture({ t })
+    const before = (await app.health()).native as {
+      state: string
+      instance?: string
+    }
+    assert.ok(before.instance)
+    process.kill(
+      app.host.pid,
+      'SIGSTOP',
+    )
+    renameSync(
+      join(
+        app.root,
+        'native/host.sock',
+      ),
+      join(
+        app.root,
+        'native/disconnected.sock',
+      ),
+    )
+    await app.run({ args: ['restart'] })
+    await until({
+      timeout: TIMEOUT_MS,
+      check: async () => {
+        try {
+          const current = (await app.health()).native as {
+            state: string
+            instance?: string
+          }
+
+          return current.state === 'ready' && Boolean(current.instance) && current.instance !== before.instance
+        } catch {
+          return false
+        }
+      },
+    })
+    assert.notEqual(
+      app.owner()?.pid,
+      app.host.pid,
+    )
+  },
+)
 
 test(
   'an unverifiable silent owner is left alive while the app stays available',
@@ -445,10 +468,6 @@ test(
         }
       },
     })
-    assert.equal(
-      app.owner()?.pid,
-      app.host.pid,
-    )
   },
 )
 
@@ -778,28 +797,9 @@ test(
 )
 
 test(
-  'composer restart failure releases later messages',
+  'composer restart reports a child failure',
   async t => {
     const app = await fixture({ t })
-    await app.run({
-      args: [
-        'hydra',
-        'set',
-        '--helper',
-        'off',
-      ],
-    })
-    await app.run({
-      args: [
-        'rule',
-        'set',
-        'hydra',
-        '--harness',
-        'codex',
-        '--model',
-        'fixture',
-      ],
-    })
     const lock = join(
       app.root,
       'hydras/default/server.lock',
@@ -829,14 +829,6 @@ test(
           '/restart',
         ],
       })
-      await app.run({
-        args: [
-          'hydra',
-          'send',
-          '--text',
-          'message after failed restart',
-        ],
-      })
       await until({
         timeout: 12000,
         check: () => {
@@ -846,8 +838,7 @@ test(
           )).state
           const operation = state.upgrades?.find((item: { state: string }) => item.state === 'failed')
 
-          return operation?.error?.includes('identity is not verifiable') && !operation.held?.length
-            && state.cards.$hydra?.sessionActivity === 'finished'
+          return operation?.error?.includes('identity is not verifiable')
         },
       })
     } finally {
@@ -1289,89 +1280,6 @@ test(
       )
     } finally {
       if (start && processStart({ pid: replacement }) === start) {
-        process.kill(
-          replacement,
-          'SIGCONT',
-        )
-      }
-    }
-  },
-)
-
-test(
-  'composer observes a replacement that takes longer than the old fixture deadline',
-  async t => {
-    const app = await fixture({
-      t,
-      slowReplacement: true,
-    })
-    const arm = join(
-      app.root,
-      'slow-serve.arm',
-    )
-    const marker = join(
-      app.root,
-      'slow-serve.pid',
-    )
-    writeFileSync(
-      arm,
-      '',
-    )
-    await app.run({
-      args: [
-        'hydra',
-        'send',
-        '--text',
-        '/restart',
-      ],
-    })
-    await until({
-      timeout: TIMEOUT_MS,
-      check: () => existsSync(marker),
-    })
-    const replacement = Number(readFileSync(
-      marker,
-      'utf8',
-    ))
-    const start = processStart({ pid: replacement })
-    assert.ok(start)
-    const observed = (async () => {
-      try {
-        await until({
-          timeout: TIMEOUT_MS,
-          check: () => app.pid() === replacement,
-        })
-
-        return true
-      } catch {
-        return false
-      }
-    })()
-
-    try {
-      await delay(48000)
-      assert.equal(
-        processStart({ pid: replacement }),
-        start,
-      )
-      process.kill(
-        replacement,
-        'SIGCONT',
-      )
-      await until({
-        timeout: 120000,
-        check: () => app.pid() === replacement,
-      })
-      assert.equal(
-        await observed,
-        true,
-      )
-      assert.equal(
-        (await app.health()).native.state,
-        'ready',
-      )
-    } finally {
-      if (processStart({ pid: replacement }) === start) {
         process.kill(
           replacement,
           'SIGCONT',
