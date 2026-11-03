@@ -1,6 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
 import type { Account, Harness } from '#workers/dispatch-config.ts'
-import { accountLabel, accountRegistration } from '#workers/account-choice.ts'
+import { ACCOUNT_LABEL_MAX, accountLabel, accountRegistration, homeFolderValid, LINE_BREAK } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import { Button, Input, Select } from '#web-shared/ui/controls.tsx'
@@ -104,16 +104,16 @@ export function AccountSettings({
       return
     }
 
-    if (!label || label.length > 80 || /[\r\n\0]/.test(label)) {
+    if (!label || label.length > ACCOUNT_LABEL_MAX || LINE_BREAK.test(label)) {
       reject({
-        message: 'Use an account name of 1 to 80 characters on one line.',
+        message: `Use an account name of 1 to ${ACCOUNT_LABEL_MAX} characters on one line.`,
         field: 'label',
       })
 
       return
     }
 
-    if (!(folder.startsWith('/') || folder.startsWith('~/')) || /[\r\n\0]/.test(folder)) {
+    if (!homeFolderValid({ folder })) {
       reject({
         message: 'Use an absolute home folder or ~/path.',
         field: 'folder',
@@ -214,7 +214,7 @@ export function AccountSettings({
           aria-label="Account name"
           data-account-field="label"
           value={draft.label}
-          maxLength={80}
+          maxLength={ACCOUNT_LABEL_MAX}
           aria-invalid={visibleFailure?.field === 'label' || undefined}
           aria-describedby={visibleFailure?.field === 'label' ? errorId : undefined}
           onChange={event => setDraft({
