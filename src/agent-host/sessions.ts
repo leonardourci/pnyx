@@ -1080,7 +1080,14 @@ export async function hostSessions({
 
               admission()
 
-              if (sessions.size >= MAX_SESSIONS) {
+              const retainedSessions = [...sessions.values()].filter(entry => {
+                const phase = entry.output.summary.phase
+                const terminal = phase === 'closed' || phase === 'failed'
+
+                return !terminal || entry.output.pendingCount() > 0
+              })
+
+              if (retainedSessions.length >= MAX_SESSIONS) {
                 return fail({
                   code: 'SESSION_LIMIT',
                   message: 'The native host reached its session limit',
