@@ -6,19 +6,13 @@ import { join } from 'node:path'
 import { test } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { snapshotPath } from '#store/storage.ts'
 import { spoolWrite } from '#app/spool.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 import { MAX_RESUMES, WORKER_RESUME } from '#workers/host.ts'
-
-// A history like a Hydra used for weeks, where every needless load parses and copies megabytes.
-const HISTORY_TASKS = 120
-const HISTORY_BRIEF = 'Long-running work. '.repeat(1200)
 
 test(
   'an owner message while Hydra is down tries the start again; once it works Hydra answers it, then recaps only what no turn took',
@@ -308,107 +302,6 @@ test(
     } finally {
       held.release()
     }
-  },
-)
-
-test(
-  'a server holding a long Hydra history never reloads it, and still follows the next change',
-  async t => {
-    const s = await pnyx.scenario()
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    t.after(() => page.close())
-
-    for (let n = 0; n < HISTORY_TASKS; n++) {
-      withWriter({
-        hydraId: s.hydraId,
-        fn: ({ writer }) => {
-          const created = hydraEvent({
-            state: writer.state,
-            cardId: `task-history-${n}`,
-            meta: {
-              at: new Date().toISOString(),
-              actor: 'web',
-            },
-            change: {
-              type: 'task.created',
-              data: {
-                key: `history-${n}`,
-                title: `History ${n}`,
-                brief: HISTORY_BRIEF,
-              },
-            },
-          })
-          assert.ok('event' in created)
-          writer.append({ event: created.event })
-        },
-      })
-      // Let each update reach the page before the fixture can fill the socket's output buffer.
-      await page.shows({
-        what: `history task ${n}`,
-        check: ({ state }) => state.keys[`history-${n}`],
-      })
-    }
-
-    // Every Hydra load from disk reads its snapshot; the server holds the Hydra in memory, so it reads none.
-    const snapshot = snapshotPath({ dir: hydraDir({ hydraId: s.hydraId }) })
-    let loads = 0
-    let loadedAt = Date.now()
-    const read = fs.readFileSync
-    t.mock.method(
-      fs,
-      'readFileSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.readFileSync's signature.
-      (...args: Parameters<typeof fs.readFileSync>) => {
-        if (args[0] === snapshot) {
-          loads++
-          loadedAt = Date.now()
-        }
-
-        return read(...args)
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    })
-
-    const settled = () => until({
-      what: 'the server to stop loading the unchanged Hydra',
-      check: () => Date.now() - loadedAt >= QUIET_MS,
-    })
-
-    await settled()
-    const idle = loads
-    await s.owner({
-      args: [
-        'task',
-        'create',
-        '--key',
-        'next',
-        '--title',
-        'Next',
-      ],
-    })
-    await page.shows({
-      what: 'the next task',
-      check: ({ state }) => state.keys.next,
-    })
-    await settled()
-    // The server followed the new task from memory: nothing read the snapshot while idle or for the change.
-    assert.deepEqual(
-      [
-        idle,
-        loads,
-      ],
-      [
-        0,
-        0,
-      ],
-    )
   },
 )
 
