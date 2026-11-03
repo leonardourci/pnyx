@@ -13,7 +13,7 @@ import { AgentPickers } from './agent-pickers.tsx'
 import { AccountModelPicker } from './account-model-picker.tsx'
 import { useDispatchProposals } from './dispatch-proposals.tsx'
 import type { SavedDispatch } from './dispatch-resource.ts'
-import { DISPATCH_CHANGED, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
 import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
 
 // Refreshing the resolved account waits until typing pauses; quota is read on the server.
@@ -42,28 +42,6 @@ interface Starts {
 const errorsIn = ({ issues }: { issues: DispatchIssue[] }) => issues.filter(issue => issue.level === 'error')
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? '' : JSON.stringify(value)
-
-// rule apply answers with what changed; reading the document in the same step lets the preview become the saved state without a gap.
-const showingAfter = ({ command }: { command: Command }): Command => Object.assign(
-  async ({
-    name,
-    args,
-    onChecking,
-  }: Parameters<Command>[0]) => {
-    const applied = await command({
-      name,
-      args,
-      onChecking,
-    })
-
-    // The change is saved; a failed read only leaves the next refresh to show it.
-    return command({
-      name: 'rule',
-      args: ['show'],
-    }).catch(() => applied)
-  },
-  { retain: command.retain },
-)
 
 function useStartsNow({
   command,

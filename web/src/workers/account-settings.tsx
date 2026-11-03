@@ -8,7 +8,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { SettingRow } from '#web-shared/ui/setting-row.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { PROVIDERS } from './account-model-picker.tsx'
-import { DISPATCH_CHANGED, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
 
 interface Draft {
   id: string
@@ -141,20 +141,8 @@ export function AccountSettings({
       patch,
     }
     const id = crypto.randomUUID()
-    const readAfter: Command = Object.assign(
-      // eslint-disable-next-line pnyx/object-params -- The command owns this callback signature.
-      async (input: Parameters<Command>[0]) => {
-        const receipt = await command(input)
-
-        return command({
-          name: 'rule',
-          args: ['show'],
-        }).catch(() => receipt)
-      },
-      { retain: command.retain },
-    )
     const writing = resource.write({
-      command: readAfter,
+      command: showingAfter({ command }),
       name: 'rule',
       args: [
         'apply',

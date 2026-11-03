@@ -5,6 +5,28 @@ import type { Command } from '#web-app/connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
 
+// rule apply answers with what changed; reading the document in the same step lets the preview become the saved state without a gap.
+export const showingAfter = ({ command }: { command: Command }): Command => Object.assign(
+  async ({
+    name,
+    args,
+    onChecking,
+  }: Parameters<Command>[0]) => {
+    const applied = await command({
+      name,
+      args,
+      onChecking,
+    })
+
+    // The change is saved; a failed read only leaves the next refresh to show it.
+    return command({
+      name: 'rule',
+      args: ['show'],
+    }).catch(() => applied)
+  },
+  { retain: command.retain },
+)
+
 export const hydraDefault = ({
   rule,
   next,
