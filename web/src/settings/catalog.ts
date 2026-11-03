@@ -9,7 +9,7 @@ export const SETTINGS_SECTIONS = [
     id: 'layout',
     label: 'Layout',
     icon: 'columns',
-    note: 'Defaults apply to every column you have not resized by dragging its edge.',
+    note: 'Save widths and resize this Hydra.',
   },
   {
     id: 'cards',
@@ -22,10 +22,27 @@ export const SETTINGS_SECTIONS = [
     icon: 'hydra',
   },
   {
+    id: 'accounts',
+    label: 'Accounts',
+    icon: 'you',
+    note: 'Accounts from homes you already use. Or ask Hydra to add one for you.',
+  },
+  {
+    id: 'routine',
+    label: 'Routine checks',
+    icon: 'helper',
+  },
+  {
+    id: 'reviews',
+    label: 'Main Hydra reviews',
+    icon: 'reminder',
+    note: 'The helper handles routine worker events as they arrive. Periodic reviews are separate checks by the main Hydra.',
+  },
+  {
     id: 'agent',
-    label: 'Hydra’s default agent',
+    label: 'Hydra’s defaults',
     icon: 'model',
-    note: 'The agent the orchestrator itself runs on, in every Hydra. Your workers do not use this; they follow Heads dispatch.',
+    note: 'Defaults for new sessions. Existing sessions and explicit worker dispatch retain their choices.',
   },
   {
     id: 'dispatch',
@@ -119,8 +136,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'defaultColumnWidths',
     section: 'layout',
-    label: 'Default column width',
-    description: 'Used by columns without a per-column override, in every Hydra. Open “Per column” to set an override.',
+    label: 'Column width',
+    description: 'Resize this Hydra’s columns and save the width for new columns.',
     related: [
       'wide',
       'narrow',
@@ -131,8 +148,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'defaultHydraWidth',
     section: 'layout',
-    label: 'Default Hydra chat width',
-    description: 'The chat’s width until you drag it, and what Reset returns it to.',
+    label: 'Hydra chat width',
+    description: 'Resize this Hydra’s chat and save the width for new Hydras.',
     related: [
       'wide',
       'narrow',
@@ -143,8 +160,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'resetWidths',
     section: 'layout',
-    label: 'Dragged widths',
-    description: 'Return every Hydra’s columns and chat to the defaults above.',
+    label: 'Reset widths',
+    description: 'Restore saved widths in every Hydra.',
     related: [
       'restore',
       'default',
@@ -210,9 +227,9 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'reviewMinutes',
-    section: 'hydra',
-    label: 'Review cadence',
-    description: 'How often Hydra looks over the board for anything that needs action. It still wakes right away for your messages and for worker updates.',
+    section: 'reviews',
+    label: 'Review interval',
+    description: 'How often the main Hydra reviews open work. This interval does not schedule the helper.',
     related: [
       'timer',
       'interval',
@@ -223,9 +240,9 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   },
   {
     id: 'helper',
-    section: 'hydra',
+    section: 'routine',
     label: 'Routine helper',
-    description: 'A lighter agent that handles Hydra’s routine wakes, so the main Hydra spends its quota on your messages and decisions.',
+    description: 'The helper handles routine worker coordination using a lower-cost model, keeping your main Hydra available for decisions that need its attention. It escalates those decisions to the main conversation.',
     values: [
       'Automatic',
       'Off',
@@ -242,8 +259,8 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
   {
     id: 'hydraAgent',
     section: 'agent',
-    label: 'Model, effort and permissions',
-    description: 'Every Hydra session starts on this. The model picker in Hydra’s chat can switch a running session; pinning there saves the choice here.',
+    label: 'Default selection',
+    description: 'Provider, named account and model, with the controls that provider supports.',
     related: [
       'orchestrator',
       'opus',
@@ -251,6 +268,21 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'codex',
       'claude',
       'fast',
+    ],
+  },
+  {
+    id: 'accounts',
+    section: 'accounts',
+    label: 'Accounts',
+    description: 'Accounts from homes you already use. Or ask Hydra to add one for you.',
+    related: [
+      'login',
+      'provider',
+      'home',
+      'folder',
+      'register',
+      'claude',
+      'codex',
     ],
   },
   {

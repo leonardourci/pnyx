@@ -1,7 +1,7 @@
-import { useRef, useState, type ReactNode } from 'react'
+import { useLayoutEffect, useRef, useState, type ReactNode } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
-import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS, viewFor } from '#preferences/view.ts'
+import { DEFAULT_COLUMN_WIDTH, DEFAULT_VIEW, VIEW_SIZE_LIMITS, patchView, resizeViewPatch } from '#preferences/view.ts'
 import type { Settings } from '#settings/model.ts'
 import { DEFAULT_SETTINGS } from '#settings/settings.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -20,6 +20,7 @@ import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
 import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { AccountSettings } from '#web-workers/account-settings.tsx'
 import { DispatchSettings } from '#web-workers/dispatch-settings.tsx'
 import { AgentPreview, BoardPreview, CardTextPreview, CardUpdatesPreview, ChatTextPreview, CodeTextPreview, ConversationPreview, DonePreview, HelperPreview, ResetPreview, ReviewPreview, ThemePreview } from './previews.tsx'
 import { DefaultAgent, DispatchStatus, Help, HideDone, ReviewCadence, RoutineHelper } from './hydra-settings.tsx'
@@ -45,6 +46,7 @@ export const SETTING_ICONS: Record<string, string> = {
   reviewMinutes: 'reminder',
   helper: 'helper',
   hydraAgent: 'agent',
+  accounts: 'you',
 }
 const UNITS: Record<string, string> = {
   fontSize: 'px',
@@ -67,9 +69,6 @@ export const SETTING_PREVIEWS = new Set([
   'toolDetails',
   'thinkingDetails',
   'doneAfterHours',
-  'reviewMinutes',
-  'helper',
-  'hydraAgent',
 ])
 const WIDTH_SLIDER_MAX = 900
 const WIDTH_MAX = 2400
@@ -116,6 +115,7 @@ interface Hydra {
   settings: Settings
   rule?: AgentConfig
   dispatchError?: string
+  accountSetup?: AgentConfig['harness']
 }
 
 // A slider's value while it moves, keyed by the setting it changes; undefined once it is let go.
@@ -226,7 +226,7 @@ function ColumnWidths({
 }) {
   const columns = columnsFor({ state })
   const widthOf = ({ id }: { id: string }) =>
-    view.defaultColumnWidths[id] ?? view.defaultColumnWidth
+    view.columnWidths[id] ?? view.defaultColumnWidths[id] ?? view.defaultColumnWidth
   const slider = {
     max: WIDTH_SLIDER_MAX,
     initial: DEFAULT_COLUMN_WIDTH,
@@ -236,10 +236,11 @@ function ColumnWidths({
   return (
     <div className="setting-stack">
       <NumberField
-        label="Default column width"
+        label="Column width"
         value={view.defaultColumnWidth}
         min={VIEW_SIZE_LIMITS.columnWidth.min}
         max={WIDTH_MAX}
+        step={1}
         slider={slider}
         onChange={({ value }) => save({ patch: { defaultColumnWidth: value } })}
         onSlide={({ value }) => slide({
@@ -258,16 +259,14 @@ function ColumnWidths({
                 value={widthOf({ id: column.id })}
                 min={VIEW_SIZE_LIMITS.columnWidth.min}
                 max={WIDTH_MAX}
+                step={1}
                 slider={slider}
                 onChange={({ value }) => save({
                   patch: { defaultColumnWidths: { [column.id]: value } },
                 })}
                 onSlide={({ value }) => slide({
                   key: 'defaultColumnWidths',
-                  value: value === undefined ? undefined : {
-                    ...view.defaultColumnWidths,
-                    [column.id]: value,
-                  },
+                  value: value === undefined ? undefined : { [column.id]: value },
                 })}
               />
             </div>
@@ -276,26 +275,6 @@ function ColumnWidths({
       </details>
     </div>
   )
-}
-
-const draggedText = ({ state }: { state: HydraState }) => {
-  const dragged: string[] = []
-
-  if (state.view?.hydraWidth) {
-    dragged.push(`the chat to ${state.view.hydraWidth} px`)
-  }
-
-  for (const column of columnsFor({ state })) {
-    const width = state.view?.columnWidths?.[column.id]
-
-    if (width !== undefined) {
-      dragged.push(`${column.title} to ${width} px`)
-    }
-  }
-
-  return dragged.length
-    ? `In this Hydra you dragged ${dragged.join(' and ')}. Reset returns every pane in every Hydra to the defaults above.`
-    : 'Nothing is dragged in this Hydra; every pane sits at its default.'
 }
 
 function ResetWidths({
@@ -327,10 +306,10 @@ function ResetWidths({
 
   return (
     <InlineConfirm
-      label="Reset dragged widths in every Hydra"
+      label="Reset widths in every Hydra"
       trigger="Reset widths in every Hydra"
       action="Reset widths"
-      message="Every Hydra’s columns and chat go back to the defaults above."
+      message="Restore the saved column and chat widths in every Hydra?"
       disabled={false}
       confirm={reset}
     />
@@ -352,6 +331,7 @@ export function SettingControl({
   connected,
   saveHydra,
   dispatchError,
+  accountSetup,
 }: Saving & Hydra & {
   entry: CatalogEntry
   state: HydraState
@@ -421,9 +401,10 @@ export function SettingControl({
       return (
         <NumberField
           label={entry.label}
-          value={view.defaultHydraWidth}
+          value={view.hydraWidth}
           min={VIEW_SIZE_LIMITS.hydraWidth.min}
           max={WIDTH_MAX}
+          step={1}
           slider={{
             max: WIDTH_SLIDER_MAX,
             initial: DEFAULT_VIEW.defaultHydraWidth,
@@ -468,6 +449,8 @@ export function SettingControl({
           />
         )
       )
+    case 'accounts':
+      return <AccountSettings command={command} initialProvider={accountSetup} />
     case 'headsDispatch':
       return <DispatchSettings state={state} command={command} notify={notify} />
     case 'keyboard':
@@ -521,6 +504,8 @@ export function SettingsPage({
   upgrade,
   startUpgrade,
   initialQuery = '',
+  accountSetup,
+  hidden = false,
 }: Saving & {
   state: HydraState
   connected: boolean
@@ -530,6 +515,8 @@ export function SettingsPage({
   startUpgrade(): void
   // The search the page opens with, such as a setting the Oracle sent here.
   initialQuery?: string
+  accountSetup?: AgentConfig['harness']
+  hidden?: boolean
 }) {
   const search = useRef<HTMLInputElement>(null)
   const [
@@ -552,13 +539,16 @@ export function SettingsPage({
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   // Previews draw what a slider shows while it moves, before the value saves.
-  const shownView = viewFor({
+  const shownView = patchView({
     state,
     settings: {
       ...view,
       ...settings,
-      ...live,
     },
+    input: resizeViewPatch({
+      state,
+      patch: Object.fromEntries(Object.entries(live).filter(([key]) => key in DEFAULT_VIEW)),
+    }),
   })
   const shownSettings = {
     ...settings,
@@ -608,6 +598,29 @@ export function SettingsPage({
     setOnlyChanged(false)
   }
 
+  const surface = useRef<HTMLElement>(null)
+  const sticky = useRef<HTMLDivElement>(null)
+  useLayoutEffect(
+    () => {
+      const header = sticky.current
+
+      if (!header) {
+        return
+      }
+
+      const measure = () => surface.current?.style.setProperty(
+        '--settings-search-height',
+        `${header.offsetHeight}px`,
+      )
+      const observer = new ResizeObserver(measure)
+      observer.observe(header)
+      measure()
+
+      return () => observer.disconnect()
+    },
+    [connected],
+  )
+
   const goTo = ({ id }: { id: string }) => document.getElementById(`settings-${id}`)?.scrollIntoView({
     behavior: 'smooth',
     block: 'start',
@@ -617,6 +630,10 @@ export function SettingsPage({
   useKeyAction({
     id: 'search',
     handler: () => {
+      if (hidden) {
+        return false
+      }
+
       search.current?.focus()
 
       return true
@@ -625,7 +642,7 @@ export function SettingsPage({
 
   if (!connected) {
     return (
-      <section className="settings-page" aria-label="Settings">
+      <section className="settings-page" aria-label="Settings" hidden={hidden}>
         <header className="settings-head"><h1>Settings</h1></header>
         <p role="status" className="muted">Waiting for connection…</p>
       </section>
@@ -633,12 +650,17 @@ export function SettingsPage({
   }
 
   return (
-    <section className="settings-page" aria-label="Settings">
+    <section
+      className="settings-page"
+      aria-label="Settings"
+      ref={surface}
+      hidden={hidden}
+    >
       <header className="settings-head">
         <h1 data-settings-heading tabIndex={-1}>Settings</h1>
         <p>Apply to every Hydra · changes save as you make them</p>
       </header>
-      <div className="settings-search">
+      <div className="settings-search" ref={sticky}>
         <SearchBar
           label="Search settings"
           query={query}
@@ -705,11 +727,12 @@ export function SettingsPage({
                   connected={connected}
                   saveHydra={saveHydra}
                   dispatchError={dispatchError}
+                  accountSetup={accountSetup}
                 />
               )
 
               // Heads dispatch is a whole editor, so it fills the box instead of sitting in a row.
-              if (match.entry.id === 'headsDispatch') {
+              if (match.entry.id === 'headsDispatch' || match.entry.id === 'accounts') {
                 return <div key={match.entry.id} className="settings-wide">{control}</div>
               }
 
@@ -718,7 +741,7 @@ export function SettingsPage({
                   key={match.entry.id}
                   icon={SETTING_ICONS[match.entry.id] ?? 'settings'}
                   label={match.entry.label}
-                  description={match.entry.id === 'resetWidths' ? draggedText({ state }) : match.entry.description}
+                  description={match.entry.description}
                   terms={match.terms}
                   changed={changed.has(match.entry.id)}
                   reset={() => save({

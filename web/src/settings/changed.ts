@@ -57,11 +57,10 @@ export function changedIds({
   return ids
 }
 
-// Shared settings merge maps, so a reset clears every binding and every width the default does not name.
+// Shared maps merge; reset bindings globally and column overrides only for the visible Hydra.
 export function resetPatch({
   id,
   view,
-  settings,
 }: {
   id: string
   view: ViewPreferences
@@ -77,7 +76,7 @@ export function resetPatch({
   }
 
   if (id === 'defaultColumnWidths') {
-    const widths = settings?.defaultColumnWidths ?? view.defaultColumnWidths
+    const widths = view.defaultColumnWidths
 
     return {
       defaultColumnWidth: DEFAULT_COLUMN_WIDTH,
