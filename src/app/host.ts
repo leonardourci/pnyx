@@ -5,17 +5,16 @@ import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '#tasks/dependencies.ts'
-import { attachedImages } from '#hydra/images.ts'
 import { decideReply } from '#workers/reply-rules.ts'
-import { acknowledgeSteering, enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
+import { enqueueSteering } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
-import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
-import { steeringMessages, steeringNotice } from '#workers/inbox-notice.ts'
+import { pendingSteering, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
+import { steeringMessages } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
 import { helperAgent, helperBatch, helperEvent, helperPermission } from '#routine-helper/route.ts'
@@ -26,7 +25,7 @@ import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
@@ -76,6 +75,7 @@ import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText
 import { createStallChecks } from '#hydra/stalls.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
+import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
@@ -90,20 +90,6 @@ const RETRY_MS = [
 
 // A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
-
-function keyForSteering({
-  card,
-  ids,
-}: {
-  card: Card
-  ids: string[]
-}): string {
-  return createHash('sha256').update(JSON.stringify([
-    card.agent?.sessionId,
-    ids,
-  ]))
-    .digest('hex')
-}
 
 export function createHost({
   hydraId,
@@ -803,211 +789,18 @@ export function createHost({
     })
   }
 
-  const pendingSteeringIds = ({
-    card,
-    key,
-    generation,
-    ids,
-  }: {
-    card?: Card
-    key: string
-    generation?: number
-    ids: string[]
-  }) => {
-    if (!card?.agent || !liveTask({ card }) || sessionId({ agent: card.agent }) !== key
-      || card.steeringGeneration !== generation || steeringHeld({ card })) {
-      return []
-    }
-
-    return (card.steering ?? []).filter(message => !message.ack && ids.includes(message.id))
-      .map(message => message.id)
-  }
-
-  const inboxNotice = ({
-    card,
-    ids,
-  }: {
-    card: Card
-    ids: string[]
-  }) => {
-    const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
-    const images = messages.flatMap(message => attachedImages({
-      text: message.text,
-      hydras: join(
-        pnyxHome(),
-        'hydras',
-      ),
-    }))
-
-    return [
-      steeringNotice({
-        task: card.id,
-        hydraId,
-        ids,
-      }),
-      ...new Set(images.map(path => `[image: ${path}]`)),
-    ].join('\n')
-  }
-
-  const unnotifiedSteering = ({
-    card,
-    entry,
-    message: ref,
-    attempt,
-  }: {
-    card: Card
-    entry?: Live
-    message?: string
-    attempt?: string
-  }) => {
-    const sameOpening = entry?.task === card.id && entry.generation === card.steeringGeneration
-
-    return [...(card.steering ?? [])].sort((
-      a,
-      b,
-    ) => Number(b.id === card.compaction?.priority)
-            - Number(a.id === card.compaction?.priority)).filter(message => {
-      if (message.ack) {
-        return false
-      }
-
-      if (attempt) {
-        const alreadyAttempted = message.attempts.some(known => known.id === attempt)
-
-        return message.id === ref && !alreadyAttempted
-      }
-
-      return !sameOpening || !entry.steering.has(message.id)
-    })
-  }
-
-  // The worker took instructions that carried their words, so they count as read for it, oldest first.
-  const markRead = ({
-    card: ref,
-    ids,
-  }: {
-    card: string
-    ids: string[]
-  }) => note({
-    fn: ({ writer }) => {
-      const card = writer.state.cards[ref]
-      const claim = card && steeringClaim({ card })
-
-      if (!card || !claim) {
-        return
-      }
-
-      const worker = `worker:${card.id}`
-
-      for (const message of pendingSteering({ card }).filter(message => ids.includes(message.id))) {
-        acknowledgeSteering({
-          writer,
-          ref: card.id,
-          id: message.id,
-          ack: {
-            at: at(),
-            actor: worker,
-            claim,
-            outcome: 'read',
-          },
-          meta: {
-            actor: worker,
-            at: at(),
-          },
-          worker: steeringWorkerIdentity({
-            state: writer.state,
-            card,
-          }),
-        })
-      }
-    },
+  const {
+    pendingSteeringIds,
+    inboxNotice,
+    unnotifiedSteering,
+    markRead,
+    ringSteering,
+  } = createSteeringDelivery({
+    hydraId,
+    at,
+    write,
+    note,
   })
-
-  const ringSteering = ({
-    card,
-    entry,
-    message: ref,
-    attempt,
-  }: {
-    card: Card
-    entry: Live
-    message?: string
-    attempt?: string
-  }) => {
-    if (card.id === HYDRA_CARD || !liveTask({ card })
-      || steeringHeld({ card }) || activeCompaction({ card })) {
-      return
-    }
-
-    const claim = steeringClaim({ card })
-
-    if (!claim) {
-      return
-    }
-
-    const messages = unnotifiedSteering({
-      card,
-      entry,
-      message: ref,
-      attempt,
-    })
-
-    if (!messages.length) {
-      return
-    }
-
-    const ids = messages.map(message => message.id)
-
-    for (const id of ids) {
-      entry.steering.add(id)
-    }
-
-    // Messages never tried before go in as their words; a repeat only names their IDs.
-    entry.input.push({
-      id: `steering:${keyForSteering({
-        card,
-        ids,
-      })}`,
-      text: '',
-      steeringIds: ids,
-      inline: messages.every(message => !message.attempts.length),
-    })
-    write({
-      fn: ({ writer }) => {
-        const current = writer.state.cards[card.id]
-
-        if (!current || !sameClaim({
-          current: steeringClaim({ card: current }),
-          claim,
-        })) {
-          return
-        }
-
-        for (const message of messages) {
-          if (current.steering?.find(stored => stored.id === message.id)?.ack) {
-            continue
-          }
-
-          recordSteeringAttempt({
-            writer,
-            ref: card.id,
-            id: message.id,
-            attempt: {
-              id: attempt ?? randomUUID(),
-              claim,
-              at: at(),
-              actor: 'pnyx',
-              result: 'delivered',
-            },
-            meta: {
-              actor: 'pnyx',
-              at: at(),
-            },
-          })
-        }
-      },
-    })
-  }
 
   const consume = async ({
     key,
