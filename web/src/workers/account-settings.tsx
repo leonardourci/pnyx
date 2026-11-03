@@ -21,9 +21,11 @@ interface Draft {
 export function AccountSettings({
   command,
   initialProvider,
+  notify,
 }: {
   command: Command
   initialProvider?: Harness
+  notify({ text }: { text: string }): void
 }) {
   const {
     snapshot,
@@ -180,13 +182,18 @@ export function AccountSettings({
     }
   }
 
+  // save rethrows anything that is not a command failure; report it instead of leaving it unhandled.
+  const commit = ({ left }: { left: boolean }) => {
+    void save({ left }).catch((error: Error) => notify({ text: error.message }))
+  }
+
   const editor = draft && (
     <form
       ref={form}
       id={`${errorId}-form`}
       className="setting-stack account-form"
-      onSubmit={async event => {
-        event.preventDefault(); await save({ left: false })
+      onSubmit={event => {
+        event.preventDefault(); commit({ left: false })
       }}
     >
       <div className="account-form-field">
@@ -221,7 +228,7 @@ export function AccountSettings({
             ...draft,
             label: event.target.value,
           })}
-          onBlur={() => save({ left: true })}
+          onBlur={() => commit({ left: true })}
         />
       </div>
       <div className="account-form-field">
@@ -239,7 +246,7 @@ export function AccountSettings({
             ...draft,
             folder: event.target.value,
           })}
-          onBlur={() => save({ left: true })}
+          onBlur={() => commit({ left: true })}
         />
       </div>
       {visibleFailure && (

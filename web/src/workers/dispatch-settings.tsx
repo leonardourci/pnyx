@@ -829,7 +829,7 @@ export function DispatchSettings({
     }
   }
 
-  save.current = () => void apply()
+  save.current = () => void apply().catch((error: Error) => notify({ text: error.message }))
 
   return (
     <div className="dispatch-settings" ref={root} onBlur={() => setLeft(count => count + 1)}>
