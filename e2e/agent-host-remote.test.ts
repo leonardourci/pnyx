@@ -9,7 +9,7 @@ import { fingerprint } from '#agent-host/ledger.ts'
 import { nativeProviders } from '#app/native-provider.ts'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
-import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
+import { fixtureHost, readOwnedTree, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
 const SECOND_MS = 1000
 
@@ -396,8 +396,6 @@ test(
     const {
       mkdtempSync,
       realpathSync,
-      existsSync,
-      readFileSync,
       rmSync,
     } = await import('node:fs')
     const { processStart } = await import('#agent-host/discovery.ts')
@@ -435,14 +433,7 @@ test(
       root,
       'owned-tree.json',
     )
-    await until({ check: () => existsSync(path) })
-    const owners = JSON.parse(readFileSync(
-      path,
-      'utf8',
-    )) as Record<string, {
-      pid: number
-      start: string
-    }>
+    const owners = await readOwnedTree({ path })
     t.after(() => {
       for (const owner of Object.values(owners)) {
         if (processStart({ pid: owner.pid }) === owner.start) {

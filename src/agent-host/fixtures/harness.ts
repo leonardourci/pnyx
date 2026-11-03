@@ -45,6 +45,47 @@ export async function until({
   }
 }
 
+export async function readOwnedTree({ path }: { path: string }) {
+  type Owner = {
+    pid: number
+    start: string
+  }
+  let tree: {
+    parent: Owner
+    tool: Owner
+  } | undefined
+
+  await until({
+    check: () => {
+      try {
+        const value = JSON.parse(readFileSync(
+          path,
+          'utf8',
+        )) as typeof tree
+
+        if (value && [
+          value.parent,
+          value.tool,
+        ].every(owner => owner && Number.isSafeInteger(owner.pid)
+          && owner.pid > 0 && typeof owner.start === 'string' && owner.start.length > 0)) {
+          tree = value
+
+          return true
+        }
+      } catch (error) {
+        if (!(error instanceof SyntaxError) && (error as NodeJS.ErrnoException).code !== 'ENOENT') {
+          throw error
+        }
+      }
+
+      return false
+    },
+  })
+  assert.ok(tree)
+
+  return tree
+}
+
 export async function fixtureHost({
   t,
   pressure = false,
