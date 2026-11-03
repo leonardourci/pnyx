@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { clickTogglesCard } from './card-click.ts'
+import { afterSteadyLayout } from './scroll-task.ts'
 
 // Matches a selector list by tag name, so a control missing from the card's list turns a test red.
 const element = ({ tag }: { tag: string }) => ({
@@ -30,8 +31,8 @@ test(
 )
 
 test(
-  'a click on the card itself toggles it, unless it lands on a control or ends a text selection',
-  () => {
+  'card clicks respect controls, text selection and cancelled alignment',
+  async () => {
     assert.equal(
       clickTogglesCard({
         card,
@@ -58,6 +59,16 @@ test(
       }),
       false,
       'selecting text',
+    )
+    const controller = new AbortController()
+    controller.abort()
+    const element = { getBoundingClientRect: () => ({ top: 0 }) } as HTMLElement
+    assert.equal(
+      await afterSteadyLayout({
+        element,
+        signal: controller.signal,
+      }),
+      false,
     )
   },
 )
