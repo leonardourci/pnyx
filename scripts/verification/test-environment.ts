@@ -35,8 +35,6 @@ exit 79
   }
 
   const env: NodeJS.ProcessEnv = {
-    // The opt-in latency measure is the one switch a run takes from outside.
-    ...(process.env.PNYX_LATENCY ? { PNYX_LATENCY: process.env.PNYX_LATENCY } : {}),
     PATH: `${bin}:${dirname(process.execPath)}:/usr/bin:/bin:/usr/sbin:/sbin`,
     HOME: join(
       root,
@@ -66,6 +64,11 @@ exit 79
       'gitconfig',
     ),
     LANG: 'en_US.UTF-8',
+  }
+
+  // The opt-in latency measure is the one switch a run takes from outside.
+  if (process.env.PNYX_LATENCY) {
+    env.PNYX_LATENCY = process.env.PNYX_LATENCY
   }
 
   for (const key of [
