@@ -1310,3 +1310,103 @@ test(
     }
   },
 )
+
+test(
+  'Fast in Hydra’s composer reaches a helper whose model has Fast and no other',
+  async () => {
+    const s = await helperHydra({
+      keys: [
+        'first',
+        'second',
+      ],
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            model: 'opus',
+            fast: true,
+          }),
+        ],
+      })
+    } finally {
+      page.close()
+    }
+
+    const helperSessions = () => pnyx.claude.sessions.filter(session =>
+      session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+
+    const turn = async ({
+      key,
+      count,
+    }: {
+      key: string
+      count: number
+    }) => {
+      const held = await busyMain({
+        s,
+        text: `Keep main busy ${count}.`,
+      })
+
+      try {
+        pnyx.claude.plan({
+          text: HELPER_PROMPT,
+          reply: routine({ tasks: [s.task({ key }).id] }),
+        })
+        declare({
+          s,
+          keys: [key],
+        })
+        await until({
+          what: `helper batch ${count} to finish`,
+          check: () => finishes({ s }).length === count,
+        })
+      } finally {
+        held.release()
+      }
+
+      await until({
+        what: 'main to finish its turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity !== 'working',
+      })
+
+      return helperSessions().at(-1)
+    }
+
+    // Sonnet has no Fast tier, so Hydra's Fast does not reach it.
+    assert.equal(
+      (await turn({
+        key: 'first',
+        count: 1,
+      }))?.fast,
+      false,
+    )
+
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper-model',
+        'opus',
+      ],
+    })
+    assert.equal(
+      (await turn({
+        key: 'second',
+        count: 2,
+      }))?.fast,
+      true,
+    )
+    assert.equal(
+      grants({ s }).at(-1)?.agent?.fast,
+      true,
+    )
+  },
+)
