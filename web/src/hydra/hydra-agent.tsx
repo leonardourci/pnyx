@@ -1,7 +1,6 @@
-import { useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { resolvedAccount, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import type { HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
-import { harnessAccount } from '#workers/account-choice.ts'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
 import type { Command } from '#web-app/connection.ts'
 
@@ -28,10 +27,10 @@ export function HydraAgent({
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
-  const ruleAccount = rule?.account ?? (effective && rule ? harnessAccount({
+  const ruleAccount = rule ? resolvedAccount({
     effective,
-    harness: rule.harness,
-  }) : undefined)
+    agent: rule,
+  }) : undefined
   const sameAccount = !agent.account || agent.account === ruleAccount
   const inherited = rule?.harness === agent.harness && sameAccount ? rule : undefined
   const firstmate = state.config?.hydra.kind === 'firstmate'

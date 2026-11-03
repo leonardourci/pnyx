@@ -9,8 +9,7 @@ import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { PickerField, useModels, type CellMark } from './agent-picker.tsx'
 import { modelOptions } from './model-options.ts'
 import { AccountModelPicker } from './account-model-picker.tsx'
-import { harnessAccount } from '#workers/account-choice.ts'
-import { hydraDefault, useHeadsDispatch } from './heads-dispatch.ts'
+import { hydraDefault, resolvedAccount, useHeadsDispatch } from './heads-dispatch.ts'
 
 // The composer's control icons, one size so they read alike.
 export const COMPOSER_ICON = 18
@@ -72,10 +71,13 @@ export function AgentPickers({
     saveError,
     setSaveError,
   ] = useState('')
-  const account = agent.account ?? inherited?.account ?? (effective ? harnessAccount({
+  const account = resolvedAccount({
     effective,
-    harness: agent.harness,
-  }) : undefined)
+    agent: {
+      harness: agent.harness,
+      account: agent.account ?? inherited?.account,
+    },
+  })
   const catalog = useModels({
     harness: agent.harness,
     account,
@@ -130,9 +132,9 @@ export function AgentPickers({
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const defaultAgent = rule && effective ? {
     ...rule,
-    account: rule.account ?? harnessAccount({
+    account: resolvedAccount({
       effective,
-      harness: rule.harness,
+      agent: rule,
     }),
   } : undefined
 

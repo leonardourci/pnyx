@@ -1,6 +1,8 @@
 import { dispatchDocument, dispatchSettings } from './dispatch-resource.ts'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
+import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
@@ -26,6 +28,18 @@ export const showingAfter = ({ command }: { command: Command }): Command => Obje
   },
   { retain: command.retain },
 )
+
+// The account an agent runs on: the one it names, or its harness's first registered account.
+export const resolvedAccount = ({
+  effective,
+  agent,
+}: {
+  effective?: EffectiveDispatch
+  agent: Pick<AgentConfig, 'harness' | 'account'>
+}) => agent.account ?? (effective ? harnessAccount({
+  effective,
+  harness: agent.harness,
+}) : undefined)
 
 export const hydraDefault = ({
   rule,
