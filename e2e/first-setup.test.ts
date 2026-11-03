@@ -8,6 +8,8 @@ import { test } from 'node:test'
 import { promisify } from 'node:util'
 import { setTimeout as delay } from 'node:timers/promises'
 import { processStart } from '#app/server-state.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 
 const WAIT_MS = 120000
 const cli = join(
@@ -125,10 +127,19 @@ test(
       pnyx,
       'server.json',
     )
-    const snapshot = join(
-      pnyx,
-      'hydras/default/snapshot.json',
-    )
+    // The server saves its snapshot in the background, so the log is what to read.
+    const hydraCard = () => replay({
+      state: emptyHydra(),
+      events: readFileSync(
+        join(
+          pnyx,
+          'hydras/default/events.jsonl',
+        ),
+        'utf8',
+      ).split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line) as HydraEvent),
+    }).cards.$hydra
     const events = join(
       pnyx,
       'hydras/default/events.jsonl',
@@ -340,18 +351,12 @@ test(
     await until({
       timeout: WAIT_MS,
       check: () => {
-        const card = JSON.parse(readFileSync(
-          snapshot,
-          'utf8',
-        )).state.cards.$hydra
+        const card = hydraCard()
 
         return !!card?.agent?.sessionId && card.sessionActivity === 'finished'
       },
     })
-    const session = JSON.parse(readFileSync(
-      snapshot,
-      'utf8',
-    )).state.cards.$hydra.agent.sessionId as string
+    const session = hydraCard()!.agent!.sessionId
     const previousServer = server().pid
     await run({ args: ['restart'] })
     await until({
@@ -395,10 +400,7 @@ test(
       check: () => finishes() > previousFinishes,
     })
     assert.equal(
-      JSON.parse(readFileSync(
-        snapshot,
-        'utf8',
-      )).state.cards.$hydra.agent.sessionId,
+      hydraCard()?.agent?.sessionId,
       session,
     )
     await run({ args: ['stop'] })
