@@ -1,3 +1,4 @@
+import { requestCwd } from '#app/request-context.ts'
 import { sameProjectPath } from './identity.ts'
 import { PROJECT_MEMORY_BUDGET } from '#memory/project-memory.ts'
 import { projectMemoryCommand } from '#memory/project-cli.ts'
@@ -254,10 +255,13 @@ async function projectCommand({ args }: { args: string[] }): Promise<Output> {
   let path: string
 
   if (values.clone) {
-    const destination = resolve(required({
-      value: values.into as string | undefined,
-      what: '--into <folder>',
-    }))
+    const destination = resolve(
+      requestCwd(),
+      required({
+        value: values.into as string | undefined,
+        what: '--into <folder>',
+      }),
+    )
 
     try {
       await clone(

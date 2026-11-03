@@ -1,10 +1,15 @@
 import { realpathSync } from 'node:fs'
 import { resolve } from 'node:path'
 import type { HydraProject } from './model.ts'
+import { requestCwd } from '#app/request-context.ts'
 
 export function canonicalProjectPath({ path }: { path: string }): string | undefined {
   try {
-    return realpathSync(resolve(path))
+    // A relative path is the caller's, so it resolves against the folder the command ran in, not the server's.
+    return realpathSync(resolve(
+      requestCwd(),
+      path,
+    ))
   } catch {
     // Missing projects retain their saved path but cannot establish a new identity.
     return undefined
