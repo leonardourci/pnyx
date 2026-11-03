@@ -48,7 +48,7 @@ export function applyHydra({
         id: event.data.id,
         kind: event.data.kind,
         since: event.at,
-        seq: event.seq,
+        seq: event.data.after ?? event.seq,
       }
     } else if (state.hydraOperation?.id === event.data.id) {
       delete state.hydraOperation

@@ -69,6 +69,8 @@ export interface HydraOperation {
   kind: 'restart' | 'upgrade' | 'compaction'
   state: 'started' | 'finished' | 'failed'
   error?: string
+  // On start: the last event before the oldest message already waiting for Hydra, so the recap covers it too.
+  after?: number
 }
 
 export type ChatEvent = EventBase & {
