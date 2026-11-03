@@ -1,4 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
+import { INHERITED } from '#workers/host.ts'
+import { AUTH_ENV } from '#workers/dispatch.ts'
+import { IDENTITY } from '#app/request-context.ts'
 import { infoPath, processStart, type ServerInfo } from '#app/server-state.ts'
 import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
@@ -12,6 +15,21 @@ import { requestEnv } from '#app/request-context.ts'
 
 // Sent to a running `pnyx-axi serve` to close it and start it again on the code now on disk.
 export const RESTART_SIGNAL = 'SIGUSR2'
+
+// A server Pnyx starts never takes the caller's Pnyx or terminal identity, nor a worker's or Hydra's login,
+// so its agents get the owner's environment plus what their card names.
+export function serverEnvironment(): NodeJS.ProcessEnv {
+  const actor = process.env.PNYX_ACTOR ?? ''
+  const agent = /^(worker:|helper:|hydra$)/.test(actor) || process.env.PNYX_HOSTED !== undefined
+    || process.env.PNYX_TASK !== undefined
+
+  // Pnyx's own settings, such as PNYX_HOME, stay; only who the caller is and its terminal go.
+  const identity = ({ name }: { name: string }) => INHERITED.test(name)
+    && (!name.startsWith('PNYX_') || (IDENTITY as readonly string[]).includes(name))
+
+  return Object.fromEntries(Object.entries(process.env)
+    .filter(([name]) => !identity({ name }) && !(agent && AUTH_ENV.test(name))))
+}
 
 const STOP_MS = 5000
 const START_MS = 120000
@@ -127,7 +145,7 @@ function launch({ args }: { args: string[] }) {
       {
         detached: true,
         env: {
-          ...process.env,
+          ...serverEnvironment(),
           PNYX_ACTOR: 'cli',
         },
         stdio: [
@@ -171,7 +189,7 @@ export function requestRestart() {
       {
         detached: true,
         env: {
-          ...process.env,
+          ...serverEnvironment(),
           PNYX_ACTOR: 'cli',
         },
         stdio: [

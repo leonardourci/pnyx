@@ -60,7 +60,7 @@ export interface DispatchChoice {
   reason: string
 }
 
-const AUTH_ENV = /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR$|OPENAI_|CODEX_HOME$|CODEX_API_KEY$)/
+export const AUTH_ENV = /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR$|OPENAI_|CODEX_HOME$|CODEX_API_KEY$)/
 
 export function accountEnvironment({
   account,
