@@ -1,4 +1,5 @@
 import { pnyxHome } from '#store/paths.ts'
+import { HYDRA_COMMANDS } from '#app/command-registry.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import { agentInput } from '#app/agent-input.ts'
 import { readThread } from '#hydra/transcripts-read.ts'
@@ -464,7 +465,7 @@ export function createRoutineHelper({
           instructions: HELPER_INSTRUCTIONS,
           outputSchema: outcomeSchema({ tasks: batch.tasks }),
           context,
-          allow: ['pnyx-axi'],
+          allow: HYDRA_COMMANDS,
           signal,
           spawned,
         })

@@ -1,4 +1,5 @@
 import { CLONE_TIMEOUT_MS } from '#projects/limits.ts'
+import { repeatable, waitsOnAgent } from './command-registry.ts'
 
 export const MAX_MESSAGE_BYTES = 64 * 1024
 const OWNER_COMMAND_TIMEOUT_MS = 60_000
@@ -50,12 +51,7 @@ export function commandTimeout({
     return CLONE_TIMEOUT_MS + CLONE_CONFIRMATION_MS
   }
 
-  return [
-    'reply',
-    'task-message',
-    'answer',
-    'agent',
-  ].includes(name) ? REPLY_COMMAND_TIMEOUT_MS : OWNER_COMMAND_TIMEOUT_MS
+  return waitsOnAgent({ name }) ? REPLY_COMMAND_TIMEOUT_MS : OWNER_COMMAND_TIMEOUT_MS
 }
 
 export function retryable({
@@ -72,13 +68,7 @@ export function retryable({
     return false
   }
 
-  return [
-    'reply',
-    'task-message',
-    'answer',
-    'agent',
-    'hydra-agent',
-  ].includes(name) || args.some(arg => arg === '--event-id' || arg.startsWith('--event-id='))
+  return repeatable({ name }) || args.some(arg => arg === '--event-id' || arg.startsWith('--event-id='))
     || (name === 'hydras' && ([
       'edit',
       'move',
