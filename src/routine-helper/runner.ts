@@ -677,10 +677,20 @@ export function createRoutineHelper({
         return false
       }
 
-      const state = loadHydra({ hydraId }).state
-      const candidate = await configuredAgent({ state })
+      // Claimed before the await so a wake and a stall check offered together start one batch.
+      busy = true
+      let candidate: HelperAgent | undefined
+
+      try {
+        candidate = await configuredAgent({ state: loadHydra({ hydraId }).state })
+      } catch (error) {
+        busy = false
+        throw error
+      }
 
       if (!candidate) {
+        busy = false
+
         return false
       }
 
@@ -692,7 +702,6 @@ export function createRoutineHelper({
         once,
         agent: candidate,
       }
-      busy = true
 
       try {
         await defer({
