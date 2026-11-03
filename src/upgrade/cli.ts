@@ -6,7 +6,7 @@ import { runUpgrade, upgradeAvailable } from './runner.ts'
 import { STEP_WORDS } from './model.ts'
 
 export const UPGRADE_HELP = `usage: pnyx-axi upgrade [--check]
-Pulls main into the Pnyx folder, installs and builds, then runs the same restart as \`pnyx-axi restart\`. Live native turns keep running until a safe host swap. Any failed step goes back to the previous version without restarting.
+Pulls main into the Pnyx folder, installs and builds, then runs the same restart as \`pnyx-axi restart\`. Agents stop with the server; turns it cuts resume from their saved sessions. Any failed step goes back to the previous version without restarting.
 A folder off main or with local changes is refused. --check only says whether main has something newer.
 Ctrl-C stops it and goes back to the previous version; \`pnyx-axi hydra stop\` does the same for a /upgrade sent in Hydra's chat.
 `

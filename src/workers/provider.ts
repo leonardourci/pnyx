@@ -174,33 +174,6 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
-  accepted?({ id }: { id: string }): boolean
-  permissionDelivery?({ permission }: { permission: string }): string | undefined
-  remote?: true
-  readOnly?: boolean
-  incarnation?: string
-  recovered?: boolean
-  replayed?(): Promise<void>
-  refreshContext?(): Promise<void>
-  fact?(): {
-    id: string
-    at: string
-  } | undefined
-  applied?(): Promise<void>
-  settle?({
-    through,
-    applyOutcome }
-  ?: {
-    through?: string
-    applyOutcome?({
-      outcome,
-      fact,
-    }: {
-      outcome: TurnOutcome
-      fact: string
-    }): Promise<void>
-  }): Promise<void>
-  detach?(): void
   id: string
   path?: string
   run({
@@ -210,10 +183,10 @@ export interface HostedSession {
   }: {
     input: AsyncIterable<HostedInput>
     permission: AskPermission
-    // Runs before bounded viewer queues. A failure reason stops the native owner.
+    // Runs before bounded viewer queues. A failure reason stops the session.
     observe?({ event }: { event: HostedEvent }): string | void
   }): AsyncIterable<HostedEvent>
-  // Returning from an attachment only removes that reader; close owns native shutdown.
+  // Returning from an attachment only removes that reader; close owns shutdown.
   attach(): AsyncIterable<HostedEvent>
   snapshot(): {
     work: NativeWork
@@ -256,16 +229,6 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   ])
 
 export interface Provider {
-  canOpen?(): boolean
-  remote?: true
-  owns?({ agent }: { agent: AgentRef }): boolean
-  recovering?({
-    cwd,
-    env,
-  }: {
-    cwd: string
-    env: NodeJS.ProcessEnv
-  }): AgentRef | undefined
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
@@ -295,12 +258,8 @@ export interface Provider {
     outputSchema,
     allow,
     context,
-    ownProcess,
-    reattachOnly,
   }: {
     cwd: string
-    // Reconcile retained facts without admitting a replacement native session.
-    reattach?: true
     instructions?: string
     outputSchema?: Record<string, unknown>
     // Live state the session gets when it starts or resumes and again after each compaction.
@@ -311,7 +270,5 @@ export interface Provider {
     settings: AgentSettings
     env: NodeJS.ProcessEnv
     signal: AbortSignal
-    ownProcess?({ pid }: { pid: number }): void
-    reattachOnly?: boolean
   }): Promise<HostedSession>
 }

@@ -12,11 +12,9 @@ import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTo
 export type SpawnCodex = ({
   cwd,
   env,
-  detached,
 }: {
   cwd: string
   env: NodeJS.ProcessEnv
-  detached?: boolean
 }) => ChildProcessWithoutNullStreams
 
 type ObjectValue = Record<string, unknown>
@@ -835,7 +833,6 @@ export function codexProvider({
   spawnCodex = ({
     cwd,
     env,
-    detached,
   }) => spawn(
     'codex',
     [
@@ -847,7 +844,6 @@ export function codexProvider({
       cwd,
       env,
       stdio: 'pipe',
-      detached,
     },
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {
@@ -944,7 +940,6 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
-      ownProcess,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
@@ -954,17 +949,7 @@ export function codexProvider({
       const child = spawnCodex({
         cwd,
         env,
-        detached: ownProcess !== undefined,
       })
-
-      if (child.pid !== undefined) {
-        try {
-          ownProcess?.({ pid: child.pid })
-        } catch (error) {
-          child.kill('SIGKILL')
-          throw error
-        }
-      }
 
       const rpc = connection({ child })
 
