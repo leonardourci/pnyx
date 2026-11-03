@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { unwatchFile, existsSync, watchFile, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import type { QueryFn } from './host.ts'
@@ -21,7 +21,7 @@ import { runForRequest } from './api-run.ts'
 import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
-import { watchPath } from './watch.ts'
+import { pollPath, watchPath } from './watch.ts'
 import { readSettings, settingsLogPath } from '#settings/store.ts'
 import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
@@ -550,10 +550,7 @@ export async function startServer({
     )
 
     const stop = () => {
-      unwatchFile(
-        path,
-        ready,
-      )
+      watcher.close()
       pendingLogs.delete(id)
     }
 
@@ -573,14 +570,11 @@ export async function startServer({
       id,
       stop,
     )
-    watchFile(
+    const watcher = pollPath({
       path,
-      {
-        interval: CREATION_POLL_MS,
-        persistent: false,
-      },
-      ready,
-    )
+      interval: CREATION_POLL_MS,
+      changed: ready,
+    })
     ready()
   }
 

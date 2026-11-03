@@ -42,8 +42,8 @@ import { paseoConversation, type PaseoConversation } from '#integrations/paseo/t
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
-import { watchPath, type PathWatch } from './watch.ts'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { pollPath, watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
@@ -802,24 +802,14 @@ export async function mountOwnedHydra({
         continue
       }
 
-      const changed = () => transcriptChanged({ path })
       // Native notices can miss content writes; stat polling follows replaced and recreated paths.
-      watchFile(
-        path,
-        {
-          interval: EVENT_POLL_MS,
-          persistent: false,
-        },
-        changed,
-      )
       transcriptPolls.set(
         path,
-        {
-          close: () => unwatchFile(
-            path,
-            changed,
-          ),
-        },
+        pollPath({
+          path,
+          interval: EVENT_POLL_MS,
+          changed: () => transcriptChanged({ path }),
+        }),
       )
     }
   }
