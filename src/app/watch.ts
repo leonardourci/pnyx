@@ -1,4 +1,4 @@
-import { watch, statSync, readdirSync, type FSWatcher } from 'node:fs'
+import { watch, watchFile, unwatchFile, statSync, readdirSync, type FSWatcher } from 'node:fs'
 import { join, resolve } from 'node:path'
 import { background } from './background.ts'
 
@@ -11,9 +11,80 @@ type SharedWatch = {
   close(): void
 }
 const shared = new Map<string, SharedWatch>()
+const polls = new Map<string, SharedWatch>()
 
 export interface PathWatch {
   close(): void
+}
+
+export function pollPath({
+  path,
+  changed,
+  interval,
+}: {
+  path: string
+  changed: Changed
+  interval: number
+}): PathWatch {
+  path = resolve(path)
+  let record = polls.get(path)
+
+  if (!record) {
+    const users = new Map<symbol, Changed>()
+
+    const notify = () => {
+      for (const [
+        id,
+        changed,
+      ] of [...users]) {
+        if (users.has(id)) {
+          background({
+            name: `stat watch ${path}`,
+            run: () => changed({}),
+          })
+        }
+      }
+    }
+
+    watchFile(
+      path,
+      {
+        interval,
+        persistent: false,
+      },
+      notify,
+    )
+    record = {
+      users,
+      close: () => unwatchFile(
+        path,
+        notify,
+      ),
+    }
+    polls.set(
+      path,
+      record,
+    )
+  }
+
+  const id = Symbol()
+  record.users.set(
+    id,
+    changed,
+  )
+
+  return {
+    close() {
+      if (!record.users.delete(id)) {
+        return
+      }
+
+      if (record.users.size === 0) {
+        record.close()
+        polls.delete(path)
+      }
+    },
+  }
 }
 
 function follow({
