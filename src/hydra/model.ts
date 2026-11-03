@@ -37,7 +37,8 @@ export interface HydraMessage {
   task?: string
   action: 'send' | 'worker'
   // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
-  kind?: 'progress'
+  // divider: Pnyx's line in the chat where an operation that stopped Hydra ended.
+  kind?: 'progress' | 'divider'
   text: string
   enteredText?: string
   details?: string
@@ -60,6 +61,14 @@ export interface HydraStatus {
   detail?: string
   // Down only: the last change before the message or wake that met the failure; the recap lists what came after it.
   after?: number
+}
+
+// Something that stops or blocks Hydra for a while: a restart, an upgrade's restart or a compaction.
+export interface HydraOperation {
+  id: string
+  kind: 'restart' | 'upgrade' | 'compaction'
+  state: 'started' | 'finished' | 'failed'
+  error?: string
 }
 
 export type ChatEvent = EventBase & {
