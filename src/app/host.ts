@@ -75,6 +75,7 @@ import { isFolder } from '#workers/folders.ts'
 import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, decisionsText, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import type { StallItem } from '#hydra/stalls.ts'
+import { deliveringMessage } from '#routine-helper/leases.ts'
 import { inbox } from '#hydra/update-queue.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
@@ -2178,88 +2179,91 @@ export function createHost({
     }
 
     direct ||= compactCommand({ text })
-    const card = write({
-      fn: ({ writer }) => {
-        const card = hosted({
-          writer,
-          ref,
-        })
+    const card = deliveringMessage.run(
+      true,
+      () => write({
+        fn: ({ writer }) => {
+          const card = hosted({
+            writer,
+            ref,
+          })
 
-        if (!direct && card.id !== HYDRA_CARD) {
-          if (steering) {
-            if (!card.steering?.some(message => message.id === steering)) {
-              throw new HydraError({
-                message: 'Steering message was not persisted',
-                code: 'VALIDATION_ERROR',
+          if (!direct && card.id !== HYDRA_CARD) {
+            if (steering) {
+              if (!card.steering?.some(message => message.id === steering)) {
+                throw new HydraError({
+                  message: 'Steering message was not persisted',
+                  code: 'VALIDATION_ERROR',
+                })
+              }
+            } else {
+              steering = inputId ?? randomUUID()
+              enqueueSteering({
+                writer,
+                ref: card.id,
+                id: steering,
+                text,
+                source: actor,
+                meta: {
+                  actor,
+                  at: at(),
+                },
               })
             }
-          } else {
-            steering = inputId ?? randomUUID()
-            enqueueSteering({
+
+            if (steeringHeld({ card })) {
+              return writer.state.cards[card.id] as Card & { agent: AgentRef }
+            }
+
+            const current = writer.state.cards[card.id]!
+            const running = live.get(sessionId({ agent: card.agent }))
+            const unread = unnotifiedSteering({
+              card: current,
+              entry: running,
+              message: steering,
+              attempt,
+            }).length
+
+            if (!unread) {
+              return undefined
+            }
+          }
+
+          if (!live.has(sessionId({ agent: card.agent }))) {
+            folderOf({ card })
+          }
+
+          if (card.attention.some(a => a.key === INTERRUPTED)) {
+            const attention = card.attention.filter(a => a.key !== INTERRUPTED)
+            const meta = {
+              at: at(),
+              actor,
+            }
+            const input = { attention }
+            const decision = decidePush({
+              state: writer.state,
+              key: card.key,
+              input,
+              meta,
+            })
+            apply({
               writer,
-              ref: card.id,
-              id: steering,
-              text,
-              source: actor,
-              meta: {
-                actor,
-                at: at(),
-              },
+              decision,
             })
           }
 
-          if (steeringHeld({ card })) {
-            return writer.state.cards[card.id] as Card & { agent: AgentRef }
-          }
-
-          const current = writer.state.cards[card.id]!
-          const running = live.get(sessionId({ agent: card.agent }))
-          const unread = unnotifiedSteering({
-            card: current,
-            entry: running,
-            message: steering,
-            attempt,
-          }).length
-
-          if (!unread) {
-            return undefined
-          }
-        }
-
-        if (!live.has(sessionId({ agent: card.agent }))) {
-          folderOf({ card })
-        }
-
-        if (card.attention.some(a => a.key === INTERRUPTED)) {
-          const attention = card.attention.filter(a => a.key !== INTERRUPTED)
-          const meta = {
-            at: at(),
-            actor,
-          }
-          const input = { attention }
-          const decision = decidePush({
-            state: writer.state,
-            key: card.key,
-            input,
-            meta,
-          })
-          apply({
+          record({
             writer,
-            decision,
+            agent: card.agent,
+            input: { activity: 'working' },
+            actor,
+            eventId,
           })
-        }
 
-        record({
-          writer,
-          agent: card.agent,
-          input: { activity: 'working' },
-          actor,
-          eventId,
-        })
-
-        return writer.state.cards[card.id] as Card & { agent: AgentRef }
-      },
-    })
+          return writer.state.cards[card.id] as Card & { agent: AgentRef }
+        },
+      }),
+    )
 
     if (!card) {
       return
