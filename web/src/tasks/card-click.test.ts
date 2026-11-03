@@ -31,8 +31,8 @@ test(
 )
 
 test(
-  'card clicks respect controls, text selection and cancelled alignment',
-  async () => {
+  'card clicks respect controls, text selection and alignment cancellation',
+  async t => {
     assert.equal(
       clickTogglesCard({
         card,
@@ -60,9 +60,33 @@ test(
       false,
       'selecting text',
     )
+    Object.assign(
+      globalThis,
+      {
+        requestAnimationFrame: setImmediate,
+        cancelAnimationFrame: clearImmediate,
+      },
+    )
+    t.after(() => {
+      Reflect.deleteProperty(
+        globalThis,
+        'requestAnimationFrame',
+      )
+      Reflect.deleteProperty(
+        globalThis,
+        'cancelAnimationFrame',
+      )
+    })
     const controller = new AbortController()
-    controller.abort()
     const element = { getBoundingClientRect: () => ({ top: 0 }) } as HTMLElement
+    assert.equal(
+      await afterSteadyLayout({
+        element,
+        signal: controller.signal,
+      }),
+      true,
+    )
+    controller.abort()
     assert.equal(
       await afterSteadyLayout({
         element,
