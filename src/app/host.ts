@@ -381,21 +381,32 @@ export function createHost({
         return
       }
 
-      stoppedSince ??= {
+      // Messages already waiting for a Hydra turn when the stop begins are part of what it recaps.
+      const waiting = [...queuedHydra].flatMap(queuedId => writer.state.eventIds[queuedId] ?? [])
+      const operation: HydraOperation = {
         id,
         kind,
-        since: at(),
-        seq: writer.state.seq + 1,
+        state: 'started',
       }
+
+      if (waiting.length) {
+        operation.after = Math.min(...waiting) - 1
+      }
+
+      if (!stoppedSince) {
+        stoppedSince = {
+          id,
+          kind,
+          since: at(),
+          seq: operation.after ?? writer.state.seq + 1,
+        }
+      }
+
       apply({
         writer,
         decision: operationEvent({
           state: writer.state,
-          operation: {
-            id,
-            kind,
-            state: 'started',
-          },
+          operation,
           meta: {
             at: at(),
             actor: 'pnyx',
@@ -418,17 +429,22 @@ export function createHost({
       return
     }
 
+    const ended: HydraOperation = {
+      id,
+      kind: running.kind,
+      state: error ? 'failed' : 'finished',
+    }
+
+    if (error) {
+      ended.error = error
+    }
+
     note({
       fn: ({ writer }) => apply({
         writer,
         decision: operationEvent({
           state: writer.state,
-          operation: {
-            id,
-            kind: running.kind,
-            state: error ? 'failed' : 'finished',
-            ...(error ? { error } : {}),
-          },
+          operation: ended,
           meta: {
             at: at(),
             actor: 'pnyx',
@@ -3962,13 +3978,14 @@ export function createHost({
       children.sweep()
       upgrades.recover()
 
-      // A compaction of Hydra the stop cut ended with it; Hydra gets the recap and its queue.
+      // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
+      // the stop cut, ends here, and Hydra gets the recap and its queue.
       const cut = loadHydra({ hydraId }).state.hydraOperation
 
-      if (cut?.kind === 'compaction') {
+      if (cut) {
         endOperation({
           id: cut.id,
-          error: 'Pnyx restarted during compaction',
+          error: `Pnyx restarted during the ${cut.kind}`,
         })
       }
 
