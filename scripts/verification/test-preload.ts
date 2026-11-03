@@ -1,5 +1,14 @@
 import { createTestEnvironment } from './test-environment.ts'
 
+process.on(
+  'warning',
+  warning => {
+    if (warning.name === 'MaxListenersExceededWarning') {
+      throw warning
+    }
+  },
+)
+
 const isolated = createTestEnvironment()
 
 // Preserve Node's private test transport and the disposable install path from the isolated launcher.

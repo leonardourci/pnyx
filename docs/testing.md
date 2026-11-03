@@ -15,6 +15,8 @@ node scripts/verification/test.ts scenarios
 
 For a small batch, pass explicit paths: `node scripts/verification/test.ts src/tasks/reminders.test.ts`.
 
+The launcher fails a suite on `MaxListenersExceededWarning`, including warnings from the shared flow server. A passing run must release its listeners rather than raise their limit.
+
 `pnpm verify` picks what to run from the files the branch changes (see [Development](development.md)).
 
 ## Native clipboard regression
