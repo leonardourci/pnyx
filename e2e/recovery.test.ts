@@ -957,3 +957,71 @@ test(
     )
   },
 )
+
+test(
+  'a snapshot save that fails at shutdown still lets the server stop and start again with every change',
+  async t => {
+    const s = await pnyx.scenario()
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Kept through a failed snapshot',
+        '--key',
+        'kept-snapshot',
+      ],
+    })
+    const errors = t.mock.method(
+      console,
+      'error',
+      () => {},
+    )
+    const rename = fs.renameSync
+    t.mock.method(
+      fs,
+      'renameSync',
+      // eslint-disable-next-line pnyx/object-params -- Node owns fs.renameSync's signature.
+      (...args: Parameters<typeof fs.renameSync>) => {
+        if (String(args[1]).endsWith(`/${s.hydraId}/snapshot.json`)) {
+          throw Object.assign(
+            new Error('snapshot replace failed'),
+            { code: 'EIO' },
+          )
+        }
+
+        return rename(...args)
+      },
+    )
+    syncBuiltinESMExports()
+
+    try {
+      await pnyx.restart()
+    } finally {
+      t.mock.restoreAll()
+      syncBuiltinESMExports()
+    }
+
+    const logged = errors.mock.calls.map(call => String(call.arguments[0]))
+    assert.ok(logged.some(line => line.includes('snapshot replace failed')))
+    // The rest of the Hydra's shutdown (its hold, hook socket and timers) ran after the failed save.
+    assert.equal(
+      logged.some(line => line.includes('did not close cleanly')),
+      false,
+    )
+    assert.equal(
+      s.task({ key: 'kept-snapshot' }).title,
+      'Kept through a failed snapshot',
+    )
+    assert.match(
+      await s.owner({
+        args: [
+          'task',
+          'show',
+          'kept-snapshot',
+        ],
+      }),
+      /Kept through a failed snapshot/,
+    )
+  },
+)
