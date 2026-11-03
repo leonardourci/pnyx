@@ -25,11 +25,11 @@ export const SETTINGS_SECTIONS = [
     id: 'accounts',
     label: 'Accounts',
     icon: 'you',
-    note: 'Accounts from homes you already use. Or ask Hydra to add one for you.',
+    note: 'Claude Code and Codex logins from homes you already use. Hydra can also add one for you.',
   },
   {
     id: 'routine',
-    label: 'Routine checks',
+    label: 'Routine helper',
     icon: 'helper',
   },
   {
@@ -242,7 +242,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'helper',
     section: 'routine',
     label: 'Routine helper',
-    description: 'The helper handles routine worker coordination using a lower-cost model, keeping your main Hydra available for decisions that need its attention. It escalates those decisions to the main conversation.',
+    description: 'A lower-cost agent handles routine worker updates and passes decisions to the main Hydra, so the main Hydra spends its quota on your messages and decisions.',
     values: [
       'Automatic',
       'Off',
@@ -274,7 +274,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'accounts',
     section: 'accounts',
     label: 'Accounts',
-    description: 'Accounts from homes you already use. Or ask Hydra to add one for you.',
+    description: 'Claude Code and Codex logins from homes you already use. Hydra can also add one for you.',
     related: [
       'login',
       'provider',

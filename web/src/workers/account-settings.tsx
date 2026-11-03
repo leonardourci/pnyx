@@ -108,7 +108,7 @@ export function AccountSettings({
 
     if (!label || label.length > ACCOUNT_LABEL_MAX || LINE_BREAK.test(label)) {
       reject({
-        message: `Use an account name of 1 to ${ACCOUNT_LABEL_MAX} characters on one line.`,
+        message: `Use a display name of 1 to ${ACCOUNT_LABEL_MAX} characters on one line.`,
         field: 'label',
       })
 
@@ -214,11 +214,11 @@ export function AccountSettings({
         />
       </div>
       <div className="account-form-field">
-        <label className="setting-name" htmlFor={`${errorId}-name`}>Account name</label>
+        <label className="setting-name" htmlFor={`${errorId}-name`}>Display name</label>
         <Input
           id={`${errorId}-name`}
           autoFocus
-          aria-label="Account name"
+          aria-label="Display name"
           data-account-field="label"
           value={draft.label}
           maxLength={ACCOUNT_LABEL_MAX}
@@ -320,7 +320,7 @@ export function AccountSettings({
             key="add-account"
             icon="plus"
             label="Add account"
-            description="Use an existing provider and configured home."
+            description="Register a Claude Code or Codex home you already use."
           >{editor}
           </SettingRow>
         ) : (

@@ -169,7 +169,7 @@ export function RoutineHelper({
           },
         })}
       />
-      <Help text="Keep the helper on for efficient coordination. Pnyx suggests a lightweight model; you can choose its harness, account and model independently. Fast stays off unless you turn it on here, or turn Fast on in a Hydra's composer, which also puts that Hydra's helper on Fast where its model has it." />
+      <Help text="Off sends every wake to the main Hydra. Pnyx suggests a lighter model; choose any provider, account and model. Fast stays off unless you turn it on here or in a Hydra’s composer, which also puts that Hydra’s helper on Fast where its model has it." />
     </div>
   )
 }
