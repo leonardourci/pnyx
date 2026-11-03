@@ -1,10 +1,12 @@
+import { HydraError } from '#store/errors.ts'
 import { homedir } from 'node:os'
 import type { HydraState } from '#app/model.ts'
 import type { HeldMessage, UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
+import { background } from '#app/background.ts'
 
 const WAIT_MS = 100
-// The restart is a signal to this process; past this, the server did not restart and Hydra's queue moves on.
+// Bound how long messages remain held if the restart process does not complete.
 const RESTART_WAIT_MS = 60_000
 
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
@@ -43,7 +45,7 @@ export function upgradeQueue({
   // Hydra's turn or a compaction is running.
   working(): boolean
   closing(): boolean
-  restart(): void
+  restart({ force }: { force: boolean }): void | Promise<void>
   // Hands a held message to Hydra, behind anything already queued.
   deliver({ message }: { message: HeldMessage }): void
   at(): string
@@ -97,6 +99,63 @@ export function upgradeQueue({
           held: [],
         },
       })
+    }
+  }
+
+  const monitorRestart = async ({
+    id,
+    force,
+  }: {
+    id: string
+    force: boolean
+  }) => {
+    const deadline = Date.now() + RESTART_WAIT_MS
+    let failure: string | undefined
+
+    try {
+      const result = restart({ force })
+
+      if (result) {
+        await Promise.race([
+          result,
+          new Promise<void>(resolve => setTimeout(
+            resolve,
+            RESTART_WAIT_MS,
+          ).unref()),
+        ])
+      }
+    } catch (error) {
+      failure = (error as Error).message
+    }
+
+    while (!failure && !closing() && Date.now() < deadline) {
+      await new Promise(resolve => setTimeout(
+        resolve,
+        WAIT_MS,
+      ))
+    }
+
+    if (closing()) {
+      return
+    }
+
+    const operation = state().upgrades?.find(item => item.id === id && item.state === 'restarting')
+
+    if (operation) {
+      save({
+        operation: {
+          ...operation,
+          state: 'failed',
+          failed: 'restart',
+          error: failure ?? 'The application did not restart.',
+          endedAt: at(),
+          steps: operation.steps.map(step => step.step === 'restart' ? {
+            ...step,
+            state: 'failed',
+          } : step),
+        },
+      })
+      release()
     }
   }
 
@@ -174,21 +233,10 @@ export function upgradeQueue({
         ],
       },
     })
-    restart()
-
-    // Hydra's next turn waits for the restarted server, which hands it the held messages.
-    const deadline = Date.now() + RESTART_WAIT_MS
-
-    while (!closing() && Date.now() < deadline) {
-      await new Promise(resolve => setTimeout(
-        resolve,
-        WAIT_MS,
-      ))
-    }
-
-    if (!closing()) {
-      console.error('pnyx-axi serve: the server did not restart after the upgrade; run `pnyx-axi stop` and start it again')
-    }
+    await monitorRestart({
+      id: running.id,
+      force: false,
+    })
   }
 
   const enqueue = ({ queued }: { queued: UpgradeOperation }) => schedule({
@@ -212,6 +260,44 @@ export function upgradeQueue({
   })
 
   return {
+    restart({ id }: { id: string }) {
+      if (state().upgrades?.some(operation => operation.id === id)) {
+        return
+      }
+
+      if (active()) {
+        throw new HydraError({
+          code: 'UPGRADE_BUSY',
+          message: 'Wait for the current upgrade or restart to finish',
+        })
+      }
+
+      record({
+        operation: {
+          id,
+          state: 'restarting',
+          folder: root ? shortHome({ path: root }) : '',
+          queuedAt: at(),
+          startedAt: at(),
+          steps: [
+            {
+              step: 'restart',
+              state: 'running',
+              seconds: 0,
+            },
+          ],
+        },
+        eventId: `${id}:hosted`,
+      })
+      background({
+        name: 'restart',
+        run: () => monitorRestart({
+          id,
+          force: true,
+        }),
+      })
+    },
+
     request({ id }: { id: string }) {
       // One upgrade at a time: a second /upgrade while one waits or runs changes nothing.
       if (active() || state().upgrades?.some(operation => operation.id === id)) {

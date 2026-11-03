@@ -2,6 +2,22 @@ import type { EventBase } from '#store/events.ts'
 import type { Suggestion } from '#hydra/transcripts-catalog.ts'
 
 export const UPGRADE_COMMAND = '/upgrade'
+export const RESTART_COMMAND = '/restart'
+
+export const RESTART_SUGGESTION: Suggestion = {
+  command: RESTART_COMMAND,
+  description: 'Restart Pnyx on its current code. A busy native host is restarted after a short wait and its sessions recover.',
+  source: 'Built-in',
+  kind: 'command',
+}
+
+export const restartCommand = ({ text }: { text: string }) => text.trim() === RESTART_COMMAND
+
+export const isServerCommand = ({ item }: { item?: Suggestion }): boolean =>
+  item?.kind === 'command' && [
+    UPGRADE_COMMAND,
+    RESTART_COMMAND,
+  ].includes(item.command)
 
 export const UPGRADE_SUGGESTION: Suggestion = {
   command: UPGRADE_COMMAND,

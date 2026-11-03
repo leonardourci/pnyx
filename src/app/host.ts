@@ -7,9 +7,9 @@ import { attachedImages } from '#hydra/images.ts'
 import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
-import { upgradeCommand } from '#upgrade/model.ts'
+import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
-import { RESTART_SIGNAL } from '#upgrade/restart.ts'
+import { requestRestart } from '#upgrade/restart.ts'
 import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
 import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
 import { steeringNotice } from '#workers/inbox-notice.ts'
@@ -87,6 +87,7 @@ const RETRY_MS = [
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 // A deadline that could not record its failure, as when another writer holds the lock, tries again this soon.
 const COMPACTION_RETRY_MS = 1000
+const NATIVE_RECOVERY_MS = 1000
 
 function keyForSteering({
   card,
@@ -119,10 +120,7 @@ export function createHost({
   retryDelays = RETRY_MS,
   helperBound,
   upgradeRoot,
-  restart = () => process.kill(
-    process.pid,
-    RESTART_SIGNAL,
-  ),
+  restart = requestRestart,
   presence = ({ session }) => terminalPresence({
     session,
     verifyProcess: true,
@@ -147,7 +145,7 @@ export function createHost({
   helperBound?: number
   // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
   upgradeRoot?: string
-  restart?(): void
+  restart?({ force }: { force: boolean }): void | Promise<void>
 }): Host {
   const providers = native ?? {
     'claude-code': claudeProvider({ query }),
@@ -176,6 +174,33 @@ export function createHost({
     finish({ result }: { result: PermissionDecision }): void
   }>()
   let closing = false
+  let nativeRetry: ReturnType<typeof setTimeout> | undefined
+
+  const planNativeRecovery = () => {
+    if (closing || nativeRetry) {
+      return
+    }
+
+    nativeRetry = setTimeout(
+      () => {
+        nativeRetry = undefined
+        background({
+          name: 'native replay recovery',
+          run: async () => {
+            const overlapping = Boolean(recoveringNative)
+            await recoverNative()
+
+            if (overlapping) {
+              planNativeRecovery()
+            }
+          },
+          retry: planNativeRecovery,
+        })
+      },
+      NATIVE_RECOVERY_MS,
+    ).unref()
+  }
+
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
   // Retries a failed start on a growing wait; each failed try plans the next one.
@@ -683,18 +708,48 @@ export function createHost({
     ).unref()
   }
 
+  // App-side observations must not make a retained host fact look stale before replay.
+  const nativeObservedAt = ({
+    writer,
+    agent,
+    completion = false,
+  }: {
+    writer: Writer
+    agent: AgentRef
+    completion?: boolean
+  }) => {
+    const session = writer.state.sessions?.[sessionId({ agent })]
+    const cardId = session?.taskId ?? session?.originCardId
+      ?? writer.state.keys[sessionKey({ agent })]
+    const card = cardId ? writer.state.cards[cardId] : undefined
+
+    const source = card?.sourceRefs.find(ref => ref.adapter === 'pnyx' && ref.objectId === agent.sessionId)
+
+    if (applying) {
+      if (completion && source?.observedAt && source.observedAt > applying.at) {
+        return source.observedAt
+      }
+
+      return applying.at
+    }
+
+    return source?.observedAt
+  }
+
   const record = ({
     writer,
     agent,
     input,
     actor,
     eventId,
+    completion = false,
   }: {
     writer: Writer
     agent: AgentRef
     input: Record<string, unknown>
     actor: string
     eventId?: string
+    completion?: boolean
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -711,7 +766,11 @@ export function createHost({
           source: {
             adapter: 'pnyx',
             objectId: agent.sessionId,
-            observedAt: at(),
+            observedAt: nativeObservedAt({
+              writer,
+              agent,
+              completion,
+            }),
           },
         },
         meta: {
@@ -1289,6 +1348,7 @@ export function createHost({
     entry: Live
   }) => {
     let failure: string | undefined
+    let retryNative = false
     const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
@@ -1605,6 +1665,7 @@ export function createHost({
                 input: { activity: 'finished' },
                 actor: 'pnyx',
                 eventId: `native:${applying?.id ?? outcome.turn}:finished`,
+                completion: true,
               }),
             })
 
@@ -1970,6 +2031,21 @@ export function createHost({
       }
     } catch (error) {
       failure = (error as Error).message
+      retryNative = error instanceof HydraError
+        && [
+          'LOCKED',
+          'TASK_LEASED',
+        ].includes(error.code)
+    }
+
+    if (native && retryNative && !closing) {
+      entry.session?.detach?.()
+      entry.input.end()
+      live.delete(key)
+      console.error(`pnyx-axi native attachment: ${failure}`)
+      planNativeRecovery()
+
+      return
     }
 
     const compactCard = (() => {
@@ -3182,6 +3258,148 @@ export function createHost({
   )
   stallTimer.unref()
 
+  const nativeRecoveryErrors = new Map<string, string>()
+
+  const recoverNativeSessions = async () => {
+    if (native) {
+      const state = loadHydra({ hydraId }).state
+      const events = readEvents({ hydraId })
+
+      for (const card of Object.values(state.cards)) {
+        if (card.agent?.host !== 'pnyx') {
+          continue
+        }
+
+        const key = sessionId({ agent: card.agent })
+        const hydraSession = state.config?.hydra.session
+
+        if (live.has(key) || (key === hydraSession && card.id !== HYDRA_CARD)) {
+          continue
+        }
+
+        try {
+          const provider = providerOf({ provider: card.agent.provider })
+
+          const recoveredEpochs = new Set<string>()
+
+          while (provider.owns?.({ agent: card.agent })) {
+            const session = await provider.open({
+              cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
+              agent: card.agent,
+              settings: card.settings ?? {},
+              context: card.id === HYDRA_CARD ? digest : undefined,
+              env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
+              signal: controller.signal,
+            })
+
+            if (session.incarnation) {
+              if (recoveredEpochs.has(session.incarnation)) {
+                session.detach?.()
+                throw new HydraError({
+                  code: 'RECOVERY_REQUIRED',
+                  message: 'The retained native epoch did not settle during application recovery',
+                })
+              }
+
+              recoveredEpochs.add(session.incarnation)
+            }
+
+            const entry = open({
+              card: card as Card & { agent: AgentRef },
+              session,
+            })
+
+            if (session.readOnly) {
+              await entry.consumed
+              continue
+            }
+
+            await session.replayed?.()
+
+            for (const event of events) {
+              let input: {
+                id: string
+                text: string
+                original?: string
+              } | undefined
+
+              if (event.type === 'board.configured' && event.nativeInput
+            && event.nativeInput.epoch === session.incarnation) {
+                input = event.nativeInput
+                const unfinished = !session.accepted?.({ id: input.id })
+              || session.snapshot().work.unsettledInputs.includes(input.id)
+
+                if (unfinished) {
+                  for (const task of event.nativeInput.tasks ?? []) {
+                    mainTasks.add(task)
+                  }
+
+                  const wakeThrough = WAKE_ID.exec(input.id)?.[1]
+
+                  if (wakeThrough) {
+                    readThrough = Math.max(
+                      readThrough,
+                      Number(wakeThrough),
+                    )
+                  }
+                }
+              } else if (event.type === 'task.session' && event.data.session === key
+            && event.data.nativeEpoch === session.incarnation
+            && event.id.endsWith(':attach') && event.data.brief) {
+                input = {
+                  id: `${event.id.slice(
+                    0,
+                    -':attach'.length,
+                  )}:launch-input`,
+                  text: event.data.brief,
+                }
+              }
+
+              if (input && !session.accepted?.({ id: input.id })) {
+                entry.input.push(input)
+              }
+            }
+
+            break
+          }
+
+          nativeRecoveryErrors.delete(key)
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error)
+
+          if (nativeRecoveryErrors.get(key) !== message) {
+            nativeRecoveryErrors.set(
+              key,
+              message,
+            )
+            console.error(
+              'pnyx-axi native recovery:',
+              error,
+            )
+          }
+
+          planNativeRecovery()
+        }
+      }
+    }
+  }
+
+  let recoveringNative: Promise<void> | undefined
+
+  const recoverNative = async () => {
+    if (recoveringNative) {
+      return recoveringNative
+    }
+
+    recoveringNative = recoverNativeSessions()
+
+    try {
+      await recoveringNative
+    } finally {
+      recoveringNative = undefined
+    }
+  }
+
   const host: Host = {
     async catalogCommands({
       card,
@@ -3356,6 +3574,13 @@ export function createHost({
     }) => {
       if (reportActor({ actor })) {
         changed()
+
+        return Promise.resolve({ state: 'queued' })
+      }
+
+      if (ownerActor({ actor }) && restartCommand({ text })) {
+        upgrades.restart({ id })
+        queued()
 
         return Promise.resolve({ state: 'queued' })
       }
@@ -3650,7 +3875,10 @@ export function createHost({
                     source: {
                       adapter: 'pnyx',
                       objectId: ref.sessionId,
-                      observedAt: meta.at,
+                      observedAt: nativeObservedAt({
+                        writer,
+                        agent: ref,
+                      }),
                     },
                   },
                   meta,
@@ -4247,7 +4475,10 @@ export function createHost({
                   source: {
                     adapter: 'pnyx',
                     objectId: agent.sessionId,
-                    observedAt: meta.at,
+                    observedAt: nativeObservedAt({
+                      writer,
+                      agent,
+                    }),
                   },
                 },
                 meta: {
@@ -4419,7 +4650,10 @@ export function createHost({
               source: {
                 adapter: 'pnyx',
                 objectId: agent.sessionId,
-                observedAt: meta.at,
+                observedAt: nativeObservedAt({
+                  writer,
+                  agent,
+                }),
               },
               attention: card.attention.filter(a => !a.key.startsWith('hook:')),
             },
@@ -4885,108 +5119,7 @@ export function createHost({
     },
 
     recover: async () => {
-      if (native) {
-        const state = loadHydra({ hydraId }).state
-        const events = readEvents({ hydraId })
-
-        for (const card of Object.values(state.cards)) {
-          if (card.agent?.host !== 'pnyx') {
-            continue
-          }
-
-          const key = sessionId({ agent: card.agent })
-          const hydraSession = state.config?.hydra.session
-
-          if (live.has(key) || (key === hydraSession && card.id !== HYDRA_CARD)) {
-            continue
-          }
-
-          const provider = providerOf({ provider: card.agent.provider })
-
-          const recoveredEpochs = new Set<string>()
-
-          while (provider.owns?.({ agent: card.agent })) {
-            const session = await provider.open({
-              cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
-              agent: card.agent,
-              settings: card.settings ?? {},
-              context: card.id === HYDRA_CARD ? digest : undefined,
-              env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
-              signal: controller.signal,
-            })
-
-            if (session.incarnation) {
-              if (recoveredEpochs.has(session.incarnation)) {
-                session.detach?.()
-                throw new HydraError({
-                  code: 'RECOVERY_REQUIRED',
-                  message: 'The retained native epoch did not settle during application recovery',
-                })
-              }
-
-              recoveredEpochs.add(session.incarnation)
-            }
-
-            const entry = open({
-              card: card as Card & { agent: AgentRef },
-              session,
-            })
-
-            if (session.readOnly) {
-              await entry.consumed
-              continue
-            }
-
-            await session.replayed?.()
-
-            for (const event of events) {
-              let input: {
-                id: string
-                text: string
-                original?: string
-              } | undefined
-
-              if (event.type === 'board.configured' && event.nativeInput
-              && event.nativeInput.epoch === session.incarnation) {
-                input = event.nativeInput
-                const unfinished = !session.accepted?.({ id: input.id })
-                || session.snapshot().work.unsettledInputs.includes(input.id)
-
-                if (unfinished) {
-                  for (const task of event.nativeInput.tasks ?? []) {
-                    mainTasks.add(task)
-                  }
-
-                  const wakeThrough = WAKE_ID.exec(input.id)?.[1]
-
-                  if (wakeThrough) {
-                    readThrough = Math.max(
-                      readThrough,
-                      Number(wakeThrough),
-                    )
-                  }
-                }
-              } else if (event.type === 'task.session' && event.data.session === key
-              && event.data.nativeEpoch === session.incarnation
-              && event.id.endsWith(':attach') && event.data.brief) {
-                input = {
-                  id: `${event.id.slice(
-                    0,
-                    -':attach'.length,
-                  )}:launch-input`,
-                  text: event.data.brief,
-                }
-              }
-
-              if (input && !session.accepted?.({ id: input.id })) {
-                entry.input.push(input)
-              }
-            }
-
-            break
-          }
-        }
-      }
+      await recoverNative()
 
       upgrades.recover()
       let cutHydraTurn: {
@@ -5052,8 +5185,9 @@ export function createHost({
             const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
 
             const provider = providerOf({ provider: session.agent.provider })
+            const retained = provider.owns?.({ agent: session.agent })
 
-            if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking
+            if (session.agent.host !== 'pnyx' || live.has(session.id) || retained || !wasWorking
               || provider.canOpen?.() === false) {
               continue
             }
@@ -5223,6 +5357,7 @@ export function createHost({
       helper.close()
       clearTimeout(wakeTimer)
       clearTimeout(retryTimer)
+      clearTimeout(nativeRetry)
       clearInterval(stallTimer)
       controller.abort()
 

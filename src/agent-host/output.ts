@@ -303,6 +303,8 @@ export function output({
         if (event === 'working') {
           text.clear()
         }
+      } else if (event.type === 'turn-ended') {
+        activity = 'finished'
       } else if (event.type === 'text') {
         const previous = event.append ? text.get(event.id) ?? '' : ''
         const updated = Buffer.from(previous + event.text)

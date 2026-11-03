@@ -156,6 +156,7 @@ for (const provider of [
           `${prefix}inscribe`,
           `${prefix}pnyx-set-up`,
           '/upgrade',
+          '/restart',
           '/add-project',
           `${prefix}aaa`,
           `${prefix}zzz`,
@@ -212,6 +213,11 @@ test(
         ],
         [
           '/upgrade',
+          'Built-in',
+          undefined,
+        ],
+        [
+          '/restart',
           'Built-in',
           undefined,
         ],
@@ -327,6 +333,10 @@ test(
         ],
         [
           '/upgrade',
+          'Built-in',
+        ],
+        [
+          '/restart',
           'Built-in',
         ],
         [

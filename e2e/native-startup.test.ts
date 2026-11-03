@@ -1,12 +1,12 @@
 import assert from 'node:assert/strict'
-import { execFileSync } from 'node:child_process'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
-import { join } from 'node:path'
+import { execFileSync, spawn } from 'node:child_process'
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, appendFileSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { performance } from 'node:perf_hooks'
 import { setTimeout as delay } from 'node:timers/promises'
 import { test } from 'node:test'
-import { ensureNativeHost, nativePaths } from '#setup/native-host.ts'
+import { ensureNativeHost, nativePaths, requireSafeActivation } from '#setup/native-host.ts'
 import { withWriter } from '#app/writer.ts'
 import { startServer } from '#app/server-daemon.ts'
 import { infoPath } from '#app/server-state.ts'
@@ -76,6 +76,14 @@ test(
       import.meta.dirname,
       '..',
     )
+    const other = spawn(
+      process.execPath,
+      [
+        '-e',
+        'setInterval(() => {}, 1000)',
+      ],
+    )
+    t.after(() => other.kill('SIGKILL'))
     const legacy = join(
       process.env.PNYX_HOME,
       'boards',
@@ -90,14 +98,14 @@ test(
         legacy,
         'server.lock',
       ),
-      JSON.stringify({ pid: process.pid }),
+      JSON.stringify({ pid: other.pid }),
     )
     writeFileSync(
       join(
         legacy,
         'server.json',
       ),
-      JSON.stringify({ pid: process.pid }),
+      JSON.stringify({ pid: other.pid }),
     )
     await assert.rejects(
       ensureNativeHost({ source }),
@@ -111,22 +119,11 @@ test(
       legacy,
       { recursive: true },
     )
-    const previous = await startServer({ port: 0 })
-
-    try {
-      await assert.rejects(
-        ensureNativeHost({ source }),
-        { code: 'NATIVE_MIGRATION_BUSY' },
-      )
-      assert.equal(
-        existsSync(paths.selected),
-        false,
-      )
-    } finally {
-      await previous.close()
-    }
-
     const serverPath = infoPath({ hydraId: 'default' })
+    mkdirSync(
+      dirname(serverPath),
+      { recursive: true },
+    )
     writeFileSync(
       serverPath,
       JSON.stringify({ pid: null }),
@@ -150,6 +147,11 @@ test(
     writeFileSync(
       serverPath,
       JSON.stringify({ pid: exitedPid }),
+    )
+    assert.doesNotThrow(() => requireSafeActivation())
+    writeFileSync(
+      serverPath,
+      JSON.stringify({ pid: process.pid }),
     )
     withWriter({
       hydraId: 'default',
@@ -219,9 +221,75 @@ test(
         })
       },
     })
+    const oldSource = join(
+      root,
+      'old-build',
+    )
+    cpSync(
+      join(
+        source,
+        'dist',
+      ),
+      join(
+        oldSource,
+        'dist',
+      ),
+      { recursive: true },
+    )
+    cpSync(
+      join(
+        source,
+        'package.json',
+      ),
+      join(
+        oldSource,
+        'package.json',
+      ),
+    )
+    symlinkSync(
+      join(
+        source,
+        'node_modules',
+      ),
+      join(
+        oldSource,
+        'node_modules',
+      ),
+    )
+    appendFileSync(
+      join(
+        oldSource,
+        'dist/agent-host/main.js',
+      ),
+      '\n// previous build fixture\n',
+    )
+    const oldNative = await ensureNativeHost({ source: oldSource })
+    connections.push(oldNative)
+    const oldBuild = oldNative.client.ready.build
+    const oldInstance = oldNative.client.ready.instance
+    oldNative.detach()
     const started = performance.now()
     const first = await ensureNativeHost({ source })
     connections.push(first)
+    await until({
+      timeout: 30000,
+      check: () => first.client.available() && first.client.ready.build !== oldBuild,
+    }).catch(error => {
+      t.diagnostic(`available: ${first.client.available()} status: ${JSON.stringify(first.status())}`)
+
+      if (existsSync(paths.log)) {
+        t.diagnostic(readFileSync(
+          paths.log,
+          'utf8',
+        ))
+      }
+
+      throw error
+    })
+    assert.notEqual(
+      first.client.ready.instance,
+      oldInstance,
+    )
     const startupMs = performance.now() - started
     const owned = JSON.parse(readFileSync(
       join(
@@ -286,10 +354,7 @@ test(
     )
     first.detach()
     const second = await ensureNativeHost({
-      source: join(
-        root,
-        'a-new-app-build-that-is-not-loaded',
-      ),
+      source,
     })
     connections.push(second)
     assert.equal(

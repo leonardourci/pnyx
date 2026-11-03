@@ -3,8 +3,10 @@ import { createConnection } from 'node:net'
 import { randomUUID } from 'node:crypto'
 import type { Operation, Result, SessionRef, ToClient, ToHost } from './protocol.ts'
 import { MAX_FRAME_BYTES, PROTOCOL, fail } from './protocol.ts'
+import { HydraError } from '#store/errors.ts'
 
 const REQUEST_MS = 30000
+const HANDSHAKE_MS = 5000
 
 export async function connectHost({
   socket: path,
@@ -29,7 +31,7 @@ export async function connectHost({
       ready.reject(new Error('The native host handshake timed out'))
       socket.destroy()
     },
-    REQUEST_MS,
+    HANDSHAKE_MS,
   )
 
   const send = ({ frame }: { frame: ToHost }) => {
@@ -162,9 +164,14 @@ export async function connectHost({
       frame.id,
       result,
     )
+    const health = frame.type === 'call' && (frame.operation.kind === 'status'
+      || frame.operation.kind === 'attach' && frame.operation.scope.kind === 'host')
     const timeout = setTimeout(
-      () => result.reject(new Error('The native host request timed out; look it up by ID')),
-      REQUEST_MS,
+      () => result.reject(health ? new HydraError({
+        code: 'NATIVE_TIMEOUT',
+        message: 'The native host did not answer its health request',
+      }) : new Error('The native host request timed out; look it up by ID')),
+      health ? HANDSHAKE_MS : REQUEST_MS,
     )
 
     try {

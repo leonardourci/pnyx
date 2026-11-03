@@ -9,10 +9,11 @@ import { connectHost } from '#agent-host/client.ts'
 import { installBundle, selectBundle } from '#agent-host/install.ts'
 import { validateBundle } from '#agent-host/bundle.ts'
 import { processStart } from '#agent-host/discovery.ts'
-import { fail } from '#agent-host/protocol.ts'
+import { CAPABILITIES, fail } from '#agent-host/protocol.ts'
 import { pnyxHome, privateDir } from '#store/storage.ts'
 
 const READY_MS = 30000
+const STOP_MS = 2000
 const POLL_MS = 50
 
 export function nativePaths() {
@@ -105,6 +106,10 @@ export function requireSafeActivation() {
         })
       }
 
+      if (previous.pid === process.pid) {
+        continue
+      }
+
       try {
         process.kill(
           previous.pid,
@@ -128,32 +133,47 @@ export function requireSafeActivation() {
 
 export function selectedNativeBundle({ source }: { source: string }): {
   bundle: string
+  build: string
   entry: string
+  restartInstance?: string
+  restartDeadline?: number
 } {
   const paths = nativePaths()
-  let bundle: string
+  let restartInstance: string | undefined
+  let restartDeadline: number | undefined
 
-  if (existsSync(paths.selected)) {
-    bundle = JSON.parse(readFileSync(
+  if (!existsSync(paths.selected)) {
+    requireSafeActivation()
+  } else {
+    const selected = JSON.parse(readFileSync(
       paths.selected,
       'utf8',
-    )).bundle
-  } else {
-    requireSafeActivation()
-    bundle = installBundle({
-      source,
-      directory: paths.bundles,
-    })
-    selectBundle({
-      path: paths.selected,
-      bundle,
-    })
+    )) as {
+      restartInstance?: string
+      restartDeadline?: number
+    }
+    restartInstance = selected.restartInstance
+    restartDeadline = selected.restartDeadline
   }
+
+  const bundle = installBundle({
+    source,
+    directory: paths.bundles,
+  })
+  selectBundle({
+    path: paths.selected,
+    bundle,
+    restartInstance,
+    restartDeadline,
+  })
 
   const manifest = validateBundle({ directory: bundle })
 
   return {
     bundle,
+    build: manifest.build,
+    restartInstance,
+    restartDeadline,
     entry: join(
       bundle,
       manifest.entry,
@@ -167,32 +187,52 @@ export async function ensureNativeHost({
   source: string
 }) {
   const paths = nativePaths()
-  await startNativeHost({
-    source,
-    paths,
-  })
+  const selected = selectedNativeBundle({ source })
+
+  try {
+    await startNativeHost({
+      paths,
+      restartInstance: selected.restartInstance,
+      restartDeadline: selected.restartDeadline,
+    })
+  } catch (error) {
+    console.error(
+      'Native host startup deferred:',
+      error,
+    )
+  }
 
   return nativeProviders({
     ...paths,
-    reconnect: () => startNativeHost({
-      source,
+    desiredBuild: selected.build,
+    restartInstance: selected.restartInstance,
+    restartDeadline: selected.restartDeadline,
+    reconnect: ({ failedInstance }) => startNativeHost({
       paths,
+      failedInstance,
+      restartInstance: selected.restartInstance,
+      restartDeadline: selected.restartDeadline,
     }),
   })
 }
 
 async function startNativeHost({
-  source,
   paths,
+  failedInstance,
+  restartInstance,
+  restartDeadline,
 }: {
-  source: string
   paths: ReturnType<typeof nativePaths>
+  failedInstance?: string
+  restartInstance?: string
+  restartDeadline?: number
 }) {
+  const socket = join(
+    paths.directory,
+    'host.sock',
+  )
   const connect = () => connectHost({
-    socket: join(
-      paths.directory,
-      'host.sock',
-    ),
+    socket,
     token: readFileSync(
       join(
         paths.directory,
@@ -201,18 +241,43 @@ async function startNativeHost({
       'utf8',
     ),
     installation: paths.installation,
+    capabilities: CAPABILITIES,
   })
 
-  try {
-    const client = await connect()
-    client.detach()
+  let failedHandshake: boolean
 
-    return
-  } catch (error) {
-    const code = (error as NodeJS.ErrnoException).code
+  if (failedInstance) {
+    try {
+      const ledger = JSON.parse(readFileSync(
+        join(
+          paths.directory,
+          'ledger.json',
+        ),
+        'utf8',
+      )) as { instance?: string }
 
-    if (code !== 'ENOENT' && code !== 'ECONNREFUSED') {
-      throw error
+      if (ledger.instance !== failedInstance) {
+        return
+      }
+
+      failedHandshake = true
+    } catch {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host instance is not verifiable',
+      })
+    }
+  } else {
+    try {
+      const client = await connect()
+      client.detach()
+
+      return
+    } catch (error) {
+      const code = (error as NodeJS.ErrnoException).code
+
+      failedHandshake = code !== 'ENOENT' && code !== 'ECONNREFUSED'
+        || code === 'ENOENT' && existsSync(socket)
     }
   }
 
@@ -223,32 +288,178 @@ async function startNativeHost({
   )
 
   if (existsSync(ownerPath)) {
-    const owner = JSON.parse(readFileSync(
-      ownerPath,
-      'utf8',
-    )) as {
+    let owner: {
       pid: number
       start: string
+      installation: string
     }
-    const start = processStart({ pid: owner.pid })
+    let saved: string
 
-    if (start) {
-      if (start !== owner.start) {
-        fail({
+    try {
+      saved = readFileSync(
+        ownerPath,
+        'utf8',
+      )
+      owner = JSON.parse(saved)
+    } catch {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host identity is not verifiable',
+      })
+    }
+
+    if (!Number.isSafeInteger(owner.pid) || owner.pid <= 0 || owner.pid === process.pid
+      || typeof owner.start !== 'string' || !owner.start || owner.installation !== paths.installation) {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host identity is not verifiable',
+      })
+    }
+
+    const start = processStart({ pid: owner.pid })
+    let alive = false
+
+    try {
+      process.kill(
+        owner.pid,
+        0,
+      )
+      alive = true
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== 'ESRCH') {
+        return fail({
           code: 'RECOVERY_REQUIRED',
-          message: 'Native host PID ownership is uncertain',
+          message: 'Native host identity is not verifiable',
+        })
+      }
+    }
+
+    if (alive && start !== owner.start) {
+      return fail({
+        code: 'RECOVERY_REQUIRED',
+        message: 'Native host PID ownership is uncertain',
+      })
+    }
+
+    if (alive && !failedHandshake && restartInstance && restartDeadline) {
+      const sameInstance = () => {
+        try {
+          const ledger = JSON.parse(readFileSync(
+            join(
+              paths.directory,
+              'ledger.json',
+            ),
+            'utf8',
+          )) as { instance?: string }
+
+          return ledger.instance === restartInstance
+        } catch {
+          return false
+        }
+      }
+
+      while (sameInstance() && Date.now() < restartDeadline) {
+        await delay(POLL_MS)
+
+        try {
+          const client = await connect()
+          client.detach()
+
+          return
+        } catch {
+          // Wait for the explicit restart grace period before forcing recovery.
+        }
+      }
+
+      if (sameInstance() && Date.now() >= restartDeadline) {
+        failedInstance = restartInstance
+        failedHandshake = true
+      }
+    }
+
+    if (alive && failedHandshake) {
+      const stillOwned = () => {
+        try {
+          const sameOwner = readFileSync(
+            ownerPath,
+            'utf8',
+          ) === saved
+            && processStart({ pid: owner.pid }) === owner.start
+
+          if (!sameOwner || !failedInstance) {
+            return sameOwner
+          }
+
+          const ledger = JSON.parse(readFileSync(
+            join(
+              paths.directory,
+              'ledger.json',
+            ),
+            'utf8',
+          )) as { instance?: string }
+
+          return ledger.instance === failedInstance
+        } catch {
+          return false
+        }
+      }
+
+      if (!stillOwned()) {
+        return fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'Native host ownership changed during recovery',
         })
       }
 
-      owned = true
+      process.kill(
+        owner.pid,
+        'SIGTERM',
+      )
+      const deadline = Date.now() + STOP_MS
+
+      while (Date.now() < deadline && stillOwned()) {
+        await delay(POLL_MS)
+      }
+
+      if (stillOwned()) {
+        process.kill(
+          owner.pid,
+          'SIGKILL',
+        )
+      }
+
+      const stopped = Date.now() + STOP_MS
+
+      while (Date.now() < stopped && processStart({ pid: owner.pid }) === owner.start) {
+        await delay(POLL_MS)
+      }
+
+      if (processStart({ pid: owner.pid }) === owner.start) {
+        return fail({
+          code: 'RECOVERY_REQUIRED',
+          message: 'Native host did not stop after failed handshake',
+        })
+      }
+    } else {
+      owned = alive
     }
+  } else if (failedHandshake) {
+    return fail({
+      code: 'RECOVERY_REQUIRED',
+      message: 'Native host identity is not verifiable',
+    })
   }
 
   if (!owned) {
-    const {
+    const bundle = JSON.parse(readFileSync(
+      paths.selected,
+      'utf8',
+    )).bundle as string
+    const manifest = validateBundle({ directory: bundle })
+    const entry = join(
       bundle,
-      entry,
-    } = selectedNativeBundle({ source })
+      manifest.entry,
+    )
     const log = openSync(
       paths.log,
       'a',

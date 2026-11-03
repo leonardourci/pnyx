@@ -8,8 +8,8 @@ import {
   IconHourglass, IconLink, IconList, IconListCheck, IconLock, IconLockOpen, IconMap, IconMaximize,
   IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
   IconPencilCheck, IconPhoto, IconPinnedFilled, IconPlayerStopFilled, IconPlug, IconPlus,
-  IconQuote, IconRobot, IconSearch, IconSettings, IconStar, IconTag, IconTerminal2, IconTestPipe,
-  IconTool, IconUser, IconWorld, IconX,
+  IconQuote, IconRobot, IconRotateClockwise, IconSearch, IconSettings, IconStar, IconTag,
+  IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
   IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
   IconMoon, IconPalette, IconRefresh, IconSparkles, IconSun, IconTypography, IconUsers,
 } from '@tabler/icons-react'
@@ -17,6 +17,7 @@ import {
 // Interface icons: every Pnyx control and status that is not an identity icon draws from Tabler.
 export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   search: IconSearch,
+  restart: IconRotateClockwise,
   upgrade: IconCircleArrowUp,
   fix: IconTool,
   close: IconX,

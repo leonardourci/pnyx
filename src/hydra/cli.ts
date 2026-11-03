@@ -34,7 +34,7 @@ import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
-import { upgradeCommand } from '#upgrade/model.ts'
+import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -942,8 +942,9 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
   }
 
-  // Pnyx runs /upgrade itself, whichever agent the Hydra is.
+  // Pnyx runs its own commands even for a Firstmate-linked Hydra.
   const pnyxRuns = config.hydra.kind !== 'firstmate' || upgradeCommand({ text: String(values.text ?? '') })
+    || restartCommand({ text: String(values.text ?? '') })
 
   if (!pnyxRuns || m.actor === HYDRA_ACTOR || result.event === 'none: duplicate' || !result.message) {
     return result

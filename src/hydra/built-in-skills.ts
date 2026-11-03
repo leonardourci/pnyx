@@ -1,5 +1,5 @@
 import { INSCRIBE_SKILL, SET_UP_SKILL } from '#setup/skill-names.ts'
-import { isUpgradeSuggestion, UPGRADE_SUGGESTION } from '#upgrade/model.ts'
+import { isServerCommand, UPGRADE_SUGGESTION, RESTART_SUGGESTION } from '#upgrade/model.ts'
 import { HYDRA_CARD } from './identity.ts'
 import type { Catalog, Suggestion } from './transcripts-catalog.ts'
 
@@ -46,13 +46,14 @@ export function withBuiltInSkills({
   }))
 
   const external = catalog.suggestions.filter(item =>
-    !item.builtin && !isUpgradeSuggestion({ item }) && item.command !== ADD_PROJECT_COMMAND)
+    !item.builtin && !isServerCommand({ item }) && item.command !== ADD_PROJECT_COMMAND)
 
   return {
     ...catalog,
     suggestions: [
       ...builtins,
       UPGRADE_SUGGESTION,
+      RESTART_SUGGESTION,
       ADD_PROJECT_SUGGESTION,
       ...external,
     ],

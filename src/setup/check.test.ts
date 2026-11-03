@@ -68,13 +68,29 @@ test(
         'check',
       ],
     })
+    const removed = run({
+      args: [
+        'setup',
+        'service',
+        '--preview',
+        '--allow-custom-home',
+      ],
+    })
+    assert.notEqual(
+      removed.status,
+      0,
+    )
+    assert.match(
+      removed.stdout,
+      /unknown setup target: service/,
+    )
     assert.equal(
       fresh.status,
       1,
     )
     assert.match(
       fresh.stdout,
-      /^ {2}service,[^\n]*,owner,pnyx-axi setup service$/m,
+      /^ {2}service,[^\n]*,owner,pnyx-axi setup$/m,
     )
     assert.match(
       run({
@@ -89,8 +105,9 @@ test(
     const proposal = run({
       args: [
         'setup',
-        'service',
         '--preview',
+        '--port',
+        '4748',
         '--allow-custom-home',
         '--hydra',
         'default',
@@ -120,6 +137,10 @@ test(
     assert.match(
       confirmed.stdout,
       /^state: confirmed$[\s\S]*would install/m,
+    )
+    assert.match(
+      confirmed.stdout,
+      /4748/,
     )
 
     const { path } = serviceFile({

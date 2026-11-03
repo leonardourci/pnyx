@@ -732,6 +732,10 @@ test(
           'Built-in',
         ],
         [
+          '/restart',
+          'Built-in',
+        ],
+        [
           '/add-project',
           'Built-in',
         ],
@@ -781,6 +785,7 @@ test(
         '$inscribe',
         '$pnyx-set-up',
         '/upgrade',
+        '/restart',
         '/add-project',
       ],
     )

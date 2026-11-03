@@ -52,7 +52,7 @@ export async function startServer({
   // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
   // Only serve checks the real folder, so a test server never asks GitHub.
   upgradeRoot?: string
-  restart?(): void
+  restart?({ force }: { force: boolean }): void | Promise<void>
 }): Promise<RunningServer> {
   const wss = new WebSocketServer({
     noServer: true,
@@ -770,7 +770,7 @@ async function mountHydra({
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
   upgradeRoot?: string
-  restart?(): void
+  restart?({ force }: { force: boolean }): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   const release = claimServer({ hydraId })

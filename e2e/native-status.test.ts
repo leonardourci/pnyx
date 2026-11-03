@@ -64,11 +64,15 @@ test(
       (await response.json()).native.state,
       'unavailable',
     )
+    const afterOutage = statuses.length
     await fixtureHost({
       t,
       directory: app.root,
     })
-    await until({ check: () => statuses.filter(state => state === 'ready').length === 2 })
+    await until({ check: () => statuses.slice(afterOutage).includes('ready') }).catch(error => {
+      t.diagnostic(`native statuses: ${statuses.join(', ')}`)
+      throw error
+    })
     const recovered = await fetch(`http://127.0.0.1:${server.port}/health`)
     assert.equal(
       (await recovered.json()).native.state,

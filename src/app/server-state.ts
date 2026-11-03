@@ -18,6 +18,8 @@ export interface ServerInfo {
   url: string
   // Null when the ingest socket could not be bound; hooks then spool.
   socket: string | null
+  service?: boolean
+  serveArgs?: string[]
 }
 
 // Only the path of the recorded address is used, so a request (and the token sent with it) never leaves this machine.
@@ -201,10 +203,10 @@ export function hydraIdentity({ hydraId }: { hydraId: string }): string {
     )
 }
 
-function processStart({ pid }: { pid: number }): string | null {
+export function processStart({ pid }: { pid: number }): string | null {
   try {
     return execFileSync(
-      'ps',
+      '/bin/ps',
       [
         '-o',
         'lstart=',

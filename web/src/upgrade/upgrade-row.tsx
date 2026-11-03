@@ -14,7 +14,8 @@ const STEPS: UpgradeStepName[] = [
 // Every step while it runs, so the ones still to come show too; only the steps that ran once it stopped.
 function Steps({ operation }: { operation: UpgradeOperation }) {
   const active = operation.state === 'running' || operation.state === 'restarting'
-  const shown = active ? STEPS : operation.steps.map(step => step.step)
+  const restartOnly = operation.steps.length === 1 && operation.steps[0]?.step === 'restart'
+  const shown = active && !restartOnly ? STEPS : operation.steps.map(step => step.step)
 
   return (
     <ol className="upgrade-steps">
@@ -56,13 +57,17 @@ export function UpgradeRow({
     endedAt: operation.endedAt,
     running: active,
   })
+  const restartOnly = operation.steps.length === 1 && operation.steps[0]?.step === 'restart'
+  const progressTitle = restartOnly ? 'Restarting Pnyx' : 'Upgrading Pnyx'
+  const finishedTitle = restartOnly ? 'Restarted' : 'Upgraded'
+  const activeIcon = restartOnly ? 'restart' : 'upgrade'
   const brokenBack = operation.rolledBack === false
   const needsFix = operation.state === 'failed' || operation.state === 'refused' || (operation.state === 'stopped' && brokenBack)
   const [
     title,
     detail,
-  ] = active ? [`Upgrading Pnyx… ${elapsed}`]
-    : operation.state === 'done' ? [`Upgraded · ${elapsed}`]
+  ] = active ? [`${progressTitle}… ${elapsed}`]
+    : operation.state === 'done' ? [`${finishedTitle} · ${elapsed}`]
       : operation.state === 'current' ? ['Pnyx is already up to date']
         : operation.state === 'stopped' ? brokenBack ? [
           'Upgrade stopped.',
@@ -72,16 +77,20 @@ export function UpgradeRow({
             'Upgrade not started.',
             `The Pnyx folder in ${operation.folder} isn't ready. Nothing was stashed or changed.`,
           ]
-            : [
-              `Upgrade failed while ${stoppedWhile({ operation })}.`,
-              operation.rolledBack === false
-                ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
-                : 'Went back to the previous version; nothing changed.',
+            : operation.failed === 'restart' ? restartOnly ? ['Restart failed.'] : [
+              'Upgrade finished, but restart failed.',
+              'The upgraded code remains on disk.',
             ]
+              : [
+                `Upgrade failed while ${stoppedWhile({ operation })}.`,
+                operation.rolledBack === false
+                  ? 'Going back to the previous version failed too, so the Pnyx folder may be partly upgraded.'
+                  : 'Went back to the previous version; nothing changed.',
+              ]
 
   return (
     <div className="compaction-row upgrade-row" data-state={needsFix ? 'failed' : operation.state} role={active ? 'status' : undefined}>
-      <Icon name={active ? 'upgrade' : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={14} />
+      <Icon name={active ? activeIcon : needsFix ? 'error' : operation.state === 'stopped' ? 'stop' : 'check'} size={14} />
       <div className="upgrade-body">
         <span className="upgrade-title">{title}</span>
         {detail && <span className="upgrade-detail">{detail}</span>}
@@ -102,7 +111,7 @@ export function UpgradeRow({
           </span>
         )}
         {needsFix && operation.error && <pre className="upgrade-error">{operation.error}</pre>}
-        {needsFix && (
+        {needsFix && !restartOnly && (
           <Button variant="surface" className="upgrade-fix" onClick={() => askHydra({ text: fixPrompt({ operation }) })}>
             <Icon name="fix" size={14} />Ask Hydra to fix
           </Button>

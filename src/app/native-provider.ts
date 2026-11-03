@@ -8,7 +8,7 @@ import { existsSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider, HostedSession } from '#workers/provider.ts'
 import type { ProviderId, Result, Summary } from '#agent-host/protocol.ts'
-import { fail } from '#agent-host/protocol.ts'
+import { CAPABILITIES, fail } from '#agent-host/protocol.ts'
 import { nativeConnection } from './native-connection.ts'
 import { checked, remoteSession } from '#agent-host/remote.ts'
 import { fingerprint } from '#agent-host/ledger.ts'
@@ -16,6 +16,7 @@ import { durableWriter } from '#agent-host/durable.ts'
 import { privateDir } from '#store/storage.ts'
 
 const SNAPSHOT_MS = 5000
+const ACTIVATION_MS = 1000
 
 type Binding = {
   request: string
@@ -29,11 +30,17 @@ export async function nativeProviders({
   journal,
   installation,
   reconnect,
+  desiredBuild,
+  restartInstance,
+  restartDeadline,
 }: {
   directory: string
   journal: string
   installation: string
-  reconnect?(): Promise<void>
+  desiredBuild?: string
+  restartInstance?: string
+  restartDeadline?: number
+  reconnect?({ failedInstance }: { failedInstance?: string }): Promise<void>
 }) {
   privateDir({ dir: journal })
   let controller = ''
@@ -45,21 +52,14 @@ export async function nativeProviders({
     ),
     installation,
     reconnect,
-    token: readFileSync(
+    token: () => readFileSync(
       join(
         directory,
         'token',
       ),
       'utf8',
     ),
-    capabilities: [
-      'controllers',
-      'named-requests',
-      'critical-outbox',
-      'live-owners',
-      'volatile-inputs',
-      'host-status',
-    ],
+    capabilities: CAPABILITIES,
     attached: async ({ client: connection }) => {
       const claim = checked({
         result: await connection.call({
@@ -91,11 +91,16 @@ export async function nativeProviders({
   })
   const writers = new Map<string, ReturnType<typeof durableWriter>>()
   const openings = new Map<string, Promise<HostedSession>>()
-  let status = nativeStatus({
+  let status: NativeStatus = client.available() ? nativeStatus({
     readiness: client.ready.readiness,
     build: client.ready.build,
     instance: client.ready.instance,
-  })
+  }) : {
+    state: 'unavailable',
+    build: '',
+    instance: '',
+    reasons: ['The native owner is unavailable. Reconcile ownership before restarting agents.'],
+  }
   const listeners = new Set<() => void>()
   client.subscribe({
     receive({ frame }) {
@@ -138,6 +143,60 @@ export async function nativeProviders({
       }
     },
   })
+  let activating = false
+  const activation = setInterval(
+    async () => {
+      const selectedIsRunning = client.available() && client.ready.build === desiredBuild
+      const restartRequested = client.available() && client.ready.instance === restartInstance
+      const needsActivation = !selectedIsRunning || restartRequested
+
+      if (!desiredBuild || !client.available() || activating || !needsActivation) {
+        return
+      }
+
+      activating = true
+
+      try {
+        const status = checked({
+          result: await client.call({
+            id: randomUUID(),
+            operation: { kind: 'status' },
+          }),
+        })
+
+        if (status.kind !== 'maintenance') {
+          return
+        }
+
+        if (status.status.blockers.length) {
+          if (restartRequested && restartDeadline && Date.now() >= restartDeadline && reconnect) {
+            await reconnect({ failedInstance: restartInstance })
+          }
+
+          return
+        }
+
+        checked({
+          result: await client.call({
+            id: randomUUID(),
+            operation: {
+              kind: 'shutdown',
+              controller,
+              when: 'quiescent',
+            },
+          }),
+        })
+      } catch (error) {
+        console.error(
+          'Native bundle activation deferred:',
+          error,
+        )
+      } finally {
+        activating = false
+      }
+    },
+    ACTIVATION_MS,
+  ).unref()
   const provider = ({ provider }: { provider: ProviderId }): Provider => ({
     remote: true,
     canOpen: () => client.available() && !inventory.some(session => session.phase === 'recovery_required'),
@@ -464,7 +523,10 @@ export async function nativeProviders({
       return () => listeners.delete(changed)
     },
     providers: adapters,
-    detach: () => client.detach(),
+    detach: () => {
+      clearInterval(activation)
+      client.detach()
+    },
   }
 }
 

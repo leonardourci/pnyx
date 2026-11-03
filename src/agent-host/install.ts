@@ -1,6 +1,6 @@
 import { createRequire } from 'node:module'
 import { createHash, randomUUID } from 'node:crypto'
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
 import { dirname, join, parse } from 'node:path'
 import { stageBundle, validateBundle } from './bundle.ts'
 import { fail } from './protocol.ts'
@@ -239,15 +239,31 @@ export function installBundle({
       root: packageRoot({ entry: require.resolve('@anthropic-ai/claude-agent-sdk') }),
       parent: payload,
     })
-    const build = createHash('sha256').update(readFileSync(join(
-      compiled,
-      'agent-host/main.js',
-    )))
-      .digest('hex')
-      .slice(
-        0,
-        16,
-      )
+    const digest = createHash('sha256')
+
+    for (const name of readdirSync(
+      payload,
+      {
+        recursive: true,
+        encoding: 'utf8',
+      },
+    ).sort()) {
+      if (lstatSync(join(
+        payload,
+        name,
+      )).isFile()) {
+        digest.update(name)
+        digest.update(readFileSync(join(
+          payload,
+          name,
+        )))
+      }
+    }
+
+    const build = digest.digest('hex').slice(
+      0,
+      16,
+    )
 
     return stageBundle({
       source: payload,
@@ -269,9 +285,13 @@ export function installBundle({
 export function selectBundle({
   path,
   bundle,
+  restartInstance,
+  restartDeadline,
 }: {
   path: string
   bundle: string
+  restartInstance?: string
+  restartDeadline?: number
 }) {
   validateBundle({ directory: bundle })
   replaceFile({
@@ -279,6 +299,8 @@ export function selectBundle({
     text: JSON.stringify({
       bundle,
       revision: randomUUID(),
+      restartInstance,
+      restartDeadline,
     }),
   })
 }

@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync, writeFileSync } from 'node:fs'
+import { readFileSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { processStart } from '#agent-host/discovery.ts'
 import type { HostClient } from '#agent-host/client.ts'
-import { fixtureHost, controlledSession, until } from '#agent-host/fixtures/harness.ts'
+import { fixtureHost, controlledSession, readOwnedTree, until } from '#agent-host/fixtures/harness.ts'
 
 const SECOND_MS = 1000
 
@@ -28,11 +28,7 @@ async function startTree({
     host.root,
     'owned-tree.json',
   )
-  await until({ check: () => existsSync(path) })
-  const tree = JSON.parse(readFileSync(
-    path,
-    'utf8',
-  ))
+  const tree = await readOwnedTree({ path })
   const born = Math.max(
     Date.parse(tree.parent.start),
     Date.parse(tree.tool.start),
@@ -62,19 +58,12 @@ for (const boot of [
         host: first,
         client,
       })
-      await until({
-        check: () => existsSync(join(
-          first.root,
-          'owned-tree.json',
-        )),
-      })
-      const tree = JSON.parse(readFileSync(
-        join(
+      const tree = await readOwnedTree({
+        path: join(
           first.root,
           'owned-tree.json',
         ),
-        'utf8',
-      ))
+      })
       const saved = JSON.parse(readFileSync(
         join(
           first.root,
@@ -174,19 +163,12 @@ for (const damage of [
         client,
         settings: { fixtureTree: '1' },
       })
-      await until({
-        check: () => existsSync(join(
-          first.root,
-          'owned-tree.json',
-        )),
-      })
-      const tree = JSON.parse(readFileSync(
-        join(
+      const tree = await readOwnedTree({
+        path: join(
           first.root,
           'owned-tree.json',
         ),
-        'utf8',
-      ))
+      })
       t.after(() => {
         for (const owned of [
           tree.parent,

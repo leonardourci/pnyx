@@ -9,7 +9,7 @@ import { fingerprint } from '#agent-host/ledger.ts'
 import { nativeProviders } from '#app/native-provider.ts'
 import { existsSync, mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { fixtureApplication } from '#agent-host/fixtures/application-harness.ts'
-import { fixtureHost, snapshot, until } from '#agent-host/fixtures/harness.ts'
+import { fixtureHost, readOwnedTree, snapshot, until } from '#agent-host/fixtures/harness.ts'
 
 const SECOND_MS = 1000
 
@@ -156,6 +156,119 @@ for (const provider of [
   )
 }
 
+test(
+  'reattachment applies retained completion before admitting another input',
+  async t => {
+    const host = await fixtureHost({ t })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'application',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    t.after(first.detach)
+    const open = {
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    }
+    const initial = await first.providers.codex.open(open)
+    const permission = async () => ({
+      behavior: 'deny' as const,
+      message: 'fixture',
+    })
+    const reading = (async () => {
+      for await (const event of initial.run({
+        input: (async function* () {
+          yield {
+            id: 'first',
+            text: 'first',
+            images: [],
+          }
+        })(),
+        permission,
+      })) {
+        assert.notEqual(
+          event,
+          undefined,
+        )
+      }
+    })()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    const running = (await host.stats())[0]!
+    initial.detach!()
+    await reading
+    first.detach()
+    await host.control({
+      kind: 'event',
+      nativeId: running.id,
+      event: {
+        type: 'result',
+        turn: running.turn!,
+        inputIds: ['first'],
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    const second = await nativeProviders(options)
+    t.after(second.detach)
+    const resumed = await second.providers.codex.open({
+      ...open,
+      agent: {
+        provider: 'codex',
+        sessionId: running.id,
+      },
+    })
+    t.after(() => resumed.detach!())
+    let requested = false
+    const events = resumed.run({
+      input: (async function* () {
+        requested = true
+        yield {
+          id: 'second',
+          text: 'second',
+          images: [],
+        }
+      })(),
+      permission,
+    })[Symbol.asyncIterator]()
+    let event = await events.next()
+
+    while (!event.done && (typeof event.value !== 'object' || event.value.type !== 'turn-ended')) {
+      event = await events.next()
+    }
+
+    assert.equal(
+      event.done,
+      false,
+    )
+    await new Promise(resolve => setImmediate(resolve))
+    assert.equal(
+      requested,
+      false,
+    )
+    assert.equal(
+      (await host.stats())[0]!.input.length,
+      1,
+    )
+    const drain = (async () => {
+      let next = await events.next()
+
+      while (!next.done) {
+        next = await events.next()
+      }
+    })()
+    await resumed.replayed!()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 2 })
+    resumed.detach!()
+    await drain
+  },
+)
+
 for (const harness of [
   'claude',
   'codex',
@@ -283,8 +396,6 @@ test(
     const {
       mkdtempSync,
       realpathSync,
-      existsSync,
-      readFileSync,
       rmSync,
     } = await import('node:fs')
     const { processStart } = await import('#agent-host/discovery.ts')
@@ -322,14 +433,7 @@ test(
       root,
       'owned-tree.json',
     )
-    await until({ check: () => existsSync(path) })
-    const owners = JSON.parse(readFileSync(
-      path,
-      'utf8',
-    )) as Record<string, {
-      pid: number
-      start: string
-    }>
+    const owners = await readOwnedTree({ path })
     t.after(() => {
       for (const owner of Object.values(owners)) {
         if (processStart({ pid: owner.pid }) === owner.start) {
@@ -2041,6 +2145,226 @@ test(
     assert.equal(
       application.child.signalCode,
       null,
+    )
+  },
+)
+
+test(
+  'closed sessions acknowledge terminal facts before consumers stop and admit messages after host restart',
+  async t => {
+    const host = await fixtureHost({ t })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'terminal-bindings',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    t.after(first.detach)
+    const open = {
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    }
+
+    for (const actor of [
+      'one',
+      'two',
+      'three',
+    ]) {
+      const session = await first.providers.codex.open({
+        ...open,
+        env: { PNYX_ACTOR: actor },
+      })
+      const reading = (async () => {
+        for await (const event of session.attach!()) {
+          if (typeof event === 'object' && event.type === 'ended') {
+            break
+          }
+        }
+      })()
+      await session.close()
+      await reading
+      const observer = await host.connect()
+      const summary = observer.ready.sessions.find(saved => saved.nativeId === session.id)!
+      const retained = await snapshot({
+        client: observer,
+        ref: summary.ref,
+      })
+      assert.deepEqual(
+        retained.pendingFacts,
+        [],
+      )
+      observer.detach()
+      session.detach!()
+    }
+
+    first.detach()
+    host.child.kill('SIGKILL')
+    await host.exited
+    const replacement = await fixtureHost({
+      t,
+      directory: host.root,
+    })
+    const second = await nativeProviders(options)
+    t.after(second.detach)
+    assert.equal(
+      second.providers.codex.canOpen?.(),
+      true,
+    )
+    const session = await second.providers.codex.open(open)
+    t.after(() => session.detach!())
+    const reading = (async () => {
+      for await (const event of session.run({
+        input: (async function* () {
+          yield {
+            id: 'fresh-message',
+            text: 'After closed sessions',
+            images: [],
+          }
+        })(),
+        permission: async () => ({
+          behavior: 'deny',
+          message: 'fixture',
+        }),
+      })) {
+        if (event === 'working') {
+          break
+        }
+      }
+    })()
+    await until({ check: async () => (await replacement.stats()).some(state => state.input[0]?.id === 'fresh-message') })
+    session.detach!()
+    await reading
+  },
+)
+
+test(
+  'activation and restart preserve admitted turns until the durable outcome is acknowledged',
+  async t => {
+    const host = await fixtureHost({
+      t,
+      measure: true,
+    })
+    const options = {
+      directory: host.root,
+      journal: join(
+        host.root,
+        'upgrade-bindings',
+      ),
+      installation: 'fixture-installation',
+    }
+    const first = await nativeProviders(options)
+    const original = first.client.ready
+    const session = await first.providers.codex.open({
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+    })
+    const reading = (async () => {
+      for await (const event of session.run({
+        input: (async function* () {
+          yield {
+            id: 'upgrade-message',
+            text: 'Keep my turn',
+            images: [],
+          }
+        })(),
+        permission: async () => ({
+          behavior: 'deny',
+          message: 'fixture',
+        }),
+      })) {
+        if (event === 'working') {
+          break
+        }
+      }
+    })()
+    await until({ check: async () => (await host.stats())[0]?.input.length === 1 })
+    session.detach!()
+    await reading
+    first.detach()
+    const upgrading = await nativeProviders({
+      ...options,
+      desiredBuild: 'next-build',
+      restartInstance: original.instance,
+    })
+    t.after(upgrading.detach)
+    await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length >= 2 })
+    assert.equal(
+      (await host.timings()).some(call => call.operation === 'shutdown'),
+      false,
+    )
+    assert.equal(
+      host.child.exitCode,
+      null,
+    )
+    assert.equal(
+      (await host.stats())[0]!.closed,
+      false,
+    )
+    const native = (await host.stats())[0]!
+    await host.control({
+      kind: 'event',
+      nativeId: session.id,
+      event: {
+        type: 'result',
+        turn: native.turn!,
+        inputIds: ['upgrade-message'],
+        status: 'completed',
+        queued: 0,
+      },
+    })
+    const pollsBeforeOutcome = (await host.timings()).filter(call => call.operation === 'status').length
+    await until({ check: async () => (await host.timings()).filter(call => call.operation === 'status').length > pollsBeforeOutcome })
+    assert.equal(
+      (await host.timings()).some(call => call.operation === 'shutdown'),
+      false,
+    )
+    assert.equal(
+      host.child.exitCode,
+      null,
+    )
+    const observer = await host.connect()
+    const saved = observer.ready.sessions[0]!
+    const retained = await snapshot({
+      client: observer,
+      ref: saved.ref,
+    })
+    assert.ok(retained.pendingFacts.some(fact => fact.event.type === 'turn-ended'))
+    observer.detach()
+    const resumed = await upgrading.providers.codex.open({
+      cwd: host.root,
+      env: {},
+      settings: {},
+      signal: new AbortController().signal,
+      agent: {
+        provider: 'codex',
+        sessionId: session.id,
+      },
+    })
+    t.after(() => resumed.detach!())
+    const consumption = (async () => {
+      for await (const event of resumed.attach!()) {
+        if (typeof event === 'object' && event.type === 'turn-ended') {
+          await resumed.applied!()
+          break
+        }
+      }
+    })()
+    await consumption
+    const outcome = retained.pendingFacts.find(fact => fact.event.type === 'turn-ended')!
+    await resumed.settle!({ through: `${saved.ref.epoch}:${outcome.seq}` })
+    await until({ check: () => !upgrading.client.available() })
+    upgrading.detach()
+    await host.exited
+    assert.equal(
+      host.child.exitCode,
+      0,
     )
   },
 )
