@@ -1007,8 +1007,7 @@ export async function mountOwnedHydra({
   let replyCheckedAt = 0
   let scheduled = false
 
-  // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
-  // The value says whether shutdown may kill the worker: a follow or an index catch-up, which the next run repeats.
+  // Children the server waits for at shutdown; the value says whether shutdown may kill one (the index catch-up, which the next run repeats).
   const workers = new Map<ChildProcess, boolean>()
   const inProcess = new Set<Promise<void>>()
 
@@ -1044,15 +1043,20 @@ export async function mountOwnedHydra({
     }
 
     if (file === REPLY_WORKER || file === COMMAND_WORKER) {
-      const running = runPageCommand({ argv: args }).then(({
-        failed,
-        stdout,
-      }) => done({
-        error: failed ? new Error(`${args[0]} failed`) : null,
-        stdout,
-      }))
+      // runPageCommand reports its own failures in its answer, so this promise never rejects.
+      const answer = async () => {
+        const {
+          failed,
+          stdout,
+        } = await runPageCommand({ argv: args })
+        done({
+          error: failed ? new Error(`${args[0]} failed`) : null,
+          stdout,
+        })
+      }
+
+      const running = answer().finally(() => inProcess.delete(running))
       inProcess.add(running)
-      void running.finally(() => inProcess.delete(running))
 
       return
     }
@@ -1078,7 +1082,7 @@ export async function mountOwnedHydra({
     )
     workers.set(
       child,
-      args[0] === 'inbox-follow' || file === INDEX_WORKER,
+      file === INDEX_WORKER,
     )
     child.once(
       'close',
@@ -1311,13 +1315,21 @@ export async function mountOwnedHydra({
 
         // One settle at a time; it reads the copies with git, off the event loop.
         if (!settling && Object.values(state.cards).some(card => settles({ card }))) {
-          settling = settleDone({ hydraId }).then(
-            () => pump(),
-            error => console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`),
-          )
-            .finally(() => {
+          const settle = async () => {
+            try {
+              await settleDone({ hydraId })
+            } catch (error) {
+              console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`)
+
+              return
+            } finally {
               settling = undefined
-            })
+            }
+
+            pump()
+          }
+
+          settling = settle()
         }
       } catch (error) {
         // A held lock or a damaged log; the next change retries.

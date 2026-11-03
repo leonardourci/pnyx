@@ -64,7 +64,7 @@ export async function runCli({
   }) : full
 
   // Named after the subcommand only when its help has a section for it (`card <id>` stays `card`).
-  // The server runs other commands in its own process for the web, so serve sets nothing.
+  // serve runs outside any client request, so it records no invocation.
   if (command !== 'serve') {
     const invocation = requestInvocation()
     invocation.name = focused !== full ? `${command} ${sub}` : command
