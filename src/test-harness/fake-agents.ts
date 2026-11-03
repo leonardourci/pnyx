@@ -156,6 +156,11 @@ function plannedTurns<Plan extends TurnPlan>({ hydra }: { hydra(): string }) {
 export function replayClaude({ hydra }: { hydra(): string }) {
   const sessions: AgentSession[] = []
   const turns = plannedTurns<ClaudeTurnPlan>({ hydra })
+  // A session opening in this folder waits for release, or fails, as a slow or broken Claude Code start does.
+  const opening = new Map<string, {
+    wait: Promise<void>
+    fail?: string
+  }>()
   const reply = claudeRecording.turn.flatMap(m => m.type === 'assistant'
     ? m.message.content.flatMap(block => block.type === 'text' ? [block.text] : [])
     : []).join('')
@@ -202,6 +207,12 @@ export function replayClaude({ hydra }: { hydra(): string }) {
       ),
     }
     sessions.push(session)
+    const open = opening.get(session.cwd)
+
+    if (open?.fail) {
+      opening.delete(session.cwd)
+    }
+
     const path = transcriptPath({
       cwd: session.cwd,
       session: id,
@@ -230,6 +241,12 @@ export function replayClaude({ hydra }: { hydra(): string }) {
     )
 
     async function* run() {
+      await open?.wait
+
+      if (open?.fail) {
+        throw new Error(open.fail)
+      }
+
       for await (const message of prompt) {
         const text = textOf({ message })
         session.received.push(text)
@@ -335,6 +352,37 @@ export function replayClaude({ hydra }: { hydra(): string }) {
     sessions,
     plan: turns.plan,
     reply,
+    holdOpen: ({ cwd }: { cwd: string }) => {
+      let release = () => {}
+      const wait = new Promise<void>(resolve => {
+        release = resolve
+      })
+      opening.set(
+        cwd,
+        { wait },
+      )
+
+      return {
+        release: () => {
+          opening.delete(cwd)
+          release()
+        },
+      }
+    },
+    // The next session opening in this folder fails with this message.
+    failOpen: ({
+      cwd,
+      message,
+    }: {
+      cwd: string
+      message: string
+    }) => opening.set(
+      cwd,
+      {
+        wait: Promise.resolve(),
+        fail: message,
+      },
+    ),
   }
 }
 

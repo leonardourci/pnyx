@@ -2,7 +2,9 @@ import assert from 'node:assert/strict'
 import fs from 'node:fs'
 import { ServerResponse } from 'node:http'
 import { syncBuiltinESMExports } from 'node:module'
+import { join } from 'node:path'
 import { test } from 'node:test'
+import { setTimeout as delay } from 'node:timers/promises'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { withWriter } from '#app/writer.ts'
@@ -587,6 +589,114 @@ test(
       for (const held of holds) {
         held.release()
       }
+    }
+  },
+)
+
+// Long past the wake delay the flows run with, so a wake about the worker would have come.
+const SETTLE_MS = 500
+
+// Hydra's received messages, in every session it has had.
+const hydraHeard = ({ s }: { s: Awaited<ReturnType<typeof pnyx.scenario>> }) => s.received({
+  cwd: join(
+    hydraDir({ hydraId: s.hydraId }),
+    'agent',
+  ),
+}).length
+
+// Waits until Hydra has handled the changes so far and nothing more reaches it for a settle period.
+async function hydraSettled({ s }: { s: Awaited<ReturnType<typeof pnyx.scenario>> }) {
+  const deadline = Date.now() + QUIET_MS * 4
+  let heard = -1
+
+  while (heard !== hydraHeard({ s })) {
+    assert.ok(
+      Date.now() < deadline,
+      'Hydra kept hearing new messages',
+    )
+    heard = hydraHeard({ s })
+    await delay(SETTLE_MS)
+  }
+}
+
+const startLongTurn = async ({
+  s,
+  key,
+  folder,
+}: {
+  s: Awaited<ReturnType<typeof pnyx.scenario>>
+  key: string
+  folder: string
+}) => {
+  // Hydra has a session, so a wake about the worker would reach it.
+  await s.chat({ text: 'Warm up' })
+  await s.owner({
+    args: [
+      'task',
+      'create',
+      '--title',
+      `Slow ${key}`,
+      '--key',
+      key,
+      '--folder',
+      folder,
+    ],
+  })
+  await s.owner({
+    args: [
+      'task',
+      'start',
+      key,
+      '--harness',
+      'claude',
+      '--prompt',
+      `Run the ${key} job`,
+    ],
+  })
+  await until({
+    what: 'the worker to be mid-turn',
+    check: () => s.task({ key }).sessionActivity === 'working',
+  })
+  await hydraSettled({ s })
+}
+
+test(
+  'a worker whose reopen fails after a restart shows the interrupted question and wakes Hydra once',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'broken' })
+    const job = pnyx.claude.plan({
+      text: 'Run the broken job',
+      hold: true,
+    })
+
+    try {
+      await startLongTurn({
+        s,
+        key: 'broken',
+        folder,
+      })
+      const heard = hydraHeard({ s })
+      pnyx.claude.failOpen({
+        cwd: folder,
+        message: 'Claude Code could not start',
+      })
+      await pnyx.restart()
+      await until({
+        what: 'the card to ask about the interrupted turn',
+        check: () => s.task({ key: 'broken' }).attention.some(item => item.kind === 'interrupted'),
+      })
+      await until({
+        what: 'Hydra to be woken',
+        check: () => hydraHeard({ s }) > heard,
+      })
+      await hydraSettled({ s })
+      assert.equal(
+        hydraHeard({ s }),
+        heard + 1,
+      )
+    } finally {
+      job.release()
     }
   },
 )
