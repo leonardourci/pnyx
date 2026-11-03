@@ -4,7 +4,7 @@ import { deferred } from '#agent-host/deferred.ts'
 import type { ToClient } from '#agent-host/protocol.ts'
 import type { HostClient } from '#agent-host/client.ts'
 import { randomUUID } from 'node:crypto'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, rmSync } from 'node:fs'
 import { join } from 'node:path'
 import type { Provider, HostedSession } from '#workers/provider.ts'
 import type { ProviderId, Result, Summary } from '#agent-host/protocol.ts'
@@ -331,6 +331,15 @@ export async function nativeProviders({
         })
       }
 
+      const unresolvedOpen = binding && !binding.session
+      const replacedOwner = binding?.instance !== client.ready.instance
+      const emptyHost = inventory.length === 0 && client.ready.readiness.state === 'ready'
+
+      // A replacement can claim this store only after the previous host is verified gone.
+      if (!summary && unresolvedOpen && replacedOwner && emptyHost) {
+        binding = undefined
+      }
+
       if (!summary && binding) {
         const sameOwner = binding.instance === client.ready.instance
         const cleanPredecessor = binding.instance === client.ready.predecessor
@@ -392,29 +401,33 @@ export async function nativeProviders({
           instance: client.ready.instance,
         }
         await save()
-        const result = checked({
-          result: await client.call({
-            id: binding.request,
-            operation: {
-              kind: 'open',
-              controller,
-              options: {
-                provider,
-                cwd,
-                settings,
-                environment: environment({ env }),
-                instructions,
-                context: context?.(),
-                allow,
-                outputSchema,
-                resume: agent ? {
-                  nativeId: agent.sessionId,
-                  path: agent.transcriptPath,
-                } : undefined,
-              },
+        const received = await client.call({
+          id: binding.request,
+          operation: {
+            kind: 'open',
+            controller,
+            options: {
+              provider,
+              cwd,
+              settings,
+              environment: environment({ env }),
+              instructions,
+              context: context?.(),
+              allow,
+              outputSchema,
+              resume: agent ? {
+                nativeId: agent.sessionId,
+                path: agent.transcriptPath,
+              } : undefined,
             },
-          }),
+          },
         })
+
+        if (received.kind === 'error' && received.code === 'SESSION_LIMIT') {
+          rmSync(path)
+        }
+
+        const result = checked({ result: received })
 
         if (result.kind !== 'opened') {
           throw new Error('Native opening did not return a binding')
