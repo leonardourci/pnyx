@@ -627,6 +627,11 @@ test(
       preview.unit,
       /^Environment="PNYX_HOME=[^"]*pnyx 100%% Hydra"$/m,
     )
+    // The server reads this to record that its service started it; without it a restart starts a second server.
+    assert.match(
+      preview.unit,
+      /^Environment="PNYX_SERVICE_ROLE=application"$/m,
+    )
     assert.match(
       preview.unit,
       /^Environment="PATH=\/opt\/tools\/bin:\/usr\/bin"$/m,
