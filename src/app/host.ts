@@ -233,6 +233,12 @@ export function createHost({
         message: 'This permission request expired.',
       },
     })
+
+    // A stop records nothing about running turns; the next start expires what was left waiting, as after a crash.
+    if (closing) {
+      return
+    }
+
     note({
       fn: ({ writer }) => {
         const card = writer.state.cards[waiting.card]
@@ -834,6 +840,8 @@ export function createHost({
     note: string
     resumeAttemptId?: string
   }) => {
+    // A turn Pnyx resumes is not reported as stopped; its card asks only when the resume is not sent or cannot reopen.
+    const resuming = Boolean(resumeAttemptId)
     record({
       writer,
       agent,
@@ -850,7 +858,7 @@ export function createHost({
       task = writer.state.cards[session.taskId]
     }
 
-    if (task) {
+    if (task && !resuming) {
       const attention: Attention[] = [
         {
           kind: 'interrupted',
@@ -4948,7 +4956,21 @@ export function createHost({
             direct: true,
           })
         } catch (error) {
-          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${(error as Error).message}`)
+          const message = (error as Error).message
+          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${message}`)
+          note({
+            fn: ({ writer }) => {
+              const agent = writer.state.cards[cut.task]?.agent
+
+              if (agent) {
+                interrupt({
+                  writer,
+                  agent,
+                  note: `Pnyx stopped during this turn and could not resume it: ${message}. Send a message to continue it.`,
+                })
+              }
+            },
+          })
         }
       }
 
