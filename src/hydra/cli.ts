@@ -195,7 +195,9 @@ function sharedSettingFlags({
         })
       }
 
-      if (fast === undefined ? previous?.fast : fast === 'on') {
+      const fastOn = fast === undefined ? previous?.fast : fast === 'on'
+
+      if (fastOn) {
         helper.fast = true
       }
 
