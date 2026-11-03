@@ -15,7 +15,6 @@ const LANE_TIMEOUT_MS = 60 * MINUTE_MS
 // Unlisted files use the bounded heavy lane until their resource use has been checked.
 const PURE_TESTS = new Set([
   'web/src/hydra/action-label.test.ts',
-  'web/src/tasks/card-open.test.ts',
   'web/src/tasks/card-states.test.ts',
   'web/src/hydra/chat.test.ts',
   'web/src/hydra/conversation.test.ts',
@@ -35,6 +34,7 @@ const PURE_TESTS = new Set([
   'web/src/hydra/pnyx-action.test.ts',
   'src/workers/presence.test.ts',
   'src/app/reducer.test.ts',
+  'src/app/protocol.test.ts',
   'src/tasks/tasks.test.ts',
   'src/workers/usage-limits.test.ts',
   'src/hydra/wake-reasons.test.ts',
