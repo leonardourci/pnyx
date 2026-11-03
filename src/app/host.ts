@@ -1624,6 +1624,7 @@ export function createHost({
                 state: activity.state,
                 ...(activity.state !== 'running' ? { endedAt: at() } : {}),
                 ...(activity.error ? { error: activity.error } : {}),
+                ...(activity.unsupported ? { unsupported: true } : {}),
               },
             },
           })
@@ -1764,7 +1765,10 @@ export function createHost({
                   ...unfinished,
                   state: entry.stopping ? 'cancelled' : 'failed',
                   endedAt: at(),
-                  ...(!entry.stopping ? { error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.' } : {}),
+                  ...(!entry.stopping ? {
+                    error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.',
+                    unsupported: true,
+                  } : {}),
                 },
               },
             })
@@ -3157,9 +3161,7 @@ export function createHost({
         const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
         const operation = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.operations
           .findLast(operation => operation.session === session)
-        const unavailable = operation?.state === 'failed'
-          && /method not found|unknown method|not supported|unavailable in this session/i.test(operation.error ?? '')
-          ? operation.error : undefined
+        const unavailable = operation?.state === 'failed' && operation.unsupported ? operation.error : undefined
         const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
           ...commands,
           {

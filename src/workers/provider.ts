@@ -68,6 +68,7 @@ export type HostedCompaction = {
   state: 'running' | 'done' | 'failed' | 'cancelled'
   trigger: 'manual' | 'auto'
   error?: string
+  unsupported?: true
 }
 export type HostedImage = {
   path: string
