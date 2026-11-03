@@ -9,6 +9,7 @@ import { pnyxHome, privateDir } from '#store/storage.ts'
 import { canonical } from '#store/paths.ts'
 import { DEFAULT_PORT } from '#app/server-state.ts'
 import { SOURCE_CONDITIONS } from '#app/source-conditions.ts'
+import { runProcess } from '#app/run-process.ts'
 
 const SERVICE_RESTART_SECONDS = 5
 
@@ -118,6 +119,58 @@ export function serviceFile({
       'LaunchAgents',
       `${label}.plist`,
     ),
+  }
+}
+
+// Starts this home's installed login service, so the server it runs keeps the service's supervision,
+// arguments and environment. A job launchd has not loaded is loaded, which starts it.
+export async function startService() {
+  const {
+    label,
+    path,
+  } = serviceFile()
+
+  if (process.platform === 'linux') {
+    const started = await runProcess({
+      command: 'systemctl',
+      args: [
+        '--user',
+        'start',
+        `${label}.service`,
+      ],
+    })
+
+    if (started.status !== 0) {
+      throw new Error(started.stderr.trim() || 'systemd could not start the Pnyx server')
+    }
+
+    return
+  }
+
+  const domain = `gui/${process.getuid!()}`
+  const kicked = await runProcess({
+    command: 'launchctl',
+    args: [
+      'kickstart',
+      `${domain}/${label}`,
+    ],
+  })
+
+  if (kicked.status === 0) {
+    return
+  }
+
+  const loaded = await runProcess({
+    command: 'launchctl',
+    args: [
+      'bootstrap',
+      domain,
+      path,
+    ],
+  })
+
+  if (loaded.status !== 0) {
+    throw new Error(loaded.stderr.trim() || 'launchd could not start the Pnyx server')
   }
 }
 

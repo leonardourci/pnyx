@@ -7,7 +7,7 @@ import { PNYX_ROOT } from './runner.ts'
 import { spawn } from 'node:child_process'
 import { closeSync, existsSync, openSync, readFileSync } from 'node:fs'
 import { join } from 'node:path'
-import { serviceFile } from '#setup/service.ts'
+import { serviceFile, startService } from '#setup/service.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { setTimeout as delay } from 'node:timers/promises'
 import { Socket } from 'node:net'
@@ -242,7 +242,9 @@ export async function restartPnyx() {
   const found = running()
   const unique = found ? [found] : []
   const target = found
-  const managed = target ? target.info.service ?? existsSync(serviceFile().path) : false
+  const installed = existsSync(serviceFile().path)
+  // A running server says whether its service started it; with none running, an installed service starts the next.
+  const managed = target ? target.info.service ?? installed : installed
 
   for (const item of unique) {
     if (processStart({ pid: item.info.pid }) === item.start) {
@@ -307,6 +309,10 @@ export async function restartPnyx() {
       // The new application is not ready yet.
       return false
     }
+  }
+
+  if (managed && !target) {
+    await startService()
   }
 
   if (!managed) {
