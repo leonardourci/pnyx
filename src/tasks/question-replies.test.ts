@@ -12,7 +12,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { reply, sendReply } from '#workers/reply.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { acquireLock } from '#store/storage.ts'
+import { acquireLock, LOCK_TIMEOUT_MS } from '#store/storage.ts'
 import { HydraError } from '#store/errors.ts'
 import { offerHost } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
@@ -29,6 +29,22 @@ type Change = {
 }[HydraEvent['type']]
 
 type Mode = 'held' | 'delivered' | 'failed' | 'queued' | 'unknown' | 'record-error' | 'failed-record-error'
+
+function lockClock({ t }: { t: TestContext }) {
+  t.mock.timers.enable({
+    apis: ['Date'],
+    now: Date.now(),
+  })
+  t.mock.method(
+    Atomics,
+    'wait',
+    () => {
+      t.mock.timers.tick(LOCK_TIMEOUT_MS)
+
+      return 'timed-out'
+    },
+  )
+}
 
 async function lab({ t }: { t: TestContext }) {
   const root = mkdtempSync(join(
@@ -733,6 +749,7 @@ test(
   'a delivered answer survives a lost receipt write, while a failed acceptance sends nothing',
   async t => {
     const l = await lab({ t })
+    lockClock({ t })
     const ref = await l.create({ key: 'receipt' })
     const question = await l.ask({
       ref,
@@ -1573,9 +1590,10 @@ test(
 )
 
 test(
-  'failed delivery plus a lost receipt keeps the reply key in its recovery help and can resend a Hydra relay',
+  'failed relays and task answers retain retry guidance after a lost receipt and deliver their original text',
   async t => {
     const l = await lab({ t })
+    lockClock({ t })
     const ref = await l.create({ key: 'failed-receipt' })
     const question = await l.ask({ ref })
     const message = l.chat({ ref })
@@ -1639,56 +1657,16 @@ test(
       l.card({ ref }).asks?.[0]?.answered,
       'failed-receipt-answer',
     )
-  },
-)
 
-test(
-  'task answer also preserves checked recovery guidance after failed delivery and a lost receipt',
-  async t => {
-    const l = await lab({ t })
-    const ref = await l.create({ key: 'worker-failed-receipt' })
-    const question = await l.ask({
-      ref,
-      worker: true,
-    })
-    const message = l.chat({ ref })
-    l.mode({ value: 'failed-record-error' })
-    const result = await taskHandler([
-      'answer',
-      ref,
-      question,
-      '--from-message',
-      message,
-      '--event-id',
-      'worker-lost-receipt',
-      '--actor',
-      'hydra',
-      '--reason',
-      reason,
-      '--hydra',
-      hydraId,
-    ])
-    l.unlock()
-    assert.equal(
-      result.state,
-      'failed',
-    )
-    assert.match(
-      String(result.recordError),
-      /locked/,
-    )
-    assert.ok(Array.isArray(result.help))
-    assert.match(
-      result.help.join(' '),
-      /--event-id worker-lost-receipt --undelivered/,
-    )
-    assert.equal(
-      l.card({ ref }).replies?.[0]?.state,
-      'queued',
-    )
-    l.mode({ value: 'delivered' })
-    const retried = await l.task({
-      args: [
+    {
+      const ref = await l.create({ key: 'worker-failed-receipt' })
+      const question = await l.ask({
+        ref,
+        worker: true,
+      })
+      const message = l.chat({ ref })
+      l.mode({ value: 'failed-record-error' })
+      const result = await taskHandler([
         'answer',
         ref,
         question,
@@ -1696,21 +1674,57 @@ test(
         message,
         '--event-id',
         'worker-lost-receipt',
-        '--undelivered',
-      ],
-    })
-    assert.equal(
-      retried.state,
-      'delivered',
-    )
-    assert.equal(
-      l.received.length,
-      2,
-    )
-    assert.equal(
-      l.card({ ref }).asks?.[0]?.answered,
-      'worker-lost-receipt',
-    )
+        '--actor',
+        'hydra',
+        '--reason',
+        reason,
+        '--hydra',
+        hydraId,
+      ])
+      l.unlock()
+      assert.equal(
+        result.state,
+        'failed',
+      )
+      assert.match(
+        String(result.recordError),
+        /locked/,
+      )
+      assert.ok(Array.isArray(result.help))
+      assert.match(
+        result.help.join(' '),
+        /--event-id worker-lost-receipt --undelivered/,
+      )
+      assert.equal(
+        l.card({ ref }).replies?.[0]?.state,
+        'queued',
+      )
+      l.mode({ value: 'delivered' })
+      const retried = await l.task({
+        args: [
+          'answer',
+          ref,
+          question,
+          '--from-message',
+          message,
+          '--event-id',
+          'worker-lost-receipt',
+          '--undelivered',
+        ],
+      })
+      assert.equal(
+        retried.state,
+        'delivered',
+      )
+      assert.equal(
+        l.received.length,
+        4,
+      )
+      assert.equal(
+        l.card({ ref }).asks?.[0]?.answered,
+        'worker-lost-receipt',
+      )
+    }
   },
 )
 
