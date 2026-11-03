@@ -132,9 +132,10 @@ export function startReviewTimer({
         now: new Date(time).toISOString(),
       })
 
+      // The memory read waited on git; the review looks at the Hydra as it is now, as the write below does.
       if (timedReview({
         memory,
-        state,
+        state: shared(),
         now: time,
       }).empty) {
         emptyAt = time
