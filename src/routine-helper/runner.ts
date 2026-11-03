@@ -182,7 +182,7 @@ export function createRoutineHelper({
   }): void
   outcomesReady(): void
   bound?: number
-  agentFor?(): HelperAgent | undefined
+  agentFor?(): HelperAgent | undefined | Promise<HelperAgent | undefined>
   deadline?({ expire }: { expire(): void }): () => void
   spawned?: Parameters<Provider['open']>[0]['spawned']
 }) {
@@ -195,7 +195,7 @@ export function createRoutineHelper({
   let sessionCost = 0
   let sessionTurns = 0
 
-  const configuredAgent = ({ state }: { state: HydraState }): HelperAgent | undefined =>
+  const configuredAgent = async ({ state }: { state: HydraState }) =>
     agentFor ? agentFor() : helperAgent({ state })
 
   const stopping = new AbortController()
@@ -341,7 +341,7 @@ export function createRoutineHelper({
 
     try {
       const state = loadHydra({ hydraId }).state
-      const current = configuredAgent({ state })
+      const current = await configuredAgent({ state })
       const candidate: HelperAgent | undefined = batch.agent ?? current
 
       if (!current || !candidate || !batch.tasks.every(task => helperScope({
@@ -399,6 +399,9 @@ export function createRoutineHelper({
       if (candidate.effort) {
         settings.effort = candidate.effort
       }
+
+      // Off unless chosen, so a login's own saved Fast default never turns it on.
+      settings.fast = candidate.fast ? 'true' : 'false'
 
       const turn = async () => {
         if (closed || signal.aborted) {
@@ -675,7 +678,7 @@ export function createRoutineHelper({
       }
 
       const state = loadHydra({ hydraId }).state
-      const candidate = configuredAgent({ state })
+      const candidate = await configuredAgent({ state })
 
       if (!candidate) {
         return false
