@@ -1810,6 +1810,7 @@ test(
       }),
       paths: ['/default/1/account'],
     })
+    // --candidates is checked before the patch, so its refusal names the path within the list.
     assert.throws(
       () => rule({
         args: [
@@ -1821,7 +1822,10 @@ test(
           JSON.stringify(duplicated),
         ],
       }),
-      /\/1\/account.*already used/,
+      {
+        code: 'VALIDATION_ERROR',
+        message: /^\/1\/account /,
+      },
     )
     assert.equal(
       readFileSync(
@@ -1906,6 +1910,70 @@ test(
     assert.equal(
       show().document.default.length,
       1,
+    )
+  },
+)
+
+test(
+  'an account label must be 1 to 80 characters on one line, and account set --label saves the label rule show returns',
+  () => {
+    lab()
+    const account = show().document.accounts['claude:test']!
+    const saved = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    const labelled = ({ label }: { label: string }) => rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: {
+            accounts: {
+              'claude:test': {
+                ...account,
+                label,
+              },
+            },
+          },
+        }),
+      ],
+    })
+    failsWith({
+      run: () => labelled({ label: '' }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    failsWith({
+      run: () => labelled({ label: 'x'.repeat(81) }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    failsWith({
+      run: () => labelled({ label: 'Work\nHome' }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    assert.equal(
+      readFileSync(
+        configPath(),
+        'utf8',
+      ),
+      saved,
+    )
+    dispatchCommands.account([
+      'set',
+      'claude:test',
+      '--provider',
+      'claude',
+      '--folder',
+      account.folder,
+      '--label',
+      'Work',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      show().document.accounts['claude:test']?.label,
+      'Work',
     )
   },
 )

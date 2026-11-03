@@ -201,6 +201,14 @@ test(
         },
       },
     })
+    const repointed = await host.models({
+      harness: 'claude',
+      account: 'work',
+    })
+    assert.equal(
+      repointed[0]?.value,
+      'personal-model',
+    )
     const afterEdit = await host.usage()
     assert.ok('harness' in afterEdit)
     assert.equal(

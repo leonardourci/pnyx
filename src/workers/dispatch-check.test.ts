@@ -271,7 +271,7 @@ test(
 )
 
 test(
-  'each rule accepts a provider/account pair once, keeping automatic distinct from named accounts',
+  'each rule accepts a provider and account pair once, keeping automatic distinct from named accounts',
   () => {
     const document = {
       accounts: {
