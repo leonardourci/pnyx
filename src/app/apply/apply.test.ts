@@ -7,12 +7,10 @@ import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { repairHydra } from '#app/repair.ts'
-import type { RunningServer } from '#app/server-transport.ts'
-import { pnyxAxi, serve } from '#test-harness/served.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { ApplyError } from './schema.ts'
 
 function fixture({ t }: { t: TestContext }) {
-  let server: RunningServer | undefined
   const previous = { ...process.env }
   const root = mkdtempSync(join(
     tmpdir(),
@@ -25,8 +23,7 @@ function fixture({ t }: { t: TestContext }) {
   process.env.PNYX_ACTOR = 'cli'
   delete process.env.PNYX_TASK
   delete process.env.PNYX_HYDRA
-  t.after(async () => {
-    await server?.close()
+  t.after(() => {
     process.env = previous
     rmSync(
       root,
@@ -71,10 +68,21 @@ function fixture({ t }: { t: TestContext }) {
     dir,
     path,
     apply,
-    // The server the real CLI forwards to; it closes before the home is removed.
-    serve: async () => {
-      server = await serve()
-    },
+    // Runs a command line as the server runs it for a client, with its stdin.
+    cli: ({
+      argv,
+      stdin,
+    }: {
+      argv: string[]
+      stdin: string
+    }) => runForRequest({
+      body: {
+        argv,
+        cwd: root,
+        env: { PNYX_ACTOR: 'cli' },
+        stdin,
+      },
+    }),
   }
 }
 
@@ -531,10 +539,9 @@ test(
 )
 
 test(
-  'stdin input uses the real CLI and reports closed-schema errors with a failing exit status',
+  'stdin input reports closed-schema errors with a failing exit status',
   async t => {
     const f = fixture({ t })
-    await f.serve()
     const input = JSON.stringify({
       version: 1,
       changes: [
@@ -552,17 +559,17 @@ test(
         },
       ],
     })
-    const result = await pnyxAxi({
-      args: [
+    const result = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--check',
       ],
-      input,
+      stdin: input,
     })
     assert.equal(
-      result.status,
+      result.exitCode,
       2,
     )
     assert.match(
@@ -1425,7 +1432,6 @@ test(
       '--event-id',
       'other-kind:op:0',
     ])
-    await f.serve()
     const log = readFileSync(
       join(
         f.dir,
@@ -1448,18 +1454,18 @@ test(
         },
       ],
     })
-    const same = await pnyxAxi({
-      args: [
+    const same = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'same-kind',
       ],
-      input: document,
+      stdin: document,
     })
     assert.equal(
-      same.status,
+      same.exitCode,
       2,
     )
     assert.match(
@@ -1476,18 +1482,18 @@ test(
       ),
       log,
     )
-    const other = await pnyxAxi({
-      args: [
+    const other = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'other-kind',
       ],
-      input: document,
+      stdin: document,
     })
     assert.equal(
-      other.status,
+      other.exitCode,
       2,
     )
     assert.match(
@@ -1579,18 +1585,17 @@ test(
   'duplicate JSON members including escaped names are refused before any write',
   async t => {
     const f = fixture({ t })
-    await f.serve()
     const input = '{"version":999,"version":1,"changes":[{"op":"task.brief","op":"task.create","title":"First","ti\\u0074le":"Second","key":"json-dupe"}],"changes":[{"op":"task.create","title":"Other","key":"other"}]}'
-    const result = await pnyxAxi({
-      args: [
+    const result = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
       ],
-      input,
+      stdin: input,
     })
     assert.equal(
-      result.status,
+      result.exitCode,
       2,
     )
     assert.match(

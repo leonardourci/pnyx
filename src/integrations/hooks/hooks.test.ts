@@ -21,8 +21,7 @@ import { spoolWrite } from '#app/spool.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
-import { until } from '#test-harness/harness.ts'
-import { BIN, pnyxAxi, serve } from '#test-harness/served.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { decidePush } from '#tasks/push.ts'
 import { harvestTranscripts } from './harvest.ts'
 
@@ -41,6 +40,10 @@ const SCRIPT = join(
 const FIXTURES = join(
   import.meta.dirname,
   'fixtures',
+)
+const ECHO_CLI = join(
+  FIXTURES,
+  'echo-cli.mjs',
 )
 
 const fixture = ({ name }: { name: string }) => readFileSync(
@@ -606,7 +609,6 @@ test(
 )
 
 function scriptSandbox() {
-  // A short base keeps the socket path under the platform's length limit.
   const root = mkdtempSync(join(
     tmpdir(),
     'pnyx-h-',
@@ -615,29 +617,30 @@ function scriptSandbox() {
     root,
     '.pnyx',
   )
-  const claude = join(
-    root,
-    'claude',
-  )
-  const codex = join(
-    root,
-    'codex',
-  )
   const env = {
     ...process.env,
     HOME: root,
     PNYX_HOME: home,
-    CLAUDE_CONFIG_DIR: claude,
-    CODEX_HOME: codex,
+    CLAUDE_CONFIG_DIR: join(
+      root,
+      'claude',
+    ),
+    CODEX_HOME: join(
+      root,
+      'codex',
+    ),
   }
 
   const run = async ({ args }: { args: string[] }) => {
-    const result = await pnyxAxi({
-      args,
-      env,
+    const result = await runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {},
+      },
     })
     assert.equal(
-      result.status,
+      result.exitCode,
       0,
       result.stdout,
     )
@@ -684,7 +687,6 @@ test(
     t.after(() => {
       process.env.PNYX_HOME = previous
     })
-    await serve({ t })
     const project = join(
       root,
       'shop',
@@ -714,33 +716,64 @@ test(
         'shop',
       ],
     })
-    let sessions = 0
-    const start = async ({
+    const context = ({ cwd }: { cwd: string }) => run({
+      args: [
+        'context',
+        '--cwd',
+        cwd,
+      ],
+    })
+    const hook = ({
+      event,
       cwd,
+      payload,
       extra = {},
+    }: {
+      event: string
+      cwd: string
+      payload: Record<string, string>
+      extra?: Record<string, string>
+    }) => execFileSync(
+      '/bin/sh',
+      [
+        script,
+        'claude',
+        event,
+        ECHO_CLI,
+      ],
+      {
+        cwd,
+        input: JSON.stringify(payload),
+        encoding: 'utf8',
+        env: {
+          ...env,
+          ...extra,
+        },
+      },
+    )
+    let sessions = 0
+    const start = ({
+      cwd,
+      extra,
     }: {
       cwd: string
       extra?: Record<string, string>
-    }) => (await pnyxAxi({
-      command: '/bin/sh',
-      args: [
-        script,
-        'claude',
-        'SessionStart',
-        BIN,
-      ],
+    }) => hook({
+      event: 'SessionStart',
       cwd,
-      input: JSON.stringify({
+      payload: {
         session_id: `s${++sessions}`,
         cwd,
-      }),
-      env: {
-        ...env,
-        ...extra,
       },
-    })).stdout
+      extra,
+    })
 
-    const summary = await start({ cwd: nested })
+    assert.match(
+      start({ cwd: nested }),
+      /^context --hydra default --cwd \S*\/shop\/src\n$/,
+      'SessionStart asks the CLI for the summary of its folder',
+    )
+    const summary = await context({ cwd: nested })
     assert.match(
       summary,
       /project shop/,
@@ -749,13 +782,14 @@ test(
       summary,
       /Fix the cart total,queued/,
     )
+    start({ cwd: root })
     assert.equal(
-      await start({ cwd: root }),
+      (await context({ cwd: root })).trim(),
       '',
       'a folder outside every attached project gets no summary',
     )
     assert.equal(
-      await start({
+      start({
         cwd: nested,
         extra: { PNYX_TASK: 'task-1' },
       }),
@@ -763,35 +797,34 @@ test(
       'a worker session gets its context from Pnyx instead',
     )
     assert.equal(
-      (await pnyxAxi({
-        command: '/bin/sh',
-        args: [
-          script,
-          'claude',
-          'UserPromptSubmit',
-          BIN,
-        ],
+      hook({
+        event: 'UserPromptSubmit',
         cwd: nested,
-        input: JSON.stringify({
+        payload: {
           session_id: 's1',
           cwd: nested,
           prompt: 'Fix the cart total',
-        }),
-        env,
-      })).stdout,
+        },
+      }),
       '',
       'every other hook prints nothing',
     )
-    // The server takes each hook over its socket; the prompt marks the first session working.
-    await until({
-      what: 'every hook reported',
-      check: () => {
-        const { state } = loadHydra({ hydraId: 'default' })
-        const activity = ({ key }: { key: string }) => state.cards[state.keys[key] ?? '']?.activity
-
-        return activity({ key: 'claude:s1' }) === 'working' && activity({ key: 'claude:s2' }) === 'finished' && activity({ key: 'claude:s3' }) === 'finished'
-      },
-    })
+    // Every hook is reported; the prompt marks the first session working.
+    ingestSpool({ hydraId: 'default' })
+    const { state } = loadHydra({ hydraId: 'default' })
+    const activity = ({ key }: { key: string }) => state.cards[state.keys[key] ?? '']?.activity
+    assert.deepEqual(
+      [
+        's1',
+        's2',
+        's3',
+      ].map(session => activity({ key: `claude:${session}` })),
+      [
+        'working',
+        'finished',
+        'finished',
+      ],
+    )
 
     const other = join(
       root,
@@ -852,13 +885,6 @@ test(
       })
     }
 
-    const context = ({ cwd }: { cwd: string }) => run({
-      args: [
-        'context',
-        '--cwd',
-        cwd,
-      ],
-    })
     const listed = await context({ cwd: nested })
     assert.match(
       listed,

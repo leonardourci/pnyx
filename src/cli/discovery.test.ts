@@ -3,10 +3,10 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { pnyxAxi, serve } from '#test-harness/served.ts'
+import { runForRequest } from '#app/api-run.ts'
 
 test(
-  'the real CLI offers live state, nested discovery, actionable receipts and explicit errors',
+  'the CLI offers live state, nested discovery, actionable receipts and explicit errors',
   async t => {
     const root = mkdtempSync(join(
       tmpdir(),
@@ -14,7 +14,6 @@ test(
     ))
     const previous = process.env.PNYX_HOME
     process.env.PNYX_HOME = root
-    await serve({ t })
     t.after(() => {
       process.env.PNYX_HOME = previous
       rmSync(
@@ -25,20 +24,25 @@ test(
         },
       )
     })
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      PNYX_HOME: root,
-      PNYX_ACTOR: 'cli',
-      PNYX_HYDRA: 'default',
-    }
-    delete env.PNYX_TASK
-    const run = ({ args }: { args: string[] }) => pnyxAxi({
+    const run = ({
       args,
-      env,
+      hydra = 'default',
+    }: {
+      args: string[]
+      hydra?: string
+    }) => runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {
+          PNYX_ACTOR: 'cli',
+          PNYX_HYDRA: hydra,
+        },
+      },
     })
     const empty = await run({ args: [] })
     assert.equal(
-      empty.status,
+      empty.exitCode,
       0,
     )
     assert.match(
@@ -58,7 +62,7 @@ test(
       ],
     })
     assert.equal(
-      created.status,
+      created.exitCode,
       0,
     )
     const id = /id: (task-[\w-]+)/.exec(created.stdout)![1]!
@@ -80,7 +84,7 @@ test(
       ],
     })
     assert.equal(
-      nested.status,
+      nested.exitCode,
       0,
     )
     assert.match(
@@ -102,7 +106,7 @@ test(
       ],
     })
     assert.equal(
-      paused.status,
+      paused.exitCode,
       0,
     )
     assert.match(
@@ -126,7 +130,7 @@ test(
       ],
     })
     assert.equal(
-      invalid.status,
+      invalid.exitCode,
       2,
     )
     assert.match(
@@ -145,18 +149,15 @@ test(
       ],
     })
     assert.equal(
-      other.status,
+      other.exitCode,
       0,
     )
-    const scoped = await pnyxAxi({
+    const scoped = await run({
       args: [],
-      env: {
-        ...env,
-        PNYX_HYDRA: 'synthetic-other',
-      },
+      hydra: 'synthetic-other',
     })
     assert.equal(
-      scoped.status,
+      scoped.exitCode,
       0,
     )
     assert.match(
