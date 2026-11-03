@@ -10,7 +10,7 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
 import { catalogOffers } from '#workers/model-catalog.ts'
 import { providerIdOf } from '#workers/providers.ts'
-import { modelIds } from '#workers/provider.ts'
+import { fastModel, modelIds } from '#workers/provider.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
 import { SETTINGS } from '#workers/host.ts'
@@ -185,6 +185,17 @@ export async function hostRequestUnlocked({
           hosted: true,
         })) {
         settings.mode = inherited
+      }
+
+      // Fast in Hydra's composer reaches every worker it starts whose model has a Fast tier.
+      if (current.config?.hydra.agent?.fast && settings.fast !== 'true' && fastModel({
+        models: await host.models({
+          harness: dispatch.provider,
+          account: dispatch.account,
+        }).catch(() => []),
+        model: settings.model,
+      })) {
+        settings.fast = 'true'
       }
 
       return host.start({

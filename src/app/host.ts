@@ -30,7 +30,7 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
+import { fastModel, mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -2308,7 +2308,7 @@ export function createHost({
       armWake()
     },
     bound: helperBound,
-    agentFor: () => {
+    agentFor: async () => {
       const state = loadHydra({ hydraId }).state
       const effective = effectiveDispatch()
       const main = state.config?.hydra.agent
@@ -2333,11 +2333,20 @@ export function createHost({
 
       const nativeDefault = defaultLogin({ provider: candidate.harness })
       const folder = account ? loginFolder({ account }) : nativeDefault
+      // Fast in Hydra's composer reaches the helper too when its model has a Fast tier.
+      const hydraFast = !!state.config?.hydra.agent?.fast && fastModel({
+        models: await host.models({
+          harness: candidate.harness,
+          account: name,
+        }).catch(() => []),
+        model: candidate.model,
+      })
 
       return {
         ...candidate,
         account: name,
         loginFolder: folder,
+        ...(candidate.fast || hydraFast ? { fast: true } : {}),
       }
     },
     handback: armWake,
