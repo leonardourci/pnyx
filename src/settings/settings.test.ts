@@ -20,6 +20,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
 import type { Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
+import { writeDocument } from '#workers/dispatch-config.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -1068,6 +1069,88 @@ test(
     assert.equal(
       (await settings()).settings.reviewMinutes,
       7,
+    )
+  },
+)
+
+test(
+  'a helper account must be registered for its harness: settings set and hydra set refuse another and save nothing, not even a Hydra flag beside it',
+  async () => {
+    const dir = home()
+    writeDocument({
+      document: {
+        rules: {},
+        main: 'claude:work',
+        default: [{ harness: 'claude' }],
+        workers: { claude: ['claude:work'] },
+        projects: {},
+        accounts: {
+          'claude:work': {
+            provider: 'claude',
+            folder: join(
+              dir,
+              'work',
+            ),
+          },
+        },
+      },
+    })
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    const before = await settings()
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:ghost',
+            model: 'sonnet',
+          },
+        }),
+      ]),
+      { code: 'NO_ACCOUNTS' },
+    )
+    assert.deepEqual(
+      await settings(),
+      before,
+    )
+    await commands.hydra([
+      'set',
+      '--helper',
+      'claude',
+      '--helper-account',
+      'claude:work',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).account,
+      'claude:work',
+    )
+    const name = loadHydra({ hydraId: 'main' }).state.config?.name
+    assert.throws(
+      () => commands.hydra([
+        'set',
+        '--name',
+        'Athena',
+        '--helper-account',
+        'ghost',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'NO_ACCOUNTS' },
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'main' }).state.config?.name,
+      name,
+    )
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).account,
+      'claude:work',
     )
   },
 )

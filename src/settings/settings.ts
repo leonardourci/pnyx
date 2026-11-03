@@ -2,7 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import { DEFAULT_VIEW, patchView, VIEW_SIZE_LIMITS } from '#preferences/view.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import { AGENT_FLAG, type AgentConfig } from '#workers/model.ts'
-import { NAME } from '#workers/dispatch-check.ts'
+import { NAME, NAME_RULE } from '#workers/dispatch-check.ts'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_ID } from '#hydra/identity.ts'
 import { isSharedViewKey, SETTING_KEYS, SHARED_VIEW_KEYS, type Settings, type SharedView } from './model.ts'
@@ -121,7 +121,7 @@ function helperSetting({ value }: { value: unknown }): Settings['helper'] {
   }
 
   if (agent.account !== undefined && (typeof agent.account !== 'string' || !NAME.test(agent.account))) {
-    return invalid({ detail: 'helper account must name a registered account' })
+    return invalid({ detail: `helper account: ${NAME_RULE}` })
   }
 
   const helper: AgentConfig = {

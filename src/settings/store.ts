@@ -15,7 +15,7 @@ import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
-import { effectiveDispatch, lockedDocument } from '#workers/dispatch-config.ts'
+import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 
 export const settingsLogPath = () => join(
@@ -233,6 +233,34 @@ export function readSettings(): SettingsRead {
   return readFolded()
 }
 
+// A helper account the patch changes must be registered for the helper's harness.
+function checkHelperAccount({
+  current,
+  after,
+  document,
+}: {
+  current: Settings
+  after: Settings
+  document(): unknown
+}): void {
+  const helper = after.helper
+  const changed = !isDeepStrictEqual(
+    current.helper,
+    helper,
+  )
+
+  if (!changed || typeof helper !== 'object' || !helper.account) {
+    return
+  }
+
+  // Refuses an account not registered for this harness.
+  harnessAccount({
+    effective: effectiveDispatch({ document: document() }),
+    harness: helper.harness,
+    prefer: helper.account,
+  })
+}
+
 export type SettingsSave = {
   settings: Settings
   revision: number
@@ -279,16 +307,11 @@ export function saveSettings({
         input: patch,
       })
 
-      if (!isDeepStrictEqual(
-        current.settings.helper,
-        after.helper,
-      ) && typeof after.helper === 'object' && after.helper.account) {
-        harnessAccount({
-          effective: effectiveDispatch({ document: lockedDocument() }),
-          harness: after.helper.harness,
-          prefer: after.helper.account,
-        })
-      }
+      checkHelperAccount({
+        current: current.settings,
+        after,
+        document: lockedDocument,
+      })
 
       beforeSave?.()
 
@@ -329,9 +352,16 @@ export function saveSettings({
 
 // A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
 export function checkSettings({ patch }: { patch: unknown }): void {
-  patchSettings({
-    current: readSettings().settings,
+  const current = readSettings().settings
+  const after = patchSettings({
+    current,
     input: patch,
+  })
+
+  checkHelperAccount({
+    current,
+    after,
+    document: savedDocument,
   })
 }
 

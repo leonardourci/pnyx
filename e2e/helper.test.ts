@@ -1229,6 +1229,20 @@ test(
     })
 
     try {
+      const unregistered = await page.refusal({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            account: 'claude:ghost',
+            model: 'opus',
+          }),
+        ],
+      })
+      assert.equal(
+        unregistered.code,
+        'NO_ACCOUNTS',
+      )
       await page.command({
         name: 'hydra-agent',
         args: [
