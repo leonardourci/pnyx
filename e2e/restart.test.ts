@@ -2,10 +2,11 @@ import assert from 'node:assert/strict'
 import { execFile } from 'node:child_process'
 import { promisify } from 'node:util'
 import { createServer } from 'node:net'
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync } from 'node:fs'
-import { join } from 'node:path'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { test, type TestContext } from 'node:test'
 import { setTimeout as delay } from 'node:timers/promises'
+import { serviceFile } from '#setup/service.ts'
 
 const START_TIMEOUT_MS = 30000
 
@@ -31,7 +32,14 @@ const cli = join(
 )
 
 // A Pnyx home and port of its own, the CLI run against them, and a server stopped when the test ends.
-async function isolated({ t }: { t: TestContext }) {
+async function isolated({
+  t,
+  extra = {},
+}: {
+  t: TestContext
+  // More environment for the CLI and the servers it starts.
+  extra?: NodeJS.ProcessEnv
+}) {
   const root = realpathSync(mkdtempSync('/tmp/pnyx-restart-'))
   const socket = createServer()
   socket.listen(
@@ -51,6 +59,7 @@ async function isolated({ t }: { t: TestContext }) {
     PNYX_HOME: root,
     HOME: root,
     PORT: String(port),
+    ...extra,
   }
   const serverPath = join(
     root,
@@ -368,6 +377,69 @@ test(
     assert.match(
       listed.stdout,
       new RegExp(`${caller}\\b`),
+    )
+  },
+)
+
+test(
+  'a command with the server down starts it through the installed login service',
+  async t => {
+    const fakes = join(
+      import.meta.dirname,
+      'fixtures',
+      'service',
+    )
+    const calls = join(
+      realpathSync(mkdtempSync('/tmp/pnyx-service-')),
+      'calls',
+    )
+    const {
+      root,
+      run,
+      serverPath,
+    } = await isolated({
+      t,
+      extra: {
+        PATH: `${fakes}:${process.env.PATH}`,
+        FAKE_SERVICE_LOG: calls,
+        PNYX_TEST_NODE: process.execPath,
+        PNYX_TEST_CLI: cli,
+      },
+    })
+    // The service file this home's CLI looks for, at the path it computes from its own home.
+    const saved = process.env.PNYX_HOME
+    process.env.PNYX_HOME = root
+    const service = serviceFile({
+      userHome: root,
+      configHome: process.env.XDG_CONFIG_HOME,
+    })
+    process.env.PNYX_HOME = saved
+    mkdirSync(
+      dirname(service.path),
+      { recursive: true },
+    )
+    writeFileSync(
+      service.path,
+      '',
+    )
+
+    const listed = await run({
+      args: [
+        'task',
+        'list',
+      ],
+    })
+    assert.match(
+      listed.stdout,
+      /tasks/,
+    )
+    assert.ok(existsSync(serverPath))
+    assert.match(
+      readFileSync(
+        calls,
+        'utf8',
+      ),
+      process.platform === 'linux' ? /systemctl --user start local\.pnyx\.server\./ : /launchctl bootstrap gui\/\d+ /,
     )
   },
 )
