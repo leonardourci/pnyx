@@ -42,6 +42,48 @@ export function applyHydra({
     return true
   }
 
+  if (event.type === 'hydra.agent-used') {
+    state.hydraAgent = structuredClone(event.data)
+
+    return true
+  }
+
+  if (event.type === 'hydra.agent-change') {
+    const change = event.data
+
+    if (change.state === 'finished') {
+      delete state.hydraAgentChange
+      state.hydraAgent = structuredClone(change.next)
+
+      if (change.summary !== undefined) {
+        state.hydraContext = {
+          after: event.seq,
+          summary: change.summary,
+          previousSession: change.previousSession,
+        }
+      }
+
+      if (change.kind === 'agent') {
+        state.hydraMessages = [
+          ...(state.hydraMessages ?? []),
+          {
+            id: event.id,
+            action: 'send',
+            kind: 'divider',
+            text: `Switched to ${change.next.model ?? change.next.harness}`,
+            at: event.at,
+            actor: 'pnyx',
+            hydra: hydraConfig({ state }).hydra.id,
+          },
+        ]
+      }
+    } else {
+      state.hydraAgentChange = structuredClone(change)
+    }
+
+    return true
+  }
+
   if (event.type === 'hydra.operation') {
     if (event.data.state === 'started') {
       state.hydraOperation = {

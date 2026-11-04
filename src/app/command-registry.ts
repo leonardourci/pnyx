@@ -143,6 +143,8 @@ export const COMMAND_REGISTRY = {
     repeatable: true,
   },
   'hydra-agent': { repeatable: true },
+  'hydra-agent-change': { repeatable: true },
+  'hydra-agent-usage': { repeatable: true },
   setup: { ownerOnly: ({ args }) => args[0] !== 'check' },
   restart: { ownerOnly: () => true },
   upgrade: { ownerOnly: ({ args }) => !args.includes('--check') },

@@ -1822,6 +1822,8 @@ export async function mountOwnedHydra({
       'catalog',
       'hydras',
       'hydra-agent',
+      'hydra-agent-change',
+      'hydra-agent-usage',
       'models',
       'compact',
     ].includes(String(name))) {
@@ -2015,6 +2017,48 @@ export async function mountOwnedHydra({
           }
 
           answer()
+        } else if (name === 'hydra-agent-usage') {
+          const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
+          void agents.agentAvailability({ agent })
+            .then(availability => send({
+              ws,
+              message: {
+                type: 'receipt',
+                id,
+                availability,
+              },
+            }))
+            .catch((error: Error) => fail({
+              error: error.message,
+              code: 'UNKNOWN',
+            }))
+        } else if (name === 'hydra-agent-change') {
+          const choice = args[1]
+
+          if (args.length !== 2 || ![
+            'inscribe',
+            'compact',
+            'neither',
+          ].includes(choice ?? '')) {
+            throw new HydraError({
+              message: 'Choose inscribe, compact or neither for the held message',
+              code: 'VALIDATION_ERROR',
+            })
+          }
+
+          const result = agents.changeAgent({
+            id: args[0]!,
+            choice: choice as 'inscribe' | 'compact' | 'neither',
+          })
+          kick()
+          send({
+            ws,
+            message: {
+              type: 'receipt',
+              id,
+              ...result,
+            },
+          })
         } else if (name === 'hydra-agent') {
           if (args.length !== 1) {
             throw new HydraError({

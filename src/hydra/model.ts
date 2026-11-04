@@ -82,3 +82,15 @@ export type ChatEvent = EventBase & {
     text: string
   }
 }
+
+export interface HydraAgentChange {
+  id: string
+  previous: AgentConfig
+  next: AgentConfig
+  kind: 'agent' | 'effort'
+  state: 'requested' | 'running' | 'finished' | 'failed'
+  choice?: 'inscribe' | 'compact' | 'neither'
+  summary?: string
+  previousSession?: string
+  error?: string
+}

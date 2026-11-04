@@ -43,6 +43,14 @@ export interface Host {
     release?: boolean
     selected?: AgentConfig
   }): Promise<Record<string, unknown>>
+  agentAvailability({ agent }: { agent: AgentConfig }): Promise<'available' | 'exhausted' | 'unknown'>
+  changeAgent({
+    id,
+    choice,
+  }: {
+    id: string
+    choice: 'inscribe' | 'compact' | 'neither'
+  }): Record<string, unknown>
   stop(): Promise<Record<string, unknown>>
   compact({
     card,
