@@ -9,7 +9,7 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { useModels } from '#web-workers/agent-picker.tsx'
 import { resolvedAccount, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 
-const COMPACT_WHY = 'Compacting first hands it a short summary of this chat instead of the full history, so it starts quickly and stays on track.'
+const COMPACT_WHY = 'Compacting first gives it a short summary of the chat since the last compaction.'
 
 // The model picker's label, or the model id the "Switched to" divider shows until the catalog answers.
 function useAgentName({
@@ -96,7 +96,9 @@ function HeldMessageCard({
           onClick={() => choose({ choice: 'inscribe' })}
         >
           <Icon name="inscribe" size={16} />
-          Inscribe + compact
+          Inscribe +{' '}
+          <Icon name="compact" size={16} />
+          compact
         </Button>
         <Button variant="surface" disabled={actionsDisabled} onClick={() => choose({ choice: 'compact' })}>
           <Icon name="compact" size={16} />
