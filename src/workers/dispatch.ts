@@ -361,12 +361,18 @@ export async function agentAvailability({
     rows: reading.models,
   })
 
+  const modelQuota = model?.state?.stale ? undefined : model?.effective
+
   if (reading.auth === 'signed-out' || exhausted({ effective: reading.effective })
-    || exhausted({ effective: model?.effective })) {
+    || exhausted({ effective: modelQuota })) {
     return 'exhausted'
   }
 
-  return reading.auth === 'usable' ? 'available' : 'unknown'
+  const evidence = modelQuota ?? reading.effective
+  const remaining = evidence?.effectivePercentRemaining
+
+  return evidence?.status === 'known' && remaining !== undefined && remaining > 0
+    ? 'available' : 'unknown'
 }
 
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
