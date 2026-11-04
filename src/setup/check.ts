@@ -10,6 +10,7 @@ import { projectMemoryView } from '#memory/project-memory.ts'
 import { projectsFor } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
+import { recordExitCode } from '#app/request-context.ts'
 
 export interface SetupItem {
   name: string
@@ -197,7 +198,7 @@ export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
     }
   }
 
-  process.exitCode = 1
+  recordExitCode({ code: 1 })
 
   return {
     hydraId,
