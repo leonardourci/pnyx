@@ -44,10 +44,10 @@ const config = (): EffectiveDispatch => ({
 
 test(
   'a named worker account uses only its own home, independently of the default order',
-  () => {
+  async () => {
     const effective = config()
     const homes: string[] = []
-    const choice = chooseCandidate({
+    const choice = await chooseCandidate({
       config: effective,
       offers: { claude: ['model-only-on-personal'] },
       quota: ({ account }) => {
@@ -76,7 +76,7 @@ test(
       { model: 'sonnet' },
     )
 
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: effective,
         quota: () => ({ auth: 'signed-out' }),
@@ -88,9 +88,9 @@ test(
 
 test(
   'an explicit account override chooses its provider and never falls back to a different account',
-  () => {
+  async () => {
     const effective = config()
-    const choice = chooseCandidate({
+    const choice = await chooseCandidate({
       config: effective,
       override: { account: 'codex' },
       quota: () => ({ auth: 'usable' }),
@@ -114,14 +114,14 @@ test(
       'account' in chosenSettings({ choice }),
       false,
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: effective,
         override: { account: 'missing' },
       }),
       /not registered/,
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: effective,
         harness: 'claude',

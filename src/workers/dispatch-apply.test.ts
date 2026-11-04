@@ -1774,9 +1774,9 @@ test(
 
 test(
   'AXI rejects duplicate add/edit without writes, and legacy duplicates remain readable and removable',
-  () => {
+  async () => {
     lab()
-    const before = show()
+    const before = await show()
     const saved = readFileSync(
       configPath(),
       'utf8',
@@ -1797,7 +1797,7 @@ test(
         model: 'sonnet',
       },
     ]
-    failsWith({
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -1811,7 +1811,7 @@ test(
       paths: ['/default/1/account'],
     })
     // --candidates is checked before the patch, so its refusal names the path within the list.
-    assert.throws(
+    await assert.rejects(
       () => rule({
         args: [
           'set',
@@ -1841,7 +1841,7 @@ test(
       ),
       journal,
     )
-    const added = rule({
+    const added = await rule({
       args: [
         'apply',
         '--json',
@@ -1865,8 +1865,8 @@ test(
       added.applied,
       true,
     )
-    const valid = show()
-    failsWith({
+    const valid = await show()
+    await failsWith({
       run: () => rule({
         args: [
           'apply',
@@ -1880,7 +1880,7 @@ test(
       paths: ['/default/1/account'],
     })
     assert.deepEqual(
-      show(),
+      await show(),
       valid,
     )
     // A legacy file can contain duplicates; reading preserves it for explicit repair.
@@ -1894,10 +1894,10 @@ test(
       }),
     )
     assert.equal(
-      show().document.default.length,
+      (await show()).document.default.length,
       2,
     )
-    rule({
+    await rule({
       args: [
         'apply',
         '--json',
@@ -1908,7 +1908,7 @@ test(
       ],
     })
     assert.equal(
-      show().document.default.length,
+      (await show()).document.default.length,
       1,
     )
   },
@@ -1916,9 +1916,9 @@ test(
 
 test(
   'an account label must be 1 to 80 characters on one line, and account set --label saves the label rule show returns',
-  () => {
+  async () => {
     lab()
-    const account = show().document.accounts['claude:test']!
+    const account = (await show()).document.accounts['claude:test']!
     const saved = readFileSync(
       configPath(),
       'utf8',
@@ -1940,15 +1940,15 @@ test(
         }),
       ],
     })
-    failsWith({
+    await failsWith({
       run: () => labelled({ label: '' }),
       paths: ['/accounts/claude:test/label'],
     })
-    failsWith({
+    await failsWith({
       run: () => labelled({ label: 'x'.repeat(81) }),
       paths: ['/accounts/claude:test/label'],
     })
-    failsWith({
+    await failsWith({
       run: () => labelled({ label: 'Work\nHome' }),
       paths: ['/accounts/claude:test/label'],
     })
@@ -1959,7 +1959,7 @@ test(
       ),
       saved,
     )
-    dispatchCommands.account([
+    await dispatchCommands.account([
       'set',
       'claude:test',
       '--provider',
@@ -1972,7 +1972,7 @@ test(
       'lab',
     ])
     assert.equal(
-      show().document.accounts['claude:test']?.label,
+      (await show()).document.accounts['claude:test']?.label,
       'Work',
     )
   },

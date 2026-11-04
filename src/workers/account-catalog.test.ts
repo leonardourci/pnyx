@@ -8,7 +8,7 @@ import { createHost } from '#app/host.ts'
 import { withWriter } from '#app/writer.ts'
 import { decidePush } from '#tasks/push.ts'
 import { fakeDispatch } from '#test-harness/dispatch-fixture.ts'
-import type { Provider } from './provider.ts'
+import { claudeNative } from '#workers/fixtures/claude-native.ts'
 import { writeDocument } from './dispatch-config.ts'
 import type { DispatchDocument } from './dispatch-check.ts'
 
@@ -38,7 +38,7 @@ test(
         },
       )
     })
-    commands.hydra([
+    await commands.hydra([
       'create',
       'lab',
     ])
@@ -72,28 +72,33 @@ test(
     }
     writeDocument({ document })
     const reads: string[] = []
-    const fixture: Provider = {
-      models: async ({ env }) => {
-        const folder = env.CLAUDE_CONFIG_DIR!
-        reads.push(folder)
-
-        return [
-          {
-            value: folder === homes.work ? 'work-model' : 'personal-model',
-            label: folder,
-          },
-        ]
-      },
-      defaults: async ({ models }) => models,
-      open: async () => {
-        throw new Error('Catalog reads must not start an agent')
-      },
-    }
+    const fixture = claudeNative()
     const host = createHost({
       hydraId: 'lab',
-      native: {
-        'claude-code': fixture,
-        codex: fixture,
+      query: ({
+        prompt,
+        options,
+      }) => {
+        assert.equal(
+          options?.persistSession,
+          false,
+        )
+        const folder = options?.env?.CLAUDE_CONFIG_DIR
+        assert.ok(folder)
+        reads.push(folder)
+        const catalog = fixture.query({
+          prompt,
+          options,
+        })
+        catalog.supportedModels = async () => [
+          {
+            value: folder === homes.work ? 'work-model' : 'personal-model',
+            displayName: folder,
+            description: 'Synthetic account model',
+          },
+        ]
+
+        return catalog
       },
       changed: () => {},
     })
@@ -172,7 +177,7 @@ test(
         writer.append({ event: decision.event })
       },
     })
-    commands.hydra([
+    await commands.hydra([
       'set',
       '--session',
       'claude-code:selected-work',

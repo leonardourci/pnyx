@@ -236,7 +236,10 @@ export function createCatalogs({
     }
   }
 
-  const models: Host['models'] = ({ harness, account: selectedAccount }) => {
+  const models: Host['models'] = async ({
+    harness,
+    account: selectedAccount,
+  }) => {
     const effective = effectiveDispatch()
     const main = harnessAccount({
       effective,
