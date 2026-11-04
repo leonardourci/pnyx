@@ -3,7 +3,7 @@ import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import { skillSource } from '#setup/skills.ts'
 import { ORCHESTRATE_SKILL, INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import assert from 'node:assert/strict'
-import { existsSync, readFileSync } from 'node:fs'
+import { existsSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -49,7 +49,7 @@ const send = ({
 })
 
 test(
-  'queued owner messages keep their selected model, deduplicate, and copy tagged replies to the right task',
+  'owner messages queue once, agent switches compact the stored conversation, and effort and Fast apply on the next turn',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -57,49 +57,46 @@ test(
         'task',
         'create',
         '--title',
-        'Task quick',
+        'Release notes',
         '--key',
-        'quick',
+        'notes',
       ],
     })
-    const task = s.task({ key: 'quick' }).id
+    const task = s.task({ key: 'notes' }).id
     const reply = `${taskMention({
       id: task,
-      title: 'Task quick',
+      title: 'Release notes',
     })} Noted.`
     const page = await openPage({
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
-    const choose = ({ model }: { model: string }) => page.command({
+    const choose = ({
+      model,
+      effort = 'high',
+      fast = false,
+    }: {
+      model: string
+      effort?: string
+      fast?: boolean
+    }) => page.command({
       name: 'hydra-agent',
       args: [
         JSON.stringify({
           harness: 'claude',
           model,
+          effort,
+          fast,
         }),
       ],
     })
-    const held = pnyx.claude.plan({
-      text: 'First',
+    const first = pnyx.claude.plan({
+      text: 'Before the switch',
       reply,
       hold: true,
     })
     pnyx.claude.plan({
-      text: 'Second',
-      reply,
-    })
-    pnyx.claude.plan({
-      text: 'Third',
-      reply,
-    })
-
-    pnyx.claude.plan({
-      text: '',
-      reply,
-    })
-    pnyx.claude.plan({
-      text: '',
+      text: 'Queued once',
       reply,
     })
 
@@ -107,113 +104,551 @@ test(
       await choose({ model: 'sonnet' })
       await send({
         s,
-        text: 'First',
-        id: 'first',
+        text: 'Before the switch',
+        id: 'before',
       })
       const agent = await s.agent({ hydra: true })
       await until({
-        what: 'the first held message',
+        what: 'the first message to reach Hydra',
         check: () => agent.received.length === 1,
       })
       await send({
         s,
-        text: 'Second',
-        id: 'second',
+        text: 'Queued once',
+        id: 'queued',
       })
       await send({
         s,
-        text: 'Second',
-        id: 'second',
+        text: 'Queued once',
+        id: 'queued',
       })
-      await choose({ model: 'opus' })
-      await send({
+      first.release()
+      await finished({
         s,
-        text: 'Third',
-        id: 'third',
+        turns: 2,
       })
-      await s.owner({
-        args: [
-          'hydra',
-          'send',
-          '--task',
-          task,
-          '--text',
-          'A worker question',
-          '--actor',
-          `worker:${task}`,
-        ],
-      })
-      await s.owner({
-        args: [
-          'hydra',
-          'send',
-          '--task',
-          task,
-          '--text',
-          'Already on the task',
-        ],
-      })
-      await choose({ model: 'haiku' })
       assert.equal(
-        agent.received.length,
+        s.received({ cwd: agent.cwd }).filter(text => text === 'Queued once').length,
         1,
       )
-      held.release()
+      assert.deepEqual(
+        s.events().flatMap(event => event.type === 'card.noted' && event.cardId === task && event.data.source === 'hydra' ? [event.data.text] : []),
+        [
+          'Noted.',
+          'Noted.',
+        ],
+      )
+
+      assert.deepEqual(
+        s.events().flatMap(event =>
+          event.type === 'card.noted' && event.cardId === task && event.data.source === 'owner' ? [event.data.text] : []),
+        [
+          'Before the switch',
+          'Queued once',
+        ],
+      )
+
+      await choose({ model: 'opus' })
+      assert.equal(
+        s.state().hydraAgentChange,
+        undefined,
+      )
+      await send({
+        s,
+        text: 'After the switch',
+        id: 'after',
+      })
+      await until({
+        what: 'the held message to offer a switch choice',
+        check: () => s.state().hydraAgentChange?.state === 'requested',
+      })
+      assert.equal(
+        s.received({ cwd: agent.cwd }).length,
+        2,
+      )
+      assert.equal(
+        (await page.refusal({
+          name: 'hydra-agent-change',
+          args: [
+            'after',
+            'neither',
+          ],
+        })).code,
+        'VALIDATION_ERROR',
+      )
+      pnyx.claude.plan({
+        text: 'Return only the handoff summary.',
+        reply: 'The release notes were acknowledged.',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'after',
+          'compact',
+        ],
+      })
+      await until({
+        what: 'the new agent to receive the held message',
+        check: () => s.received({ cwd: agent.cwd }).some(text => text.includes('back after a stop') && text.includes('After the switch')),
+      })
+      await finished({
+        s,
+        turns: 4,
+      })
+      const sessions = pnyx.claude.sessions.filter(session => session.env.PNYX_HYDRA === s.hydraId)
+      const next = sessions.find(session => session.model === 'opus')
+      assert.ok(next)
+      assert.notEqual(
+        next.id,
+        agent.id,
+      )
+      assert.ok(next.received[0]!.includes('The release notes were acknowledged.'))
+      assert.ok(!next.received[0]!.includes('Before the switch'))
+      assert.ok(!next.received[0]!.includes('Queued once'))
+      assert.deepEqual(
+        s.events().flatMap(event => event.type === 'hydra.operation' ? [event.data.state] : []),
+        [
+          'started',
+          'finished',
+        ],
+      )
+      assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Switched to opus'))
+      assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Compacted'))
+
+      await choose({
+        model: 'opus',
+        effort: 'low',
+      })
+      await send({
+        s,
+        text: 'Continue at low effort',
+        id: 'effort',
+      })
+      await until({
+        what: 'an effort change choice',
+        check: () => s.state().hydraAgentChange?.kind === 'effort',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'effort',
+          'neither',
+        ],
+      })
       await finished({
         s,
         turns: 5,
       })
-      const sessions = pnyx.claude.sessions.filter(session => session.env.PNYX_HYDRA === s.hydraId)
       assert.equal(
-        sessions.find(session => session.received.some(text => text.endsWith('Second')))?.model,
-        'sonnet',
-      )
-      assert.equal(
-        sessions.find(session => session.received.some(text => text.endsWith('Third')))?.model,
-        'opus',
+        s.state().hydraAgentChange,
+        undefined,
       )
       assert.equal(
-        s.received({ cwd: agent.cwd }).filter(text => text === 'Second').length,
-        1,
+        s.events().filter(event => event.type === 'hydra.operation').length,
+        2,
       )
-      const notes = ({ source }: { source: string }) => s.events().flatMap(event =>
-        event.type === 'card.noted' && event.cardId === task && event.data.source === source ? [event.data.text] : [])
-      assert.deepEqual(
-        notes({ source: 'hydra' }),
-        Array(5).fill('Noted.'),
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.settings?.effort,
+        'low',
       )
-      assert.deepEqual(
-        notes({ source: 'owner' }),
-        [
-          'First',
-          'Second',
-          'Third',
+
+      const fastTurn = pnyx.claude.plan({
+        text: 'Before Fast',
+        hold: true,
+      })
+
+      try {
+        await send({
+          s,
+          text: 'Before Fast',
+          id: 'before-fast',
+        })
+        await until({
+          what: 'the turn before Fast',
+          check: () => s.received({ cwd: agent.cwd }).some(text => text.endsWith('Before Fast')),
+        })
+        await choose({
+          model: 'opus',
+          effort: 'low',
+          fast: true,
+        })
+        assert.equal(
+          s.state().hydraAgentChange,
+          undefined,
+        )
+        assert.equal(
+          s.state().cards[HYDRA_CARD]?.settings?.fast,
+          'false',
+        )
+        await send({
+          s,
+          text: 'With Fast',
+          id: 'with-fast',
+        })
+        fastTurn.release()
+        await finished({
+          s,
+          turns: 7,
+        })
+        assert.equal(
+          s.state().cards[HYDRA_CARD]?.settings?.fast,
+          'true',
+        )
+        assert.equal(
+          s.state().hydraAgentChange,
+          undefined,
+        )
+      } finally {
+        fastTurn.release()
+      }
+
+      await choose({
+        model: 'sonnet',
+        effort: 'low',
+      })
+      await send({
+        s,
+        text: 'Switch back',
+        id: 'back',
+      })
+      await until({
+        what: 'another switch choice',
+        check: () => s.state().hydraAgentChange?.id === 'back',
+      })
+      pnyx.claude.plan({
+        text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+        reply: 'No memory saved.',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'back',
+          'inscribe',
         ],
+      })
+      await until({
+        what: 'an incomplete inscribe to leave the message held',
+        check: () => s.state().hydraAgentChange?.state === 'failed' && !s.state().hydraOperation,
+      })
+      assert.match(
+        s.state().hydraAgentChange!.error!,
+        /Inscribe did not finish saving memory/,
       )
-      const received = s.received({ cwd: agent.cwd }).map(text => text.replace(
-        /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
-        '',
-      ))
-      const reports = received.filter(text => text.includes('A worker question')).map(text => text.replace(
-        / message="[^"]+"/,
-        '',
-      ))
-      assert.equal(
-        reports.length,
-        1,
+      await finished({
+        s,
+        turns: 9,
+      })
+      assert.ok(!s.received({ cwd: agent.cwd }).some(text => text.includes('Switch back')))
+      const inscription = pnyx.claude.plan({
+        text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+        reply: 'Memory saved.',
+        hold: true,
+      })
+      const summary = pnyx.claude.plan({
+        text: 'Return only the handoff summary.',
+        reply: 'Fast was enabled after the release discussion.',
+        hold: true,
+      })
+
+      try {
+        await page.command({
+          name: 'hydra-agent-change',
+          args: [
+            'back',
+            'inscribe',
+          ],
+        })
+        await until({
+          what: 'inscribe on the previous model',
+          check: () => s.received({ cwd: agent.cwd }).some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>')),
+        })
+        const inscribing = pnyx.claude.sessions.findLast(session =>
+          session.env.PNYX_HYDRA === s.hydraId)!
+        assert.equal(
+          inscribing.model,
+          'opus',
+        )
+        assert.equal(
+          inscribing.env.CLAUDE_CONFIG_DIR,
+          agent.env.CLAUDE_CONFIG_DIR,
+        )
+        await s.as({ agent: inscribing }).run({
+          args: [
+            'hydra',
+            'memory',
+            'set',
+            '--key',
+            'scope',
+            '--text',
+            'Release decisions saved before switching.',
+            '--reason',
+            'Inscribe',
+          ],
+        })
+        await s.as({ agent: inscribing }).run({
+          args: [
+            'hydra',
+            'memory',
+            'set',
+            '--key',
+            'inscribe-cursor',
+            '--text',
+            String(s.state().seq),
+            '--reason',
+            'Inscribe pass complete',
+          ],
+        })
+        inscription.release()
+        await until({
+          what: 'the summary after inscribe',
+          check: () => s.received({ cwd: agent.cwd }).at(-1)
+            ?.endsWith('Return only the handoff summary.'),
+        })
+        assert.equal(
+          s.state().hydraMemory?.scope?.text,
+          'Release decisions saved before switching.',
+        )
+        const compactPrompt = s.received({ cwd: agent.cwd }).at(-1)!
+        assert.ok(compactPrompt.includes('The release notes were acknowledged.'))
+        assert.ok(compactPrompt.includes('Before Fast'))
+        assert.ok(compactPrompt.includes('Release decisions saved before switching.'))
+        assert.ok(!compactPrompt.includes('Before the switch'))
+        await send({
+          s,
+          text: 'Queued during the switch',
+          id: 'during',
+        })
+        summary.release()
+        await finished({
+          s,
+          turns: 12,
+        })
+        const resumed = s.received({ cwd: agent.cwd }).at(-1)!
+        assert.ok(resumed.includes('Switch back'))
+        assert.ok(resumed.includes('Release decisions saved before switching.'))
+        assert.ok(resumed.includes('Queued during the switch'))
+        assert.ok(resumed.indexOf('Switch back') < resumed.indexOf('Queued during the switch'))
+      } finally {
+        inscription.release()
+        summary.release()
+      }
+
+      const previousAgent = s.state().cards[HYDRA_CARD]!.agent!
+      const quota = join(
+        previousAgent.loginFolder!,
+        'quota.json',
       )
-      assert.ok(
-        reports[0]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${taskMention({
-          id: task,
-          title: s.task({ key: 'quick' }).title,
-        })} report: from worker:${task}, in its envelope below\nA worker report arrived while you were busy.`),
-        reports[0],
+      writeFileSync(
+        quota,
+        JSON.stringify({
+          provider: {
+            quotaSemantics: {
+              effectiveAvailability: [
+                {
+                  scope: 'all_models',
+                  status: 'known',
+                  effectivePercentRemaining: 0,
+                },
+              ],
+            },
+          },
+        }),
       )
-      assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${task}" task="${task}">\nA worker question\n</pnyx-report>`))
-      assert.ok(!reports[0]!.includes('hydra check'))
-      assert.ok(received.includes('Second'))
+
+      try {
+        const usage = await page.command({
+          name: 'hydra-agent-usage',
+          args: [JSON.stringify(s.state().hydraAgent)],
+        })
+        assert.equal(
+          usage.availability,
+          'exhausted',
+        )
+        await page.command({
+          name: 'hydra-agent',
+          args: [
+            JSON.stringify({
+              harness: 'codex',
+              model: 'gpt-6.1-sol',
+            }),
+          ],
+        })
+        await send({
+          s,
+          text: 'Continue on Codex',
+          id: 'codex',
+        })
+        await until({
+          what: 'the provider change choice',
+          check: () => s.state().hydraAgentChange?.next.harness === 'codex',
+        })
+        page.close()
+        await pnyx.restart()
+        let recovered = await openPage({
+          port: pnyx.port(),
+          hydraId: s.hydraId,
+        })
+
+        try {
+          assert.equal(
+            s.state().hydraAgentChange?.id,
+            'codex',
+          )
+          await recovered.command({
+            name: 'hydra-agent-change',
+            args: [
+              'codex',
+              'inscribe',
+            ],
+          })
+          await until({
+            what: 'Codex to receive the resumed queue',
+            check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Continue on Codex') && text.includes('back after a stop'))),
+          })
+          const codex = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.endsWith('Return only the handoff summary.')))!
+          assert.ok(!codex.received[0]!.includes('First read and follow the inscribe skill'))
+          assert.equal(
+            s.state().hydraAgent?.harness,
+            'codex',
+          )
+          assert.notEqual(
+            s.state().cards[HYDRA_CARD]?.agent?.sessionId,
+            previousAgent.sessionId,
+          )
+          const alternate = s.folder({ name: 'alternate-codex' })
+          await s.owner({
+            args: [
+              'account',
+              'set',
+              'codex:alternate',
+              '--provider',
+              'codex',
+              '--folder',
+              alternate,
+            ],
+          })
+          const beforeAccount = s.state().cards[HYDRA_CARD]!.agent!.sessionId
+          await recovered.command({
+            name: 'hydra-agent',
+            args: [
+              JSON.stringify({
+                harness: 'codex',
+                account: 'codex:alternate',
+                model: 'gpt-6.1-sol',
+              }),
+            ],
+          })
+          await send({
+            s,
+            text: 'Use the alternate account',
+            id: 'account',
+          })
+          await until({
+            what: 'an account switch choice',
+            check: () => s.state().hydraAgentChange?.next.account === 'codex:alternate',
+          })
+          const compacting = pnyx.codex.plan({
+            text: 'Return only the handoff summary.',
+            hold: true,
+          })
+
+          try {
+            await recovered.command({
+              name: 'hydra-agent-change',
+              args: [
+                'account',
+                'compact',
+              ],
+            })
+            await until({
+              what: 'the account switch compaction to start',
+              check: () => pnyx.codex.sessions.at(-1)?.received.some(text => text.endsWith('Return only the handoff summary.')),
+            })
+            await recovered.command({
+              name: 'hydra',
+              args: ['stop'],
+            })
+            await until({
+              what: 'the cancelled compaction failure',
+              check: () => s.state().hydraAgentChange?.state === 'failed' && !s.state().hydraOperation,
+            })
+            assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Compaction failed'))
+          } finally {
+            compacting.release()
+          }
+
+          await until({
+            what: 'the failure notice to reach the previous agent',
+            check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Compaction failed:'))),
+          })
+          await until({
+            what: 'the failure notice turn to finish',
+            check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished' && pnyx.codex.sessions.at(-1)?.answered === 1,
+          })
+          assert.ok(!pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Use the alternate account'))))
+          const interrupted = pnyx.codex.plan({
+            text: 'Return only the handoff summary.',
+            hold: true,
+          })
+
+          try {
+            await recovered.command({
+              name: 'hydra-agent-change',
+              args: [
+                'account',
+                'compact',
+              ],
+            })
+            await until({
+              what: 'the retry summary before restart',
+              check: () => pnyx.codex.sessions.at(-1)?.received.some(text => text.endsWith('Return only the handoff summary.')),
+            })
+            recovered.close()
+            await pnyx.restart()
+            recovered = await openPage({
+              port: pnyx.port(),
+              hydraId: s.hydraId,
+            })
+            await until({
+              what: 'the running switch to recover as a failed choice',
+              check: () => s.state().hydraAgentChange?.state === 'failed' && !s.state().hydraOperation,
+            })
+            await until({
+              what: 'the restart failure notice to finish',
+              check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished' && pnyx.codex.sessions.at(-1)?.answered === 1,
+            })
+            assert.ok(!pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Use the alternate account'))))
+          } finally {
+            interrupted.release()
+          }
+
+          await recovered.command({
+            name: 'hydra-agent-change',
+            args: [
+              'account',
+              'compact',
+            ],
+          })
+          await until({
+            what: 'the alternate account to receive its queued message',
+            check: () => pnyx.codex.sessions.some(session => session.env.CODEX_HOME === alternate && session.received.some(text => text.includes('Use the alternate account'))),
+          })
+          assert.notEqual(
+            s.state().cards[HYDRA_CARD]?.agent?.sessionId,
+            beforeAccount,
+          )
+          assert.equal(
+            s.state().cards[HYDRA_CARD]?.agent?.loginFolder,
+            alternate,
+          )
+        } finally {
+          recovered.close()
+        }
+      } finally {
+        unlinkSync(quota)
+      }
     } finally {
-      held.release()
+      first.release()
       page.close()
     }
   },

@@ -119,6 +119,17 @@ test(
         text,
       ],
     })
+    const change = await until({
+      what: 'the image message to wait for provider compaction',
+      check: () => s.state().hydraAgentChange,
+    })
+    await page.command({
+      name: 'hydra-agent-change',
+      args: [
+        change.id,
+        'compact',
+      ],
+    })
     const codex = await until({
       what: 'the selected Codex provider to receive the image',
       check: () => pnyx.codex.sessions.findLast(agent => agent.env.PNYX_HYDRA === s.hydraId

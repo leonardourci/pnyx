@@ -37,7 +37,7 @@ export interface HydraMessage {
   task?: string
   action: 'send' | 'worker'
   // A worker's progress report: it stays on the card and reaches Hydra with its next wake, never waking it alone.
-  // divider: Pnyx's line in the chat where an operation that stopped Hydra ended.
+  // divider: Pnyx's milestone line in the conversation.
   kind?: 'progress' | 'divider'
   text: string
   enteredText?: string
@@ -81,4 +81,16 @@ export type ChatEvent = EventBase & {
     role: string
     text: string
   }
+}
+
+export interface HydraAgentChange {
+  id: string
+  previous: AgentConfig
+  next: AgentConfig
+  kind: 'agent' | 'effort'
+  state: 'requested' | 'running' | 'finished' | 'failed'
+  choice?: 'inscribe' | 'compact' | 'neither'
+  summary?: string
+  previousSession?: string
+  error?: string
 }

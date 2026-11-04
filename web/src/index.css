@@ -1985,3 +1985,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-form .select > .button > svg:last-child { margin-left: auto; }
 .account-form-actions { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); }
 .account-form-error { color: var(--color-red); font-size: var(--text-ui); }
+
+.agent-change-choice { margin: 8px 12px; padding: 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); font-size: var(--text-ui); }
+.agent-change-choice p { margin: 6px 0; color: var(--color-muted); }
+.agent-change-actions { display: flex; flex-wrap: wrap; gap: 6px; }

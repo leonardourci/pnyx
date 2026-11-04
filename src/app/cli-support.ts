@@ -739,6 +739,8 @@ export function summary({ event }: { event: HydraEvent }): string {
       }
 
       return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.agent-used': return `Agent ${event.data.model ?? event.data.harness}`
+    case 'hydra.agent-change': return `Agent change ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`

@@ -36,6 +36,7 @@ interface Choice {
 
 interface Selection {
   agent: AgentConfig
+  lastUsed?: AgentConfig
   account?: string
   effective: EffectiveDispatch
   command: Command
@@ -54,6 +55,7 @@ function SelectionMenu({
   change,
   defaultAgent,
   saveDefault,
+  lastUsed,
   close,
 }: Selection & { close(): void }) {
   const [
@@ -323,6 +325,8 @@ function SelectionMenu({
           index,
         ) => {
           const current = onAgentAccount && choice.value === agent.model
+          const wasUsed = onModels && lastUsed?.harness === harness
+            && lastUsed.account === selectedAccount && lastUsed.model === choice.value
           const pinned = onDefaultAccount && choice.value === savedModel
           const defaultText = pinned
             ? 'Default for new sessions'
@@ -376,6 +380,7 @@ function SelectionMenu({
               >
                 {choice.icon && <Icon name={choice.icon} size={18} />}
                 <span>{choice.label}</span>
+                {wasUsed && <small className="muted">Last used</small>}
                 {mark}
               </Button>
               {step === 'model' && saveDefault && (

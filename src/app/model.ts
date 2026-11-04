@@ -263,6 +263,14 @@ export type HydraChange = EventBase & (
     data: HydraStatus
   }
   | {
+    type: 'hydra.agent-used'
+    data: import('#workers/model.ts').AgentConfig
+  }
+  | {
+    type: 'hydra.agent-change'
+    data: import('#hydra/model.ts').HydraAgentChange
+  }
+  | {
     type: 'hydra.operation'
     data: HydraOperation
   }
@@ -357,6 +365,8 @@ export const EVENT_TYPES: readonly EventType[] = [
   'hydra.message',
   'hydra.status',
   'hydra.operation',
+  'hydra.agent-used',
+  'hydra.agent-change',
   'hydra.review',
   'hydra.helper-started',
   'hydra.helper-finished',
@@ -401,6 +411,14 @@ export interface HydraState {
     flags?: string[]
   }
   hydraMessages?: HydraMessage[]
+  hydraAgent?: import('#workers/model.ts').AgentConfig
+  hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
+  hydraContext?: {
+    after: number
+    summary: string
+    previousSession?: string
+  }
+
   upgrades?: import('#upgrade/model.ts').UpgradeOperation[]
   // seq is the event that set it, so a recap can list what came after Hydra went down.
   hydraStatus?: HydraStatus & { seq: number }

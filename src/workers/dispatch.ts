@@ -348,6 +348,33 @@ function exhausted({ effective }: { effective?: EffectiveQuota }): boolean {
   return effective?.runway?.status === 'exhausted_now' || (effective?.status === 'known' && effective.effectivePercentRemaining !== undefined && effective.effectivePercentRemaining <= 0)
 }
 
+export async function agentAvailability({
+  candidate,
+  account,
+}: {
+  candidate: Candidate
+  account: Account
+}): Promise<'available' | 'exhausted' | 'unknown'> {
+  const reading = await readQuota({ account })
+  const model = nativeModel({
+    candidate,
+    rows: reading.models,
+  })
+
+  const modelQuota = model?.state?.stale ? undefined : model?.effective
+
+  if (reading.auth === 'signed-out' || exhausted({ effective: reading.effective })
+    || exhausted({ effective: modelQuota })) {
+    return 'exhausted'
+  }
+
+  const evidence = modelQuota ?? reading.effective
+  const remaining = evidence?.effectivePercentRemaining
+
+  return evidence?.status === 'known' && remaining !== undefined && remaining > 0
+    ? 'available' : 'unknown'
+}
+
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {
   const score = row.selection?.status === 'known' ? row.selection.spendPriority : undefined
 
