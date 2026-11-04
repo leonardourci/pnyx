@@ -11,7 +11,10 @@ export const settings = guard({
       sub,
       ...rest
     ] = args
-    const { values } = parse({
+    const {
+      values,
+      hydraId,
+    } = parse({
       args: rest,
       options: {
         ...WRITE,
@@ -65,6 +68,7 @@ export const settings = guard({
 
     return settingsReceipt({
       saved: saveSettings({
+        hydraId,
         patch,
         meta: meta({ values }),
       }),

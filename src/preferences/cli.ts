@@ -100,6 +100,7 @@ export const view = guard({
     // --if-revision guards the board's own view; shared keys follow the settings store.
     const settings = settingsReceipt({
       saved: saveSettings({
+        hydraId,
         patch: shared,
         meta: {
           ...m,
