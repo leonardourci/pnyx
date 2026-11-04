@@ -222,6 +222,8 @@ export interface ModelOption {
   // The effort and permission mode the harness runs this model with when none is chosen.
   defaultEffort?: string
   defaultMode?: string
+  // The model has a Fast tier.
+  fast?: true
 }
 
 // The model names a catalog answers to: each option and the model it resolves to.
@@ -230,6 +232,44 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
     model.value,
     ...(model.resolvedModel ? [model.resolvedModel] : []),
   ])
+
+// Whether the model an agent runs, or the harness default when it names none, has a Fast tier.
+export const fastModel = ({
+  models,
+  model,
+}: {
+  models: ModelOption[]
+  model?: string
+}) => {
+  const option = model && model !== 'default'
+    ? models.find(option => option.value === model || option.resolvedModel === model)
+    : models.find(option => option.isDefault || option.value === 'default') ?? models[0]
+
+  return option?.fast === true
+}
+
+// Fast in a Hydra's composer reaches an agent only where its model has a Fast tier.
+export async function hydraFastReaches({
+  hydraFast,
+  models,
+  model,
+}: {
+  hydraFast?: boolean
+  models(): Promise<ModelOption[]>
+  model?: string
+}): Promise<boolean> {
+  if (!hydraFast) {
+    return false
+  }
+
+  // A catalog that cannot load leaves the agent off Fast; it must not stop the run.
+  const offered = await models().catch(() => [])
+
+  return fastModel({
+    models: offered,
+    model,
+  })
+}
 
 export interface Provider {
   compact?: true

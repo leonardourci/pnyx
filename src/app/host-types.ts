@@ -24,7 +24,13 @@ export interface Host {
     kind: 'command'
     unavailable?: string
   }[]>
-  models({ harness }: { harness: 'claude' | 'codex' }): Promise<ModelOption[]>
+  models({
+    harness,
+    account,
+  }: {
+    harness: 'claude' | 'codex'
+    account?: string
+  }): Promise<ModelOption[]>
   hydra({
     text,
     actor,

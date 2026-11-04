@@ -1,7 +1,7 @@
 import { useSyncExternalStore } from 'react'
 import type { SettingKey, Settings } from '#settings/model.ts'
 import { patchSettings } from '#settings/settings.ts'
-import type { Command } from '#web-app/connection.ts'
+import type { Command, Receipt } from '#web-app/connection.ts'
 import { createSettingsResource } from '#web-shared/settings-resource.ts'
 import { installationScope } from '#web-shared/installation.ts'
 
@@ -48,10 +48,16 @@ function createShared({ scope }: { scope: string }) {
       return Object.keys(patch).every(key => JSON.stringify(after[key as SettingKey])
         === JSON.stringify(state.settings[key as SettingKey]))
     },
-    read: ({ receipt }) => receipt.settings ? {
-      settings: receipt.settings as Settings,
-      revision: receipt.revision as number,
-    } : undefined,
+    read: ({ receipt }) => {
+      // view set nests the settings receipt under settings when it also saves the Hydra's own view.
+      const nested = receipt.settings as Receipt | undefined
+      const saved = nested?.settings ? nested : receipt
+
+      return saved.settings ? {
+        settings: saved.settings as Settings,
+        revision: saved.revision as number,
+      } : undefined
+    },
     newer: ({
       current,
       next,
@@ -87,17 +93,28 @@ export function useSharedSettings(): Settings | undefined {
 export function saveSharedSettings({
   command,
   patch,
+  view,
 }: {
   command: Command
   patch: Partial<Settings>
+  view?: {
+    patch: Record<string, unknown>
+    revision: number
+  }
 }) {
+  const revisionGuard = view ? [
+    '--if-revision',
+    String(view.revision),
+  ] : []
+
   return sharedSettings().write({
     command,
-    name: 'settings',
+    name: view ? 'view' : 'settings',
     args: [
       'set',
       '--json',
-      JSON.stringify(patch),
+      JSON.stringify(view?.patch ?? patch),
+      ...revisionGuard,
       '--event-id',
       crypto.randomUUID(),
     ],

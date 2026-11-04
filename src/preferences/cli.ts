@@ -2,9 +2,9 @@ import { AxiError } from 'axi-sdk-js'
 import { guard, parse, WRITE, required, meta, commit } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { hydraIds } from '#app/home-migration.ts'
-import { checkSettings, effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
+import { effectiveView, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
 import { isSharedViewKey } from '#settings/model.ts'
-import { DEFAULT_VIEW, resetLayoutWidths } from './view.ts'
+import { DEFAULT_VIEW, resetLayoutWidths, resizeViewPatch } from './view.ts'
 import { decideView } from './decisions.ts'
 import { HydraError } from '#store/errors.ts'
 
@@ -72,7 +72,10 @@ export const view = guard({
     }
 
     const m = meta({ values })
-    const entries = Object.entries(patch)
+    const entries = Object.entries(resizeViewPatch({
+      state: loadHydra({ hydraId }).state,
+      patch: patch as Record<string, unknown>,
+    }))
     const shared = Object.fromEntries(entries.filter(([key]) => isSharedViewKey({ key })))
     const board = Object.fromEntries(entries.filter(([key]) => !isSharedViewKey({ key })))
     const viewCommit = () => commit({
@@ -93,8 +96,7 @@ export const view = guard({
       return viewCommit()
     }
 
-    checkSettings({ patch: shared })
-    const committed = Object.keys(board).length ? viewCommit() : undefined
+    let committed: ReturnType<typeof viewCommit> | undefined
     // --if-revision guards the board's own view; shared keys follow the settings store.
     const settings = settingsReceipt({
       saved: saveSettings({
@@ -102,6 +104,11 @@ export const view = guard({
         meta: {
           ...m,
           ifRevision: undefined,
+        },
+        beforeSave: () => {
+          if (Object.keys(board).length) {
+            committed = viewCommit()
+          }
         },
       }),
     })

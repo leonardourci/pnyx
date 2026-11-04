@@ -421,7 +421,7 @@ export async function startTask({
 
   if (override && (how === 'firstmate' || how === 'command')) {
     throw new HydraError({
-      message: '--model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
+      message: '--account, --model, --effort, --mode and --fast apply to an agent Pnyx or Paseo starts',
       code: 'VALIDATION_ERROR',
       help: ['Use --via pnyx or --via paseo'],
     })

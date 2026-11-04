@@ -1189,3 +1189,369 @@ test(
     }
   },
 )
+
+test(
+  'main and helper execute on independently selected homes for the same provider',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    const personal = s.folder({ name: 'personal-login' })
+    const work = s.folder({ name: 'work-login' })
+
+    for (const [
+      name,
+      folder,
+    ] of [
+        [
+          'claude:personal',
+          personal,
+        ],
+        [
+          'claude:work',
+          work,
+        ],
+      ]) {
+      await s.owner({
+        args: [
+          'account',
+          'set',
+          name!,
+          '--provider',
+          'claude',
+          '--folder',
+          folder!,
+        ],
+      })
+    }
+
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      const unregistered = await page.refusal({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            account: 'claude:ghost',
+            model: 'opus',
+          }),
+        ],
+      })
+      assert.equal(
+        unregistered.code,
+        'NO_ACCOUNTS',
+      )
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            account: 'claude:personal',
+            model: 'opus',
+          }),
+        ],
+      })
+    } finally {
+      page.close()
+    }
+
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:work',
+            model: 'sonnet',
+          },
+        }),
+      ],
+    })
+    const held = await busyMain({
+      s,
+      text: 'Keep main on Personal.',
+    })
+
+    try {
+      pnyx.claude.plan({
+        text: HELPER_PROMPT,
+        reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'the helper on Work to finish',
+        check: () => finishes({ s }).length === 1,
+      })
+      const main = await s.agent({ hydra: true })
+      const helper = pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+      assert.equal(
+        main.env.CLAUDE_CONFIG_DIR,
+        personal,
+      )
+      assert.equal(
+        helper?.env.CLAUDE_CONFIG_DIR,
+        work,
+      )
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.agent?.account,
+        'claude:personal',
+      )
+      assert.equal(
+        s.state().cards[HYDRA_CARD]?.settings?.account,
+        undefined,
+      )
+      assert.equal(
+        grants({ s })[0]?.agent?.account,
+        'claude:work',
+      )
+      assert.equal(
+        grants({ s })[0]?.agent?.loginFolder,
+        work,
+      )
+      assert.equal(
+        finishes({ s })[0]?.error,
+        undefined,
+      )
+    } finally {
+      held.release()
+    }
+  },
+)
+
+test(
+  'Fast in Hydra’s composer reaches a helper whose model has Fast and no other',
+  async () => {
+    const s = await helperHydra({
+      keys: [
+        'first',
+        'second',
+      ],
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            model: 'opus',
+            fast: true,
+          }),
+        ],
+      })
+    } finally {
+      page.close()
+    }
+
+    const helperSessions = () => pnyx.claude.sessions.filter(session =>
+      session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+
+    const turn = async ({
+      key,
+      count,
+    }: {
+      key: string
+      count: number
+    }) => {
+      const held = await busyMain({
+        s,
+        text: `Keep main busy ${count}.`,
+      })
+
+      try {
+        pnyx.claude.plan({
+          text: HELPER_PROMPT,
+          reply: routine({ tasks: [s.task({ key }).id] }),
+        })
+        declare({
+          s,
+          keys: [key],
+        })
+        await until({
+          what: `helper batch ${count} to finish`,
+          check: () => finishes({ s }).length === count,
+        })
+      } finally {
+        held.release()
+      }
+
+      await until({
+        what: 'main to finish its turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity !== 'working',
+      })
+
+      return helperSessions().at(-1)
+    }
+
+    // Sonnet has no Fast tier, so Hydra's Fast does not reach it.
+    assert.equal(
+      (await turn({
+        key: 'first',
+        count: 1,
+      }))?.fast,
+      false,
+    )
+
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper-model',
+        'opus',
+      ],
+    })
+    assert.equal(
+      (await turn({
+        key: 'second',
+        count: 2,
+      }))?.fast,
+      true,
+    )
+    assert.equal(
+      grants({ s }).at(-1)?.agent?.fast,
+      true,
+    )
+  },
+)
+
+test(
+  'a helper whose account was removed leaves routine updates to main and never runs on another login',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    const task = s.task({ key: 'work' }).id
+    await s.owner({
+      args: [
+        'account',
+        'set',
+        'claude:work',
+        '--provider',
+        'claude',
+        '--folder',
+        s.folder({ name: 'removed-login' }),
+      ],
+    })
+    await s.owner({
+      args: [
+        'settings',
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:work',
+            model: 'sonnet',
+          },
+        }),
+      ],
+    })
+    await s.owner({
+      args: [
+        'account',
+        'remove',
+        'claude:work',
+      ],
+    })
+
+    try {
+      await s.chat({ text: 'Start watching.' })
+      const hydra = await s.agent({ hydra: true })
+      await until({
+        what: 'main to finish its first turn',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'main to take the routine update',
+        check: () => hydra.received.length === 2 && s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
+      assert.ok(hydra.received[1]!.includes(`pnyx-task:${task}) declared: blocked`))
+      assert.equal(
+        grants({ s }).length,
+        0,
+      )
+    } finally {
+      // The shared helper setting would otherwise keep naming the removed account for later flows.
+      await s.owner({
+        args: [
+          'settings',
+          'set',
+          '--json',
+          JSON.stringify({
+            helper: {
+              harness: 'claude',
+              model: 'sonnet',
+            },
+          }),
+        ],
+      })
+    }
+  },
+)
+
+test(
+  'the helper’s own Fast puts its session on Fast while Fast in Hydra’s composer is off',
+  async () => {
+    const s = await helperHydra({ keys: ['work'] })
+    await s.owner({
+      args: [
+        'hydra',
+        'set',
+        '--helper',
+        'claude',
+        '--helper-model',
+        'opus',
+        '--helper-fast',
+        'on',
+      ],
+    })
+    const held = await busyMain({
+      s,
+      text: 'Keep main busy for the Fast helper.',
+    })
+
+    try {
+      pnyx.claude.plan({
+        text: HELPER_PROMPT,
+        reply: routine({ tasks: [s.task({ key: 'work' }).id] }),
+      })
+      declare({
+        s,
+        keys: ['work'],
+      })
+      await until({
+        what: 'the Fast helper batch to finish',
+        check: () => finishes({ s }).length === 1,
+      })
+    } finally {
+      held.release()
+    }
+
+    const helper = pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.env.PNYX_ACTOR?.startsWith('helper:'))
+    assert.equal(
+      s.state().config?.hydra.agent?.fast,
+      undefined,
+    )
+    assert.equal(
+      helper?.fast,
+      true,
+    )
+    assert.equal(
+      grants({ s })[0]?.agent?.fast,
+      true,
+    )
+  },
+)

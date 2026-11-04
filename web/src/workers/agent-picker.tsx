@@ -1,8 +1,7 @@
 import { useEffect, useState, type ComponentProps } from 'react'
 import type { ModelOption } from '#workers/provider.ts'
 import type { Command } from '#web-app/connection.ts'
-import { Button, Select, type Option } from '#web-shared/ui/controls.tsx'
-import { Icon } from '#web-shared/ui/icon.tsx'
+import { Select, type Option } from '#web-shared/ui/controls.tsx'
 
 export interface CellMark {
   changed?: boolean
@@ -38,7 +37,11 @@ export function PickerField({
         disabled={disabled || !!reason}
         onChange={onChange}
         {...look}
-        title={reason ?? label}
+        // Hovering names the setting and its value, since a table of these may have no heading.
+        title={reason ?? [
+          label,
+          options.find(option => option.value === value)?.label ?? value,
+        ].filter(Boolean).join(': ')}
       />
       {reason && <small>{reason}</small>}
     </div>
@@ -47,21 +50,36 @@ export function PickerField({
 
 export function useModels({
   harness,
+  account,
+  folder,
   command,
   connected,
 }: {
   harness: 'claude' | 'codex'
+  account?: string
+  folder?: string
   command: Command
   connected: boolean
 }) {
+  const key = JSON.stringify([
+    harness,
+    account,
+    folder,
+  ])
   const [
     models,
     setModels,
-  ] = useState<ModelOption[]>()
+  ] = useState<{
+    key: string
+    models: ModelOption[]
+  }>()
   const [
     error,
     setError,
-  ] = useState('')
+  ] = useState<{
+    key: string
+    text: string
+  }>()
   const [
     retry,
     setRetry,
@@ -74,19 +92,29 @@ export function useModels({
       }
 
       let active = true
-      setError('')
+      setModels(undefined)
+      setError(undefined)
       void command({
         name: 'models',
-        args: [harness],
+        args: account ? [
+          harness,
+          account,
+        ] : [harness],
       })
         .then(receipt => {
           if (active) {
-            setModels(receipt.models as ModelOption[])
+            setModels({
+              key,
+              models: receipt.models as ModelOption[],
+            })
           }
         })
         .catch((error: Error) => {
           if (active) {
-            setError(error.message)
+            setError({
+              key,
+              text: error.message,
+            })
           }
         })
 
@@ -96,6 +124,9 @@ export function useModels({
     },
     [
       harness,
+      account,
+      folder,
+      key,
       command,
       connected,
       retry,
@@ -103,62 +134,8 @@ export function useModels({
   )
 
   return {
-    models,
-    error,
+    models: models?.key === key ? models.models : undefined,
+    error: error?.key === key ? error.text : '',
     retry: () => setRetry(value => value + 1),
   }
-}
-
-export function ModelPicker({
-  models,
-  error,
-  retry,
-  value,
-  options,
-  disabled,
-  connected,
-  onChange,
-  ...look
-}: {
-  models?: ModelOption[]
-  error: string
-  retry(): void
-  value?: string
-  options: Option[]
-  disabled: boolean
-  connected: boolean
-  onChange({ value }: { value: string }): void
-} & Look) {
-  if (!value && (error || models)) {
-    return <div className="picker-field"><small role="alert">{error || 'No models available.'}</small><Button disabled={!connected} onClick={retry}>Retry models</Button></div>
-  }
-
-  if (!value || (!error && !models)) {
-    return <small role="status">Loading models…</small>
-  }
-
-  // A saved model stays visible and changeable when its harness's catalog cannot load.
-  return (
-    <span className="model-picker">
-      <PickerField
-        label="Model"
-        value={value}
-        options={options}
-        disabled={disabled}
-        onChange={onChange}
-        {...look}
-      />
-      {error && (
-        <Button
-          className="picker-retry"
-          aria-label="Retry models"
-          title={error}
-          disabled={!connected}
-          onClick={retry}
-        >
-          <Icon name="reset" size={14} />
-        </Button>
-      )}
-    </span>
-  )
 }

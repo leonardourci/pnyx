@@ -904,7 +904,10 @@ test(
           'max',
         ],
       }),
-      paths: ['/rules/build/candidates/0/effort'],
+      paths: [
+        '/rules/build/candidates/0/effort',
+        '/rules/build/candidates/1/account',
+      ],
     })
     await failsWith({
       run: async () => dispatchCommands.account([
@@ -1765,6 +1768,212 @@ test(
         ],
       }),
       { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'AXI rejects duplicate add/edit without writes, and legacy duplicates remain readable and removable',
+  async () => {
+    lab()
+    const before = await show()
+    const saved = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    const journal = readFileSync(
+      changesPath(),
+      'utf8',
+    )
+    const duplicated = [
+      {
+        harness: 'claude',
+        account: 'claude:test',
+        model: 'opus',
+      },
+      {
+        harness: 'claude',
+        account: 'claude:test',
+        model: 'sonnet',
+      },
+    ]
+    await failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--json',
+          JSON.stringify({
+            version: 1,
+            patch: { default: duplicated },
+          }),
+        ],
+      }),
+      paths: ['/default/1/account'],
+    })
+    // --candidates is checked before the patch, so its refusal names the path within the list.
+    await assert.rejects(
+      () => rule({
+        args: [
+          'set',
+          'duplicate',
+          '--when',
+          'Duplicate',
+          '--candidates',
+          JSON.stringify(duplicated),
+        ],
+      }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: /^\/1\/account /,
+      },
+    )
+    assert.equal(
+      readFileSync(
+        configPath(),
+        'utf8',
+      ),
+      saved,
+    )
+    assert.equal(
+      readFileSync(
+        changesPath(),
+        'utf8',
+      ),
+      journal,
+    )
+    const added = await rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: {
+            accounts: { 'claude:other': { ...before.document.accounts['claude:test'] } },
+            default: [
+              duplicated[0],
+              {
+                harness: 'claude',
+                account: 'claude:other',
+                model: 'sonnet',
+              },
+            ],
+          },
+        }),
+      ],
+    })
+    assert.equal(
+      added.applied,
+      true,
+    )
+    const valid = await show()
+    await failsWith({
+      run: () => rule({
+        args: [
+          'apply',
+          '--json',
+          JSON.stringify({
+            version: 1,
+            patch: { default: duplicated },
+          }),
+        ],
+      }),
+      paths: ['/default/1/account'],
+    })
+    assert.deepEqual(
+      await show(),
+      valid,
+    )
+    // A legacy file can contain duplicates; reading preserves it for explicit repair.
+    rmSync(changesPath())
+    writeFileSync(
+      configPath(),
+      JSON.stringify({
+        ...before.document,
+        accounts: undefined,
+        default: duplicated,
+      }),
+    )
+    assert.equal(
+      (await show()).document.default.length,
+      2,
+    )
+    await rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: { default: [duplicated[0]] },
+        }),
+      ],
+    })
+    assert.equal(
+      (await show()).document.default.length,
+      1,
+    )
+  },
+)
+
+test(
+  'an account label must be 1 to 80 characters on one line, and account set --label saves the label rule show returns',
+  async () => {
+    lab()
+    const account = (await show()).document.accounts['claude:test']!
+    const saved = readFileSync(
+      configPath(),
+      'utf8',
+    )
+    const labelled = ({ label }: { label: string }) => rule({
+      args: [
+        'apply',
+        '--json',
+        JSON.stringify({
+          version: 1,
+          patch: {
+            accounts: {
+              'claude:test': {
+                ...account,
+                label,
+              },
+            },
+          },
+        }),
+      ],
+    })
+    await failsWith({
+      run: () => labelled({ label: '' }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    await failsWith({
+      run: () => labelled({ label: 'x'.repeat(81) }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    await failsWith({
+      run: () => labelled({ label: 'Work\nHome' }),
+      paths: ['/accounts/claude:test/label'],
+    })
+    assert.equal(
+      readFileSync(
+        configPath(),
+        'utf8',
+      ),
+      saved,
+    )
+    await dispatchCommands.account([
+      'set',
+      'claude:test',
+      '--provider',
+      'claude',
+      '--folder',
+      account.folder,
+      '--label',
+      'Work',
+      '--hydra',
+      'lab',
+    ])
+    assert.equal(
+      (await show()).document.accounts['claude:test']?.label,
+      'Work',
     )
   },
 )

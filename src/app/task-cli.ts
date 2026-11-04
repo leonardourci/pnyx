@@ -64,6 +64,7 @@ export const TASK_OPTIONS: Options = {
   full: { type: 'boolean' },
   fields: { type: 'string' },
   harness: { type: 'string' },
+  account: { type: 'string' },
   prompt: { type: 'string' },
   'paseo-url': { type: 'string' },
   check: { type: 'boolean' },

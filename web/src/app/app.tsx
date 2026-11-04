@@ -1,3 +1,4 @@
+import { ACCOUNT_SETTINGS } from '#web-workers/account-model-picker.tsx'
 import { useEffect, useState, useRef, useLayoutEffect, useCallback, type CSSProperties } from 'react'
 import { useHydra } from './connection.ts'
 import { useInstallationPending } from '#web-workers/dispatch-resource.ts'
@@ -9,7 +10,7 @@ import { SettingsPage } from '#web-settings/settings-page.tsx'
 import { expandedByColumn, columnsFor, filterCards } from '#web-tasks/view.ts'
 import { sendableComment, type ChatComment } from '#web-hydra/chat.ts'
 import { TaskCreate, type TaskDraft } from '#web-tasks/task-create.tsx'
-import { viewFor } from '#preferences/view.ts'
+import { resizeViewPatch, viewFor } from '#preferences/view.ts'
 import { useTaskReferences } from '#web-tasks/task-references.ts'
 import { HydraComposerSources } from '#web-hydra/composer-sources.tsx'
 import { liveTask } from '#tasks/select.ts'
@@ -69,6 +70,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   useEffect(
     () => {
       if (hydra.creating) {
+        setPage('hydra')
         const frame = requestAnimationFrame(() => document.querySelector<HTMLTextAreaElement>('.hydra-chat textarea')?.focus())
 
         return () => cancelAnimationFrame(frame)
@@ -112,6 +114,18 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
       newColumn,
       setNewColumn,
     ] = useState<string | null>(null)
+  const [
+    settingsVisited,
+    setSettingsVisited,
+  ] = useState(page === 'settings')
+  useEffect(
+    () => {
+      if (page === 'settings') {
+        setSettingsVisited(true)
+      }
+    },
+    [page],
+  )
   const [
     expanded,
     setExpanded,
@@ -301,6 +315,39 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     settingsQuery,
     setSettingsQuery,
   ] = useState('')
+  const [
+    accountSetup,
+    setAccountSetup,
+  ] = useState<'claude' | 'codex'>()
+  useEffect(
+    () => {
+      const open = (event: Event) => {
+        const requested = (event as CustomEvent<{ harness?: 'claude' | 'codex' }>).detail.harness
+        setAccountSetup(requested ?? 'claude')
+        setSettingsQuery('Accounts')
+        setPage('settings')
+      }
+
+      window.addEventListener(
+        ACCOUNT_SETTINGS,
+        open,
+      )
+
+      return () => window.removeEventListener(
+        ACCOUNT_SETTINGS,
+        open,
+      )
+    },
+    [],
+  )
+  useEffect(
+    () => {
+      if (page !== 'settings') {
+        setAccountSetup(undefined)
+      }
+    },
+    [page],
+  )
   // The Oracle's palette draws inside the page, so it takes the page's text sizes.
   const [
     layer,
@@ -598,7 +645,16 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   )
   const save = useCallback(
     async ({ patch }: { patch: Record<string, unknown> }) => {
-      const entries = Object.entries(patch)
+      const resize = [
+        'defaultHydraWidth',
+        'defaultColumnWidth',
+        'defaultColumnWidths',
+      ].some(key => key in patch)
+      const applied = resize ? resizeViewPatch({
+        state,
+        patch,
+      }) : patch
+      const entries = Object.entries(applied)
       const sharedPatch = Object.fromEntries(entries.filter(([key]) => isSettingKey({ key })))
       const boardPatch = Object.fromEntries(entries.filter(([key]) => !isSettingKey({ key })))
 
@@ -608,10 +664,14 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
         writes.push(saveSharedSettings({
           command,
           patch: sharedPatch,
+          view: resize ? {
+            patch: applied,
+            revision: state.viewRevision ?? 0,
+          } : undefined,
         }))
       }
 
-      if (Object.keys(boardPatch).length) {
+      if (!resize && Object.keys(boardPatch).length) {
         writes.push(command({
           name: 'view',
           args: [
@@ -639,7 +699,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     [
       command,
       notify,
-      state.viewRevision,
+      state,
     ],
   )
 
@@ -1011,6 +1071,15 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     newColumn: newColumn !== null,
     cancelColumn: () => setNewColumn(null),
     togglePanel: () => setPanel(shown => !shown),
+    openSettings: () => {
+      if (page === 'settings') {
+        setPage('hydra')
+
+        return
+      }
+
+      openSettings({ query: settingsQuery })
+    },
   })
 
   const answerTask = ({ card }: { card: Card }) => {
@@ -1040,7 +1109,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   }
 
   const openSettings = ({ query }: { query: string }) => {
-    setSettingsQuery(query); setPage('settings')
+    setAccountSetup(undefined); setSettingsQuery(query); setPage('settings')
     requestAnimationFrame(() => focusElement({ selector: '.settings-page .search-bar-input' }))
   }
 
@@ -1426,10 +1495,12 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                 </div>
               </>
             )}
-            {page === 'settings' && (
+            {(settingsVisited || page === 'settings') && (
               <SettingsPage
                 key={settingsQuery}
                 initialQuery={settingsQuery}
+                accountSetup={accountSetup}
+                hidden={page !== 'settings'}
                 state={state}
                 connected={connected}
                 view={view}

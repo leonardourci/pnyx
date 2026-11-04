@@ -13,6 +13,7 @@ import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { steeringToFollow } from '#workers/inbox-follow-up.ts'
 import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './save-receipts.ts'
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
 import { hydraImageFile } from '#hydra/image-files.ts'
@@ -1860,14 +1861,17 @@ export async function mountOwnedHydra({
         } else if (name === 'models') {
           const harness = args[0]
 
-          if (args.length !== 1 || (harness !== 'claude' && harness !== 'codex')) {
+          if (args.length < 1 || args.length > 2 || (harness !== 'claude' && harness !== 'codex')) {
             throw new HydraError({
-              message: 'models expects claude or codex',
+              message: 'models expects claude or codex and an optional account name',
               code: 'VALIDATION_ERROR',
             })
           }
 
-          void agents.models({ harness })
+          void agents.models({
+            harness,
+            account: args[1],
+          })
             .then(models => send({
               ws,
               message: {
@@ -1876,9 +1880,9 @@ export async function mountOwnedHydra({
                 models,
               },
             }))
-            .catch(() => fail({
-              error: 'Harness model catalog unavailable. Reopen the picker to retry.',
-              code: 'CATALOG_UNAVAILABLE',
+            .catch((error: Error) => fail({
+              error: error instanceof HydraError ? error.message : 'Harness model catalog unavailable. Reopen the picker to retry.',
+              code: error instanceof HydraError ? error.code : 'CATALOG_UNAVAILABLE',
             }))
         } else if (name === 'catalog') {
           if (args.length !== 1) {
@@ -2020,6 +2024,16 @@ export async function mountOwnedHydra({
           }
 
           const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
+
+          if (agent.account) {
+            // Refuses an account not registered for this harness.
+            harnessAccount({
+              effective: effectiveDispatch(),
+              harness: agent.harness,
+              prefer: agent.account,
+            })
+          }
+
           const {
             previous,
             running,

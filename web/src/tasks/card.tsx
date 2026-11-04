@@ -401,7 +401,7 @@ export function HydraCard({
         >
           {card.agent && (
             <Tooltip
-              content={<AgentDetails card={card} />}
+              content={<AgentDetails card={card} command={command} />}
             >
               <span className="card-agent" tabIndex={0} aria-label={harnessName({ provider: card.agent.provider })}>
                 <Icon name={card.agent.provider} />

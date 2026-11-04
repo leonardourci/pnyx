@@ -19,6 +19,36 @@ const saved = ({ view }: { view: object }) =>
   })
 
 test(
+  'saved 380/480 widths are kept, not replaced by the new defaults',
+  () => {
+    const view = saved({
+      view: {
+        hydraWidth: 480,
+        defaultHydraWidth: 480,
+        defaultColumnWidth: 380,
+        columnWidths: { queued: 380 },
+      },
+    })
+    assert.equal(
+      view.hydraWidth,
+      480,
+    )
+    assert.equal(
+      view.defaultHydraWidth,
+      480,
+    )
+    assert.equal(
+      view.defaultColumnWidth,
+      380,
+    )
+    assert.equal(
+      view.columnWidths.queued,
+      380,
+    )
+  },
+)
+
+test(
   'a saved view carrying the old built-in defaults picks up the new ones',
   () => {
     const view = saved({

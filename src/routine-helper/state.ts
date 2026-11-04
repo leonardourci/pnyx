@@ -1,5 +1,8 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { taskMention } from '#hydra/mentions.ts'
+import type { AgentConfig, AgentRef } from '#workers/model.ts'
+
+export type HelperAgent = AgentConfig & Pick<AgentRef, 'loginFolder'>
 
 export interface HelperBatch {
   id: string
@@ -9,6 +12,7 @@ export interface HelperBatch {
   once?: string[]
   error?: string
   startedAt?: string
+  agent?: HelperAgent
 }
 
 export interface HelperOutcome {

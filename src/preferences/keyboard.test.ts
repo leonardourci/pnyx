@@ -28,6 +28,52 @@ const resolve = (
 })
 
 test(
+  'Settings opens with Mod+, while editing and supports the shared binding controls',
+  () => {
+    for (const platform of [
+      'mac',
+      'other',
+    ] as const) {
+      const event = {
+        key: ',',
+        metaKey: platform === 'mac',
+        ctrlKey: platform === 'other',
+      }
+      const change = {
+        platform,
+        scope: 'composer' as const,
+        editing: true,
+      }
+      assert.equal(
+        resolve({
+          event,
+          change,
+        }).action,
+        'settings',
+      )
+      assert.equal(
+        resolve({
+          event: { key: ',' },
+          change,
+        }).consume,
+        false,
+      )
+      assert.equal(
+        resolve({
+          event,
+          change,
+          prefs: {
+            ...DEFAULT_KEYBOARD,
+            bindings: { settings: [] },
+          },
+        }).consume,
+        false,
+      )
+    }
+  },
+)
+
+test(
   'scopes, exact modifiers and logical punctuation resolve through tinykeys',
   () => {
     assert.equal(

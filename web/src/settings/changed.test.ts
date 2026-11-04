@@ -76,7 +76,7 @@ test(
 )
 
 test(
-  'resetting column defaults clears the fallback and overrides hidden in another Hydra',
+  'resetting column widths preserves overrides belonging to another Hydra',
   () => {
     const settings = patchSettings({
       current: DEFAULT_SETTINGS,
@@ -108,11 +108,11 @@ test(
     })
     assert.equal(
       reset.defaultColumnWidth,
-      380,
+      460,
     )
     assert.deepEqual(
       reset.defaultColumnWidths,
-      {},
+      { 'custom:other-hydra': 510 },
     )
   },
 )

@@ -1,4 +1,5 @@
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
+import { useEffect, useRef } from 'react'
 import { DEFAULT_REVIEW_MINUTES, MAX_REVIEW_MINUTES } from '#settings/settings.ts'
 import { DEFAULT_DONE_HOURS, MAX_DONE_HOURS } from '#tasks/retention-rules.ts'
 import type { AgentConfig } from '#workers/model.ts'
@@ -6,7 +7,6 @@ import type { Command } from '#web-app/connection.ts'
 import { Button, NumberField, Switch } from '#web-shared/ui/controls.tsx'
 import { DISPATCH_CHANGED } from '#web-workers/heads-dispatch.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
 
 // The sliders cover a week of Done and two hours of review; the fields take up to the limits.
@@ -110,24 +110,6 @@ export function ReviewCadence({
   )
 }
 
-const HELPER_CHOICES = [
-  {
-    value: 'auto',
-    label: 'Automatic',
-    icon: 'helper',
-  },
-  {
-    value: 'off',
-    label: 'Off',
-    icon: 'close',
-  },
-  {
-    value: 'pick',
-    label: 'Choose',
-    icon: 'agent',
-  },
-]
-
 export function RoutineHelper({
   helper,
   hydra,
@@ -141,40 +123,59 @@ export function RoutineHelper({
   connected: boolean
   save: Save
 }) {
+  const lastEnabled = useRef<Exclude<HelperSetting, 'off'>>('auto')
+
+  // Turning the helper back on restores the agent it had before it was turned off.
+  useEffect(
+    () => {
+      if (helper !== 'off') {
+        lastEnabled.current = helper
+      }
+    },
+    [helper],
+  )
+
+  const selected = helper === 'off' ? lastEnabled.current : helper
+  const agent = typeof selected === 'object' ? selected : {
+    harness: hydra.harness,
+    model: HELPER_MODELS[hydra.harness],
+  }
+
   return (
     <div className="setting-stack">
-      <Segmented
+      <Switch
         label="Routine helper"
-        value={typeof helper === 'object' ? 'pick' : helper}
-        options={HELPER_CHOICES}
+        caption={helper === 'off' ? 'Off' : 'On'}
+        checked={helper !== 'off'}
         onChange={({ value }) => save({
+          patch: { helper: value ? lastEnabled.current : 'off' },
+        })}
+      />
+      <span>Provider, account and model</span>
+      <AgentPickers
+        label="Routine helper agent"
+        selectionLabel="Helper account and model"
+        agent={agent}
+        command={command}
+        connected={connected && helper !== 'off'}
+        fields={[
+          'effort',
+          'fast',
+        ]}
+        defaultAction="none"
+        onChange={({ next }) => save({
           patch: {
-            helper: value === 'pick' ? {
-              harness: hydra.harness,
-              model: HELPER_MODELS[hydra.harness],
-            } : value,
+            helper: {
+              harness: next.harness,
+              account: next.account,
+              model: next.model ?? HELPER_MODELS[next.harness],
+              effort: next.effort,
+              fast: next.fast || undefined,
+            },
           },
         })}
       />
-      {typeof helper === 'object' && (
-        <AgentPickers
-          label="Routine helper agent"
-          agent={helper}
-          command={command}
-          connected={connected}
-          fields={['effort']}
-          onChange={({ next }) => save({
-            patch: {
-              helper: {
-                harness: next.harness,
-                model: next.model ?? HELPER_MODELS[next.harness],
-                effort: next.effort,
-              },
-            },
-          })}
-        />
-      )}
-      <Help text={`Automatic uses Sonnet when Hydra runs on Claude and ${HELPER_MODELS.codex} when it runs on Codex. Off sends every wake to the main Hydra.`} />
+      <Help text="Off sends every wake to the main Hydra. Pnyx suggests a lighter model; choose any provider, account and model. Fast stays off unless you turn it on here or in a Hydra’s composer, which also puts that Hydra’s helper on Fast where its model has it." />
     </div>
   )
 }
@@ -194,12 +195,14 @@ export function DefaultAgent({
     <div className="setting-stack">
       <AgentPickers
         label="Hydra’s default agent"
+        defaultAction="edit"
         agent={rule}
         command={command}
         connected={connected}
         onChange={({ next }) => saveHydra({
           patch: {
             harness: next.harness,
+            account: next.account,
             model: next.model,
             effort: next.effort,
             mode: next.mode,
@@ -207,7 +210,6 @@ export function DefaultAgent({
           },
         })}
       />
-      <Help text="The same pickers as Hydra’s chat composer. Picking a model from the other harness resets effort and permissions to that harness’s defaults." />
     </div>
   )
 }

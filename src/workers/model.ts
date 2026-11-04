@@ -210,6 +210,7 @@ export const QUOTA_BUCKETS = [
 
 export interface AgentConfig {
   harness: Harness
+  account?: string
   model?: string
   effort?: string
   mode?: string
@@ -225,7 +226,7 @@ export interface TaskQueue {
 }
 
 // Settings a start asks for in place of its heads dispatch candidate's own.
-export type StartOverride = Partial<Pick<AgentConfig, 'model' | 'effort' | 'mode' | 'fast'>>
+export type StartOverride = Partial<Pick<AgentConfig, 'account' | 'model' | 'effort' | 'mode' | 'fast'>>
 
 export interface AgentLaunch {
   dispatch?: string

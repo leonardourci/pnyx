@@ -3,6 +3,7 @@ import { HARNESSES, providerIdOf } from './providers.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { harnessControls } from './controls.ts'
 import { AGENT_FLAG } from './model.ts'
+import { ACCOUNT_LABEL_MAX, homeFolderValid, LINE_BREAK } from './account-choice.ts'
 
 // The one document Settings, the CLI and Hydra read and change: heads dispatch and its accounts.
 export interface DispatchDocument extends HeadsDispatch {
@@ -51,6 +52,7 @@ const RULE_FIELDS = [
 ]
 const CANDIDATE_FIELDS = [
   'harness',
+  'account',
   'model',
   'effort',
   'mode',
@@ -59,6 +61,7 @@ const CANDIDATE_FIELDS = [
 const ACCOUNT_FIELDS = [
   'provider',
   'folder',
+  'label',
 ]
 
 // The harness's own login, which Hydra and workers run on while no account is registered.
@@ -153,6 +156,7 @@ function checkCandidates({
   value,
   segments,
   catalog,
+  accounts,
   values = true,
   error,
   warn,
@@ -160,6 +164,7 @@ function checkCandidates({
   value: unknown
   segments: string[]
   catalog?: Partial<Record<Harness, string[]>>
+  accounts?: Fields
   values?: boolean
   error: Report
   warn: Report
@@ -180,6 +185,8 @@ function checkCandidates({
       readable: true,
     })
   }
+
+  const seen = new Set<string>()
 
   value.forEach((
     raw,
@@ -213,6 +220,44 @@ function checkCandidates({
       })
 
       return
+    }
+
+    const pair = JSON.stringify([
+      harness,
+      candidate.account ?? null,
+    ])
+
+    if (seen.has(pair)) {
+      error({
+        segments: [
+          ...at,
+          'account',
+        ],
+        problem: `${harness} / ${candidate.account ?? 'automatic account'} is already used in this rule; choose another account or remove this candidate`,
+        readable: true,
+      })
+    }
+
+    seen.add(pair)
+
+    if (candidate.account !== undefined) {
+      const name = candidate.account
+      const validName = typeof name === 'string' && NAME.test(name)
+      const problem = validName && accounts ? accountProblem({
+        name,
+        harness,
+        accounts,
+      }) : undefined
+
+      if (!validName || problem) {
+        error({
+          segments: [
+            ...at,
+            'account',
+          ],
+          problem: problem ?? NAME_RULE,
+        })
+      }
     }
 
     for (const key of [
@@ -426,7 +471,21 @@ function checkAccounts({
 
     const folder = account.folder
 
-    if (typeof folder !== 'string' || !(folder.startsWith('/') || folder.startsWith('~/'))) {
+    const label = account.label
+    const labelValid = label === undefined || (typeof label === 'string'
+      && !!label.trim() && label.length <= ACCOUNT_LABEL_MAX && !LINE_BREAK.test(label))
+
+    if (!labelValid) {
+      error({
+        segments: [
+          ...at,
+          'label',
+        ],
+        problem: `account label takes 1 to ${ACCOUNT_LABEL_MAX} characters on one line`,
+      })
+    }
+
+    if (typeof folder !== 'string' || !homeFolderValid({ folder })) {
       error({
         segments: [
           ...at,
@@ -477,11 +536,19 @@ export function candidateIssues({ value }: { value: unknown }): DispatchIssue[] 
 // A harness has workers when its own order or any project's order lists an account.
 function staffed({
   harness,
+  account,
   fields,
 }: {
   harness: unknown
+  account?: unknown
   fields: Fields
 }): boolean {
+  const registered = asRecord({ value: fields.accounts })
+
+  if (typeof account === 'string') {
+    return asRecord({ value: registered?.[account] })?.provider === harness
+  }
+
   const orders = [
     fields.workers,
     ...Object.values(asRecord({ value: fields.projects }) ?? {}),
@@ -597,6 +664,7 @@ export function checkDispatch({
         'candidates',
       ],
       catalog,
+      accounts,
       error,
       warn,
     })
@@ -605,6 +673,7 @@ export function checkDispatch({
     if (accounts && Object.keys(accounts).length && listed.length
       && !listed.some(candidate => staffed({
         harness: asRecord({ value: candidate })?.harness,
+        account: asRecord({ value: candidate })?.account,
         fields,
       }))) {
       warn({
@@ -624,6 +693,7 @@ export function checkDispatch({
       value: fields.default,
       segments: ['default'],
       catalog,
+      accounts,
       error,
       warn,
     })

@@ -1,30 +1,64 @@
 import { dispatchDocument, dispatchSettings } from './dispatch-resource.ts'
 import { useEffect, useSyncExternalStore } from 'react'
 import type { AgentConfig } from '#workers/model.ts'
+import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
 
 export const DISPATCH_CHANGED = 'pnyx-dispatch-changed'
 
-// A default for another agent drops the rule's settings that belonged to the old one.
+// rule apply answers with what changed; reading the document in the same step lets the preview become the saved state without a gap.
+export const showingAfter = ({ command }: { command: Command }): Command => Object.assign(
+  async ({
+    name,
+    args,
+    onChecking,
+  }: Parameters<Command>[0]) => {
+    const applied = await command({
+      name,
+      args,
+      onChecking,
+    })
+
+    // The change is saved; a failed read only leaves the next refresh to show it.
+    return command({
+      name: 'rule',
+      args: ['show'],
+    }).catch(() => applied)
+  },
+  { retain: command.retain },
+)
+
+// The account an agent runs on: the one it names, or its harness's first registered account.
+export const resolvedAccount = ({
+  effective,
+  agent,
+}: {
+  effective?: EffectiveDispatch
+  agent: Pick<AgentConfig, 'harness' | 'account'>
+}) => agent.account ?? (effective ? harnessAccount({
+  effective,
+  harness: agent.harness,
+}) : undefined)
+
 export const hydraDefault = ({
   rule,
-  harness,
-  field,
-  value,
+  next,
 }: {
   rule?: AgentConfig
-  harness: AgentConfig['harness']
-  field: 'model' | 'effort' | 'mode'
-  value: string
-}): Partial<AgentConfig> => ({
-  harness,
-  ...(rule?.harness === harness ? {} : {
-    model: undefined,
-    effort: undefined,
-    mode: undefined,
-  }),
-  [field]: value,
-})
+  next: AgentConfig
+}): Partial<AgentConfig> => {
+  const sameAccount = rule?.harness === next.harness && rule?.account === next.account
+
+  return {
+    harness: next.harness,
+    account: next.account,
+    model: next.model,
+    effort: sameAccount ? rule?.effort : undefined,
+    mode: sameAccount ? rule?.mode : undefined,
+    fast: sameAccount ? rule?.fast : undefined,
+  }
+}
 
 type Readable = Pick<ReturnType<typeof dispatchSettings>, 'refresh'>
 
@@ -100,6 +134,11 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     resource.subscribe,
     resource.snapshot,
   )
+  const document = dispatchDocument()
+  const saved = useSyncExternalStore(
+    document.subscribe,
+    document.snapshot,
+  ).view
   useRefreshed({
     resource,
     command,
@@ -114,6 +153,7 @@ export function useHeadsDispatch({ command }: { command: Command }) {
 
     for (const field of [
       'harness',
+      'account',
       'model',
       'effort',
       'mode',
@@ -140,8 +180,21 @@ export function useHeadsDispatch({ command }: { command: Command }) {
     window.dispatchEvent(new Event(DISPATCH_CHANGED))
   }
 
+  const listed = snapshot.view ?? undefined
+  let effective = listed
+
+  // An account saved in Settings reaches the saved document before this view refreshes; the newer accounts win.
+  if (listed && saved && saved.revision >= (listed.revision ?? 0)
+    && Object.keys(saved.document.accounts).length > 0) {
+    effective = {
+      ...listed,
+      accounts: saved.document.accounts,
+      fallback: undefined,
+    }
+  }
+
   return {
-    effective: snapshot.view ?? undefined,
+    effective,
     error: snapshot.error,
     saveHydra,
   }

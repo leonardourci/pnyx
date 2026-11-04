@@ -8,13 +8,15 @@ import type { Meta } from '#app/command-meta.ts'
 import type { Output } from '#app/cli-support.ts'
 import { readLog } from '#app/event-log.ts'
 import { hydraDir, hydraIds } from '#app/home-migration.ts'
-import { DEFAULT_COLUMN_WIDTH, viewFor } from '#preferences/view.ts'
+import { viewFor } from '#preferences/view.ts'
 import { HydraError } from '#store/errors.ts'
 import { pnyxHome } from '#store/paths.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { appendJournal, readJournal } from '#store/journal.ts'
 import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
+import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
+import { harnessAccount } from '#workers/account-choice.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -178,7 +180,7 @@ function migrate(): void {
     migrated.defaultColumnWidths = Object.fromEntries(Object.entries(migrated.defaultColumnWidths)
       .filter(([
         , width,
-      ]) => width !== DEFAULT_COLUMN_WIDTH))
+      ]) => width !== migrated.defaultColumnWidth))
     Object.assign(
       after,
       migrated,
@@ -231,6 +233,34 @@ export function readSettings(): SettingsRead {
   return readFolded()
 }
 
+// A helper account the patch changes must be registered for the helper's harness.
+function checkHelperAccount({
+  current,
+  after,
+  document,
+}: {
+  current: Settings
+  after: Settings
+  document(): unknown
+}): void {
+  const helper = after.helper
+  const changed = !isDeepStrictEqual(
+    current.helper,
+    helper,
+  )
+
+  if (!changed || typeof helper !== 'object' || !helper.account) {
+    return
+  }
+
+  // Refuses an account not registered for this harness.
+  harnessAccount({
+    effective: effectiveDispatch({ document: document() }),
+    harness: helper.harness,
+    prefer: helper.account,
+  })
+}
+
 export type SettingsSave = {
   settings: Settings
   revision: number
@@ -243,9 +273,12 @@ export type SettingsSave = {
 export function saveSettings({
   patch,
   meta,
+  beforeSave,
 }: {
   patch: unknown
   meta: Meta
+  // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Hydra only when the shared write goes ahead.
+  beforeSave?(): void
 }): SettingsSave {
   return withRegistryLock({
     fn: () => {
@@ -253,6 +286,8 @@ export function saveSettings({
       const current = readFolded()
 
       if (meta.id && current.ids.has(meta.id)) {
+        beforeSave?.()
+
         return {
           skipped: 'duplicate' as const,
           settings: current.settings,
@@ -271,6 +306,14 @@ export function saveSettings({
         current: current.settings,
         input: patch,
       })
+
+      checkHelperAccount({
+        current: current.settings,
+        after,
+        document: lockedDocument,
+      })
+
+      beforeSave?.()
 
       if (isDeepStrictEqual(
         after,
@@ -309,9 +352,16 @@ export function saveSettings({
 
 // A command that also writes a Hydra checks its shared part first and saves it only once that write succeeds.
 export function checkSettings({ patch }: { patch: unknown }): void {
-  patchSettings({
-    current: readSettings().settings,
+  const current = readSettings().settings
+  const after = patchSettings({
+    current,
     input: patch,
+  })
+
+  checkHelperAccount({
+    current,
+    after,
+    document: savedDocument,
   })
 }
 

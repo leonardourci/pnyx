@@ -1044,7 +1044,7 @@ test(
     )
     assert.throws(
       () => overrideOf({ value: { harness: 'codex' } }),
-      /may only set model, effort, mode and fast/,
+      /may only set account, model, effort, mode and fast/,
     )
     assert.throws(
       () => overrideOf({ value: { fast: 'yes' } }),
@@ -1151,7 +1151,10 @@ test(
       ])
       assert.deepEqual(
         Object.keys(effectiveDispatch().accounts),
-        ['claude:work'],
+        [
+          'claude:default',
+          'claude:work',
+        ],
       )
     } finally {
       process.env.CLAUDE_CONFIG_DIR = join(

@@ -1,4 +1,4 @@
-import { hydraDefault, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
+import { resolvedAccount, useHeadsDispatch } from '#web-workers/heads-dispatch.ts'
 import type { HydraState } from '#app/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { AgentPickers } from '#web-workers/agent-pickers.tsx'
@@ -24,11 +24,15 @@ export function HydraAgent({
 }) {
   const {
     effective,
-    saveHydra,
   } = useHeadsDispatch({ command })
   const rule = effective?.dispatch.rules.hydra?.candidates[0] ?? effective?.dispatch.default[0]
   const agent: AgentConfig = state.config?.hydra.agent ?? rule ?? { harness: 'claude' }
-  const inherited = rule?.harness === agent.harness ? rule : undefined
+  const ruleAccount = rule ? resolvedAccount({
+    effective,
+    agent: rule,
+  }) : undefined
+  const sameAccount = !agent.account || agent.account === ruleAccount
+  const inherited = rule?.harness === agent.harness && sameAccount ? rule : undefined
   const firstmate = state.config?.hydra.kind === 'firstmate'
 
   const save = ({ next }: { next: AgentConfig }) => {
@@ -43,29 +47,6 @@ export function HydraAgent({
     return null
   }
 
-  // The hydra rule is what every new Hydra starts with.
-  const startsWith = ({ field }: { field: 'model' | 'effort' | 'mode' }) => ({
-    defaultValue: rule?.harness !== agent.harness ? undefined
-      : field === 'model' ? rule.model && `${rule.harness}:${rule.model}` : rule[field],
-    onDefault: ({
-      value,
-      harness = agent.harness,
-    }: {
-      value: string
-      harness?: AgentConfig['harness']
-    }) => void saveHydra({
-      patch: hydraDefault({
-        rule,
-        harness,
-        field,
-        value,
-      }),
-    }).then(
-      () => notify({ text: 'New Hydras will start with this.' }),
-      (error: Error) => notify({ text: error.message }),
-    ),
-  })
-
   return (
     <AgentPickers
       label="Hydra agent settings"
@@ -73,6 +54,7 @@ export function HydraAgent({
       inherited={inherited}
       command={command}
       connected={connected}
+      fastNote="It also applies to every agent this Hydra starts, heads dispatch workers and the routine helper alike, where their model has Fast."
       onChange={save}
       // Saving the named values makes Hydra run with exactly what the pickers show.
       onResolved={({ next }) => {
@@ -80,7 +62,6 @@ export function HydraAgent({
           save({ next })
         }
       }}
-      startsWith={startsWith}
     />
   )
 }

@@ -144,9 +144,7 @@ export function UsageRing({
           ))}
         </TooltipSection>
       )}
-      {usage.account && !usage.account.endsWith(':default') && (
-        <TooltipSection className="usage-account">Account {usage.account}</TooltipSection>
-      )}
+      {!usage.windows?.length && <TooltipSection>Quota unavailable</TooltipSection>}
     </TooltipPanel>
   )
 

@@ -1,3 +1,4 @@
+import { harnessAccount } from '#workers/account-choice.ts'
 import { agentInput } from './agent-input.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
 import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
@@ -18,19 +19,19 @@ import { steeringMessages } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
 import { helperAgent, helperBatch, helperEvent, helperPermission } from '#routine-helper/route.ts'
-import { activeHelperBatches, helperLeases, outcomeLines } from '#routine-helper/state.ts'
+import { activeHelperBatches, helperLeases, outcomeLines, type HelperAgent } from '#routine-helper/state.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
-import { defaultLogin, effectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
+import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
+import { hydraFastReaches, mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -68,7 +69,7 @@ import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 import type { InputReceipt } from '#workers/provider.ts'
-import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
+import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
@@ -2103,8 +2104,32 @@ export function createHost({
     return outcomeLines({ state }).length > 0 || helperFailed({ state })
   }
 
+  // No helper agent when it is off or its account is no longer registered, so main takes the updates and no other login is used.
+  const usableHelper = ({
+    state,
+    effective,
+  }: {
+    state: HydraState
+    effective?: EffectiveDispatch
+  }) => {
+    const candidate = helperAgent({
+      state,
+      main: effective && (state.config?.hydra.agent
+        ?? effective.dispatch.rules.hydra?.candidates[0]
+        ?? effective.dispatch.default[0]),
+    })
+
+    if (candidate?.account === undefined) {
+      return candidate
+    }
+
+    const known = effective ?? effectiveDispatch()
+
+    return known.accounts[candidate.account]?.provider === candidate.harness ? candidate : undefined
+  }
+
   // A failed batch sends routine work to main until main has seen the failure.
-  const helperOpen = ({ state }: { state: HydraState }) => !!helperAgent({ state })
+  const helperOpen = ({ state }: { state: HydraState }) => !!usableHelper({ state })
     && !helperFailed({ state })
 
   // Tasks main's running turn was woken for; the helper leaves them until that turn ends.
@@ -2271,17 +2296,31 @@ export function createHost({
     environment: ({
       harness,
       actor,
+      account: selectedAccount,
+      loginFolder: selectedFolder,
     }) => {
-      const effective = effectiveDispatch()
-      const name = harnessAccount({
-        effective,
-        harness,
-      })
-      const account = name ? effective.accounts[name] : undefined
       const env = {
         ...environment({ hydra: true }),
         PNYX_ACTOR: actor,
       }
+
+      if (selectedFolder) {
+        return accountEnvironment({
+          account: {
+            provider: harness,
+            folder: selectedFolder,
+          },
+          env,
+        })
+      }
+
+      const effective = effectiveDispatch()
+      const name = harnessAccount({
+        effective,
+        harness,
+        prefer: selectedAccount,
+      })
+      const account = name ? effective.accounts[name] : undefined
 
       return account ? accountEnvironment({
         account,
@@ -2294,17 +2333,46 @@ export function createHost({
       armWake()
     },
     bound: helperBound,
-    agentFor: () => {
+    agentFor: async () => {
       const state = loadHydra({ hydraId }).state
       const effective = effectiveDispatch()
-      const main = state.config?.hydra.agent
-        ?? effective.dispatch.rules.hydra?.candidates[0]
-        ?? effective.dispatch.default[0]
-
-      return helperAgent({
+      const candidate = usableHelper({
         state,
-        main,
+        effective,
       })
+
+      if (!candidate) {
+        return undefined
+      }
+
+      const name = harnessAccount({
+        effective,
+        harness: candidate.harness,
+        prefer: candidate.account,
+      })
+      const account = name ? effective.accounts[name] : undefined
+
+      const nativeDefault = defaultLogin({ provider: candidate.harness })
+      const folder = account ? loginFolder({ account }) : nativeDefault
+      const hydraFast = await hydraFastReaches({
+        hydraFast: state.config?.hydra.agent?.fast,
+        models: () => host.models({
+          harness: candidate.harness,
+          account: name,
+        }),
+        model: candidate.model,
+      })
+      const agent: HelperAgent = {
+        ...candidate,
+        account: name,
+        loginFolder: folder,
+      }
+
+      if (candidate.fast || hydraFast) {
+        agent.fast = true
+      }
+
+      return agent
     },
     handback: armWake,
     outcomesReady: armWake,
@@ -2729,6 +2797,7 @@ export function createHost({
           const main = harnessAccount({
             effective,
             harness: candidate.harness,
+            prefer: candidate.account,
           })
           const account = main ? effective.accounts[main] : undefined
           const provider = providerIdOf({ harness: candidate.harness })
@@ -2747,12 +2816,13 @@ export function createHost({
                 ? await catalogOffers({
                   host,
                   harnesses: [candidate.harness],
+                  account: main,
                 }) : undefined,
             }) : undefined
           const settings: AgentSettings = Object.fromEntries(Object.entries(candidate).filter(([
             key,
             value,
-          ]) => key !== 'harness' && value !== undefined)
+          ]) => key !== 'harness' && key !== 'account' && value !== undefined)
             .map(([
               key,
               value,
@@ -3232,16 +3302,17 @@ export function createHost({
 
       const harness: Harness = harnessOf({ provider: agent.provider })
       const effective = effectiveDispatch()
-      const name = harnessAccount({
+      const name = agent.account ?? harnessAccount({
         effective,
         harness,
-        prefer: agent.account,
       })
       const account = name ? effective.accounts[name] : undefined
+      const configuredFolder = account?.provider === harness ? account.folder : undefined
+      const folder = agent.loginFolder ?? configuredFolder ?? defaultLogin({ provider: harness })
       const plan = await readUsage({
-        account: account ?? {
+        account: {
           provider: harness,
-          folder: agent.loginFolder ?? defaultLogin({ provider: harness }),
+          folder,
         },
       })
 

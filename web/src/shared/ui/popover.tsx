@@ -8,6 +8,9 @@ export function Popover({
   className = '',
   triggerRef,
   below = false,
+  disabled = false,
+  invalid = false,
+  describedBy,
 }: {
   label: string
   trigger: ReactNode
@@ -16,6 +19,9 @@ export function Popover({
   triggerRef?: RefObject<HTMLButtonElement | null>
   // Opens under the trigger, for a trigger near the top of the page.
   below?: boolean
+  disabled?: boolean
+  invalid?: boolean
+  describedBy?: string
 }) {
   const [
     open,
@@ -50,9 +56,16 @@ export function Popover({
               innerWidth - element.offsetWidth - 8,
             ),
           )}px`
-          element.style.top = `${below ? anchor.bottom + 6 : Math.max(
+          const above = anchor.top - element.offsetHeight - 6
+          const under = anchor.bottom + 6
+          const fitsBelow = innerHeight - under >= element.offsetHeight
+          const top = fitsBelow && (below || above < 8) ? under : above
+          element.style.top = `${Math.max(
             8,
-            anchor.top - element.offsetHeight - 6,
+            Math.min(
+              top,
+              innerHeight - element.offsetHeight - 8,
+            ),
           )}px`
         }
       }
@@ -108,7 +121,7 @@ export function Popover({
   return (
     <div
       className={`popover ${className}`}
-      data-key-scope="overlay"
+      data-key-scope={open ? 'overlay' : undefined}
       ref={root}
       onBlur={event => {
         if (event.relatedTarget && !event.currentTarget.contains(event.relatedTarget)) {
@@ -131,6 +144,9 @@ export function Popover({
           }
         }}
         aria-label={label}
+        aria-invalid={invalid || undefined}
+        aria-describedby={describedBy}
+        disabled={disabled}
         title={label}
         aria-haspopup="dialog"
         aria-expanded={open}

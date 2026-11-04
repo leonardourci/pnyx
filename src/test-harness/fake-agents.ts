@@ -56,6 +56,8 @@ export interface AgentSession {
   // Received messages whose turn ended: for Claude once Pnyx has read the turn's last message, for Codex once turn/completed is written.
   answered: number
   model?: string
+  // Claude only: the fast mode setting the session started with.
+  fast?: boolean
   // Codex only: the method of each request Pnyx sent.
   requests?: string[]
   // Claude only: the agent calls a tool that needs permission, as Claude Code does mid-turn, and gets Pnyx's decision.
@@ -193,6 +195,7 @@ export function replayClaude({ hydra }: { hydra(): string }) {
       images: receivedImages,
       answered: 0,
       model: options.model,
+      fast: typeof options.settings === 'object' ? options.settings.fastMode : undefined,
       useTool: ({
         tool,
         input,

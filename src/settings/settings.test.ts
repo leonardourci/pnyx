@@ -19,6 +19,8 @@ import { settingsLogPath } from './store.ts'
 import { hydraDir } from '#app/home-migration.ts'
 import { acquireLock } from '#store/storage.ts'
 import type { Settings } from './model.ts'
+import type { AgentConfig } from '#workers/model.ts'
+import { writeDocument } from '#workers/dispatch-config.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
@@ -127,6 +129,308 @@ const settings = async () => (await commands.settings(['show'])) as {
   revision: number
 }
 
+test(
+  'view width controls resize only the named Hydra; settings set only saves shared values',
+  async () => {
+    home()
+
+    for (const id of [
+      'alpha',
+      'beta',
+    ]) {
+      await commands.hydra([
+        'create',
+        id,
+      ])
+    }
+
+    const column = hydraConfig({ state: loadHydra({ hydraId: 'alpha' }).state }).columns[0]!.id
+    const otherColumn = hydraConfig({ state: loadHydra({ hydraId: 'beta' }).state }).columns[0]!.id
+
+    await commands.column([
+      'create',
+      '--title',
+      'Other',
+      '--id',
+      'custom:other',
+      '--hydra',
+      'beta',
+    ])
+    const edit = ({
+      id,
+      patch,
+      flags = [],
+    }: {
+      id: string
+      patch: object
+      flags?: string[]
+    }) => commands.view([
+      'set',
+      '--hydra',
+      id,
+      '--json',
+      JSON.stringify(patch),
+      ...flags,
+    ])
+    await commands.settings([
+      'set',
+      '--json',
+      JSON.stringify({
+        defaultColumnWidths: {
+          [column]: 580,
+          'custom:other': 610,
+        },
+      }),
+    ])
+    await edit({
+      id: 'alpha',
+      patch: {
+        hydraWidth: 725,
+        columnWidths: { [column]: 700 },
+        panelWidth: 555,
+        cardHeight: 300,
+      },
+    })
+    await edit({
+      id: 'beta',
+      patch: {
+        hydraWidth: 800,
+        columnWidths: {
+          [otherColumn]: 900,
+          'custom:other': 910,
+        },
+      },
+    })
+    const betaBefore = loadHydra({ hydraId: 'beta' }).state.view
+    await edit({
+      id: 'alpha',
+      patch: {
+        defaultHydraWidth: 520,
+        defaultColumnWidth: 460,
+      },
+      flags: [
+        '--event-id',
+        'resize-once',
+      ],
+    })
+    const alpha = (await show({ hydraId: 'alpha' })).view
+    assert.equal(
+      alpha.hydraWidth,
+      520,
+    )
+    assert.equal(
+      alpha.panelWidth,
+      555,
+    )
+    assert.equal(
+      alpha.cardHeight,
+      300,
+    )
+    const ids = hydraConfig({ state: loadHydra({ hydraId: 'alpha' }).state }).columns.map(column => column.id)
+
+    for (const id of ids) {
+      assert.equal(
+        (alpha.columnWidths as Record<string, number>)[id],
+        460,
+      )
+    }
+
+    assert.deepEqual(
+      loadHydra({ hydraId: 'beta' }).state.view,
+      betaBefore,
+    )
+    assert.deepEqual(
+      (await settings()).settings.defaultColumnWidths,
+      { 'custom:other': 610 },
+    )
+
+    await edit({
+      id: 'alpha',
+      patch: { defaultColumnWidths: { [column]: 490 } },
+    })
+    assert.equal(
+      ((await show({ hydraId: 'alpha' })).view.columnWidths as Record<string, number>)[column],
+      490,
+    )
+    await edit({
+      id: 'alpha',
+      patch: { defaultColumnWidths: { [column]: null } },
+    })
+    const inherited = (await show({ hydraId: 'alpha' })).view
+    assert.equal(
+      (inherited.columnWidths as Record<string, number>)[column],
+      undefined,
+    )
+    assert.equal(
+      (inherited.defaultColumnWidths as Record<string, number>)[column],
+      460,
+    )
+
+    await commands.settings([
+      'set',
+      '--hydra',
+      'alpha',
+      '--json',
+      '{"defaultHydraWidth":630,"defaultColumnWidth":530}',
+    ])
+    assert.equal(
+      (await show({ hydraId: 'alpha' })).view.hydraWidth,
+      520,
+    )
+    assert.deepEqual(
+      loadHydra({ hydraId: 'beta' }).state.view,
+      betaBefore,
+    )
+    await edit({
+      id: 'alpha',
+      patch: { hydraWidth: 680 },
+    })
+    await edit({
+      id: 'alpha',
+      patch: {
+        defaultHydraWidth: 520,
+        defaultColumnWidth: 460,
+      },
+      flags: [
+        '--event-id',
+        'resize-once',
+      ],
+    })
+    assert.equal(
+      (await show({ hydraId: 'alpha' })).view.hydraWidth,
+      680,
+    )
+    assert.equal(
+      (await settings()).settings.defaultHydraWidth,
+      630,
+    )
+    await commands.layout([
+      'reset',
+      '--hydra',
+      'alpha',
+    ])
+    assert.equal(
+      (await show({ hydraId: 'alpha' })).view.hydraWidth,
+      630,
+    )
+    assert.deepEqual(
+      loadHydra({ hydraId: 'beta' }).state.view,
+      betaBefore,
+    )
+  },
+)
+
+test(
+  'a refused width save leaves both stores unchanged, including a busy shared registry',
+  async () => {
+    const dir = home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    const before = await settings()
+    const state = loadHydra({ hydraId: 'alpha' }).state
+    const apply = ({
+      patch,
+      flags = [],
+    }: {
+      patch: object
+      flags?: string[]
+    }) => commands.view([
+      'set',
+      '--hydra',
+      'alpha',
+      '--json',
+      JSON.stringify(patch),
+      ...flags,
+    ])
+
+    for (const patch of [
+      { defaultHydraWidth: -1 },
+      {
+        defaultHydraWidth: 610,
+        hydraWidth: null,
+      },
+      {
+        defaultColumnWidth: 530,
+        defaultColumnWidths: [],
+      },
+      {
+        defaultColumnWidth: 530,
+        columnWidths: 'bad',
+      },
+    ]) {
+      assert.throws(
+        () => apply({ patch }),
+        { code: 'VALIDATION_ERROR' },
+      )
+    }
+
+    assert.throws(
+      () => apply({
+        patch: { defaultHydraWidth: 610 },
+        flags: [
+          '--if-revision',
+          '999',
+        ],
+      }),
+      { code: 'REVISION_CONFLICT' },
+    )
+    const release = acquireLock({ dir })
+
+    try {
+      assert.throws(
+        () => apply({
+          patch: {
+            defaultHydraWidth: 610,
+            defaultColumnWidth: 530,
+          },
+        }),
+        { code: 'LOCKED' },
+      )
+    } finally {
+      release()
+    }
+
+    assert.deepEqual(
+      loadHydra({ hydraId: 'alpha' }).state,
+      state,
+    )
+    assert.deepEqual(
+      await settings(),
+      before,
+    )
+  },
+)
+
+test(
+  'legacy migration retains a per-column 460 px override on a saved 380 px layout',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'alpha',
+    ])
+    legacyView({
+      hydraId: 'alpha',
+      at: '2026-01-01T00:00:00.000Z',
+      patch: {
+        defaultColumnWidth: 380,
+        defaultColumnWidths: { queued: 460 },
+      },
+    })
+    const saved = await settings()
+    assert.equal(
+      saved.settings.defaultColumnWidth,
+      380,
+    )
+    assert.equal(
+      saved.settings.defaultColumnWidths.queued,
+      460,
+    )
+  },
+)
+
 const cardOf = ({
   hydraId,
   key,
@@ -208,7 +512,7 @@ test(
     )
     assert.equal(
       second.view.hydraWidth,
-      480,
+      520,
     )
     assert.equal(
       (await show({ hydraId: 'first' })).view.hydraWidth,
@@ -329,7 +633,7 @@ test(
     // An older release saved 360 as its default Hydra width, so it moves as today's default.
     assert.equal(
       moved.settings.defaultHydraWidth,
-      480,
+      520,
     )
   },
 )
@@ -435,6 +739,82 @@ test(
         'main',
       ]),
       { code: 'VALIDATION_ERROR' },
+    )
+  },
+)
+
+test(
+  'the helper’s Fast is off unless set, survives other helper flags and takes only on or off',
+  async () => {
+    home()
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    await commands.hydra([
+      'set',
+      '--helper',
+      'claude',
+      '--helper-model',
+      'opus',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).fast,
+      undefined,
+    )
+    await commands.hydra([
+      'set',
+      '--helper-fast',
+      'on',
+      '--hydra',
+      'main',
+    ])
+    await commands.hydra([
+      'set',
+      '--helper-effort',
+      'high',
+      '--hydra',
+      'main',
+    ])
+    assert.deepEqual(
+      (await settings()).settings.helper,
+      {
+        harness: 'claude',
+        model: 'opus',
+        effort: 'high',
+        fast: true,
+      },
+    )
+    assert.throws(
+      () => commands.hydra([
+        'set',
+        '--helper-fast',
+        'yes',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        '{"helper":{"harness":"claude","model":"opus","fast":"on"}}',
+      ]),
+      { code: 'VALIDATION_ERROR' },
+    )
+    await commands.hydra([
+      'set',
+      '--helper-fast',
+      'off',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).fast,
+      undefined,
     )
   },
 )
@@ -689,6 +1069,88 @@ test(
     assert.equal(
       (await settings()).settings.reviewMinutes,
       7,
+    )
+  },
+)
+
+test(
+  'a helper account must be registered for its harness: settings set and hydra set refuse another and save nothing, not even a Hydra flag beside it',
+  async () => {
+    const dir = home()
+    writeDocument({
+      document: {
+        rules: {},
+        main: 'claude:work',
+        default: [{ harness: 'claude' }],
+        workers: { claude: ['claude:work'] },
+        projects: {},
+        accounts: {
+          'claude:work': {
+            provider: 'claude',
+            folder: join(
+              dir,
+              'work',
+            ),
+          },
+        },
+      },
+    })
+    await commands.hydra([
+      'create',
+      'main',
+    ])
+    const before = await settings()
+    assert.throws(
+      () => commands.settings([
+        'set',
+        '--json',
+        JSON.stringify({
+          helper: {
+            harness: 'claude',
+            account: 'claude:ghost',
+            model: 'sonnet',
+          },
+        }),
+      ]),
+      { code: 'NO_ACCOUNTS' },
+    )
+    assert.deepEqual(
+      await settings(),
+      before,
+    )
+    await commands.hydra([
+      'set',
+      '--helper',
+      'claude',
+      '--helper-account',
+      'claude:work',
+      '--hydra',
+      'main',
+    ])
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).account,
+      'claude:work',
+    )
+    const name = loadHydra({ hydraId: 'main' }).state.config?.name
+    assert.throws(
+      () => commands.hydra([
+        'set',
+        '--name',
+        'Athena',
+        '--helper-account',
+        'ghost',
+        '--hydra',
+        'main',
+      ]),
+      { code: 'NO_ACCOUNTS' },
+    )
+    assert.equal(
+      loadHydra({ hydraId: 'main' }).state.config?.name,
+      name,
+    )
+    assert.equal(
+      ((await settings()).settings.helper as AgentConfig).account,
+      'claude:work',
     )
   },
 )

@@ -10,7 +10,7 @@ import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
 import { catalogOffers } from '#workers/model-catalog.ts'
 import { providerIdOf } from '#workers/providers.ts'
-import { modelIds } from '#workers/provider.ts'
+import { hydraFastReaches, modelIds } from '#workers/provider.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
 import { SETTINGS } from '#workers/host.ts'
@@ -133,11 +133,16 @@ export async function hostRequestUnlocked({
         override: dispatch.override,
       })
 
-      if (dispatch.ownerOverride) {
+      if (dispatch.ownerOverride || dispatch.candidate.account) {
         const settings = chosenSettings({ choice: dispatch })
 
         if (settings.model) {
-          const models = modelIds({ models: await host.models({ harness: dispatch.provider }) })
+          const models = modelIds({
+            models: await host.models({
+              harness: dispatch.provider,
+              account: dispatch.account,
+            }),
+          })
           const model = dispatch.provider === 'claude' ? settings.model.replace(
             /\[1m\]$/,
             '',
@@ -182,6 +187,21 @@ export async function hostRequestUnlocked({
         settings.mode = inherited
       }
 
+      // An explicit task start --fast wins; otherwise Fast in Hydra's composer reaches every worker, even a candidate saved with Fast off.
+      const ownerFast = dispatch.override?.fast !== undefined
+      const hydraFast = !ownerFast && await hydraFastReaches({
+        hydraFast: current.config?.hydra.agent?.fast,
+        models: () => host.models({
+          harness: dispatch.provider,
+          account: dispatch.account,
+        }),
+        model: settings.model,
+      })
+
+      if (hydraFast) {
+        settings.fast = 'true'
+      }
+
       return host.start({
         dispatch,
         task,
@@ -222,7 +242,16 @@ export async function hostRequestUnlocked({
         })
       }
 
-      return { models: await host.models({ harness }) }
+      return {
+        models: await host.models({
+          harness,
+          account: field({
+            body,
+            name: 'account',
+            optional: true,
+          }),
+        }),
+      }
     }
 
     case 'permission': {

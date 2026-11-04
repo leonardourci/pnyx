@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Candidate } from '#workers/dispatch-config.ts'
 import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
@@ -9,15 +9,18 @@ import { Button, Input, Textarea } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
-import { Tooltip } from '#web-shared/ui/tooltip.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
+import { AccountModelPicker } from './account-model-picker.tsx'
 import { useDispatchProposals } from './dispatch-proposals.tsx'
 import type { SavedDispatch } from './dispatch-resource.ts'
-import { DISPATCH_CHANGED, useDispatchDocument } from './heads-dispatch.ts'
+import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
 import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
 
-// Asking for Now waits until typing pauses; quota is read on the server.
+// Refreshing the resolved account waits until typing pauses; quota is read on the server.
 const NOW_DELAY_MS = 600
+
+// Problems a rule shows beside itself.
+const BESIDE_A_RULE = /^\/(rules|default)(\/|$)/
 
 const VIEWS = [
   {
@@ -39,39 +42,9 @@ interface Starts {
   error?: string
 }
 
-const counted = ({
-  count,
-  word,
-}: {
-  count: number
-  word: string
-}) => `${count} ${word}${count === 1 ? '' : 's'}`
-
 const errorsIn = ({ issues }: { issues: DispatchIssue[] }) => issues.filter(issue => issue.level === 'error')
 
 const shown = ({ value }: { value: unknown }) => value === undefined ? '' : JSON.stringify(value)
-
-// rule apply answers with what changed; reading the document in the same step lets the preview become the saved state without a gap.
-const showingAfter = ({ command }: { command: Command }): Command => Object.assign(
-  async ({
-    name,
-    args,
-    onChecking,
-  }: Parameters<Command>[0]) => {
-    const applied = await command({
-      name,
-      args,
-      onChecking,
-    })
-
-    // The change is saved; a failed read only leaves the next refresh to show it.
-    return command({
-      name: 'rule',
-      args: ['show'],
-    }).catch(() => applied)
-  },
-  { retain: command.retain },
-)
 
 function useStartsNow({
   command,
@@ -241,9 +214,10 @@ function HowPicked() {
       <h4 id="dispatch-how"><Icon name="about" size={14} />How a worker’s agent is picked</h4>
       <ol>
         <li><strong><Icon name="dispatch" size={14} />1 · Rule</strong>Hydra picks the rule whose “when” fits the task, or you name one with <code>task start --rule</code>. Tasks without one use default.</li>
-        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>Each candidate takes the first account in its harness’s configured order that is signed in and has quota left.</li>
-        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts. The Now column shows the result.</li>
+        <li><strong><Icon name="you" size={14} />2 · Account per candidate</strong>A named account stays fixed. Otherwise the candidate takes the first usable account in its harness’s configured order.</li>
+        <li><strong><Icon name="effort" size={14} />3 · Quota decides</strong>quota-axi scores those accounts; the highest score starts the task, and on a tie or unknown quota the first listed candidate starts.</li>
       </ol>
+      <p className="dispatch-desc">Fast on in a Hydra’s composer puts every worker that Hydra starts on Fast, whatever its candidate says, where the model has Fast.</p>
     </section>
   )
 }
@@ -269,16 +243,18 @@ function placeOf({
 function Problems({
   issues,
   prefix,
+  id,
 }: {
   issues: DispatchIssue[]
   prefix: string
+  id: string
 }) {
   if (!issues.length) {
     return null
   }
 
   return (
-    <ul className="dispatch-problems">
+    <ul className="dispatch-problems" id={id}>
       {issues.map((
         issue,
         index,
@@ -291,26 +267,6 @@ function Problems({
         return <li key={index} data-level={issue.level}>{place ? `${place}: ` : ''}{issue.problem}</li>
       })}
     </ul>
-  )
-}
-
-function NowCell({
-  starts,
-  index,
-}: {
-  starts?: RuleNow
-  index: number
-}) {
-  if (starts?.candidate !== index) {
-    return <span className="dispatch-now" />
-  }
-
-  return (
-    <span className="dispatch-now">
-      <Tooltip content={starts.reason}>
-        <span className="dispatch-starts"><Icon name="check" size={14} /><span>{starts.account}</span></span>
-      </Tooltip>
-    </span>
   )
 }
 
@@ -331,6 +287,8 @@ function RuleGroup({
   command: Command
   edit: Edit
 }) {
+  const { effective } = useHeadsDispatch({ command })
+  const problemsId = useId()
   const fixed = at === 'default'
   const rule = fixed ? undefined : draft.rules[at]
   const name = rule?.name ?? 'default'
@@ -361,7 +319,6 @@ function RuleGroup({
   }).length > 0
   const result = starts?.now?.find(item => item.rule === name)
   const blocked = result && result.candidate === undefined ? `Cannot start now: ${result.reason}` : undefined
-  const span = { gridRow: `span ${candidates.length + 1}` }
 
   const setCandidates = ({ next }: { next: Candidate[] }) => edit({
     next: withCandidates({
@@ -373,72 +330,77 @@ function RuleGroup({
 
   return (
     <div className="dispatch-rule" data-rule={name}>
-      <div className="dispatch-rule-cell" style={span}>
-        {fixed ? (
-          <>
-            <span className="dispatch-rule-name"><Icon name="dispatch" size={14} />default</span>
-            <span className="dispatch-when-fixed">Tasks without a named rule.</span>
-          </>
-        ) : (
-          <>
-            <Input
-              className="dispatch-cell dispatch-rule-input"
-              aria-label="Rule name"
-              aria-invalid={broken({}) || undefined}
-              data-changed={!saved || undefined}
-              value={name}
-              onChange={event => edit({
-                next: withRule({
-                  draft,
-                  rule: at,
-                  change: { name: event.target.value },
-                }),
-              })}
-            />
-            <Textarea
-              className="dispatch-cell dispatch-when"
-              rows={2}
-              aria-label={`When Hydra picks ${name}`}
-              aria-invalid={broken({ field: ['when'] }) || undefined}
-              data-changed={saved?.when !== rule!.when || undefined}
-              placeholder="When should Hydra pick this rule?"
-              value={rule!.when}
-              onChange={event => edit({
-                next: withRule({
-                  draft,
-                  rule: at,
-                  change: { when: event.target.value },
-                }),
-              })}
-            />
-          </>
-        )}
-        <Problems issues={mine} prefix={pointer({ segments: place })} />
-        {blocked && <p className="dispatch-blocked">{blocked}</p>}
+      <div className="dispatch-rule-head">
+        <div className="dispatch-rule-text">
+          {fixed ? (
+            <>
+              <span className="dispatch-rule-name"><Icon name="dispatch" size={14} />default</span>
+              <span className="dispatch-when-fixed">Tasks without a named rule.</span>
+            </>
+          ) : (
+            <>
+              <Input
+                className="dispatch-cell dispatch-rule-input"
+                aria-label="Rule name"
+                aria-invalid={broken({}) || undefined}
+                data-changed={!saved || undefined}
+                value={name}
+                onChange={event => edit({
+                  next: withRule({
+                    draft,
+                    rule: at,
+                    change: { name: event.target.value },
+                  }),
+                })}
+              />
+              <Textarea
+                className="dispatch-cell dispatch-when"
+                rows={1}
+                aria-label={`When Hydra picks ${name}`}
+                aria-invalid={broken({ field: ['when'] }) || undefined}
+                data-changed={saved?.when !== rule!.when || undefined}
+                placeholder="When should Hydra pick this rule?"
+                value={rule!.when}
+                onChange={event => edit({
+                  next: withRule({
+                    draft,
+                    rule: at,
+                    change: { when: event.target.value },
+                  }),
+                })}
+              />
+            </>
+          )}
+          <Problems issues={mine} prefix={pointer({ segments: place })} id={problemsId} />
+          {blocked && <p className="dispatch-blocked">{blocked}</p>}
+        </div>
         {!fixed && (
-          <Button
-            className="dispatch-remove-rule"
-            onClick={() => edit({
+          <ConfirmRemove
+            label={`Remove the ${name} rule`}
+            question="Remove rule?"
+            then=".dispatch-add-rule"
+            remove={() => edit({
               next: withoutRule({
                 draft,
                 rule: at,
               }),
             })}
-          ><Icon name="close" size={14} />Remove rule
-          </Button>
+          />
         )}
       </div>
       {candidates.map((
         candidate,
         index,
       ) => (
-        <div key={index} className="dispatch-candidate" data-starts={result?.candidate === index || undefined}>
+        <div key={index} className="dispatch-candidate">
           <AgentPickers
             label={`${name} candidate ${index + 1}`}
             agent={candidate}
+            inherited={{ account: draft.workers[candidate.harness]?.[0] }}
             command={command}
             // Settings shows its rows only while connected.
             connected
+            describedBy={mine.length ? problemsId : undefined}
             marks={candidateMarks({
               saved: savedCandidates[index],
               candidate,
@@ -455,59 +417,126 @@ function RuleGroup({
               ) => position === index ? next : item),
             })}
           />
-          <NowCell starts={result} index={index} />
-          <Button
-            className="dispatch-remove"
-            aria-label={`Remove ${name} candidate ${index + 1}`}
+          <ConfirmRemove
+            label={`Remove ${name} candidate ${index + 1}`}
+            question="Remove?"
+            then=".dispatch-add button"
             disabled={candidates.length < 2}
-            onClick={() => setCandidates({
+            remove={() => setCandidates({
               next: candidates.filter((
                 _,
                 position,
               ) => position !== index),
             })}
-          ><Icon name="close" size={14} />
-          </Button>
+          />
         </div>
       ))}
       <div className="dispatch-add">
+        {effective && (
+          <AccountModelPicker
+            label={`Add ${name} candidate`}
+            modelLabel="Model"
+            agent={{ harness: 'claude' }}
+            effective={effective}
+            command={command}
+            connected
+            trigger={<><Icon name="plus" size={14} />Add candidate</>}
+            change={({ next }) => setCandidates({
+              next: [
+                ...candidates,
+                next,
+              ],
+            })}
+          />
+        )}
+      </div>
+    </div>
+  )
+}
+
+// A remove button that asks in its own spot: the question covers the button instead of adding a line.
+function ConfirmRemove({
+  label,
+  question,
+  disabled = false,
+  then,
+  remove,
+}: {
+  label: string
+  question: string
+  disabled?: boolean
+  // Where focus lands once the row is gone: the nearest element matching this selector.
+  then: string
+  remove(): void
+}) {
+  const [
+    open,
+    setOpen,
+  ] = useState(false)
+  const trigger = useRef<HTMLButtonElement>(null)
+  const keep = useRef<HTMLButtonElement>(null)
+
+  useEffect(
+    () => {
+      if (open) {
+        keep.current?.focus()
+      }
+    },
+    [open],
+  )
+
+  const cancel = () => {
+    setOpen(false); trigger.current?.focus()
+  }
+
+  return (
+    <div
+      className="dispatch-remove-slot"
+      onKeyDown={event => {
+        if (event.key === 'Escape' && open) {
+          event.stopPropagation(); cancel()
+        }
+      }}
+    >
+      <Button
+        ref={trigger}
+        className="dispatch-remove"
+        aria-label={label}
+        title={label}
+        aria-expanded={open}
+        disabled={disabled}
+        onClick={() => setOpen(true)}
+      ><Icon name="close" size={14} />
+      </Button>
+      {/* Always mounted so it can unfold from the x; hidden, it cannot be reached. Focus starts on Cancel, the safe choice. */}
+      <div
+        className="dispatch-confirm"
+        role="group"
+        aria-label={label}
+        data-open={open || undefined}
+        aria-hidden={!open}
+      >
+        <span>{question}</span>
+        <Button ref={keep} onClick={cancel}>Cancel</Button>
         <Button
-          onClick={() => setCandidates({
-            next: [
-              ...candidates,
-              { harness: 'claude' },
-            ],
-          })}
-        ><Icon name="plus" size={14} />Add candidate
+          variant="primary"
+          onClick={() => {
+            setOpen(false)
+            trigger.current?.closest(`:has(${then})`)?.querySelector<HTMLElement>(then)
+              ?.focus()
+            remove()
+          }}
+        >Remove
         </Button>
       </div>
     </div>
   )
 }
 
-function nowStatus({
-  ready,
-  starts,
-}: {
-  ready: boolean
-  starts?: Starts
-}): string | undefined {
-  if (!ready) {
-    return 'Fix the problems to see which candidate starts now.'
-  }
-
-  if (!starts) {
-    return 'Checking quota…'
-  }
-
-  return starts.error
-}
-
 function RulesTable({
   draft,
   base,
   issues,
-  ready,
   starts,
   command,
   edit,
@@ -515,7 +544,6 @@ function RulesTable({
   draft: Draft
   base: DispatchDocument
   issues: DispatchIssue[]
-  ready: boolean
   starts?: Starts
   command: Command
   edit: Edit
@@ -524,26 +552,12 @@ function RulesTable({
     rule,
     index,
   ) => rule.name === HYDRA_RULE ? [] : [index])
-  const hydra = draft.rules.some(rule => rule.name === HYDRA_RULE)
-  const status = nowStatus({
-    ready,
-    starts,
-  })
 
   return (
     <section className="dispatch-rules" aria-labelledby="dispatch-rules">
       <h4 id="dispatch-rules"><Icon name="dispatch" size={14} />Rules</h4>
-      <p className="dispatch-desc">Every rule and candidate in one table. Change any cell in place; changes are marked and wait below until you apply them.</p>
+      <p className="dispatch-desc">Each rule, then the candidates Hydra tries for it. Change any cell in place. A valid change saves as soon as you pick it or leave the field; a problem shows beside its rule and saves nothing.</p>
       <div className="dispatch-table">
-        <div className="dispatch-head">
-          <span>Rule · when Hydra picks it</span>
-          <span><Icon name="model" size={14} />Model</span>
-          <span><Icon name="effort" size={14} />Effort</span>
-          <span>Permissions</span>
-          <span>Fast</span>
-          <span title="Which candidate would start now, from current quota">Now</span>
-          <span />
-        </div>
         <RuleGroup
           draft={draft}
           at="default"
@@ -565,36 +579,50 @@ function RulesTable({
             edit={edit}
           />
         ))}
-        {hydra && (
-          <div className="dispatch-hydra-row">
-            <span className="dispatch-rule-name"><Icon name="agent" size={14} />hydra</span>
-            <span>Hydra’s own agent, not used for workers.</span>
-          </div>
-        )}
       </div>
-      {status && <p className="dispatch-desc" role="status">{status}</p>}
+      <IssueList issues={issues.filter(issue => !BESIDE_A_RULE.test(issue.path))} />
+      {starts?.error && <p className="dispatch-desc" role="status">{starts.error}</p>}
       <Button variant="surface" className="dispatch-add-rule" onClick={() => edit({ next: withNewRule({ draft }) })}><Icon name="plus" size={14} />Add rule</Button>
     </section>
+  )
+}
+
+// Problems no rule row shows, listed by their place in the document.
+function IssueList({ issues }: { issues: DispatchIssue[] }) {
+  if (!issues.length) {
+    return null
+  }
+
+  return (
+    <ul className="dispatch-issues">
+      {issues.map((
+        issue,
+        index,
+      ) => (
+        <li key={index}>
+          <span className="dispatch-tag" data-level={issue.level}>{issue.level}</span>
+          <span><code>{issue.path || '/'}</code> {issue.problem}</span>
+        </li>
+      ))}
+    </ul>
   )
 }
 
 function JsonView({
   text,
   write,
-  changes,
+  issues,
 }: {
   text: string
   write({ text }: { text: string }): void
-  changes?: DispatchChange[]
+  issues: DispatchIssue[]
 }) {
-  const removed = changes?.filter(change => changeKind({ change }) === 'removed').length ?? 0
-  const empty = changes === undefined ? 'Fix the JSON to see the changes.' : 'None yet. Delete a rule or an account to see exactly what goes.'
-
   return (
     <section className="dispatch-json" aria-label="Heads dispatch JSON">
-      <p className="dispatch-desc">The whole document. It formats itself when you leave the box, with the same checks, Review and Apply as the table.</p>
+      <p className="dispatch-desc">The whole document, with the same checks as the table. It formats itself and saves when you leave the box, if it is valid.</p>
       <Textarea
         aria-label="Heads dispatch document"
+        aria-invalid={errorsIn({ issues }).length > 0 || undefined}
         spellCheck={false}
         value={text}
         onChange={event => write({ text: event.target.value })}
@@ -606,106 +634,8 @@ function JsonView({
           }
         }}
       />
-      <div className="dispatch-json-changes">
-        <h5>Changes from what is saved{removed > 0 && (
-          <span data-kind="removed"> · {counted({
-            count: removed,
-            word: 'removal',
-          })}
-          </span>
-        )}
-        </h5>
-        {changes?.length ? <ChangeList changes={changes} /> : <p className="dispatch-desc">{empty}</p>}
-      </div>
+      <IssueList issues={issues} />
     </section>
-  )
-}
-
-function saveStatus({
-  errors,
-  changes,
-}: {
-  errors: number
-  changes: number
-}): string {
-  if (errors) {
-    return `${counted({
-      count: errors,
-      word: 'problem',
-    })} to fix before saving`
-  }
-
-  return changes ? `${counted({
-    count: changes,
-    word: 'change',
-  })} ready` : 'No changes yet'
-}
-
-function SaveBar({
-  issues,
-  changes,
-  revision,
-  reviewing,
-  json,
-  review,
-  discard,
-  apply,
-}: {
-  issues: DispatchIssue[]
-  changes: DispatchChange[]
-  revision: number
-  reviewing: boolean
-  json: boolean
-  review({ on }: { on: boolean }): void
-  discard(): void
-  apply(): void
-}) {
-  const errors = errorsIn({ issues }).length
-  const warnings = issues.length - errors
-  const status = saveStatus({
-    errors,
-    changes: changes.length,
-  })
-  const warned = warnings ? ` · ${counted({
-    count: warnings,
-    word: 'warning',
-  })}` : ''
-  const listed = (json || errors > 0) && issues.length > 0
-
-  return (
-    <div className="dispatch-savebar" role="region" aria-label="Heads dispatch changes">
-      <span className="dispatch-savebar-status" data-errors={errors > 0 || undefined}>{status}{warned}</span>
-      <Button variant="surface" onClick={discard}><Icon name="close" size={14} />Discard</Button>
-      {reviewing ? (
-        <>
-          <Button variant="surface" onClick={() => review({ on: false })}>Back to editing</Button>
-          <Button variant="primary" disabled={errors > 0} onClick={apply}><Icon name="check" size={14} />Apply {counted({
-            count: changes.length,
-            word: 'change',
-          })}
-          </Button>
-        </>
-      ) : <Button variant="primary" disabled={errors > 0 || !changes.length} onClick={() => review({ on: true })}>Review changes</Button>}
-      {listed && (
-        <ul className="dispatch-issues">
-          {issues.map((
-            issue,
-            index,
-          ) => (
-            <li key={index}>
-              <span className="dispatch-tag" data-level={issue.level}>{issue.level}</span>
-              <span><code>{issue.path || '/'}</code> {issue.problem}</span>
-            </li>
-          ))}
-        </ul>
-      )}
-      {reviewing && (
-        <div className="dispatch-review">
-          <ChangeList changes={changes} />
-          <p className="dispatch-desc">Saves on revision {revision}. If heads dispatch changed since, Apply refuses and saves nothing.</p>
-        </div>
-      )}
-    </div>
   )
 }
 
@@ -747,9 +677,18 @@ export function DispatchSettings({
     setEditor,
   ] = useState<Editor>()
   const [
-    reviewing,
-    setReviewing,
-  ] = useState(false)
+    view,
+    setView,
+  ] = useState('table')
+  // Bumped when focus leaves a field, so an edit typed there saves once it is left.
+  const [
+    left,
+    setLeft,
+  ] = useState(0)
+  const root = useRef<HTMLDivElement>(null)
+  const save = useRef<() => void>(undefined)
+  // A change the server refused is not sent again until it changes.
+  const refused = useRef('')
   // One event id per envelope, so applying the same change again after an uncertain answer never saves it twice.
   const attempt = useRef<{
     key: string
@@ -759,9 +698,9 @@ export function DispatchSettings({
   const base = editor?.base ?? saved
   const savedDraft = saved ? toDraft({ document: saved.document }) : undefined
   const edited = editor && 'draft' in editor ? editor.draft : undefined
-  const draft = editor ? edited : savedDraft
+  const json = view === 'json' || !(edited ?? savedDraft)
+  const draft = json ? undefined : edited ?? savedDraft
   const text = editor && 'text' in editor ? editor.text : undefined
-  const json = !draft
   const shownText = text ?? formatted({ document: saved?.document })
   const parsed = json ? parseDocument({ text: shownText }) : undefined
   const tableDocument = draft ? documentOf({ draft }) : undefined
@@ -780,6 +719,28 @@ export function DispatchSettings({
     document,
     ready,
   })
+  const pending = editor && ready && changes?.length ? canonical({
+    value: {
+      revision: base?.revision,
+      document,
+    },
+  }) : ''
+
+  useEffect(
+    () => {
+      const focused = window.document.activeElement
+      // A field being typed in saves when it is left, so a renamed rule never moves mid-word.
+      const typing = !!focused && !!root.current?.contains(focused) && focused.matches('input, textarea')
+
+      if (pending && pending !== refused.current && !typing) {
+        save.current?.()
+      }
+    },
+    [
+      pending,
+      left,
+    ],
+  )
 
   if (!saved || !base) {
     return (
@@ -794,7 +755,6 @@ export function DispatchSettings({
       base,
       draft: next,
     })
-    setReviewing(false)
   }
 
   const write = ({ text }: { text: string }) => {
@@ -802,12 +762,12 @@ export function DispatchSettings({
       base,
       text,
     })
-    setReviewing(false)
   }
 
   const show = ({ value }: { value: string }) => {
     if (value === 'json') {
       write({ text: formatted({ document }) })
+      setView('json')
 
       return
     }
@@ -821,11 +781,7 @@ export function DispatchSettings({
     }
 
     edit({ next })
-  }
-
-  const discard = () => {
-    setEditor(undefined)
-    setReviewing(false)
+    setView('table')
   }
 
   const apply = async () => {
@@ -851,7 +807,8 @@ export function DispatchSettings({
     }
 
     const applying = editor
-    discard()
+    const sent = pending
+    setEditor(undefined)
 
     try {
       await resource.write({
@@ -875,15 +832,16 @@ export function DispatchSettings({
 
       // The section shows the reason; a refused draft comes back unless a newer edit started.
       if (error.outcome === 'refused') {
+        refused.current = sent
         setEditor(current => current ?? applying)
       }
     }
   }
 
-  const unsaved = json || (changes?.length ?? 0) > 0
+  save.current = () => void apply().catch((error: Error) => notify({ text: error.message }))
 
   return (
-    <div className="dispatch-settings">
+    <div className="dispatch-settings" ref={root} onBlur={() => setLeft(count => count + 1)}>
       <div className="dispatch-top">
         <span className="dispatch-source"><Icon name="file" size={14} />Shared by every Hydra · revision <code>{saved.revision}</code></span>
         <Segmented
@@ -902,25 +860,12 @@ export function DispatchSettings({
           draft={draft}
           base={base.document}
           issues={issues}
-          ready={ready}
           starts={starts}
           command={command}
           edit={edit}
         />
       ) : (
-        <JsonView text={shownText} write={write} changes={changes} />
-      )}
-      {unsaved && (
-        <SaveBar
-          issues={issues}
-          changes={changes ?? []}
-          revision={base.revision}
-          reviewing={reviewing}
-          json={json}
-          review={({ on }) => setReviewing(on)}
-          discard={discard}
-          apply={() => void apply()}
-        />
+        <JsonView text={shownText} write={write} issues={issues} />
       )}
     </div>
   )

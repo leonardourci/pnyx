@@ -211,6 +211,7 @@ export function claudeProvider({
           label: model.displayName,
           ...(model.resolvedModel ? { resolvedModel: model.resolvedModel } : {}),
           ...(model.supportsEffort ? { defaultEffort: DEFAULT_EFFORT } : {}),
+          ...(model.supportsFastMode ? { fast: true as const } : {}),
         }))
       } finally {
         clearTimeout(timer)

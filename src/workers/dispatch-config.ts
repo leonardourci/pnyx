@@ -30,6 +30,7 @@ export interface HeadsDispatch {
 export interface Account {
   provider: Harness
   folder: string
+  label?: string
 }
 export interface EffectiveDispatch {
   dispatch: HeadsDispatch
@@ -135,7 +136,7 @@ export function candidates({ value }: { value: unknown }): Candidate[] {
   const [issue] = candidateIssues({ value })
 
   if (issue) {
-    invalid({ message: issue.problem })
+    invalid({ message: `${issue.path || '/'} ${issue.problem}` })
   }
 
   return value as Candidate[]

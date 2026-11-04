@@ -1,6 +1,7 @@
 import { Icon } from './icon.tsx'
 import { Fragment, useEffect, useId, useRef, useState, type ComponentProps, type CSSProperties, type ReactNode } from 'react'
 import { sliderValue } from './slider-value.ts'
+import { MenuOption } from './menu-option.tsx'
 
 export function Button({
   className = '',
@@ -103,7 +104,7 @@ export function Switch({
       aria-label={label}
       aria-checked={checked}
       aria-busy={busy}
-      disabled={disabled}
+      disabled={disabled || busy}
       onClick={() => run({ save: () => onChange({ value: !checked }) })}
     >
       <span className="switch-track">
@@ -280,19 +281,20 @@ export function Select({
           ) => (
             <Fragment key={o.value}>
               {o.group && o.group !== options[n - 1]?.group && <div className="select-group" role="presentation">{o.group}</div>}
-              <div
+              <MenuOption
                 id={`${id}-${n}`}
-                role="option"
+                aria-label={o.label}
                 data-group={o.group}
                 tabIndex={-1}
-                aria-selected={o.value === value}
-                className={active === n ? 'active' : ''}
+                selected={o.value === value}
+                active={active === n}
+                disabled={disabled}
                 onPointerMove={() => setActive(n)}
                 onPointerDown={() => {
                   hold.current.done = false
                   release()
 
-                  if (onDefault) {
+                  if (onDefault && !disabled) {
                     hold.current.timer = setTimeout(
                       () => {
                         hold.current.done = true; makeDefault({ position: n })
@@ -303,10 +305,13 @@ export function Select({
                 }}
                 onPointerUp={release}
                 onPointerLeave={release}
-                onClick={event => {
+                onClick={({
+                  metaKey,
+                  ctrlKey,
+                }) => {
                   if (hold.current.done) {
                     hold.current.done = false
-                  } else if (onDefault && (event.metaKey || event.ctrlKey)) {
+                  } else if (onDefault && (metaKey || ctrlKey)) {
                     makeDefault({ position: n })
                   } else {
                     choose({ position: n })
@@ -328,7 +333,7 @@ export function Select({
                   )}
                 </span>
                 <span aria-hidden="true">{o.value === value && <Icon name="check" size={14} />}</span>
-              </div>
+              </MenuOption>
             </Fragment>
           ))}
           {onDefault && <p className="select-hint">{MOD}-click or hold to pick it and make it the default</p>}

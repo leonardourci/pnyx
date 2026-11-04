@@ -153,7 +153,7 @@ const fitting = ({ widths }: { widths: Widths }) => {
   return count
 }
 
-// Dragged widths are this Hydra's own; the defaults apply where a column was never dragged.
+// The same widths drive the Hydra and the live Settings preview.
 function boardWidths({
   state,
   view,
@@ -164,9 +164,9 @@ function boardWidths({
   dragged: boolean
 }): Widths {
   return {
-    chat: dragged && state.view?.hydraWidth ? view.hydraWidth : view.defaultHydraWidth,
+    chat: dragged ? view.hydraWidth : view.defaultHydraWidth,
     columns: columnsFor({ state }).map(column => {
-      const own = dragged ? state.view?.columnWidths?.[column.id] : undefined
+      const own = dragged ? view.columnWidths[column.id] : undefined
 
       return {
         id: column.id,
@@ -193,7 +193,7 @@ function MiniBoard({
         <div
           key={column.id}
           className="preview-board-column"
-          data-marked={(mark === 'columns' && !column.dragged) || undefined}
+          data-marked={mark === 'columns' || undefined}
           data-dragged={column.dragged || undefined}
           style={scaled({ px: column.width })}
         >
@@ -217,12 +217,12 @@ export function BoardPreview({
   const widths = boardWidths({
     state,
     view,
-    dragged: mark === 'columns',
+    dragged: true,
   })
   const fit = fitting({ widths }).toFixed(1)
   const caption = mark === 'columns'
-    ? `On a 1440 px screen, ${fit} columns fit beside the chat. Dashed columns were dragged in this Hydra and keep their width.`
-    : `A ${view.defaultHydraWidth} px chat leaves room for ${fit} columns at their defaults. The red line is the edge of a 1440 px screen.`
+    ? `On a 1440 px screen, ${fit} columns fit beside the chat.`
+    : `A ${view.hydraWidth} px chat leaves room for ${fit} columns. The red line is the edge of a 1440 px screen.`
 
   return (
     <Preview caption={caption}>
@@ -465,7 +465,10 @@ export function ResetPreview({
     view,
     dragged: false,
   })
-  const moved = now.chat !== after.chat || now.columns.some(column => column.dragged)
+  const moved = now.chat !== after.chat || now.columns.some((
+    column,
+    index,
+  ) => column.width !== after.columns[index]?.width)
   let left = 3
   const outlines = [
     after.chat,
@@ -481,7 +484,7 @@ export function ResetPreview({
   })
 
   return (
-    <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Nothing is dragged in this Hydra; every pane already sits at its default.'}>
+    <Preview caption={moved ? 'Dashed outlines: where Reset puts each pane.' : 'Widths match the saved settings.'}>
       <div className="preview-board-frame">
         <MiniBoard widths={now} mark="none" />
         {outlines.map(outline => <span key={outline.left} className="preview-board-ghost" style={outline} />)}

@@ -216,6 +216,7 @@ export function candidateMarks({
   return Object.fromEntries(CANDIDATE_FIELDS.map(field => {
     const fields: (keyof Candidate)[] = field === 'model' ? [
       'harness',
+      'account',
       'model',
     ] : [field]
 
@@ -286,7 +287,6 @@ export function withRule({
 
 const NEW_RULE = 'new-rule'
 
-// A new rule starts on Claude Code's defaults and still needs its when before it saves.
 export function withNewRule({ draft }: { draft: Draft }): Draft {
   const taken = new Set(draft.rules.map(rule => rule.name))
   let name = NEW_RULE
@@ -302,7 +302,7 @@ export function withNewRule({ draft }: { draft: Draft }): Draft {
       {
         name,
         when: '',
-        candidates: [{ harness: 'claude' }],
+        candidates: [],
       },
     ],
   }

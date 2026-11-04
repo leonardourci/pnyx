@@ -38,6 +38,7 @@ export function useHydraKeyboard({
   newColumn,
   cancelColumn,
   togglePanel,
+  openSettings,
 }: {
   state: HydraState
   groups: ColumnCards[]
@@ -52,6 +53,7 @@ export function useHydraKeyboard({
   newColumn: boolean
   cancelColumn(): void
   togglePanel(): void
+  openSettings(): void
 }) {
   const [
     remembered,
@@ -191,6 +193,12 @@ export function useHydraKeyboard({
     id: string
     context: ActionContext
   }): boolean => {
+    if (id === 'settings') {
+      openSettings()
+
+      return true
+    }
+
     const anchor = readAnchor({ target: context.target }) ?? focus.current
       ?? (groups[0] ? {
         column: groups[0].id,
