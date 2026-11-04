@@ -19,6 +19,7 @@ import { raisesPermission, workerMode } from './permission-level.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { loadHydra } from '#app/store.ts'
+import { isDeepStrictEqual } from 'node:util'
 
 type Fields = Record<string, unknown>
 
@@ -278,6 +279,58 @@ function raisesCandidatePermission({
   }))
 }
 
+function changeDescription({ change }: { change: DispatchChange }): string {
+  const [
+    , section,
+    name,
+    field,
+  ] = change.path.split('/')
+  const rule = section === 'default' ? 'default rule' : `${name} rule`
+  const candidateList = section === 'default' || (section === 'rules' && field === 'candidates')
+
+  if (candidateList && Array.isArray(change.before) && Array.isArray(change.after)
+    && change.before.length === change.after.length) {
+    const before = change.before
+    const edits = change.after.flatMap((
+      candidate,
+      index,
+    ) => {
+      const previous = asRecord({ value: before[index] })
+      const next = asRecord({ value: candidate })
+
+      if (!previous || !next) {
+        return []
+      }
+
+      return Object.keys({
+        ...previous,
+        ...next,
+      }).filter(key => !isDeepStrictEqual(
+        previous[key],
+        next[key],
+      ))
+        .map(key => ({
+          key,
+          value: next[key],
+        }))
+    })
+    const edit = edits[0]
+
+    if (edits.length === 1 && edit) {
+      const setting = edit.key === 'mode' ? 'permissions' : edit.key
+      const value = edit.value === undefined ? 'default' : String(edit.value)
+
+      return `${rule}’s ${setting} to ${value}`
+    }
+  }
+
+  if (section === 'rules' || section === 'default') {
+    return rule
+  }
+
+  return name ? `${section}: ${name}` : String(section)
+}
+
 function dispatchNotice({
   hydraId,
   entry,
@@ -291,12 +344,12 @@ function dispatchNotice({
     return
   }
 
-  const changes = entry.changes.map(change => `${change.path} to ${JSON.stringify(change.after ?? null)}`)
+  const changes = entry.changes.map(change => changeDescription({ change }))
   settingsNotice({
     hydraId,
     meta,
     changeId: `dispatch:${entry.id}`,
-    text: `Changed heads dispatch: ${changes.join('; ')}`,
+    text: `Changed ${changes.join('; ')}`,
   })
 }
 

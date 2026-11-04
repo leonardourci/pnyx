@@ -58,7 +58,7 @@ test(
       )
       assert.match(
         notices()[0]!.text,
-        /build.*high/,
+        /build.*effort.*high/,
       )
       assert.equal(
         notices()[0]!.hydra,
