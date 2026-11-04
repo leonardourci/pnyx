@@ -3,6 +3,7 @@ import { hydraActor } from '#app/request-context.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { hydraConfig } from './config.ts'
 
 const NOTICE_LENGTH = 180
 
@@ -36,6 +37,10 @@ export function settingsNotice({
           type: 'hydra.message',
           data: {
             action: 'send',
+            hydra: hydraConfig({
+              state: writer.state,
+              id: hydraId,
+            }).hydra.id,
             kind: 'progress',
             text: text.replaceAll(
               /\s+/g,

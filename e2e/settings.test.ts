@@ -60,6 +60,10 @@ test(
         notices()[0]!.text,
         /build.*high/,
       )
+      assert.equal(
+        notices()[0]!.hydra,
+        s.state().config?.hydra.id,
+      )
       await hydra.run({ args: change })
       assert.equal(
         notices().length,
