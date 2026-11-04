@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { mergePatch, type DispatchDocument } from '#workers/dispatch-check.ts'
-import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, issuesAt, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withRule, withoutRule, type Draft } from './dispatch-draft.ts'
+import { candidateMarks, changesBetween, documentOf, draftIssues, issuesAt, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withRule, withoutRule, type Draft } from './dispatch-draft.ts'
 
 const SAVED: DispatchDocument = {
   rules: {
@@ -264,23 +264,11 @@ test(
       after: edited,
     })
     assert.deepEqual(
-      changes.map(change => [
-        changeKind({ change }),
-        change.path,
-      ]),
+      changes.map(change => change.path),
       [
-        [
-          'removed',
-          '/rules/docs',
-        ],
-        [
-          'removed',
-          '/accounts/claude:personal',
-        ],
-        [
-          'added',
-          '/accounts/codex:work',
-        ],
+        '/rules/docs',
+        '/accounts/claude:personal',
+        '/accounts/codex:work',
       ],
     )
     assert.deepEqual(

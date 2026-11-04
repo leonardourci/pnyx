@@ -48,7 +48,7 @@ export const SETTINGS_SECTIONS = [
     id: 'dispatch',
     label: 'Heads dispatch',
     icon: 'dispatch',
-    note: 'Which agent and which login each worker gets. Changes are checked before they save, and Hydra’s suggested changes wait for your Confirm.',
+    note: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
   },
   {
     id: 'keyboard',
@@ -289,7 +289,7 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
     id: 'headsDispatch',
     section: 'dispatch',
     label: 'Heads dispatch',
-    description: 'Which agent and which login each worker gets. Changes are checked before they save, and Hydra’s proposed changes wait for your Confirm.',
+    description: 'Which agent and which login each worker gets. Hydra can update these settings and records each change in chat.',
     related: [
       'rules',
       'workers',
@@ -301,7 +301,6 @@ export const SETTINGS_CATALOG: CatalogEntry[] = [
       'accounts',
       'logins',
       'quota',
-      'proposals',
       'routing',
     ],
   },

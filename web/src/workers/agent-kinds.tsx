@@ -15,7 +15,7 @@ export function AgentKinds({ command }: {
   return (
     <section className="settings-box" aria-label="Agents">
       <h2>Agents</h2>
-      <p className="muted">Your explicit agent choice wins. Otherwise Hydra picks a rule and quota ranks its Claude and Codex candidates. Ask Hydra to propose rule or account changes, then Confirm or Dismiss them in chat.</p>
+      <p className="muted">Your explicit agent choice wins. Otherwise Hydra picks a rule and quota ranks its Claude and Codex candidates. Ask Hydra to change rules or accounts. Each change is recorded in chat.</p>
       {error && <p role="alert">{error}</p>}
       {!effective && !error && <p className="muted">Loading heads dispatch…</p>}
       {effective && (

@@ -1870,7 +1870,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .preview-lane[data-on] { border-color: var(--color-gold); }
 
 
-/* Heads dispatch in Settings: Hydra's proposals, the rules table edited in place, its JSON view and the save bar. */
+/* Heads dispatch in Settings. */
 .dispatch-settings { display: flex; flex-direction: column; gap: 16px; width: 100%; min-width: 0; font-size: var(--text-ui); }
 .dispatch-top { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; }
 .dispatch-source { display: inline-flex; align-items: center; gap: 6px; color: var(--color-muted); font-size: var(--text-meta); }
@@ -1881,22 +1881,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .dispatch-tag { display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid var(--color-line); border-radius: 999px; color: var(--color-muted); font-size: var(--text-meta); font-weight: 500; white-space: nowrap; }
 .dispatch-tag[data-level=error] { border-color: color-mix(in srgb, var(--color-red) 45%, transparent); color: var(--color-red); }
 .dispatch-tag[data-level=warning] { border-color: var(--color-gold-line); color: var(--color-gold); }
-.dispatch-proposal { display: flex; flex-direction: column; gap: 8px; padding: 10px 12px; border: 1px solid var(--color-gold-line); border-radius: 8px; background: var(--color-gold-wash); }
-.dispatch-proposal[data-stale] { border-color: var(--color-line); background: var(--color-raised); }
-.dispatch-proposal:not([data-stale]) .dispatch-tag { border-color: var(--color-gold-line); color: var(--color-gold); }
-.dispatch-proposal p { color: var(--color-muted); }
-.dispatch-actions { display: flex; gap: 6px; }
-.dispatch-actions .button, .dispatch-add-rule { min-height: var(--control-h); gap: 4px; font-size: var(--text-ui); }
 .dispatch-add-rule { align-self: flex-start; }
-.dispatch-changes { margin: 0; padding: 4px 8px; list-style: none; border: 1px solid var(--color-line); border-radius: 6px; background: var(--color-surface); font-size: var(--text-meta); }
-.dispatch-changes li { display: grid; grid-template-columns: 64px minmax(0, 1fr); gap: 8px; padding: 4px 0; border-top: 1px solid var(--color-subtle); }
-.dispatch-changes li:first-child { border-top: 0; }
-.dispatch-changes code { font-size: var(--text-meta); }
-.dispatch-change-kind { color: var(--color-gold); font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
-.dispatch-changes li[data-kind=added] .dispatch-change-kind { color: var(--color-green); }
-.dispatch-changes li[data-kind=removed] .dispatch-change-kind { color: var(--color-red); }
-.dispatch-change-value { display: block; color: var(--color-muted); font-family: var(--font-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
-.dispatch-changes li[data-kind=removed] .dispatch-change-value { color: var(--color-red); text-decoration: line-through; }
 .dispatch-how { padding: 10px 12px; border: 1px solid var(--color-subtle); border-radius: 8px; background: var(--color-background); }
 .dispatch-how ol { margin: 8px 0 0; padding: 0; list-style: none; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .dispatch-how li { padding-left: 8px; border-left: 2px solid var(--color-gold-line); color: var(--color-muted); font-size: var(--text-meta); }
