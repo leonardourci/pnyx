@@ -1007,7 +1007,7 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 
 .hydra-empty { margin-top: 12px; color: var(--color-muted); font-size: var(--text-ui); }
 
-.hydra-chat > :is(.composer, .compaction-queue, .send-error, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
+.hydra-chat > :is(.composer, .agent-change-choice, .compaction-queue, .send-error, .save-checking, .waiting-decisions) { margin-inline: var(--chat-inset); }
 
 .hydra-chat > .waiting-decisions { padding-inline: 0; }
 
@@ -1971,6 +1971,8 @@ kbd { font: var(--text-meta) var(--font-mono); border: 1px solid var(--color-lin
 .account-form-actions { display: flex; flex-wrap: wrap; gap: var(--settings-column-gap); }
 .account-form-error { color: var(--color-red); font-size: var(--text-ui); }
 
-.agent-change-choice { margin: 8px 12px; padding: 12px; border: 1px solid var(--color-line); border-radius: 8px; background: var(--color-surface); font-size: var(--text-ui); }
-.agent-change-choice p { margin: 6px 0; color: var(--color-muted); }
-.agent-change-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.agent-change-choice { margin-block: 0 8px; padding: 12px; border: 1px solid var(--color-line); border-radius: 10px; background: var(--color-surface); font-size: var(--text-ui); }
+.agent-change-choice p { margin: 4px 0 10px; color: var(--color-muted); }
+.agent-change-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.agent-change-actions > .agent-change-neither { background: transparent; color: var(--color-muted); }
+.agent-change-choice .agent-change-caption { margin: 8px 0 0; font-size: var(--text-meta); }
