@@ -331,6 +331,8 @@ export function HydraChat({
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
   const holding = Boolean(compacting) || upgrading || Boolean(stopped) || Boolean(changingAgent)
+  const runningChange = changingAgent?.state === 'running'
+  const compactionRunning = Boolean(compacting) || runningChange
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
@@ -740,6 +742,7 @@ export function HydraChat({
   })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
   const queueReading = running ? queue.reading : []
+  const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
   const pill = hydraPill({
@@ -965,7 +968,7 @@ export function HydraChat({
         }}
       />
       <Composer
-        compacting={Boolean(compacting) || changingAgent?.state === 'running'}
+        compacting={compactionRunning}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
@@ -986,7 +989,7 @@ export function HydraChat({
         notify={notify}
         projectRequest={projectRequest}
         projectRequested={projectRequested}
-        stop={(changingAgent?.state === 'running') || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
+        stop={canStop ? stop : undefined}
         meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(
           <HydraAgent

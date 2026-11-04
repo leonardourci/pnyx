@@ -1,3 +1,4 @@
+import { background } from '#app/background.ts'
 import { useEffect, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -19,7 +20,7 @@ export function AgentChangeChoice({
     availability,
     setAvailability,
   ] = useState('unknown')
-  const key = JSON.stringify(change?.next ?? state.config?.hydra.agent)
+  const key = JSON.stringify(change?.next)
 
   useEffect(
     () => {
@@ -29,16 +30,26 @@ export function AgentChangeChoice({
 
       let cancelled = false
       setAvailability('unknown')
-      void command({
-        name: 'hydra-agent-usage',
-        args: [key],
-      })
-        .then(result => {
-          if (!cancelled) {
-            setAvailability(String(result.availability))
+      background({
+        name: 'selected agent usage',
+        run: async () => {
+          try {
+            const result = await command({
+              name: 'hydra-agent-usage',
+              args: [key],
+            })
+
+            if (!cancelled) {
+              setAvailability(String(result.availability))
+            }
+          } catch {
+            // Missing quota evidence stays unknown and never blocks the owner's choice.
+            if (!cancelled) {
+              setAvailability('unknown')
+            }
           }
-        })
-        .catch(() => {})
+        },
+      })
 
       return () => {
         cancelled = true
@@ -77,15 +88,20 @@ export function AgentChangeChoice({
     unknown: 'Usage for the selected agent is unknown.',
   }[availability]
 
+  const title = running ? 'Preparing the conversation…' : 'Your message is held'
+  const explanation = change.kind === 'agent' ? 'Compact before switching agents.' : 'Choose how to continue after changing effort.'
+  const actionsDisabled = !connected || running
+  const allowNeither = change.kind === 'effort'
+
   return (
     <div className="agent-change-choice" role="region" aria-label="Continue with the selected agent">
-      <strong>{running ? 'Preparing the conversation…' : 'Your message is held'}</strong>
-      <p>{change.kind === 'agent' ? 'Compact before switching agents.' : 'Choose how to continue after changing effort.'} {usage}</p>
+      <strong>{title}</strong>
+      <p>{explanation} {usage}</p>
       {change.error && <p role="alert">{change.error}</p>}
       <div className="agent-change-actions">
-        <Button disabled={!connected || running} onClick={() => choose({ choice: 'inscribe' })}>Inscribe + compact <small className="muted">Recommended</small></Button>
-        <Button disabled={!connected || running} onClick={() => choose({ choice: 'compact' })}>Compact only</Button>
-        {change.kind === 'effort' && <Button disabled={!connected || running} onClick={() => choose({ choice: 'neither' })}>Neither <small className="muted">Not recommended</small></Button>}
+        <Button disabled={actionsDisabled} onClick={() => choose({ choice: 'inscribe' })}>Inscribe + compact <small className="muted">Recommended</small></Button>
+        <Button disabled={actionsDisabled} onClick={() => choose({ choice: 'compact' })}>Compact only</Button>
+        {allowNeither && <Button disabled={actionsDisabled} onClick={() => choose({ choice: 'neither' })}>Neither <small className="muted">Not recommended</small></Button>}
       </div>
     </div>
   )
