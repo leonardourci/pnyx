@@ -8,7 +8,8 @@ import { isAbsolute } from 'node:path'
 import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
-import { catalogOffers, providerName } from '#workers/model-catalog.ts'
+import { catalogOffers } from '#workers/model-catalog.ts'
+import { providerIdOf } from '#workers/providers.ts'
 import { modelIds } from '#workers/provider.ts'
 import { hydraMode } from '#hydra/hydra.ts'
 import { findOption } from '#workers/controls.ts'
@@ -112,7 +113,7 @@ export async function hostRequestUnlocked({
           config,
           project,
         })
-        : chooseCandidate({
+        : await chooseCandidate({
           config,
           project,
           rule,
@@ -150,12 +151,12 @@ export async function hostRequestUnlocked({
           }
         }
 
-        if (readQuota({
+        if ((await readQuota({
           account: {
             provider: dispatch.provider,
             folder: dispatch.folder,
           },
-        }).auth === 'signed-out') {
+        })).auth === 'signed-out') {
           throw new HydraError({
             message: `account ${dispatch.account} is signed out`,
             code: 'ACCOUNT_SIGNED_OUT',
@@ -166,7 +167,7 @@ export async function hostRequestUnlocked({
       // A setting changed after the start would reach only the next turn.
       const settings: Record<string, string> = {
         ...chosenSettings({ choice: dispatch }),
-        provider: providerName({ harness: dispatch.provider }),
+        provider: providerIdOf({ harness: dispatch.provider }),
       }
       const inherited = hydraMode({ state: current })
 
@@ -320,6 +321,7 @@ export async function hostRequestUnlocked({
         sent: !result?.deferred,
         deferred: result?.deferred ?? false,
         queued: result?.queued ?? false,
+        pending: result?.pending ?? false,
       }
     }
     case 'set': {
@@ -386,7 +388,10 @@ export async function hostRequest({
   const ref = request.task ?? request.card
   let release = () => {}
 
-  if (typeof ref === 'string' && [
+  // A message from main or the owner queues for the agent; it never takes or waits on the helper's lease.
+  const message = action === 'send' && !helper
+
+  if (typeof ref === 'string' && !message && [
     'start',
     'continue',
     'send',

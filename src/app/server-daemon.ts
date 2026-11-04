@@ -1,11 +1,10 @@
 import { createServer, type IncomingMessage, type ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { dirname, join } from 'node:path'
-import { unwatchFile, existsSync, watchFile, mkdirSync } from 'node:fs'
+import { existsSync, mkdirSync, rmSync } from 'node:fs'
 import { WebSocketServer } from 'ws'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
-import type { NativeConnection } from './native-provider.ts'
-import type { QueryFn } from './host.ts'
+import { agentsMidTurn, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import type { ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -16,15 +15,31 @@ import { background } from './background.ts'
 import { listHydras, nameUnnamedHydras } from './server-hydras.ts'
 import { reply, serveStatic, buildId, parseMessage } from './server-http.ts'
 import { hydraIds, hydraDir, hydrasDir } from './home-migration.ts'
-import { localToken, hydraIdentity, claimServer } from './server-state.ts'
+import { localToken, hydraIdentity, claimServer, infoPath, type ServerInfo } from './server-state.ts'
+import { serviceFile } from '#setup/service.ts'
+import { runForRequest } from './api-run.ts'
+import { readBody } from './server-http.ts'
 import { HydraError } from '#store/errors.ts'
 import { CREATION_POLL_MS, RETRY_MS, UPGRADE_CHECK_MS, mountOwnedHydra } from './server.ts'
-import { watchPath } from './watch.ts'
+import { pollPath, watchPath } from './watch.ts'
 import { readSettings, settingsLogPath } from '#settings/store.ts'
-import { privateDir } from '#store/storage.ts'
+import { privateDir, replaceFile } from '#store/storage.ts'
 import { upgradeAvailable } from '#upgrade/runner.ts'
 
 // Only the named and default Hydras must load; any other Hydra that fails is skipped and reported.
+const bearer = ({ req }: { req: IncomingMessage }) => {
+  const token = Buffer.from(localToken())
+  const given = Buffer.from(req.headers.authorization?.replace(
+    /^Bearer /,
+    '',
+  ) ?? '')
+
+  return given.length === token.length && timingSafeEqual(
+    given,
+    token,
+  )
+}
+
 export async function startServer({
   hydraId = 'default',
   port = 0,
@@ -38,7 +53,6 @@ export async function startServer({
   // The Agent SDK's query; tests pass a fake.
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeConnection
   // How long a hosted Hydra's wake waits for more changes, a stall lasts before waking it, a tool call keeps a worker busy, a repeat stall waits at most, an open-ended worker pause lasts, a failed Hydra start waits before each retry and followed pull requests wait between reads; tests shorten them.
   wakeDelay?: number
   stallDelay?: number
@@ -52,8 +66,9 @@ export async function startServer({
   // The Pnyx folder the daily check and /upgrade read, and how /upgrade restarts the server.
   // Only serve checks the real folder, so a test server never asks GitHub.
   upgradeRoot?: string
-  restart?({ force }: { force: boolean }): void | Promise<void>
+  restart?(): void | Promise<void>
 }): Promise<RunningServer> {
+  const releaseClaim = claimServer()
   const wss = new WebSocketServer({
     noServer: true,
     maxPayload: MAX_MESSAGE_BYTES,
@@ -172,6 +187,26 @@ export async function startServer({
       })
     }
 
+    // A pnyx-axi command line from a client; the CLI sends every command but the few that must work while the server is down.
+    if (req.method === 'POST' && path === '/api/run') {
+      if (!bearer({ req })) {
+        return reply({
+          res,
+          status: 401,
+          body: {
+            error: 'missing or wrong token',
+            code: 'UNAUTHORIZED',
+          },
+        })
+      }
+
+      return reply({
+        res,
+        status: 200,
+        body: await runForRequest({ body: await readBody({ req }) }),
+      })
+    }
+
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       return reply({
         res,
@@ -190,7 +225,8 @@ export async function startServer({
         build: buildId(),
         hydras,
         skipped,
-        native: options.native?.status?.(),
+        // Whether an agent on any Hydra is mid-turn; an upgrade run from a terminal waits for none to be.
+        midTurn: agentsMidTurn(),
       }
 
       return reply({
@@ -474,20 +510,26 @@ export async function startServer({
     },
   )
 
-  await new Promise<void>((
-    resolve,
-    reject,
-  ) => {
-    http.once(
-      'error',
+  try {
+    await new Promise<void>((
+      resolve,
       reject,
-    )
-    http.listen(
-      port,
-      '127.0.0.1',
-      () => resolve(),
-    )
-  })
+    ) => {
+      http.once(
+        'error',
+        reject,
+      )
+      http.listen(
+        port,
+        '127.0.0.1',
+        () => resolve(),
+      )
+    })
+  } catch (error) {
+    releaseClaim()
+    throw error
+  }
+
   const bound = (http.address() as { port: number }).port
 
   for (const host of [
@@ -510,10 +552,7 @@ export async function startServer({
     )
 
     const stop = () => {
-      unwatchFile(
-        path,
-        ready,
-      )
+      watcher.close()
       pendingLogs.delete(id)
     }
 
@@ -533,14 +572,11 @@ export async function startServer({
       id,
       stop,
     )
-    watchFile(
+    const watcher = pollPath({
       path,
-      {
-        interval: CREATION_POLL_MS,
-        persistent: false,
-      },
-      ready,
-    )
+      interval: CREATION_POLL_MS,
+      changed: ready,
+    })
     ready()
   }
 
@@ -691,7 +727,14 @@ export async function startServer({
 
     try {
       const all = await Promise.allSettled(mounts.values())
-      await Promise.all(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+      // Every Hydra finishes its cleanup before the claim goes, even when one of them fails.
+      const closes = await Promise.allSettled(all.flatMap(m => m.status === 'fulfilled' ? [m.value.close()] : []))
+
+      for (const failed of closes) {
+        if (failed.status === 'rejected') {
+          console.error(`pnyx-axi serve: a Hydra did not close cleanly: ${(failed.reason as Error).message}`)
+        }
+      }
     } finally {
       for (const ws of wss.clients) {
         ws.terminate()
@@ -700,12 +743,29 @@ export async function startServer({
       wss.close()
       http.closeAllConnections()
       await new Promise(r => http.close(r))
+      rmSync(
+        infoPath(),
+        { force: true },
+      )
+      releaseClaim()
     }
   }
 
   try {
     named = await mount({ id: hydraId })
     await mount({ id: 'default' })
+    replaceFile({
+      path: infoPath(),
+      text: JSON.stringify({
+        pid: process.pid,
+        port: bound,
+        url: named.url,
+        socket: named.socket,
+        service: process.env.PNYX_SERVICE_ROLE === 'application'
+          || process.env.XPC_SERVICE_NAME === serviceFile().label,
+        serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
+      } satisfies ServerInfo),
+    })
   } catch (error) {
     await close()
     throw error
@@ -734,7 +794,6 @@ async function mountHydra({
   catalogLocations,
   query,
   spawnCodex,
-  native,
   wakeDelay,
   stallDelay,
   busyDelay,
@@ -757,7 +816,6 @@ async function mountHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeConnection
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -770,38 +828,29 @@ async function mountHydra({
   open({ id }: { id: string }): Promise<string>
   hydrasChanged(): void
   upgradeRoot?: string
-  restart?({ force }: { force: boolean }): void | Promise<void>
+  restart?(): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
-  const release = claimServer({ hydraId })
-
-  try {
-    return await mountOwnedHydra({
-      hydraId,
-      url,
-      homes,
-      catalogLocations,
-      query,
-      spawnCodex,
-      native,
-      wakeDelay,
-      stallDelay,
-      busyDelay,
-      stallRepeatMax,
-      pauseDelay,
-      retryDelays,
-      followDelay,
-      reviewClock,
-      reminderScheduler,
-      open,
-      release,
-      hydrasChanged,
-      upgradeRoot,
-      restart,
-      upgradeStatus,
-    })
-  } catch (error) {
-    release()
-    throw error
-  }
+  return mountOwnedHydra({
+    hydraId,
+    url,
+    homes,
+    catalogLocations,
+    query,
+    spawnCodex,
+    wakeDelay,
+    stallDelay,
+    busyDelay,
+    stallRepeatMax,
+    pauseDelay,
+    retryDelays,
+    followDelay,
+    reviewClock,
+    reminderScheduler,
+    open,
+    hydrasChanged,
+    upgradeRoot,
+    restart,
+    upgradeStatus,
+  })
 }

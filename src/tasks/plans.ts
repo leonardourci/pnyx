@@ -82,12 +82,15 @@ export function planTaskChange({
   meta,
   hydraId,
   cardId,
+  landing,
 }: {
   state: HydraState
   operation: TaskOperation
   meta: Meta
   hydraId: string
   cardId?: string
+  // landingGaps for a done declaration, read before the write.
+  landing: ReadonlyMap<string, string[]>
 }): Decision {
   if ([
     'task.create',
@@ -290,6 +293,7 @@ export function planTaskChange({
           ref: operation.task,
         }),
         hydraId,
+        landing,
       })
     }
 

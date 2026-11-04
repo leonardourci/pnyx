@@ -9,7 +9,7 @@ import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
 import { checkCopy, settleCopy } from './copies.ts'
 
-export function copyCommand({
+export async function copyCommand({
   hydraId,
   ref,
   action,
@@ -21,7 +21,7 @@ export function copyCommand({
   action?: string
   values: Record<string, string | boolean | undefined>
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const card = findCard({
     state: loadHydra({ hydraId }).state,
     ref,
@@ -39,7 +39,7 @@ export function copyCommand({
       task: card.id,
       copy: card.copy,
       ...(card.copy.state !== 'removed' ? {
-        check: checkCopy({
+        check: await checkCopy({
           card,
           copy: card.copy,
         }),
@@ -89,7 +89,7 @@ export function copyCommand({
         confirmation: 'needed',
         token,
         action: `Discard the copy of ${card.id} at ${card.copy.path}, including uncommitted changes; its branch stays`,
-        check: checkCopy({
+        check: await checkCopy({
           card,
           copy: card.copy,
         }),
@@ -101,7 +101,7 @@ export function copyCommand({
   const {
     copy,
     check,
-  } = settleCopy({
+  } = await settleCopy({
     hydraId,
     ref: card.id,
     mode: values.discard ? 'discard' : values.safe ? 'safe' : 'check',

@@ -1,13 +1,12 @@
 import assert from 'node:assert/strict'
 import childProcess from 'node:child_process'
-import fs, { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
+import { copyFileSync, existsSync, readFileSync, rmSync } from 'node:fs'
 import { syncBuiltinESMExports } from 'node:module'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { Card } from '#tasks/model.ts'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import { hydraDir } from '#app/home-migration.ts'
-import { steeringNotice } from '#workers/inbox-notice.ts'
 import { QUIET_MS, openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 
@@ -99,22 +98,20 @@ test(
       commented,
     )
     const worker = s.as({ agent: first })
-    const inbox = await worker.run({
-      args: [
-        'task',
-        'inbox',
-        'read',
-        card.id,
-      ],
-    })
+    // The owner's words reach the worker in its input, and taking them marks the instruction read.
+    const delivered = s.received({ cwd: folder }).at(-1)!
     assert.match(
-      inbox,
+      delivered,
       /### Comment 1/,
     )
     assert.doesNotMatch(
-      inbox,
+      delivered,
       /Internal note/,
     )
+    await until({
+      what: 'the instruction to be marked read',
+      check: () => s.task({ key: 'notes' }).steering![0]!.ack?.outcome === 'read',
+    })
     assert.equal(
       s.events().some(event => event.type === 'session.compaction' && event.data.kind === 'comments'),
       false,
@@ -144,18 +141,28 @@ test(
       ],
     })
     await finished({ turns: 3 })
+    // Each instruction reaches the worker once, as its words; the restart sends neither again.
+    const [
+      firstInstruction,
+      secondInstruction,
+    ] = s.task({ key: 'notes' }).steering!
+    const asDelivered = ({
+      id,
+      text,
+    }: {
+      id: string
+      text: string
+    }) => `New instructions for task ${card.id}, in order (Pnyx inbox IDs ["${id}"]):\n\n${text}\n\nPnyx marks them read once you receive this; \`pnyx-axi task inbox read ${card.id} --hydra ${s.hydraId}\` shows anything still pending. Apply them in order and report progress and blockers separately. A repeated notice is not a new instruction.`
     assert.deepEqual(
       s.received({ cwd: folder }).slice(1),
       [
-        steeringNotice({
-          task: card.id,
-          hydraId: s.hydraId,
-          ids: [instruction.id],
+        asDelivered({
+          id: firstInstruction!.id,
+          text: commented,
         }),
-        steeringNotice({
-          task: card.id,
-          hydraId: s.hydraId,
-          ids: [s.task({ key: 'notes' }).steering![1]!.id],
+        asDelivered({
+          id: secondInstruction!.id,
+          text: 'Ship it.',
         }),
       ],
     )
@@ -683,26 +690,6 @@ test(
         return supervisor
       },
     )
-    const lock = join(
-      hydraDir({ hydraId: s.hydraId }),
-      'writer.lock',
-    )
-    const open = fs.openSync
-    let locks = 0
-    let lockedAt = Date.now()
-    t.mock.method(
-      fs,
-      'openSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
-      (...args: Parameters<typeof fs.openSync>) => {
-        if (args[0] === lock) {
-          locks++
-          lockedAt = Date.now()
-        }
-
-        return open(...args)
-      },
-    )
     syncBuiltinESMExports()
     t.after(() => {
       t.mock.restoreAll()
@@ -751,12 +738,21 @@ test(
       what: 'the worker told of the result',
       check: () => s.received({ cwd: folder }).some(text => text.includes(result.message)),
     })
-    // The server wrote the start, the result and the delivery under the lock, so the spy sees it.
-    assert.ok(locks > 0)
-    // Announced and delivered, the result owes nothing until its worker handles it.
+    // Announced and delivered, the result owes nothing until its worker handles it, so nothing more is written.
+    let seen = s.state().seq
+    let since = Date.now()
     await until({
-      what: 'the server to stop taking the lock while the result waits',
-      check: () => Date.now() - lockedAt >= QUIET_MS,
+      what: 'the server to stop writing while the result waits',
+      check: () => {
+        const seq = s.state().seq
+
+        if (seq !== seen) {
+          seen = seq
+          since = Date.now()
+        }
+
+        return Date.now() - since >= QUIET_MS
+      },
     })
     const claim = claimFlags({ card: s.task({ key: 'work' }) })
     const handled = [
@@ -768,10 +764,10 @@ test(
       '1',
       ...claim,
     ]
-    // Handled needs the result read and its instruction acknowledged first.
+    // The result reached the worker as words, so its instruction already counts as read.
     assert.equal(
-      await worker.refused({ args: handled }),
-      'VALIDATION_ERROR',
+      s.task({ key: 'work' }).steering?.find(message => message.id === result.message)?.ack?.outcome,
+      'read',
     )
     await worker.run({
       args: [

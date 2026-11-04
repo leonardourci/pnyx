@@ -108,7 +108,7 @@ export const TASK_OPTIONS: Options = {
   hold: { type: 'boolean' },
 }
 
-export function taskCommand({ args }: { args: string[] }): Output | Promise<Output> {
+export async function taskCommand({ args }: { args: string[] }): Promise<Output> {
   if (args[0] === 'source') {
     return sourceCommand({ args: args.slice(1) })
   }
@@ -134,7 +134,7 @@ export function taskCommand({ args }: { args: string[] }): Output | Promise<Outp
   })
   const m = meta({ values })
   const url = values['paseo-url'] as string | undefined
-  const local = localTaskCommand({
+  const local = await localTaskCommand({
     action,
     values,
     positionals,

@@ -206,8 +206,13 @@ export function Composer({
         attempt.current = null
       } else {
         problem = receipt?.state === 'delivery_unknown'
-          ? 'Pnyx could not confirm it was delivered; check the conversation before sending again.'
+          ? 'This may not have arrived. Check the conversation; sending it again sends a new copy.'
           : receipt?.detail ?? 'It could not be delivered.'
+
+        // Sending again after an unknown delivery is a new message with its own id, never a silent repeat of this one.
+        if (receipt?.state === 'delivery_unknown') {
+          attempt.current = null
+        }
       }
     } catch (e) {
       problem = (e as Error).message

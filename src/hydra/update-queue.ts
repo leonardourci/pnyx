@@ -7,6 +7,8 @@ export function inbox() {
     text: string
     id?: string
     steeringIds?: string[]
+    // A steering item that carries its messages' words, not only their IDs.
+    inline?: boolean
     agent?: AgentConfig
   }[] = []
   let wake: (() => void) | undefined, done = false
@@ -17,12 +19,14 @@ export function inbox() {
       original,
       id,
       steeringIds,
+      inline,
       agent,
     }: {
       original?: string
       text: string
       id?: string
       steeringIds?: string[]
+      inline?: boolean
       agent?: AgentConfig
     }) {
       items.push({
@@ -30,6 +34,7 @@ export function inbox() {
         original,
         ...(id ? { id } : {}),
         steeringIds,
+        ...(inline ? { inline } : {}),
         agent,
       })
       wake?.()
@@ -48,6 +53,7 @@ export function inbox() {
       text: string
       id?: string
       steeringIds?: string[]
+      inline?: boolean
       agent?: AgentConfig
     }> {
       for (;;) {

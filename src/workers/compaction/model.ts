@@ -9,6 +9,8 @@ export interface Compaction {
   startedAt: string
   endedAt?: string
   error?: string
+  // The agent said it cannot compact in this session, so /compact shows as unavailable.
+  unsupported?: true
 }
 
 export interface CompactInput {

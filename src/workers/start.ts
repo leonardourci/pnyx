@@ -40,7 +40,8 @@ import { taskFolder } from '#projects/copies.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { copySkills, removeLegacyHydraSkills } from '#setup/skills.ts'
 import { fmNote } from '#integrations/firstmate/reply.ts'
-import { createPaseoAgent, startAgent, type Harness } from '#integrations/paseo/launch.ts'
+import { createPaseoAgent, startAgent } from '#integrations/paseo/launch.ts'
+import type { Harness } from '#workers/providers.ts'
 import type { Connect } from '#integrations/paseo/client.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { canonical } from '#store/paths.ts'
@@ -49,6 +50,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Output } from '#app/cli-support.ts'
+import { requestCwd } from '#app/request-context.ts'
 
 export const VIAS = [
   'pnyx',
@@ -222,7 +224,7 @@ function replacingNote({
   return lines.join(' ')
 }
 
-export function taskPrompt({
+export async function taskPrompt({
   hydraId,
   card,
   prompt,
@@ -232,7 +234,7 @@ export function taskPrompt({
   card: Card
   prompt?: string
   replacing?: string
-}): string {
+}): Promise<string> {
   const instructions = prompt ?? workerPrompt({
     hydraId,
     id: card.id,
@@ -244,11 +246,18 @@ export function taskPrompt({
       project,
       ref: card.project,
     }))
-  let projectNotes = ''
-
-  if (attachedProject) {
-    projectNotes = readProjectMemory(projectIdentity({ path: attachedProject.path })).documents.workers ?? ''
-  }
+  const [
+    identity,
+    project,
+  ] = await Promise.all([
+    attachedProject ? projectIdentity({ path: attachedProject.path }) : undefined,
+    projectWorkerContext({
+      hydraId,
+      state,
+      project: card.project,
+    }),
+  ])
+  const projectNotes = identity ? readProjectMemory(identity).documents.workers ?? '' : ''
 
   const header = workerHeader({
     hydraId,
@@ -260,12 +269,6 @@ export function taskPrompt({
       hydraId,
       card,
     }),
-  })
-
-  const project = projectWorkerContext({
-    hydraId,
-    state,
-    project: card.project,
   })
 
   let progress: string | undefined
@@ -483,7 +486,7 @@ export async function startTask({
             const { models } = await client.providers.listModels(
               candidate.harness,
               {
-                cwd: given ?? card.folder ?? process.cwd(),
+                cwd: given ?? card.folder ?? requestCwd(),
               },
             )
             offers[candidate.harness] = models?.map(m => m.id) ?? []
@@ -494,7 +497,7 @@ export async function startTask({
       }
     }
 
-    dispatch = dispatchTask({
+    dispatch = await dispatchTask({
       project: card.project,
       rule,
       harness,
@@ -533,7 +536,7 @@ export async function startTask({
   })
 
   const folder = replacement ? given
-    : taskFolder({
+    : await taskFolder({
       hydraId,
       task,
       folder: given,
@@ -563,7 +566,7 @@ export async function startTask({
         dispatch,
         task: card.id,
         ...(replacement ? { replacement } : {}),
-        prompt: taskPrompt({
+        prompt: await taskPrompt({
           hydraId,
           card,
           prompt,
@@ -586,7 +589,7 @@ export async function startTask({
       ...dispatch?.override,
     },
     dispatch,
-    prompt: taskPrompt({
+    prompt: await taskPrompt({
       hydraId,
       card,
       prompt,
@@ -601,7 +604,7 @@ export async function startTask({
 // Puts the request in Hydra's chat, then hands it to the Firstmate home that is
 // this Hydra as an inbox note, which wakes Firstmate. The note's request id
 // is the message's, so a retry replays the same note.
-function askFirstmate({
+async function askFirstmate({
   hydraId,
   task,
   prompt,
@@ -611,12 +614,12 @@ function askFirstmate({
   task: string
   prompt?: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const initial = findCard({
     state: loadHydra({ hydraId }).state,
     ref: task,
   })
-  const brief = taskPrompt({
+  const brief = await taskPrompt({
     hydraId,
     card: initial,
     prompt: prompt ? `Request: ${prompt}` : undefined,
@@ -698,7 +701,7 @@ function askFirstmate({
       }
     },
   })
-  const sent = fmNote({
+  const sent = await fmNote({
     home: queued.home,
     requestId: `pnyx:${hydraId}:${queued.id}`,
     text: queued.text,
@@ -718,7 +721,7 @@ function askFirstmate({
 
 // Runs the Hydra's command with the task in its environment, then notes the start;
 // a repeated event id runs nothing again.
-function startCommand({
+async function startCommand({
   hydraId,
   role,
   task,
@@ -736,7 +739,7 @@ function startCommand({
   harness?: string
   commandName?: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const id = meta.id ?? randomUUID()
   const claimed = withWriter({
     hydraId,
@@ -776,7 +779,7 @@ function startCommand({
         })
       }
 
-      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? process.cwd() : undefined)
+      const cwd = canonical({ path: folder }) ?? card?.folder ?? (role === 'hydra' ? requestCwd() : undefined)
 
       if (!cwd || !existsSync(cwd)) {
         throw new HydraError({
@@ -834,7 +837,7 @@ function startCommand({
       PNYX_ROLE: role,
       PNYX_TASK_TITLE: claimed.card?.title ?? 'Hydra',
       PNYX_PROMPT: claimed.card
-        ? taskPrompt({
+        ? await taskPrompt({
           hydraId,
           card: claimed.card,
           prompt,
@@ -993,7 +996,7 @@ export async function startHydra({
   try {
     const { models } = await client.providers.listModels(
       chosen,
-      { cwd: folder ?? process.cwd() },
+      { cwd: folder ?? requestCwd() },
     )
     offered = models?.map(m => m.id) ?? []
   } finally {
@@ -1018,7 +1021,7 @@ export async function startHydra({
       },
     }
     : config.dispatch.rules
-  const dispatch = chooseCandidate({
+  const dispatch = await chooseCandidate({
     config: {
       ...config,
       dispatch: {
@@ -1036,7 +1039,7 @@ export async function startHydra({
   const agent = dispatch.candidate
 
   const id = meta.id ?? randomUUID()
-  const cwd = canonical({ path: folder }) ?? process.cwd()
+  const cwd = canonical({ path: folder }) ?? requestCwd()
   const endpoint = paseoUrl({ url })
   const free = withWriter({
     hydraId,
@@ -1164,7 +1167,7 @@ export async function startHydra({
   })
 }
 
-export function setupHydra({
+export async function setupHydra({
   hydraId,
   home,
   meta,
@@ -1172,13 +1175,14 @@ export function setupHydra({
   hydraId: string
   home: string
   meta: Meta
-}): Output {
+}): Promise<Output> {
   const real = resolveHome({ path: home })
   const dir = join(
     real,
     HOME_SKILL,
   )
 
+  // ponytail: local `git check-ignore` and `rev-parse` stay synchronous; they take milliseconds and only the owner's setup runs them.
   const owns = ({ path }: { path: string }) => {
     const ignored = spawnSync(
       'git',
@@ -1277,7 +1281,7 @@ export function setupHydra({
     )}) and follow it for that Hydra.`,
     `Start with \`pnyx-axi hydra digest --hydra ${hydraId}\` and \`pnyx-axi hydra messages --hydra ${hydraId}\`.`,
   ].join('\n')
-  const sent = fmNote({
+  const sent = await fmNote({
     home: real,
     requestId: `pnyx:${hydraId}:hydra-skill`,
     text,

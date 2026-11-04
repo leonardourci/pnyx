@@ -1,3 +1,4 @@
+import type { ChildProcess } from 'node:child_process'
 import type { HelperUsageTotal } from '#routine-helper/state.ts'
 import type { AgentRef, AgentSettings, PermissionRequest } from './model.ts'
 
@@ -67,6 +68,7 @@ export type HostedCompaction = {
   state: 'running' | 'done' | 'failed' | 'cancelled'
   trigger: 'manual' | 'auto'
   error?: string
+  unsupported?: true
 }
 export type HostedImage = {
   path: string
@@ -80,7 +82,8 @@ export type HostedInput = {
 }
 export type InputReceipt = {
   inputId: string
-  phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'unknown'
+  // refused: the provider answered the start of its turn with an error, so the agent never got it.
+  phase: 'queued' | 'taken' | 'confirmed' | 'carried' | 'settled' | 'refused' | 'unknown'
   turn?: string
 }
 // Submitted means handed to the SDK callback or native pipe, not acknowledged by the model.
@@ -174,33 +177,6 @@ export type AskPermission = ({
 } & Pick<PermissionRequest, 'questions' | 'form'>) => Promise<PermissionDecision>
 
 export interface HostedSession {
-  accepted?({ id }: { id: string }): boolean
-  permissionDelivery?({ permission }: { permission: string }): string | undefined
-  remote?: true
-  readOnly?: boolean
-  incarnation?: string
-  recovered?: boolean
-  replayed?(): Promise<void>
-  refreshContext?(): Promise<void>
-  fact?(): {
-    id: string
-    at: string
-  } | undefined
-  applied?(): Promise<void>
-  settle?({
-    through,
-    applyOutcome }
-  ?: {
-    through?: string
-    applyOutcome?({
-      outcome,
-      fact,
-    }: {
-      outcome: TurnOutcome
-      fact: string
-    }): Promise<void>
-  }): Promise<void>
-  detach?(): void
   id: string
   path?: string
   run({
@@ -210,10 +186,10 @@ export interface HostedSession {
   }: {
     input: AsyncIterable<HostedInput>
     permission: AskPermission
-    // Runs before bounded viewer queues. A failure reason stops the native owner.
+    // Runs before bounded viewer queues. A failure reason stops the session.
     observe?({ event }: { event: HostedEvent }): string | void
   }): AsyncIterable<HostedEvent>
-  // Returning from an attachment only removes that reader; close owns native shutdown.
+  // Returning from an attachment only removes that reader; close owns shutdown.
   attach(): AsyncIterable<HostedEvent>
   snapshot(): {
     work: NativeWork
@@ -256,16 +232,6 @@ export const modelIds = ({ models }: { models: ModelOption[] }) =>
   ])
 
 export interface Provider {
-  canOpen?(): boolean
-  remote?: true
-  owns?({ agent }: { agent: AgentRef }): boolean
-  recovering?({
-    cwd,
-    env,
-  }: {
-    cwd: string
-    env: NodeJS.ProcessEnv
-  }): AgentRef | undefined
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
@@ -295,23 +261,20 @@ export interface Provider {
     outputSchema,
     allow,
     context,
-    ownProcess,
-    reattachOnly,
+    spawned,
   }: {
     cwd: string
-    // Reconcile retained facts without admitting a replacement native session.
-    reattach?: true
     instructions?: string
     outputSchema?: Record<string, unknown>
     // Live state the session gets when it starts or resumes and again after each compaction.
-    context?(): string
+    context?(): Promise<string>
     // Commands the session runs without asking, such as Pnyx's own CLI for Hydra.
     allow?: string[]
     agent?: AgentRef
     settings: AgentSettings
     env: NodeJS.ProcessEnv
     signal: AbortSignal
-    ownProcess?({ pid }: { pid: number }): void
-    reattachOnly?: boolean
+    // Each agent process the session starts, so the server can stop one an earlier server left behind.
+    spawned?({ child }: { child: ChildProcess }): void
   }): Promise<HostedSession>
 }

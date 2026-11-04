@@ -1,7 +1,7 @@
 import type { TaskCopy } from '#projects/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { git } from '#projects/git.ts'
-import { pullRequestLandingSync, type PullRequestLanding } from '#integrations/github/pull-request.ts'
+import { pullRequestLanding, type PullRequestLanding } from '#integrations/github/pull-request.ts'
 
 export interface LandingContext {
   refs: string[]
@@ -15,9 +15,9 @@ function githubRepository({ url }: { url: string }): string | undefined {
   return /^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([\w.-]+\/[\w.-]+?)(?:\.git)?\/?$/.exec(url)?.[1]?.toLowerCase()
 }
 
-export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
+export async function landingContext({ copy }: { copy: TaskCopy }): Promise<LandingContext> {
   const cwd = copy.path
-  const origin = git({
+  const origin = await git({
     cwd,
     args: [
       'config',
@@ -39,7 +39,7 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
     context.repository = githubRepository({ url: origin.out })
 
     if (!base) {
-      const refreshed = git({
+      const refreshed = await git({
         cwd,
         args: [
           'fetch',
@@ -47,7 +47,7 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
           'origin',
         ],
       })
-      const identified = git({
+      const identified = await git({
         cwd,
         args: [
           'remote',
@@ -63,7 +63,7 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
         return context
       }
 
-      base = git({
+      base = (await git({
         cwd,
         args: [
           'symbolic-ref',
@@ -71,13 +71,13 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
           '--short',
           'refs/remotes/origin/HEAD',
         ],
-      }).out.replace(
+      })).out.replace(
         /^origin\//,
         '',
       )
     }
 
-    const fetched = git({
+    const fetched = await git({
       cwd,
       args: [
         'fetch',
@@ -109,7 +109,7 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
     context.refs = [`origin/${base}`]
   }
 
-  const tip = git({
+  const tip = await git({
     cwd,
     args: [
       'rev-parse',
@@ -129,7 +129,7 @@ export function landingContext({ copy }: { copy: TaskCopy }): LandingContext {
   return context
 }
 
-export function provesLanding({
+export async function provesLanding({
   copy,
   head,
   context,
@@ -141,19 +141,19 @@ export function provesLanding({
   context: LandingContext
   url?: string
   landing?: PullRequestLanding
-}): boolean {
+}): Promise<boolean> {
   if (!context.tip || context.reason) {
     return false
   }
 
-  const ancestor = ({
+  const ancestor = async ({
     before,
     after,
   }: {
     before: string
     after: string
   }) =>
-    git({
+    (await git({
       cwd: copy.path,
       args: [
         'merge-base',
@@ -161,9 +161,9 @@ export function provesLanding({
         before,
         after,
       ],
-    }).ok
+    })).ok
 
-  if (ancestor({
+  if (await ancestor({
     before: head,
     after: context.tip,
   })) {
@@ -184,7 +184,7 @@ export function provesLanding({
     return false
   }
 
-  const mergeReachedBase = ancestor({
+  const mergeReachedBase = await ancestor({
     before: landing.merge,
     after: context.tip,
   })
@@ -194,15 +194,15 @@ export function provesLanding({
   }
 
   // GitHub keeps the PR head ref after deleting the source branch.
-  if (!git({
+  if (!(await git({
     cwd: copy.path,
     args: [
       'cat-file',
       '-e',
       `${landing.head}^{commit}`,
     ],
-  }).ok) {
-    if (!git({
+  })).ok) {
+    if (!(await git({
       cwd: copy.path,
       args: [
         'fetch',
@@ -210,25 +210,25 @@ export function provesLanding({
         'origin',
         `refs/pull/${pr[2]}/head`,
       ],
-    }).ok
-      || git({
+    })).ok
+      || (await git({
         cwd: copy.path,
         args: [
           'rev-parse',
           'FETCH_HEAD',
         ],
-      }).out !== landing.head) {
+      })).out !== landing.head) {
       return false
     }
   }
 
-  return ancestor({
+  return await ancestor({
     before: head,
     after: landing.head,
   })
 }
 
-export function landedWork({
+export async function landedWork({
   card,
   copy,
   head,
@@ -236,14 +236,14 @@ export function landedWork({
   card: Card
   copy: TaskCopy
   head: string
-}): {
+}): Promise<{
   landed: boolean
   refs: string[]
   reason?: string
-} {
-  const context = landingContext({ copy })
+}> {
+  const context = await landingContext({ copy })
 
-  if (provesLanding({
+  if (await provesLanding({
     copy,
     head,
     context,
@@ -256,9 +256,9 @@ export function landedWork({
 
   if (context.tip && !context.reason) {
     for (const link of card.links.filter(link => link.kind === 'github_pr' && link.state === 'merged')) {
-      const landing = pullRequestLandingSync({ url: link.url })
+      const landing = await pullRequestLanding({ url: link.url }).catch(() => undefined)
 
-      if (provesLanding({
+      if (await provesLanding({
         copy,
         head,
         context,

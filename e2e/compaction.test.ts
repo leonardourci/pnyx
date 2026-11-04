@@ -27,7 +27,7 @@ const compacted = (): SDKMessage => ({
   session_id: '',
 })
 
-// Sends /compact to a Hydra that has answered once, holds it after `before` while the owner sends a message, and returns the operations once that message reaches Hydra.
+// Sends /compact to a Hydra that has answered once, holds it after `before` while the owner sends a message, and returns the operations once Hydra is back.
 async function compact({
   s,
   before,
@@ -64,20 +64,24 @@ async function compact({
         HELD,
       ],
     })
+    // The message waits in Hydra's queue while the compaction stops Hydra; nothing holds it apart.
     await until({
       what: 'the owner’s message to wait for the compaction',
-      check: () => s.state().cards[HYDRA_CARD]?.compaction?.inputs
-        .some(input => input.text.includes(HELD)),
+      check: () => s.state().hydraOperation?.kind === 'compaction'
+        && s.state().hydraMessages?.some(message => message.text === HELD),
     })
+    assert.ok(!s.received({ cwd: agent.cwd }).some(text => text.includes(HELD)))
   } finally {
     turn.release()
   }
 
+  // Back from the compaction, Hydra's first turn recaps what waited, the owner's message among it.
   await until({
-    what: 'the held message to reach Hydra after the compaction',
-    check: () => s.received({ cwd: agent.cwd }).some(text => text.includes(HELD))
-      && !s.state().cards[HYDRA_CARD]?.compaction?.inputs.length,
+    what: 'the waiting message to reach Hydra in its recap after the compaction',
+    check: () => !s.state().hydraOperation
+      && s.received({ cwd: agent.cwd }).some(text => text.includes('back after a stop') && text.includes(HELD)),
   })
+  assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider'))
 
   return s.state().cards[HYDRA_CARD]!.compaction!.operations
 }
@@ -146,11 +150,21 @@ test(
         },
       ],
     )
-    const changes = s.events().flatMap(event => event.type === 'session.compaction' ? [event.data] : [])
-    assert.ok(
-      changes.findLastIndex(change => change.kind === 'status' && change.operation.state === 'done')
-        < changes.findIndex(change => change.kind === 'taken'),
-      'the held message is taken only after the second compaction ends',
+    // One recap, after the second compaction ended, carries what waited through both.
+    const agent = await s.agent({ hydra: true })
+    const recaps = s.received({ cwd: agent.cwd }).filter(text => text.includes('back after a stop'))
+    assert.equal(
+      recaps.length,
+      1,
+    )
+    // Both compactions are one stop of Hydra: it starts once and ends once.
+    assert.deepEqual(
+      s.events().filter(event => event.type === 'hydra.operation')
+        .map(event => event.data.state),
+      [
+        'started',
+        'finished',
+      ],
     )
   },
 )

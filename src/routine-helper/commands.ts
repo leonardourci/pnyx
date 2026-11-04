@@ -7,33 +7,13 @@ import { reportActor } from '#hydra/hydra.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { loadHydra } from '#app/store.ts'
-import { helperGrant, type HelperAction } from './route.ts'
+import { helperGrant } from './route.ts'
+import { HELPER_TASK_WRITES, helperReads } from '#app/command-registry.ts'
 import { isHelper, taskLease } from './leases.ts'
+import { requestEnv } from '#app/request-context.ts'
 
-const TASK_READS = [
-  'list',
-  'show',
-  'history',
-  'chat',
-  'sessions',
-]
-const TASK_WRITES: HelperAction[] = [
-  'continue',
-  'answer',
-  'permission',
-]
-const READS: Record<string, string[]> = {
-  hydra: [
-    'check',
-    'messages',
-    'show',
-  ],
-  project: [
-    'list',
-    'show',
-  ],
-  owner: ['memory'],
-}
+const TASK_READS = helperReads({ name: 'task' })
+const TASK_WRITES = HELPER_TASK_WRITES
 
 function denied(): never {
   throw new AxiError(
@@ -45,7 +25,7 @@ function denied(): never {
 export function commandLease({
   name,
   args,
-  env = process.env,
+  env = requestEnv(),
 }: {
   name: string
   args: string[]
@@ -98,7 +78,7 @@ export function commandLease({
       if (args.some(arg => /^--(?:key|answer|json|model|effort|mode)(?:=|$)/.test(arg))) {
         denied()
       }
-    } else if (!READS[name]?.includes(action)
+    } else if (!helperReads({ name }).includes(action)
       || (name === 'owner' && positionals[1] !== 'list')) {
       denied()
     }
@@ -158,6 +138,11 @@ export function commandLease({
         denied()
       }
     }
+  }
+
+  // A message from main or the owner queues for the agent; it never waits on or takes the helper's lease.
+  if (!helper && name === 'reply') {
+    return () => {}
   }
 
   return taskLease({

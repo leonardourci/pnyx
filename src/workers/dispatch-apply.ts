@@ -15,6 +15,7 @@ import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 type Fields = Record<string, unknown>
 
@@ -208,7 +209,7 @@ function propose({
   }
 }
 
-const hydraActor = ({ meta }: { meta: Meta }) => meta.actor === 'hydra' || process.env.PNYX_ACTOR === 'hydra'
+const hydraActor = ({ meta }: { meta: Meta }) => meta.actor === 'hydra' || requestEnv().PNYX_ACTOR === 'hydra'
 
 // One patch, checked whole: every rule, account and order change goes through here.
 export function applyDispatch({

@@ -204,7 +204,7 @@ export function firstmateHomes({ base }: { base?: string }): Output {
 // the last read stopped, and each linked pull request's title and description.
 // ponytail: reads every linked pull request on each run; skip merged ones already noted if hydras grow.
 export const harvest = guard({
-  handler: ({ args }) => {
+  handler: async ({ args }) => {
     const {
       values,
       hydraId,
@@ -224,11 +224,11 @@ export const harvest = guard({
       }),
     ] : Object.values(state.cards)
     // Read before taking the writer lock: gh-axi can be slow and must not block other writers.
-    const prs = cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(l => ({
+    const prs = await Promise.all(cards.flatMap(c => c.links.filter(l => l.kind === 'github_pr').map(async l => ({
       card: c.id,
       url: l.url,
-      note: pullRequestNote({ url: l.url }),
-    })))
+      note: await pullRequestNote({ url: l.url }),
+    }))))
 
     return withWriter({
       hydraId,

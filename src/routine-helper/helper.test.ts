@@ -23,7 +23,7 @@ let root = ''
 let restore: NodeJS.ProcessEnv
 const state = () => loadHydra({ hydraId: 'lab' }).state
 
-beforeEach(() => {
+beforeEach(async () => {
   restore = { ...process.env }
   root = mkdtempSync(join(
     tmpdir(),
@@ -38,11 +38,11 @@ beforeEach(() => {
     root,
     'codex',
   )
-  commands.hydra([
+  await commands.hydra([
     'create',
     'lab',
   ])
-  commands.task([
+  await commands.task([
     'create',
     '--key',
     'work',
@@ -51,7 +51,7 @@ beforeEach(() => {
     '--hydra',
     'lab',
   ])
-  commands.task([
+  await commands.task([
     'create',
     '--key',
     'other',
@@ -99,7 +99,7 @@ const granted = ({
 
 test(
   'fixed routing keeps results, PR actions, progress, unknown tasks and owner answers off the helper',
-  () => {
+  async () => {
     const s = state()
     const task = s.keys.work!
     const other = s.keys.other!
@@ -212,7 +212,7 @@ test(
       }),
       true,
     )
-    commands.task([
+    await commands.task([
       'ask',
       task,
       '--to',
@@ -450,7 +450,7 @@ function helperLab({
       PNYX_HYDRA: 'lab',
       PNYX_ACTOR: actor,
     }),
-    context: () => 'Hydra rules',
+    context: async () => 'Hydra rules',
     changed: () => {
       if (!helper.busy()) {
         idle.resolve()

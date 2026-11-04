@@ -4,7 +4,10 @@ import { syncBuiltinESMExports } from 'node:module'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
-import { watchPath } from './watch.ts'
+import { pollPath, watchPath } from './watch.ts'
+
+const SUBSCRIBERS = 11
+const POLL_MS = 20
 
 async function until({ check }: { check(): boolean }) {
   const deadline = Date.now() + 5000
@@ -16,13 +19,13 @@ async function until({ check }: { check(): boolean }) {
     )
     await new Promise(resolve => setTimeout(
       resolve,
-      20,
+      POLL_MS,
     ))
   }
 }
 
 test(
-  'a late native error closes its watcher, delivers changes through polling and stops polling on close',
+  'native failure falls back to polling, and a rejected reader does not stop later delivery',
   async t => {
     const root = fs.mkdtempSync(join(
       tmpdir(),
@@ -39,7 +42,7 @@ test(
     const original = fs.watch
     let native: fs.FSWatcher | undefined
     let closes = 0
-    t.mock.method(
+    const errors = t.mock.method(
       console,
       'error',
       () => {},
@@ -65,10 +68,16 @@ test(
     )
     syncBuiltinESMExports()
     let seen = ''
+    let fail = true
     const watcher = watchPath({
       path,
-      interval: 20,
-      changed: () => {
+      interval: POLL_MS,
+      changed: async () => {
+        if (fail) {
+          fail = false
+          throw new Error('reader failed')
+        }
+
         seen = fs.readFileSync(
           path,
           'utf8',
@@ -102,7 +111,12 @@ test(
       closes,
       1,
     )
-    await until({ check: () => seen === 'second' })
+    await until({ check: () => errors.mock.calls.some(call => call.arguments.join(' ').includes('reader failed')) })
+    fs.writeFileSync(
+      path,
+      'third',
+    )
+    await until({ check: () => seen === 'third' })
     watcher.close()
     assert.equal(
       closes,
@@ -112,11 +126,11 @@ test(
 )
 
 test(
-  'a rejected watch callback is logged and later filesystem changes are still delivered',
+  'shared stat subscribers follow replacements and stop receiving changes when closed',
   async t => {
     const root = fs.mkdtempSync(join(
       tmpdir(),
-      'pnyx-watch-rejection-',
+      'pnyx-stat-watch-',
     ))
     const path = join(
       root,
@@ -126,29 +140,27 @@ test(
       path,
       'first',
     )
-    const errors = t.mock.method(
-      console,
-      'error',
-      () => {},
+    const seen = new Map<number, string>()
+    const watchers = Array.from(
+      { length: SUBSCRIBERS },
+      (
+        _,
+        index,
+      ) => pollPath({
+        path,
+        interval: POLL_MS,
+        changed: () => seen.set(
+          index,
+          fs.readFileSync(
+            path,
+            'utf8',
+          ),
+        ),
+      }),
     )
-    let fail = true
-    let seen = ''
-    const watcher = watchPath({
-      path,
-      changed: async () => {
-        if (fail) {
-          fail = false
-          throw new Error('reader failed')
-        }
-
-        seen = fs.readFileSync(
-          path,
-          'utf8',
-        )
-      },
-    })
     t.after(() => {
-      watcher.close(); fs.rmSync(
+      watchers.forEach(watcher => watcher.close())
+      fs.rmSync(
         root,
         {
           recursive: true,
@@ -156,15 +168,72 @@ test(
         },
       )
     })
-    await fs.promises.writeFile(
-      path,
-      'second',
+    // fs.watchFile reads its first stat asynchronously, so a write before that reading is its baseline, not a change;
+    // writing again until every subscriber has seen one keeps the test from racing that first reading.
+    await until({
+      check: () => {
+        if (seen.size < SUBSCRIBERS) {
+          fs.writeFileSync(
+            path,
+            'second',
+          )
+        }
+
+        return seen.size === SUBSCRIBERS
+      },
+    })
+    assert.deepEqual(
+      new Set(seen.values()),
+      new Set(['second']),
     )
-    await until({ check: () => errors.mock.calls.some(call => call.arguments.join(' ').includes('reader failed')) })
+    watchers[0]!.close()
+    watchers[0]!.close()
+    seen.clear()
+    fs.unlinkSync(path)
     fs.writeFileSync(
       path,
-      'third',
+      'recreated',
     )
-    await until({ check: () => seen === 'third' })
+    await until({ check: () => seen.size === SUBSCRIBERS - 1 })
+    assert.equal(
+      seen.has(0),
+      false,
+    )
+    assert.deepEqual(
+      new Set(seen.values()),
+      new Set(['recreated']),
+    )
+    watchers.forEach(watcher => watcher.close())
+    seen.clear()
+
+    for (let cycle = 0; cycle < SUBSCRIBERS; cycle++) {
+      const owner = pollPath({
+        path,
+        interval: POLL_MS,
+        changed: () => {},
+      })
+      owner.close()
+    }
+
+    let reopened = ''
+    const next = pollPath({
+      path,
+      interval: POLL_MS,
+      changed: () => reopened = fs.readFileSync(
+        path,
+        'utf8',
+      ),
+    })
+    t.after(() => next.close())
+    watchers[0]!.close()
+    fs.writeFileSync(
+      path,
+      'after reopening',
+    )
+    await until({ check: () => reopened === 'after reopening' })
+    assert.equal(
+      seen.size,
+      0,
+    )
   },
 )

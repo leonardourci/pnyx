@@ -170,7 +170,6 @@ export async function openPage({
   const ws = new WebSocket(`ws://127.0.0.1:${port}/hydra/${hydraId}/ws?token=${localToken()}`)
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
-  const checking: string[] = []
   const queues: HydraQueue[] = []
   const upgrades: UpgradeStatus[] = []
   const settings: Settings[] = []
@@ -179,9 +178,7 @@ export async function openPage({
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'checking') {
-        checking.push(message.id)
-      } else if (message.type === 'upgrade') {
+      if (message.type === 'upgrade') {
         upgrades.push(message.upgrade)
       } else if (message.type === 'settings') {
         settings.push(message.settings)
@@ -239,7 +236,6 @@ export async function openPage({
   }
 
   return {
-    checking,
     queues,
     upgrades,
     // Every shared settings push, in order: one on connect, then one per change.
@@ -387,8 +383,10 @@ export function scenarioGroup({
   const upgrade = upgradeRepo({ root })
   // A real restart signals this process, which the flows share; a flow restarts with pnyx.restart() instead.
   let restarts = 0
-  let restartForce: boolean | undefined
-  let restartFailure: string | undefined
+  let restartFailure: {
+    message: string
+    after?: Promise<void>
+  } | undefined
   let server: RunningServer | undefined
 
   const start = async ({ port }: { port?: number }) => {
@@ -400,16 +398,26 @@ export function scenarioGroup({
       retryDelays,
       followDelay: FOLLOW_MS,
       upgradeRoot: upgradeRoot ?? upgrade.install,
-      restart: ({ force }) => {
+      restart: () => {
         restarts++
-        restartForce = force
 
-        if (restartFailure) {
-          const error = restartFailure
-          restartFailure = undefined
-
-          throw new Error(error)
+        if (!restartFailure) {
+          return
         }
+
+        const {
+          message,
+          after,
+        } = restartFailure
+        restartFailure = undefined
+
+        if (after) {
+          return after.then(() => {
+            throw new Error(message)
+          })
+        }
+
+        throw new Error(message)
       },
     })
   }
@@ -432,9 +440,18 @@ export function scenarioGroup({
     upgrade,
     // How many times an upgrade asked the server to restart.
     restarts: () => restarts,
-    restartForce: () => restartForce,
-    failRestart: ({ message }: { message: string }) => {
-      restartFailure = message
+    // The next restart fails with this message; given after, once after resolves.
+    failRestart: ({
+      message,
+      after,
+    }: {
+      message: string
+      after?: Promise<void>
+    }) => {
+      restartFailure = {
+        message,
+        after,
+      }
     },
     port: () => server!.port,
     // Stops the server and starts it again on the same files and port, as a Pnyx restart does,

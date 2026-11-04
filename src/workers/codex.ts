@@ -12,14 +12,14 @@ import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTo
 export type SpawnCodex = ({
   cwd,
   env,
-  detached,
 }: {
   cwd: string
   env: NodeJS.ProcessEnv
-  detached?: boolean
 }) => ChildProcessWithoutNullStreams
 
 type ObjectValue = Record<string, unknown>
+// JSON-RPC's code for a method the app-server does not have.
+const METHOD_NOT_FOUND = -32601
 const object = ({ value }: { value: unknown }): ObjectValue =>
   typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
 
@@ -493,7 +493,12 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
 
           if (message.error) {
             const error = object({ value: message.error })
-            request?.reject({ error: new Error(String(error.message ?? 'Codex request failed')) })
+            request?.reject({
+              error: Object.assign(
+                new Error(String(error.message ?? 'Codex request failed')),
+                { code: error.code },
+              ),
+            })
           } else {
             request?.resolve({ value: object({ value: message.result }) })
           }
@@ -835,7 +840,6 @@ export function codexProvider({
   spawnCodex = ({
     cwd,
     env,
-    detached,
   }) => spawn(
     'codex',
     [
@@ -847,7 +851,8 @@ export function codexProvider({
       cwd,
       env,
       stdio: 'pipe',
-      detached,
+      // Its own process group, so a later start can stop it together with the tools it ran.
+      detached: true,
     },
   ),
 }: { spawnCodex?: SpawnCodex }): Provider {
@@ -944,7 +949,7 @@ export function codexProvider({
       instructions,
       outputSchema,
       context,
-      ownProcess,
+      spawned,
     }) {
       let deferredInterrupt: {
         done: Promise<void>
@@ -954,17 +959,8 @@ export function codexProvider({
       const child = spawnCodex({
         cwd,
         env,
-        detached: ownProcess !== undefined,
       })
-
-      if (child.pid !== undefined) {
-        try {
-          ownProcess?.({ pid: child.pid })
-        } catch (error) {
-          child.kill('SIGKILL')
-          throw error
-        }
-      }
+      spawned?.({ child })
 
       const rpc = connection({ child })
 
@@ -1131,7 +1127,7 @@ export function codexProvider({
                 },
               })
               const manualCompact = compactCommand({ text: said })
-              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${context()}\n\n${said}` : said
+              const text = context && !manualCompact && (rpc.compacted() || fresh) ? `${await context()}\n\n${said}` : said
 
               if (!manualCompact) {
                 fresh = false
@@ -1161,29 +1157,73 @@ export function codexProvider({
                 continue
               }
 
-              const result = await rpc.request({
-                method: manualCompact ? 'thread/compact/start' : 'turn/start',
-                params: manualCompact ? { threadId: id } : {
-                  threadId: id,
-                  ...(outputSchema ? { outputSchema } : {}),
-                  input: turnInput({
-                    text,
-                    message,
-                  }),
-                  ...(options.model ? { model: options.model } : {}),
-                  ...serviceTier({ fast: options.fast }),
-                  ...(options.effort ? { effort: options.effort } : {}),
-                  ...(policy()
-                    ? {
-                      approvalPolicy: policy(),
-                      sandboxPolicy: sandboxPolicy({
-                        mode: policy(),
-                        env,
-                      }),
-                    }
-                    : {}),
-                },
-              })
+              let result: ObjectValue
+
+              try {
+                result = await rpc.request({
+                  method: manualCompact ? 'thread/compact/start' : 'turn/start',
+                  params: manualCompact ? { threadId: id } : {
+                    threadId: id,
+                    ...(outputSchema ? { outputSchema } : {}),
+                    input: turnInput({
+                      text,
+                      message,
+                    }),
+                    ...(options.model ? { model: options.model } : {}),
+                    ...serviceTier({ fast: options.fast }),
+                    ...(options.effort ? { effort: options.effort } : {}),
+                    ...(policy()
+                      ? {
+                        approvalPolicy: policy(),
+                        sandboxPolicy: sandboxPolicy({
+                          mode: policy(),
+                          env,
+                        }),
+                      }
+                      : {}),
+                  },
+                })
+              } catch (error) {
+                if (!manualCompact || (error as { code?: unknown }).code !== METHOD_NOT_FOUND) {
+                  // Codex answered with an error, so it did not take this input.
+                  for (const inputId of inputIds) {
+                    emit({
+                      event: {
+                        type: 'input',
+                        receipt: {
+                          inputId,
+                          phase: 'refused',
+                        },
+                      },
+                    })
+                  }
+
+                  throw error
+                }
+
+                yield 'working'
+                yield {
+                  type: 'compaction',
+                  id: randomUUID(),
+                  trigger: 'manual',
+                  state: 'failed',
+                  error: `Codex cannot compact this session: ${(error as Error).message}`,
+                  unsupported: true,
+                }
+                emit({
+                  event: {
+                    type: 'result',
+                    turn: randomUUID(),
+                    inputIds,
+                    status: 'failed',
+                    queued: carried.length,
+                    error: 'Codex cannot compact this session',
+                  },
+                })
+                yield 'finished'
+                continue
+              }
+
               const turn = object({ value: result.turn })
 
               if (!manualCompact && typeof turn.id !== 'string') {

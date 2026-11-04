@@ -2,45 +2,47 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { test } from 'node:test'
+import { runForRequest } from '#app/api-run.ts'
 
 test(
-  'the real CLI offers live state, nested discovery, actionable receipts and explicit errors',
-  t => {
+  'the CLI offers live state, nested discovery, actionable receipts and explicit errors',
+  async t => {
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-discovery-',
     ))
-    t.after(() => rmSync(
-      root,
-      {
-        recursive: true,
-        force: true,
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = root
+    t.after(() => {
+      process.env.PNYX_HOME = previous
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const run = ({
+      args,
+      hydra = 'default',
+    }: {
+      args: string[]
+      hydra?: string
+    }) => runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {
+          PNYX_ACTOR: 'cli',
+          PNYX_HYDRA: hydra,
+        },
       },
-    ))
-    const env: NodeJS.ProcessEnv = {
-      ...process.env,
-      PNYX_HOME: root,
-      PNYX_ACTOR: 'cli',
-      PNYX_HYDRA: 'default',
-    }
-    delete env.PNYX_TASK
-    const run = ({ args }: { args: string[] }) => spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
-        ...args,
-      ],
-      {
-        env,
-        encoding: 'utf8',
-      },
-    )
-    const empty = run({ args: [] })
+    })
+    const empty = await run({ args: [] })
     assert.equal(
-      empty.status,
+      empty.exitCode,
       0,
     )
     assert.match(
@@ -51,7 +53,7 @@ test(
       empty.stdout,
       /--help/,
     )
-    const created = run({
+    const created = await run({
       args: [
         'task',
         'create',
@@ -60,11 +62,11 @@ test(
       ],
     })
     assert.equal(
-      created.status,
+      created.exitCode,
       0,
     )
     const id = /id: (task-[\w-]+)/.exec(created.stdout)![1]!
-    const home = run({ args: [] })
+    const home = await run({ args: [] })
     assert.match(
       home.stdout,
       /Synthetic CLI task/,
@@ -73,7 +75,7 @@ test(
       home.stdout,
       new RegExp(`task show ${id}`),
     )
-    const nested = run({
+    const nested = await run({
       args: [
         'task',
         'source',
@@ -82,7 +84,7 @@ test(
       ],
     })
     assert.equal(
-      nested.status,
+      nested.exitCode,
       0,
     )
     assert.match(
@@ -93,7 +95,7 @@ test(
       nested.stdout,
       /task source stop|task source list/,
     )
-    const paused = run({
+    const paused = await run({
       args: [
         'task',
         'status',
@@ -104,7 +106,7 @@ test(
       ],
     })
     assert.equal(
-      paused.status,
+      paused.exitCode,
       0,
     )
     assert.match(
@@ -119,7 +121,7 @@ test(
       paused.stdout,
       /No Hydra wake/,
     )
-    const invalid = run({
+    const invalid = await run({
       args: [
         'task',
         'show',
@@ -128,7 +130,7 @@ test(
       ],
     })
     assert.equal(
-      invalid.status,
+      invalid.exitCode,
       2,
     )
     assert.match(
@@ -139,7 +141,7 @@ test(
       invalid.stdout,
       /Valid flags/,
     )
-    const other = run({
+    const other = await run({
       args: [
         'hydra',
         'create',
@@ -147,25 +149,15 @@ test(
       ],
     })
     assert.equal(
-      other.status,
+      other.exitCode,
       0,
     )
-    const scoped = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
-      ],
-      {
-        env: {
-          ...env,
-          PNYX_HYDRA: 'synthetic-other',
-        },
-        encoding: 'utf8',
-      },
-    )
+    const scoped = await run({
+      args: [],
+      hydra: 'synthetic-other',
+    })
     assert.equal(
-      scoped.status,
+      scoped.exitCode,
       0,
     )
     assert.match(

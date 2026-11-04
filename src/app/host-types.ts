@@ -95,6 +95,8 @@ export interface Host {
   }): {
     deferred?: boolean
     queued?: boolean
+    // A direct input waiting for the provider to confirm it.
+    pending?: boolean
   } | void
   set({
     card,
@@ -178,6 +180,13 @@ export interface Live {
   session?: HostedSession
   activity: string
   steering: Set<string>
+  // Steering inputs sent with their words, by input id; the agent taking one marks those messages read.
+  delivered: Map<string, string[]>
+  // Direct inputs whose reply waits for the provider's confirmation, by input id, and whether the agent took them.
+  pendingDirect: Map<string, {
+    card: string
+    taken: boolean
+  }>
   task: string
   generation?: number
   replaced?: boolean

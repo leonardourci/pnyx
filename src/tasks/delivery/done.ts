@@ -6,9 +6,10 @@ import { isFolder } from '#projects/copies.ts'
 import { git } from '#projects/git.ts'
 import { landedWork } from './proof.ts'
 import { taskLanding } from './rule.ts'
+import { loadHydra } from '#app/store.ts'
 
-// What still stands between a task and done; empty when its work has landed by its project's rule.
-export function doneGaps({
+// What still stands between a task and done when it has no copy to read, or undefined when its copy must be read.
+function gapsWithoutCopy({
   state,
   card,
   hydraId,
@@ -16,7 +17,7 @@ export function doneGaps({
   state: HydraState
   card: Card
   hydraId: string
-}): string[] {
+}): string[] | undefined {
   if (card.kind === 'investigation') {
     return card.report ? reportReviewGaps({
       state,
@@ -24,23 +25,46 @@ export function doneGaps({
     }) : [`no stored report: store it with \`pnyx-axi task report ${card.id} --file <path> --hydra ${hydraId}\``]
   }
 
-  const copy = card.copy
-
   // Without a copy to read, an unconfirmed pull request is the remaining landing evidence.
-  if (copy?.state !== 'active' || !isFolder({ path: copy.path })) {
+  if (card.copy?.state !== 'active' || !isFolder({ path: card.copy.path })) {
     const waiting = card.links.some(l => l.kind === 'github_pr' && l.state !== 'merged' && l.state !== 'closed')
 
     return waiting ? ['its pull request has not merged'] : []
   }
 
-  const status = git({
+  return undefined
+}
+
+// What still stands between a task and done; empty when its work has landed by its project's rule.
+export async function doneGaps({
+  state,
+  card,
+  hydraId,
+}: {
+  state: HydraState
+  card: Card
+  hydraId: string
+}): Promise<string[]> {
+  const quick = gapsWithoutCopy({
+    state,
+    card,
+    hydraId,
+  })
+
+  if (quick) {
+    return quick
+  }
+
+  const copy = card.copy!
+
+  const status = await git({
     cwd: copy.path,
     args: [
       'status',
       '--porcelain',
     ],
   })
-  const head = git({
+  const head = await git({
     cwd: copy.path,
     args: [
       'rev-parse',
@@ -59,11 +83,11 @@ export function doneGaps({
     gaps.push(`${changed} ${changed === 1 ? 'file' : 'files'} uncommitted`)
   }
 
-  const landed = landedWork({
+  const { landed } = await landedWork({
     card,
     copy,
     head: head.out,
-  }).landed
+  })
   const rule = taskLanding({
     state,
     card,
@@ -73,7 +97,7 @@ export function doneGaps({
     return gaps
   }
 
-  const pushed = git({
+  const pushed = await git({
     cwd: copy.path,
     args: [
       'branch',
@@ -101,21 +125,61 @@ export function doneGaps({
   return gaps
 }
 
+// The landing gaps of the tasks these refs name, read with git and gh before a write so the write itself never waits on them.
+export async function landingGaps({
+  hydraId,
+  refs,
+}: {
+  hydraId: string
+  refs: string[]
+}): Promise<Map<string, string[]>> {
+  const state = loadHydra({ hydraId }).state
+  const gaps = new Map<string, string[]>()
+
+  for (const ref of refs) {
+    const card = Object.values(state.cards).find(card => card.id === ref || card.key === ref)
+
+    if (card) {
+      gaps.set(
+        card.id,
+        await doneGaps({
+          state,
+          card,
+          hydraId,
+        }),
+      )
+    }
+  }
+
+  return gaps
+}
+
 // A done declaration stands only once the work is where the project's rule says it lands.
 export function refuseEarlyDone({
   state,
   card,
   hydraId,
+  landing,
 }: {
   state: HydraState
   card: Card
   hydraId: string
+  // Gaps landingGaps read before the write, by card id.
+  landing: ReadonlyMap<string, string[]>
 }): void {
-  const gaps = doneGaps({
+  const gaps = gapsWithoutCopy({
     state,
     card,
     hydraId,
-  })
+  }) ?? landing.get(card.id)
+
+  if (!gaps) {
+    throw new HydraError({
+      message: `task ${card.id} changed while its landing was checked`,
+      code: 'CONFLICT',
+      help: ['Run the command again'],
+    })
+  }
 
   if (!gaps.length) {
     return

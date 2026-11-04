@@ -6,7 +6,6 @@ import { openDecisions } from '#tasks/decisions.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 import { cardQuestion } from '#tasks/questions.ts'
-import { cardStatus, statusLabel } from '#tasks/card-status.ts'
 
 test(
   'a worker’s permission request waits on its task in Needs you until Hydra or the owner decides it once, the worker gets that decision and its answers, a Codex worker’s turn permissions grant only what it asked, and a restart expires what was left waiting',
@@ -352,36 +351,6 @@ test(
         === 'Retain historical cache entries?',
     })
     page.close()
-    await pnyx.restart({
-      whileStopped: async () => {
-        await s.owner({
-          args: [
-            'task',
-            'answer',
-            'clean',
-            retention.id,
-            '--text',
-            'Retain for 30 days.',
-          ],
-        })
-      },
-    })
-    page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    await page.shows({
-      what: 'the saved answer with failed delivery after reconnecting',
-      check: ({ state }) => cardQuestion({ card: state.cards[taskId]! })?.delivery?.state === 'failed',
-    })
-    assert.equal(
-      cardQuestion({ card: s.task({ key: 'clean' }) })?.delivery?.decision?.answer,
-      'Retain for 30 days.',
-    )
-    assert.equal(
-      statusLabel({ status: cardStatus({ card: s.task({ key: 'clean' }) }) }),
-      'Answer not sent',
-    )
     await s.owner({
       args: [
         'task',
@@ -391,6 +360,10 @@ test(
         '--text',
         'Retain for 30 days.',
       ],
+    })
+    page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
     })
     const answeredCard = await page.shows({
       what: 'the delivered answer on the page',

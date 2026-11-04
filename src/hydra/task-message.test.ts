@@ -13,17 +13,17 @@ import { readThread, type ThreadEntry } from './transcripts-read.ts'
 import { paseoHistory } from '#integrations/paseo/history.ts'
 import { taskReceipt, withTaskReceipts } from './transcripts-task.ts'
 
-function fixture() {
+async function fixture() {
   const home = realpathSync(mkdtempSync(join(
     tmpdir(),
     'pnyx-task-message-',
   )))
   process.env.PNYX_HOME = home
-  commands.hydra([
+  await commands.hydra([
     'create',
     'default',
   ])
-  commands.task([
+  await commands.task([
     'create',
     '--key',
     'work',
@@ -122,11 +122,11 @@ function fixture() {
 
 test(
   'old snapshots rebuild the original prompt after the working brief changed',
-  () => {
-    const f = fixture()
+  async () => {
+    const f = await fixture()
 
     try {
-      commands.task([
+      await commands.task([
         'brief',
         'work',
         '--brief',
@@ -229,7 +229,7 @@ test(
 test(
   'saved task history remains pageable after the native timeline has no older page',
   async () => {
-    const f = fixture()
+    const f = await fixture()
 
     try {
       withWriter({
@@ -316,7 +316,7 @@ test(
 test(
   'native and saved pagination advance independently and reapply current receipt states',
   async () => {
-    const f = fixture()
+    const f = await fixture()
 
     try {
       await f.send()

@@ -1,0 +1,6 @@
+#!/bin/sh
+# Stands in for launchd: records each call; a job it has not loaded fails kickstart, and bootstrap starts the server.
+echo "launchctl $*" >> "$FAKE_SERVICE_LOG"
+[ "$1" = kickstart ] && exit 1
+nohup "$PNYX_TEST_NODE" "$PNYX_TEST_CLI" serve > /dev/null 2>&1 &
+exit 0

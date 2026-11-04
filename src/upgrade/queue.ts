@@ -1,27 +1,37 @@
 import { HydraError } from '#store/errors.ts'
 import { homedir } from 'node:os'
 import type { HydraState } from '#app/model.ts'
-import type { HeldMessage, UpgradeOperation } from './model.ts'
+import type { UpgradeOperation } from './model.ts'
 import { runUpgrade } from './runner.ts'
 import { background } from '#app/background.ts'
 
 const WAIT_MS = 100
 // Bound how long messages remain held if the restart process does not complete.
 const RESTART_WAIT_MS = 60_000
+// A built upgrade restarts at the next moment no agent is mid-turn, but never later than this.
+export const RESTART_PENDING_MS = 15 * 60_000
+// How often a built upgrade looks for a moment no agent is mid-turn.
+const IDLE_POLL_MS = 1000
+
+// Upgrades of any Hydra this server runs that are installing, building or waiting to restart.
+const underway = new Set<string>()
+
+// While one is, the server starts no index process, which would load the new build into the old server's work.
+export const upgradeUnderway = () => underway.size > 0
 
 const shortHome = ({ path }: { path: string }) => path.startsWith(homedir()) ? `~${path.slice(homedir().length)}` : path
 
-// /upgrade takes its place in Hydra's turn queue, runs once Hydra's turn ends, and restarts only after a passing build.
+// /upgrade pulls, installs and builds at once; after a passing build it restarts on Restart now,
+// at the next moment no agent on any Hydra is mid-turn, or after RESTART_PENDING_MS at most.
 export function upgradeQueue({
   root,
   state,
   record,
-  schedule,
-  working,
+  midTurn,
   closing,
   restart,
-  deliver,
   at,
+  pendingMs = RESTART_PENDING_MS,
 }: {
   // The Pnyx folder; a server without one refuses /upgrade.
   root?: string
@@ -34,86 +44,30 @@ export function upgradeQueue({
     operation: UpgradeOperation
     eventId?: string
   }): void
-  // Puts run behind the Hydra turns already queued; later messages and wakes wait behind it.
-  schedule({
-    id,
-    run,
-  }: {
-    id: string
-    run(): Promise<void>
-  }): void
-  // Hydra's turn or a compaction is running.
-  working(): boolean
+  // Whether an agent on any Hydra this server runs is mid-turn.
+  midTurn(): boolean
   closing(): boolean
-  restart({ force }: { force: boolean }): void | Promise<void>
-  // Hands a held message to Hydra, behind anything already queued.
-  deliver({ message }: { message: HeldMessage }): void
+  restart(): void | Promise<void>
   at(): string
+  // How long a built upgrade waits for agents between turns.
+  pendingMs?: number
 }) {
-  const sendNow = new Set<string>()
+  const restartNow = new Set<string>()
   let stopping: AbortController | undefined
 
   const active = () => state().upgrades?.find(operation => [
     'queued',
     'running',
+    'waiting',
     'restarting',
   ].includes(operation.state))
 
-  // Messages held while the upgrade ran are kept on the operation, so a write made from an older copy must not drop them.
-  const save = ({
-    operation,
-    eventId,
-  }: {
-    operation: UpgradeOperation
-    eventId?: string
-  }) => record({
-    operation: {
-      ...operation,
-      held: operation.held ?? state().upgrades?.find(saved => saved.id === operation.id)?.held,
-    },
-    eventId,
-  })
-
-  // Once an upgrade has ended, the messages it held go to Hydra in the order they were sent.
-  const release = () => {
-    // A closing server leaves them held for the next one.
-    if (closing()) {
-      return
-    }
-
-    for (const operation of state().upgrades ?? []) {
-      if (!operation.held?.length || [
-        'running',
-        'restarting',
-      ].includes(operation.state)) {
-        continue
-      }
-
-      for (const message of operation.held) {
-        deliver({ message })
-      }
-
-      record({
-        operation: {
-          ...operation,
-          held: [],
-        },
-      })
-    }
-  }
-
-  const monitorRestart = async ({
-    id,
-    force,
-  }: {
-    id: string
-    force: boolean
-  }) => {
+  const monitorRestart = async ({ id }: { id: string }) => {
     const deadline = Date.now() + RESTART_WAIT_MS
     let failure: string | undefined
 
     try {
-      const result = restart({ force })
+      const result = restart()
 
       if (result) {
         await Promise.race([
@@ -142,7 +96,7 @@ export function upgradeQueue({
     const operation = state().upgrades?.find(item => item.id === id && item.state === 'restarting')
 
     if (operation) {
-      save({
+      record({
         operation: {
           ...operation,
           state: 'failed',
@@ -155,21 +109,10 @@ export function upgradeQueue({
           } : step),
         },
       })
-      release()
     }
   }
 
   const run = async ({ queued }: { queued: UpgradeOperation }) => {
-    // Ends with the turn, Send now or shutdown, as /compact waits for its turn.
-    while (working() && !sendNow.has(queued.id) && !closing()) {
-      await new Promise(resolve => setTimeout(
-        resolve,
-        WAIT_MS,
-      ))
-    }
-
-    sendNow.delete(queued.id)
-
     // A queued upgrade cut by a stop runs when the next server starts.
     if (closing()) {
       return
@@ -180,7 +123,8 @@ export function upgradeQueue({
       state: 'running',
       startedAt: at(),
     }
-    save({ operation: running })
+    record({ operation: running })
+    underway.add(running.id)
     stopping = new AbortController()
     let result: Awaited<ReturnType<typeof runUpgrade>>
 
@@ -188,7 +132,7 @@ export function upgradeQueue({
       result = await runUpgrade({
         root: root!,
         signal: stopping.signal,
-        progress: ({ steps }) => save({
+        progress: ({ steps }) => record({
           operation: {
             ...running,
             steps: structuredClone(steps),
@@ -205,7 +149,8 @@ export function upgradeQueue({
     } = result
 
     if (outcome !== 'upgraded') {
-      save({
+      underway.delete(running.id)
+      record({
         operation: {
           ...running,
           ...rest,
@@ -213,18 +158,44 @@ export function upgradeQueue({
           endedAt: at(),
         },
       })
-      release()
 
       return
     }
 
-    save({
+    const waiting: UpgradeOperation = {
+      ...running,
+      ...rest,
+      state: 'waiting',
+      restartBy: new Date(Date.now() + pendingMs).toISOString(),
+    }
+    record({ operation: waiting })
+    await restartWhenIdle({ waiting })
+  }
+
+  const restartWhenIdle = async ({ waiting }: { waiting: UpgradeOperation }) => {
+    const deadline = Date.parse(waiting.restartBy!)
+
+    while (!closing() && !restartNow.has(waiting.id) && Date.now() < deadline && midTurn()) {
+      await new Promise(resolve => setTimeout(
+        resolve,
+        IDLE_POLL_MS,
+      ))
+    }
+
+    restartNow.delete(waiting.id)
+    underway.delete(waiting.id)
+
+    // The server is stopping anyway; the next one starts on the built code and records the upgrade done.
+    if (closing()) {
+      return
+    }
+
+    record({
       operation: {
-        ...running,
-        ...rest,
+        ...waiting,
         state: 'restarting',
         steps: [
-          ...rest.steps,
+          ...waiting.steps,
           {
             step: 'restart',
             state: 'running',
@@ -233,19 +204,17 @@ export function upgradeQueue({
         ],
       },
     })
-    await monitorRestart({
-      id: running.id,
-      force: false,
-    })
+    await monitorRestart({ id: waiting.id })
   }
 
-  const enqueue = ({ queued }: { queued: UpgradeOperation }) => schedule({
-    id: queued.id,
+  const enqueue = ({ queued }: { queued: UpgradeOperation }) => background({
+    name: 'upgrade',
     run: async () => {
       try {
         await run({ queued })
       } catch (error) {
-        save({
+        underway.delete(queued.id)
+        record({
           operation: {
             ...queued,
             state: 'failed',
@@ -254,7 +223,6 @@ export function upgradeQueue({
             endedAt: at(),
           },
         })
-        release()
       }
     },
   })
@@ -291,10 +259,7 @@ export function upgradeQueue({
       })
       background({
         name: 'restart',
-        run: () => monitorRestart({
-          id,
-          force: true,
-        }),
+        run: () => monitorRestart({ id }),
       })
     },
 
@@ -335,36 +300,13 @@ export function upgradeQueue({
       enqueue({ queued })
     },
 
-    // The queue's Send now: run without waiting for Hydra's turn to end.
+    // Restart now: a built upgrade restarts without waiting for agents between turns.
     sendNow({ id }: { id: string }) {
-      if (!state().upgrades?.some(operation => operation.id === id && operation.state === 'queued')) {
+      if (!state().upgrades?.some(operation => operation.id === id && operation.state === 'waiting')) {
         return false
       }
 
-      sendNow.add(id)
-
-      return true
-    },
-
-    // Holds a Hydra message sent while an upgrade runs or restarts; false when none does.
-    hold({ message }: { message: HeldMessage }) {
-      const operation = active()
-
-      if (!operation || operation.state === 'queued') {
-        return false
-      }
-
-      if (!operation.held?.some(held => held.id === message.id)) {
-        record({
-          operation: {
-            ...operation,
-            held: [
-              ...operation.held ?? [],
-              message,
-            ],
-          },
-        })
-      }
+      restartNow.add(id)
 
       return true
     },
@@ -386,14 +328,12 @@ export function upgradeQueue({
       return 'stopping'
     },
 
-    release,
-
     // After a restart: the upgrade that restarted this server is done, a queued one queues again,
     // and one a stop cut mid-run failed and may have left the folder partly upgraded.
-    // Their held messages wait for release, once the server is ready for Hydra again.
     recover() {
       for (const operation of state().upgrades ?? []) {
-        if (operation.state === 'restarting') {
+        // A built upgrade that waited to restart runs its new code now, whatever restarted this server.
+        if (operation.state === 'restarting' || operation.state === 'waiting') {
           record({
             operation: {
               ...operation,

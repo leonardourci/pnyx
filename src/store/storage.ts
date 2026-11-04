@@ -1,6 +1,6 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
-import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, rmSync, statSync, writeSync } from 'node:fs'
-import { join } from 'node:path'
+import { chmodSync, closeSync, existsSync, fchmodSync, fsyncSync, mkdirSync, openSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeSync } from 'node:fs'
+import { dirname, join } from 'node:path'
 import { HydraError } from './errors.ts'
 import { pnyxHome } from './paths.ts'
 
@@ -82,6 +82,36 @@ export function writeDurably({
       written += bytes
     }
 
+    fsyncSync(fd)
+  } finally {
+    closeSync(fd)
+  }
+}
+
+// Writes the whole file beside the old one and renames it into place, so a reader sees one or the other.
+export function replaceFile({
+  path,
+  text,
+}: {
+  path: string
+  text: string
+}): void {
+  const stage = `${path}.next`
+  writeDurably({
+    path: stage,
+    data: text,
+    flag: 'w',
+  })
+  renameSync(
+    stage,
+    path,
+  )
+  const fd = openSync(
+    dirname(path),
+    'r',
+  )
+
+  try {
     fsyncSync(fd)
   } finally {
     closeSync(fd)

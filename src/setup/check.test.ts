@@ -1,74 +1,85 @@
 import assert from 'node:assert/strict'
-import { spawnSync } from 'node:child_process'
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
+import { runForRequest } from '#app/api-run.ts'
 import { serviceFile } from './service.ts'
-
-const CLI = join(
-  import.meta.dirname,
-  '..',
-  'cli',
-  'pnyx-axi.ts',
-)
 
 test(
   'setup check and Hydra digest report the missing login service until its file is installed',
   {
     skip: process.platform !== 'darwin' && process.platform !== 'linux',
   },
-  t => {
+  async t => {
     const root = mkdtempSync(join(
       tmpdir(),
       'pnyx-check-service-',
     ))
-    t.after(() => rmSync(
-      root,
-      {
-        recursive: true,
-        force: true,
-      },
-    ))
-    process.env.PNYX_HOME = join(
-      root,
-      'pnyx',
-    )
-    const env = {
-      ...process.env,
-      HOME: root,
-      XDG_CONFIG_HOME: join(
-        root,
-        'config',
-      ),
-      CLAUDE_CONFIG_DIR: join(
-        root,
-        'claude',
-      ),
-      CODEX_HOME: join(
-        root,
-        'codex',
-      ),
+    const previous = {
+      PNYX_HOME: process.env.PNYX_HOME,
+      HOME: process.env.HOME,
+      XDG_CONFIG_HOME: process.env.XDG_CONFIG_HOME,
+      CLAUDE_CONFIG_DIR: process.env.CLAUDE_CONFIG_DIR,
+      CODEX_HOME: process.env.CODEX_HOME,
     }
-    const run = ({ args }: { args: string[] }) => spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        CLI,
-        ...args,
-      ],
+    // Commands run in this process and look for the login service under its own HOME.
+    Object.assign(
+      process.env,
       {
-        env,
-        encoding: 'utf8',
+        PNYX_HOME: join(
+          root,
+          'pnyx',
+        ),
+        HOME: root,
+        XDG_CONFIG_HOME: join(
+          root,
+          'config',
+        ),
+        CLAUDE_CONFIG_DIR: join(
+          root,
+          'claude',
+        ),
+        CODEX_HOME: join(
+          root,
+          'codex',
+        ),
       },
     )
-    const fresh = run({
+    t.after(() => {
+      for (const [
+        name,
+        value,
+      ] of Object.entries(previous)) {
+        if (value === undefined) {
+          delete process.env[name]
+        } else {
+          process.env[name] = value
+        }
+      }
+
+      rmSync(
+        root,
+        {
+          recursive: true,
+          force: true,
+        },
+      )
+    })
+    const run = ({ args }: { args: string[] }) => runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {},
+      },
+    })
+    const fresh = await run({
       args: [
         'setup',
         'check',
       ],
     })
-    const removed = run({
+    const removed = await run({
       args: [
         'setup',
         'service',
@@ -77,7 +88,7 @@ test(
       ],
     })
     assert.notEqual(
-      removed.status,
+      removed.exitCode,
       0,
     )
     assert.match(
@@ -85,7 +96,7 @@ test(
       /unknown setup target: service/,
     )
     assert.equal(
-      fresh.status,
+      fresh.exitCode,
       1,
     )
     assert.match(
@@ -93,16 +104,16 @@ test(
       /^ {2}service,[^\n]*,owner,pnyx-axi setup$/m,
     )
     assert.match(
-      run({
+      (await run({
         args: [
           'hydra',
           'digest',
         ],
-      }).stdout,
+      })).stdout,
       /- service: no login service/,
     )
 
-    const proposal = run({
+    const proposal = await run({
       args: [
         'setup',
         '--preview',
@@ -116,12 +127,12 @@ test(
       ],
     })
     assert.equal(
-      proposal.status,
+      proposal.exitCode,
       0,
     )
     const token = /^token: (\S+)$/m.exec(proposal.stdout)?.[1]
     assert.ok(token)
-    const confirmed = run({
+    const confirmed = await run({
       args: [
         'approval',
         'confirm',
@@ -131,7 +142,7 @@ test(
       ],
     })
     assert.equal(
-      confirmed.status,
+      confirmed.exitCode,
       0,
     )
     assert.match(
@@ -145,7 +156,7 @@ test(
 
     const { path } = serviceFile({
       userHome: root,
-      configHome: env.XDG_CONFIG_HOME,
+      configHome: process.env.XDG_CONFIG_HOME,
     })
     assert.equal(
       existsSync(path),
@@ -160,21 +171,21 @@ test(
       '',
     )
     assert.doesNotMatch(
-      run({
+      (await run({
         args: [
           'setup',
           'check',
         ],
-      }).stdout,
+      })).stdout,
       /^ {2}service,/m,
     )
     assert.doesNotMatch(
-      run({
+      (await run({
         args: [
           'hydra',
           'digest',
         ],
-      }).stdout,
+      })).stdout,
       /- service:/,
     )
   },

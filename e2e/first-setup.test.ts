@@ -6,8 +6,10 @@ import { createServer } from 'node:net'
 import { dirname, join } from 'node:path'
 import { test } from 'node:test'
 import { promisify } from 'node:util'
-import { processStart } from '#agent-host/discovery.ts'
-import { until } from '#agent-host/fixtures/harness.ts'
+import { setTimeout as delay } from 'node:timers/promises'
+import { processStart } from '#app/server-state.ts'
+import { emptyHydra, replay } from '#app/reducer.ts'
+import type { HydraEvent } from '#app/model.ts'
 
 const WAIT_MS = 120000
 const cli = join(
@@ -15,8 +17,24 @@ const cli = join(
   '../dist/cli/pnyx-axi.js',
 )
 
+async function until({
+  check,
+  timeout,
+}: {
+  check(): boolean | Promise<boolean>
+  timeout: number
+}) {
+  for (const end = Date.now() + timeout; !await check();) {
+    if (Date.now() > end) {
+      throw new Error('condition not met in time')
+    }
+
+    await delay(50)
+  }
+}
+
 test(
-  'fresh setup installs native runtime and supports starts, restart and session reuse',
+  'fresh setup installs one login service and supports starts, restart and session reuse',
   async t => {
     const root = realpathSync(mkdtempSync('/tmp/pnyx-first-'))
     const home = join(
@@ -107,20 +125,21 @@ test(
     }
     const serverPath = join(
       pnyx,
-      'hydras/default/server.json',
+      'server.json',
     )
-    const ownerPath = join(
-      pnyx,
-      'native/owner.json',
-    )
-    const selectedPath = join(
-      pnyx,
-      'native-bundle.json',
-    )
-    const snapshot = join(
-      pnyx,
-      'hydras/default/snapshot.json',
-    )
+    // The server saves its snapshot in the background, so the log is what to read.
+    const hydraCard = () => replay({
+      state: emptyHydra(),
+      events: readFileSync(
+        join(
+          pnyx,
+          'hydras/default/events.jsonl',
+        ),
+        'utf8',
+      ).split('\n')
+        .filter(Boolean)
+        .map(line => JSON.parse(line) as HydraEvent),
+    }).cards.$hydra
     const events = join(
       pnyx,
       'hydras/default/events.jsonl',
@@ -137,13 +156,6 @@ test(
       },
     )
     const processes: ChildProcess[] = []
-    const owner = () => JSON.parse(readFileSync(
-      ownerPath,
-      'utf8',
-    )) as {
-      pid: number
-      start: string
-    }
     const server = () => JSON.parse(readFileSync(
       serverPath,
       'utf8',
@@ -187,11 +199,6 @@ test(
             start,
           })
         }
-      }
-
-      if (existsSync(ownerPath)) {
-        const current = owner()
-        await stopPid(current)
       }
 
       rmSync(
@@ -240,16 +247,7 @@ test(
       false,
     )
     await run({ args: ['setup'] })
-    assert.ok(existsSync(selectedPath))
     assert.ok(existsSync(managerLog))
-    const bundle = JSON.parse(readFileSync(
-      selectedPath,
-      'utf8',
-    )).bundle as string
-    assert.ok(existsSync(join(
-      bundle,
-      'dist/agent-host/main.js',
-    )))
     const jobs = process.platform === 'linux' ? join(
       root,
       'config/systemd/user',
@@ -258,8 +256,10 @@ test(
       'Library/LaunchAgents',
     )
     const files = readdirSync(jobs)
-    const nativeJob = files.find(name => name.startsWith('local.pnyx.native.'))
-    assert.ok(nativeJob)
+    assert.deepEqual(
+      files.filter(name => name.startsWith('local.pnyx.')).length,
+      1,
+    )
     const serverJob = files.find(name => name.startsWith('local.pnyx.server.'))
     assert.ok(serverJob)
     assert.ok(readFileSync(
@@ -269,23 +269,6 @@ test(
       ),
       'utf8',
     ).includes('4747'))
-    const definition = readFileSync(
-      join(
-        jobs,
-        nativeJob,
-      ),
-      'utf8',
-    )
-    assert.ok(definition.includes(bundle))
-    assert.match(
-      definition,
-      /dist\/agent-host\/main\.js/,
-    )
-    assert.ok(definition.includes(pnyx))
-    assert.ok(readFileSync(
-      managerLog,
-      'utf8',
-    ).includes(nativeJob))
     await run({
       args: [
         'setup',
@@ -300,13 +283,6 @@ test(
       ),
       'utf8',
     ).includes(String(port)))
-    assert.equal(
-      JSON.parse(readFileSync(
-        selectedPath,
-        'utf8',
-      )).bundle,
-      bundle,
-    )
 
     const start = async () => {
       const child = spawn(
@@ -325,7 +301,7 @@ test(
       processes.push(child)
       await until({
         timeout: WAIT_MS,
-        check: () => existsSync(serverPath) && existsSync(ownerPath),
+        check: () => existsSync(serverPath),
       })
       await until({
         timeout: WAIT_MS,
@@ -336,7 +312,7 @@ test(
               { signal: AbortSignal.timeout(1000) },
             )
 
-            return response.ok && (await response.json()).native?.state === 'ready'
+            return response.ok
           } catch {
             return false
           }
@@ -375,25 +351,19 @@ test(
     await until({
       timeout: WAIT_MS,
       check: () => {
-        const card = JSON.parse(readFileSync(
-          snapshot,
-          'utf8',
-        )).state.cards.$hydra
+        const card = hydraCard()
 
         return !!card?.agent?.sessionId && card.sessionActivity === 'finished'
       },
     })
-    const session = JSON.parse(readFileSync(
-      snapshot,
-      'utf8',
-    )).state.cards.$hydra.agent.sessionId as string
-    const previousOwner = owner()
+    const session = hydraCard()!.agent!.sessionId
+    const previousServer = server().pid
     await run({ args: ['restart'] })
     await until({
       timeout: WAIT_MS,
       check: () => {
         try {
-          return owner().pid !== previousOwner.pid
+          return server().pid !== previousServer
         } catch (error) {
           if (error instanceof SyntaxError || (error as NodeJS.ErrnoException).code === 'ENOENT') {
             return false
@@ -430,26 +400,11 @@ test(
       check: () => finishes() > previousFinishes,
     })
     assert.equal(
-      JSON.parse(readFileSync(
-        snapshot,
-        'utf8',
-      )).state.cards.$hydra.agent.sessionId,
+      hydraCard()?.agent?.sessionId,
       session,
     )
-    const restartedOwner = owner()
     await run({ args: ['stop'] })
     await start()
-    assert.equal(
-      owner().pid,
-      restartedOwner.pid,
-    )
-    assert.equal(
-      JSON.parse(readFileSync(
-        selectedPath,
-        'utf8',
-      )).bundle,
-      bundle,
-    )
     const afterRestartFinishes = finishes()
     await run({
       args: [

@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { after, test } from 'node:test'
 import { withWriter } from '#app/writer.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { decidePush } from '#tasks/push.ts'
 import { search, searchPath, sqlite, updateIndex } from './index.ts'
 import { redact, transcriptMessages } from './text.ts'
 
@@ -224,5 +226,71 @@ test(
       catchUp.exec('ROLLBACK')
       catchUp.close()
     }
+  },
+)
+
+test(
+  'building the search index writes nothing to the Hydra, so the server stays its only writer',
+  () => {
+    const home = mkdtempSync(join(
+      scratch,
+      'pnyx-oracle-reader-',
+    ))
+    process.env.PNYX_HOME = home
+    // Hydra's own session has a transcript whose messages a harvest would record as events.
+    withWriter({
+      hydraId: 'default',
+      fn: ({ writer }) => {
+        const pushed = decidePush({
+          state: writer.state,
+          key: HYDRA_CARD,
+          input: {
+            agent: {
+              provider: 'claude-code',
+              sessionId: 'reader-session',
+              transcriptPath: TRANSCRIPT,
+            },
+          },
+          meta: {
+            at: '2026-10-15T10:00:00Z',
+            actor: 'fixture',
+          },
+        })
+        assert.ok('event' in pushed)
+        writer.append({ event: pushed.event })
+      },
+    })
+    const dir = join(
+      home,
+      'hydras',
+      'default',
+    )
+    const log = readFileSync(
+      join(
+        dir,
+        'events.jsonl',
+      ),
+      'utf8',
+    )
+
+    updateIndex({ hydraId: 'default' })
+
+    assert.equal(
+      readFileSync(
+        join(
+          dir,
+          'events.jsonl',
+        ),
+        'utf8',
+      ),
+      log,
+    )
+    assert.equal(
+      existsSync(join(
+        dir,
+        'harvest.json',
+      )),
+      false,
+    )
   },
 )

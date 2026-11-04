@@ -1,11 +1,12 @@
 import { pendingSteering, steeringClaim } from './steering.ts'
-import { readFileSync } from 'node:fs'
+import { readInput } from '#app/request-context.ts'
 import { integer, meta, parse, required, COMMON, type Output } from '#app/cli-support.ts'
 import { HydraError } from '#store/errors.ts'
 import type { SteeringAck, SteeringAttempt, SteeringClaim } from './model.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { acknowledgeSteering, enqueueSteering, inboxTask, recordSteeringAttempt, requireSteeringWorker } from './inbox.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 export function inboxCommand({ args }: { args: string[] }): Output {
   const {
@@ -71,7 +72,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
           state: writer.state,
           card,
           actor: actor.actor,
-          worker: process.env.PNYX_STEERING_WORKER,
+          worker: requestEnv().PNYX_STEERING_WORKER,
         })
         const output = read({ writer })
         const claim = steeringClaim({ card })
@@ -95,7 +96,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
               outcome: 'read',
             },
             meta: actor,
-            worker: process.env.PNYX_STEERING_WORKER,
+            worker: requestEnv().PNYX_STEERING_WORKER,
           })
         }
 
@@ -137,10 +138,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
     }
 
     if (typeof values.file === 'string') {
-      text = readFileSync(
-        values.file === '-' ? 0 : values.file,
-        'utf8',
-      )
+      text = readInput({ file: values.file })
     }
   }
 
@@ -213,7 +211,7 @@ export function inboxCommand({ args }: { args: string[] }): Output {
             id,
             ack,
             meta: actor,
-            worker: process.env.PNYX_STEERING_WORKER,
+            worker: requestEnv().PNYX_STEERING_WORKER,
           }),
         }
       }

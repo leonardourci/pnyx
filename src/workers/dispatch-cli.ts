@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs'
+import { readInput } from '#app/request-context.ts'
 import { TEMPLATE_NUDGE } from '#hydra/digest.ts'
 import { WRITE, guard, parse, required, meta, type Output } from '#app/cli-support.ts'
 import { ApplyError } from '#app/apply/schema.ts'
@@ -196,10 +196,7 @@ function readEnvelope({ values }: { values: Values }): unknown {
 
   try {
     return parseApplyJson({
-      contents: file === undefined ? String(values.json) : readFileSync(
-        file === '-' ? 0 : file,
-        'utf8',
-      ),
+      contents: file === undefined ? String(values.json) : readInput({ file: file }),
     })
   } catch (error) {
     if (error instanceof ApplyError) {
@@ -232,7 +229,7 @@ function parsedDocument({ json }: { json?: string }): unknown {
   }
 }
 
-function ruleCommand({ args }: { args: string[] }): Output {
+async function ruleCommand({ args }: { args: string[] }): Promise<Output> {
   const propose = args[0] === 'propose'
   args = propose ? args.slice(1) : args
   const {
@@ -346,7 +343,7 @@ function ruleCommand({ args }: { args: string[] }): Output {
 
   if (action === 'now') {
     return {
-      now: startsNow({
+      now: await startsNow({
         config: effectiveDispatch({
           document: parsedDocument({ json: values.json as string | undefined }),
         }),

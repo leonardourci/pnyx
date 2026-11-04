@@ -6,14 +6,12 @@ import { flagError } from './cli-support.ts'
 import { DEFAULT_PORT, infoPath, type ServerInfo } from './server-state.ts'
 import { STOP_TIMEOUT_MS, type RunningServer } from './server-transport.ts'
 import { startServer } from './server-daemon.ts'
-import type { NativeProviders } from './native-provider.ts'
-import { ensureNativeHost } from '#setup/native-host.ts'
 import { PNYX_ROOT } from '#upgrade/runner.ts'
 import { HydraError } from '#store/errors.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { RESTART_SIGNAL } from '#upgrade/restart.ts'
-import { hydraIds } from './home-migration.ts'
+import { stopOldHost } from '#workers/children.ts'
 
 function serveFlags({ args }: { args: string[] }) {
   try {
@@ -47,20 +45,16 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
 
   const port = Number(values.port ?? DEFAULT_PORT)
   let server: RunningServer
-  let native: NativeProviders | undefined
 
   try {
-    native = await ensureNativeHost({ source: PNYX_ROOT })
+    await stopOldHost()
     server = await startServer({
-      native,
       hydraId,
       port,
       homes: values.home,
       upgradeRoot: PNYX_ROOT,
     })
   } catch (error) {
-    native?.detach()
-
     if (error instanceof HydraError) {
       throw new AxiError(
         error.message,
@@ -108,7 +102,6 @@ export async function serve(args: string[]): Promise<Record<string, unknown>> {
 
   const watched = firstmate?.close()
   await server.close()
-  native.detach()
 
   return {
     server: signal === RESTART_SIGNAL ? 'restarting' : 'stopped',
@@ -144,10 +137,10 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
   const deadline = Date.now() + STOP_TIMEOUT_MS
 
   // Files and pids, not /health, so a stopping server too busy to answer cannot outlast the deadline.
-  const recorded = () => new Set(hydraIds().flatMap(hydraId => {
+  const recorded = () => {
     try {
       const { pid } = JSON.parse(readFileSync(
-        infoPath({ hydraId }),
+        infoPath(),
         'utf8',
       )) as ServerInfo
       process.kill(
@@ -155,11 +148,11 @@ export async function stop(args: string[]): Promise<Record<string, unknown>> {
         0,
       )
 
-      return [pid]
+      return new Set([pid])
     } catch {
-      return []
+      return new Set<number>()
     }
-  }))
+  }
 
   for (let left = pids; left.length > 0; left = left.filter(pid => recorded().has(pid))) {
     if (Date.now() > deadline) {

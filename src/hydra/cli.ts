@@ -39,9 +39,10 @@ import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#set
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 export async function home(): Promise<Output> {
-  const hydraId = process.env.PNYX_HYDRA || DEFAULT_HYDRA
+  const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
   hideDone({ hydraId })
   const {
     dir,

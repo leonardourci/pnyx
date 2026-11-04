@@ -7,6 +7,8 @@ import { setImmediate } from 'node:timers/promises'
 import { commands } from '#app/cli.ts'
 import { createHost } from '#app/host.ts'
 import { loadHydra } from '#app/store.ts'
+import { withWriter } from '#app/writer.ts'
+import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { IDLE_MS } from '#workers/host.ts'
 import { claudeNative } from '#workers/fixtures/claude-native.ts'
@@ -93,6 +95,7 @@ async function compact({
   })
 }
 
+// The owner's message is recorded first, as hydra send does, then waits in Hydra's queue while the compaction stops Hydra.
 async function hold({
   id,
   text,
@@ -100,13 +103,45 @@ async function hold({
   id: string
   text: string
 }) {
-  await host.hydra({
-    id,
-    text,
-    actor: 'cli',
+  withWriter({
+    hydraId,
+    fn: ({ writer }) => {
+      const message = hydraEvent({
+        state: writer.state,
+        cardId: HYDRA_CARD,
+        meta: {
+          id,
+          at: new Date().toISOString(),
+          actor: 'cli',
+        },
+        change: {
+          type: 'hydra.message',
+          data: {
+            action: 'send',
+            text,
+            hydra: hydraId,
+          },
+        },
+      })
+      assert.ok('event' in message)
+      writer.append({ event: message.event })
+    },
   })
-  assert.ok(compaction()?.inputs.some(input => input.id === id))
+  assert.deepEqual(
+    await host.hydra({
+      id,
+      text,
+      actor: 'cli',
+    }),
+    { state: 'queued' },
+  )
+  assert.equal(
+    loadHydra({ hydraId }).state.hydraOperation?.kind,
+    'compaction',
+  )
 }
+
+const stopped = () => Boolean(loadHydra({ hydraId }).state.hydraOperation)
 
 const host = createHost({
   hydraId,
@@ -177,8 +212,8 @@ try {
     'The agent stopped reporting this compaction before it finished',
   )
   await settle({
-    what: 'the held message to reach the agent',
-    check: () => received({ text: 'Held while compacting' }) && !compaction()?.inputs.length,
+    what: 'the failed compaction to end the stop',
+    check: () => !stopped(),
     tick: RELEASE_TICK_MS,
   })
 
@@ -203,14 +238,19 @@ try {
 
   await finish({
     input: 1,
-    queued: 1,
+    queued: 0,
+  })
+  await settle({
+    what: 'the recap with the held message to reach the agent once the compact turn ends',
+    check: () => received({ text: 'Held while compacting' }),
+    tick: RELEASE_TICK_MS,
   })
   await finish({
     input: 2,
     queued: 0,
   })
   await settle({
-    what: 'the compact and held turns to finish',
+    what: 'the recap turn to finish',
     check: finished,
   })
 
@@ -231,20 +271,25 @@ try {
   )
   mock.timers.tick(1)
   await settle({
-    what: 'the unanswered compaction to fail and release its held message',
-    check: () => compaction()?.operations[2]?.state === 'failed' && received({ text: 'Held while unanswered' }),
+    what: 'the unanswered compaction to fail and end the stop',
+    check: () => compaction()?.operations[2]?.state === 'failed' && !stopped(),
     tick: RELEASE_TICK_MS,
   })
   await finish({
     input: 3,
-    queued: 1,
+    queued: 0,
+  })
+  await settle({
+    what: 'the recap with the held message to reach the agent',
+    check: () => received({ text: 'Held while unanswered' }),
+    tick: RELEASE_TICK_MS,
   })
   await finish({
     input: 4,
     queued: 0,
   })
   await settle({
-    what: 'the unanswered and held turns to finish',
+    what: 'the unanswered and recap turns to finish',
     check: finished,
   })
 

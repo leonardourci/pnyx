@@ -97,11 +97,11 @@ export function hydraMessages({
     } else if (!report) {
       recorded.push({
         id: message.id,
-        kind: 'message',
+        kind: message.kind === 'divider' ? 'divider' : 'message',
         role,
         text: shown,
         at: message.at,
-        hidden: boundaries && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
+        hidden: boundaries && message.kind !== 'divider' && (message.actor === 'pnyx' || !!message.fromMessage || message.id.endsWith(':line')),
         ...(message.task ? { task: message.task } : {}),
       })
     }

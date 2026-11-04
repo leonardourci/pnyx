@@ -4,8 +4,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { HydraError } from '#store/errors.ts'
 import { hydraDir } from './home-migration.ts'
-import { withWriter } from './writer.ts'
-import { pnyxHome } from '#store/storage.ts'
+import { pnyxHome, withRegistryLock } from '#store/storage.ts'
 
 export const DEFAULT_PORT = 4747
 // A busy server can hold its event loop for seconds, and a message sent while it seems down never reaches it.
@@ -14,39 +13,16 @@ const HEALTH_TIMEOUT_MS = 60_000
 export interface ServerInfo {
   pid: number
   port: number
-  // The Hydra's address on the one server, ending in /hydra/<id>/.
+  // The address of a Hydra on the server, ending in /hydra/<id>/; the record itself names the default Hydra.
   url: string
-  // Null when the ingest socket could not be bound; hooks then spool.
+  // A Hydra's hook socket; null when it could not be bound, and hooks then spool.
   socket: string | null
   service?: boolean
   serveArgs?: string[]
 }
 
-// Only the path of the recorded address is used, so a request (and the token sent with it) never leaves this machine.
-const local = ({
-  info,
-  path,
-}: {
-  info: ServerInfo
-  path: string
-}) => {
-  const url = new URL(
-    path,
-    `http://127.0.0.1:${info.port}${new URL(info.url).pathname}`,
-  )
-
-  if (url.host !== `127.0.0.1:${info.port}`) {
-    throw new HydraError({
-      message: 'the recorded server address is not local',
-      code: 'SERVER_UNAVAILABLE',
-    })
-  }
-
-  return url
-}
-
-export const infoPath = ({ hydraId }: { hydraId: string }) => join(
-  hydraDir({ hydraId }),
+export const infoPath = () => join(
+  pnyxHome(),
   'server.json',
 )
 export const socketPath = ({ hydraId }: { hydraId: string }) => join(
@@ -54,38 +30,50 @@ export const socketPath = ({ hydraId }: { hydraId: string }) => join(
   'server.sock',
 )
 
-// The Hydra's server, or null when none is running. Trusted only when the
-// recorded port answers /health with this Hydra and pid, so a server.json left
-// by a server that died (its pid or port since reused) counts as not running.
-// A dead pid is not asked at all, so only a running server is waited on.
+// The server, with the address of this Hydra on it, or null when none is running. Trusted only when the
+// recorded port answers /health with this pid and Hydra, so a server.json left by a server that died
+// (its pid or port since reused) counts as not running. A dead pid is not asked at all.
 export async function readServer({ hydraId }: { hydraId: string }): Promise<ServerInfo | null> {
   let info: ServerInfo
 
   try {
     info = JSON.parse(readFileSync(
-      infoPath({ hydraId }),
+      infoPath(),
       'utf8',
     )) as ServerInfo
+
+    // Inside the server, the Hydras it runs are known without asking itself.
+    if (info.pid === process.pid) {
+      return hosts.has(hydraId) ? {
+        ...info,
+        url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
+        socket: socketPath({ hydraId }),
+      } : null
+    }
+
     process.kill(
       info.pid,
       0,
     )
     const res = await fetch(
-      local({
-        info,
-        path: 'health',
-      }),
+      `http://127.0.0.1:${info.port}/health`,
       {
         headers: { connection: 'close' },
         signal: AbortSignal.timeout(HEALTH_TIMEOUT_MS),
       },
     )
     const health = (await res.json()) as {
-      hydraId?: unknown
+      hydras?: unknown
       pid?: unknown
     }
 
-    return health.hydraId === hydraId && health.pid === info.pid ? info : null
+    const serves = Array.isArray(health.hydras) && health.hydras.includes(hydraId)
+
+    return health.pid === info.pid && serves ? {
+      ...info,
+      url: `http://127.0.0.1:${info.port}/hydra/${hydraId}/`,
+      socket: socketPath({ hydraId }),
+    } : null
   } catch {
     return null
   }
@@ -136,12 +124,30 @@ export function localToken(): string {
   ).trim()
 }
 
-// A start waits for the harness to open its session, which Codex allows five minutes.
-const HOST_TIMEOUT_MS = 360_000
+type Ask = ({ body }: { body: Record<string, unknown> }) => Promise<Record<string, unknown>>
+const hosts = new Map<string, Ask>()
 
-// Asks the Hydra's running server to act on an agent it hosts. Throws NOT_RUNNING when
-// no server answers, so nothing was sent; any other failure after the request left may
-// or may not have reached the agent.
+// The server offers each Hydra it runs; a command it runs asks that Hydra's agents through here.
+export function offerHost({
+  hydraId,
+  ask,
+}: {
+  hydraId: string
+  ask: Ask
+}): () => void {
+  hosts.set(
+    hydraId,
+    ask,
+  )
+
+  return () => {
+    if (hosts.get(hydraId) === ask) {
+      hosts.delete(hydraId)
+    }
+  }
+}
+
+// Acts on an agent the server runs. Throws NOT_RUNNING when this process serves no such Hydra, so nothing was sent.
 export async function askHost({
   hydraId,
   body,
@@ -149,9 +155,9 @@ export async function askHost({
   hydraId: string
   body: Record<string, unknown>
 }): Promise<Record<string, unknown>> {
-  const info = await readServer({ hydraId })
+  const ask = hosts.get(hydraId)
 
-  if (!info) {
+  if (!ask) {
     throw new HydraError({
       message: `the Pnyx server for Hydra ${hydraId} is not running`,
       code: 'NOT_RUNNING',
@@ -159,38 +165,7 @@ export async function askHost({
     })
   }
 
-  const res = await fetch(
-    local({
-      info,
-      path: 'host',
-    }),
-    {
-      method: 'POST',
-      headers: {
-        'connection': 'close',
-        'content-type': 'application/json',
-        'authorization': `Bearer ${localToken()}`,
-      },
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(HOST_TIMEOUT_MS),
-    },
-  )
-  type Answer = Record<string, unknown> & {
-    error?: string
-    code?: string
-    help?: string[]
-  }
-  const answer = (await res.json()) as Answer
-
-  if (!res.ok) {
-    throw new HydraError({
-      message: answer.error ?? `the server answered ${res.status}`,
-      code: answer.code ?? 'UNKNOWN',
-      help: answer.help ?? [],
-    })
-  }
-
-  return answer
+  return ask({ body })
 }
 
 export function hydraIdentity({ hydraId }: { hydraId: string }): string {
@@ -203,7 +178,14 @@ export function hydraIdentity({ hydraId }: { hydraId: string }): string {
     )
 }
 
-export function processStart({ pid }: { pid: number }): string | null {
+// The agent host of earlier builds recorded its start in local time (see stopOldHost); everything else uses UTC.
+export function processStart({
+  pid,
+  localTime = false,
+}: {
+  pid: number
+  localTime?: boolean
+}): string | null {
   try {
     return execFileSync(
       '/bin/ps',
@@ -223,7 +205,7 @@ export function processStart({ pid }: { pid: number }): string | null {
         ],
         env: {
           ...process.env,
-          TZ: 'UTC',
+          ...localTime ? {} : { TZ: 'UTC' },
           LC_ALL: 'C',
         },
       },
@@ -237,9 +219,10 @@ export function processStart({ pid }: { pid: number }): string | null {
   }
 }
 
-export function claimServer({ hydraId }: { hydraId: string }): () => void {
+// One server per Pnyx home; a second start while the first is alive is refused.
+export function claimServer(): () => void {
   const path = join(
-    hydraDir({ hydraId }),
+    pnyxHome(),
     'server.lock',
   )
   const started = processStart({ pid: process.pid })
@@ -255,8 +238,7 @@ export function claimServer({ hydraId }: { hydraId: string }): () => void {
     pid: process.pid,
     processStart: started,
   })
-  withWriter({
-    hydraId,
+  withRegistryLock({
     fn: () => {
       let previous: {
         pid?: unknown
@@ -278,7 +260,7 @@ export function claimServer({ hydraId }: { hydraId: string }): () => void {
       && typeof previous.processStart === 'string'
       && processStart({ pid: previous.pid }) === previous.processStart) {
         throw new HydraError({
-          message: `a server already owns Hydra ${hydraId}`,
+          message: 'a Pnyx server is already running for this home',
           code: 'ALREADY_RUNNING',
         })
       }

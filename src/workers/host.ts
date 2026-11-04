@@ -2,7 +2,7 @@ import { effectiveDispatch, type Harness } from './dispatch-config.ts'
 import type { AgentSettings, AgentRef } from './model.ts'
 import type { Card } from '#tasks/model.ts'
 import { steeringHeld } from './steering.ts'
-import type { HydraState } from '#app/model.ts'
+import type { HydraEvent, HydraState } from '#app/model.ts'
 import { readEvents } from '#app/event-log.ts'
 
 export const SETTINGS = [
@@ -34,17 +34,7 @@ export const UNCONFIRMED_QUOTE_CHARS = 80
 
 export const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 
-// A worker runs the worker reporting skill's own commands without asking; any other pnyx-axi command still asks.
-export const WORKER_COMMANDS = [
-  'task show',
-  'task history',
-  'task status',
-  'task chat',
-  'task inbox read',
-  'task inbox ack',
-  'hydra send',
-  'link',
-].map(command => `pnyx-axi ${command}`)
+export { WORKER_COMMANDS } from '#app/command-registry.ts'
 
 // The agent must not inherit the server's terminal, task or actor.
 export const INHERITED = /^(PNYX_|TMUX|HERDR_|PASEO_|TERM_PROGRAM|CLAUDECODE$|CLAUDE_CODE_ENTRYPOINT$|CODEX_THREAD_ID$|CODEX_PARENT_THREAD_ID$)/
@@ -90,7 +80,29 @@ export function steeringAssignment({ card }: { card: Card }): string {
   ])
 }
 
-// A worker's cut turn is resumed once: not when that turn was itself a resume, nor twice for one cut.
+// A turn a restart cut resumes, and so does its resume when another restart cuts that, up to this many in a row.
+export const MAX_RESUMES = 3
+
+// How many resumes in a row led to this turn: a resume turn's id names the turn it resumed.
+export function resumesInARow({
+  events,
+  turn,
+}: {
+  events: HydraEvent[]
+  turn: HydraEvent
+}): number {
+  let count = 0
+
+  for (let current: HydraEvent | undefined = turn; current?.id.startsWith('resume:');) {
+    count++
+    const resumed: number = Number(current.id.split(':')[1])
+    current = events.find(event => event.seq === resumed)
+  }
+
+  return count
+}
+
+// A worker's cut turn is resumed at most once per cut, and at most MAX_RESUMES times in a row.
 export function findWorkerTurnToResume({
   hydraId,
   state,
@@ -100,7 +112,8 @@ export function findWorkerTurnToResume({
   state: HydraState
   agent: AgentRef
 }): string | undefined {
-  const lastTurn = readEvents({ hydraId }).findLast(event => {
+  const events = readEvents({ hydraId })
+  const lastTurn = events.findLast(event => {
     if (event.type !== 'card.pushed' || event.data.activity !== 'working') {
       return false
     }
@@ -111,7 +124,10 @@ export function findWorkerTurnToResume({
     return matchesSession
   })
 
-  if (!lastTurn || lastTurn.id.startsWith('resume:')) {
+  if (!lastTurn || resumesInARow({
+    events,
+    turn: lastTurn,
+  }) >= MAX_RESUMES) {
     return undefined
   }
 

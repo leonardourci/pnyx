@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { mkdtempSync, readFileSync, writeFileSync, readdirSync, rmSync, appendFileSync, mkdirSync, renameSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
-import { spawnSync } from 'node:child_process'
 import { test, type TestContext } from 'node:test'
 import { commands } from '#app/cli.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { repairHydra } from '#app/repair.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { ApplyError } from './schema.ts'
 
 function fixture({ t }: { t: TestContext }) {
@@ -68,12 +68,27 @@ function fixture({ t }: { t: TestContext }) {
     dir,
     path,
     apply,
+    // Runs a command line as the server runs it for a client, with its stdin.
+    cli: ({
+      argv,
+      stdin,
+    }: {
+      argv: string[]
+      stdin: string
+    }) => runForRequest({
+      body: {
+        argv,
+        cwd: root,
+        env: { PNYX_ACTOR: 'cli' },
+        stdin,
+      },
+    }),
   }
 }
 
 test(
   'check previews without writes; one durable record replays all tasks, dependencies and lifecycle effects',
-  t => {
+  async t => {
     const f = fixture({ t })
     const document: unknown = JSON.parse(readFileSync(
       new URL(
@@ -82,7 +97,7 @@ test(
       ),
       'utf8',
     ))
-    const check = f.apply({
+    const check = await f.apply({
       document,
       flags: [
         '--check',
@@ -106,7 +121,7 @@ test(
       readdirSync(f.root),
       ['changes.json'],
     )
-    const result = f.apply({
+    const result = await f.apply({
       document,
       flags: [
         '--event-id',
@@ -178,7 +193,7 @@ test(
       () => commands.undo([last.id]),
       /append a correction with apply/,
     )
-    commands.task([
+    await commands.task([
       'brief',
       aliases.build,
       '--brief',
@@ -188,7 +203,7 @@ test(
       log,
       'utf8',
     )
-    const retry = f.apply({
+    const retry = await f.apply({
       document,
       flags: [
         '--event-id',
@@ -210,7 +225,7 @@ test(
       ),
       afterEdit,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -233,9 +248,9 @@ test(
 
 test(
   'independent invalid operations return indexed fields and leave both log and snapshot unchanged',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'existing',
@@ -256,7 +271,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -326,9 +341,9 @@ test(
 
 test(
   'expected revisions watch tasks rather than the global sequence; stale input and dependency cycles write nothing',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'a',
@@ -338,7 +353,7 @@ test(
     const initial = loadHydra({ hydraId: 'default' }).state
     const a = initial.keys.a!
     const revision = initial.cards[a]!.revision
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'b',
@@ -357,7 +372,7 @@ test(
       ],
     }
     assert.equal(
-      f.apply({ document }).applied,
+      (await f.apply({ document })).applied,
       true,
     )
     const log = readFileSync(
@@ -367,7 +382,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({ document }),
       error => {
         assert.ok(error instanceof ApplyError)
@@ -383,7 +398,7 @@ test(
         return true
       },
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -426,9 +441,9 @@ test(
 
 test(
   'a torn compound record exposes none of its children and repair preserves the original log',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'base',
@@ -439,7 +454,7 @@ test(
       f.dir,
       'events.jsonl',
     ))
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -487,7 +502,7 @@ test(
       state.cards[state.keys.base!]?.brief,
       undefined,
     )
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'brief',
         'base',
@@ -524,8 +539,8 @@ test(
 )
 
 test(
-  'stdin input uses the real CLI and reports closed-schema errors with a failing exit status',
-  t => {
+  'stdin input reports closed-schema errors with a failing exit status',
+  async t => {
     const f = fixture({ t })
     const input = JSON.stringify({
       version: 1,
@@ -544,24 +559,17 @@ test(
         },
       ],
     })
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const result = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--check',
       ],
-      {
-        env: process.env,
-        input,
-        encoding: 'utf8',
-      },
-    )
+      stdin: input,
+    })
     assert.equal(
-      result.status,
+      result.exitCode,
       2,
     )
     assert.match(
@@ -581,7 +589,7 @@ test(
       /\/changes\/1\/op/,
     )
     assert.deepEqual(
-      readdirSync(f.root),
+      readEvents({ hydraId: 'default' }).filter(event => event.type.startsWith('task.')),
       [],
     )
   },
@@ -595,7 +603,7 @@ test(
       apis: ['Date'],
       now: Date.parse('2026-10-29T10:00:00Z'),
     })
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -622,7 +630,7 @@ test(
     ])
     const messageId = message.message as string
     process.env.PNYX_ACTOR = 'hydra'
-    const result = f.apply({
+    const result = await f.apply({
       document: {
         version: 1,
         changes: [
@@ -692,7 +700,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -722,7 +730,7 @@ test(
       },
     )
     process.env.PNYX_ACTOR = 'worker:synthetic'
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -774,9 +782,9 @@ test(
 
 test(
   'status done cannot bypass report or landing gates, including a later operation in the same document',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'research',
@@ -785,7 +793,7 @@ test(
       '--kind',
       'investigation',
     ])
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'build',
@@ -799,7 +807,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -827,7 +835,7 @@ test(
         return true
       },
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -871,16 +879,16 @@ test(
 
 test(
   'local links and outcomes share short-command validation; an unchanged apply still owns its retry identity',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'a',
       '--title',
       'A',
     ])
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -904,7 +912,7 @@ test(
       state.cards[state.keys.a!]?.outcome?.state,
       'failed',
     )
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -941,7 +949,7 @@ test(
         },
       ],
     }
-    f.apply({
+    await f.apply({
       document: noop,
       flags: [
         '--event-id',
@@ -956,16 +964,16 @@ test(
       'utf8',
     )
     assert.equal(
-      f.apply({
+      (await f.apply({
         document: noop,
         flags: [
           '--event-id',
           'noop-id',
         ],
-      }).duplicate,
+      })).duplicate,
       true,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1004,7 +1012,7 @@ test(
       ]),
       /clear/,
     )
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'create',
         '--title',
@@ -1029,9 +1037,9 @@ test(
 
 test(
   'check and rejected documents preserve stale leases, and apply IDs are reserved against short commands',
-  t => {
+  async t => {
     const f = fixture({ t })
-    const created = commands.task([
+    const created = await commands.task([
       'create',
       '--key',
       'a',
@@ -1069,7 +1077,7 @@ test(
         },
       ],
     }
-    f.apply({
+    await f.apply({
       document,
       flags: ['--check'],
     })
@@ -1080,7 +1088,7 @@ test(
       ),
       lease,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1107,14 +1115,14 @@ test(
       ),
       lease,
     )
-    f.apply({
+    await f.apply({
       document,
       flags: [
         '--event-id',
         'batch-id',
       ],
     })
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'brief',
         'a',
@@ -1126,16 +1134,16 @@ test(
       { code: 'IDEMPOTENCY_CONFLICT' },
     )
     assert.equal(
-      f.apply({
+      (await f.apply({
         document,
         flags: [
           '--event-id',
           'batch-id',
         ],
-      }).duplicate,
+      })).duplicate,
       true,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document,
         flags: [
@@ -1155,7 +1163,7 @@ test(
         },
       ],
     }
-    f.apply({
+    await f.apply({
       document: noop,
       flags: [
         '--event-id',
@@ -1166,7 +1174,7 @@ test(
       f.dir,
       'snapshot.json',
     ))
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'brief',
         'a',
@@ -1178,93 +1186,23 @@ test(
       { code: 'IDEMPOTENCY_CONFLICT' },
     )
     assert.equal(
-      f.apply({
+      (await f.apply({
         document: noop,
         flags: [
           '--event-id',
           'noop-reserved',
         ],
-      }).duplicate,
+      })).duplicate,
       true,
     )
   },
 )
 
 test(
-  'apply waits on the active writer before diagnosing an incomplete append',
-  t => {
-    const f = fixture({ t })
-    commands.task([
-      'create',
-      '--key',
-      'a',
-      '--title',
-      'A',
-    ])
-    const lock = join(
-      f.dir,
-      'writer.lock',
-    )
-    writeFileSync(
-      lock,
-      String(process.pid),
-    )
-    appendFileSync(
-      join(
-        f.dir,
-        'events.jsonl',
-      ),
-      '{"unfinished":',
-    )
-    const document = {
-      version: 1,
-      changes: [
-        {
-          op: 'task.brief',
-          task: 'a',
-          brief: 'Wait for writer',
-        },
-      ],
-    }
-    writeFileSync(
-      f.path,
-      JSON.stringify(document),
-    )
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
-        'apply',
-        '--file',
-        f.path,
-      ],
-      {
-        env: process.env,
-        encoding: 'utf8',
-        timeout: 10000,
-      },
-    )
-    assert.equal(
-      result.status,
-      1,
-    )
-    assert.match(
-      result.stdout,
-      /code: LOCKED/,
-    )
-    assert.doesNotMatch(
-      result.stdout,
-      /TORN_TAIL/,
-    )
-  },
-)
-
-test(
   'preview and invalid plans leave a legacy Hydra folder in place',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'a',
@@ -1292,7 +1230,7 @@ test(
       ),
       'utf8',
     )
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -1315,7 +1253,7 @@ test(
       ),
       before,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1358,9 +1296,9 @@ test(
 
 test(
   'invalid aliases, versions and operation fields report exact paths before committing',
-  t => {
+  async t => {
     const f = fixture({ t })
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1417,7 +1355,7 @@ test(
       readEvents({ hydraId: 'default' }),
       [],
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 2,
@@ -1463,23 +1401,23 @@ test(
 
 test(
   'a child operation ID collision refuses the whole real CLI document, including valid siblings',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'a',
       '--title',
       'A',
     ])
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'b',
       '--title',
       'B',
     ])
-    commands.task([
+    await commands.task([
       'brief',
       'a',
       '--brief',
@@ -1501,13 +1439,6 @@ test(
       ),
       'utf8',
     )
-    const snapshot = readFileSync(
-      join(
-        f.dir,
-        'snapshot.json',
-      ),
-      'utf8',
-    )
     const document = JSON.stringify({
       version: 1,
       changes: [
@@ -1523,25 +1454,18 @@ test(
         },
       ],
     })
-    const same = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const same = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'same-kind',
       ],
-      {
-        env: process.env,
-        input: document,
-        encoding: 'utf8',
-      },
-    )
+      stdin: document,
+    })
     assert.equal(
-      same.status,
+      same.exitCode,
       2,
     )
     assert.match(
@@ -1558,35 +1482,18 @@ test(
       ),
       log,
     )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
-    )
-    const other = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const other = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
         '--event-id',
         'other-kind',
       ],
-      {
-        env: process.env,
-        input: document,
-        encoding: 'utf8',
-      },
-    )
+      stdin: document,
+    })
     assert.equal(
-      other.status,
+      other.exitCode,
       2,
     )
     assert.match(
@@ -1603,24 +1510,14 @@ test(
       ),
       log,
     )
-    assert.equal(
-      readFileSync(
-        join(
-          f.dir,
-          'snapshot.json',
-        ),
-        'utf8',
-      ),
-      snapshot,
-    )
   },
 )
 
 test(
   'hold and release attribute missing reasons to reason and invalid evidence to message',
-  t => {
+  async t => {
     const f = fixture({ t })
-    commands.task([
+    await commands.task([
       'create',
       '--key',
       'a',
@@ -1634,7 +1531,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1686,26 +1583,19 @@ test(
 
 test(
   'duplicate JSON members including escaped names are refused before any write',
-  t => {
+  async t => {
     const f = fixture({ t })
     const input = '{"version":999,"version":1,"changes":[{"op":"task.brief","op":"task.create","title":"First","ti\\u0074le":"Second","key":"json-dupe"}],"changes":[{"op":"task.create","title":"Other","key":"other"}]}'
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--conditions=source',
-        'src/cli/pnyx-axi.ts',
+    const result = await f.cli({
+      argv: [
         'apply',
         '--file',
         '-',
       ],
-      {
-        env: process.env,
-        input,
-        encoding: 'utf8',
-      },
-    )
+      stdin: input,
+    })
     assert.equal(
-      result.status,
+      result.exitCode,
       2,
     )
     assert.match(
@@ -1729,7 +1619,7 @@ test(
       /"\/changes"/,
     )
     assert.deepEqual(
-      readdirSync(f.root),
+      readEvents({ hydraId: 'default' }).filter(event => event.type.startsWith('task.')),
       [],
     )
   },
@@ -1752,7 +1642,7 @@ test(
       '--ask',
       'Exact owner words',
     ])
-    f.apply({
+    await f.apply({
       document: {
         version: 1,
         changes: [
@@ -1833,7 +1723,7 @@ test(
       log,
       /"intent":"Expanded goal"/,
     )
-    assert.throws(
+    await assert.rejects(
       () => commands.task([
         'intent',
         'short',
@@ -1842,7 +1732,7 @@ test(
       ]),
       /task owner-ask/,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1862,7 +1752,7 @@ test(
       }),
       ApplyError,
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document: {
           version: 1,
@@ -1933,7 +1823,7 @@ test(
       ),
       'utf8',
     )
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         flags: [
           '--event-id',
@@ -2040,7 +1930,7 @@ test(
         },
       ],
     }
-    const preview = f.apply({
+    const preview = await f.apply({
       document,
       flags: [
         '--check',
@@ -2051,7 +1941,7 @@ test(
       JSON.stringify(preview),
       /x{12000}/,
     )
-    const result = f.apply({
+    const result = await f.apply({
       document,
       flags: [
         '--event-id',
@@ -2067,7 +1957,7 @@ test(
       JSON.stringify(result),
       /brief/,
     )
-    const retried = f.apply({
+    const retried = await f.apply({
       document,
       flags: [
         '--event-id',
@@ -2079,7 +1969,7 @@ test(
       true,
     )
     assert.ok(JSON.stringify(retried).length < 5000)
-    assert.throws(
+    await assert.rejects(
       () => f.apply({
         document,
         flags: [

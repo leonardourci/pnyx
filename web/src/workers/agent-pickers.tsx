@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react'
+import { providerIdOf } from '#workers/providers.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import type { Command } from '#web-app/connection.ts'
@@ -86,7 +87,7 @@ export function AgentPickers({
   marks?: Partial<Record<'model' | 'effort' | 'mode' | 'fast', CellMark>>
 }) {
   const controls = harnessControls({
-    provider: agent.harness === 'claude' ? 'claude-code' : 'codex',
+    provider: providerIdOf({ harness: agent.harness }),
     hosted: true,
   })
   // Both catalogs load, so the one picker can switch agent and model together.

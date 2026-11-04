@@ -400,16 +400,16 @@ test(
 
 test(
   'candidate choice uses spendPriority rather than percent remaining or list order',
-  () => {
+  async () => {
     const current = config()
-    const quota = ({ account }: { account: { provider: string } }) => account.provider === 'claude' ? reading({
+    const quota = async ({ account }: { account: { provider: string } }) => account.provider === 'claude' ? reading({
       remaining: 25,
       priority: 12,
     }) : reading({
       remaining: 82,
       priority: 4,
     })
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: current,
       rule: 'build',
       quota,
@@ -428,7 +428,7 @@ test(
     )
     current.dispatch.rules.build!.candidates.reverse()
     assert.deepEqual(
-      chooseCandidate({
+      await chooseCandidate({
         config: current,
         rule: 'build',
         quota,
@@ -440,7 +440,7 @@ test(
 
 test(
   'dispatch balances by live quota, not rotation: unchanged readings keep one choice, a shifted overdraw flips it',
-  () => {
+  async () => {
     // Both accounts overdrawn against their reset clocks, Claude less so.
     const priorities: Record<string, number> = {
       claude: -0.2092,
@@ -450,17 +450,17 @@ test(
       remaining: account.provider === 'claude' ? 55 : 48,
       priority: priorities[account.provider],
     })
-    const pick = () => chooseCandidate({
+    const pick = async () => (await chooseCandidate({
       config: config(),
       rule: 'build',
       quota,
-    }).provider
+    })).provider
 
     assert.deepEqual(
       [
-        pick(),
-        pick(),
-        pick(),
+        await pick(),
+        await pick(),
+        await pick(),
       ],
       [
         'claude',
@@ -470,7 +470,7 @@ test(
     )
     priorities.claude = -1.2
     assert.equal(
-      pick(),
+      await pick(),
       'codex',
     )
   },
@@ -478,12 +478,12 @@ test(
 
 test(
   'on a spendPriority tie or with every quota unknown, the first listed candidate starts',
-  () => {
+  async () => {
     const current = config(), quota = () => reading({
       remaining: 50,
       priority: 0.4,
     })
-    const tied = chooseCandidate({
+    const tied = await chooseCandidate({
       config: current,
       rule: 'build',
       quota,
@@ -498,11 +498,11 @@ test(
     )
     current.dispatch.rules.build!.candidates.reverse()
     assert.equal(
-      chooseCandidate({
+      (await chooseCandidate({
         config: current,
         rule: 'build',
         quota,
-      }).provider,
+      })).provider,
       'codex',
     )
     current.dispatch.rules.build!.candidates = [
@@ -515,7 +515,7 @@ test(
         model: 'opus',
       },
     ]
-    const unknown = chooseCandidate({
+    const unknown = await chooseCandidate({
       config: current,
       rule: 'build',
       quota: () => ({ auth: 'unknown' }),
@@ -533,12 +533,12 @@ test(
 
 test(
   'known quota outranks unknown quota, even overdrawn, as Firstmate ranks it',
-  () => {
-    const quota = ({ account }: { account: { provider: string } }) => account.provider === 'codex' ? reading({
+  async () => {
+    const quota = async ({ account }: { account: { provider: string } }) => account.provider === 'codex' ? reading({
       remaining: 91,
       priority: -0.64,
     }) : { auth: 'unknown' as const }
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: config(),
       rule: 'build',
       quota,
@@ -564,7 +564,7 @@ test(
 
 test(
   'the lowest spendPriority of the account and model windows bounds a candidate',
-  () => {
+  async () => {
     const current = config()
     current.dispatch.rules.build!.candidates = [
       {
@@ -576,7 +576,7 @@ test(
       remaining: 80,
       priority: 0.3,
     })
-    const quota = () => ({
+    const quota = async () => ({
       ...account,
       models: [
         {
@@ -594,11 +594,11 @@ test(
       ],
     })
     assert.match(
-      chooseCandidate({
+      (await chooseCandidate({
         config: current,
         rule: 'build',
         quota,
-      }).reason,
+      })).reason,
       /claude:work\/opus: 20%, spendPriority -0\.2/,
     )
   },
@@ -606,10 +606,10 @@ test(
 
 test(
   'spent accounts fall back in provider order, with per-project overrides',
-  () => {
+  async () => {
     const current = config(), visited: string[] = []
 
-    const quota = ({ account }: { account: { folder: string } }) => {
+    const quota = async ({ account }: { account: { folder: string } }) => {
       visited.push(account.folder)
 
       return reading({
@@ -624,7 +624,7 @@ test(
         model: 'opus',
       },
     ]
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: current,
       rule: 'build',
       quota,
@@ -643,12 +643,12 @@ test(
     current.dispatch.projects['/project'] = { claude: ['claude:main'] }
     visited.length = 0
     assert.equal(
-      chooseCandidate({
+      (await chooseCandidate({
         config: current,
         rule: 'build',
         project: '/project',
         quota,
-      }).account,
+      })).account,
       'claude:main',
     )
     assert.deepEqual(
@@ -660,9 +660,9 @@ test(
 
 test(
   'signed-out accounts stop rather than falling through; unlisted accounts are never read',
-  () => {
+  async () => {
     const visited: string[] = []
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: config(),
         rule: 'build',
@@ -680,7 +680,7 @@ test(
     )
     const current = config()
     current.dispatch.workers = { claude: [] }
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: current,
         rule: 'build',
@@ -693,7 +693,7 @@ test(
 
 test(
   'exhausted rules stop without using the default rule, including explicit runway exhaustion',
-  () => {
+  async () => {
     const readings = [
       () => reading({ remaining: 0 }),
       () => reading({
@@ -703,7 +703,7 @@ test(
     ]
 
     for (const quota of readings) {
-      assert.throws(
+      await assert.rejects(
         () => chooseCandidate({
           config: config(),
           rule: 'build',
@@ -713,7 +713,7 @@ test(
       )
     }
 
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: config(),
         rule: 'missing',
@@ -726,7 +726,7 @@ test(
 
 test(
   'unknown and stale quotas are usable and recorded as unknown, and list order chooses between them',
-  () => {
+  async () => {
   // readQuota drops a stale account window, so only the stale model row is left.
     for (const quota of [
       () => ({ auth: 'unknown' as const }),
@@ -738,7 +738,7 @@ test(
         effective: undefined,
       }),
     ]) {
-      const chosen = chooseCandidate({
+      const chosen = await chooseCandidate({
         config: config(),
         rule: 'build',
         harness: 'claude',
@@ -757,11 +757,11 @@ test(
         /0%/,
       )
       assert.equal(
-        chooseCandidate({
+        (await chooseCandidate({
           config: config(),
           rule: 'build',
           quota,
-        }).candidate.model,
+        })).candidate.model,
         'opus',
       )
     }
@@ -770,9 +770,9 @@ test(
 
 test(
   'models unavailable through a harness are skipped without downgrading',
-  () => {
-    const quota = () => reading({ remaining: 50 })
-    const chosen = chooseCandidate({
+  async () => {
+    const quota = async () => reading({ remaining: 50 })
+    const chosen = await chooseCandidate({
       config: config(),
       rule: 'build',
       quota,
@@ -789,7 +789,7 @@ test(
       chosen.reason,
       /not offered/,
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: config(),
         rule: 'build',
@@ -803,13 +803,13 @@ test(
     )
     // A catalog that was not read leaves that harness's model unchecked.
     assert.equal(
-      chooseCandidate({
+      (await chooseCandidate({
         config: config(),
         rule: 'build',
         harness: 'claude',
         quota,
         offers: { codex: [] },
-      }).provider,
+      })).provider,
       'claude',
     )
   },
@@ -817,7 +817,7 @@ test(
 
 test(
   'settings-only overrides keep quota choosing the candidate; an explicit harness or model still wins',
-  () => {
+  async () => {
     // Claude's accounts are spent yet report a known priority, so only the spent veto keeps them below Codex's unknown quota.
     const quota = ({ account }: { account: { provider: string } }) => account.provider === 'claude'
       ? reading({
@@ -832,7 +832,7 @@ test(
       { mode: 'bypassPermissions' },
       { fast: true },
     ]) {
-      const chosen = chooseCandidate({
+      const chosen = await chooseCandidate({
         config: config(),
         rule: 'build',
         quota,
@@ -858,7 +858,7 @@ test(
 
     assert.deepEqual(
       chosenSettings({
-        choice: chooseCandidate({
+        choice: await chooseCandidate({
           config: config(),
           rule: 'build',
           quota,
@@ -876,14 +876,14 @@ test(
     )
 
     // An explicit harness or model is the owner's choice, so a spent account does not veto it.
-    const harness = chooseCandidate({
+    const harness = await chooseCandidate({
       config: config(),
       rule: 'build',
       harness: 'claude',
       quota,
       override: { effort: 'low' },
     })
-    const model = chooseCandidate({
+    const model = await chooseCandidate({
       config: config(),
       rule: 'build',
       quota,
@@ -925,8 +925,8 @@ test(
 
 test(
   'a start override replaces the candidate settings, must be offered and is named in the choice',
-  () => {
-    const quota = () => reading({
+  async () => {
+    const quota = async () => reading({
       remaining: 50,
       priority: 0.2,
     })
@@ -939,7 +939,7 @@ test(
         fast: true,
       },
     ]
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: current,
       rule: 'build',
       quota,
@@ -981,7 +981,7 @@ test(
     )
     assert.deepEqual(
       chosenSettings({
-        choice: chooseCandidate({
+        choice: await chooseCandidate({
           config: current,
           rule: 'build',
           quota,
@@ -993,7 +993,7 @@ test(
         fast: 'true',
       },
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: current,
         rule: 'build',
@@ -1009,16 +1009,16 @@ test(
       /gpt-6-luna: not offered/,
     )
     assert.equal(
-      chooseCandidate({
+      (await chooseCandidate({
         config: current,
         rule: 'build',
         quota,
         override: { model: 'opus[1m]' },
         offers: { claude: ['opus'] },
-      }).override?.model,
+      })).override?.model,
       'opus[1m]',
     )
-    assert.throws(
+    await assert.rejects(
       () => chooseCandidate({
         config: current,
         rule: 'build',
@@ -1054,7 +1054,7 @@ test(
       overrideOf({ value: {} }),
       undefined,
     )
-    const sent = chooseCandidate({
+    const sent = await chooseCandidate({
       config: config(),
       rule: 'build',
       harness: 'codex',
@@ -1083,7 +1083,7 @@ test(
 
 test(
   'with no registered accounts, dispatch falls back to the harnesses’ own logins',
-  () => {
+  async () => {
     const { root } = lab()
     const claude = join(
       root,
@@ -1111,7 +1111,7 @@ test(
         effective.dispatch.workers,
         { claude: ['claude:default'] },
       )
-      const chosen = chooseCandidate({
+      const chosen = await chooseCandidate({
         config: effective,
         quota: () => ({ auth: 'unknown' }),
       })
@@ -1132,7 +1132,7 @@ test(
       writeShared({
         value: { main: 'claude:work' },
       })
-      assert.throws(
+      await assert.rejects(
         () => chooseCandidate({
           config: effectiveDispatch(),
           quota: () => ({ auth: 'unknown' }),
@@ -1340,7 +1340,7 @@ test(
 
 test(
   'hosted choice validation rejects unlisted accounts, changed rules and provider mismatches',
-  () => {
+  async () => {
     const current = config()
     current.dispatch.rules.build!.candidates = [
       {
@@ -1348,7 +1348,7 @@ test(
         model: 'opus',
       },
     ]
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: current,
       rule: 'build',
       quota: () => reading({ remaining: 50 }),
@@ -1394,14 +1394,14 @@ test(
 
 test(
   'a stale quota model catalog does not exclude a model the harness offers',
-  () => {
+  async () => {
     const current = config()
     const candidate = {
       harness: 'claude' as const,
       model: 'claude-opus-5-5',
     }
     current.dispatch.rules.build!.candidates = [candidate]
-    const chosen = chooseCandidate({
+    const chosen = await chooseCandidate({
       config: current,
       rule: 'build',
       quota: () => ({

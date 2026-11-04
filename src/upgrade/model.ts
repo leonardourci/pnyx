@@ -6,7 +6,7 @@ export const RESTART_COMMAND = '/restart'
 
 export const RESTART_SUGGESTION: Suggestion = {
   command: RESTART_COMMAND,
-  description: 'Restart Pnyx on its current code. A busy native host is restarted after a short wait and its sessions recover.',
+  description: 'Restart Pnyx on its current code. Turns it cuts resume from their saved sessions.',
   source: 'Built-in',
   kind: 'command',
 }
@@ -63,20 +63,12 @@ export interface UpgradeStep {
   seconds: number
 }
 
-// A Hydra message sent while the upgrade ran; it reaches Hydra once the upgrade ends.
-export interface HeldMessage {
-  id: string
-  text: string
-  original?: string
-  actor: string
-  at: string
-}
-
 // One /upgrade the owner sent to Hydra, from its place in the queue to the restarted server.
 export interface UpgradeOperation {
   // The Hydra message that asked for it.
   id: string
-  state: 'queued' | 'running' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
+  // waiting: built, and restarting once no agent is mid-turn, on Restart now, or at restartBy.
+  state: 'queued' | 'running' | 'waiting' | 'restarting' | 'done' | 'current' | 'failed' | 'refused' | 'stopped'
   // The Pnyx folder, with the home folder shortened to ~.
   folder: string
   queuedAt: string
@@ -92,7 +84,8 @@ export interface UpgradeOperation {
   rolledBack?: boolean
   // Why a refused upgrade did not start.
   reasons?: string[]
-  held?: HeldMessage[]
+  // When a built upgrade restarts even if an agent is still mid-turn.
+  restartBy?: string
 }
 
 export type UpgradeEvent = EventBase & {

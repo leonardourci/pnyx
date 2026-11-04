@@ -10,6 +10,7 @@ import { projectMemoryView } from '#memory/project-memory.ts'
 import { projectsFor } from '#projects/read.ts'
 import { serviceFile } from './service.ts'
 import { loadHydra } from '#app/store.ts'
+import { recordExitCode } from '#app/request-context.ts'
 
 export interface SetupItem {
   name: string
@@ -31,13 +32,13 @@ const SIGN_IN: Record<Harness, string> = {
 }
 
 // Reads only files, PATH and each attached project's git sources, so it is cheap enough for every session open.
-export function setupCheck({
+export async function setupCheck({
   hydraId,
   state,
 }: {
   hydraId: string
   state: HydraState
-}): SetupItem[] {
+}): Promise<SetupItem[]> {
   const items: SetupItem[] = []
 
   if (onTemplate()) {
@@ -156,8 +157,17 @@ export function setupCheck({
     })
   }
 
-  for (const project of projectsFor({ state }).filter(project => !project.detached)) {
-    if (projectMemoryView(project).status === 'missing') {
+  const profiles = await Promise.all(projectsFor({ state }).filter(project => !project.detached)
+    .map(async project => ({
+      project,
+      status: (await projectMemoryView(project)).status,
+    })))
+
+  for (const {
+    project,
+    status,
+  } of profiles) {
+    if (status === 'missing') {
       items.push({
         name: `profile:${project.name}`,
         missing: `project ${project.name} has no profile`,
@@ -175,8 +185,8 @@ export const setupDigest = ({ items }: { items: SetupItem[] }) => items.length ?
   ...items.map(item => `- ${item.name}: ${item.missing} · ${item.by === 'hydra' ? 'you' : 'owner'}: ${item.fix}`),
 ] : []
 
-export function setupCheckOutput({ hydraId }: { hydraId: string }) {
-  const items = setupCheck({
+export async function setupCheckOutput({ hydraId }: { hydraId: string }) {
+  const items = await setupCheck({
     hydraId,
     state: loadHydra({ hydraId }).state,
   })
@@ -188,7 +198,7 @@ export function setupCheckOutput({ hydraId }: { hydraId: string }) {
     }
   }
 
-  process.exitCode = 1
+  recordExitCode({ code: 1 })
 
   return {
     hydraId,

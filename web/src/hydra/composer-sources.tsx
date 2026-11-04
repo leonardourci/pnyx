@@ -1,4 +1,5 @@
 import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react'
+import { harnessOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraConfig } from '#hydra/config.ts'
@@ -48,7 +49,7 @@ export function HydraComposerSources({
       card?.agent?.provider,
       card?.agent?.cwd,
       card?.agent?.sessionId,
-      receiving === 'claude-code' ? 'claude' : receiving,
+      harnessOf({ provider: receiving }),
     ]),
     card: HYDRA_CARD,
     provider: receiving,

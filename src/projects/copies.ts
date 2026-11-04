@@ -3,7 +3,7 @@ import { COPY_TIMEOUT_MS, git } from './git.ts'
 import { landedWork } from '#tasks/delivery/proof.ts'
 
 import { workerQueue } from '#workers/queue.ts'
-import { spawnSync } from 'node:child_process'
+import { runProcess } from '#app/run-process.ts'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 import type { Decision, HydraState } from '#app/model.ts'
@@ -83,8 +83,8 @@ function refuseShared({
   }
 }
 
-function originHead({ cwd }: { cwd: string }): string | undefined {
-  const head = git({
+async function originHead({ cwd }: { cwd: string }): Promise<string | undefined> {
+  const head = await git({
     cwd,
     args: [
       'symbolic-ref',
@@ -97,14 +97,14 @@ function originHead({ cwd }: { cwd: string }): string | undefined {
   return head.ok && head.out ? head.out : undefined
 }
 
-function gitProject({ project }: { project: HydraProject }): void {
-  if (!git({
+async function gitProject({ project }: { project: HydraProject }): Promise<void> {
+  if (!(await git({
     cwd: project.path,
     args: [
       'rev-parse',
       '--show-toplevel',
     ],
-  }).ok) {
+  })).ok) {
     throw new HydraError({
       message: `project ${project.name} is not a git repository`,
       code: 'VALIDATION_ERROR',
@@ -121,11 +121,11 @@ const quiet = ({ meta }: { meta: Meta }): Meta => ({
   ifRevision: undefined,
 })
 
-function branchStart({ project }: { project: HydraProject }): {
+async function branchStart({ project }: { project: HydraProject }): Promise<{
   base?: string
   start: string
-} {
-  const origin = git({
+}> {
+  const origin = await git({
     cwd: project.path,
     args: [
       'remote',
@@ -148,7 +148,7 @@ function branchStart({ project }: { project: HydraProject }): {
         '--auto',
       ],
     ]) {
-      const result = git({
+      const result = await git({
         cwd: project.path,
         args,
       })
@@ -162,7 +162,7 @@ function branchStart({ project }: { project: HydraProject }): {
       }
     }
 
-    const remote = originHead({ cwd: project.path })
+    const remote = await originHead({ cwd: project.path })
 
     if (!remote) {
       throw new HydraError({
@@ -180,22 +180,22 @@ function branchStart({ project }: { project: HydraProject }): {
     }
   }
 
-  const local = git({
+  const local = (await git({
     cwd: project.path,
     args: [
       'rev-parse',
       '--abbrev-ref',
       'HEAD',
     ],
-  }).out
+  })).out
   const base = local
-  const start = git({
+  const start = (await git({
     cwd: project.path,
     args: [
       'rev-parse',
       'HEAD',
     ],
-  }).out
+  })).out
 
   return {
     ...(base && base !== 'HEAD' ? { base } : {}),
@@ -203,24 +203,24 @@ function branchStart({ project }: { project: HydraProject }): {
   }
 }
 
-const commonDir = ({ cwd }: { cwd: string }) =>
-  git({
+const commonDir = async ({ cwd }: { cwd: string }) =>
+  (await git({
     cwd,
     args: [
       'rev-parse',
       '--path-format=absolute',
       '--git-common-dir',
     ],
-  }).out
+  })).out
 
-const branchExists = ({
+const branchExists = async ({
   cwd,
   branch,
 }: {
   cwd: string
   branch: string
 }) =>
-  git({
+  (await git({
     cwd,
     args: [
       'rev-parse',
@@ -228,10 +228,10 @@ const branchExists = ({
       '--quiet',
       `refs/heads/${branch}`,
     ],
-  }).ok
+  })).ok
 
-const onBranch = ({ cwd }: { cwd: string }) =>
-  Boolean(git({
+const onBranch = async ({ cwd }: { cwd: string }) =>
+  Boolean((await git({
     cwd,
     args: [
       'for-each-ref',
@@ -240,7 +240,7 @@ const onBranch = ({ cwd }: { cwd: string }) =>
       '--count=1',
       'refs/heads',
     ],
-  }).out)
+  })).out)
 
 const copiesDir = ({ hydraId }: { hydraId: string }) => join(
   hydraDir({ hydraId }),
@@ -311,14 +311,14 @@ const idle = ({
   })
 
 // A clean checkout of this project whose commit some branch keeps, so moving it to another branch loses nothing.
-function reusable({
+async function reusable({
   path,
   common,
 }: {
   path: string
   common: string
-}): boolean {
-  const status = git({
+}): Promise<boolean> {
+  const status = await git({
     cwd: path,
     args: [
       'status',
@@ -326,10 +326,10 @@ function reusable({
     ],
   })
 
-  return status.ok && status.out === '' && commonDir({ cwd: path }) === common && onBranch({ cwd: path })
+  return status.ok && status.out === '' && await commonDir({ cwd: path }) === common && await onBranch({ cwd: path })
 }
 
-const checkout = ({
+const checkout = async ({
   cwd,
   branch,
   start,
@@ -338,11 +338,11 @@ const checkout = ({
   branch: string
   start: string
 }) =>
-  branchExists({
+  await branchExists({
     cwd,
     branch,
   })
-    ? git({
+    ? await git({
       cwd,
       args: [
         'checkout',
@@ -350,7 +350,7 @@ const checkout = ({
         branch,
       ],
     })
-    : git({
+    : await git({
       cwd,
       args: [
         'checkout',
@@ -501,21 +501,21 @@ function freshSlot({
   }
 }
 
-function releasedCopyLanded({
+async function releasedCopyLanded({
   hydraId,
   path,
 }: {
   hydraId: string
   path: string
-}): boolean {
+}): Promise<boolean> {
   const state = loadHydra({ hydraId }).state
-  const branch = git({
+  const branch = (await git({
     cwd: path,
     args: [
       'branch',
       '--show-current',
     ],
-  }).out
+  })).out
   const previous = Object.values(state.cards).find(card => card.copy?.path === path
     && card.copy.state === 'removed' && card.copy.branch === branch)
 
@@ -523,7 +523,7 @@ function releasedCopyLanded({
     return false
   }
 
-  const check = checkCopy({
+  const check = await checkCopy({
     card: previous,
     copy: previous.copy,
   })
@@ -570,7 +570,7 @@ function releasedCopyLanded({
 }
 
 // The slot it returns stays claimed until the caller records it.
-function worktreeCopy({
+async function worktreeCopy({
   hydraId,
   card,
   project,
@@ -578,8 +578,8 @@ function worktreeCopy({
   hydraId: string
   card: Card
   project: HydraProject
-}): TaskCopy {
-  gitProject({ project })
+}): Promise<TaskCopy> {
+  await gitProject({ project })
   mkdirSync(
     copiesDir({ hydraId }),
     { recursive: true },
@@ -588,7 +588,7 @@ function worktreeCopy({
   const {
     base,
     start,
-  } = branchStart({ project })
+  } = await branchStart({ project })
   const made = ({ path }: { path: string }): TaskCopy => ({
     path,
     project: project.path,
@@ -601,7 +601,7 @@ function worktreeCopy({
     hydraId,
     project,
   })
-  const head = ({ path }: { path: string }) => git({
+  const head = async ({ path }: { path: string }) => (await git({
     cwd: path,
     args: [
       'symbolic-ref',
@@ -609,24 +609,30 @@ function worktreeCopy({
       '--short',
       'HEAD',
     ],
-  }).out
+  })).out
 
-  const common = commonDir({ cwd: project.path })
+  const common = await commonDir({ cwd: project.path })
 
   // A copy made before its record was written, or this task's own slot still in the pool, is picked up again.
-  const own = pooled.find(path => commonDir({ cwd: path }) === common
-    && head({ path }) === branch && take({
-    hydraId,
-    card,
-    path,
-  }))
+  let own: string | undefined
+
+  for (const path of pooled) {
+    if (await commonDir({ cwd: path }) === common && await head({ path }) === branch && take({
+      hydraId,
+      card,
+      path,
+    })) {
+      own = path
+      break
+    }
+  }
 
   if (own) {
     return made({ path: own })
   }
 
   // Only registrations whose folders are gone are pruned, so a deleted copy does not block its branch.
-  git({
+  await git({
     cwd: project.path,
     args: [
       'worktree',
@@ -641,17 +647,17 @@ function worktreeCopy({
       card,
       path,
     })) {
-      if (releasedCopyLanded({
+      if (await releasedCopyLanded({
         hydraId,
         path,
-      }) && reusable({
+      }) && await reusable({
         path,
         common,
-      }) && checkout({
+      }) && (await checkout({
         cwd: path,
         branch,
         start,
-      }).ok) {
+      })).ok) {
         return made({ path })
       }
 
@@ -663,11 +669,11 @@ function worktreeCopy({
     hydraId,
     project,
   })
-  const exists = branchExists({
+  const exists = await branchExists({
     cwd: project.path,
     branch,
   })
-  const added = git({
+  const added = await git({
     cwd: project.path,
     args: [
       'worktree',
@@ -696,7 +702,7 @@ function worktreeCopy({
   return made({ path: realpathSync(path) })
 }
 
-function commandCopy({
+async function commandCopy({
   hydraId,
   card,
   project,
@@ -706,28 +712,25 @@ function commandCopy({
   card: Card
   project: HydraProject
   command: string
-}): TaskCopy {
-  const run = spawnSync(
-    '/bin/sh',
-    [
+}): Promise<TaskCopy> {
+  const run = await runProcess({
+    command: '/bin/sh',
+    args: [
       '-c',
       command,
     ],
-    {
-      cwd: project.path,
-      encoding: 'utf8',
-      timeout: COPY_TIMEOUT_MS,
-      env: {
-        ...process.env,
-        PNYX_HOME: pnyxHome(),
-        PNYX_HYDRA: hydraId,
-        PNYX_TASK: card.id,
-        PNYX_TASK_TITLE: card.title,
-        PNYX_PROJECT: project.path,
-      },
+    cwd: project.path,
+    timeout: COPY_TIMEOUT_MS,
+    env: {
+      ...process.env,
+      PNYX_HOME: pnyxHome(),
+      PNYX_HYDRA: hydraId,
+      PNYX_TASK: card.id,
+      PNYX_TASK_TITLE: card.title,
+      PNYX_PROJECT: project.path,
     },
-  )
-  const printed = (run.stdout ?? '').trim().split('\n')
+  })
+  const printed = run.stdout.trim().split('\n')
     .at(-1)
     ?.trim() ?? ''
 
@@ -736,7 +739,7 @@ function commandCopy({
 
   if (run.status !== 0 || !usable) {
     throw new HydraError({
-      message: run.status !== 0 ? `the copy command of ${project.name} failed: ${(run.stderr ?? '').trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
+      message: run.status !== 0 ? `the copy command of ${project.name} failed: ${run.stderr.trim().slice(-500)}` : `the copy command of ${project.name} must print the new folder's absolute path last, other than the project folder`,
       code: 'COPY_FAILED',
       help: ['Fix it with `pnyx-axi project set <name> --copy <shell command>`, or start with --in-place'],
     })
@@ -751,7 +754,7 @@ function commandCopy({
 }
 
 // A project task works in its own copy unless the start says otherwise; Firstmate Hydras make their own.
-export function taskFolder({
+export async function taskFolder({
   hydraId,
   task,
   folder,
@@ -765,7 +768,7 @@ export function taskFolder({
   inPlace?: boolean
   ownFolder?: boolean
   meta: Meta
-}): string | undefined {
+}): Promise<string | undefined> {
   const state = loadHydra({ hydraId }).state
 
   if (state.config?.hydra.kind === 'firstmate') {
@@ -843,13 +846,13 @@ export function taskFolder({
 
   const current = live && isFolder({ path: live.path }) ? live : undefined
   const ready = current
-    ?? (project.copy ? commandCopy({
+    ?? (project.copy ? await commandCopy({
       hydraId,
       card,
       project,
       command: project.copy,
     }) : undefined)
-  const copy = ready ?? worktreeCopy({
+  const copy = ready ?? await worktreeCopy({
     hydraId,
     card,
     project,
@@ -864,6 +867,18 @@ export function taskFolder({
           state: writer.state,
           ref: card.id,
         })
+        // Another start may have won while this copy was prepared: it leaves its session and copy as they are.
+        const startedMeanwhile = Boolean(now.sessionIds?.length)
+        const copiedMeanwhile = now.copy?.state === 'active' && now.copy.path !== card.copy?.path
+          && now.copy.path !== copy.path
+
+        if (startedMeanwhile || copiedMeanwhile) {
+          throw new HydraError({
+            message: `task ${card.id} was started meanwhile; its session keeps ${now.copy?.path ?? now.folder ?? 'its folder'}`,
+            code: 'SESSION_CONFLICT',
+          })
+        }
+
         const id = meta.id && !(`${meta.id}:copy` in writer.state.eventIds) ? `${meta.id}:copy` : undefined
         const recorded = {
           ...meta,
@@ -946,13 +961,13 @@ export type CopyCheck = {
     reason: string
   }
 
-export function checkCopy({
+export async function checkCopy({
   card,
   copy,
 }: {
   card: Card
   copy: TaskCopy
-}): CopyCheck {
+}): Promise<CopyCheck> {
   if (!isFolder({ path: copy.path })) {
     return {
       gone: true,
@@ -961,14 +976,14 @@ export function checkCopy({
     }
   }
 
-  const status = git({
+  const status = await git({
     cwd: copy.path,
     args: [
       'status',
       '--porcelain',
     ],
   })
-  const head = git({
+  const head = await git({
     cwd: copy.path,
     args: [
       'rev-parse',
@@ -988,19 +1003,19 @@ export function checkCopy({
     landed,
     refs,
     reason,
-  } = landedWork({
+  } = await landedWork({
     card,
     copy,
     head: head.out,
   })
-  const currentHead = git({
+  const currentHead = await git({
     cwd: copy.path,
     args: [
       'rev-parse',
       'HEAD',
     ],
   })
-  const currentStatus = git({
+  const currentStatus = await git({
     cwd: copy.path,
     args: [
       'status',
@@ -1035,15 +1050,15 @@ export function checkCopy({
   }
 }
 
-function removeCopy({
+async function removeCopy({
   copy,
   force,
 }: {
   copy: TaskCopy
   force: boolean
-}): string | undefined {
-  const common = commonDir({ cwd: copy.path })
-  const gitDir = git({
+}): Promise<string | undefined> {
+  const common = await commonDir({ cwd: copy.path })
+  const gitDir = await git({
     cwd: copy.path,
     args: [
       'rev-parse',
@@ -1056,29 +1071,26 @@ function removeCopy({
     return 'it is not a git worktree Pnyx can remove'
   }
 
-  if (!force && !onBranch({ cwd: copy.path })) {
+  if (!force && !await onBranch({ cwd: copy.path })) {
     return 'its commit is on no branch'
   }
 
-  const run = spawnSync(
-    'git',
-    [
+  const run = await runProcess({
+    command: 'git',
+    args: [
       `--git-dir=${common}`,
       'worktree',
       'remove',
       ...(force ? ['--force'] : []),
       copy.path,
     ],
-    {
-      encoding: 'utf8',
-      timeout: COPY_TIMEOUT_MS,
-    },
-  )
+    timeout: COPY_TIMEOUT_MS,
+  })
 
-  return run.status === 0 ? undefined : `git could not remove it: ${(run.stderr ?? '').trim().slice(-300)}`
+  return run.status === 0 ? undefined : `git could not remove it: ${run.stderr.trim().slice(-300)}`
 }
 
-function staysInPool({
+async function staysInPool({
   hydraId,
   state,
   copy,
@@ -1086,32 +1098,38 @@ function staysInPool({
   hydraId: string
   state: HydraState
   copy: TaskCopy
-}): boolean {
+}): Promise<boolean> {
   const project = projectsFor({ state }).find(p => !p.detached && matchesProject({
     project: p,
     ref: copy.project,
   }))
   const path = realpathSync(copy.path)
-  const common = project && commonDir({ cwd: project.path })
+  const common = project && await commonDir({ cwd: project.path })
   const pooled = project ? slots({
     hydraId,
     project,
   }) : []
 
-  if (!common || !pooled.includes(path) || !reusable({
+  if (!common || !pooled.includes(path) || !await reusable({
     path,
     common,
   })) {
     return false
   }
 
-  const spare = pooled.filter(slot => slot !== path && idle({
-    state,
-    path: slot,
-  }) && reusable({
-    path: slot,
-    common,
-  }))
+  const spare: string[] = []
+
+  for (const slot of pooled) {
+    if (slot !== path && idle({
+      state,
+      path: slot,
+    }) && await reusable({
+      path: slot,
+      common,
+    })) {
+      spare.push(slot)
+    }
+  }
 
   return runsIn({
     state,
@@ -1138,7 +1156,7 @@ function releaseReason({
 export type Settle = 'check' | 'safe' | 'discard'
 
 // Only the owner discards work that never landed; anything else unsafe is flagged for Hydra.
-export function settleCopy({
+export async function settleCopy({
   hydraId,
   ref,
   mode = 'check',
@@ -1148,10 +1166,10 @@ export function settleCopy({
   ref: string
   mode?: Settle
   meta: Meta
-}): {
+}): Promise<{
   copy: TaskCopy | null
   check?: CopyCheck
-} {
+}> {
   const state = loadHydra({ hydraId }).state
   const card = findCard({
     state,
@@ -1163,7 +1181,7 @@ export function settleCopy({
     return { copy: copy ?? null }
   }
 
-  const check = checkCopy({
+  const check = await checkCopy({
     card,
     copy,
   })
@@ -1187,13 +1205,13 @@ export function settleCopy({
     }
   } else if (mode === 'discard' || mode === 'safe' || !('reason' in check)) {
     const why = mode === 'discard' ? 'discarded with the owner’s confirmation' : mode === 'safe' ? 'confirmed safe' : 'its work landed'
-    pooled = mode !== 'discard' && copy.via === 'worktree' && staysInPool({
+    pooled = mode !== 'discard' && copy.via === 'worktree' && await staysInPool({
       hydraId,
       state,
       copy,
     })
     // The project's copy tool owns the folders it makes, so Pnyx only lets them go.
-    const failed = copy.via === 'command' || pooled ? undefined : removeCopy({
+    const failed = copy.via === 'command' || pooled ? undefined : await removeCopy({
       copy,
       force: mode === 'discard',
     })
@@ -1300,7 +1318,7 @@ export function settleCopy({
   })
 }
 
-function trimPool({ hydraId }: { hydraId: string }): void {
+async function trimPool({ hydraId }: { hydraId: string }): Promise<void> {
   const state = loadHydra({ hydraId }).state
 
   for (const project of projectsFor({ state }).filter(p => !p.detached)) {
@@ -1314,7 +1332,7 @@ function trimPool({ hydraId }: { hydraId: string }): void {
     }
 
     let kept = 0
-    const common = commonDir({ cwd: project.path })
+    const common = await commonDir({ cwd: project.path })
 
     for (const path of slots({
       hydraId,
@@ -1329,7 +1347,7 @@ function trimPool({ hydraId }: { hydraId: string }): void {
 
       try {
         const current = loadHydra({ hydraId }).state
-        const branch = git({
+        const branch = (await git({
           cwd: path,
           args: [
             'symbolic-ref',
@@ -1337,14 +1355,14 @@ function trimPool({ hydraId }: { hydraId: string }): void {
             '--short',
             'HEAD',
           ],
-        }).out
+        })).out
         const owner = Object.values(current.cards).find(c => c.copy?.path === path
           && c.copy.state === 'removed' && c.copy.project === project.path && c.copy.branch === branch)
 
-        if (!owner?.copy || !reusable({
+        if (!owner?.copy || !await reusable({
           path,
           common,
-        }) || 'reason' in checkCopy({
+        }) || 'reason' in await checkCopy({
           card: owner,
           copy: owner.copy,
         })) {
@@ -1355,7 +1373,7 @@ function trimPool({ hydraId }: { hydraId: string }): void {
           continue
         }
 
-        removeCopy({
+        await removeCopy({
           copy: owner.copy,
           force: false,
         })
@@ -1371,13 +1389,13 @@ function trimPool({ hydraId }: { hydraId: string }): void {
 export const settles = ({ card }: { card: Card }) => Boolean(card.doneAt) && card.copy?.state === 'active'
   && card.activity !== 'working' && card.kind !== 'investigation'
 
-export function settleDone({
+export async function settleDone({
   hydraId,
   at = new Date().toISOString(),
 }: {
   hydraId: string
   at?: string
-}): number {
+}): Promise<number> {
   const state = loadHydra({ hydraId }).state
 
   if (state.config?.hydra.kind === 'firstmate') {
@@ -1391,7 +1409,7 @@ export function settleDone({
     }).length)
 
   for (const card of due) {
-    settleCopy({
+    await settleCopy({
       hydraId,
       ref: card.id,
       meta: {
@@ -1401,7 +1419,7 @@ export function settleDone({
     })
   }
 
-  trimPool({ hydraId })
+  await trimPool({ hydraId })
 
   return due.length
 }

@@ -1,4 +1,5 @@
 import type { HydraEvent } from '#app/model.ts'
+import { PROVIDERS, type Harness } from '#workers/providers.ts'
 import { HYDRA_ACTOR, ownerActor } from '#app/actors.ts'
 import type { HydraColumn } from './columns-model.ts'
 import type { Ask, RepliedEvent } from './model.ts'
@@ -76,11 +77,6 @@ export type UpdateColumns = Pick<HydraColumn, 'id' | 'title' | 'role'>[]
 const LINK_VERBS: Record<string, string> = {
   merged: 'merged',
   closed: 'closed',
-}
-
-const HARNESSES: Record<string, string> = {
-  claude: 'Claude Code',
-  codex: 'Codex',
 }
 
 const INTENT = /^Captain's intent:\s*/
@@ -458,7 +454,7 @@ function updateRow({
       kind: 'worker',
       state: 'Worker started',
       note: [
-        HARNESSES[String(data.harness)],
+        PROVIDERS[String(data.harness) as Harness]?.name,
         event.reason,
       ].filter(Boolean).join('. '),
     }

@@ -14,6 +14,7 @@ import { askHost, readServer } from '#app/server-state.ts'
 import { browserCommand } from '#app/server-browser.ts'
 import { commit, explained, required, type Output } from '#app/cli-support.ts'
 import { sendReply } from '#workers/reply.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 type Values = Record<string, string | boolean | string[] | undefined>
 
@@ -236,7 +237,7 @@ async function answerHydra({
 
 // An agent session's own actor beats --actor; commands the server runs for its page keep the server's.
 const sessionActor = ({ meta }: { meta: Meta }): Meta => {
-  const session = process.env.PNYX_ACTOR
+  const session = requestEnv().PNYX_ACTOR
   const agentSession = !!session && (session === HYDRA_ACTOR || reportActor({ actor: session }))
   const agent = agentSession && !browserCommand.getStore()
 

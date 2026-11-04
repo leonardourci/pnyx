@@ -3,62 +3,18 @@ import { parseArgs } from 'node:util'
 import { DEFAULT_HYDRA } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { AxiError } from 'axi-sdk-js'
-import { HYDRA_CARD } from './identity.ts'
 import { hydraBypasses } from './hydra.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { guard, WRITE } from '#app/cli-support.ts'
+import { ownerOnlyCommand } from '#app/command-registry.ts'
+import { requestEnv } from '#app/request-context.ts'
 
 type Command = ReturnType<typeof guard>
-const flag = ({
-  args,
-  name,
-}: {
-  args: string[]
-  name: string
-}) =>
-  args.some(arg => arg === name || arg.startsWith(`${name}=`))
-
-// What only the owner may change: what agents may run, which logins they use, Hydra's own prompts and the installed Pnyx.
-// Hydra may create the missing config (rule init never overwrites) and read the setup check.
-// rule apply decides for itself, so a patch Hydra may not save is refused with a hint to propose it.
-const OWNER_ONLY: Record<string, ({ args }: { args: string[] }) => boolean> = {
-  agent: ({ args }) => args[1] === 'mode',
-  rule: ({ args }) => ![
-    'list',
-    'show',
-    'schema',
-    'now',
-    'init',
-    'apply',
-    'propose',
-  ].includes(args[0] ?? 'list'),
-  account: ({ args }) => ![
-    'list',
-    'propose',
-  ].includes(args[0] ?? 'list'),
-  hydra: ({ args }) => args[0] === 'set' && (flag({
-    args,
-    name: '--command',
-  }) || flag({
-    args,
-    name: '--session',
-  })),
-  project: ({ args }) => args[0] === 'set',
-  setup: ({ args }) => args[0] !== 'check',
-  task: ({ args }) => (args[0] === 'permission' && args[1] === HYDRA_CARD)
-    || (args[0] === 'copy' && flag({
-      args,
-      name: '--discard',
-    })),
-  approval: () => true,
-  restart: () => true,
-  upgrade: ({ args }) => !args.includes('--check'),
-}
 
 // Bypass counts only for the Hydra the command runs in, never one it names with --hydra.
 export function runsInBypass({
   hydraId,
-  env = process.env,
+  env = requestEnv(),
 }: {
   hydraId: string
   env?: NodeJS.ProcessEnv
@@ -69,7 +25,7 @@ export function runsInBypass({
 // Hydra may propose owner-only actions, but only the owner can confirm them.
 export function ownerOnly<T extends Record<string, Command>>({
   commands,
-  env = process.env,
+  env = requestEnv(),
 }: {
   commands: T
   env?: NodeJS.ProcessEnv
@@ -119,7 +75,10 @@ export function ownerOnly<T extends Record<string, Command>>({
         ...args.filter(arg => arg.startsWith('--')),
       ]
 
-      if (hydra && OWNER_ONLY[name]?.({ args: actionArgs })) {
+      if (hydra && ownerOnlyCommand({
+        name,
+        args: actionArgs,
+      })) {
         if (name === 'approval' || (name === 'rule' && [
           'confirm',
           'dismiss',

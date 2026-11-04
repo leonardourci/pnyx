@@ -66,6 +66,11 @@ exit 79
     LANG: 'en_US.UTF-8',
   }
 
+  // The opt-in latency measure is the one switch a run takes from outside.
+  if (process.env.PNYX_LATENCY) {
+    env.PNYX_LATENCY = process.env.PNYX_LATENCY
+  }
+
   for (const key of [
     'HOME',
     'TMPDIR',

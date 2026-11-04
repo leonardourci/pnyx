@@ -14,6 +14,47 @@ export interface HydraSnapshot {
   tornBytes: number
 }
 
+// A Hydra the server holds: its state lives in memory, and every change is appended to its log before it applies.
+export type Held = {
+  dir: string
+  state: HydraState
+  offset: number
+  // Called after each write, so the server pushes the change in the same step.
+  changed(): void
+}
+
+const held = new Map<string, Held>()
+
+export const heldHydra = ({ hydraId }: { hydraId: string }) => held.get(hydraId)
+
+// The server keeps the Hydra in memory from here until the returned release; the server saves its snapshot when it stops.
+export function holdHydra({
+  hydraId,
+  changed,
+}: {
+  hydraId: string
+  changed(): void
+}): () => void {
+  const loaded = loadTail({ hydraId })
+  const entry: Held = {
+    dir: loaded.dir,
+    state: loaded.state,
+    offset: loaded.offset,
+    changed,
+  }
+  held.set(
+    hydraId,
+    entry,
+  )
+
+  return () => {
+    if (held.get(hydraId) === entry) {
+      held.delete(hydraId)
+    }
+  }
+}
+
+// Reads return the live state of a held Hydra; callers must treat it as read-only.
 export function loadHydra({
   hydraId,
   migrate = true,
@@ -21,6 +62,17 @@ export function loadHydra({
   hydraId: string
   migrate?: boolean
 }): HydraSnapshot {
+  const live = held.get(hydraId)
+
+  if (live) {
+    return {
+      dir: live.dir,
+      state: live.state,
+      offset: live.offset,
+      tornBytes: 0,
+    }
+  }
+
   const dir = hydraDir({
     hydraId,
     migrate,

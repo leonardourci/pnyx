@@ -18,6 +18,7 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { workerNotesNotice } from '#memory/workers.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { landingWording } from '#tasks/delivery/cli.ts'
+import { requestEnv, requestInvocation } from '#app/request-context.ts'
 
 export const HISTORY_LIMIT = 20
 
@@ -53,14 +54,9 @@ export const WRITE: Options = {
   confirm: { type: 'string' },
 }
 
-// The running CLI command (`task create`) and its focused help, set by the CLI entry, so usage
-// errors can point at that subcommand. Commands run inside the server leave it empty.
-export const invocation: {
-  name?: string
-  help?: string
-} = {}
-
 export function helpHint(): string {
+  const invocation = requestInvocation()
+
   return invocation.name ? `Run \`pnyx-axi ${invocation.name} --help\`` : 'Run the command with --help'
 }
 
@@ -83,6 +79,7 @@ export function flagError({
   }
 
   // The subcommand's documented flags plus the global ones it accepts.
+  const invocation = requestInvocation()
   const flags = invocation.help
     ? [
       ...new Set([
@@ -206,7 +203,7 @@ export function integer({
 export function meta({ values }: { values: Record<string, string | boolean | undefined> }): Meta {
   const m: Meta = {
     at: new Date().toISOString(),
-    actor: (values.actor as string | undefined) ?? (process.env.PNYX_ACTOR || 'cli'),
+    actor: (values.actor as string | undefined) ?? (requestEnv().PNYX_ACTOR || 'cli'),
   }
 
   if (typeof values.reason === 'string') {
@@ -742,6 +739,7 @@ export function summary({ event }: { event: HydraEvent }): string {
       }
 
       return `${event.actor === HYDRA_ACTOR ? 'Hydra' : event.data.action === 'worker' ? 'Create a worker' : event.data.kind === 'progress' ? 'Progress' : 'Send to Hydra'}: ${event.data.text}${event.data.details ? ` (${event.data.details})` : ''}`
+    case 'hydra.operation': return `${event.data.kind} ${event.data.state}${event.data.error ? `: ${event.data.error}` : ''}`
     case 'hydra.status': return `Hydra ${event.data.state} since ${event.data.since}${event.data.detail ? `: ${event.data.detail}` : ''}`
     case 'board.agents': return `Legacy agents: ${Object.keys(event.data.agents).join(', ') || 'none'}`
     case 'task.dependencies': return `Prerequisites: ${event.data.after.join(', ') || 'none'}`

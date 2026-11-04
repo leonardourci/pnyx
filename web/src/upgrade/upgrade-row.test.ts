@@ -67,6 +67,7 @@ test(
         },
         askHydra: () => {},
         stop: async () => {},
+        restartNow: async () => {},
       },
     ))
     assert.match(
@@ -117,6 +118,7 @@ test(
         },
         askHydra: () => {},
         stop: async () => {},
+        restartNow: async () => {},
       },
     ))
     assert.match(
@@ -130,6 +132,46 @@ test(
     assert.doesNotMatch(
       html,
       /previous version/,
+    )
+  },
+)
+
+test(
+  'a built upgrade waiting for agents between turns says so and offers Restart now',
+  { skip: !hooks },
+  async () => {
+    const { createElement } = await import('react')
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { UpgradeRow } = await import('./upgrade-row.tsx')
+    const html = renderToStaticMarkup(createElement(
+      UpgradeRow,
+      {
+        operation: {
+          id: 'upgrade',
+          state: 'waiting',
+          folder: '',
+          queuedAt: '2026-11-02T00:00:00Z',
+          restartBy: '2026-11-02T00:15:00Z',
+          steps: [
+            {
+              step: 'build',
+              state: 'done',
+              seconds: 0,
+            },
+          ],
+        },
+        askHydra: () => {},
+        stop: async () => {},
+        restartNow: async () => {},
+      },
+    ))
+    assert.match(
+      html,
+      /restarting once no agent is mid-turn/,
+    )
+    assert.match(
+      html,
+      /Restart now/,
     )
   },
 )

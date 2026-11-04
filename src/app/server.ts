@@ -1,6 +1,7 @@
 import { AxiError } from 'axi-sdk-js'
+import { providerIdOf } from '#workers/providers.ts'
 import { nonblockingLocks } from '#store/storage.ts'
-import { commandTimeout, retryable } from './server-protocol.ts'
+import { commandTimeout } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
@@ -41,8 +42,8 @@ import { paseoConversation, type PaseoConversation } from '#integrations/paseo/t
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
-import { existsSync, mkdirSync, renameSync, rmSync, unwatchFile, watchFile, writeFileSync } from 'node:fs'
-import { watchPath, type PathWatch } from './watch.ts'
+import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
+import { pollPath, watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
@@ -53,23 +54,24 @@ import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from '#workers/model.ts'
 import { reduce } from './reducer.ts'
 import { traces } from '#preferences/view.ts'
-import { hydraDir, hydraIds } from './home-migration.ts'
-import { loadHydra } from './store.ts'
-import { withWriter } from './writer.ts'
+import { hydraDir } from './home-migration.ts'
+import { heldHydra, holdHydra, loadHydra } from './store.ts'
+import { saveSnapshot, withWriter } from './writer.ts'
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { upgradeUnderway } from '#upgrade/queue.ts'
 import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { hydraIdentity, infoPath, localToken, readServer, socketPath, type ServerInfo } from './server-state.ts'
-import { serviceFile } from '#setup/service.ts'
+import { hydraIdentity, localToken, offerHost, readServer, socketPath } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
-import type { NativeConnection } from './native-provider.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
+import { runPageCommand } from './page-command.ts'
 import { RESUME_LIMIT, MAX_BUFFERED, MAX_BODY, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
 import { SOURCE_CONDITIONS } from './source-conditions.ts'
-import { readBytes, readBody, buildId, reply, serveStatic } from './server-http.ts'
+import { readBytes, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
 
 const ORACLE_LIMIT = 100
@@ -102,20 +104,10 @@ const EVENT_POLL_MS = 500
 const REPLY_POLL_MS = 30_000
 // A worker mid-write gets this long to finish on shutdown before it is killed.
 const WORKER_GRACE_MS = 5000
-// The CLI owns reply writes and delivery; a child keeps slow native sends off the server event loop.
-const REPLY_WORKER = join(
-  import.meta.dirname,
-  '..',
-  'workers',
-  import.meta.url.endsWith('.ts') ? 'reply-process.ts' : 'reply-process.js',
-)
-const COMMAND_WORKER = join(
-  import.meta.dirname,
-  import.meta.url.endsWith('.ts') ? 'command-process.ts' : 'command-process.js',
-)
+// Replies and page commands run in the server itself; only the Oracle index catch-up runs in a child.
+const REPLY_WORKER = 'reply'
+const COMMAND_WORKER = 'command'
 const REPLY_WORKER_TIMEOUT_MS = 130_000
-const OWNER_WRITE_RETRY_MS = 100
-const OWNER_WRITE_RETRY_MAX_MS = 1000
 // node:sqlite is synchronous, so the Oracle index catches up in a child as well.
 const INDEX_WORKER = join(
   import.meta.dirname,
@@ -152,7 +144,6 @@ export async function mountOwnedHydra({
   catalogLocations,
   query,
   spawnCodex,
-  native,
   wakeDelay,
   stallDelay,
   busyDelay,
@@ -163,7 +154,6 @@ export async function mountOwnedHydra({
   reviewClock,
   reminderScheduler = systemReminderScheduler,
   open,
-  release,
   hydrasChanged,
   upgradeRoot,
   restart,
@@ -175,7 +165,6 @@ export async function mountOwnedHydra({
   catalogLocations?: CatalogLocations
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: NativeConnection
   wakeDelay?: number
   stallDelay?: number
   busyDelay?: number
@@ -186,20 +175,11 @@ export async function mountOwnedHydra({
   reminderScheduler?: ReminderScheduler
   reviewClock?: Pick<Parameters<typeof startReviewTimer>[0], 'now' | 'interval'>
   open({ id }: { id: string }): Promise<string>
-  release(): void
   hydrasChanged(): void
   upgradeRoot?: string
-  restart?({ force }: { force: boolean }): void | Promise<void>
+  restart?(): void | Promise<void>
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
-  if (await readServer({ hydraId })) {
-    throw new HydraError({
-      message: `a server is already running for Hydra ${hydraId}`,
-      code: 'ALREADY_RUNNING',
-      help: ['Run `pnyx-axi` to see its address'],
-    })
-  }
-
   let homes = (given ?? []).map(path => resolveHome({ path }))
   type Subscription = {
     card: string
@@ -434,13 +414,14 @@ export async function mountOwnedHydra({
   }
 
   const dir = hydraDir({ hydraId })
-  const eventsPath = join(
-    dir,
-    'events.jsonl',
-  )
   privateDir({ dir: spoolDir({ dir }) })
   const token = Buffer.from(localToken())
   const identity = hydraIdentity({ hydraId })
+  // The server holds the Hydra in memory; its own writes call kick in the same step.
+  const releaseHold = holdHydra({
+    hydraId,
+    changed: () => kick(),
+  })
   let {
     state,
     offset,
@@ -557,28 +538,6 @@ export async function mountOwnedHydra({
       ws.send({ message })
     }
   }
-
-  const sendNative = ({ ws }: { ws: HydraClient }) => {
-    const status = native?.status?.()
-
-    if (status) {
-      send({
-        ws,
-        message: {
-          type: 'native-status',
-          native: status,
-        },
-      })
-    }
-  }
-
-  const stopNativeStatus = native?.subscribeStatus?.({
-    changed() {
-      for (const ws of clients) {
-        sendNative({ ws })
-      }
-    },
-  })
 
   const sendQueue = ({ ws }: { ws: HydraClient }) => send({
     ws,
@@ -845,24 +804,14 @@ export async function mountOwnedHydra({
         continue
       }
 
-      const changed = () => transcriptChanged({ path })
       // Native notices can miss content writes; stat polling follows replaced and recreated paths.
-      watchFile(
-        path,
-        {
-          interval: EVENT_POLL_MS,
-          persistent: false,
-        },
-        changed,
-      )
       transcriptPolls.set(
         path,
-        {
-          close: () => unwatchFile(
-            path,
-            changed,
-          ),
-        },
+        pollPath({
+          path,
+          interval: EVENT_POLL_MS,
+          changed: () => transcriptChanged({ path }),
+        }),
       )
     }
   }
@@ -984,15 +933,25 @@ export async function mountOwnedHydra({
       return reload()
     }
 
+    const live = heldHydra({ hydraId })
+
     for (const event of read.events) {
-      if (event.seq !== state.seq + 1) {
+      // A held Hydra's writer has already applied the event to the state this server reads.
+      if (live) {
+        state = live.state
+
+        if (event.seq > state.seq) {
+          return reload()
+        }
+      } else if (event.seq !== state.seq + 1) {
         return reload()
+      } else {
+        state = reduce({
+          state,
+          event,
+        })
       }
 
-      state = reduce({
-        state,
-        event,
-      })
       recent.push(event)
 
       if (event.type === 'hydra.project') {
@@ -1043,14 +1002,15 @@ export async function mountOwnedHydra({
   let queueCheckedAt = 0
   let queueNeedsRetry = false
   let followRun: Promise<void> | undefined
+  let settling: Promise<void> | undefined
   let followCheckedAt = 0
   let replyRun: Promise<void> | undefined
   let replyCheckedAt = 0
   let scheduled = false
 
-  // Reply workers write the Hydra's files, so shutdown must outlast every one of them.
-  // The value says whether shutdown may kill the worker: a follow or an index catch-up, which the next run repeats.
+  // Children the server waits for at shutdown; the value says whether shutdown may kill one (the index catch-up, which the next run repeats).
   const workers = new Map<ChildProcess, boolean>()
+  const inProcess = new Set<Promise<void>>()
 
   const startWorker = ({
     args,
@@ -1083,6 +1043,25 @@ export async function mountOwnedHydra({
       return
     }
 
+    if (file === REPLY_WORKER || file === COMMAND_WORKER) {
+      // runPageCommand reports its own failures in its answer, so this promise never rejects.
+      const answer = async () => {
+        const {
+          failed,
+          stdout,
+        } = await runPageCommand({ argv: args })
+        done({
+          error: failed ? new Error(`${args[0]} failed`) : null,
+          stdout,
+        })
+      }
+
+      const running = answer().finally(() => inProcess.delete(running))
+      inProcess.add(running)
+
+      return
+    }
+
     const child = execFile(
       process.execPath,
       [
@@ -1104,7 +1083,7 @@ export async function mountOwnedHydra({
     )
     workers.set(
       child,
-      args[0] === 'inbox-follow' || file === INDEX_WORKER,
+      file === INDEX_WORKER,
     )
     child.once(
       'close',
@@ -1113,27 +1092,53 @@ export async function mountOwnedHydra({
   }
 
   // Resolves with why the catch-up failed, or undefined; the next change retries a failed one.
-  const historyIndex = indexRuns({
-    start: () => new Promise<ReturnType<typeof workerError>>(resolve => startWorker({
-      file: INDEX_WORKER,
-      timeout: INDEX_WORKER_TIMEOUT_MS,
-      args: [hydraId],
-      done: ({
-        error,
-        stdout,
-      }) => {
-        if (!error) {
-          return resolve(undefined)
-        }
+  // The index process only reads the Hydra; what it needs from transcripts is written here, by the Hydra's one writer.
+  const harvestForIndex = () => {
+    try {
+      withWriter({
+        hydraId,
+        fn: ({ writer }) => harvestTranscripts({
+          writer,
+          cardIds: Object.keys(writer.state.cards),
+          at: new Date().toISOString(),
+        }),
+      })
+    } catch (error) {
+      console.error(`pnyx oracle index: transcripts not harvested: ${(error as Error).message}`)
+    }
+  }
 
-        const failure = workerError({ stdout }) ?? {
-          message: error.message,
-          code: 'UNKNOWN',
-        }
-        console.error(`pnyx oracle index: ${failure.message}`)
-        resolve(failure)
-      },
-    })),
+  const historyIndex = indexRuns({
+    start: () => new Promise<ReturnType<typeof workerError>>(resolve => {
+      // The next change, or the restarted server, catches the index up.
+      if (upgradeUnderway()) {
+        resolve(undefined)
+
+        return
+      }
+
+      harvestForIndex()
+      startWorker({
+        file: INDEX_WORKER,
+        timeout: INDEX_WORKER_TIMEOUT_MS,
+        args: [hydraId],
+        done: ({
+          error,
+          stdout,
+        }) => {
+          if (!error) {
+            return resolve(undefined)
+          }
+
+          const failure = workerError({ stdout }) ?? {
+            message: error.message,
+            code: 'UNKNOWN',
+          }
+          console.error(`pnyx oracle index: ${failure.message}`)
+          resolve(failure)
+        },
+      })
+    }),
   })
   historyIndex.changed()
 
@@ -1171,6 +1176,8 @@ export async function mountOwnedHydra({
         resolve,
       ))
     }
+
+    await Promise.all(inProcess)
 
     clearTimeout(killer)
   }
@@ -1316,7 +1323,10 @@ export async function mountOwnedHydra({
         }
 
         sources.reconcile()
-        review.check()
+        background({
+          name: 'review',
+          run: review.check,
+        })
         fireReminders({
           hydraId,
           at: new Date(reminderScheduler.now()).toISOString(),
@@ -1333,10 +1343,23 @@ export async function mountOwnedHydra({
           pump()
         }
 
-        // ponytail: git runs synchronously here; move it off the event loop if copies get slow to settle.
-        if (Object.values(state.cards).some(card => settles({ card }))) {
-          settleDone({ hydraId })
-          pump()
+        // One settle at a time; it reads the copies with git, off the event loop.
+        if (!settling && Object.values(state.cards).some(card => settles({ card }))) {
+          const settle = async () => {
+            try {
+              await settleDone({ hydraId })
+            } catch (error) {
+              console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`)
+
+              return
+            } finally {
+              settling = undefined
+            }
+
+            pump()
+          }
+
+          settling = settle()
         }
       } catch (error) {
         // A held lock or a damaged log; the next change retries.
@@ -1406,7 +1429,6 @@ export async function mountOwnedHydra({
     hydraId,
     query,
     spawnCodex,
-    native: native?.providers,
     wakeDelay,
     stallDelay,
     busyDelay,
@@ -1442,27 +1464,12 @@ export async function mountOwnedHydra({
     },
   })
 
-  let nativeRecovery = Promise.resolve()
-  const unwatchNative = native?.client?.subscribe({
-    receive: ({ frame }) => {
-      const ready = frame.type === 'ready' || frame.type === 'host-status' && frame.status.state === 'ready'
-
-      if (!ready) {
-        return
-      }
-
-      nativeRecovery = nativeRecovery.then(async () => {
-        if (!closed) {
-          await agents.recover()
-          kick()
-        }
-      }).catch(error => {
-        console.error(
-          'pnyx-axi native reattachment:',
-          error,
-        )
-      })
-    },
+  const withdrawHost = offerHost({
+    hydraId,
+    ask: ({ body }) => hostRequest({
+      host: agents,
+      body,
+    }),
   })
 
   const sources = createSourceRunner({
@@ -1489,49 +1496,6 @@ export async function mountOwnedHydra({
   }: HydraRequest) => {
     // The CLI asks here to start or message an agent this server runs. A page cannot
     // send this header cross-origin without a preflight, which this server never answers.
-    if (req.method === 'POST' && path === '/host') {
-      if (!authorized({
-        given: req.headers.authorization?.replace(
-          /^Bearer /,
-          '',
-        ) ?? null,
-      })) {
-        return reply({
-          res,
-          status: 401,
-          body: {
-            error: 'missing or wrong token',
-            code: 'UNAUTHORIZED',
-          },
-        })
-      }
-
-      return readBody({ req }).then(async body => {
-        await nativeRecovery
-
-        return hostRequest({
-          host: agents,
-          body,
-        })
-      })
-        .then(
-          answer => reply({
-            res,
-            status: 200,
-            body: answer,
-          }),
-          (error: Error) => reply({
-            res,
-            status: 400,
-            body: {
-              error: error.message,
-              code: error instanceof HydraError ? error.code : 'UNKNOWN',
-              help: error instanceof HydraError ? error.help : [],
-            },
-          }),
-        )
-    }
-
     // An image dropped or pasted into a composer; the message then carries its path.
     if (req.method === 'POST' && path === '/attachments') {
       if (!authorized({
@@ -1722,7 +1686,6 @@ export async function mountOwnedHydra({
           hydraId,
           pid: process.pid,
           build: buildId(),
-          native: native?.status?.(),
         },
       })
     }
@@ -1754,31 +1717,21 @@ export async function mountOwnedHydra({
     read: Promise<Catalog>
   }>()
 
-  const writeRetries = new Set<ReturnType<typeof setTimeout>>()
-
   const runCommand = ({
     ws,
     message,
-    retryUntil,
-    retryAttempt,
   }: Parameters<typeof attemptCommand>[0]) => nonblockingLocks.run(
     true,
     () => attemptCommand({
       ws,
       message,
-      retryUntil,
-      retryAttempt,
     }),
   )
 
   const attemptCommand = ({
     ws,
     message,
-    retryUntil,
-    retryAttempt = 0,
   }: {
-    retryAttempt?: number
-    retryUntil?: number
     ws: HydraClient
     message: {
       id?: unknown
@@ -1787,10 +1740,6 @@ export async function mountOwnedHydra({
     }
   }) => {
     const id = typeof message.id === 'string' ? message.id : null
-    const deadline = retryUntil ?? Date.now() + commandTimeout({
-      name: String(message.name),
-      args: Array.isArray(message.args) ? message.args : [],
-    })
 
     const fail = ({
       error,
@@ -1801,70 +1750,6 @@ export async function mountOwnedHydra({
       code: string
       help?: string[]
     }) => {
-      if (code === 'LOCKED' && id && typeof message.name === 'string'
-        && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
-        try {
-          const receipt = savedReceipt({
-            command: {
-              type: 'command',
-              id,
-              name: message.name,
-              args: message.args,
-            },
-            state: loadHydra({ hydraId }).state,
-          })
-
-          if (receipt) {
-            send({
-              ws,
-              message: {
-                ...receipt,
-                type: 'receipt',
-                id,
-              },
-            })
-
-            return
-          }
-        } catch { /* An unreadable log leaves the save pending. */ }
-      }
-
-      const retrySafe = retryable({
-        name: String(message.name),
-        args: Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string') ? message.args : [],
-      })
-
-      if (code === 'LOCKED' && retrySafe && id && !closed && Date.now() < deadline) {
-        send({
-          ws,
-          message: {
-            type: 'checking',
-            id,
-          },
-        })
-        const timer = setTimeout(
-          () => {
-            writeRetries.delete(timer)
-
-            if (!closed) {
-              runCommand({
-                ws,
-                message,
-                retryUntil: deadline,
-                retryAttempt: retryAttempt + 1,
-              })
-            }
-          },
-          Math.min(
-            OWNER_WRITE_RETRY_MS * 2 ** retryAttempt,
-            OWNER_WRITE_RETRY_MAX_MS,
-          ),
-        )
-        writeRetries.add(timer)
-
-        return
-      }
-
       let saved: boolean | undefined
 
       if (id && typeof message.name === 'string' && Array.isArray(message.args) && message.args.every(arg => typeof arg === 'string')) {
@@ -2199,7 +2084,7 @@ export async function mountOwnedHydra({
 
           // A new permission mode reaches Hydra's running turn at once; other settings wait for the next message.
           if (agent.mode && agent.mode !== previous?.mode && running?.host === 'pnyx'
-            && running.provider === (agent.harness === 'codex' ? 'codex' : 'claude-code')) {
+            && running.provider === providerIdOf({ harness: agent.harness })) {
             void agents.set({
               card: HYDRA_CARD,
               setting: 'mode',
@@ -2641,7 +2526,6 @@ export async function mountOwnedHydra({
         installation: hydraIdentity({ hydraId: '' }),
       },
     })
-    sendNative({ ws })
     const upgrade = upgradeStatus()
 
     if (upgrade) {
@@ -2760,26 +2644,16 @@ export async function mountOwnedHydra({
   const watchers: PathWatch[] = []
 
   const stop = async () => {
-    stopNativeStatus?.()
     closed = true
+    withdrawHost()
     historyIndex.stop()
 
-    for (const timer of writeRetries) {
-      clearTimeout(timer)
-    }
-
-    writeRetries.clear()
-    unwatchNative?.()
-    unwatchFile(
-      eventsPath,
-      kick,
-    )
     await Promise.all([
       queueRun,
       replyRun,
       followRun,
+      settling,
       joinWorkers(),
-      nativeRecovery,
     ])
     await sources.close()
     firstmate?.close()
@@ -2787,6 +2661,19 @@ export async function mountOwnedHydra({
     catalogIndex.close()
     agents.close()
     await spend.close()
+    const live = heldHydra({ hydraId })
+
+    // The log holds every change; a snapshot that cannot be written only makes the next start slower,
+    // so the rest of shutdown runs regardless.
+    if (live) {
+      try {
+        saveSnapshot({ live })
+      } catch (error) {
+        console.error(`pnyx-axi snapshot of Hydra ${hydraId} at shutdown: ${(error as Error).message}`)
+      }
+    }
+
+    releaseHold()
 
     const threads = threadSubscriptions.flatMap(map =>
       [...map.values()].flatMap(sub => sub.watcher ?? []))
@@ -2821,10 +2708,6 @@ export async function mountOwnedHydra({
 
     clients.clear()
     await (ingest && new Promise(r => ingest.close(r)))
-    rmSync(
-      infoPath({ hydraId }),
-      { force: true },
-    )
 
     if (ingest) {
       rmSync(
@@ -2834,17 +2717,7 @@ export async function mountOwnedHydra({
     }
   }
 
-  const info: ServerInfo = {
-    pid: process.pid,
-    port: Number(new URL(url).port),
-    url,
-    socket: ingest && socketPath({ hydraId }),
-    service: process.env.PNYX_SERVICE_ROLE === 'application'
-      || process.env.XPC_SERVICE_NAME === serviceFile().label,
-    serveArgs: process.argv[2] === 'serve' ? process.argv.slice(3) : undefined,
-  }
-
-  // A mount that fails partway stops what it started; the caller releases the claim.
+  // A mount that fails partway stops what it started.
   try {
     watchers.push(
       watchPath({
@@ -2856,25 +2729,7 @@ export async function mountOwnedHydra({
         changed: kick,
       }),
     )
-    // Directory notifications can coalesce rapid appends; stat polling recovers the missed tail.
-    watchFile(
-      eventsPath,
-      {
-        interval: EVENT_POLL_MS,
-        persistent: false,
-      },
-      kick,
-    )
     followHome()
-    const tmp = `${infoPath({ hydraId })}.tmp-${process.pid}`
-    writeFileSync(
-      tmp,
-      JSON.stringify(info),
-    )
-    renameSync(
-      tmp,
-      infoPath({ hydraId }),
-    )
   } catch (error) {
     await stop()
     throw error
@@ -2891,7 +2746,7 @@ export async function mountOwnedHydra({
 
   return {
     url,
-    socket: info.socket,
+    socket: ingest && socketPath({ hydraId }),
     request,
     connect,
     summaries({ hydras }) {
@@ -2944,7 +2799,6 @@ export async function mountOwnedHydra({
       }
 
       await stop()
-      release()
     },
   }
 }
@@ -2961,9 +2815,8 @@ export const SERVE_OPTIONS = {
 // A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
 export { DEFAULT_PORT } from './server-state.ts'
 
-// Usually one process; a server an older version started for a single Hydra counts too.
 export async function serverPids(): Promise<number[]> {
-  const found = await Promise.all(hydraIds().map(hydraId => readServer({ hydraId })))
+  const info = await readServer({ hydraId: 'default' })
 
-  return [...new Set(found.flatMap(info => info ? [info.pid] : []))]
+  return info ? [info.pid] : []
 }

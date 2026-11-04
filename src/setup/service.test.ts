@@ -3,30 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, symlinkSync, writeFil
 import { tmpdir } from 'node:os'
 import { delimiter, join } from 'node:path'
 import { test } from 'node:test'
-import { serviceFile, setupService as installService } from './service.ts'
-
-function setupService({ ...options }: Parameters<typeof installService>[0]) {
-  const home = process.env.PNYX_HOME!
-
-  return installService({
-    ...options,
-    nativeBundle: () => ({
-      bundle: join(
-        home,
-        'fixture-native',
-      ),
-      entry: join(
-        home,
-        'fixture-native/main.js',
-      ),
-      directory: join(
-        home,
-        'native',
-      ),
-      installation: 'fixture-installation',
-    }),
-  })
-}
+import { serviceFile, setupService } from './service.ts'
 
 test(
   'one login service runs the server of every Hydra, replaces the per-Hydra services of this home, survives exit and uninstalls through launchd',
@@ -276,7 +253,6 @@ test(
     assert.deepEqual(
       calls,
       [
-        'bootstrap',
         'print',
         'bootout',
         'print',
@@ -651,6 +627,11 @@ test(
       preview.unit,
       /^Environment="PNYX_HOME=[^"]*pnyx 100%% Hydra"$/m,
     )
+    // The server reads this to record that its service started it; without it a restart starts a second server.
+    assert.match(
+      preview.unit,
+      /^Environment="PNYX_SERVICE_ROLE=application"$/m,
+    )
     assert.match(
       preview.unit,
       /^Environment="PATH=\/opt\/tools\/bin:\/usr\/bin"$/m,
@@ -707,16 +688,6 @@ test(
         [
           '--user',
           'enable',
-          '--now',
-          `${preview.native!.label}.service`,
-        ],
-        [
-          '--user',
-          'daemon-reload',
-        ],
-        [
-          '--user',
-          'enable',
           unitName,
         ],
         [
@@ -727,7 +698,6 @@ test(
       ],
     )
 
-    const firstInstallCalls = calls.length
     setupService({
       ...options,
       port: 49126,
@@ -740,7 +710,7 @@ test(
       /"--port" "49126"$/m,
     )
     assert.deepEqual(
-      calls.slice(firstInstallCalls),
+      calls.slice(3),
       [
         [
           '--user',
@@ -877,17 +847,6 @@ test(
       preview.unit,
       /^Environment="CODEX_HOME=\/logins\/codex \\"100%%\\" \\\\ home"$/m,
     )
-    mkdirSync(
-      join(
-        root,
-        '.config/systemd/user',
-      ),
-      { recursive: true },
-    )
-    writeFileSync(
-      preview.native!.path,
-      'existing independent native job',
-    )
     assert.throws(
       () => setupService(options),
       {
@@ -947,72 +906,5 @@ test(
       }).service,
       'removed',
     )
-  },
-)
-
-test(
-  'a native job start failure preserves the app definition and can be retried',
-  () => {
-    const root = mkdtempSync(join(
-      tmpdir(),
-      'pnyx-native-service-',
-    ))
-    process.env.PNYX_HOME = join(
-      root,
-      'state',
-    )
-    const options = {
-      platform: 'linux' as const,
-      userHome: root,
-    }
-    const preview = setupService({
-      ...options,
-      preview: true,
-    })
-    assert.throws(
-      () => setupService({
-        ...options,
-        run: () => {
-          throw new Error('Native fixture start refused')
-        },
-      }),
-      { code: 'SERVICE_ERROR' },
-    )
-    assert.equal(
-      existsSync(preview.path),
-      false,
-    )
-    assert.equal(
-      existsSync(preview.native!.path),
-      false,
-    )
-    const calls: string[][] = []
-    const installed = setupService({
-      ...options,
-      run: ({ args }) => {
-        calls.push(args)
-
-        return ''
-      },
-    })
-    assert.equal(
-      installed.native!.state,
-      'installed',
-    )
-    assert.ok(calls.some(args => args.includes(`${preview.native!.label}.service`)))
-    calls.length = 0
-    const repaired = setupService({
-      ...options,
-      run: ({ args }) => {
-        calls.push(args)
-
-        return ''
-      },
-    })
-    assert.equal(
-      repaired.native!.state,
-      'preserved',
-    )
-    assert.ok(calls.every(args => !args.some(arg => arg.includes('.native.'))))
   },
 )

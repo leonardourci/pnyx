@@ -1,5 +1,4 @@
 import assert from 'node:assert/strict'
-import { createServer } from 'node:http'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -14,6 +13,8 @@ import { reply, sendReply } from '#workers/reply.ts'
 import { base } from '#app/command-meta.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { acquireLock } from '#store/storage.ts'
+import { HydraError } from '#store/errors.ts'
+import { offerHost } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
 import { findCard } from './push-rules.ts'
 import { answerDelivery, cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
@@ -313,47 +314,47 @@ async function lab({ t }: { t: TestContext }) {
     }
   }
 
-  const server = createServer(async (
-    request,
-    response,
-  ) => {
-    response.setHeader(
-      'content-type',
-      'application/json',
-    )
+  // Pnyx's server, as a command it runs sees it: the Hydra's agents answer in this process.
+  const withdrawHost = offerHost({
+    hydraId,
+    ask: async ({ body }) => {
+      if (body.action !== 'send') {
+        return { state: 'queued' }
+      }
 
-    if (request.url?.endsWith('/health')) {
-      response.end(JSON.stringify({
-        hydraId,
-        pid: process.pid,
-      }))
+      received.push(body as typeof received[number])
 
-      return
-    }
+      if (mode === 'held') {
+        notifyHeld()
+        await heldDelivery
+      }
 
-    let raw = ''
+      if (mode === 'failed' || mode === 'failed-record-error') {
+        if (mode === 'failed-record-error') {
+          releaseLock = acquireLock({
+            dir: join(
+              root,
+              'hydras',
+              hydraId,
+            ),
+          })
+        }
 
-    for await (const chunk of request) {
-      raw += chunk
-    }
+        throw new HydraError({
+          message: 'Synthetic worker unavailable',
+          code: 'NOT_RUNNING',
+        })
+      }
 
-    const body = JSON.parse(raw)
+      if (mode === 'unknown') {
+        throw new Error('Synthetic unreadable answer')
+      }
 
-    if (body.action !== 'send') {
-      response.end(JSON.stringify({ state: 'queued' }))
+      if (mode === 'queued') {
+        return { queued: true }
+      }
 
-      return
-    }
-
-    received.push(body)
-
-    if (mode === 'held') {
-      notifyHeld()
-      await heldDelivery
-    }
-
-    if (mode === 'failed' || mode === 'failed-record-error') {
-      if (mode === 'failed-record-error') {
+      if (mode === 'record-error') {
         releaseLock = acquireLock({
           dir: join(
             root,
@@ -363,44 +364,15 @@ async function lab({ t }: { t: TestContext }) {
         })
       }
 
-      response.statusCode = 409
-      response.end(JSON.stringify({
-        error: 'Synthetic worker unavailable',
-        code: 'NOT_RUNNING',
-      }))
+      const current = card({ ref: String(body.card) })
 
-      return
-    }
-
-    if (mode === 'unknown') {
-      response.end('{')
-
-      return
-    }
-
-    if (mode === 'queued') {
-      response.end(JSON.stringify({ queued: true }))
-
-      return
-    }
-
-    if (mode === 'record-error') {
-      releaseLock = acquireLock({
-        dir: join(
-          root,
-          'hydras',
-          hydraId,
-        ),
-      })
-    }
-
-    const current = card({ ref: body.card })
-    response.end(JSON.stringify(current.hold ? { deferred: true } : { accepted: true }))
+      return current.hold ? { deferred: true } : { accepted: true }
+    },
   })
   t.after(async () => {
     releaseHeld()
     releaseLock?.()
-    await new Promise<void>(resolve => server.close(() => resolve()))
+    withdrawHost()
 
     for (const [
       name,
@@ -425,24 +397,15 @@ async function lab({ t }: { t: TestContext }) {
     'create',
     hydraId,
   ])
-  await new Promise<void>(resolve => server.listen(
-    0,
-    '127.0.0.1',
-    resolve,
-  ))
-  const address = server.address()
-  assert.ok(address && typeof address !== 'string')
   writeFileSync(
     join(
       root,
-      'hydras',
-      hydraId,
       'server.json',
     ),
     JSON.stringify({
       pid: process.pid,
-      port: address.port,
-      url: `http://127.0.0.1:${address.port}/hydra/${hydraId}/`,
+      port: 0,
+      url: `http://127.0.0.1:0/hydra/${hydraId}/`,
       socket: null,
     }),
   )

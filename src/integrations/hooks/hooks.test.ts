@@ -4,10 +4,8 @@ import assert from 'node:assert/strict'
 import { execFileSync } from 'node:child_process'
 import {
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
-  readdirSync,
   readFileSync,
   utimesSync,
   writeFileSync,
@@ -23,6 +21,7 @@ import { spoolWrite } from '#app/spool.ts'
 import { spoolFiles } from '#store/storage.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
+import { runForRequest } from '#app/api-run.ts'
 import { decidePush } from '#tasks/push.ts'
 import { harvestTranscripts } from './harvest.ts'
 
@@ -31,12 +30,6 @@ const ROOT = join(
   '..',
   '..',
   '..',
-)
-const BIN = join(
-  ROOT,
-  'dist',
-  'cli',
-  'pnyx-axi.js',
 )
 const SCRIPT = join(
   ROOT,
@@ -47,6 +40,10 @@ const SCRIPT = join(
 const FIXTURES = join(
   import.meta.dirname,
   'fixtures',
+)
+const ECHO_CLI = join(
+  FIXTURES,
+  'echo-cli.mjs',
 )
 
 const fixture = ({ name }: { name: string }) => readFileSync(
@@ -612,7 +609,6 @@ test(
 )
 
 function scriptSandbox() {
-  // A short base keeps the socket path under the platform's length limit.
   const root = mkdtempSync(join(
     tmpdir(),
     'pnyx-h-',
@@ -621,39 +617,37 @@ function scriptSandbox() {
     root,
     '.pnyx',
   )
-  const claude = join(
-    root,
-    'claude',
-  )
-  const codex = join(
-    root,
-    'codex',
-  )
   const env = {
     ...process.env,
     HOME: root,
     PNYX_HOME: home,
-    CLAUDE_CONFIG_DIR: claude,
-    CODEX_HOME: codex,
+    CLAUDE_CONFIG_DIR: join(
+      root,
+      'claude',
+    ),
+    CODEX_HOME: join(
+      root,
+      'codex',
+    ),
   }
-  const run = ({ args }: { args: string[] }) => execFileSync(
-    process.execPath,
-    [
-      BIN,
-      ...args,
-    ],
-    {
-      env,
-      encoding: 'utf8',
-    },
-  )
-  const spool = join(
-    home,
-    'hydras',
-    'default',
-    'spool',
-  )
-  const spooled = () => (existsSync(spool) ? readdirSync(spool).filter(f => f.endsWith('.json') && !f.startsWith('.')) : [])
+
+  const run = async ({ args }: { args: string[] }) => {
+    const result = await runForRequest({
+      body: {
+        argv: args,
+        cwd: root,
+        env: {},
+      },
+    })
+    assert.equal(
+      result.exitCode,
+      0,
+      result.stdout,
+    )
+
+    return result.stdout
+  }
+
   const script = join(
     home,
     'hooks',
@@ -675,21 +669,24 @@ function scriptSandbox() {
     root,
     env,
     run,
-    spooled,
     script,
   }
 }
 
 test(
   'SessionStart prints the open tasks of the attached project holding the folder, and nothing elsewhere',
-  () => {
+  async t => {
     const {
       root,
       env,
       run,
       script,
-      spooled,
     } = scriptSandbox()
+    const previous = process.env.PNYX_HOME
+    process.env.PNYX_HOME = env.PNYX_HOME
+    t.after(() => {
+      process.env.PNYX_HOME = previous
+    })
     const project = join(
       root,
       'shop',
@@ -702,14 +699,14 @@ test(
       nested,
       { recursive: true },
     )
-    run({
+    await run({
       args: [
         'project',
         'add',
         project,
       ],
     })
-    run({
+    await run({
       args: [
         'task',
         'create',
@@ -719,23 +716,34 @@ test(
         'shop',
       ],
     })
-    const start = ({
+    const context = ({ cwd }: { cwd: string }) => run({
+      args: [
+        'context',
+        '--cwd',
+        cwd,
+      ],
+    })
+    const hook = ({
+      event,
       cwd,
+      payload,
       extra = {},
     }: {
+      event: string
       cwd: string
+      payload: Record<string, string>
       extra?: Record<string, string>
     }) => execFileSync(
       '/bin/sh',
       [
         script,
         'claude',
-        'SessionStart',
-        BIN,
+        event,
+        ECHO_CLI,
       ],
       {
         cwd,
-        input: '{}',
+        input: JSON.stringify(payload),
         encoding: 'utf8',
         env: {
           ...env,
@@ -743,8 +751,29 @@ test(
         },
       },
     )
+    let sessions = 0
+    const start = ({
+      cwd,
+      extra,
+    }: {
+      cwd: string
+      extra?: Record<string, string>
+    }) => hook({
+      event: 'SessionStart',
+      cwd,
+      payload: {
+        session_id: `s${++sessions}`,
+        cwd,
+      },
+      extra,
+    })
 
-    const summary = start({ cwd: nested })
+    assert.match(
+      start({ cwd: nested }),
+      /^context --hydra default --cwd \S*\/shop\/src\n$/,
+      'SessionStart asks the CLI for the summary of its folder',
+    )
+    const summary = await context({ cwd: nested })
     assert.match(
       summary,
       /project shop/,
@@ -753,8 +782,9 @@ test(
       summary,
       /Fix the cart total,queued/,
     )
+    start({ cwd: root })
     assert.equal(
-      start({ cwd: root }),
+      (await context({ cwd: root })).trim(),
       '',
       'a folder outside every attached project gets no summary',
     )
@@ -767,28 +797,33 @@ test(
       'a worker session gets its context from Pnyx instead',
     )
     assert.equal(
-      execFileSync(
-        '/bin/sh',
-        [
-          script,
-          'claude',
-          'Stop',
-          BIN,
-        ],
-        {
+      hook({
+        event: 'UserPromptSubmit',
+        cwd: nested,
+        payload: {
+          session_id: 's1',
           cwd: nested,
-          input: '{}',
-          encoding: 'utf8',
-          env,
+          prompt: 'Fix the cart total',
         },
-      ),
+      }),
       '',
       'every other hook prints nothing',
     )
-    assert.equal(
-      spooled().length,
-      4,
-      'every hook is still reported',
+    // Every hook is reported; the prompt marks the first session working.
+    ingestSpool({ hydraId: 'default' })
+    const { state } = loadHydra({ hydraId: 'default' })
+    const activity = ({ key }: { key: string }) => state.cards[state.keys[key] ?? '']?.activity
+    assert.deepEqual(
+      [
+        's1',
+        's2',
+        's3',
+      ].map(session => activity({ key: `claude:${session}` })),
+      [
+        'working',
+        'finished',
+        'finished',
+      ],
     )
 
     const other = join(
@@ -801,14 +836,14 @@ test(
     )
     mkdirSync(other)
     mkdirSync(sibling)
-    run({
+    await run({
       args: [
         'project',
         'add',
         other,
       ],
     })
-    run({
+    await run({
       args: [
         'task',
         'create',
@@ -818,7 +853,7 @@ test(
         'docs-site',
       ],
     })
-    run({
+    await run({
       args: [
         'task',
         'create',
@@ -838,7 +873,7 @@ test(
       5,
       6,
     ]) {
-      run({
+      await run({
         args: [
           'task',
           'create',
@@ -850,14 +885,7 @@ test(
       })
     }
 
-    const context = ({ cwd }: { cwd: string }) => run({
-      args: [
-        'context',
-        '--cwd',
-        cwd,
-      ],
-    })
-    const listed = context({ cwd: nested })
+    const listed = await context({ cwd: nested })
     assert.match(
       listed,
       /count: 5 of 6 open tasks/,
@@ -868,7 +896,7 @@ test(
       'another project\'s tasks, Done tasks and tasks past the first five stay out',
     )
     assert.equal(
-      context({ cwd: sibling }).trim(),
+      (await context({ cwd: sibling })).trim(),
       '',
       'a folder whose name only starts with the project\'s is outside it',
     )

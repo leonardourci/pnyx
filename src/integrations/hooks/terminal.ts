@@ -1,4 +1,6 @@
-import { spawnSync, type SpawnSyncReturns } from 'node:child_process'
+import { randomUUID } from 'node:crypto'
+import { setTimeout as delay } from 'node:timers/promises'
+import { runProcess, type ProcessResult } from '#app/run-process.ts'
 import type { Key } from '#workers/controls.ts'
 import { HOOK } from './observe.ts'
 import { notificationState, type NotificationResult } from '#workers/inbox-notice.ts'
@@ -32,14 +34,7 @@ export interface Delivery {
   detail?: string
 }
 
-function sleep({ ms }: { ms: number }): void {
-  Atomics.wait(
-    new Int32Array(new SharedArrayBuffer(4)),
-    0,
-    0,
-    ms,
-  )
-}
+const sleep = ({ ms }: { ms: number }) => delay(ms)
 
 type RunOptions = {
   input?: string
@@ -55,18 +50,15 @@ function run({
   args: string[]
   options?: RunOptions
 }) {
-  return spawnSync(
+  return runProcess({
     command,
     args,
-    {
-      encoding: 'utf8',
-      timeout: STEP_TIMEOUT_MS,
-      ...options,
-    },
-  )
+    timeout: STEP_TIMEOUT_MS,
+    ...options,
+  })
 }
 
-function lastLine({ result }: { result: SpawnSyncReturns<string> }): string | undefined {
+function lastLine({ result }: { result: ProcessResult }): string | undefined {
   return `${result.stdout ?? ''}\n${result.stderr ?? ''}`.trim().split('\n')
     .at(-1)
     ?.slice(
@@ -83,7 +75,7 @@ function outcome(
     command,
     typed,
   }: {
-    result: SpawnSyncReturns<string>
+    result: ProcessResult
     command: string
     typed: boolean
   },
@@ -120,8 +112,8 @@ function outcome(
   }
 }
 
-function checkProcess({ route }: { route: TerminalRoute }): Delivery | undefined {
-  const result = run({
+async function checkProcess({ route }: { route: TerminalRoute }): Promise<Delivery | undefined> {
+  const result = await run({
     command: 'ps',
     args: [
       '-o',
@@ -169,7 +161,7 @@ export function settle({ text }: { text: string }): number {
   return /^[/$]/.test(text) ? POPUP_SETTLE_MS : SETTLE_MS
 }
 
-function typeThenEnter(
+async function typeThenEnter(
   {
     command,
     type,
@@ -183,9 +175,9 @@ function typeThenEnter(
     options: RunOptions
     text: string
   },
-): Delivery {
+): Promise<Delivery> {
   const typed = outcome({
-    result: run({
+    result: await run({
       command,
       args: type,
       options,
@@ -198,10 +190,10 @@ function typeThenEnter(
     return typed
   }
 
-  sleep({ ms: settle({ text }) })
+  await sleep({ ms: settle({ text }) })
 
   const submitted = outcome({
-    result: run({
+    result: await run({
       command,
       args: enter,
       options: {
@@ -220,8 +212,8 @@ function typeThenEnter(
     : { state: 'delivered' }
 }
 
-function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Delivery | undefined {
-  const shown = run({
+async function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> }): Promise<Delivery | undefined> {
+  const shown = await run({
     command: 'tmux',
     args: [
       '-S',
@@ -253,27 +245,77 @@ function checkPane({ route }: { route: Extract<TerminalRoute, { kind: 'tmux' }> 
   return undefined
 }
 
-function tmux({
+// Sends to one pane go one at a time, so two replies' paste and Enter never interleave.
+const paneTurns = new Map<string, Promise<void>>()
+
+async function onePerPane({
+  key,
+  send,
+}: {
+  key: string
+  send(): Promise<Delivery>
+}): Promise<Delivery> {
+  const previous = paneTurns.get(key)
+  let finished = () => {}
+  const turn = new Promise<void>(resolve => {
+    finished = resolve
+  })
+  paneTurns.set(
+    key,
+    turn,
+  )
+
+  try {
+    await previous
+
+    return await send()
+  } finally {
+    finished()
+
+    if (paneTurns.get(key) === turn) {
+      paneTurns.delete(key)
+    }
+  }
+}
+
+async function tmux({
   route,
   text,
 }: {
   route: Extract<TerminalRoute, { kind: 'tmux' }>
   text: string
-}): Delivery {
+}): Promise<Delivery> {
+  return await onePerPane({
+    key: `${route.socket}\n${route.pane}`,
+    send: () => tmuxSend({
+      route,
+      text,
+    }),
+  })
+}
+
+async function tmuxSend({
+  route,
+  text,
+}: {
+  route: Extract<TerminalRoute, { kind: 'tmux' }>
+  text: string
+}): Promise<Delivery> {
   const sock = [
     '-S',
     route.socket,
   ]
-  const moved = checkPane({ route })
+  const moved = await checkPane({ route })
 
   if (moved) {
     return moved
   }
 
+  // Each send loads its own buffer, since sends to other panes of the same tmux server run at once.
   // paste-buffer -p brackets the paste only when the program asked for it.
-  const buffer = `pnyx-${process.pid}`
+  const buffer = `pnyx-${process.pid}-${randomUUID()}`
   const loaded = outcome({
-    result: run({
+    result: await run({
       command: 'tmux',
       args: [
         ...sock,
@@ -292,7 +334,7 @@ function tmux({
     return loaded
   }
 
-  return typeThenEnter({
+  const delivery = await typeThenEnter({
     command: 'tmux',
     type: [
       ...sock,
@@ -314,15 +356,30 @@ function tmux({
     options: {},
     text,
   })
+
+  // paste-buffer -d removes the buffer once pasted; one left by a failed paste is removed here.
+  if (delivery.state === 'failed') {
+    await run({
+      command: 'tmux',
+      args: [
+        ...sock,
+        'delete-buffer',
+        '-b',
+        buffer,
+      ],
+    })
+  }
+
+  return delivery
 }
 
-function paseo({
+async function paseo({
   route,
   text,
 }: {
   route: Extract<TerminalRoute, { kind: 'paseo' }>
   text: string
-}): Delivery {
+}): Promise<Delivery> {
   const home = route.home ? [
     '--home',
     route.home,
@@ -353,13 +410,13 @@ function paseo({
   )
 }
 
-function herdr({
+async function herdr({
   route,
   text,
 }: {
   route: Extract<TerminalRoute, { kind: 'herdr' }>
   text: string
-}): Delivery {
+}): Promise<Delivery> {
   const body = pasted({ text })
 
   // ponytail: herdr's send-text takes the text as a bare argument, so a leading -
@@ -455,7 +512,7 @@ end run`,
 end run`,
 }
 
-function appleScript({
+async function appleScript({
   route,
   text,
   key,
@@ -463,9 +520,9 @@ function appleScript({
   route: Extract<TerminalRoute, { kind: 'iterm2' | 'terminal-app' }>
   text: string
   key?: Key
-}): Delivery {
+}): Promise<Delivery> {
   const result = key
-    ? run({
+    ? await run({
       command: 'osascript',
       args: [
         '-e',
@@ -474,7 +531,7 @@ function appleScript({
         SEQUENCE[key],
       ],
     })
-    : run({
+    : await run({
       command: 'osascript',
       args: [
         '-e',
@@ -515,14 +572,14 @@ function appleScript({
   return failed
 }
 
-export function typeInto({
+export async function typeInto({
   route,
   text,
 }: {
   route: TerminalRoute
   text: string
-}): Delivery {
-  const gone = checkProcess({ route })
+}): Promise<Delivery> {
+  const gone = await checkProcess({ route })
 
   if (gone) {
     return gone
@@ -537,33 +594,33 @@ export function typeInto({
   )
 
   switch (route.kind) {
-    case 'tmux': return tmux({
+    case 'tmux': return await tmux({
       route,
       text: body,
     })
-    case 'paseo': return paseo({
+    case 'paseo': return await paseo({
       route,
       text: body,
     })
-    case 'herdr': return herdr({
+    case 'herdr': return await herdr({
       route,
       text: body,
     })
-    default: return appleScript({
+    default: return await appleScript({
       route,
       text: body,
     })
   }
 }
 
-export function pressKey({
+export async function pressKey({
   route,
   key,
 }: {
   route: TerminalRoute
   key: Key | 'enter'
-}): Delivery {
-  const gone = checkProcess({ route })
+}): Promise<Delivery> {
+  const gone = await checkProcess({ route })
 
   if (gone) {
     return gone
@@ -571,10 +628,10 @@ export function pressKey({
 
   switch (route.kind) {
     case 'tmux': {
-      const moved = checkPane({ route })
+      const moved = await checkPane({ route })
 
       return moved ?? outcome({
-        result: run({
+        result: await run({
           command: 'tmux',
           args: [
             '-S',
@@ -601,7 +658,7 @@ export function pressKey({
       ]
 
       return outcome({
-        result: run({
+        result: await run({
           command: 'paseo',
           args: [
             'terminal',
@@ -624,7 +681,7 @@ export function pressKey({
       }
 
       return outcome({
-        result: run({
+        result: await run({
           command: 'herdr',
           args: [
             'pane',
@@ -645,17 +702,17 @@ export function pressKey({
         typed: false,
       }) ?? { state: 'delivered' }
     case 'iterm2':
-      return key === 'enter' ? appleScript({
+      return key === 'enter' ? await appleScript({
         route,
         text: '',
-      }) : appleScript({
+      }) : await appleScript({
         route,
         text: '',
         key,
       })
     case 'terminal-app':
       // do script with no text types only its Return.
-      return key === 'enter' ? appleScript({
+      return key === 'enter' ? await appleScript({
         route,
         text: '',
       }) : {
@@ -670,13 +727,13 @@ export function pressKey({
 // pasted digit would not pick an option. Once a chunk went in, a failure leaves the
 // prompt half answered, so it is delivery_unknown and never retyped. Only tmux was
 // checked by hand against each harness's prompt.
-export function pressKeys({
+export async function pressKeys({
   route,
   steps,
 }: {
   route: TerminalRoute
   steps: KeyStep[]
-}): Delivery {
+}): Promise<Delivery> {
   if (route.kind !== 'tmux') {
     return {
       state: 'failed',
@@ -684,7 +741,7 @@ export function pressKeys({
     }
   }
 
-  const gone = checkProcess({ route }) ?? checkPane({ route })
+  const gone = await checkProcess({ route }) ?? await checkPane({ route })
 
   if (gone) {
     return gone
@@ -694,7 +751,7 @@ export function pressKeys({
     i,
     step,
   ] of steps.entries()) {
-    const result = run({
+    const result = await run({
       command: 'tmux',
       args: [
         '-S',
@@ -722,13 +779,13 @@ export function pressKeys({
         : failed
     }
 
-    sleep({ ms: step.settleMs })
+    await sleep({ ms: step.settleMs })
   }
 
   return { state: 'delivered' }
 }
 
-export function terminalNotice({
+export async function terminalNotice({
   route,
   text,
   card,
@@ -740,8 +797,8 @@ export function terminalNotice({
   card: Card
   execute?: typeof run
   send?: typeof typeInto
-}): NotificationResult {
-  const observedProcess = execute({
+}): Promise<NotificationResult> {
+  const observedProcess = await execute({
     command: 'ps',
     args: [
       '-o',
@@ -797,7 +854,7 @@ export function terminalNotice({
     }
   }
 
-  const position = execute({
+  const position = await execute({
     command: 'tmux',
     args: [
       '-S',
@@ -821,7 +878,7 @@ export function terminalNotice({
     }
   }
 
-  const screen = execute({
+  const screen = await execute({
     command: 'tmux',
     args: [
       '-S',
@@ -864,7 +921,7 @@ export function terminalNotice({
     }
   }
 
-  const delivered = send({
+  const delivered = await send({
     route,
     text,
   })

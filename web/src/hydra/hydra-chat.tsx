@@ -305,13 +305,19 @@ export function HydraChat({
   )
   const compacting = activeCompaction({ card })
   const upgrades = state.upgrades ?? []
-  // Messages a running upgrade holds wait in the same queue as compaction's.
-  const upgradeHeld = upgrades.flatMap(operation => operation.held ?? [])
+  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
+  const stopped = state.hydraOperation
+  // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
+  // A message whose Hydra turn started has been taken.
+  const taken = ({ id }: { id: string }) => `${id}:hosted` in state.eventIds
+  const stopSeq = stopped?.seq
+  const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
+    && (state.eventIds[id] ?? 0) > stopSeq
+  const waiting = messages.filter(m => sentSince(m) && !taken(m))
   const held = new Set([
     ...card?.compaction?.inputs.map(input => input.id) ?? [],
-    ...upgradeHeld.map(message => message.id),
+    ...waiting.map(message => message.id),
   ])
-  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
   const compactOperations = card?.compaction?.operations ?? []
   // Only the newest result shows; a new attempt replaces the last one.
   const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
@@ -321,7 +327,7 @@ export function HydraChat({
     ) => a.queuedAt.localeCompare(b.queuedAt))
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
-  const holding = Boolean(compacting) || upgrading
+  const holding = Boolean(compacting) || upgrading || Boolean(stopped)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
@@ -347,8 +353,11 @@ export function HydraChat({
       route: 'hydra' as const,
       at: operation.queuedAt,
     })),
-    ...upgradeHeld.filter(message => ownerActor({ actor: message.actor })).map(message => ({
-      ...message,
+    ...waiting.filter(message => ownerActor({ actor: message.actor })).map(message => ({
+      id: message.id,
+      text: message.text,
+      actor: message.actor,
+      at: message.at,
       route: 'hydra' as const,
     })),
     ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
@@ -423,6 +432,19 @@ export function HydraChat({
         operation={operation}
         askHydra={setDraft}
         stop={stop}
+        restartNow={async () => {
+          try {
+            await command({
+              name: 'compact',
+              args: [
+                HYDRA_CARD,
+                operation.id,
+              ],
+            })
+          } catch (error) {
+            notify({ text: (error as Error).message })
+          }
+        }}
       />,
     )
   }
@@ -624,6 +646,28 @@ export function HydraChat({
     },
     [],
   )
+
+  const sendAgain = async ({
+    task,
+    text,
+  }: {
+    task: string
+    text: string
+  }) => {
+    try {
+      await command({
+        name: 'reply',
+        args: [
+          task,
+          text,
+          crypto.randomUUID(),
+        ],
+      })
+    } catch (error) {
+      notify({ text: (error as Error).message })
+    }
+  }
+
   const deliver = useCallback<Command>(
     async ({
       name,
@@ -811,6 +855,7 @@ export function HydraChat({
               })}
               toolDetails={view.toolDetails}
               thinkingDetails={view.thinkingDetails}
+              sendAgain={sendAgain}
             />
             <DispatchProposals
               state={state}

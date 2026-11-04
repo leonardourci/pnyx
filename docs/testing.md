@@ -15,6 +15,8 @@ node scripts/verification/test.ts scenarios
 
 For a small batch, pass explicit paths: `node scripts/verification/test.ts src/tasks/reminders.test.ts`.
 
+The launcher fails a suite on `MaxListenersExceededWarning`, including warnings from the shared flow server. A passing run must release its listeners rather than raise their limit.
+
 `pnpm verify` picks what to run from the files the branch changes (see [Development](development.md)).
 
 ## Native clipboard regression
@@ -72,25 +74,14 @@ The flows:
 - `landing.test.ts` covers landing a branch or a pull request and project refresh.
 - `settings.test.ts` covers the settings every Hydra shares: a change from one Hydra reaching another Hydra's open page, while each board keeps its own layout.
 - `helper.test.ts` covers the routine helper's routing: progress that wakes nobody, batches while main works, capped batches and a failed batch's hand-back.
-- `recovery.test.ts` covers restart and recovery, and a server that goes idle once nothing changes.
+- `recovery.test.ts` covers restart and recovery, including interrupted worker turns and failed background snapshot saves.
 - `oracle.test.ts` covers Oracle queries from the page: a query waits for the index only when it is missing or behind the log, a change catches it up without a query, and a catch-up that fails reaches the page as an error.
-- `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): its place in Hydra's queue, a failed build, Stop, messages sent during it and the restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
-- `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes. It proves the provider inventory used by both ownership modes.
+- `upgrade.test.ts` covers `/upgrade` against the flows' throwaway Pnyx folder (`pnyx.upgrade`): a build that runs while Hydra works, a failed build, Stop, the wait for agents on any Hydra to be between turns, Restart now, messages sent during the restart and a failed restart, which the flows count with `pnyx.restarts()` and finish with `pnyx.restart()`.
+- `native-session.test.ts` exercises the real provider adapters with synthetic native input and output: queued and carried work, background tasks, reader detach, permission receipts and complete terminal outcomes.
 - `native-idle.test.ts` runs the real application host in an isolated child with a controlled clock, proving the idle deadline and original-image admission through compaction and upgrade buffers.
 - `native-settings.test.ts` checks that a rejected live setting defers stale-session retirement until queued, background and unknown native work settles.
-- `compaction.test.ts` covers compaction. Through the real CLI and server it sends Claude Code's repeated status during one long `/compact` and a compaction followed straight by another; an isolated child with a controlled clock checks that a silent or unanswered compaction fails at its deadline, even while another writer holds the lock, that late statuses keep its one operation, and that held input waits through a second compaction started after a pause. Each case releases the messages held during the compaction.
-- `native-process.test.ts` exercises the provider spawn hooks with real children, checking private process groups and stderr pressure through the Claude hook.
-- `agent-host-group.test.ts` checks cleanup of verified old provider/tool members and saved-session resume even when identity or the legacy cutoff is unknown.
-- `agent-host-steering.test.ts` proves that a pending durable inbox rings once after host recovery, keeps its repeat warning and stays deduplicated after another app restart for both providers.
-- `agent-host-epochs.test.ts` checks multiple closed epochs of one native session, preserving an older real outcome while acknowledging ended-only epochs, opening fresh work and surviving another restart without input replay.
-- `agent-host-reboot.test.ts` checks kernel boot identity persistence, resume with same or unknown identities, and retained-fact settlement before cold resume.
-- `agent-host.test.ts` exercises the authenticated native host in a real isolated subprocess: reconnect, request/input deduplication, controller takeover, critical replay and acknowledgements, secret receipts, pressure, singleton discovery and host-loss refusal.
-- `agent-host-remote.test.ts` runs real CLI/server SIGKILL flows for Hydra and workers on both providers and tracks the separate helper replay gate. Late helper outcomes preserve an earlier error, survive a crash between application and acknowledgement, recover missing journals even after the batch left active state, settle already-recorded malformed errors without reinterpreting them as new results, and refuse conflicting or expired input and missing, mismatched or ambiguous bindings.
-- `agent-host-maintenance.test.ts` proves manual idle stop, carried input settlement, background/compaction blockers, unapplied-outcome protection, controller fencing and clean restart.
-- `native-status.test.ts` checks status over the existing browser socket and secret re-entry after an app crash before native delivery.
-- `native-startup.test.ts` checks first activation after an in-process server closes, including saved work and upgrade records, dead and invalid PIDs, refusal while the previous server is live, and reuse of the copied production SDK closure. It also checks recovery on the same application connection after SIGTERM and SIGKILL, selected-bundle reuse and exit logs, and records idle resources.
-- `native-performance.test.ts` runs the opt-in full application comparison with `PNYX_NATIVE_BENCHMARK=1` in the isolated environment from `scripts/verification/test-environment.ts`. At one session, RPC p95/p99 must stay below 5/10 ms. At ten sessions, a fixture-only socket observer beside the host measures request-to-reply handling against the same limits, excluding application response scheduling stalls. Page and warm Hydra-send, worker-message and effort-setting receipt p95 regression must remain within 10 ms of the local baseline at both loads; every command must still return a receipt.
-- `agent-host-bundle.test.ts` starts a host from copied runtime bytes and checks that rebuilding the source payload leaves its native owner and old bundle usable.
+- `compaction.test.ts` covers compaction. Through the real CLI and server it sends Claude Code's repeated status during one long `/compact` and a compaction followed straight by another; an isolated child with a controlled clock checks that a silent or unanswered compaction fails at its deadline, even while another writer holds the lock, that late statuses keep its one operation, and that held input waits through a second compaction started after a pause. Each case checks that a message sent meanwhile waits in Hydra's queue and reaches Hydra once, in the recap after the compaction.
 - `agent-input.test.ts` uploads images and sends them through the real CLI and server into both native provider formats.
+- `send-latency.test.ts` measures how long a send takes from the page to the fake agent; it runs only with `PNYX_LATENCY=1`.
 
-The in-process provider contracts and their current limits are described in [Provider sessions](provider-sessions.md). The separate transport foundation and its integration limits are described in [Native agent host transport](agent-host.md).
+The in-process provider contracts and their current limits are described in [Provider sessions](provider-sessions.md).

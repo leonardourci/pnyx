@@ -8,6 +8,7 @@ import { clip } from './digest.ts'
 import type { AgentRef } from '#workers/model.ts'
 import { readEvents } from '#app/event-log.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { MAX_RESUMES, resumesInARow } from '#workers/host.ts'
 import { sessionId } from '#workers/session-attachments.ts'
 
 // One change Hydra has not read yet: its event and the card it is about.
@@ -154,11 +155,17 @@ export function recapText({
   since,
   after,
   now,
+  why,
+  whole = false,
 }: {
   state: HydraState
   since: string
   after: number
   now: number
+  // Why Hydra was stopped; an outage when not given.
+  why?: string
+  // The owner's messages in full, as after a stop that held them; an outage recap shortens them.
+  whole?: boolean
 }): string {
   const minutes = outageMinutes({
     since,
@@ -176,6 +183,10 @@ export function recapText({
         title: card.title,
       })}` : ''
 
+      if (whole) {
+        return `- ${message.at}${task}:\n${sealed({ text: message.text })}`
+      }
+
       return `- ${message.at}${task}: ${clip({
         text: message.text,
         size: 300,
@@ -184,12 +195,12 @@ export function recapText({
   const reports = sent.filter(message => reportActor({ actor: message.actor }) && message.kind !== 'progress').length
 
   return `<pnyx-wake>${[
-    `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
+    why ?? `Why you are woken: back after outage. Pnyx could not start you from ${since} until now (${minutes} min).`,
     ...unread.length ? [
       'The owner wrote to you meanwhile and has had no reply; answer these:',
       ...unread,
     ] : ['The owner sent you nothing meanwhile.'],
-    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from the outage reach you in your next wake.`] : [],
+    ...reports ? [`${reports === 1 ? 'A worker report' : `${reports} worker reports`} and any other changes from meanwhile reach you in your next wake.`] : [],
     decisionsText({
       state,
       now,
@@ -261,7 +272,10 @@ export function findHydraTurnToResume({
     return matchesSession && isHostedTurn
   })
 
-  if (!cutHydraTurn || cutHydraTurn.id.startsWith('resume:')) {
+  if (!cutHydraTurn || resumesInARow({
+    events,
+    turn: cutHydraTurn,
+  }) >= MAX_RESUMES) {
     return undefined
   }
 

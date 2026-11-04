@@ -1,4 +1,6 @@
 import { existsSync } from 'node:fs'
+// Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
+import * as sdk from '@anthropic-ai/claude-agent-sdk'
 import { spawn } from 'node:child_process'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
@@ -158,8 +160,6 @@ function turnOf({ message }: { message: SDKMessage }): 'working' | 'finished' | 
 // The settings a new session starts from, with repo-committed escalating modes dropped as Claude Code drops them.
 // ponytail: read with this process's CLAUDE_CONFIG_DIR, so a second login folder's own settings are not seen.
 const userSettings: ReadSettings = async ({ cwd }) => {
-  const sdk = await import('@anthropic-ai/claude-agent-sdk')
-
   return sdk.filterEscalatingDefaultMode(await sdk.resolveSettings({
     cwd,
     settingSources: [
@@ -183,7 +183,7 @@ export function claudeProvider({
       cwd,
       env,
     }) {
-      const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+      const run = query ?? sdk.query
       const abortController = new AbortController()
       const timer = setTimeout(
         () => abortController.abort(),
@@ -241,7 +241,7 @@ export function claudeProvider({
       outputSchema,
       allow,
       context,
-      ownProcess,
+      spawned,
     }) {
       const id = agent?.sessionId ?? randomUUID()
       const path = agent?.transcriptPath ?? transcriptPath({
@@ -251,7 +251,7 @@ export function claudeProvider({
       })
       let spawnProcess: Options['spawnClaudeCodeProcess']
 
-      if (ownProcess) {
+      if (spawned) {
         spawnProcess = ({
           command,
           args,
@@ -266,22 +266,15 @@ export function claudeProvider({
               cwd,
               env,
               signal,
-              detached: true,
               stdio: 'pipe',
+              // Its own process group, so a later start can stop it together with the tools it ran.
+              detached: true,
             },
           )
 
           // The SDK's custom process contract leaves stderr consumption to the caller.
           child.stderr.resume()
-
-          if (child.pid !== undefined) {
-            try {
-              ownProcess({ pid: child.pid })
-            } catch (error) {
-              child.kill('SIGKILL')
-              throw error
-            }
-          }
+          spawned({ child })
 
           return child
         }
@@ -301,7 +294,7 @@ export function claudeProvider({
           permission,
           emit,
         }) {
-          const run = query ?? (await import('@anthropic-ai/claude-agent-sdk')).query
+          const run = query ?? sdk.query
 
           if (closed) {
             return
@@ -317,7 +310,7 @@ export function claudeProvider({
               const { text } = item
               const compact = compactCommand({ text })
               manualCompact ||= compact
-              const message = fresh && context && !compact ? `${context()}\n\n${text}` : text
+              const message = fresh && context && !compact ? `${await context()}\n\n${text}` : text
 
               if (!compact) {
                 fresh = false
@@ -391,7 +384,7 @@ export function claudeProvider({
                         async () => ({
                           hookSpecificOutput: {
                             hookEventName: 'SessionStart' as const,
-                            additionalContext: context(),
+                            additionalContext: await context(),
                           },
                         }),
                       ],

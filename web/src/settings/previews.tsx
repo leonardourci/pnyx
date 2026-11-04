@@ -1,4 +1,5 @@
 import type { CSSProperties, ReactNode } from 'react'
+import { PROVIDERS, providerIdOf } from '#workers/providers.ts'
 import type { HydraState } from '#app/model.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import { HELPER_MODELS, type DoneAfterHours, type HelperSetting } from '#settings/model.ts'
@@ -356,8 +357,7 @@ export function ReviewPreview({ minutes }: { minutes: number }) {
   )
 }
 
-const harnessName = ({ agent }: { agent: Partial<AgentConfig> }) =>
-  agent.harness === 'codex' ? 'Codex' : 'Claude Code'
+const harnessName = ({ agent }: { agent: Partial<AgentConfig> }) => PROVIDERS[agent.harness ?? 'claude'].name
 const agentName = ({ agent }: { agent: Partial<AgentConfig> }) =>
   `${harnessName({ agent })}${agent.model ? ` · ${agent.model}` : ''}`
 // The pills name only the model, since their icon already shows the harness.
@@ -383,7 +383,7 @@ export function HelperPreview({
   helper: HelperSetting
   hydra: Partial<AgentConfig>
 }) {
-  const main = <Pill icon={hydra.harness === 'codex' ? 'codex' : 'claude-code'} label={`Hydra · ${modelName({ agent: hydra })}`} />
+  const main = <Pill icon={providerIdOf({ harness: hydra.harness ?? 'claude' })} label={`Hydra · ${modelName({ agent: hydra })}`} />
   const routine = helper === 'off' ? main : (
     <Pill
       helper

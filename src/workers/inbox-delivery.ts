@@ -145,11 +145,11 @@ export async function notifySteering({
         connect: connectPaseo,
       })
     } else {
-      outcome = terminalNotice({
+      outcome = await terminalNotice({
         route,
         text,
         card,
-        send: ({
+        send: async ({
           route,
           text,
         }) => canSend()

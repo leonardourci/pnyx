@@ -1,4 +1,5 @@
 import { cloneValue } from './preimage.ts'
+import { operationLabel } from '#hydra/operation-label.ts'
 import { ownerActor } from './actors.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { refreshTasks } from '#tasks/columns.ts'
@@ -37,6 +38,34 @@ export function applyHydra({
       ...(state.dispatchProposals ?? []).filter(p => p.token !== event.data.token),
       structuredClone(event.data),
     ]
+
+    return true
+  }
+
+  if (event.type === 'hydra.operation') {
+    if (event.data.state === 'started') {
+      state.hydraOperation = {
+        id: event.data.id,
+        kind: event.data.kind,
+        since: event.at,
+        seq: event.data.after ?? event.seq,
+      }
+    } else if (state.hydraOperation?.id === event.data.id) {
+      delete state.hydraOperation
+      state.hydraMessages = [
+        ...(state.hydraMessages ?? []),
+        {
+          id: event.id,
+          action: 'send',
+          kind: 'divider',
+          text: operationLabel(event.data),
+          at: event.at,
+          actor: 'pnyx',
+          // The chat shows the messages of the Hydra it is configured as.
+          hydra: hydraConfig({ state }).hydra.id,
+        },
+      ]
+    }
 
     return true
   }

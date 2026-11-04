@@ -1,4 +1,5 @@
 import type { Account, Harness, HeadsDispatch } from './dispatch-config.ts'
+import { HARNESSES, providerIdOf } from './providers.ts'
 import { asRecord } from '#app/command-validation.ts'
 import { harnessControls } from './controls.ts'
 import { AGENT_FLAG } from './model.ts'
@@ -33,14 +34,7 @@ type Report = ({
   readable?: boolean
 }) => void
 
-export const HARNESSES: readonly Harness[] = [
-  'claude',
-  'codex',
-]
-const HOSTED_PROVIDER: Record<Harness, string> = {
-  claude: 'claude-code',
-  codex: 'codex',
-}
+export { HARNESSES } from './providers.ts'
 export const NAME = /^[a-z][a-z0-9:._-]{0,79}$/
 export const NAME_RULE = 'names use lowercase letters, digits, colon, dot, underscore and dash'
 const DOCUMENT_FIELDS = [
@@ -110,7 +104,7 @@ export function harnessValues({
   setting: 'effort' | 'mode'
 }): string[] {
   const controls = harnessControls({
-    provider: HOSTED_PROVIDER[harness],
+    provider: providerIdOf({ harness }),
     hosted: true,
   })?.controls ?? []
 

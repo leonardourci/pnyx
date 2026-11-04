@@ -7,7 +7,7 @@ import { test } from 'node:test'
 import { WebSocket } from 'ws'
 import { startServer } from '#app/server-daemon.ts'
 import { loadHydra } from '#app/store.ts'
-import { localToken } from '#app/server-state.ts'
+import { askHost, localToken } from '#app/server-state.ts'
 import type { RunningServer, ServerMessage } from '#app/server-transport.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -76,26 +76,15 @@ test(
         reject,
       )
     })
-    const response = await fetch(
-      `http://127.0.0.1:${server.port}/hydra/default/host`,
-      {
-        method: 'POST',
-        headers: {
-          authorization: `Bearer ${token}`,
-          'content-type': 'application/json',
-        },
-        body: JSON.stringify({
-          action: 'hydra',
-          text: 'Synthetic work',
-          id: randomUUID(),
-          actor: 'cli',
-        }),
+    await askHost({
+      hydraId: 'default',
+      body: {
+        action: 'hydra',
+        text: 'Synthetic work',
+        id: randomUUID(),
+        actor: 'cli',
       },
-    )
-    assert.equal(
-      response.status,
-      200,
-    )
+    })
     await until({
       what: 'native input',
       check: () => native.incoming.length === 1,

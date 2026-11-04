@@ -33,7 +33,7 @@ function lab() {
 
 test(
   'leading flags and propose subcommands cannot let Hydra confirm its own change',
-  () => {
+  async () => {
     lab()
     const hydra = ownerOnly({
       commands: {
@@ -42,7 +42,7 @@ test(
       },
       env: { PNYX_ACTOR: 'hydra' },
     })
-    const request = hydra.rule([
+    const request = (await hydra.rule([
       'propose',
       'set',
       'default',
@@ -52,9 +52,9 @@ test(
       'hydra',
       '--hydra',
       'lab',
-    ]) as { token: string }
-    assert.throws(
-      () => hydra.rule([
+    ])) as { token: string }
+    await assert.rejects(
+      async () => hydra.rule([
         'propose',
         'confirm',
         request.token,
@@ -67,8 +67,8 @@ test(
       ]),
       /propose set/,
     )
-    assert.throws(
-      () => hydra.rule([
+    await assert.rejects(
+      async () => hydra.rule([
         '--hydra',
         'lab',
         'confirm',
@@ -80,14 +80,14 @@ test(
       ]),
       /Only the owner/,
     )
-    const leading = hydra.task([
+    const leading = (await hydra.task([
       '--hydra',
       'lab',
       'copy',
       'missing-task',
       'remove',
       '--discard',
-    ]) as { token: string }
+    ])) as { token: string }
     assert.ok(leading.token)
     assert.equal(
       loadHydra({ hydraId: 'lab' }).state.dispatchProposals?.length,
@@ -98,7 +98,7 @@ test(
 
 test(
   'Hydra checks and proposes a dispatch patch itself, and a plain apply is refused with nothing saved',
-  () => {
+  async () => {
     const { root } = lab()
     const hydra = ownerOnly({
       commands: {
@@ -118,7 +118,7 @@ test(
         patch: { default: [{ harness: 'codex' }] },
       }),
     )
-    const apply = ({ flags }: { flags: string[] }) => hydra.rule([
+    const apply = async ({ flags }: { flags: string[] }) => (await hydra.rule([
       'apply',
       '--file',
       patch,
@@ -127,17 +127,17 @@ test(
       'hydra',
       '--hydra',
       'lab',
-    ]) as Record<string, unknown>
+    ])) as Record<string, unknown>
     const proposals = () => loadHydra({ hydraId: 'lab' }).state.dispatchProposals ?? []
     assert.equal(
-      apply({ flags: ['--check'] }).applied,
+      (await apply({ flags: ['--check'] })).applied,
       false,
     )
     assert.equal(
       proposals().length,
       0,
     )
-    assert.throws(
+    await assert.rejects(
       () => apply({ flags: [] }),
       { code: 'OWNER_ONLY' },
     )
@@ -146,7 +146,7 @@ test(
       0,
     )
     assert.equal(
-      apply({ flags: ['--propose'] }).confirmation,
+      (await apply({ flags: ['--propose'] })).confirmation,
       'needed',
     )
     assert.deepEqual(

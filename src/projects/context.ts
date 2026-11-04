@@ -8,7 +8,7 @@ import { PROJECT_MEMORY_BUDGET, PROJECT_MEMORY_DOCUMENTS, PROJECT_MEMORY_NEARLY_
 
 const WORKER_DOCUMENT_LIMIT = 400
 
-export function projectDigest({ state }: { state: HydraState }): string[] {
+export async function projectDigest({ state }: { state: HydraState }): Promise<string[]> {
   const projects = projectsFor({ state }).filter(project => !project.detached)
 
   if (!projects.length) {
@@ -16,24 +16,25 @@ export function projectDigest({ state }: { state: HydraState }): string[] {
   }
 
   const conditions = memoryConditions()
+  const lines = await Promise.all(projects.map(async project => {
+    const view = await projectMemoryView(project)
+    const stale = staleLearnings({
+      lines: view.learnings ?? [],
+      conditions,
+      now: new Date().toISOString(),
+    })
+    const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
+
+    return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`
+  }))
 
   return [
     'Projects (load memory on demand with pnyx-axi project show <name|path>):',
-    ...projects.map(project => {
-      const view = projectMemoryView(project)
-      const stale = staleLearnings({
-        lines: view.learnings ?? [],
-        conditions,
-        now: new Date().toISOString(),
-      })
-      const nearlyFull = view.used > PROJECT_MEMORY_BUDGET * PROJECT_MEMORY_NEARLY_FULL
-
-      return `- ${project.name} (${project.path}) · profile: ${view.status} · memory revision ${view.revision}${nearlyFull ? ` · nearly full: load ${INSCRIBE_SKILL} with this project` : ''}${stale.length ? ` · ${stale.length} stale learnings: load ${INSCRIBE_SKILL}` : ''}`
-    }),
+    ...lines,
   ]
 }
 
-export function projectWorkerContext({
+export async function projectWorkerContext({
   hydraId,
   state,
   project: ref,
@@ -41,7 +42,7 @@ export function projectWorkerContext({
   hydraId: string
   state: HydraState
   project?: string
-}): string {
+}): Promise<string> {
   const project = projectsFor({ state }).filter(project => !project.detached)
     .find(project => matchesProject({
       project,
@@ -52,7 +53,7 @@ export function projectWorkerContext({
     return ''
   }
 
-  const view = projectMemoryView(project)
+  const view = await projectMemoryView(project)
 
   return [
     `Project ${project.name}: shared memory (${view.status}).`,

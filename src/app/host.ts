@@ -1,38 +1,39 @@
 import { agentInput } from './agent-input.ts'
+import { HYDRA_COMMANDS } from './command-registry.ts'
+import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
 import { requireReady } from '#tasks/dependencies.ts'
-import { attachedImages } from '#hydra/images.ts'
-import { enqueueSteering, recordSteeringAttempt } from '#workers/inbox.ts'
+import { decideReply } from '#workers/reply-rules.ts'
+import { enqueueSteering } from '#workers/inbox.ts'
 import { activeCompaction, compactCommand } from '#workers/compaction/state.ts'
 import { recordCompaction } from '#workers/compaction/record.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
-import type { CompactInput, Compaction, CompactionChange } from '#workers/compaction/model.ts'
-import { pendingSteering, steeringClaim, sameClaim, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
-import { steeringNotice } from '#workers/inbox-notice.ts'
+import { trackChildren } from '#workers/children.ts'
+import { pendingSteering, steeringWorkerIdentity, steeringHeld } from '#workers/steering.ts'
+import { steeringMessages } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
-import { helperAgent, helperBatch, helperEvent, helperPermission, helperReason } from '#routine-helper/route.ts'
-import { activeHelperBatches, helperLeases, outcomeLines, wakeHandled } from '#routine-helper/state.ts'
+import { helperAgent, helperBatch, helperEvent, helperPermission } from '#routine-helper/route.ts'
+import { activeHelperBatches, helperLeases, outcomeLines } from '#routine-helper/state.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
-import { pausedDeclaration } from '#tasks/lifecycle.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
 import { accountEnvironment, chooseCandidate, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
-import { createHash, randomUUID } from 'node:crypto'
+import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { mergeWindows, type HostedSession, type HostedUsage, type ModelOption, type PermissionDecision, type Provider } from '#workers/provider.ts'
+import { mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
-import { seenAt, terminalPresence, type Presence } from '#workers/presence.ts'
+import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
@@ -42,7 +43,7 @@ import { declareTask } from '#tasks/declarations.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { QUIET_REPLY, hostedHydra, hydraEvent, pnyxRunsHydra, reportActor } from '#hydra/hydra.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { eventReasons, reasonLine, wakeReasons } from '#hydra/wake-reasons.ts'
+import { eventReasons, wakeReasons } from '#hydra/wake-reasons.ts'
 import { freeTask } from '#workers/start.ts'
 import { clip, hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
@@ -66,11 +67,17 @@ import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
+import type { InputReceipt } from '#workers/provider.ts'
 import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, harnessAccount, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
-import { providerName, storedModels, storeModels, catalogOffers } from '#workers/model-catalog.ts'
-import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, decisionsText, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
-import type { StallItem } from '#hydra/stalls.ts'
+import { catalogOffers, createCatalogs } from '#workers/model-catalog.ts'
+import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
+import { createStallChecks } from '#hydra/stalls.ts'
+import { arrivedSince, operationEvent, operationRecap } from '#hydra/operations.ts'
+import type { HydraOperation } from '#hydra/model.ts'
+import { deliveringMessage } from '#routine-helper/leases.ts'
+import { createCompactionControl } from '#workers/compaction/control.ts'
+import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
@@ -85,29 +92,16 @@ const RETRY_MS = [
 
 // A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
 const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
-// A deadline that could not record its failure, as when another writer holds the lock, tries again this soon.
-const COMPACTION_RETRY_MS = 1000
-const NATIVE_RECOVERY_MS = 1000
 
-function keyForSteering({
-  card,
-  ids,
-}: {
-  card: Card
-  ids: string[]
-}): string {
-  return createHash('sha256').update(JSON.stringify([
-    card.agent?.sessionId,
-    ids,
-  ]))
-    .digest('hex')
-}
+// Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
+const midTurnChecks = new Set<() => boolean>()
+
+export const agentsMidTurn = () => [...midTurnChecks].some(check => check())
 
 export function createHost({
   hydraId,
   query,
   spawnCodex,
-  native,
   changed,
   streamed = () => {},
   queued = () => {},
@@ -129,7 +123,6 @@ export function createHost({
   hydraId: string
   query?: QueryFn
   spawnCodex?: SpawnCodex
-  native?: Record<'claude-code' | 'codex', Provider>
   presence?({ session }: { session: AgentSession }): Presence
   changed(): void
   streamed?({ session }: { session: string }): void
@@ -145,22 +138,18 @@ export function createHost({
   helperBound?: number
   // The Pnyx folder /upgrade pulls into, and how the server restarts after it; tests pass their own.
   upgradeRoot?: string
-  restart?({ force }: { force: boolean }): void | Promise<void>
+  restart?(): void | Promise<void>
 }): Host {
-  const providers = native ?? {
+  const providers = {
     'claude-code': claudeProvider({ query }),
     codex: codexProvider({ spawnCodex }),
   }
-  const modelCatalogs = new Map<string, Promise<ModelOption[]>>()
-  const commandCatalogs = new Map<string, {
-    command: string
-    description: string
-    source: string
-    kind: 'command'
-  }[]>()
+  const children = trackChildren({ hydraId })
   const controller = new AbortController()
   const starting = new Set<string>()
   const live = new Map<string, Live>()
+  const midTurn = () => [...live.values()].some(entry => entry.activity === 'working')
+  midTurnChecks.add(midTurn)
   const observedAssignments = new Map(Object.values(loadHydra({ hydraId }).state.cards)
     .map(card => [
       card.id,
@@ -174,33 +163,6 @@ export function createHost({
     finish({ result }: { result: PermissionDecision }): void
   }>()
   let closing = false
-  let nativeRetry: ReturnType<typeof setTimeout> | undefined
-
-  const planNativeRecovery = () => {
-    if (closing || nativeRetry) {
-      return
-    }
-
-    nativeRetry = setTimeout(
-      () => {
-        nativeRetry = undefined
-        background({
-          name: 'native replay recovery',
-          run: async () => {
-            const overlapping = Boolean(recoveringNative)
-            await recoverNative()
-
-            if (overlapping) {
-              planNativeRecovery()
-            }
-          },
-          retry: planNativeRecovery,
-        })
-      },
-      NATIVE_RECOVERY_MS,
-    ).unref()
-  }
-
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
   // Retries a failed start on a growing wait; each failed try plans the next one.
@@ -246,7 +208,7 @@ export function createHost({
     }
   }
 
-  const sessionKey = ({ agent }: { agent: AgentRef }) => `${agent.provider === 'claude-code' ? 'claude' : agent.provider}:${agent.sessionId}`
+  const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
 
   const expire = ({ id }: { id: string }) => {
     const waiting = pending.get(id)
@@ -261,6 +223,12 @@ export function createHost({
         message: 'This permission request expired.',
       },
     })
+
+    // A stop records nothing about running turns; the next start expires what was left waiting, as after a crash.
+    if (closing) {
+      return
+    }
+
     note({
       fn: ({ writer }) => {
         const card = writer.state.cards[waiting.card]
@@ -330,11 +298,7 @@ export function createHost({
     return cwd
   }
 
-  let applying: {
-    id: string
-    at: string
-  } | undefined
-  const at = () => applying?.at ?? new Date().toISOString()
+  const at = () => new Date().toISOString()
   const upgrades = upgradeQueue({
     root: upgradeRoot,
     state: () => loadHydra({ hydraId }).state,
@@ -357,384 +321,210 @@ export function createHost({
         }),
       })
       queued()
-    },
-    schedule: ({
-      id,
-      run,
-    }) => {
-      queuedHydra.add(id)
-      const previous = hydraTurn
-      hydraTurn = (async () => {
-        await previous
 
-        // Hydra's later turns wait on this one, so it never rejects.
-        try {
-          await run()
-        } catch (error) {
-          console.error(`pnyx-axi serve: /upgrade could not run: ${(error as Error).message}`)
-        } finally {
-          queuedHydra.delete(id)
-        }
-      })()
-    },
-    working: () => {
-      const card = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-      return Boolean(activeCompaction({ card }))
-        || (card?.agent ? live.get(sessionId({ agent: card.agent }))?.activity === 'working' : false)
-    },
-    closing: () => closing,
-    restart,
-    deliver: async ({ message }) => {
-      try {
-        await host.hydra({
-          text: message.text,
-          original: message.original,
-          actor: message.actor,
-          id: message.id,
+      // Only the restart stops Hydra, of a /restart or of a built upgrade; the end recaps what waited.
+      if (operation.state === 'restarting') {
+        startOperation({
+          id: operation.id,
+          kind: operation.steps.some(step => step.step !== 'restart') ? 'upgrade' : 'restart',
         })
-      } catch (error) {
-        console.error(`pnyx-axi serve: a message held during the upgrade could not reach Hydra: ${(error as Error).message}`)
+      } else if (![
+        'queued',
+        'running',
+        'waiting',
+      ].includes(operation.state)) {
+        endOperation({
+          id: operation.id,
+          error: operation.state === 'done' ? undefined : operation.error ?? `upgrade ${operation.state}`,
+        })
       }
     },
+    midTurn: agentsMidTurn,
+    closing: () => closing,
+    restart,
     at,
   })
 
-  const compactionDeadlines = new Map<string, NodeJS.Timeout>()
+  // One machinery for whatever stops Hydra for a while: it records the start and the end, holds nothing of its own,
+  // and when it ends Hydra's first turn is the recap of what arrived meanwhile.
+  // The first of back-to-back operations: the recap after the last one covers everything since it began.
+  let stoppedSince: NonNullable<HydraState['hydraOperation']> | undefined
 
-  const compactChange = ({
-    card,
-    change,
+  const stoppedFor = ({ id }: { id: string }) => {
+    const running = loadHydra({ hydraId }).state.hydraOperation
+
+    return Boolean(running) && !id.startsWith('operation:')
+  }
+
+  const startOperation = ({
+    id,
+    kind,
   }: {
-    card: string
-    change: CompactionChange
-  }) => {
-    write({
-      fn: ({ writer }) => recordCompaction({
+    id: string
+    kind: HydraOperation['kind']
+  }) => note({
+    fn: ({ writer }) => {
+      // A second compaction straight after the first, or a restart inside an upgrade, continues the same stop.
+      if (writer.state.hydraOperation) {
+        return
+      }
+
+      // Messages already waiting for a Hydra turn when the stop begins are part of what it recaps.
+      const waiting = [...queuedHydra].flatMap(queuedId => writer.state.eventIds[queuedId] ?? [])
+      const operation: HydraOperation = {
+        id,
+        kind,
+        state: 'started',
+      }
+
+      if (waiting.length) {
+        operation.after = Math.min(...waiting) - 1
+      }
+
+      if (!stoppedSince) {
+        stoppedSince = {
+          id,
+          kind,
+          since: at(),
+          seq: operation.after ?? writer.state.seq + 1,
+        }
+      }
+
+      apply({
         writer,
-        card,
-        change,
-        at: at(),
+        decision: operationEvent({
+          state: writer.state,
+          operation,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+        }),
+      })
+    },
+  })
+
+  const endOperation = ({
+    id,
+    error,
+  }: {
+    id: string
+    error?: string
+  }) => {
+    const running = loadHydra({ hydraId }).state.hydraOperation
+
+    if (running?.id !== id) {
+      return
+    }
+
+    const ended: HydraOperation = {
+      id,
+      kind: running.kind,
+      state: error ? 'failed' : 'finished',
+    }
+
+    if (error) {
+      ended.error = error
+    }
+
+    note({
+      fn: ({ writer }) => apply({
+        writer,
+        decision: operationEvent({
+          state: writer.state,
+          operation: ended,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+          },
+        }),
       }),
     })
+    background({
+      name: 'Hydra back after a stop',
+      run: async () => {
+        const state = loadHydra({ hydraId }).state
 
-    if (change.kind === 'status') {
-      resetCompactionDeadline({ operation: change.operation })
-    }
-  }
+        // Another operation started meanwhile; the recap waits for the last one to end.
+        if (state.hydraOperation) {
+          return
+        }
 
-  // Each status of a running compaction restarts its deadline, so one that never reports a result still ends and releases what it held.
-  const resetCompactionDeadline = ({
-    operation,
-    delay = compactionDelay,
-  }: {
-    operation: Compaction
-    delay?: number
-  }) => {
-    clearTimeout(compactionDeadlines.get(operation.session))
-    compactionDeadlines.delete(operation.session)
+        const since = stoppedSince ?? running
+        stoppedSince = undefined
 
-    if (operation.state !== 'running') {
-      return
-    }
+        // A clean stop that nothing waited on needs no turn of its own.
+        if (error || arrivedSince({
+          state,
+          after: since.seq,
+        })) {
+          await host.hydra({
+            id: `operation:${id}`,
+            actor: 'pnyx',
+            text: operationRecap({
+              state,
+              operation: since,
+              error,
+              now: Date.now(),
+            }),
+          })
+        }
 
-    compactionDeadlines.set(
-      operation.session,
-      setTimeout(
-        () => background({
-          name: 'compaction deadline',
-          run: () => {
-            compactionDeadlines.delete(operation.session)
-
-            if (closing) {
-              return
-            }
-
-            const { cards } = loadHydra({ hydraId }).state
-            const card = Object.values(cards).find(candidate => candidate.compaction?.operations
-              .some(known => known.id === operation.id && known.state === 'running'))
-
-            if (!card) {
-              return
-            }
-
-            compactChange({
-              card: card.id,
-              change: {
-                kind: 'status',
-                operation: {
-                  ...operation,
-                  state: 'failed',
-                  endedAt: at(),
-                  error: 'The agent stopped reporting this compaction before it finished',
-                },
-              },
-            })
-            releaseCompact({ card: card.id })
-          },
-          retry: () => resetCompactionDeadline({
-            operation,
-            delay: COMPACTION_RETRY_MS,
-          }),
-        }),
-        delay,
-      ).unref(),
-    )
-  }
-
-  const holdCompact = ({
-    card,
-    input,
-  }: {
-    card: Card
-    input: Omit<CompactInput, 'at'>
-  }) => {
-    if (!activeCompaction({ card })) {
-      return false
-    }
-
-    compactChange({
-      card: card.id,
-      change: {
-        kind: 'held',
-        input: {
-          ...input,
-          at: at(),
-        },
+        armWake()
       },
     })
-
-    return true
   }
 
-  const releasingCompact = new Set<string>()
-  // After a result the agent may compact again at once, so held input waits until it moves on, or for one deadline.
-  const settlingCompactions = new Map<string, NodeJS.Timeout>()
-
-  const compactionBusy = ({ card }: { card?: Card }) => Boolean(activeCompaction({ card }))
-    || Boolean(card && settlingCompactions.has(card.id))
-
-  const settleCompaction = ({
-    card,
-    settling,
-  }: {
-    card: string
-    settling: boolean
-  }) => {
-    const moved = settlingCompactions.has(card) && !settling
-    clearTimeout(settlingCompactions.get(card))
-    settlingCompactions.delete(card)
-
-    if (settling) {
-      settlingCompactions.set(
-        card,
-        setTimeout(
-          () => settleCompaction({
-            card,
-            settling: false,
-          }),
-          compactionDelay,
-        ).unref(),
-      )
-    } else if (moved) {
-      releaseCompact({ card })
-    }
-  }
-
-  const sessionOwner = ({
-    state,
-    session,
-    fallback,
-  }: {
-    state: HydraState
-    session: string
-    fallback: string
-  }) => state.cards[session === state.config?.hydra.session
-    ? HYDRA_CARD : state.sessions?.[session]?.taskId ?? fallback]
-
-  const syncCompactions = ({ state }: { state: HydraState }) => {
-    for (const card of Object.values(state.cards)) {
-      for (const operation of card.compaction?.operations ?? []) {
-        if (operation.state !== 'running') {
-          continue
-        }
-
-        const destination = sessionOwner({
-          state,
-          session: operation.session,
-          fallback: card.id,
-        })
-        const stays = card.agent && sessionId({ agent: card.agent }) === operation.session
-          && (!destination || destination.id === card.id)
-
-        if (stays) {
-          continue
-        }
-
-        compactChange({
-          card: card.id,
-          change: {
-            kind: 'status',
-            operation: {
-              ...operation,
-              state: 'failed',
-              endedAt: at(),
-              error: 'The agent session left this task during compaction',
-            },
-          },
-        })
-
-        if (destination?.agent && sessionId({ agent: destination.agent }) === operation.session) {
-          compactChange({
-            card: destination.id,
-            change: {
-              kind: 'status',
-              operation,
-            },
-          })
-        }
-
-        releaseCompact({ card: card.id })
-      }
-    }
-  }
-
-  const releaseCompact = ({ card: id }: { card: string }) => {
-    if (closing || releasingCompact.has(id)) {
-      return
-    }
-
-    releasingCompact.add(id)
-    let advanced = false
-    setTimeout(
-      () => {
-        void (async () => {
-          const card = loadHydra({ hydraId }).state.cards[id]
-
-          if (!card || compactionBusy({ card })) {
-            return
-          }
-
-          const inputs = [...(card.compaction?.inputs ?? [])].sort((
-            a,
-            b,
-          ) => Number(b.id === card.compaction?.priority)
-            - Number(a.id === card.compaction?.priority))
-
-          for (const input of inputs) {
-            if (closing) {
-              return
-            }
-
-            if (compactionBusy({ card: loadHydra({ hydraId }).state.cards[id] })) {
-              return
-            }
-
-            if (input.route === 'hydra') {
-              await host.hydra({
-                text: input.text,
-                original: input.original,
-                actor: input.actor,
-                id: input.id,
-                release: input.accepted,
-                selected: input.agent,
-              })
-
-              while (!closing && queuedHydra.has(input.id)) {
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  20,
-                ))
-              }
-
-              const marker = input.accepted ? `${input.id}:compact:hosted` : `${input.id}:hosted`
-              const noOp = reportActor({ actor: input.actor })
-                || (input.id.startsWith('helper-outcomes:') && !helperPending())
-
-              if (closing || (!noOp && !(marker in loadHydra({ hydraId }).state.eventIds))) {
-                return
-              }
-            } else {
-              send({
-                card: id,
-                text: input.text,
-                original: input.original,
-                actor: input.actor,
-                ...(input.route === 'steering' ? { steering: input.id } : {
-                  direct: true,
-                  inputId: input.id,
-                }),
-              })
-
-              if (input.route === 'direct') {
-                while (!closing && loadHydra({ hydraId }).state.cards[id]?.compaction?.inputs
-                  .some(queued => queued.id === input.id)) {
-                  await new Promise(resolve => setTimeout(
-                    resolve,
-                    20,
-                  ))
-                }
-
-                if (closing) {
-                  return
-                }
-              }
-            }
-
-            if (input.route !== 'direct') {
-              compactChange({
-                card: id,
-                change: {
-                  kind: 'taken',
-                  id: input.id,
-                },
-              })
-            }
-
-            advanced = true
-          }
-        })().catch((error: Error) => console.error(`pnyx-axi serve: compact queue retained: ${error.message}`))
-          .finally(() => {
-            releasingCompact.delete(id)
-            const current = loadHydra({ hydraId }).state.cards[id]
-
-            if (advanced && current?.compaction?.inputs.length
-              && !compactionBusy({ card: current })) {
-              releaseCompact({ card: id })
-            }
-          })
-      },
-      0,
-    ).unref()
-  }
-
-  // App-side observations must not make a retained host fact look stale before replay.
-  const nativeObservedAt = ({
-    writer,
-    agent,
-    completion = false,
-  }: {
-    writer: Writer
-    agent: AgentRef
-    completion?: boolean
-  }) => {
-    const session = writer.state.sessions?.[sessionId({ agent })]
-    const cardId = session?.taskId ?? session?.originCardId
-      ?? writer.state.keys[sessionKey({ agent })]
-    const card = cardId ? writer.state.cards[cardId] : undefined
-
-    const source = card?.sourceRefs.find(ref => ref.adapter === 'pnyx' && ref.objectId === agent.sessionId)
-
-    if (applying) {
-      if (completion && source?.observedAt && source.observedAt > applying.at) {
-        return source.observedAt
+  const compaction = createCompactionControl({
+    hydraId,
+    compactionDelay,
+    queuedHydra,
+    closing: () => closing,
+    at,
+    write,
+    // Defined below; read when a held message is released.
+    send: ({ ...input }) => send(input),
+    host: () => host,
+    helperPending: () => helperPending(),
+    statusChanged: ({
+      card,
+      operation,
+    }) => {
+      if (card !== HYDRA_CARD) {
+        return
       }
 
-      return applying.at
-    }
+      if (operation.state === 'running') {
+        startOperation({
+          id: operation.id,
+          kind: 'compaction',
+        })
+      }
+    },
+    // Hydra is back once its compactions settle, including one that followed straight after.
+    released: ({ card }) => {
+      const state = loadHydra({ hydraId }).state
+      const running = state.hydraOperation
+      const last = state.cards[HYDRA_CARD]?.compaction?.operations.at(-1)
 
-    return source?.observedAt
-  }
+      if (card !== HYDRA_CARD || running?.kind !== 'compaction') {
+        return
+      }
+
+      endOperation({
+        id: running.id,
+        error: !last || last.state === 'done' ? undefined : last.error ?? `compaction ${last.state}`,
+      })
+    },
+  })
+  const {
+    compactChange,
+    holdCompact,
+    releaseCompact,
+    sessionOwner,
+    settleCompaction,
+    syncCompactions,
+  } = compaction
 
   const record = ({
     writer,
@@ -742,14 +532,12 @@ export function createHost({
     input,
     actor,
     eventId,
-    completion = false,
   }: {
     writer: Writer
     agent: AgentRef
     input: Record<string, unknown>
     actor: string
     eventId?: string
-    completion?: boolean
   }) => {
     // Sessions may move between tasks while their process keeps running.
     const session = writer.state.sessions?.[sessionId({ agent })]
@@ -766,17 +554,13 @@ export function createHost({
           source: {
             adapter: 'pnyx',
             objectId: agent.sessionId,
-            observedAt: nativeObservedAt({
-              writer,
-              agent,
-              completion,
-            }),
+            observedAt: at(),
           },
         },
         meta: {
           at: at(),
           actor,
-          id: eventId ?? (applying ? `native:${applying.id}:activity` : undefined),
+          id: eventId,
         },
       }),
     })
@@ -900,6 +684,8 @@ export function createHost({
     note: string
     resumeAttemptId?: string
   }) => {
+    // A turn Pnyx resumes is not reported as stopped; its card asks only when the resume is not sent or cannot reopen.
+    const resuming = Boolean(resumeAttemptId)
     record({
       writer,
       agent,
@@ -916,7 +702,7 @@ export function createHost({
       task = writer.state.cards[session.taskId]
     }
 
-    if (task) {
+    if (task && !resuming) {
       const attention: Attention[] = [
         {
           kind: 'interrupted',
@@ -946,10 +732,6 @@ export function createHost({
     try {
       write({ fn })
     } catch (error) {
-      if (applying) {
-        throw error
-      }
-
       console.error(`pnyx-axi serve: ${(error as Error).message}`)
     }
   }
@@ -981,11 +763,19 @@ export function createHost({
 
   let memoryStamp: string | undefined
 
-  const digest = ({ remember = true }: { remember?: boolean } = {}) => {
+  const digest = async ({ remember = true }: { remember?: boolean } = {}) => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
-
-    const projects = projectDigest({ state })
+    const [
+      projects,
+      items,
+    ] = await Promise.all([
+      projectDigest({ state }),
+      setupCheck({
+        hydraId,
+        state,
+      }),
+    ])
 
     if (remember) {
       memoryStamp = JSON.stringify({
@@ -1001,22 +791,17 @@ export function createHost({
       state,
       owner,
       projects,
-      setup: setupDigest({
-        items: setupCheck({
-          hydraId,
-          state,
-        }),
-      }),
+      setup: setupDigest({ items }),
     })
   }
 
-  const memoryChangeNote = () => {
+  const memoryChangeNote = async () => {
     const owner = ownerMemory()
     const state = loadHydra({ hydraId }).state
     const stamp = JSON.stringify({
       owner,
       hydra: state.hydraMemory,
-      projects: projectDigest({ state }),
+      projects: await projectDigest({ state }),
     })
     const changed = memoryStamp !== undefined && memoryStamp !== stamp
     memoryStamp = stamp
@@ -1027,7 +812,7 @@ export function createHost({
   // Hydra runs Pnyx's own CLI without asking; every other prompt waits in Hydra's chat.
   const hydraSession = () => ({
     instructions: hydraInstructions(),
-    allow: ['pnyx-axi'],
+    allow: HYDRA_COMMANDS,
     context: digest,
   })
 
@@ -1077,23 +862,6 @@ export function createHost({
           return same && request.status !== 'expired'
         })
       const id = previous?.id ?? randomUUID()
-      const delivery = entry.session?.permissionDelivery?.({ permission: nativeId })
-
-      const nonsecret = !previous?.questions?.some(question => question.secret) && !previous?.form
-
-      if (previous && previous.status !== 'pending' && delivery === 'not_received' && nonsecret) {
-        resolve(previous.status === 'allow' ? {
-          behavior: 'allow',
-          answers: previous.answers,
-          values: previous.values,
-        } : {
-          behavior: 'deny',
-          message: 'Permission denied from Pnyx.',
-        })
-
-        return
-      }
-
       const abort = () => expire({ id })
 
       const finish = ({ result }: { result: PermissionDecision }) => {
@@ -1112,7 +880,6 @@ export function createHost({
         tool,
         input,
         status: previous?.status ?? 'pending',
-        delivery: previous?.status === 'allow' && delivery === 'not_received' ? 'needs_reentry' : delivery === 'unknown' ? 'unknown' : undefined,
         answers: previous?.answers,
         values: previous?.values,
         ...(description ? { description } : {}),
@@ -1162,10 +929,6 @@ export function createHost({
           },
         })
       } catch (error) {
-        if (entry.session?.remote) {
-          throw error
-        }
-
         finish({
           result: {
             behavior: 'deny',
@@ -1176,167 +939,18 @@ export function createHost({
     })
   }
 
-  const pendingSteeringIds = ({
-    card,
-    key,
-    generation,
-    ids,
-  }: {
-    card?: Card
-    key: string
-    generation?: number
-    ids: string[]
-  }) => {
-    if (!card?.agent || !liveTask({ card }) || sessionId({ agent: card.agent }) !== key
-      || card.steeringGeneration !== generation || steeringHeld({ card })) {
-      return []
-    }
-
-    return (card.steering ?? []).filter(message => !message.ack && ids.includes(message.id))
-      .map(message => message.id)
-  }
-
-  const inboxNotice = ({
-    card,
-    ids,
-  }: {
-    card: Card
-    ids: string[]
-  }) => {
-    const messages = (card.steering ?? []).filter(message => ids.includes(message.id))
-    const images = messages.flatMap(message => attachedImages({
-      text: message.text,
-      hydras: join(
-        pnyxHome(),
-        'hydras',
-      ),
-    }))
-
-    return [
-      steeringNotice({
-        task: card.id,
-        hydraId,
-        ids,
-      }),
-      ...new Set(images.map(path => `[image: ${path}]`)),
-    ].join('\n')
-  }
-
-  const unnotifiedSteering = ({
-    card,
-    entry,
-    message: ref,
-    attempt,
-  }: {
-    card: Card
-    entry?: Live
-    message?: string
-    attempt?: string
-  }) => {
-    const sameOpening = entry?.task === card.id && entry.generation === card.steeringGeneration
-
-    return [...(card.steering ?? [])].sort((
-      a,
-      b,
-    ) => Number(b.id === card.compaction?.priority)
-            - Number(a.id === card.compaction?.priority)).filter(message => {
-      if (message.ack) {
-        return false
-      }
-
-      if (attempt) {
-        const alreadyAttempted = message.attempts.some(known => known.id === attempt)
-
-        return message.id === ref && !alreadyAttempted
-      }
-
-      return !sameOpening || !entry.steering.has(message.id)
-    })
-  }
-
-  const ringSteering = ({
-    card,
-    entry,
-    message: ref,
-    attempt,
-  }: {
-    card: Card
-    entry: Live
-    message?: string
-    attempt?: string
-  }) => {
-    if (card.id === HYDRA_CARD || !liveTask({ card })
-      || steeringHeld({ card }) || activeCompaction({ card })) {
-      return
-    }
-
-    const claim = steeringClaim({ card })
-
-    if (!claim) {
-      return
-    }
-
-    const messages = unnotifiedSteering({
-      card,
-      entry,
-      message: ref,
-      attempt,
-    })
-
-    if (!messages.length) {
-      return
-    }
-
-    const ids = messages.map(message => message.id)
-
-    for (const id of ids) {
-      entry.steering.add(id)
-    }
-
-    entry.input.push({
-      id: `steering:${keyForSteering({
-        card,
-        ids,
-      })}`,
-      text: '',
-      steeringIds: ids,
-    })
-    write({
-      fn: ({ writer }) => {
-        const current = writer.state.cards[card.id]
-
-        if (!current || !sameClaim({
-          current: steeringClaim({ card: current }),
-          claim,
-        })) {
-          return
-        }
-
-        for (const message of messages) {
-          if (current.steering?.find(stored => stored.id === message.id)?.ack) {
-            continue
-          }
-
-          recordSteeringAttempt({
-            writer,
-            ref: card.id,
-            id: message.id,
-            attempt: {
-              id: attempt ?? randomUUID(),
-              claim,
-              at: at(),
-              actor: 'pnyx',
-              result: 'delivered',
-            },
-            meta: {
-              actor: 'pnyx',
-              at: at(),
-            },
-          })
-        }
-      },
-    })
-  }
+  const {
+    pendingSteeringIds,
+    inboxNotice,
+    unnotifiedSteering,
+    markRead,
+    ringSteering,
+  } = createSteeringDelivery({
+    hydraId,
+    at,
+    write,
+    note,
+  })
 
   const consume = async ({
     key,
@@ -1348,7 +962,6 @@ export function createHost({
     entry: Live
   }) => {
     let failure: string | undefined
-    let retryNative = false
     const env = environment(card.id === HYDRA_CARD ? { hydra: true } : {
       task: card.id,
       steeringWorker: steeringWorkerIdentity({
@@ -1365,27 +978,24 @@ export function createHost({
         ...(card.id === HYDRA_CARD ? hydraSession() : { allow: WORKER_COMMANDS }),
         env: card.agent.loginFolder ? accountEnvironment({
           account: {
-            provider: card.agent.provider === 'codex' ? 'codex' : 'claude',
+            provider: harnessOf({ provider: card.agent.provider }),
             folder: card.agent.loginFolder,
           },
           env,
         }) : env,
         signal: controller.signal,
+        spawned: children.spawned,
       })
 
       if (closing || live.get(key) !== entry) {
-        if (entry.session.remote) {
-          entry.session.detach?.()
-        } else {
-          entry.session.close()
-        }
+        entry.session.close()
 
         return
       }
 
       const current = loadHydra({ hydraId }).state.cards[card.id]
 
-      if (!entry.session.readOnly && current?.agent && sessionId({ agent: current.agent }) === key
+      if (current?.agent && sessionId({ agent: current.agent }) === key
         && current.steeringGeneration === card.steeringGeneration) {
         ringSteering({
           card: current,
@@ -1428,10 +1038,6 @@ export function createHost({
 
       const input = async function* () {
         for await (const item of entry.input) {
-          if (item.id && entry.session?.accepted?.({ id: item.id })) {
-            continue
-          }
-
           const current = compactOwner()
 
           const compaction = activeCompaction({ card: current })
@@ -1520,10 +1126,22 @@ export function createHost({
               continue
             }
 
-            item.text = inboxNotice({
-              card: current,
-              ids,
-            })
+            if (item.inline && item.id) {
+              item.text = steeringMessages({
+                task: current.id,
+                hydraId,
+                messages: (current.steering ?? []).filter(message => ids.includes(message.id)),
+              })
+              entry.delivered.set(
+                item.id,
+                ids,
+              )
+            } else {
+              item.text = inboxNotice({
+                card: current,
+                ids,
+              })
+            }
           }
 
           if (!turnRunning) {
@@ -1625,427 +1243,459 @@ export function createHost({
         }),
       })) {
         const activity = typeof received === 'object' && received.type === 'turn-ended' ? 'finished' : received
-        applying = entry.session.fact?.()
 
-        try {
-          if (typeof activity === 'object' && activity.type === 'answer') {
-            write({
-              fn: ({ writer }) => {
-                const current = writer.state.cards[card.id]
-                const request = current?.permissions?.find(request =>
-                  request.nativeId === activity.receipt.permission && request.session === key)
+        if (typeof activity === 'object' && activity.type === 'input' && entry.pendingDirect.has(activity.receipt.inputId)) {
+          settleDirect({
+            entry,
+            inputId: activity.receipt.inputId,
+            phase: activity.receipt.phase,
+          })
+        }
 
-                if (request && request.status !== 'pending') {
-                  writer.append({
-                    event: permissionEvent({
+        if (typeof activity === 'object' && activity.type === 'input' && activity.receipt.phase === 'confirmed'
+          && entry.delivered.has(activity.receipt.inputId)) {
+          const ids = entry.delivered.get(activity.receipt.inputId)!
+          entry.delivered.delete(activity.receipt.inputId)
+          markRead({
+            card: card.id,
+            ids,
+          })
+          continue
+        }
+
+        if (typeof activity === 'object' && activity.type === 'answer') {
+          write({
+            fn: ({ writer }) => {
+              const current = writer.state.cards[card.id]
+              const request = current?.permissions?.find(request =>
+                request.nativeId === activity.receipt.permission && request.session === key)
+
+              if (request && request.status !== 'pending') {
+                writer.append({
+                  event: permissionEvent({
+                    state: writer.state,
+                    card: current,
+                    request: {
+                      ...request,
+                      delivery: activity.receipt.phase,
+                    },
+                    meta: {
+                      at: at(),
+                      actor: 'pnyx',
+                    },
+                  }),
+                })
+              }
+            },
+          })
+          continue
+        }
+
+        // A turn the server's own stop cuts stays working, so the next start resumes it.
+        if (closing && typeof received === 'object' && received.type === 'turn-ended' && received.outcome.status !== 'completed') {
+          continue
+        }
+
+        if (typeof received === 'object' && received.type === 'turn-ended') {
+          const outcome = received.outcome
+          note({
+            fn: ({ writer }) => record({
+              writer,
+              agent: card.agent,
+              input: { activity: 'finished' },
+              actor: 'pnyx',
+              eventId: `native:${outcome.turn}:finished`,
+            }),
+          })
+
+          for (const text of outcome.assistant) {
+            entry.replies.update(text)
+          }
+        }
+
+        if (entry.replaced || !closing && live.get(key) !== entry) {
+          return
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'compaction') {
+          syncCompactions({ state: loadHydra({ hydraId }).state })
+          const current = compactOwner()
+
+          if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
+            continue
+          }
+
+          const known = compactionIds.get(activity.id)
+          const mapped = current.compaction?.operations.find(operation => operation.id === known)
+
+          if (mapped && mapped.state !== 'running') {
+            continue
+          }
+
+          const operation = mapped ?? activeCompaction({ card: current }) ?? {
+            id: activity.id,
+            session: key,
+            trigger: activity.trigger,
+            state: 'running' as const,
+            startedAt: at(),
+          }
+          compactionIds.set(
+            activity.id,
+            operation.id,
+          )
+          compactChange({
+            card: current.id,
+            change: {
+              kind: 'status',
+              operation: {
+                ...operation,
+                state: activity.state,
+                ...(activity.state !== 'running' ? { endedAt: at() } : {}),
+                ...(activity.error ? { error: activity.error } : {}),
+                ...(activity.unsupported ? { unsupported: true } : {}),
+              },
+            },
+          })
+
+          if (activity.state !== 'running') {
+            settleCompaction({
+              card: current.id,
+              settling: true,
+            })
+          }
+
+          continue
+        }
+
+        // Claude Code can compact again after a result, so held input waits until it moves on.
+        if (activity === 'finished' || typeof activity !== 'string' && [
+          'text',
+          'tool',
+          'thinking',
+        ].includes(activity.type)) {
+          const owner = compactOwner()
+
+          if (owner && compaction.settling.has(owner.id)) {
+            settleCompaction({
+              card: owner.id,
+              settling: false,
+            })
+          }
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'usage') {
+          const before = usages.get(key) ?? {}
+          usages.set(
+            key,
+            {
+              ...before,
+              ...Object.fromEntries(([
+                'used',
+                'window',
+                'cost',
+                'plan',
+              ] as const).flatMap(field => activity[field] === undefined ? [] : [
+                [
+                  field,
+                  activity[field],
+                ],
+              ])),
+              ...(activity.limits ? {
+                limits: mergeWindows({
+                  base: before.limits ?? [],
+                  over: activity.limits,
+                }),
+              } : {}),
+            },
+          )
+
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'thinking') {
+          const wasThinking = entry.thinking.size > 0
+
+          if (activity.running) {
+            entry.thinking.add(activity.id)
+          } else {
+            entry.thinking.delete(activity.id)
+          }
+
+          if (wasThinking !== (entry.thinking.size > 0)) {
+            streamed({ session: key })
+          }
+
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'tool') {
+          if (activity.running) {
+            entry.toolNames.set(
+              activity.id,
+              activity.tool ?? 'tool',
+            )
+            entry.tools.set(
+              activity.id,
+              Date.now(),
+            )
+          } else {
+            entry.tools.delete(activity.id)
+            entry.toolNames.delete(activity.id)
+          }
+
+          streamed({ session: key })
+
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'structured') {
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type === 'work') {
+          streamed({ session: key })
+          armIdle()
+          continue
+        }
+
+        if (typeof activity !== 'string' && activity.type !== 'text') {
+          continue
+        }
+
+        if (typeof activity !== 'string') {
+          entry.replies.update(activity)
+          streamed({ session: key })
+
+          continue
+        }
+
+        if (activity === 'carried') {
+          const carried = joined.pop()
+
+          if (carried) {
+            answering = answering.filter(id => id !== carried.id)
+            opening.unshift(carried)
+          }
+
+          continue
+        }
+
+        if (activity === 'finished') {
+          const owner = compactOwner()
+          const unfinished = activeCompaction({ card: owner })
+
+          if (unfinished) {
+            compactChange({
+              card: owner!.id,
+              change: {
+                kind: 'status',
+                operation: {
+                  ...unfinished,
+                  state: entry.stopping ? 'cancelled' : 'failed',
+                  endedAt: at(),
+                  ...(!entry.stopping ? {
+                    error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.',
+                    unsupported: true,
+                  } : {}),
+                },
+              },
+            })
+            releaseCompact({ card: owner!.id })
+          }
+
+          turnRunning = false
+          entry.stopping = false
+          entry.tools.clear()
+          entry.toolNames.clear()
+          entry.thinking.clear()
+          completedOffset = transcriptSize()
+          entry.replies.finish()
+          streamed({ session: key })
+
+          if (card.id === HYDRA_CARD) {
+            const texts = entry.replies.texts()
+            const asks = answering
+            note({
+              fn: ({ writer }) => copyTagged({
+                writer,
+                texts,
+                asks,
+                at: at(),
+                turn: entry.session?.snapshot().outcome?.turn,
+              }),
+            })
+            finishReading()
+            const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
+            const ownerInput = messages.some(message => answering.includes(message.id)
+            && ownerActor({ actor: message.actor }))
+
+            if (ownerInput && texts.at(-1)?.trim() === QUIET_REPLY) {
+              entry.input.push({
+                text: `<pnyx-wake>The owner wrote to you; reply to them in one standalone message.\n${REPLY_RULES}</pnyx-wake>`,
+              })
+            }
+          }
+        } else {
+          const opened = opening.splice(0)
+          const answers = opened.flatMap(item => item.id ? [item.id] : [])
+          const startOffset = opened.length ? opened[0]!.offset : 0
+          answering = answers
+          joined = []
+          turnRunning = true
+          let ownerStarted: boolean | undefined
+
+          if (card.id === HYDRA_CARD) {
+            const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
+            const opener = ({ message }: { message: HydraMessage }) =>
+              answers.includes(message.id)
+            const ownerMessage = ({ message }: { message: HydraMessage }) =>
+              ownerActor({ actor: message.actor })
+            ownerStarted = messages.some(message => opener({ message })
+            && ownerMessage({ message }))
+          }
+
+          entry.replies.start({
+            ownerStarted,
+            offset: Math.max(
+              startOffset,
+              completedOffset,
+            ),
+          })
+          streamed({ session: key })
+        }
+
+        if (activity === 'finished') {
+          const current = loadHydra({ hydraId }).state.cards[card.id]
+          const pending = entry.input.pending({
+            includes: ({ steeringIds }) => {
+              if (!steeringIds) {
+                return true
+              }
+
+              return pendingSteeringIds({
+                card: current,
+                key,
+                generation: card.steeringGeneration,
+                ids: steeringIds,
+              }).length > 0
+            },
+          })
+
+          if (pending) {
+            continue
+          }
+        }
+
+        if (activity !== entry.activity) {
+          entry.activity = activity
+
+          if (card.id === HYDRA_CARD && activity !== 'working') {
+            mainTasks.clear()
+
+            if (activity === 'finished' && readingParked.length) {
+              const done = new Set(readingParked)
+              updates = updates.filter(update => !done.has(update.seq))
+
+              for (const seq of done) {
+                parked.delete(seq)
+              }
+
+              queued()
+            }
+
+            readingParked = []
+          }
+
+          note({
+            fn: ({ writer }) => {
+              const handledThrough = wakesThrough({
+                state: writer.state,
+                pattern: WAKE_HANDLED,
+              })
+              // The wake this turn read counts as handled only now that the turn finished.
+              const handledWake = card.id === HYDRA_CARD && activity === 'finished' && readThrough > handledThrough
+              let eventId: string | undefined
+
+              if (handledWake) {
+                eventId = `wake:${readThrough}:handled`
+              }
+
+              if (card.id === HYDRA_CARD && activity === 'finished') {
+                const batches = [...helperBatchesPresented]
+
+                if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
+                  apply({
+                    writer,
+                    decision: hydraEvent({
                       state: writer.state,
-                      card: current,
-                      request: {
-                        ...request,
-                        delivery: activity.receipt.phase,
-                      },
+                      cardId: HYDRA_CARD,
                       meta: {
                         at: at(),
                         actor: 'pnyx',
                       },
+                      change: {
+                        type: 'hydra.helper-acknowledged',
+                        data: {
+                          batches,
+                          through: outcomesPresented,
+                        },
+                      },
                     }),
                   })
                 }
-              },
-            })
-            continue
-          }
+              }
 
-          if (typeof received === 'object' && received.type === 'turn-ended') {
-            const outcome = received.outcome
-            note({
-              fn: ({ writer }) => record({
+              if (card.id === HYDRA_CARD && activity === 'finished') {
+                helperBatchesPresented.clear()
+              }
+
+              record({
                 writer,
                 agent: card.agent,
-                input: { activity: 'finished' },
+                input: { activity },
                 actor: 'pnyx',
-                eventId: `native:${applying?.id ?? outcome.turn}:finished`,
-                completion: true,
-              }),
-            })
-
-            for (const text of outcome.assistant) {
-              entry.replies.update(text)
-            }
-          }
-
-          if (entry.replaced || !closing && live.get(key) !== entry) {
-            return
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'compaction') {
-            syncCompactions({ state: loadHydra({ hydraId }).state })
-            const current = compactOwner()
-
-            if (!current?.agent || sessionId({ agent: current.agent }) !== key) {
-              continue
-            }
-
-            const known = compactionIds.get(activity.id)
-            const mapped = current.compaction?.operations.find(operation => operation.id === known)
-
-            if (mapped && mapped.state !== 'running') {
-              continue
-            }
-
-            const operation = mapped ?? activeCompaction({ card: current }) ?? {
-              id: activity.id,
-              session: key,
-              trigger: activity.trigger,
-              state: 'running' as const,
-              startedAt: at(),
-            }
-            compactionIds.set(
-              activity.id,
-              operation.id,
-            )
-            compactChange({
-              card: current.id,
-              change: {
-                kind: 'status',
-                operation: {
-                  ...operation,
-                  state: activity.state,
-                  ...(activity.state !== 'running' ? { endedAt: at() } : {}),
-                  ...(activity.error ? { error: activity.error } : {}),
-                },
-              },
-            })
-
-            if (activity.state !== 'running') {
-              settleCompaction({
-                card: current.id,
-                settling: true,
+                eventId,
               })
+            },
+          })
+          clearTimeout(entry.idle)
+
+          if (activity === 'finished') {
+            if (card.id === HYDRA_CARD) {
+              armWake()
             }
 
-            continue
-          }
-
-          // Claude Code can compact again after a result, so held input waits until it moves on.
-          if (activity === 'finished' || typeof activity !== 'string' && [
-            'text',
-            'tool',
-            'thinking',
-          ].includes(activity.type)) {
-            const owner = compactOwner()
-
-            if (owner && settlingCompactions.has(owner.id)) {
-              settleCompaction({
-                card: owner.id,
-                settling: false,
-              })
-            }
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'usage') {
-            const before = usages.get(key) ?? {}
-            usages.set(
-              key,
-              {
-                ...before,
-                ...Object.fromEntries(([
-                  'used',
-                  'window',
-                  'cost',
-                  'plan',
-                ] as const).flatMap(field => activity[field] === undefined ? [] : [
-                  [
-                    field,
-                    activity[field],
-                  ],
-                ])),
-                ...(activity.limits ? {
-                  limits: mergeWindows({
-                    base: before.limits ?? [],
-                    over: activity.limits,
-                  }),
-                } : {}),
-              },
-            )
-
-            continue
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'thinking') {
-            const wasThinking = entry.thinking.size > 0
-
-            if (activity.running) {
-              entry.thinking.add(activity.id)
-            } else {
-              entry.thinking.delete(activity.id)
-            }
-
-            if (wasThinking !== (entry.thinking.size > 0)) {
-              streamed({ session: key })
-            }
-
-            continue
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'tool') {
-            if (activity.running) {
-              entry.toolNames.set(
-                activity.id,
-                activity.tool ?? 'tool',
-              )
-              entry.tools.set(
-                activity.id,
-                Date.now(),
-              )
-            } else {
-              entry.tools.delete(activity.id)
-              entry.toolNames.delete(activity.id)
-            }
-
-            streamed({ session: key })
-
-            continue
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'structured') {
-            continue
-          }
-
-          if (typeof activity !== 'string' && activity.type === 'work') {
-            streamed({ session: key })
             armIdle()
-            continue
           }
-
-          if (typeof activity !== 'string' && activity.type !== 'text') {
-            continue
-          }
-
-          if (typeof activity !== 'string') {
-            entry.replies.update(activity)
-            streamed({ session: key })
-
-            continue
-          }
-
-          if (activity === 'carried') {
-            const carried = joined.pop()
-
-            if (carried) {
-              answering = answering.filter(id => id !== carried.id)
-              opening.unshift(carried)
-            }
-
-            continue
-          }
-
-          if (activity === 'finished') {
-            const owner = compactOwner()
-            const unfinished = activeCompaction({ card: owner })
-
-            if (unfinished) {
-              compactChange({
-                card: owner!.id,
-                change: {
-                  kind: 'status',
-                  operation: {
-                    ...unfinished,
-                    state: entry.stopping ? 'cancelled' : 'failed',
-                    endedAt: at(),
-                    ...(!entry.stopping ? { error: 'The agent ended its turn without reporting a compaction outcome. Native compact is unavailable in this session.' } : {}),
-                  },
-                },
-              })
-              releaseCompact({ card: owner!.id })
-            }
-
-            turnRunning = false
-            entry.stopping = false
-            entry.tools.clear()
-            entry.toolNames.clear()
-            entry.thinking.clear()
-            completedOffset = transcriptSize()
-            entry.replies.finish()
-            streamed({ session: key })
-
-            if (card.id === HYDRA_CARD) {
-              const texts = entry.replies.texts()
-              const asks = answering
-              note({
-                fn: ({ writer }) => copyTagged({
-                  writer,
-                  texts,
-                  asks,
-                  at: applying?.at ?? new Date().toISOString(),
-                  turn: entry.session?.snapshot().outcome?.turn,
-                }),
-              })
-              finishReading()
-              const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
-              const ownerInput = messages.some(message => answering.includes(message.id)
-              && ownerActor({ actor: message.actor }))
-
-              if (ownerInput && texts.at(-1)?.trim() === QUIET_REPLY) {
-                entry.input.push({
-                  text: `<pnyx-wake>The owner wrote to you; reply to them in one standalone message.\n${REPLY_RULES}</pnyx-wake>`,
-                })
-              }
-            }
-          } else {
-            const opened = opening.splice(0)
-            const answers = opened.flatMap(item => item.id ? [item.id] : [])
-            const startOffset = opened.length ? opened[0]!.offset : 0
-            answering = answers
-            joined = []
-            turnRunning = true
-            let ownerStarted: boolean | undefined
-
-            if (card.id === HYDRA_CARD) {
-              const messages = loadHydra({ hydraId }).state.hydraMessages ?? []
-              const opener = ({ message }: { message: HydraMessage }) =>
-                answers.includes(message.id)
-              const ownerMessage = ({ message }: { message: HydraMessage }) =>
-                ownerActor({ actor: message.actor })
-              ownerStarted = messages.some(message => opener({ message })
-              && ownerMessage({ message }))
-            }
-
-            entry.replies.start({
-              ownerStarted,
-              offset: Math.max(
-                startOffset,
-                completedOffset,
-              ),
-            })
-            streamed({ session: key })
-          }
-
-          if (activity === 'finished') {
-            const current = loadHydra({ hydraId }).state.cards[card.id]
-            const pending = entry.input.pending({
-              includes: ({ steeringIds }) => {
-                if (!steeringIds) {
-                  return true
-                }
-
-                return pendingSteeringIds({
-                  card: current,
-                  key,
-                  generation: card.steeringGeneration,
-                  ids: steeringIds,
-                }).length > 0
-              },
-            })
-
-            if (pending) {
-              continue
-            }
-          }
-
-          if (activity !== entry.activity) {
-            entry.activity = activity
-
-            if (card.id === HYDRA_CARD && activity !== 'working') {
-              mainTasks.clear()
-
-              if (activity === 'finished' && readingParked.length) {
-                const done = new Set(readingParked)
-                updates = updates.filter(update => !done.has(update.seq))
-
-                for (const seq of done) {
-                  parked.delete(seq)
-                }
-
-                queued()
-              }
-
-              readingParked = []
-            }
-
-            note({
-              fn: ({ writer }) => {
-                const handledThrough = wakesThrough({
-                  state: writer.state,
-                  pattern: WAKE_HANDLED,
-                })
-                // The wake this turn read counts as handled only now that the turn finished.
-                const handledWake = card.id === HYDRA_CARD && activity === 'finished' && readThrough > handledThrough
-                let eventId: string | undefined
-
-                if (handledWake) {
-                  eventId = `wake:${readThrough}:handled`
-                }
-
-                if (card.id === HYDRA_CARD && activity === 'finished') {
-                  const batches = [...helperBatchesPresented]
-
-                  if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
-                    apply({
-                      writer,
-                      decision: hydraEvent({
-                        state: writer.state,
-                        cardId: HYDRA_CARD,
-                        meta: {
-                          at: at(),
-                          actor: 'pnyx',
-                        },
-                        change: {
-                          type: 'hydra.helper-acknowledged',
-                          data: {
-                            batches,
-                            through: outcomesPresented,
-                          },
-                        },
-                      }),
-                    })
-                  }
-                }
-
-                if (card.id === HYDRA_CARD && activity === 'finished') {
-                  helperBatchesPresented.clear()
-                }
-
-                record({
-                  writer,
-                  agent: card.agent,
-                  input: { activity },
-                  actor: 'pnyx',
-                  eventId,
-                })
-              },
-            })
-            clearTimeout(entry.idle)
-
-            if (activity === 'finished') {
-              if (card.id === HYDRA_CARD) {
-                armWake()
-              }
-
-              armIdle()
-            }
-          }
-        } finally {
-          applying = undefined
         }
       }
     } catch (error) {
       failure = (error as Error).message
-      retryNative = error instanceof HydraError
-        && [
-          'LOCKED',
-          'TASK_LEASED',
-        ].includes(error.code)
     }
 
-    if (native && retryNative && !closing) {
-      entry.session?.detach?.()
-      entry.input.end()
-      live.delete(key)
-      console.error(`pnyx-axi native attachment: ${failure}`)
-      planNativeRecovery()
+    // A session that ended before confirming a direct input: an input the agent took may have arrived; one it never took did not.
+    if (!closing && !entry.replaced) {
+      for (const [
+        inputId,
+        pending,
+      ] of entry.pendingDirect) {
+        directReply({
+          card: pending.card,
+          inputId,
+          state: pending.taken ? 'delivery_unknown' : 'failed',
+          detail: pending.taken
+            ? `the agent stopped before confirming this message${failure ? `: ${failure.slice(
+              0,
+              300,
+            )}` : ''}; check the conversation, and send it again if it did not arrive`
+            : `the agent stopped before taking this message${failure ? `: ${failure.slice(
+              0,
+              300,
+            )}` : ''}; nothing was delivered`,
+        })
+      }
 
-      return
+      entry.pendingDirect.clear()
     }
 
     const compactCard = (() => {
@@ -2079,18 +1729,6 @@ export function createHost({
       return
     }
 
-    if (entry.session?.remote && (closing || failure)) {
-      entry.session.detach?.()
-      entry.input.end()
-      live.delete(key)
-
-      if (failure) {
-        console.error(`pnyx-axi native attachment: ${failure}`)
-      }
-
-      return
-    }
-
     retire({
       key,
       entry,
@@ -2108,7 +1746,7 @@ export function createHost({
     }
 
     if (!closing && entry.activity === 'working') {
-      const name = card.agent.provider === 'codex' ? 'Codex' : 'Claude Code'
+      const name = providerLabel({ provider: card.agent.provider })
       const text = `${name} stopped during this turn${failure ? `: ${failure.slice(
         0,
         300,
@@ -2180,6 +1818,8 @@ export function createHost({
       replies: liveReplies(),
       activity: 'finished',
       steering: new Set(),
+      delivered: new Map(),
+      pendingDirect: new Map(),
       task: card.id,
       generation: card.steeringGeneration,
       session,
@@ -2198,6 +1838,90 @@ export function createHost({
     })
 
     return entry
+  }
+
+  // A direct input's reply moves on from queued only on what the provider says about it.
+  const directReply = ({
+    card,
+    inputId,
+    state,
+    detail,
+  }: {
+    card: string
+    inputId: string
+    state: 'delivered' | 'failed' | 'delivery_unknown'
+    detail?: string
+  }) => note({
+    fn: ({ writer }) => {
+      const reply = writer.state.cards[card]?.replies?.find(item => item.id === inputId)
+
+      if (!reply || reply.state !== 'queued') {
+        return
+      }
+
+      const data: Parameters<typeof decideReply>[0]['data'] = {
+        reply: inputId,
+        state,
+        route: 'pnyx',
+      }
+
+      if (detail) {
+        data.detail = detail
+      }
+
+      // A delivered answer marks its questions answered, as the reply's first record would have.
+      if (reply.answers) {
+        data.answers = reply.answers
+      }
+
+      apply({
+        writer,
+        decision: decideReply({
+          state: writer.state,
+          ref: card,
+          data,
+          meta: {
+            at: at(),
+            actor: 'pnyx',
+            id: `direct:${inputId}:${state}`,
+          },
+        }),
+      })
+    },
+  })
+
+  const settleDirect = ({
+    entry,
+    inputId,
+    phase,
+  }: {
+    entry: Live
+    inputId: string
+    phase: InputReceipt['phase']
+  }) => {
+    const pending = entry.pendingDirect.get(inputId)
+
+    if (!pending) {
+      return
+    }
+
+    if (phase === 'taken') {
+      pending.taken = true
+
+      return
+    }
+
+    if (phase !== 'confirmed' && phase !== 'carried' && phase !== 'settled' && phase !== 'refused') {
+      return
+    }
+
+    entry.pendingDirect.delete(inputId)
+    directReply({
+      card: pending.card,
+      inputId,
+      state: phase === 'refused' ? 'failed' : 'delivered',
+      detail: phase === 'refused' ? 'the agent refused this message; nothing was delivered' : undefined,
+    })
   }
 
   // eventId names the turn's working record, as a resumed turn's does.
@@ -2230,88 +1954,91 @@ export function createHost({
     }
 
     direct ||= compactCommand({ text })
-    const card = write({
-      fn: ({ writer }) => {
-        const card = hosted({
-          writer,
-          ref,
-        })
+    const card = deliveringMessage.run(
+      true,
+      () => write({
+        fn: ({ writer }) => {
+          const card = hosted({
+            writer,
+            ref,
+          })
 
-        if (!direct && card.id !== HYDRA_CARD) {
-          if (steering) {
-            if (!card.steering?.some(message => message.id === steering)) {
-              throw new HydraError({
-                message: 'Steering message was not persisted',
-                code: 'VALIDATION_ERROR',
+          if (!direct && card.id !== HYDRA_CARD) {
+            if (steering) {
+              if (!card.steering?.some(message => message.id === steering)) {
+                throw new HydraError({
+                  message: 'Steering message was not persisted',
+                  code: 'VALIDATION_ERROR',
+                })
+              }
+            } else {
+              steering = inputId ?? randomUUID()
+              enqueueSteering({
+                writer,
+                ref: card.id,
+                id: steering,
+                text,
+                source: actor,
+                meta: {
+                  actor,
+                  at: at(),
+                },
               })
             }
-          } else {
-            steering = inputId ?? randomUUID()
-            enqueueSteering({
+
+            if (steeringHeld({ card })) {
+              return writer.state.cards[card.id] as Card & { agent: AgentRef }
+            }
+
+            const current = writer.state.cards[card.id]!
+            const running = live.get(sessionId({ agent: card.agent }))
+            const unread = unnotifiedSteering({
+              card: current,
+              entry: running,
+              message: steering,
+              attempt,
+            }).length
+
+            if (!unread) {
+              return undefined
+            }
+          }
+
+          if (!live.has(sessionId({ agent: card.agent }))) {
+            folderOf({ card })
+          }
+
+          if (card.attention.some(a => a.key === INTERRUPTED)) {
+            const attention = card.attention.filter(a => a.key !== INTERRUPTED)
+            const meta = {
+              at: at(),
+              actor,
+            }
+            const input = { attention }
+            const decision = decidePush({
+              state: writer.state,
+              key: card.key,
+              input,
+              meta,
+            })
+            apply({
               writer,
-              ref: card.id,
-              id: steering,
-              text,
-              source: actor,
-              meta: {
-                actor,
-                at: at(),
-              },
+              decision,
             })
           }
 
-          if (steeringHeld({ card })) {
-            return writer.state.cards[card.id] as Card & { agent: AgentRef }
-          }
-
-          const current = writer.state.cards[card.id]!
-          const running = live.get(sessionId({ agent: card.agent }))
-          const unread = unnotifiedSteering({
-            card: current,
-            entry: running,
-            message: steering,
-            attempt,
-          }).length
-
-          if (!unread) {
-            return undefined
-          }
-        }
-
-        if (!live.has(sessionId({ agent: card.agent }))) {
-          folderOf({ card })
-        }
-
-        if (card.attention.some(a => a.key === INTERRUPTED)) {
-          const attention = card.attention.filter(a => a.key !== INTERRUPTED)
-          const meta = {
-            at: at(),
-            actor,
-          }
-          const input = { attention }
-          const decision = decidePush({
-            state: writer.state,
-            key: card.key,
-            input,
-            meta,
-          })
-          apply({
+          record({
             writer,
-            decision,
+            agent: card.agent,
+            input: { activity: 'working' },
+            actor,
+            eventId,
           })
-        }
 
-        record({
-          writer,
-          agent: card.agent,
-          input: { activity: 'working' },
-          actor,
-          eventId,
-        })
-
-        return writer.state.cards[card.id] as Card & { agent: AgentRef }
-      },
-    })
+          return writer.state.cards[card.id] as Card & { agent: AgentRef }
+        },
+      }),
+    )
 
     if (!card) {
       return
@@ -2344,6 +2071,19 @@ export function createHost({
         original,
         id: inputId,
       })
+
+      // Its reply stays queued until the provider confirms the agent got it.
+      if (inputId && card.id !== HYDRA_CARD) {
+        entry.pendingDirect.set(
+          inputId,
+          {
+            card: card.id,
+            taken: false,
+          },
+        )
+
+        return { pending: true }
+      }
     } else {
       ringSteering({
         card,
@@ -2526,9 +2266,8 @@ export function createHost({
   const helperBatchesPresented = new Set<string>()
   const helper = createRoutineHelper({
     hydraId,
-    canOffer: () => !native || Object.values(native)
-      .every(provider => provider.canOpen?.() !== false),
-    provider: ({ harness }) => providers[harness === 'claude' ? 'claude-code' : 'codex'],
+    spawned: children.spawned,
+    provider: ({ harness }) => providers[providerIdOf({ harness })],
     environment: ({
       harness,
       actor,
@@ -2831,738 +2570,44 @@ export function createHost({
   }
 
   // A stall or an ended wait makes no event, so it is polled.
-  const checkStalls = async () => {
-    try {
-      return await wakeOnStall()
-    } catch (error) {
-      console.error(`pnyx-axi serve: ${(error as Error).message}`)
-    }
-  }
-
-  // When a paused task's wait ends: its --until, never for a hold, or pauseDelay after a worker's pause with neither.
-  const waitEnd = ({ card }: { card: Card }): number | undefined => {
-    const declaration = pausedDeclaration({ card })
-
-    if (!declaration) {
-      return undefined
-    }
-
-    if (declaration.until) {
-      return Date.parse(declaration.until)
-    }
-
-    // A hold keeps its worker out of stall checks too, until the owner or Hydra resumes it.
-    if (declaration.hold) {
-      return Infinity
-    }
-
-    // Hydra or the owner parking a task, or a task with no worker, is not a wait.
-    const parked = declaration.actor === HYDRA_ACTOR || ownerActor({ actor: declaration.actor })
-      || !card.sessionIds?.length
-
-    if (parked) {
-      return undefined
-    }
-
-    return Date.parse(declaration.at) + pauseDelay
-  }
-
-  // A stall fired before is due again after the stall delay doubled per earlier alarm, up to stallRepeatMax.
-  const stallDue = ({
-    id,
-    now,
-  }: {
-    id: string
-    now: number
-  }) => {
-    const fired = stalled.get(id)
-
-    if (!fired) {
-      return true
-    }
-
-    const repeatAfter = Math.min(
-      stallDelay * 2 ** fired.count,
-      stallRepeatMax,
-    )
-
-    return now - fired.at >= repeatAfter
-  }
-
-  const workerStalls = ({
-    state,
-    card,
-    now,
-  }: {
-    state: HydraState
-    card: Card & { agent: AgentRef }
-    now: number
-  }): StallItem[] => {
-    const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
-
-    if (requests.length) {
-      return requests.flatMap(p => {
-        const waited = p.at ? now - Date.parse(p.at) : 0
-
-        if (waited < stallDelay) {
-          return []
-        }
-
-        return [
-          {
-            id: `stall:${p.id}`,
-            card: card.id,
-            kind: 'permission',
-            detail: `${p.tool} has waited ${Math.round(waited / 1000)} s for an answer`,
-          },
-        ]
-      })
-    }
-
-    const key = sessionId({ agent: card.agent })
-    const entry = live.get(key)
-
-    if (entry?.activity !== 'working') {
-      return []
-    }
-
-    const declaredWaitEnd = waitEnd({ card })
-
-    if (declaredWaitEnd !== undefined && now < declaredWaitEnd) {
-      return []
-    }
-
-    const toolStarts = [...entry.tools.values()]
-
-    if (toolStarts.length) {
-      const busySince = Math.min(...toolStarts)
-      const busyFor = now - busySince
-
-      if (busyFor < busyDelay) {
-        return []
-      }
-
-      return [
-        {
-          id: `stall:${card.id}:tool:${busySince}`,
-          card: card.id,
-          kind: 'quiet',
-          detail: `the worker has been inside one tool call for ${Math.round(busyFor / 1000)} s`,
-        },
-      ]
-    }
-
-    const agent = state.sessions?.[key]
-    const seen = Math.max(
-      agent ? seenAt({ session: agent }) : 0,
-      entry.sentAt ?? 0,
-    )
-
-    if (!seen || now - seen < stallDelay) {
-      return []
-    }
-
-    return [
-      {
-        id: `stall:${card.id}:${seen}`,
-        card: card.id,
-        kind: 'quiet',
-        detail: `the worker has been working with no sign of life for ${Math.round((now - seen) / 1000)} s`,
+  const stalls = createStallChecks({
+    hydraId,
+    stallDelay,
+    busyDelay,
+    stallRepeatMax,
+    pauseDelay,
+    live,
+    queuedHydra,
+    closing: () => closing,
+    helper,
+    helperOpen,
+    routeUpdates,
+    wakeMain,
+    wakeStart: () => wakeStart,
+  })
+  const catalogs = createCatalogs({
+    hydraId,
+    providers,
+    liveSession: ({ key }) => live.get(key)?.session,
+    closing: () => closing,
+    environment: () => environment(),
+    saveCatalog: ({
+      card,
+      key,
+      commands,
+    }) => compactChange({
+      card,
+      change: {
+        kind: 'catalog',
+        key,
+        commands,
       },
-    ]
-  }
-
-  // A worker that ended its turn still declaring working stopped without saying why, whoever runs it; this repeats the turn-ended wake while it lasts.
-  const idleStall = ({
-    state,
-    card,
-    now,
-  }: {
-    state: HydraState
-    card: Card & { agent: AgentRef }
-    now: number
-  }): StallItem[] => {
-    const turnEnded = (card.sessionActivity ?? card.activity) === 'finished'
-    const declaresWorking = card.tracking === 'declared' && card.status?.state === 'working'
-    const asking = card.attention.some(a => a.blocking && !a.answered)
-
-    if (!turnEnded || !declaresWorking || asking || !liveTask({ card })) {
-      return []
-    }
-
-    const session = state.sessions?.[sessionId({ agent: card.agent })]
-
-    if (!session) {
-      return []
-    }
-
-    const seen = seenAt({ session })
-
-    if (!seen || now - seen < stallDelay) {
-      return []
-    }
-
-    return [
-      {
-        id: `stall:${card.id}:idle:${seen}`,
-        card: card.id,
-        kind: 'turn ended',
-        detail: `the worker ended its turn ${Math.round((now - seen) / 1000)} s ago and still declares working`,
-      },
-    ]
-  }
-
-  // A paused worker's wait that ended wakes Hydra once, whoever runs the worker.
-  const endedWaits = ({
-    state,
-    now,
-  }: {
-    state: HydraState
-    now: number
-  }): StallItem[] => Object.values(state.cards).flatMap(card => {
-    const declaredWaitEnd = waitEnd({ card })
-    const declaration = pausedDeclaration({ card })
-
-    const waiting = declaredWaitEnd === undefined || now < declaredWaitEnd
-
-    if (card.id === HYDRA_CARD || !liveTask({ card }) || waiting || !declaration) {
-      return []
-    }
-
-    const id = `wait:${declaration.id}`
-
-    if (wakeHandled({
-      state,
-      id,
-    })) {
-      return []
-    }
-
-    const named = declaration.until ? `until ${declaration.until}` : `since ${declaration.at}`
-    const note = declaration.note ? `: ${declaration.note}` : ''
-
-    return [
-      {
-        id,
-        card: card.id,
-        kind: 'wait ended',
-        detail: `the worker paused ${named}${note}`,
-      },
-    ]
+    }),
   })
 
-  // A message the worker never confirmed after its resends wakes Hydra once; the server reports it each check.
-  const unconfirmedReplies = new Map<string, Omit<StallItem, 'id'>>()
-
-  const missingReplies = ({ state }: { state: HydraState }): StallItem[] => {
-    for (const id of unconfirmedReplies.keys()) {
-      if (wakeHandled({
-        state,
-        id,
-      })) {
-        unconfirmedReplies.delete(id)
-      }
-    }
-
-    return [...unconfirmedReplies].map(([
-      id,
-      item,
-    ]) => ({
-      id,
-      ...item,
-    }))
-  }
-
-  const wakeOnStall = async () => {
-    const state = loadHydra({ hydraId }).state
-    const hydraCard = state.cards[HYDRA_CARD]
-    const session = state.config?.hydra.session
-
-    if (closing || !hostedHydra({ state })) {
-      return
-    }
-
-    // A Hydra that cannot start holds main's stall alarms, which would otherwise be spent on starts that never reach it.
-    const mainWaits = state.hydraStatus?.state === 'down' || queuedHydra.size > 0
-      || (hydraCard?.sessionActivity ?? hydraCard?.activity) === 'interrupted'
-      || hydraCard?.attention.some(a => a.key === INTERRUPTED)
-      || (session && live.get(session)?.activity === 'working')
-    const now = Date.now()
-    const stalls = Object.values(state.cards).flatMap(card => {
-      if (card.id === HYDRA_CARD || !card.agent) {
-        return []
-      }
-
-      const worker = card as Card & { agent: AgentRef }
-      const idle = idleStall({
-        state,
-        card: worker,
-        now,
-      })
-
-      if (idle.length || card.agent.host !== 'pnyx') {
-        return idle
-      }
-
-      return workerStalls({
-        state,
-        card: worker,
-        now,
-      })
-    })
-      .filter(stall => stallDue({
-        id: stall.id,
-        now,
-      }))
-    const waits = endedWaits({
-      state,
-      now,
-    }).filter(wait => !stalled.has(wait.id))
-    const unconfirmed = missingReplies({ state }).filter(reply => !stalled.has(reply.id))
-    const fired = [
-      ...stalls,
-      ...waits,
-      ...unconfirmed,
-    ]
-
-    if (!fired.length) {
-      return
-    }
-
-    const alarm = ({ stall }: { stall: StallItem }) => {
-      const count = stalled.get(stall.id)?.count ?? 0
-
-      if (count === 0) {
-        return stall.detail
-      }
-
-      return `${stall.detail} (alarm ${count + 1})`
-    }
-
-    const delivered = ({ items }: { items: StallItem[] }) => {
-      const at = Date.now()
-
-      for (const item of items) {
-        const count = stalled.get(item.id)?.count ?? 0
-        stalled.set(
-          item.id,
-          {
-            count: count + 1,
-            at,
-          },
-        )
-      }
-    }
-
-    const after = wakeCursor({
-      state,
-      fallback: wakeStart ?? 0,
-    })
-    const stallText = ({
-      items,
-      helper: picked = false,
-    }: {
-      items: StallItem[]
-      helper?: boolean
-    }) => `<pnyx-wake>Why you are woken:\n${items.map(item => sealed({
-      text: reasonLine({
-        state,
-        card: item.card,
-        kind: item.kind,
-        detail: alarm({ stall: item }),
-      }),
-    })).join('\n')}\nRun \`pnyx-axi hydra check --after ${after} --hydra ${hydraId}\`; its requests and agents show what waits. If it waits on the owner, tell them in one line of reply text unless an earlier reply or its question card already did. Otherwise apply Questions and scope in your contract: answer what unambiguously fulfills the owner's accepted ask, escalate an unsettled choice, or nudge the worker. Reply only ${QUIET_REPLY} when it has already cleared or the owner was already told.\n${decisionsText({
-      state,
-      now,
-      pick: picked ? {
-        tasks: items.map(item => item.card),
-        asks: [],
-      } : undefined,
-    })}\n${REPLY_RULES}</pnyx-wake>`
-    const mainOnly = new Set([
-      ...routeUpdates({
-        state,
-        after,
-      }).mainOnly,
-      ...fired.filter(item => !helperReason({
-        state,
-        task: item.card,
-        kind: item.kind,
-      })).map(item => item.card),
-    ])
-    const routine = fired.filter(item => !mainOnly.has(item.card))
-    const batch = helperOpen({ state }) && !helper.busy() ? helperBatch({
-      items: routine.map((
-        item,
-        index,
-      ) => ({
-        task: item.card,
-        seq: index,
-        question: false,
-      })),
-      prompt: ({ seqs }) => stallText({
-        items: seqs.map(index => routine[index]!),
-        helper: true,
-      }),
-    }) : undefined
-    const offered = batch?.seqs.map(index => routine[index]!) ?? []
-
-    if (batch && await helper.offer({
-      tasks: batch.tasks,
-      prompt: batch.text,
-      seqs: [],
-      once: offered.filter(item => item.kind === 'wait ended' || item.kind === 'not confirmed').map(item => item.id),
-    })) {
-      delivered({ items: offered })
-    }
-
-    // Alarms the helper can take stay undelivered, so they fire again for its next batch.
-    const rest = fired.filter(item => !offered.includes(item)
-      && (mainOnly.has(item.card) || !helperOpen({ state })))
-    // A wait or reply named first keeps its own turn id, which holds it to one wake across a restart.
-    const [first] = [
-      ...waits,
-      ...unconfirmed,
-      ...stalls,
-    ].filter(item => rest.includes(item))
-
-    if (mainWaits || !first) {
-      return
-    }
-
-    const firstCount = stalled.get(first.id)?.count ?? 0
-    const wakeTurnId = firstCount === 0 ? first.id : `${first.id}:${firstCount + 1}`
-
-    await wakeMain({
-      id: wakeTurnId,
-      text: stallText({ items: rest }),
-      tasks: rest.map(item => item.card),
-    })
-    delivered({ items: rest })
-  }
-
-  // Each stall or wait fired so far: how many times, and when last.
-  const stalled = new Map<string, {
-    count: number
-    at: number
-  }>()
-  const stallTimer = setInterval(
-    () => background({
-      name: 'worker stall check',
-      run: checkStalls,
-    }),
-    Math.min(
-      stallDelay / 4,
-      15_000,
-    ),
-  )
-  stallTimer.unref()
-
-  const nativeRecoveryErrors = new Map<string, string>()
-
-  const recoverNativeSessions = async () => {
-    if (native) {
-      const state = loadHydra({ hydraId }).state
-      const events = readEvents({ hydraId })
-
-      for (const card of Object.values(state.cards)) {
-        if (card.agent?.host !== 'pnyx') {
-          continue
-        }
-
-        const key = sessionId({ agent: card.agent })
-        const hydraSession = state.config?.hydra.session
-
-        if (live.has(key) || (key === hydraSession && card.id !== HYDRA_CARD)) {
-          continue
-        }
-
-        try {
-          const provider = providerOf({ provider: card.agent.provider })
-
-          const recoveredEpochs = new Set<string>()
-
-          while (provider.owns?.({ agent: card.agent })) {
-            const session = await provider.open({
-              cwd: folderOf({ card: card as Card & { agent: AgentRef } }),
-              agent: card.agent,
-              settings: card.settings ?? {},
-              context: card.id === HYDRA_CARD ? digest : undefined,
-              env: environment(card.id === HYDRA_CARD ? { hydra: true } : { task: card.id }),
-              signal: controller.signal,
-            })
-
-            if (session.incarnation) {
-              if (recoveredEpochs.has(session.incarnation)) {
-                session.detach?.()
-                throw new HydraError({
-                  code: 'RECOVERY_REQUIRED',
-                  message: 'The retained native epoch did not settle during application recovery',
-                })
-              }
-
-              recoveredEpochs.add(session.incarnation)
-            }
-
-            const entry = open({
-              card: card as Card & { agent: AgentRef },
-              session,
-            })
-
-            if (session.readOnly) {
-              await entry.consumed
-              continue
-            }
-
-            await session.replayed?.()
-
-            for (const event of events) {
-              let input: {
-                id: string
-                text: string
-                original?: string
-              } | undefined
-
-              if (event.type === 'board.configured' && event.nativeInput
-            && event.nativeInput.epoch === session.incarnation) {
-                input = event.nativeInput
-                const unfinished = !session.accepted?.({ id: input.id })
-              || session.snapshot().work.unsettledInputs.includes(input.id)
-
-                if (unfinished) {
-                  for (const task of event.nativeInput.tasks ?? []) {
-                    mainTasks.add(task)
-                  }
-
-                  const wakeThrough = WAKE_ID.exec(input.id)?.[1]
-
-                  if (wakeThrough) {
-                    readThrough = Math.max(
-                      readThrough,
-                      Number(wakeThrough),
-                    )
-                  }
-                }
-              } else if (event.type === 'task.session' && event.data.session === key
-            && event.data.nativeEpoch === session.incarnation
-            && event.id.endsWith(':attach') && event.data.brief) {
-                input = {
-                  id: `${event.id.slice(
-                    0,
-                    -':attach'.length,
-                  )}:launch-input`,
-                  text: event.data.brief,
-                }
-              }
-
-              if (input && !session.accepted?.({ id: input.id })) {
-                entry.input.push(input)
-              }
-            }
-
-            break
-          }
-
-          nativeRecoveryErrors.delete(key)
-        } catch (error) {
-          const message = error instanceof Error ? error.message : String(error)
-
-          if (nativeRecoveryErrors.get(key) !== message) {
-            nativeRecoveryErrors.set(
-              key,
-              message,
-            )
-            console.error(
-              'pnyx-axi native recovery:',
-              error,
-            )
-          }
-
-          planNativeRecovery()
-        }
-      }
-    }
-  }
-
-  let recoveringNative: Promise<void> | undefined
-
-  const recoverNative = async () => {
-    if (recoveringNative) {
-      return recoveringNative
-    }
-
-    recoveringNative = recoverNativeSessions()
-
-    try {
-      await recoveringNative
-    } finally {
-      recoveringNative = undefined
-    }
-  }
-
   const host: Host = {
-    async catalogCommands({
-      card,
-      provider = card.agent?.provider ?? 'claude-code',
-    }) {
-      const harness = provider === 'codex' ? 'codex' : 'claude-code'
-      const cacheKey = JSON.stringify([
-        harness,
-        card.agent?.loginFolder,
-        card.agent?.cwd ?? card.folder,
-      ])
-
-      const retained = () => {
-        const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
-        const commands = commandCatalogs.get(cacheKey) ?? saved?.[cacheKey] ?? []
-        const matches = card.agent?.provider === harness
-        const session = matches && card.agent ? sessionId({ agent: card.agent }) : undefined
-        const operation = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.operations
-          .findLast(operation => operation.session === session)
-        const unavailable = operation?.state === 'failed'
-          && /method not found|unknown method|not supported|unavailable in this session/i.test(operation.error ?? '')
-          ? operation.error : undefined
-        const native = commands.some(item => item.command === '/compact') || !providers[harness].compact ? commands : [
-          ...commands,
-          {
-            command: '/compact',
-            description: 'Compact the conversation',
-            source: 'Agent commands',
-            kind: 'command' as const,
-          },
-        ]
-
-        return native.map(item => item.command === '/compact' && unavailable ? {
-          ...item,
-          unavailable,
-          description: `Unavailable: ${unavailable}`,
-        } : item)
-      }
-
-      const matchesProvider = card.agent?.provider === harness
-      const session = matchesProvider && card.agent ? sessionId({ agent: card.agent }) : undefined
-      const entry = session ? live.get(session) : undefined
-
-      if (!entry?.session?.commands) {
-        return retained()
-      }
-
-      let timer: ReturnType<typeof setTimeout> | undefined
-
-      try {
-        const lookup = entry.session.commands().then(commands => {
-          const found = commands.filter(item => item.builtin).map(item => ({
-            command: `/${item.name}`,
-            description: item.description,
-            source: 'Agent commands',
-            kind: 'command' as const,
-          }))
-
-          if (found.length && !closing) {
-            commandCatalogs.set(
-              cacheKey,
-              found,
-            )
-            const saved = loadHydra({ hydraId }).state.cards[card.id]?.compaction?.catalogs
-            const previous = saved?.[cacheKey]
-
-            if (JSON.stringify(previous) !== JSON.stringify(found)) {
-              compactChange({
-                card: card.id,
-                change: {
-                  kind: 'catalog',
-                  key: cacheKey,
-                  commands: found,
-                },
-              })
-            }
-          }
-        })
-        await Promise.race([
-          lookup,
-          new Promise<void>(resolve => {
-            timer = setTimeout(
-              resolve,
-              100,
-            )
-          }),
-        ])
-
-        return retained()
-      } catch {
-        // The disk index remains usable when the native command list is unavailable.
-        return retained()
-      } finally {
-        clearTimeout(timer)
-      }
-    },
-    async models({ harness }) {
-      const effective = effectiveDispatch()
-      const main = harnessAccount({
-        effective,
-        harness,
-      })
-      const account = main ? effective.accounts[main] : undefined
-      const env = account ? accountEnvironment({
-        account,
-        env: environment(),
-      }) : environment()
-
-      const key = `${harness}:${account?.folder ?? ''}`
-      let catalog = modelCatalogs.get(key)
-
-      if (!catalog) {
-        const provider = providerOf({ provider: providerName({ harness }) })
-        const cwd = hydraDir({ hydraId })
-        const stored = storedModels({ key })
-
-        // The folder's own settings apply on top of the shared list; a failed read is dropped so the picker can retry.
-        const settle = ({ models }: { models: ModelOption[] | Promise<ModelOption[]> }) => {
-          const settled = Promise.resolve(models)
-            .then(models => provider.defaults({
-              cwd,
-              env,
-              models,
-            }))
-          modelCatalogs.set(
-            key,
-            settled,
-          )
-          void settled.catch(() => {
-            if (modelCatalogs.get(key) === settled) {
-              modelCatalogs.delete(key)
-            }
-          })
-
-          return settled
-        }
-
-        // The harness is read once per server; a stored list answers meanwhile and a failed read keeps it.
-        const read = provider.models({
-          cwd,
-          env,
-        }).then(models => {
-          const changed = JSON.stringify(models) !== JSON.stringify(stored)
-
-          if (changed) {
-            storeModels({
-              key,
-              models,
-            })
-          }
-
-          if (changed && stored) {
-            void settle({ models })
-          }
-
-          return models
-        })
-        void read.catch(() => {})
-        catalog = settle({ models: stored ?? read })
-      }
-
-      return catalog
-    },
+    catalogCommands: catalogs.commands,
+    models: catalogs.models,
     hydraId,
     hydra: ({
       text,
@@ -3592,16 +2637,8 @@ export function createHost({
         return Promise.resolve({ state: 'queued' })
       }
 
-      // Hydra waits for a running upgrade, so a message sent meanwhile queues behind it.
-      if (!release && upgrades.hold({
-        message: {
-          id,
-          text,
-          original,
-          actor,
-          at: at(),
-        },
-      })) {
+      // While a restart, an upgrade or a compaction stops Hydra, everything for it waits in its queue; the recap when it ends tells Hydra.
+      if (stoppedFor({ id })) {
         queued()
 
         return Promise.resolve({ state: 'queued' })
@@ -3613,21 +2650,6 @@ export function createHost({
         ?? queuedDispatch.rules.hydra?.candidates[0] ?? queuedDispatch.default[0]
         ?? { harness: 'claude' as const }
       const deliveryId = release ? `${id}:compact:hosted` : `${id}:hosted`
-      const current = loadHydra({ hydraId }).state.cards[HYDRA_CARD]
-
-      if (current && holdCompact({
-        card: current,
-        input: {
-          id,
-          text,
-          original,
-          actor,
-          route: 'hydra',
-          agent: requestedAgent,
-        },
-      })) {
-        return Promise.resolve({ state: 'queued' })
-      }
 
       if (queuedHydra.has(id)) {
         return Promise.resolve({ state: 'queued' })
@@ -3640,19 +2662,8 @@ export function createHost({
         }
 
         let state = loadHydra({ hydraId }).state
-        const compactCard = state.cards[HYDRA_CARD]
 
-        if (compactCard && holdCompact({
-          card: compactCard,
-          input: {
-            id,
-            text,
-            original,
-            actor,
-            route: 'hydra',
-            agent: requestedAgent,
-          },
-        })) {
+        if (stoppedFor({ id })) {
           return { state: 'queued' }
         }
 
@@ -3720,9 +2731,9 @@ export function createHost({
             harness: candidate.harness,
           })
           const account = main ? effective.accounts[main] : undefined
-          const provider = providerName({ harness: candidate.harness })
+          const provider = providerIdOf({ harness: candidate.harness })
           const dispatch = previous?.agent?.provider !== provider
-            && account && main ? chooseCandidate({
+            && account && main ? await chooseCandidate({
               config: {
                 ...effective,
                 dispatch: {
@@ -3813,6 +2824,7 @@ export function createHost({
                 env: environment({ hydra: true }),
               }) : environment({ hydra: true }),
               signal: controller.signal,
+              spawned: children.spawned,
             })
           }
 
@@ -3875,10 +2887,7 @@ export function createHost({
                     source: {
                       adapter: 'pnyx',
                       objectId: ref.sessionId,
-                      observedAt: nativeObservedAt({
-                        writer,
-                        agent: ref,
-                      }),
+                      observedAt: at(),
                     },
                   },
                   meta,
@@ -3907,18 +2916,6 @@ export function createHost({
                 },
               })
 
-              const epoch = prepared?.incarnation ?? running?.session?.incarnation
-
-              if (epoch && 'event' in delivery && delivery.event.type === 'board.configured') {
-                delivery.event.nativeInput = {
-                  epoch,
-                  tasks: wakeTasks.get(id),
-                  id,
-                  text,
-                  original,
-                }
-              }
-
               apply({
                 writer,
                 decision: delivery,
@@ -3945,7 +2942,7 @@ export function createHost({
           }
 
           const waking = /^(wake|stall|wait|unconfirmed):/.test(id) && !opened && Boolean(entry.session)
-          const memoryNote = waking ? memoryChangeNote() : ''
+          const memoryNote = waking ? await memoryChangeNote() : ''
           const recap = outage && id === `back:${outage.seq}` ? recapText({
             state: loadHydra({ hydraId }).state,
             since: outage.since,
@@ -4233,7 +3230,7 @@ export function createHost({
         return { usage: 'none: Hydra has not started a session' }
       }
 
-      const harness: Harness = agent.provider === 'codex' ? 'codex' : 'claude'
+      const harness: Harness = harnessOf({ provider: agent.provider })
       const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
@@ -4366,6 +3363,7 @@ export function createHost({
             steeringWorker: `${id}:session`,
           }),
           signal: controller.signal,
+          spawned: children.spawned,
         })
         session = prepared
 
@@ -4475,10 +3473,7 @@ export function createHost({
                   source: {
                     adapter: 'pnyx',
                     objectId: agent.sessionId,
-                    observedAt: nativeObservedAt({
-                      writer,
-                      agent,
-                    }),
+                    observedAt: at(),
                   },
                 },
                 meta: {
@@ -4494,8 +3489,6 @@ export function createHost({
                 ref: sessionId({ agent }),
                 task: card.id,
                 working: true,
-                brief: prepared.incarnation ? prompt : undefined,
-                nativeEpoch: prepared.incarnation,
                 meta: {
                   ...meta,
                   id: `${id}:attach`,
@@ -4561,7 +3554,7 @@ export function createHost({
         return {
           task: claimed.card.id,
           agent: {
-            harness: provider === 'codex' ? 'codex' : 'claude',
+            harness: harnessOf({ provider }),
             session: claimed.card.agent.sessionId,
             folder: claimed.card.agent.cwd,
             host: 'pnyx',
@@ -4650,10 +3643,7 @@ export function createHost({
               source: {
                 adapter: 'pnyx',
                 objectId: agent.sessionId,
-                observedAt: nativeObservedAt({
-                  writer,
-                  agent,
-                }),
+                observedAt: at(),
               },
               attention: card.attention.filter(a => !a.key.startsWith('hook:')),
             },
@@ -4699,7 +3689,7 @@ export function createHost({
         return {
           task: card.id,
           agent: {
-            harness: agent.provider === 'codex' ? 'codex' : 'claude',
+            harness: harnessOf({ provider: agent.provider }),
             session: agent.sessionId,
             folder: agent.cwd,
             host: 'pnyx',
@@ -4832,7 +3822,6 @@ export function createHost({
               request: {
                 ...request,
                 status: choice,
-                delivery: waiting.entry.session?.remote ? 'queued' : undefined,
                 ...recorded,
               },
               meta: {
@@ -4954,7 +3943,7 @@ export function createHost({
       reply,
       text,
     }) => {
-      unconfirmedReplies.set(
+      stalls.unconfirmedReplies.set(
         `unconfirmed:${card}:${reply}`,
         {
           card,
@@ -5062,15 +4051,6 @@ export function createHost({
     reconcile: ({ state }) => {
       syncCompactions({ state })
 
-      for (const entry of live.values()) {
-        if (entry.session?.refreshContext) {
-          background({
-            name: 'native context refresh',
-            run: entry.session.refreshContext,
-          })
-        }
-      }
-
       for (const [
         id,
         waiting,
@@ -5078,9 +4058,7 @@ export function createHost({
         const card = state.cards[waiting.card]
         const request = card?.permissions?.find(p => p.id === id)
 
-        const actionable = request?.status === 'pending' || request?.delivery === 'needs_reentry'
-
-        if (!request || !actionable || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
+        if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
           expire({ id })
         }
       }
@@ -5119,9 +4097,21 @@ export function createHost({
     },
 
     recover: async () => {
-      await recoverNative()
-
+      // A session whose earlier processes could not be stopped is left interrupted rather than run twice.
+      const fenced = await children.sweep()
       upgrades.recover()
+
+      // No stop outlives the server: an upgrade or restart the step above did not end, or a compaction of Hydra
+      // the stop cut, ends here, and Hydra gets the recap and its queue.
+      const cut = loadHydra({ hydraId }).state.hydraOperation
+
+      if (cut) {
+        endOperation({
+          id: cut.id,
+          error: `Pnyx restarted during the ${cut.kind}`,
+        })
+      }
+
       let cutHydraTurn: {
         resumeAttemptId: string
         resumeMessage: string
@@ -5184,19 +4174,18 @@ export function createHost({
           for (const session of Object.values(writer.state.sessions ?? {})) {
             const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
 
-            const provider = providerOf({ provider: session.agent.provider })
-            const retained = provider.owns?.({ agent: session.agent })
-
-            if (session.agent.host !== 'pnyx' || live.has(session.id) || retained || !wasWorking
-              || provider.canOpen?.() === false) {
+            if (session.agent.host !== 'pnyx' || live.has(session.id) || !wasWorking) {
               continue
             }
 
             let resumeAttemptId: string | undefined
             const task = session.taskId ? writer.state.cards[session.taskId] : undefined
 
-            if (!cutCompactions.has(session.id) && session.id === writer.state.config?.hydra.session
-              && hostedHydra({ state: writer.state })) {
+            const isHydra = session.id === writer.state.config?.hydra.session
+
+            const resumable = fenced && !cutCompactions.has(session.id)
+
+            if (resumable && isHydra && hostedHydra({ state: writer.state })) {
               cutHydraTurn = findHydraTurnToResume({
                 hydraId,
                 state: writer.state,
@@ -5206,7 +4195,7 @@ export function createHost({
               if (cutHydraTurn) {
                 resumeAttemptId = cutHydraTurn.resumeAttemptId
               }
-            } else if (!cutCompactions.has(session.id) && task && liveTask({ card: task })
+            } else if (resumable && task && liveTask({ card: task })
               && !steeringHeld({ card: task })
               && session.id !== writer.state.config?.hydra.session) {
               resumeAttemptId = findWorkerTurnToResume({
@@ -5233,11 +4222,16 @@ export function createHost({
         },
       })
 
+      // Startup never waits on an agent reopening; each resumes on its own and a failure stays on its card.
       if (cutHydraTurn) {
-        await host.hydra({
-          id: cutHydraTurn.resumeAttemptId,
-          text: cutHydraTurn.resumeMessage,
-          actor: 'pnyx',
+        const resume = cutHydraTurn
+        background({
+          name: 'Hydra resume',
+          run: () => host.hydra({
+            id: resume.resumeAttemptId,
+            text: resume.resumeMessage,
+            actor: 'pnyx',
+          }),
         })
       }
 
@@ -5252,7 +4246,21 @@ export function createHost({
             direct: true,
           })
         } catch (error) {
-          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${(error as Error).message}`)
+          const message = (error as Error).message
+          console.error(`pnyx-axi serve: ${cut.task} could not resume: ${message}`)
+          note({
+            fn: ({ writer }) => {
+              const agent = writer.state.cards[cut.task]?.agent
+
+              if (agent) {
+                interrupt({
+                  writer,
+                  agent,
+                  note: `Pnyx stopped during this turn and could not resume it: ${message}. Send a message to continue it.`,
+                })
+              }
+            },
+          })
         }
       }
 
@@ -5279,6 +4287,48 @@ export function createHost({
         }
       }
 
+      // A direct message handed to an agent the restart stopped may or may not have arrived; Pnyx never sends it again by itself.
+      note({
+        fn: ({ writer }) => {
+          for (const card of Object.values(writer.state.cards)) {
+            if (card.agent?.host !== 'pnyx') {
+              continue
+            }
+
+            const held = new Set([
+              ...(card.steering ?? []).flatMap(message => message.reply ? [message.reply] : []),
+              ...(card.compaction?.inputs ?? []).map(input => input.id),
+            ])
+
+            for (const reply of card.replies ?? []) {
+              // The card's agent is Pnyx-hosted, so a reply still queued for it went the Pnyx route.
+              if (reply.state !== 'queued' || held.has(reply.id)) {
+                continue
+              }
+
+              apply({
+                writer,
+                decision: decideReply({
+                  state: writer.state,
+                  ref: card.id,
+                  data: {
+                    reply: reply.id,
+                    state: 'delivery_unknown',
+                    route: 'pnyx',
+                    detail: 'Pnyx restarted before the agent confirmed this message; send it again if it did not arrive',
+                  },
+                  meta: {
+                    at: at(),
+                    actor: 'pnyx',
+                    id: `unconfirmed:${reply.id}`,
+                  },
+                }),
+              })
+            }
+          }
+        },
+      })
+
       await helper.recover()
 
       for (const card of Object.values(loadHydra({ hydraId }).state.cards)) {
@@ -5286,8 +4336,6 @@ export function createHost({
           releaseCompact({ card: card.id })
         }
       }
-
-      upgrades.release()
 
       // Changes made while the server was stopped wake Hydra once it is back.
       const state = loadHydra({ hydraId }).state
@@ -5354,35 +4402,23 @@ export function createHost({
 
     close: () => {
       closing = true
+      midTurnChecks.delete(midTurn)
       helper.close()
       clearTimeout(wakeTimer)
       clearTimeout(retryTimer)
-      clearTimeout(nativeRetry)
-      clearInterval(stallTimer)
+      stalls.close()
       controller.abort()
 
-      for (const timer of [
-        ...compactionDeadlines.values(),
-        ...settlingCompactions.values(),
-      ]) {
-        clearTimeout(timer)
-      }
+      compaction.close()
 
       for (const [
         key,
         entry,
       ] of live) {
-        if (entry.session?.remote) {
-          clearTimeout(entry.idle)
-          entry.input.end()
-          entry.session.detach?.()
-          live.delete(key)
-        } else {
-          retire({
-            key,
-            entry,
-          })
-        }
+        retire({
+          key,
+          entry,
+        })
       }
     },
   }

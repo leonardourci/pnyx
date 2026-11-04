@@ -167,7 +167,7 @@ test(
       '--reason',
       'seed',
     ])
-    moveOwnerLearning({
+    await moveOwnerLearning({
       path,
       hydraId: 'lab',
       text: 'Move me',
@@ -187,7 +187,7 @@ test(
       [],
     )
     assert.equal(
-      projectMemoryView({ path }).documents.learnings,
+      (await projectMemoryView({ path })).documents.learnings,
       'Move me',
     )
   },
@@ -195,9 +195,9 @@ test(
 
 test(
   'project lines dropped by a set or forget are listed with its date and reason; lines a profile refresh drops are not',
-  () => {
+  async () => {
     const path = newHome({ name: 'project' })
-    const save = ({
+    const save = async ({
       key,
       text,
       at,
@@ -212,7 +212,7 @@ test(
       hydraId: 'lab',
       key,
       after: text,
-      sources: projectMemoryView({ path }).currentSources.fingerprint,
+      sources: (await projectMemoryView({ path })).currentSources.fingerprint,
       meta: {
         at,
         actor: 'hydra',
@@ -220,25 +220,25 @@ test(
       },
     })
 
-    save({
+    await save({
       key: 'profile',
       text: 'Build with make.',
       at: SEEDED_AT,
       reason: 'seed',
     })
-    save({
+    await save({
       key: 'profile',
       text: 'Build with pnpm.',
       at: REMOVED_AT,
       reason: 'sources changed',
     })
-    save({
+    await save({
       key: 'preferences',
       text: 'One icon library.\nSliders for numbers.',
       at: SEEDED_AT,
       reason: 'seed',
     })
-    save({
+    await save({
       key: 'preferences',
       text: null,
       at: REMOVED_AT,
@@ -246,7 +246,7 @@ test(
     })
 
     assert.deepEqual(
-      projectMemoryView({ path }).archived,
+      (await projectMemoryView({ path })).archived,
       [
         {
           key: 'preferences',
@@ -263,14 +263,14 @@ test(
       ],
     )
 
-    save({
+    await save({
       key: 'preferences',
       text: 'One icon library.\nSliders for numbers.',
       at: REMOVED_AT,
       reason: 'owner restored them',
     })
     assert.deepEqual(
-      projectMemoryView({ path }).archived,
+      (await projectMemoryView({ path })).archived,
       [],
     )
   },

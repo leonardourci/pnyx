@@ -1,14 +1,13 @@
 import assert from 'node:assert/strict'
-import fs from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
-import { join } from 'node:path'
 import { test } from 'node:test'
-import { hydraDir } from '#app/home-migration.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { startReviewTimer, REVIEW_MS } from '#hydra/review-timer.ts'
 import { MINUTE_MS, QUESTION_REMINDER_MS } from '#hydra/review.ts'
 import { eventReasons } from '#hydra/wake-reasons.ts'
 import { until } from '#test-harness/harness.ts'
+
+// How many times one review is offered while Hydra keeps starting turns.
+const REVIEW_ATTEMPTS = 5
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
 function reviewClock({
@@ -29,9 +28,20 @@ function reviewClock({
   let timer = start()
 
   return {
-    advance: ({ ms = REVIEW_MS }: { ms?: number } = {}) => {
+    advance: async ({ ms = REVIEW_MS }: { ms?: number } = {}) => {
       time += ms
-      timer.check()
+      const at = new Date(time).toISOString()
+      const recorded = () => s.events().findLast(event => event.type === 'hydra.review')?.at === at
+
+      // A review waits while Hydra works, and a wake may start one meanwhile; the server's poll tries again, as this does.
+      for (let attempt = 0; attempt < REVIEW_ATTEMPTS && !recorded(); attempt++) {
+        await until({
+          what: 'Hydra to be idle before the review',
+          check: () => s.state().cards[HYDRA_CARD]?.sessionActivity !== 'working',
+        })
+        await timer.check()
+      }
+
       const event = s.events().findLast(event => event.type === 'hydra.review')
       assert.ok(event)
       assert.equal(
@@ -75,11 +85,11 @@ test(
 
     try {
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         [],
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       await s.owner({
@@ -93,7 +103,7 @@ test(
           '0',
         ],
       })
-      const memory = clock.advance()
+      const memory = await clock.advance()
       assert.match(
         memory.block,
         /memory behind/,
@@ -108,7 +118,7 @@ test(
       )
       clock.restart()
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       assert.equal(
@@ -195,7 +205,7 @@ test(
     const clock = reviewClock({ s })
 
     try {
-      const first = clock.advance()
+      const first = await clock.advance()
       assert.match(
         first.block,
         /no live worker/,
@@ -218,7 +228,7 @@ test(
         check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished'
         && s.received({ cwd: agent.cwd }).some(text => text.includes('Timed review:')),
       })
-      const repeated = clock.advance()
+      const repeated = await clock.advance()
       assert.equal(
         repeated.wakes,
         1,
@@ -230,11 +240,11 @@ test(
       clock.restart()
       await pnyx.restart()
       assert.deepEqual(
-        clock.advance().reasons,
+        (await clock.advance()).reasons,
         [],
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         1,
       )
       s.pullRequest({
@@ -251,7 +261,7 @@ test(
         what: 'Hydra to finish acknowledging the pending decision',
         check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
       })
-      const overdue = clock.advance({ ms: QUESTION_REMINDER_MS })
+      const overdue = await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.deepEqual(
         overdue.reasons,
         [],
@@ -273,33 +283,30 @@ test(
         }),
         [],
       )
-      await pnyx.restart({
-        whileStopped: async () => {
-          await s.owner({
-            args: [
-              'link',
-              'watch',
-              '--url',
-              url,
-              '--remove',
-            ],
-          })
-          await move({ column: parked })
-          assert.deepEqual(
-            clock.advance().reasons,
-            [],
-          )
-          await move({ column: progress })
-          assert.deepEqual(
-            clock.advance().reasons,
-            ['timed review'],
-          )
-          assert.equal(
-            clock.advance().wakes,
-            2,
-          )
-        },
+      await pnyx.restart()
+      await s.owner({
+        args: [
+          'link',
+          'watch',
+          '--url',
+          url,
+          '--remove',
+        ],
       })
+      await move({ column: parked })
+      assert.deepEqual(
+        (await clock.advance()).reasons,
+        [],
+      )
+      await move({ column: progress })
+      assert.deepEqual(
+        (await clock.advance()).reasons,
+        ['timed review'],
+      )
+      assert.equal(
+        (await clock.advance()).wakes,
+        2,
+      )
     } finally {
       clock.close()
     }
@@ -349,14 +356,14 @@ test(
 
     try {
       assert.deepEqual(
-        clock.advance({ ms: QUESTION_REMINDER_MS - REVIEW_MS }).reasons,
+        (await clock.advance({ ms: QUESTION_REMINDER_MS - REVIEW_MS })).reasons,
         [],
       )
       assert.equal(
         s.state().hydraMessages?.length ?? 0,
         0,
       )
-      const due = clock.advance({ ms: REVIEW_MS + 1 })
+      const due = await clock.advance({ ms: REVIEW_MS + 1 })
       assert.equal(
         due.wakes,
         0,
@@ -386,18 +393,18 @@ test(
         undefined,
       )
       clock.restart()
-      clock.advance()
+      await clock.advance()
       assert.equal(
         s.state().hydraMessages?.length,
         1,
       )
-      clock.advance({ ms: QUESTION_REMINDER_MS })
+      await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
         s.state().hydraMessages?.length,
         2,
       )
       assert.equal(
-        clock.advance().wakes,
+        (await clock.advance()).wakes,
         0,
       )
       await s.owner({
@@ -410,8 +417,13 @@ test(
           'Hold',
         ],
       })
+      // The answer goes to Hydra, and a review never runs while Hydra's turn does.
+      await until({
+        what: 'Hydra to finish its turn on the answer',
+        check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+      })
       const messages = s.state().hydraMessages?.length
-      clock.advance({ ms: QUESTION_REMINDER_MS })
+      await clock.advance({ ms: QUESTION_REMINDER_MS })
       assert.equal(
         s.state().hydraMessages?.length,
         messages,
@@ -450,7 +462,7 @@ test(
 
     try {
       time += REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.match(
         reviews().at(-1)?.data.block ?? '',
         /stale left-off: Hydra memory `left-off` is over 7 days old/,
@@ -460,7 +472,7 @@ test(
         1,
       )
       time += REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.deepEqual(
         [
           reviews().length,
@@ -478,7 +490,7 @@ test(
 )
 
 test(
-  'a due review with nothing to record takes no lock and waits a full period before it runs again',
+  'a due review with nothing to record writes nothing and waits a full period before it runs again',
   async t => {
     const s = await pnyx.scenario()
     let time = Date.now()
@@ -488,42 +500,13 @@ test(
       interval: () => () => {},
       wake: () => {},
     })
-    const lock = join(
-      hydraDir({ hydraId: s.hydraId }),
-      'writer.lock',
-    )
-    const open = fs.openSync
-    let locks = 0
-    t.mock.method(
-      fs,
-      'openSync',
-      // eslint-disable-next-line pnyx/object-params -- Node owns fs.openSync's signature.
-      (...args: Parameters<typeof fs.openSync>) => {
-        if (args[0] === lock) {
-          locks++
-        }
-
-        return open(...args)
-      },
-    )
-    syncBuiltinESMExports()
-    t.after(() => {
-      timer.close()
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    })
+    t.after(() => timer.close())
     const reviews = () => s.events().filter(event => event.type === 'hydra.review').length
     time += REVIEW_MS
-    timer.check()
-    assert.deepEqual(
-      [
-        locks,
-        reviews(),
-      ],
-      [
-        0,
-        0,
-      ],
+    await timer.check()
+    assert.equal(
+      reviews(),
+      0,
     )
     await s.owner({
       args: [
@@ -535,24 +518,17 @@ test(
         'late',
       ],
     })
-    locks = 0
     time += REVIEW_MS - 1
-    timer.check()
+    await timer.check()
     assert.equal(
       reviews(),
       0,
     )
     time += 1
-    timer.check()
-    assert.deepEqual(
-      [
-        reviews(),
-        locks > 0,
-      ],
-      [
-        1,
-        true,
-      ],
+    await timer.check()
+    assert.equal(
+      reviews(),
+      1,
     )
   },
 )
@@ -596,13 +572,13 @@ test(
 
     try {
       time += 10 * MINUTE_MS - 1
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         0,
       )
       time += 1
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         1,
@@ -616,7 +592,7 @@ test(
         ],
       })
       time += 2 * REVIEW_MS
-      timer.check()
+      await timer.check()
       assert.equal(
         reviews(),
         1,

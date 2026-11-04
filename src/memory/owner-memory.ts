@@ -1,5 +1,5 @@
 import { ownerMemoryLogPath as logPath, readOwnerEntries, type OwnerEntry } from './owner-memory-log.ts'
-import { projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
+import { projectFacts, projectMemoryViewUnderLock, checkProjectMemoryBudget, type ProjectMemoryEvent } from './project-memory.ts'
 import { archiveRemoved, dateLearnings, learningText, type ArchivedLine, type LearningChange } from './learnings.ts'
 import { existsSync } from 'node:fs'
 import { join } from 'node:path'
@@ -379,7 +379,7 @@ export function saveOwnerMemory({
   })
 }
 
-export function moveOwnerLearning({
+export async function moveOwnerLearning({
   path,
   hydraId,
   text,
@@ -391,6 +391,7 @@ export function moveOwnerLearning({
   meta: Meta
 }) {
   tryMigrate()
+  const facts = await projectFacts({ path })
 
   return withRegistryLock({
     fn: () => {
@@ -405,7 +406,7 @@ export function moveOwnerLearning({
         })
       }
 
-      const project = projectMemoryViewUnderLock({ path })
+      const project = projectMemoryViewUnderLock({ facts })
       const projectBefore = project.documents.learnings ?? null
       const projectLines = (projectBefore ?? '').split('\n')
       let projectAfter = projectBefore ?? ''
