@@ -265,9 +265,15 @@ function markedPaths({
   return parts
 }
 
+const COMPACT_NAME = /compact/i
+
 function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
   if (isServerCommand({ item })) {
     return [item.command === RESTART_COMMAND ? 'restart' : 'upgrade']
+  }
+
+  if (COMPACT_NAME.test(item.command)) {
+    return ['compact']
   }
 
   return item.command === ADD_PROJECT_COMMAND ? ['attach'] : undefined
