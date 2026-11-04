@@ -42,6 +42,8 @@ export interface Host {
     id: string
     release?: boolean
     selected?: AgentConfig
+    // False opens a new session with memory only, for an agent that reads the log itself.
+    history?: boolean
   }): Promise<Record<string, unknown>>
   agentExhausted({ agent }: { agent: AgentConfig }): Promise<boolean>
   changeAgent({

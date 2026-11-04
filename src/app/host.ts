@@ -2738,6 +2738,7 @@ export function createHost({
       id,
       release = false,
       selected,
+      history = true,
     }) => {
       if (reportActor({ actor })) {
         changed()
@@ -2974,7 +2975,7 @@ export function createHost({
               cwd,
               agent,
               settings,
-              ...hydraSession({ history: !agent && Boolean(state.hydraContext) }),
+              ...hydraSession({ history: history && !agent && Boolean(state.hydraContext) }),
               env: agent?.loginFolder ? accountEnvironment({
                 account: {
                   provider: candidate.harness,
@@ -3421,16 +3422,18 @@ export function createHost({
               return
             }
 
-            const exhausted = await host.agentExhausted({ agent: change.previous })
+            // A previous agent with no usage left hands inscribe to the new agent, which pages through Pnyx's log instead of taking the conversation in its prompt.
+            const handOver = await host.agentExhausted({ agent: change.previous })
 
-            if (choice === 'inscribe' && !exhausted) {
+            if (choice === 'inscribe') {
               const inscribeId = `operation:${operationId}:inscribe`
-              const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Complete the inscribe pass before this agent switch.</pnyx-wake>`
+              const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Complete the inscribe pass before this agent switch.${handOver ? ' You take over from an agent with no usage left: read the conversation page by page with `pnyx-axi hydra messages --inscribe`.' : ''}</pnyx-wake>`
               await host.hydra({
                 id: inscribeId,
                 actor: 'pnyx',
                 text: inscribeText,
-                selected: change.previous,
+                selected: handOver ? change.next : change.previous,
+                history: !handOver,
               })
               await hydraTurn
               const inscribingAgent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
@@ -3481,7 +3484,7 @@ export function createHost({
                 at: at(),
               }),
             })
-            const candidate = exhausted ? change.next : change.previous
+            const candidate = handOver ? change.next : change.previous
             const effective = effectiveDispatch()
             const name = harnessAccount({
               effective,
@@ -3533,13 +3536,15 @@ export function createHost({
               text,
               id: `${operationId}:summary`,
             })
+            // The session that inscribed, the new agent's when it took over, must not be resumed as the fresh one.
+            const last = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
             changeAgent({
               change: {
                 ...change,
                 choice,
                 state: 'finished',
                 summary,
-                previousSession: current ? sessionId({ agent: current }) : undefined,
+                previousSession: last ? sessionId({ agent: last }) : undefined,
               },
             })
             endOperation({ id: operationId })

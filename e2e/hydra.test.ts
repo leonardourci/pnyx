@@ -456,14 +456,6 @@ test(
       )
 
       try {
-        const usage = await page.command({
-          name: 'hydra-agent-usage',
-          args: [JSON.stringify(s.state().hydraAgent)],
-        })
-        assert.equal(
-          usage.availability,
-          'exhausted',
-        )
         await page.command({
           name: 'hydra-agent',
           args: [
@@ -494,6 +486,11 @@ test(
             s.state().hydraAgentChange?.id,
             'codex',
           )
+          const handover = pnyx.codex.plan({
+            text: 'read the conversation page by page with `pnyx-axi hydra messages --inscribe`.</pnyx-wake>',
+            reply: 'Memory saved.',
+            hold: true,
+          })
           await recovered.command({
             name: 'hydra-agent-change',
             args: [
@@ -502,11 +499,39 @@ test(
             ],
           })
           await until({
+            what: 'the new agent to inscribe for the agent with no usage left',
+            check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId
+              && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>'))),
+          })
+          const inscriber = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
+            && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>')))!
+          // The conversation reaches the new agent only through the paged log, never in its prompt.
+          assert.ok(!inscriber.received[0]!.includes('Conversation context:'))
+          const inscribeSession = s.state().cards[HYDRA_CARD]!.agent!.sessionId
+          await s.as({ agent: inscriber }).run({
+            args: [
+              'hydra',
+              'memory',
+              'set',
+              '--key',
+              'inscribe-cursor',
+              '--text',
+              String(s.state().seq),
+              '--reason',
+              'Inscribe pass complete',
+            ],
+          })
+          handover.release()
+          await until({
             what: 'Codex to receive the resumed queue',
             check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Continue on Codex') && text.includes('back after a stop'))),
           })
-          const codex = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.endsWith('Return only the handoff summary.')))!
-          assert.ok(!codex.received[0]!.includes('First read and follow the inscribe skill'))
+          assert.ok(pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.endsWith('Return only the handoff summary.'))))
+          // The queue goes to a fresh session that starts from the summary, not to the one that inscribed.
+          assert.notEqual(
+            s.state().cards[HYDRA_CARD]?.agent?.sessionId,
+            inscribeSession,
+          )
           assert.equal(
             s.state().hydraAgent?.harness,
             'codex',
