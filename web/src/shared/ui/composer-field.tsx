@@ -9,6 +9,7 @@ import type { FolderListing } from '#projects/folders.ts'
 import { matchingTasks, mentionQuery, reference, taskMention } from '#hydra/mentions.ts'
 import { readSkillReference, skillReference } from '#hydra/transcripts-skill-reference.ts'
 import { ADD_PROJECT_COMMAND } from '#hydra/built-in-skills.ts'
+import { INSCRIBE_SKILL } from '#setup/skill-names.ts'
 import { imageLine, imagePaths } from '#hydra/images.ts'
 import { isServerCommand, RESTART_COMMAND } from '#upgrade/model.ts'
 import { MentionPicker, type MentionItem } from '#web-hydra/mention-picker.tsx'
@@ -270,6 +271,10 @@ const COMPACT_NAME = /compact/i
 function slashIcons({ item }: { item: Suggestion }): string[] | undefined {
   if (isServerCommand({ item })) {
     return [item.command === RESTART_COMMAND ? 'restart' : 'upgrade']
+  }
+
+  if (item.builtin && item.command.slice(1) === INSCRIBE_SKILL) {
+    return ['inscribe']
   }
 
   if (COMPACT_NAME.test(item.command)) {
