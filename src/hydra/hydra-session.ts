@@ -8,6 +8,10 @@ import { HYDRA_ACTOR } from '#app/actors.ts'
 import { guard, WRITE } from '#app/cli-support.ts'
 import { ownerOnlyCommand } from '#app/command-registry.ts'
 import { requestEnv } from '#app/request-context.ts'
+import { findCard } from '#tasks/push-rules.ts'
+import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
+import { settingsNotice } from './settings-notice.ts'
+import { asRecord } from '#app/command-validation.ts'
 
 type Command = ReturnType<typeof guard>
 
@@ -75,6 +79,9 @@ export function ownerOnly<T extends Record<string, Command>>({
         ...args.filter(arg => arg.startsWith('--')),
       ]
 
+      // A hosted Hydra without --hydra still writes to its own chat.
+      const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
+
       if (hydra && ownerOnlyCommand({
         name,
         args: actionArgs,
@@ -89,13 +96,22 @@ export function ownerOnly<T extends Record<string, Command>>({
           )
         }
 
-        // A Hydra Pnyx runs has PNYX_HYDRA, so a command copied without --hydra still lands in its own chat.
-        const hydraId = typeof values.hydra === 'string' ? values.hydra : env.PNYX_HYDRA || DEFAULT_HYDRA
+        const permissionMode = name === 'agent' && positionals[1] === 'mode'
+
+        if (permissionMode && !agentPermissionNeedsOwner({
+          card: findCard({
+            state: loadHydra({ hydraId }).state,
+            ref: positionals[0] ?? '',
+          }),
+          value: positionals[2] ?? '',
+        })) {
+          return run(args)
+        }
 
         // Hydra's own permission prompts, raised in Bypass only by the owner's ask rules, stay the owner's.
         const ownPrompt = name === 'task' && positionals[0] === 'permission'
 
-        if (!ownPrompt && runsInBypass({
+        if (!ownPrompt && !permissionMode && runsInBypass({
           hydraId,
           env,
         })) {
@@ -116,7 +132,43 @@ export function ownerOnly<T extends Record<string, Command>>({
         })
       }
 
-      return run(args)
+      const result = run(args)
+
+      if (!hydra || ![
+        'hydra',
+        'project',
+      ].includes(name) || positionals[0] !== 'set') {
+        return result
+      }
+
+      const notice = ({ output }: { output: unknown }) => {
+        const receipt = asRecord({ value: output })
+        const event = asRecord({ value: receipt?.event })
+
+        if (typeof event?.id === 'string') {
+          const fields = args.filter(arg => arg.startsWith('--') && !(arg.slice(2).split('=')[0]! in WRITE))
+            .map(arg => arg.slice(2).split('=')[0])
+          settingsNotice({
+            hydraId,
+            meta: {
+              actor: 'hydra',
+              at: new Date().toISOString(),
+            },
+            changeId: `event:${event.id}`,
+            text: `Changed ${name} settings: ${fields.join(', ')}`,
+          })
+        }
+
+        return output
+      }
+
+      if (result instanceof Promise) {
+        const finish = async () => notice({ output: await result })
+
+        return finish()
+      }
+
+      return notice({ output: result })
     }
 
   return Object.fromEntries(Object.entries(commands)

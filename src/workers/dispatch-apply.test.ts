@@ -995,9 +995,11 @@ test(
           'docs',
           '--harness',
           'codex',
+          '--mode',
+          'never',
         ],
       }),
-      /Hydra must propose/,
+      /Only the owner can raise/,
     )
     const [
       docs,
