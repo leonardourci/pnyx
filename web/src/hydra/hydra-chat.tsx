@@ -1,3 +1,4 @@
+import { AgentChangeChoice } from './agent-change-choice.tsx'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { CompactionQueue, CompactionRow } from '#web-workers/compaction.tsx'
 import { UPGRADE_COMMAND } from '#upgrade/model.ts'
@@ -310,7 +311,9 @@ export function HydraChat({
   // While an operation stops Hydra, what was sent to it since waits in the queue box until Hydra's next turn takes it.
   // A message whose Hydra turn started has been taken.
   const taken = ({ id }: { id: string }) => `${id}:hosted` in state.eventIds
-  const stopSeq = stopped?.seq
+  const changingAgent = state.hydraAgentChange
+  const changeSeq = changingAgent ? (state.eventIds[changingAgent.id] ?? 1) - 1 : undefined
+  const stopSeq = stopped?.seq ?? changeSeq
   const sentSince = ({ id }: { id: string }) => stopSeq !== undefined
     && (state.eventIds[id] ?? 0) > stopSeq
   const waiting = messages.filter(m => sentSince(m) && !taken(m))
@@ -327,7 +330,7 @@ export function HydraChat({
     ) => a.queuedAt.localeCompare(b.queuedAt))
     .slice(-1)
   const upgrading = upgrades.some(operation => operation.state === 'running' || operation.state === 'restarting')
-  const holding = Boolean(compacting) || upgrading || Boolean(stopped)
+  const holding = Boolean(compacting) || upgrading || Boolean(stopped) || Boolean(changingAgent)
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
@@ -938,6 +941,12 @@ export function HydraChat({
         }}
         loading={loadingEarlier}
       />
+      <AgentChangeChoice
+        state={state}
+        command={command}
+        connected={connected}
+        notify={notify}
+      />
       <CompactionQueue
         inputs={compactInputs}
         disabled={!connected || (!compacting && !upgrades.some(operation => operation.state === 'queued'))}
@@ -956,7 +965,7 @@ export function HydraChat({
         }}
       />
       <Composer
-        compacting={Boolean(compacting)}
+        compacting={Boolean(compacting) || changingAgent?.state === 'running'}
         focusAbove={() => {
           if (!waitingButton.current || waitingButton.current.disabled) {
             return false
@@ -977,7 +986,7 @@ export function HydraChat({
         notify={notify}
         projectRequest={projectRequest}
         projectRequested={projectRequested}
-        stop={((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
+        stop={(changingAgent?.state === 'running') || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning ? stop : undefined}
         meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
         settings={(
           <HydraAgent

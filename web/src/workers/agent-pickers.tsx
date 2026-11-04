@@ -36,8 +36,10 @@ export function AgentPickers({
   describedBy,
   selectionLabel = 'Model',
   fastNote,
+  lastUsed,
 }: {
   agent: AgentConfig
+  lastUsed?: AgentConfig
   // Values the agent falls back to when it names none, such as its rule's.
   inherited?: Partial<AgentConfig>
   command: Command
@@ -175,6 +177,7 @@ export function AgentPickers({
       {effective ? (
         <div className="picker-field" data-changed={marks?.model?.changed || undefined} data-invalid={marks?.model?.invalid || undefined}>
           <AccountModelPicker
+            lastUsed={lastUsed}
             label={selectionLabel}
             modelLabel={modelLabel}
             agent={{
