@@ -1104,7 +1104,7 @@ test(
 )
 
 test(
-  'completion recovery reattaches with the recorded helper account home after settings change',
+  'completion recovery persists the saved outcome without opening an agent after settings change',
   async t => {
     const task = state().keys.work!
     const folder = join(
@@ -1153,50 +1153,11 @@ test(
       account?: string
       loginFolder?: string
     }[] = []
-    let settled = false
     const fixture: Provider = {
-      remote: true,
       models: async () => [],
       defaults: async ({ models }) => models,
-      // eslint-disable-next-line pnyx/object-params -- The provider owns this callback signature.
-      open: async options => {
-        assert.equal(
-          options.reattach,
-          true,
-        )
-        assert.equal(
-          options.agent?.account,
-          'old-work',
-        )
-        assert.equal(
-          options.env.TEST_ACCOUNT_HOME,
-          folder,
-        )
-
-        return {
-          id: 'original-native',
-          remote: true,
-          settle: async () => {
-            settled = true
-          },
-          detach: () => {},
-          close: () => {},
-          run: () => {
-            throw new Error('Recovery must not send new input')
-          },
-          attach: () => {
-            throw new Error('Recovery must only settle completion')
-          },
-          snapshot: () => {
-            throw new Error('Recovery must not reconstruct a session snapshot')
-          },
-          set: async () => {
-            throw new Error('Recovery must not change settings')
-          },
-          interrupt: async () => {
-            throw new Error('Recovery must not interrupt')
-          },
-        }
+      open: async () => {
+        throw new Error('Recovery must not open an agent')
       },
     }
     const helper = createRoutineHelper({
@@ -1222,7 +1183,7 @@ test(
           TEST_ACCOUNT_HOME: loginFolder,
         }
       },
-      context: () => '',
+      context: async () => '',
       changed: () => {},
       handback: () => {},
       outcomesReady: () => {},
@@ -1230,17 +1191,24 @@ test(
     t.after(() => helper.close())
     await helper.recover()
     assert.equal(
-      settled,
-      true,
+      fs.existsSync(join(
+        pending,
+        'original.json',
+      )),
+      false,
     )
     assert.deepEqual(
       environments,
-      [
-        {
-          account: 'old-work',
-          loginFolder: folder,
-        },
-      ],
+      [],
+    )
+    const completion = readEvents({ hydraId: 'lab' })
+      .find(event => event.type === 'hydra.helper-finished' && event.data.batch === 'original')
+    assert.ok(completion)
+    await helper.recover()
+    assert.equal(
+      readEvents({ hydraId: 'lab' })
+        .filter(event => event.type === 'hydra.helper-finished' && event.data.batch === 'original').length,
+      1,
     )
   },
 )
