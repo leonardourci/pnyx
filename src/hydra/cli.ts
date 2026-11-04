@@ -39,7 +39,8 @@ import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#set
 import type { Settings } from '#settings/model.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { requestEnv, hydraActor } from '#app/request-context.ts'
+import { raisesPermission } from '#workers/permission-level.ts'
 
 export async function home(): Promise<Output> {
   const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
@@ -386,6 +387,19 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
         })
       }
 
+      const hydraRequest = hydraActor({ actor: m.actor })
+
+      if (hydraRequest && session && raisesPermission({
+        harness: session.agent.provider === 'codex' ? 'codex' : 'claude',
+        before: state.cards[HYDRA_CARD]?.settings?.mode,
+        after: session.settings?.mode,
+      })) {
+        throw new HydraError({
+          message: 'Only the owner can raise Hydra’s permission level by changing its session',
+          code: 'OWNER_ONLY',
+        })
+      }
+
       const hydra: HydraIdentity = {
         name: 'Hydra',
         kind: 'agent',
@@ -502,6 +516,8 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
 
   const settings = settingsReceipt({
     saved: saveSettings({
+      // A combined edit gets one chat notice from its Hydra receipt.
+      hydraId: onlySettings ? id : undefined,
       patch: shared,
       meta: {
         ...m,

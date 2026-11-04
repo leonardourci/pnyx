@@ -1,6 +1,9 @@
 import { agentChangeKind, agentChangeTurn, conversationContext } from '#hydra/agent-switch.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { agentInput } from './agent-input.ts'
+import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
+import { hydraActor } from './request-context.ts'
+import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
 import { harnessOf, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
@@ -2145,9 +2148,10 @@ export function createHost({
   }) => {
     const candidate = helperAgent({
       state,
-      main: effective && (state.config?.hydra.agent
-        ?? effective.dispatch.rules.hydra?.candidates[0]
-        ?? effective.dispatch.default[0]),
+      main: effective && hydraCandidate({
+        state,
+        dispatch: effective.dispatch,
+      }),
     })
 
     if (candidate?.account === undefined) {
@@ -2765,9 +2769,7 @@ export function createHost({
       const queuedState = loadHydra({ hydraId }).state
       const queuedDispatch = effectiveDispatch().dispatch
       const desiredAgent = selected ?? (!ownerActor({ actor }) ? queuedState.hydraAgent : undefined)
-        ?? queuedState.config?.hydra.agent
-        ?? queuedDispatch.rules.hydra?.candidates[0] ?? queuedDispatch.default[0]
-        ?? { harness: 'claude' as const }
+        ?? hydraCandidate({ state: queuedState, dispatch: queuedDispatch })
       const requestedAgent = {
         ...desiredAgent,
         account: harnessAccount({
@@ -4330,6 +4332,16 @@ export function createHost({
             throw new HydraError({
               message: `${setting} cannot be ${value}`,
               code: 'VALIDATION_ERROR',
+            })
+          }
+
+          if (hydraActor({ actor }) && setting === 'mode' && agentPermissionNeedsOwner({
+            card,
+            value,
+          })) {
+            throw new HydraError({
+              message: 'Only the owner can raise an agent’s permission level',
+              code: 'OWNER_ONLY',
             })
           }
 
