@@ -78,7 +78,7 @@ export async function agentChangeTurn({
       input: input(),
       permission: async () => ({
         behavior: 'deny',
-        message: 'Only the inscribe skill may save memory during this operation.',
+        message: 'Compaction summarizes the recorded conversation and cannot run tools.',
       }),
     })) {
       if (typeof event !== 'object' || event.type !== 'turn-ended') {
@@ -89,9 +89,10 @@ export async function agentChangeTurn({
         throw new Error(event.outcome.error ?? `Compaction ${event.outcome.status}`)
       }
 
-      const summary = event.outcome.assistant.map(message => message.text).join('\n')
+      const assistantSummary = event.outcome.assistant.map(message => message.text).join('\n')
         .trim()
-        || event.outcome.result?.trim()
+      const resultSummary = event.outcome.result?.trim()
+      const summary = assistantSummary.length ? assistantSummary : resultSummary
 
       if (!summary) {
         throw new Error('Compaction ended without a summary')

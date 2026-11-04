@@ -92,6 +92,21 @@ export function applyHydra({
         since: event.at,
         seq: event.data.after ?? event.seq,
       }
+
+      if (event.data.kind === 'compaction') {
+        state.hydraMessages = [
+          ...(state.hydraMessages ?? []),
+          {
+            id: event.id,
+            action: 'send',
+            kind: 'divider',
+            text: 'Compaction started',
+            at: event.at,
+            actor: 'pnyx',
+            hydra: hydraConfig({ state }).hydra.id,
+          },
+        ]
+      }
     } else if (state.hydraOperation?.id === event.data.id) {
       delete state.hydraOperation
       state.hydraMessages = [
