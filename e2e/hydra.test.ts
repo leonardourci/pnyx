@@ -49,7 +49,7 @@ const send = ({
 })
 
 test(
-  'queued owner messages keep their selected model, deduplicate, and copy tagged replies to the right task',
+  'owner messages queue once, agent switches compact the stored conversation, and effort and Fast apply on the next turn',
   async () => {
     const s = await pnyx.scenario()
     await s.owner({
@@ -57,49 +57,46 @@ test(
         'task',
         'create',
         '--title',
-        'Task quick',
+        'Release notes',
         '--key',
-        'quick',
+        'notes',
       ],
     })
-    const task = s.task({ key: 'quick' }).id
+    const task = s.task({ key: 'notes' }).id
     const reply = `${taskMention({
       id: task,
-      title: 'Task quick',
+      title: 'Release notes',
     })} Noted.`
     const page = await openPage({
       port: pnyx.port(),
       hydraId: s.hydraId,
     })
-    const choose = ({ model }: { model: string }) => page.command({
+    const choose = ({
+      model,
+      effort = 'high',
+      fast = false,
+    }: {
+      model: string
+      effort?: string
+      fast?: boolean
+    }) => page.command({
       name: 'hydra-agent',
       args: [
         JSON.stringify({
           harness: 'claude',
           model,
+          effort,
+          fast,
         }),
       ],
     })
-    const held = pnyx.claude.plan({
-      text: 'First',
+    const first = pnyx.claude.plan({
+      text: 'Before the switch',
       reply,
       hold: true,
     })
     pnyx.claude.plan({
-      text: 'Second',
-      reply,
-    })
-    pnyx.claude.plan({
-      text: 'Third',
-      reply,
-    })
-
-    pnyx.claude.plan({
-      text: '',
-      reply,
-    })
-    pnyx.claude.plan({
-      text: '',
+      text: 'Queued once',
       reply,
     })
 
@@ -107,113 +104,249 @@ test(
       await choose({ model: 'sonnet' })
       await send({
         s,
-        text: 'First',
-        id: 'first',
+        text: 'Before the switch',
+        id: 'before',
       })
       const agent = await s.agent({ hydra: true })
       await until({
-        what: 'the first held message',
+        what: 'the first message to reach Hydra',
         check: () => agent.received.length === 1,
       })
       await send({
         s,
-        text: 'Second',
-        id: 'second',
+        text: 'Queued once',
+        id: 'queued',
       })
       await send({
         s,
-        text: 'Second',
-        id: 'second',
+        text: 'Queued once',
+        id: 'queued',
       })
-      await choose({ model: 'opus' })
-      await send({
+      first.release()
+      await finished({
         s,
-        text: 'Third',
-        id: 'third',
+        turns: 2,
       })
-      await s.owner({
-        args: [
-          'hydra',
-          'send',
-          '--task',
-          task,
-          '--text',
-          'A worker question',
-          '--actor',
-          `worker:${task}`,
-        ],
-      })
-      await s.owner({
-        args: [
-          'hydra',
-          'send',
-          '--task',
-          task,
-          '--text',
-          'Already on the task',
-        ],
-      })
-      await choose({ model: 'haiku' })
       assert.equal(
-        agent.received.length,
+        s.received({ cwd: agent.cwd }).filter(text => text === 'Queued once').length,
         1,
       )
-      held.release()
+      assert.deepEqual(
+        s.events().flatMap(event => event.type === 'card.noted' && event.cardId === task && event.data.source === 'hydra' ? [event.data.text] : []),
+        [
+          'Noted.',
+          'Noted.',
+        ],
+      )
+
+      await choose({ model: 'opus' })
+      assert.equal(
+        s.state().hydraAgentChange,
+        undefined,
+      )
+      await send({
+        s,
+        text: 'After the switch',
+        id: 'after',
+      })
+      await until({
+        what: 'the held message to offer a switch choice',
+        check: () => s.state().hydraAgentChange?.state === 'requested',
+      })
+      assert.equal(
+        s.received({ cwd: agent.cwd }).length,
+        2,
+      )
+      assert.equal(
+        (await page.refusal({
+          name: 'hydra-agent-change',
+          args: [
+            'after',
+            'neither',
+          ],
+        })).code,
+        'VALIDATION_ERROR',
+      )
+      pnyx.claude.plan({
+        text: 'Return only the handoff summary.',
+        reply: 'The release notes were acknowledged.',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'after',
+          'compact',
+        ],
+      })
+      await until({
+        what: 'the new agent to receive the held message',
+        check: () => s.received({ cwd: agent.cwd }).some(text => text.includes('back after a stop') && text.includes('After the switch')),
+      })
+      await finished({
+        s,
+        turns: 4,
+      })
+      const sessions = pnyx.claude.sessions.filter(session => session.env.PNYX_HYDRA === s.hydraId)
+      const next = sessions.find(session => session.model === 'opus')
+      assert.ok(next)
+      assert.notEqual(
+        next.id,
+        agent.id,
+      )
+      assert.ok(next.received[0]!.includes('The release notes were acknowledged.'))
+      assert.ok(!next.received[0]!.includes('Before the switch'))
+      assert.ok(!next.received[0]!.includes('Queued once'))
+      assert.deepEqual(
+        s.events().flatMap(event => event.type === 'hydra.operation' ? [event.data.state] : []),
+        [
+          'started',
+          'finished',
+        ],
+      )
+      assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Switched to opus'))
+      assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Compacted'))
+
+      await choose({
+        model: 'opus',
+        effort: 'low',
+      })
+      await send({
+        s,
+        text: 'Continue at low effort',
+        id: 'effort',
+      })
+      await until({
+        what: 'an effort change choice',
+        check: () => s.state().hydraAgentChange?.kind === 'effort',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'effort',
+          'neither',
+        ],
+      })
       await finished({
         s,
         turns: 5,
       })
-      const sessions = pnyx.claude.sessions.filter(session => session.env.PNYX_HYDRA === s.hydraId)
       assert.equal(
-        sessions.find(session => session.received.some(text => text.endsWith('Second')))?.model,
-        'sonnet',
-      )
-      assert.equal(
-        sessions.find(session => session.received.some(text => text.endsWith('Third')))?.model,
-        'opus',
+        s.state().hydraAgentChange,
+        undefined,
       )
       assert.equal(
-        s.received({ cwd: agent.cwd }).filter(text => text === 'Second').length,
-        1,
+        s.events().filter(event => event.type === 'hydra.operation').length,
+        2,
       )
-      const notes = ({ source }: { source: string }) => s.events().flatMap(event =>
-        event.type === 'card.noted' && event.cardId === task && event.data.source === source ? [event.data.text] : [])
-      assert.deepEqual(
-        notes({ source: 'hydra' }),
-        Array(5).fill('Noted.'),
-      )
-      assert.deepEqual(
-        notes({ source: 'owner' }),
-        [
-          'First',
-          'Second',
-          'Third',
-        ],
-      )
-      const received = s.received({ cwd: agent.cwd }).map(text => text.replace(
-        /^<pnyx-digest[\s\S]*?<\/pnyx-digest>\n\n/,
-        '',
-      ))
-      const reports = received.filter(text => text.includes('A worker question')).map(text => text.replace(
-        / message="[^"]+"/,
-        '',
-      ))
       assert.equal(
-        reports.length,
-        1,
+        s.state().cards[HYDRA_CARD]?.settings?.effort,
+        'low',
       )
-      assert.ok(
-        reports[0]!.startsWith(`<pnyx-wake>Why you are woken:\n- ${taskMention({
-          id: task,
-          title: s.task({ key: 'quick' }).title,
-        })} report: from worker:${task}, in its envelope below\nA worker report arrived while you were busy.`),
-        reports[0],
-      )
-      assert.ok(reports[0]!.includes(`<pnyx-report from="worker:${task}" task="${task}">\nA worker question\n</pnyx-report>`))
-      assert.ok(!reports[0]!.includes('hydra check'))
-      assert.ok(received.includes('Second'))
+
+      const fastTurn = pnyx.claude.plan({
+        text: 'Before Fast',
+        hold: true,
+      })
+
+      try {
+        await send({
+          s,
+          text: 'Before Fast',
+          id: 'before-fast',
+        })
+        await until({
+          what: 'the turn before Fast',
+          check: () => s.received({ cwd: agent.cwd }).some(text => text.endsWith('Before Fast')),
+        })
+        await choose({
+          model: 'opus',
+          effort: 'low',
+          fast: true,
+        })
+        assert.equal(
+          s.state().hydraAgentChange,
+          undefined,
+        )
+        assert.equal(
+          s.state().cards[HYDRA_CARD]?.settings?.fast,
+          'false',
+        )
+        await send({
+          s,
+          text: 'With Fast',
+          id: 'with-fast',
+        })
+        fastTurn.release()
+        await finished({
+          s,
+          turns: 7,
+        })
+        assert.equal(
+          s.state().cards[HYDRA_CARD]?.settings?.fast,
+          'true',
+        )
+        assert.equal(
+          s.state().hydraAgentChange,
+          undefined,
+        )
+      } finally {
+        fastTurn.release()
+      }
+
+      await choose({
+        model: 'sonnet',
+        effort: 'low',
+      })
+      await send({
+        s,
+        text: 'Switch back',
+        id: 'back',
+      })
+      await until({
+        what: 'another switch choice',
+        check: () => s.state().hydraAgentChange?.id === 'back',
+      })
+      const summary = pnyx.claude.plan({
+        text: 'Return only the handoff summary.',
+        reply: 'Fast was enabled after the release discussion.',
+        hold: true,
+      })
+
+      try {
+        await page.command({
+          name: 'hydra-agent-change',
+          args: [
+            'back',
+            'inscribe',
+          ],
+        })
+        await until({
+          what: 'inscribe on the previous model',
+          check: () => s.received({ cwd: agent.cwd }).some(text => text.includes('First read and follow the inscribe skill')),
+        })
+        const compactPrompt = s.received({ cwd: agent.cwd }).at(-1)!
+        assert.ok(compactPrompt.includes('The release notes were acknowledged.'))
+        assert.ok(compactPrompt.includes('Before Fast'))
+        assert.ok(!compactPrompt.includes('Before the switch'))
+        await send({
+          s,
+          text: 'Queued during the switch',
+          id: 'during',
+        })
+        summary.release()
+        await finished({
+          s,
+          turns: 9,
+        })
+        const resumed = s.received({ cwd: agent.cwd }).at(-1)!
+        assert.ok(resumed.includes('Switch back'))
+        assert.ok(resumed.includes('Queued during the switch'))
+        assert.ok(resumed.indexOf('Switch back') < resumed.indexOf('Queued during the switch'))
+      } finally {
+        summary.release()
+      }
     } finally {
-      held.release()
+      first.release()
       page.close()
     }
   },
