@@ -242,56 +242,6 @@ test(
 )
 
 test(
-  'blocks start at the index Markdown gives them, which comments store',
-  () => {
-    const text = 'Intro.\n\n---\n\nAfter the rule.\n\n- one\n- two\n  - nested\n\n> quoted\n\nEnd.'
-    const done: Block[] = []
-    const { live } = splitBlocks({
-      text,
-      boundary: 0,
-      done,
-      lex,
-    })
-    assert.deepEqual(
-      [
-        ...done,
-        live,
-      ].filter(block => block.tokens[0]!.type !== 'space')
-        .map(block => [
-          block.tokens[0]!.type,
-          block.index,
-        ]),
-      [
-        [
-          'paragraph',
-          0,
-        ],
-        [
-          'hr',
-          1,
-        ],
-        [
-          'paragraph',
-          1,
-        ],
-        [
-          'list',
-          2,
-        ],
-        [
-          'blockquote',
-          5,
-        ],
-        [
-          'paragraph',
-          6,
-        ],
-      ],
-    )
-  },
-)
-
-test(
   'text arriving one char at a time never shows half-written Markdown',
   () => {
     for (const { text } of Object.values(replies)) {

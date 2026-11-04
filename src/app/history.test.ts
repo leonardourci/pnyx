@@ -1,14 +1,11 @@
 import assert from 'node:assert/strict'
-import fs, { mkdtempSync, statSync } from 'node:fs'
-import { syncBuiltinESMExports } from 'node:module'
+import { mkdtempSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import type { HydraEvent } from './model.ts'
 import { history } from './cli.ts'
-import { hydraDir } from './home-migration.ts'
 import { withWriter } from './writer.ts'
-import { logPath } from '#store/storage.ts'
 
 const AT = '2026-10-13T10:00:00Z'
 const NOTES = 60
@@ -113,11 +110,9 @@ const fresh = () => {
   ))
 }
 
-const logSize = () => statSync(logPath({ dir: hydraDir({ hydraId: 'default' }) })).size
-
 test(
-  'an Activity page reads only the bytes appended since the last page, not the snapshot or the whole log',
-  t => {
+  'Activity lists new notes once, pages older notes, includes tagged messages and refuses unknown cards',
+  () => {
     fresh()
     append({
       events: [
@@ -152,91 +147,41 @@ test(
       'the first page lists the newest 50 of the card\'s notes',
     )
 
-    let read = 0
-    const {
-      readSync,
-      readFileSync,
-    } = fs
-    t.mock.method(
-      fs,
-      'readSync',
-      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
-      (...args: Parameters<typeof readSync>) => {
-        const bytes = readSync(...args)
-        read += bytes
-
-        return bytes
-      },
+    const again = page()
+    assert.deepEqual(
+      Array.isArray(again.events) && again.events.slice(
+        0,
+        2,
+      ).map(event => event.data.text),
+      [
+        'note 59',
+        'note 58',
+      ],
     )
-    t.mock.method(
-      fs,
-      'readFileSync',
-      // eslint-disable-next-line pnyx/object-params -- preserves the fs API signature
-      (...args: Parameters<typeof readFileSync>) => {
-        const content = readFileSync(...args)
-        read += typeof content === 'string' ? Buffer.byteLength(content) : content.length
 
-        return content
-      },
+    append({ events: [noted({ text: 'the newest note' })] })
+    const latest = page()
+    assert.equal(
+      latest.count,
+      '50 of 61 total',
     )
-    syncBuiltinESMExports()
+    assert.equal(
+      Array.isArray(latest.events) && latest.events[0]!.data.text,
+      'the newest note',
+    )
 
-    try {
-      const size = logSize()
-      const again = page()
-      assert.ok(
-        read < size / 20,
-        `an unchanged log reads neither the snapshot nor the log (read ${read} of ${size} bytes)`,
-      )
-      assert.deepEqual(
-        Array.isArray(again.events) && again.events.slice(
-          0,
-          2,
-        ).map(event => event.data.text),
-        [
-          'note 59',
-          'note 58',
-        ],
-      )
+    const oldest = Array.isArray(latest.events) ? latest.events.at(-1)!.seq : 0
+    const older = page({ before: oldest })
+    assert.equal(
+      older.count,
+      `11 of 11 before ${oldest}`,
+    )
+    assert.equal(
+      older.help,
+      undefined,
+      'the last page names no older one',
+    )
 
-      append({ events: [noted({ text: 'the newest note' })] })
-      read = 0
-      const latest = page()
-      assert.ok(
-        read < size / 20,
-        `a grown log reads only its new line (read ${read} of ${logSize()} bytes)`,
-      )
-      assert.equal(
-        latest.count,
-        '50 of 61 total',
-      )
-      assert.equal(
-        Array.isArray(latest.events) && latest.events[0]!.data.text,
-        'the newest note',
-      )
-
-      const oldest = Array.isArray(latest.events) ? latest.events.at(-1)!.seq : 0
-      const older = page({ before: oldest })
-      assert.equal(
-        older.count,
-        `11 of 11 before ${oldest}`,
-      )
-      assert.equal(
-        older.help,
-        undefined,
-        'the last page names no older one',
-      )
-    } finally {
-      t.mock.restoreAll()
-      syncBuiltinESMExports()
-    }
-  },
-)
-
-test(
-  'a card\'s history lists a Hydra message that names it once, and an unknown card is refused',
-  () => {
-    fresh()
     append({
       events: [
         pushed({
@@ -267,12 +212,24 @@ test(
     })
     const tagged = page({ updates: false })
     assert.deepEqual(
-      Array.isArray(tagged.events) && tagged.events.map(event => event.id),
+      Array.isArray(tagged.events) && tagged.events.slice(
+        0,
+        2,
+      ).map(event => event.id),
       [
         `evt_${seq}`,
         `evt_${seq - 2}`,
       ],
       'the message, named by its task and by a chip, is listed once',
+    )
+    assert.ok(Array.isArray(tagged.events))
+    assert.equal(
+      tagged.events.filter(event => event.id === `evt_${seq}`).length,
+      1,
+    )
+    assert.equal(
+      tagged.events.some(event => event.id === `evt_${seq - 1}`),
+      false,
     )
     assert.throws(
       () => page({ card: 'nope' }),

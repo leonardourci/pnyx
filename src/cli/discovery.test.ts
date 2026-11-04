@@ -1,12 +1,25 @@
 import assert from 'node:assert/strict'
-import { mkdtempSync, rmSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
+import { commands } from '#app/cli.ts'
+import { readEvents } from '#app/event-log.ts'
+import { editHydra, listHydras, nameUnnamedHydras } from '#app/server-hydras.ts'
+import { HYDRA_NAMES } from '#hydra/hydra-names.ts'
+import type { HydraConfig } from '#hydra/model.ts'
 import { runForRequest } from '#app/api-run.ts'
 
+const shown = ({ id }: { id: string }) => (commands.hydra([
+  'show',
+  '--hydra',
+  id,
+]) as { hydra: HydraConfig }).hydra
+
+const greek = ({ name }: { name: string }) => (HYDRA_NAMES as readonly string[]).includes(name)
+
 test(
-  'the CLI offers live state, nested discovery, actionable receipts and explicit errors',
+  'CLI discovers commands, validates task projects and preserves Hydra naming and ordering',
   async t => {
     const root = mkdtempSync(join(
       tmpdir(),
@@ -40,6 +53,49 @@ test(
         },
       },
     })
+    commands.hydra([
+      'create',
+      'default',
+    ])
+    const logged = readEvents({ hydraId: 'default' }).length
+
+    assert.deepEqual(
+      commands.hydra([
+        'create',
+        'default',
+      ]),
+      { event: 'none: unchanged' },
+    )
+    assert.equal(
+      readEvents({ hydraId: 'default' }).length,
+      logged,
+      'the repeated create appends nothing',
+    )
+    assert.throws(
+      () => commands.hydra([
+        'create',
+        'default',
+        '--command',
+        'echo',
+      ]),
+      {
+        code: 'CONFLICT',
+        message: /Hydra already exists with other settings: default/,
+      },
+    )
+    await assert.rejects(
+      async () => commands.task([
+        'create',
+        '--title',
+        'Fix the cart total',
+        '--project',
+        'shop',
+      ]),
+      {
+        code: 'NOT_FOUND',
+        message: /project not attached: shop/,
+      },
+    )
     const empty = await run({ args: [] })
     assert.equal(
       empty.exitCode,
@@ -167,6 +223,189 @@ test(
     assert.match(
       scoped.stdout,
       /task create .*--hydra synthetic-other/,
+    )
+
+    {
+      commands.hydra([
+        'create',
+        'work',
+      ])
+      const created = shown({ id: 'work' })
+
+      assert.ok(
+        greek({ name: created.name }),
+        created.name,
+      )
+      assert.equal(
+        created.icon,
+        created.name.toLowerCase(),
+      )
+
+      commands.hydra([
+        'set',
+        '--hydra',
+        'work',
+        '--name',
+        'Billing',
+      ])
+      assert.deepEqual(
+        [
+          shown({ id: 'work' }).name,
+          shown({ id: 'work' }).icon,
+        ],
+        [
+          'Billing',
+          created.icon,
+        ],
+      )
+
+      assert.throws(
+        () => commands.hydra([
+          'set',
+          '--hydra',
+          'work',
+          '--icon',
+          'unicorn',
+        ]),
+        { code: 'VALIDATION_ERROR' },
+      )
+
+      commands.hydra([
+        'set',
+        '--hydra',
+        'work',
+        '--icon',
+        'hydra',
+      ])
+      assert.equal(
+        shown({ id: 'work' }).icon,
+        undefined,
+        'the Hydra mark is the icon of a Hydra without its own',
+      )
+    }
+
+    {
+      const firstmate = join(
+        root,
+        'crew',
+      )
+      mkdirSync(firstmate)
+      commands.hydra([
+        'set',
+        '--hydra',
+        'default',
+        '--name',
+        'default',
+      ])
+      commands.hydra([
+        'create',
+        'kept',
+        '--name',
+        'Billing',
+      ])
+      commands.hydra([
+        'create',
+        '--firstmate',
+        firstmate,
+      ])
+
+      nameUnnamedHydras()
+      const named = shown({ id: 'default' })
+
+      assert.ok(
+        greek({ name: named.name }),
+        named.name,
+      )
+      assert.equal(
+        shown({ id: 'kept' }).name,
+        'Billing',
+      )
+      assert.equal(
+        shown({ id: 'crew' }).name,
+        'crew',
+      )
+
+      nameUnnamedHydras()
+      assert.equal(
+        shown({ id: 'default' }).name,
+        named.name,
+        'a named Hydra is not renamed again',
+      )
+    }
+
+    t.mock.timers.enable({
+      apis: ['Date'],
+      now: Date.parse('2026-11-01T12:00:00Z'),
+    })
+    commands.hydra([
+      'create',
+      'zeta',
+    ])
+    t.mock.timers.tick(1)
+    commands.hydra([
+      'create',
+      'alpha',
+    ])
+    t.mock.timers.tick(1)
+    commands.hydra([
+      'create',
+      'mu',
+    ])
+    t.mock.timers.reset()
+    const listed = () => listHydras().filter(hydra => [
+      'zeta',
+      'alpha',
+      'mu',
+    ].includes(hydra.id))
+      .map(hydra => hydra.id)
+    assert.deepEqual(
+      listed(),
+      [
+        'zeta',
+        'alpha',
+        'mu',
+      ],
+    )
+    const zeta = listHydras().find(hydra => hydra.id === 'zeta')
+    const alpha = listHydras().find(hydra => hydra.id === 'alpha')
+    assert.ok(zeta)
+    assert.ok(alpha)
+    editHydra({
+      id: 'mu',
+      position: (zeta.order + alpha.order) / 2,
+    })
+    assert.deepEqual(
+      listed(),
+      [
+        'zeta',
+        'mu',
+        'alpha',
+      ],
+    )
+    commands.hydra([
+      'set',
+      '--hydra',
+      'alpha',
+      '--position',
+      '0',
+    ])
+    assert.deepEqual(
+      listed(),
+      [
+        'alpha',
+        'zeta',
+        'mu',
+      ],
+    )
+    assert.throws(
+      () => commands.hydra([
+        'set',
+        '--hydra',
+        'mu',
+        '--position',
+        'first',
+      ]),
+      /--position must be a number/,
     )
   },
 )

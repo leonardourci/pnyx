@@ -33,8 +33,8 @@ async function upload({ hydraId }: { hydraId: string }): Promise<{
 }
 
 test(
-  'an uploaded image reaches the Claude native prompt through the real Hydra CLI and server',
-  async () => {
+  'an uploaded image reaches both native providers and keeps its selection through recovery',
+  async t => {
     const s = await pnyx.scenario()
     const image = await upload({ hydraId: s.hydraId })
     const agent = await s.chat({ text: `Describe ${image.line}` })
@@ -53,48 +53,10 @@ test(
         ],
       ],
     )
-  },
-)
-
-test(
-  'an uploaded image reaches Codex as an explicit local image through the real Hydra CLI and server',
-  async t => {
-    const s = await pnyx.scenario()
-    const page = await openPage({
-      port: pnyx.port(),
-      hydraId: s.hydraId,
-    })
-    t.after(() => page.close())
-    await page.command({
-      name: 'hydra-agent',
-      args: [JSON.stringify({ harness: 'codex' })],
-    })
-    const image = await upload({ hydraId: s.hydraId })
-    const agent = await s.chat({ text: `Describe ${image.line}` })
-    assert.deepEqual(
-      agent.images,
-      [
-        [
-          {
-            type: 'localImage',
-            path: image.path,
-          },
-        ],
-      ],
-    )
-  },
-)
-
-test(
-  'a saved compaction input keeps its original image selection through server recovery',
-  async () => {
-    const s = await pnyx.scenario()
-    await s.chat({ text: 'Ready for images' })
     await until({
       what: 'Hydra to finish',
       check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
     })
-    const image = await upload({ hydraId: s.hydraId })
     const contextImage = await upload({ hydraId: s.hydraId })
     const original = `Describe this held image ${image.line}`
     withWriter({
@@ -133,6 +95,44 @@ test(
             data: IMAGE_BYTES.toString('base64'),
           },
         },
+      ],
+    )
+    await until({
+      what: 'the recovered Hydra turn to finish before changing providers',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+    await page.command({
+      name: 'hydra-agent',
+      args: [JSON.stringify({ harness: 'codex' })],
+    })
+    const text = `Describe this image with Codex ${image.line}`
+    await s.owner({
+      args: [
+        'hydra',
+        'send',
+        '--text',
+        text,
+      ],
+    })
+    const codex = await until({
+      what: 'the selected Codex provider to receive the image',
+      check: () => pnyx.codex.sessions.findLast(agent => agent.env.PNYX_HYDRA === s.hydraId
+        && agent.received.some(message => message.includes(text))),
+    })
+    assert.deepEqual(
+      codex.images,
+      [
+        [
+          {
+            type: 'localImage',
+            path: image.path,
+          },
+        ],
       ],
     )
   },

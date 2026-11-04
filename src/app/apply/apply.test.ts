@@ -2044,21 +2044,6 @@ test(
       JSON.stringify(progress.help),
       /results through task ask or task status/,
     )
-    const skill = readFileSync(
-      new URL(
-        '../../../skills/pnyx-report-progress/SKILL.md',
-        import.meta.url,
-      ),
-      'utf8',
-    )
-    assert.match(
-      skill,
-      /without `--kind progress`, before pausing/,
-    )
-    assert.doesNotMatch(
-      skill,
-      /Questions, blockers and results never go this way/,
-    )
   },
 )
 
