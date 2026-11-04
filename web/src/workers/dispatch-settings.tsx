@@ -1,7 +1,6 @@
 import { useEffect, useId, useRef, useState } from 'react'
-import type { HydraState } from '#app/model.ts'
 import type { Candidate } from '#workers/dispatch-config.ts'
-import { canonical, checkDispatch, pointer, type DispatchChange, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
+import { canonical, checkDispatch, pointer, type DispatchDocument, type DispatchIssue } from '#workers/dispatch-check.ts'
 import type { RuleNow } from '#workers/dispatch.ts'
 import type { Command } from '#web-app/connection.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
@@ -11,10 +10,9 @@ import { PendingStatus } from '#web-shared/ui/pending-status.tsx'
 import { Segmented } from '#web-shared/ui/segmented.tsx'
 import { AgentPickers } from './agent-pickers.tsx'
 import { AccountModelPicker } from './account-model-picker.tsx'
-import { useDispatchProposals } from './dispatch-proposals.tsx'
 import type { SavedDispatch } from './dispatch-resource.ts'
 import { DISPATCH_CHANGED, showingAfter, useDispatchDocument, useHeadsDispatch } from './heads-dispatch.ts'
-import { candidateMarks, changeKind, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
+import { candidateMarks, changesBetween, documentOf, draftIssues, formatted, HYDRA_RULE, issuesAt, parseDocument, patchBetween, ruleSegments, toDraft, withCandidates, withNewRule, withoutRule, withRule, type Draft, type RuleAt } from './dispatch-draft.ts'
 
 // Refreshing the resolved account waits until typing pauses; quota is read on the server.
 const NOW_DELAY_MS = 600
@@ -43,8 +41,6 @@ interface Starts {
 }
 
 const errorsIn = ({ issues }: { issues: DispatchIssue[] }) => issues.filter(issue => issue.level === 'error')
-
-const shown = ({ value }: { value: unknown }) => value === undefined ? '' : JSON.stringify(value)
 
 function useStartsNow({
   command,
@@ -111,101 +107,6 @@ function useStartsNow({
   )
 
   return found?.key === key ? found : undefined
-}
-
-function ChangeList({ changes }: { changes: DispatchChange[] }) {
-  return (
-    <ul className="dispatch-changes">
-      {changes.map(change => {
-        const kind = changeKind({ change })
-        const before = shown({ value: change.before })
-        const after = shown({ value: change.after })
-        const value = kind === 'changed' ? `${before} → ${after}` : before || after
-
-        return (
-          <li key={change.path} data-kind={kind}>
-            <span className="dispatch-change-kind">{kind}</span>
-            <span>
-              <code>{change.path}</code>
-              <span className="dispatch-change-value">{value}</span>
-            </span>
-          </li>
-        )
-      })}
-    </ul>
-  )
-}
-
-function Proposals({
-  state,
-  command,
-  notify,
-}: {
-  state: HydraState
-  command: Command
-  notify({ text }: { text: string }): void
-}) {
-  const {
-    proposals,
-    busy,
-    resolve,
-  } = useDispatchProposals({
-    state,
-    command,
-    notify,
-  })
-
-  return proposals.filter(({ proposal }) => proposal.kind !== 'command').map(({
-    proposal,
-    status,
-    changes,
-    name,
-  }) => {
-    const stale = status?.outOfDate === true
-    const note = stale
-      ? `${status.reason}. Dismiss it and ask Hydra again if you still want it.`
-      : 'Hydra proposed this in its chat. This is the exact change; nothing applies until you confirm.'
-
-    return (
-      <section
-        key={proposal.token}
-        className="dispatch-proposal"
-        data-stale={stale || undefined}
-        aria-label={`Proposal: ${proposal.summary}`}
-      >
-        <h4>
-          <span className="dispatch-tag">{stale ? 'Out of date' : <><Icon name="reminder" size={12} />Waiting for your Confirm</>}</span>
-          {proposal.summary}
-        </h4>
-        <p>{note}</p>
-        {!stale && changes.length > 0 && <ChangeList changes={changes} />}
-        <div className="dispatch-actions">
-          {!stale && (
-            <Button
-              variant="primary"
-              disabled={Boolean(busy) || Boolean(proposal.status)}
-              onClick={() => void resolve({
-                name,
-                token: proposal.token,
-                action: 'confirm',
-              })}
-            ><Icon name="check" size={14} />Confirm
-            </Button>
-          )}
-          <Button
-            variant="surface"
-            disabled={Boolean(busy)}
-            onClick={() => void resolve({
-              name,
-              token: proposal.token,
-              action: 'dismiss',
-            })}
-          ><Icon name="close" size={14} />Dismiss
-          </Button>
-        </div>
-      </section>
-    )
-  })
 }
 
 function HowPicked() {
@@ -660,11 +561,9 @@ function jsonIssues({
 }
 
 export function DispatchSettings({
-  state,
   command,
   notify,
 }: {
-  state: HydraState
   command: Command
   notify({ text }: { text: string }): void
 }) {
@@ -853,7 +752,6 @@ export function DispatchSettings({
       </div>
       <PendingStatus intents={snapshot.intents} />
       {snapshot.error && <p className="dispatch-error" role="alert">{snapshot.error}</p>}
-      <Proposals state={state} command={command} notify={notify} />
       <HowPicked />
       {draft ? (
         <RulesTable

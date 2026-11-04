@@ -17,6 +17,7 @@ import { SETTING_KEYS, type Settings, type SettingsEntry } from './model.ts'
 import { DEFAULT_SETTINGS, patchSettings, pickView } from './settings.ts'
 import { effectiveDispatch, lockedDocument, savedDocument } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
+import { settingsNotice } from '#hydra/settings-notice.ts'
 
 export const settingsLogPath = () => join(
   pnyxHome(),
@@ -274,11 +275,13 @@ export function saveSettings({
   patch,
   meta,
   beforeSave,
+  hydraId,
 }: {
   patch: unknown
   meta: Meta
   // Runs inside the settings lock once the patch is valid or a repeat, before it is written, so a combined command changes its Hydra only when the shared write goes ahead.
   beforeSave?(): void
+  hydraId?: string
 }): SettingsSave {
   return withRegistryLock({
     fn: () => {
@@ -287,6 +290,17 @@ export function saveSettings({
 
       if (meta.id && current.ids.has(meta.id)) {
         beforeSave?.()
+
+        const entry = readEntries().find(entry => entry.id === meta.id)
+
+        if (hydraId && entry && Object.keys(entry.after).length) {
+          settingsNotice({
+            hydraId,
+            meta,
+            changeId: `shared:${entry.id}`,
+            text: `Changed settings: ${Object.keys(entry.after).join(', ')}`,
+          })
+        }
 
         return {
           skipped: 'duplicate' as const,
@@ -340,6 +354,15 @@ export function saveSettings({
         after,
         meta,
       })
+
+      if (hydraId) {
+        settingsNotice({
+          hydraId,
+          meta,
+          changeId: `shared:${entry.id}`,
+          text: `Changed settings: ${Object.keys(entry.after).join(', ')}`,
+        })
+      }
 
       return {
         entry,

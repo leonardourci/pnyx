@@ -97,7 +97,7 @@ test(
 )
 
 test(
-  'Hydra checks and proposes a dispatch patch itself, and a plain apply is refused with nothing saved',
+  'Hydra checks and applies a dispatch patch itself, and may still propose a permission increase',
   async () => {
     const { root } = lab()
     const hydra = ownerOnly({
@@ -137,6 +137,24 @@ test(
       proposals().length,
       0,
     )
+    assert.equal(
+      (await apply({ flags: [] })).applied,
+      true,
+    )
+    writeFileSync(
+      patch,
+      JSON.stringify({
+        version: 1,
+        patch: {
+          default: [
+            {
+              harness: 'codex',
+              mode: 'never',
+            },
+          ],
+        },
+      }),
+    )
     await assert.rejects(
       () => apply({ flags: [] }),
       { code: 'OWNER_ONLY' },
@@ -155,7 +173,7 @@ test(
     )
     assert.deepEqual(
       effectiveDispatch().dispatch.default,
-      [{ harness: 'claude' }],
+      [{ harness: 'codex' }],
     )
   },
 )

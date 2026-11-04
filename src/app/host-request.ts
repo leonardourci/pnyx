@@ -11,9 +11,9 @@ import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOver
 import { catalogOffers } from '#workers/model-catalog.ts'
 import { providerIdOf } from '#workers/providers.ts'
 import { hydraFastReaches, modelIds } from '#workers/provider.ts'
-import { hydraMode } from '#hydra/hydra.ts'
-import { findOption } from '#workers/controls.ts'
 import { SETTINGS } from '#workers/host.ts'
+import { raisesPermission, workerMode } from '#workers/permission-level.ts'
+import { hydraActor } from './request-context.ts'
 
 // The host names the helper's reply action 'send'.
 const HELPER_ACTIONS: Record<string, HelperAction> = {
@@ -133,6 +133,21 @@ export async function hostRequestUnlocked({
         override: dispatch.override,
       })
 
+      if (hydraActor({ actor }) && dispatch.override?.mode !== undefined && raisesPermission({
+        harness: dispatch.provider,
+        before: workerMode({
+          state: current,
+          harness: dispatch.provider,
+          mode: dispatch.candidate.mode,
+        }),
+        after: dispatch.override.mode,
+      })) {
+        throw new HydraError({
+          message: 'Only the owner can raise a worker’s permission level',
+          code: 'OWNER_ONLY',
+        })
+      }
+
       if (dispatch.ownerOverride || dispatch.candidate.account) {
         const settings = chosenSettings({ choice: dispatch })
 
@@ -174,17 +189,14 @@ export async function hostRequestUnlocked({
         ...chosenSettings({ choice: dispatch }),
         provider: providerIdOf({ harness: dispatch.provider }),
       }
-      const inherited = hydraMode({ state: current })
+      const mode = workerMode({
+        state: current,
+        harness: dispatch.provider,
+        mode: settings.mode,
+      })
 
-      // A rule without a mode inherits Hydra's; never plan, which would stall a worker.
-      if (!settings.mode && inherited && inherited !== 'plan'
-        && findOption({
-          provider: settings.provider,
-          setting: 'mode',
-          value: inherited,
-          hosted: true,
-        })) {
-        settings.mode = inherited
+      if (mode !== undefined) {
+        settings.mode = mode
       }
 
       // An explicit task start --fast wins; otherwise Fast in Hydra's composer reaches every worker, even a candidate saved with Fast off.

@@ -51,6 +51,8 @@ import { withWriter, type Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Output } from '#app/cli-support.ts'
 import { requestCwd } from '#app/request-context.ts'
+import { raisesPermission, workerMode } from './permission-level.ts'
+import { hydraActor } from '#app/request-context.ts'
 
 export const VIAS = [
   'pnyx',
@@ -514,6 +516,26 @@ export async function startTask({
   }
 
   const agent = dispatch?.candidate
+
+  const permissionOverride = override?.mode
+
+  const hydraRequest = hydraActor({ actor: meta.actor })
+
+  if (hydraRequest && agent && permissionOverride !== undefined && raisesPermission({
+    harness: agent.harness,
+    before: workerMode({
+      state,
+      harness: agent.harness,
+      mode: agent.mode,
+    }),
+    after: permissionOverride,
+  })) {
+    throw new HydraError({
+      message: 'Only the owner can raise a worker’s permission level',
+      code: 'OWNER_ONLY',
+    })
+  }
+
   const command = how === 'command' || !agent
   const selectedCommand = commandName
     ? namedProjectCommand({

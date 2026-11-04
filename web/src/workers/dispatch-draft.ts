@@ -161,14 +161,6 @@ export const changesBetween = ({
   }),
 })
 
-export function changeKind({ change }: { change: DispatchChange }): 'added' | 'removed' | 'changed' {
-  if (change.before === undefined) {
-    return 'added'
-  }
-
-  return change.after === undefined ? 'removed' : 'changed'
-}
-
 export function issuesAt({
   issues,
   segments,

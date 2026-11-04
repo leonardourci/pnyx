@@ -452,7 +452,7 @@ export function SettingControl({
     case 'accounts':
       return <AccountSettings command={command} initialProvider={accountSetup} notify={notify} />
     case 'headsDispatch':
-      return <DispatchSettings state={state} command={command} notify={notify} />
+      return <DispatchSettings command={command} notify={notify} />
     case 'keyboard':
       return (
         <Switch

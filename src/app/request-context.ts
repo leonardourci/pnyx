@@ -1,4 +1,5 @@
 import { AsyncLocalStorage } from 'node:async_hooks'
+import { HYDRA_ACTOR } from './actors.ts'
 import { readFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
 
@@ -46,6 +47,9 @@ export const IDENTITY = [
 ] as const
 
 export const requestEnv = (): NodeJS.ProcessEnv => current.getStore()?.env ?? process.env
+
+export const hydraActor = ({ actor }: { actor?: string }) =>
+  actor === HYDRA_ACTOR || requestEnv().PNYX_ACTOR === HYDRA_ACTOR
 
 export const requestCwd = (): string => current.getStore()?.cwd ?? process.cwd()
 

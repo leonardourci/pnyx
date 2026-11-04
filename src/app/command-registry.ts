@@ -40,7 +40,6 @@ export const COMMAND_REGISTRY = {
         'show',
       ],
     },
-    ownerOnly: ({ args }) => args[0] === 'set',
   },
   task: {
     page: true,
@@ -83,34 +82,18 @@ export const COMMAND_REGISTRY = {
         'show',
       ],
     },
-    ownerOnly: ({ args }) => args[0] === 'set' && (flag({
-      args,
-      name: '--command',
-    }) || flag({
-      args,
-      name: '--session',
-    })),
   },
   layout: { page: true },
-  // rule apply decides for itself, so a patch Hydra may not save is refused with a hint to propose it.
+  // Permission increases are checked against the resulting dispatch document at its write boundary.
   rule: {
     page: true,
-    ownerOnly: ({ args }) => ![
-      'list',
-      'show',
-      'schema',
-      'now',
-      'init',
-      'apply',
-      'propose',
-    ].includes(args[0] ?? 'list'),
+    ownerOnly: ({ args }) => [
+      'confirm',
+      'dismiss',
+    ].includes(args[0] ?? ''),
   },
   account: {
     page: true,
-    ownerOnly: ({ args }) => ![
-      'list',
-      'propose',
-    ].includes(args[0] ?? 'list'),
   },
   move: { page: true },
   link: {

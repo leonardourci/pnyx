@@ -8,14 +8,18 @@ import { asRecord } from '#app/command-validation.ts'
 import { withWriter } from '#app/writer.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import { runsInBypass } from '#hydra/hydra-session.ts'
+import { settingsNotice } from '#hydra/settings-notice.ts'
 import { HydraError } from '#store/errors.ts'
 import { withRegistryLock } from '#store/storage.ts'
 import { storedOffers } from './model-catalog.ts'
 import type { DispatchProposal } from './model.ts'
 import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf, type DispatchChange, type DispatchDocument, type DispatchIssue } from './dispatch-check.ts'
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
-import { requestEnv } from '#app/request-context.ts'
+import { raisesPermission, workerMode } from './permission-level.ts'
+import { hydraCandidate } from '#hydra/agent-choice.ts'
+import { hydraActor, requestEnv } from '#app/request-context.ts'
+import { loadHydra } from '#app/store.ts'
+import { isDeepStrictEqual } from 'node:util'
 
 type Fields = Record<string, unknown>
 
@@ -205,11 +209,150 @@ function propose({
     token: proposal.token,
     action: summary,
     changes,
-    help: ['The owner can Confirm or Dismiss this proposal in Hydra’s chat or in Settings'],
+    help: ['The owner can Confirm or Dismiss this proposal in Hydra’s chat'],
   }
 }
 
-const hydraActor = ({ meta }: { meta: Meta }) => meta.actor === 'hydra' || requestEnv().PNYX_ACTOR === 'hydra'
+function raisesCandidatePermission({
+  hydraId,
+  before,
+  after,
+}: {
+  hydraId: string
+  before: DispatchDocument
+  after: DispatchDocument
+}): boolean {
+  const callerHydraId = requestEnv().PNYX_HYDRA || hydraId
+  const state = loadHydra({ hydraId: callerHydraId }).state
+  const previousHydra = hydraCandidate({
+    state: {},
+    dispatch: before,
+  })
+  const nextHydra = hydraCandidate({
+    state: {},
+    dispatch: after,
+  })
+
+  if (raisesPermission({
+    beforeHarness: previousHydra.harness,
+    harness: nextHydra.harness,
+    before: previousHydra.mode,
+    after: nextHydra.mode,
+  })) {
+    return true
+  }
+
+  const lists = [
+    {
+      previous: before.default,
+      next: after.default,
+    },
+    ...Object.entries(after.rules).map(([
+      name,
+      rule,
+    ]) => ({
+      previous: before.rules[name]?.candidates ?? [],
+      next: rule.candidates,
+    })),
+  ]
+
+  return lists.some(({
+    previous,
+    next,
+  }) => next.some(candidate => {
+    const prior = previous.find(item => {
+      return item.harness === candidate.harness && item.account === candidate.account
+    })
+
+    return raisesPermission({
+      harness: candidate.harness,
+      before: workerMode({
+        state,
+        harness: candidate.harness,
+        mode: prior?.mode,
+      }),
+      after: workerMode({
+        state,
+        harness: candidate.harness,
+        mode: candidate.mode,
+      }),
+    })
+  }))
+}
+
+function changeDescription({ change }: { change: DispatchChange }): string {
+  const [
+    , section,
+    name,
+    field,
+  ] = change.path.split('/')
+  const rule = section === 'default' ? 'default rule' : `${name} rule`
+  const candidateList = section === 'default' || (section === 'rules' && field === 'candidates')
+
+  if (candidateList && Array.isArray(change.before) && Array.isArray(change.after)
+    && change.before.length === change.after.length) {
+    const before = change.before
+    const edits = change.after.flatMap((
+      candidate,
+      index,
+    ) => {
+      const previous = asRecord({ value: before[index] })
+      const next = asRecord({ value: candidate })
+
+      if (!previous || !next) {
+        return []
+      }
+
+      return Object.keys({
+        ...previous,
+        ...next,
+      }).filter(key => !isDeepStrictEqual(
+        previous[key],
+        next[key],
+      ))
+        .map(key => ({
+          key,
+          value: next[key],
+        }))
+    })
+    const edit = edits[0]
+
+    if (edits.length === 1 && edit) {
+      const setting = edit.key === 'mode' ? 'permissions' : edit.key
+      const value = edit.value === undefined ? 'default' : String(edit.value)
+
+      return `${rule}’s ${setting} to ${value}`
+    }
+  }
+
+  if (section === 'rules' || section === 'default') {
+    return rule
+  }
+
+  return name ? `${section}: ${name}` : String(section)
+}
+
+function dispatchNotice({
+  hydraId,
+  entry,
+  meta,
+}: {
+  hydraId: string
+  entry: ChangeEntry
+  meta: Meta
+}): void {
+  if (!entry.changes?.length) {
+    return
+  }
+
+  const changes = entry.changes.map(change => changeDescription({ change }))
+  settingsNotice({
+    hydraId,
+    meta,
+    changeId: `dispatch:${entry.id}`,
+    text: `Changed ${changes.join('; ')}`,
+  })
+}
 
 // One patch, checked whole: every rule, account and order change goes through here.
 export function applyDispatch({
@@ -249,6 +392,12 @@ export function applyDispatch({
             code: 'IDEMPOTENCY_CONFLICT',
           })
         }
+
+        dispatchNotice({
+          hydraId,
+          entry: seen,
+          meta,
+        })
 
         return {
           ...seen.receipt,
@@ -334,9 +483,13 @@ export function applyDispatch({
         })
       }
 
-      if (hydraActor({ meta }) && !runsInBypass({ hydraId })) {
+      if (hydraActor({ actor: meta.actor }) && raisesCandidatePermission({
+        hydraId,
+        before: document,
+        after,
+      })) {
         throw new HydraError({
-          message: 'Hydra must propose rule and account changes for the owner to confirm',
+          message: 'Only the owner can raise a candidate’s permission level',
           code: 'OWNER_ONLY',
           help: ['Repeat with --propose'],
         })
@@ -364,6 +517,11 @@ export function applyDispatch({
       }
 
       commitChange({ entry })
+      dispatchNotice({
+        hydraId,
+        entry,
+        meta,
+      })
 
       return receipt
     },
@@ -483,7 +641,7 @@ export function resolveProposal({
   confirm?: string
   meta: Meta
 }): Output {
-  if (hydraActor({ meta })) {
+  if (hydraActor({ actor: meta.actor })) {
     throw new HydraError({
       message: 'Only the owner can confirm or dismiss a dispatch proposal',
       code: 'OWNER_ONLY',
