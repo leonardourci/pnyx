@@ -386,6 +386,8 @@ test(
         what: 'the chosen bypass mode to reach Hydra',
         check: () => s.state().cards.$hydra?.settings?.mode === 'bypassPermissions',
       })
+      const heardBeforeWorker = session.received.length
+      const answeredBeforeWorker = session.answered
       await hydra.run({
         args: [
           'task',
@@ -400,6 +402,18 @@ test(
       assert.equal(
         s.task({ key: 'permissions' }).settings?.mode,
         'acceptEdits',
+      )
+      await until({
+        what: 'Hydra to receive the task wake',
+        check: () => session.received.slice(heardBeforeWorker).some(text => text.startsWith('<pnyx-wake>')),
+      })
+      await until({
+        what: 'Hydra to finish the wake in its current permission mode',
+        check: () => session.answered > answeredBeforeWorker,
+      })
+      assert.equal(
+        s.state().cards.$hydra?.settings?.mode,
+        'bypassPermissions',
       )
       await s.owner({
         args: [

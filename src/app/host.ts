@@ -4355,6 +4355,30 @@ export function createHost({
             actor,
           })
 
+          const usedAgent = writer.state.hydraAgent
+
+          // Wakes retain this agent, so permission controls must update its saved mode too.
+          if (card.id === HYDRA_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
+            apply({
+              writer,
+              decision: hydraEvent({
+                state: writer.state,
+                cardId: HYDRA_CARD,
+                meta: {
+                  at: at(),
+                  actor,
+                },
+                change: {
+                  type: 'hydra.agent-used',
+                  data: {
+                    ...usedAgent,
+                    mode: value,
+                  },
+                },
+              }),
+            })
+          }
+
           return card
         },
       })
