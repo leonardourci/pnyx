@@ -2769,7 +2769,10 @@ export function createHost({
       const queuedState = loadHydra({ hydraId }).state
       const queuedDispatch = effectiveDispatch().dispatch
       const desiredAgent = selected ?? (!ownerActor({ actor }) ? queuedState.hydraAgent : undefined)
-        ?? hydraCandidate({ state: queuedState, dispatch: queuedDispatch })
+        ?? hydraCandidate({
+          state: queuedState,
+          dispatch: queuedDispatch,
+        })
       const requestedAgent = {
         ...desiredAgent,
         account: harnessAccount({
