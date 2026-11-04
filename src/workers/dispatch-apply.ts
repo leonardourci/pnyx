@@ -17,7 +17,7 @@ import { canonical, checkDispatch, mergePatch, outOfDate, patchChanges, patchOf,
 import { commitChange, loginFolder, lockedDocument, readChanges, savedDocument, type Account, type ChangeEntry } from './dispatch-config.ts'
 import { raisesPermission, workerMode } from './permission-level.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { hydraActor, requestEnv } from '#app/request-context.ts'
 import { loadHydra } from '#app/store.ts'
 import { isDeepStrictEqual } from 'node:util'
 
@@ -222,7 +222,8 @@ function raisesCandidatePermission({
   before: DispatchDocument
   after: DispatchDocument
 }): boolean {
-  const state = loadHydra({ hydraId }).state
+  const callerHydraId = requestEnv().PNYX_HYDRA || hydraId
+  const state = loadHydra({ hydraId: callerHydraId }).state
   const previousHydra = hydraCandidate({
     state: {},
     dispatch: before,

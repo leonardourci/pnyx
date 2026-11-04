@@ -110,6 +110,27 @@ test(
         effectiveDispatch().dispatch.rules['settings-build']?.candidates[0]?.mode,
         undefined,
       )
+      await other.chat({ text: 'Inspect the settings.' })
+      await other.owner({
+        args: [
+          'agent',
+          '$hydra',
+          'mode',
+          'bypassPermissions',
+        ],
+      })
+      assert.equal(
+        await other.as({ agent: session }).refused({
+          args: [
+            'rule',
+            'set',
+            'settings-build',
+            '--mode',
+            'acceptEdits',
+          ],
+        }),
+        'OWNER_ONLY',
+      )
       await s.owner({
         args: [
           'rule',
