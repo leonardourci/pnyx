@@ -1,5 +1,0 @@
-#!/bin/sh
-# Stands in for git on a huge repository: notes each call, waits, then runs the next git on PATH.
-echo "git $*" >> "$SLOW_GIT_LOG"
-sleep "$SLOW_GIT_SECONDS"
-PATH=${PATH#"$(dirname "$0")":} exec git "$@"
