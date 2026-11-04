@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto'
 // The flow harness: one disposable Pnyx for the whole run (see pnyx.ts), a fresh Hydra per flow, real
 // `pnyx-axi` subprocesses, and fake agents replaying recorded sessions. See docs/testing.md.
 import assert from 'node:assert/strict'
@@ -212,7 +213,6 @@ export async function openPage({
       reject,
     )
   })
-  let next = 0
 
   const ask = ({
     name,
@@ -221,7 +221,7 @@ export async function openPage({
     name: string
     args: string[]
   }) => {
-    const id = `page-${next++}`
+    const id = `page-${randomUUID()}`
     ws.send(JSON.stringify({
       type: 'command',
       id,
