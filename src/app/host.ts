@@ -28,7 +28,7 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
-import { accountEnvironment, agentAvailability, readUsage } from '#workers/dispatch.ts'
+import { accountEnvironment, agentExhausted, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
@@ -3316,7 +3316,7 @@ export function createHost({
 
       return Promise.resolve({ state: 'queued' })
     },
-    agentAvailability: async ({ agent }) => {
+    agentExhausted: async ({ agent }) => {
       const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
@@ -3325,10 +3325,10 @@ export function createHost({
       })
       const account = name ? effective.accounts[name] : undefined
 
-      return account ? agentAvailability({
+      return account ? agentExhausted({
         candidate: agent,
         account,
-      }) : 'unknown'
+      }) : false
     },
     changeAgent: ({
       id,
@@ -3421,9 +3421,9 @@ export function createHost({
               return
             }
 
-            const available = await host.agentAvailability({ agent: change.previous })
+            const exhausted = await host.agentExhausted({ agent: change.previous })
 
-            if (choice === 'inscribe' && available !== 'exhausted') {
+            if (choice === 'inscribe' && !exhausted) {
               const inscribeId = `operation:${operationId}:inscribe`
               const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Complete the inscribe pass before this agent switch.</pnyx-wake>`
               await host.hydra({
@@ -3481,7 +3481,7 @@ export function createHost({
                 at: at(),
               }),
             })
-            const candidate = available === 'exhausted' ? change.next : change.previous
+            const candidate = exhausted ? change.next : change.previous
             const effective = effectiveDispatch()
             const name = harnessAccount({
               effective,

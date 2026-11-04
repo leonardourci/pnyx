@@ -43,7 +43,7 @@ export interface Host {
     release?: boolean
     selected?: AgentConfig
   }): Promise<Record<string, unknown>>
-  agentAvailability({ agent }: { agent: AgentConfig }): Promise<'available' | 'exhausted' | 'unknown'>
+  agentExhausted({ agent }: { agent: AgentConfig }): Promise<boolean>
   changeAgent({
     id,
     choice,
