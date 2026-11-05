@@ -66,7 +66,14 @@ export async function hostRequestUnlocked({
       return host.stop()
 
     case 'usage':
-      return host.usage()
+      return host.usage({
+        card: field({
+          body,
+          name: 'card',
+          optional: true,
+        }),
+        refresh: body.refresh === true,
+      })
 
     case 'start': {
       const folder = field({

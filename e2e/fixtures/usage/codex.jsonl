@@ -1,0 +1,2 @@
+{"type":"event_msg","timestamp":"2026-11-05T12:00:00Z","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":22000},"last_token_usage":{"total_tokens":16000},"model_context_window":200000}}}
+{"type":"event_msg","timestamp":"2026-11-05T12:01:00Z","payload":{"type":"token_count","info":{"total_token_usage":{"total_tokens":110000},"last_token_usage":{"total_tokens":84000},"model_context_window":200000}}}

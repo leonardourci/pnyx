@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
@@ -184,6 +184,35 @@ test(
       '--hydra',
       'lab',
     ])
+    const quotaCommand = join(
+      root,
+      'fake-bin',
+      'quota-axi',
+    )
+    const quotaFixture = join(
+      root,
+      'fake-bin',
+      'quota-fixture',
+    )
+    const quotaReads = join(
+      root,
+      'quota-reads.jsonl',
+    )
+    renameSync(
+      quotaCommand,
+      quotaFixture,
+    )
+    writeFileSync(
+      quotaCommand,
+      `#!/usr/bin/env node
+const { appendFileSync } = require('node:fs');
+const { spawnSync } = require('node:child_process');
+appendFileSync(${JSON.stringify(quotaReads)}, JSON.stringify(process.argv.slice(2)) + '\\n');
+const result = spawnSync(process.execPath, [${JSON.stringify(quotaFixture)}, ...process.argv.slice(2)], { stdio: 'inherit' });
+process.exit(result.status ?? 1);
+`,
+      { mode: 0o755 },
+    )
     const usage = await host.usage()
     assert.ok('harness' in usage)
     assert.equal(
@@ -193,6 +222,24 @@ test(
     assert.equal(
       usage.plan,
       'work',
+    )
+    await host.usage({ refresh: true })
+    const maxAges = readFileSync(
+      quotaReads,
+      'utf8',
+    ).trim()
+      .split('\n')
+      .map(line => {
+        const args: string[] = JSON.parse(line)
+
+        return args[args.indexOf('--max-age') + 1]
+      })
+    assert.deepEqual(
+      maxAges,
+      [
+        '5m',
+        '0',
+      ],
     )
     writeDocument({
       document: {

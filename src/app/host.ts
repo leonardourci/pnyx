@@ -35,7 +35,9 @@ import { statSync } from 'node:fs'
 import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
-import { hydraFastReaches, mergeWindows, type HostedSession, type HostedUsage, type PermissionDecision } from '#workers/provider.ts'
+import type { TaskSpend } from '#workers/task-spend.ts'
+import { usageFor } from '#workers/usage.ts'
+import { hydraFastReaches, mergeWindows, type HostedSession, type HostedUsage, type UsageReading, type HydraUsage, type PermissionDecision } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
@@ -163,6 +165,9 @@ export function createHost({
     ]))
   // The latest size and spend each session reported, kept after its process idles out.
   const usages = new Map<string, Omit<HostedUsage, 'type'>>()
+  let recordedSpends: Record<string, TaskSpend> = {}
+  let transcriptReadings: Record<string, UsageReading> = {}
+  const plans = new Map<string, Awaited<ReturnType<typeof readUsage>>>()
   const pending = new Map<string, {
     card: string
     entry: Live
@@ -1428,6 +1433,7 @@ export function createHost({
                 'used',
                 'window',
                 'cost',
+                'inputTokens',
                 'plan',
               ] as const).flatMap(field => activity[field] === undefined ? [] : [
                 [
@@ -1444,6 +1450,7 @@ export function createHost({
             },
           )
 
+          streamed?.({ session: key })
           continue
         }
 
@@ -3668,9 +3675,41 @@ export function createHost({
       return { stopped: 'hydra' }
     },
     // Hydra's context window and spend, and its account's plan windows; anything unknown is left out.
-    usage: async () => {
+    usageViews: ({
+      spend = {},
+      readings = {},
+    }) => {
+      recordedSpends = spend
+      transcriptReadings = readings
       const state = loadHydra({ hydraId }).state
-      const agent = state.cards[HYDRA_CARD]?.agent
+
+      return Object.fromEntries(Object.values(state.cards).map(card => {
+        const key = card.agent ? sessionId({ agent: card.agent }) : ''
+
+        return [
+          card.id,
+          usageFor({
+            agent: card.agent,
+            model: card.settings?.model,
+            live: usages.get(key),
+            transcript: readings[key],
+            plan: plans.get(key),
+            spend: spend[card.id],
+            helper: card.id === HYDRA_CARD ? state.helper?.usage : undefined,
+          }),
+        ]
+      }))
+    },
+    usage: async ({
+      card: ref,
+      refresh,
+    } = {}) => {
+      const state = loadHydra({ hydraId }).state
+      const card = ref ? findCard({
+        state,
+        ref,
+      }) : state.cards[HYDRA_CARD]
+      const agent = card?.agent
 
       if (!agent) {
         return { usage: 'none: Hydra has not started a session' }
@@ -3686,38 +3725,40 @@ export function createHost({
       const configuredFolder = account?.provider === harness ? account.folder : undefined
       const folder = agent.loginFolder ?? configuredFolder ?? defaultLogin({ provider: harness })
       const plan = await readUsage({
+        refresh,
         account: {
           provider: harness,
           folder,
         },
       })
 
-      // What the agent reported wins until its window resets; quota-axi fills the rest.
-      const {
-        limits = [],
-        plan: reported,
-        ...session
-      } = usages.get(sessionId({ agent })) ?? {}
-      const windows = mergeWindows({
-        base: plan?.windows ?? [],
-        over: limits.filter(limit => !limit.resetsAt || Date.parse(limit.resetsAt) > Date.now()),
+      plans.set(
+        sessionId({ agent }),
+        plan,
+      )
+      streamed?.({ session: sessionId({ agent }) })
+      const reading = usages.get(sessionId({ agent }))
+      const normalized = usageFor({
+        agent,
+        model: card?.settings?.model,
+        live: reading,
+        transcript: transcriptReadings[sessionId({ agent })],
+        plan,
+        spend: card ? recordedSpends[card.id] : undefined,
+        helper: card?.id === HYDRA_CARD ? state.helper?.usage : undefined,
       })
-      const planName = reported ?? plan?.plan
-      const helperUsage = state.helper?.usage
-      const completeHelperCost = helperUsage && helperUsage.measuredBatches === helperUsage.batches
-        ? helperUsage.cost : undefined
-
-      return {
+      const result: HydraUsage = {
+        ...normalized,
         harness,
-        ...(name ? { account: name } : {}),
-        ...session,
-        ...(helperUsage ? { helper: helperUsage } : {}),
-        ...(session.cost !== undefined && completeHelperCost !== undefined ? {
-          combinedCost: session.cost + completeHelperCost,
-        } : {}),
-        ...(planName ? { plan: planName } : {}),
-        ...(windows.length ? { windows } : {}),
+        account: name,
+        plan: normalized.who.plan,
+        used: normalized.context?.used,
+        window: normalized.context?.window,
+        cost: normalized.recorded.cost,
+        inputTokens: reading?.inputTokens,
       }
+
+      return result
     },
     start: async ({
       task,

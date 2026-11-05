@@ -172,6 +172,7 @@ export async function openPage({
   let state: HydraState | undefined
   const answers = new Map<string, ServerMessage>()
   const queues: HydraQueue[] = []
+  const usages: Record<string, import('#workers/provider.ts').AgentUsage> = {}
   const upgrades: UpgradeStatus[] = []
   const settings: Settings[] = []
   ws.on(
@@ -179,7 +180,12 @@ export async function openPage({
     (data: unknown) => {
       const message = JSON.parse(String(data)) as ServerMessage
 
-      if (message.type === 'upgrade') {
+      if (message.type === 'latest' && message.usage) {
+        Object.assign(
+          usages,
+          message.usage,
+        )
+      } else if (message.type === 'upgrade') {
         upgrades.push(message.upgrade)
       } else if (message.type === 'settings') {
         settings.push(message.settings)
@@ -237,6 +243,7 @@ export async function openPage({
 
   return {
     queues,
+    usages,
     upgrades,
     // Every shared settings push, in order: one on connect, then one per change.
     settings,

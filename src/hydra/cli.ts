@@ -603,6 +603,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     options: {
       ...WRITE,
       task: { type: 'string' },
+      refresh: { type: 'boolean' },
       action: { type: 'string' },
       kind: { type: 'string' },
       key: { type: 'string' },
@@ -848,6 +849,8 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       hydraId,
       body: {
         action,
+        card: values.task,
+        refresh: values.refresh,
         actor: meta({ values }).actor,
       },
     }) : { [action === 'stop' ? 'stopped' : 'usage']: 'none: no Pnyx server runs this Hydra' })
