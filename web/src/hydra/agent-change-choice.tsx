@@ -76,8 +76,12 @@ function HeldMessageCard({
   const running = change.state === 'running'
   const effort = change.kind === 'effort'
   const actionsDisabled = !connected || running
-  const title = running ? 'Preparing the conversation…'
-    : effort ? `Changing effort to ${change.next.effort ?? 'default'}` : `Switching to ${next}`
+  let title = effort ? `Changing effort to ${change.next.effort ?? 'default'}` : `Switching to ${next}`
+
+  if (running) {
+    title = 'Preparing the conversation…'
+  }
+
   const explanation = effort ? `The agent continues at its new effort. ${COMPACT_WHY}` : `A new agent starts with fresh context. ${COMPACT_WHY}`
   const caption = effort
     ? 'Recommended: saves what\'s worth remembering first. Neither carries on without compacting and is not recommended.'

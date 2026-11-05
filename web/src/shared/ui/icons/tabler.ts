@@ -108,7 +108,6 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   helper: IconSparkles,
   workers: IconUsers,
   dispatch: IconArrowsSplit2,
-  // The agent change choices.
   inscribe: IconWriting,
   compact: IconArrowsMinimize,
 }
