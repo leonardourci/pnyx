@@ -1,9 +1,7 @@
 import type { HydraState } from '#app/model.ts'
-import { readEventsFrom } from '#app/event-log.ts'
+import { historyCommand, lastCompactionSummary } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { HostedSession } from '#workers/provider.ts'
-import { HYDRA_CARD } from './identity.ts'
-import { ownerActor } from '#app/actors.ts'
 
 export function agentChangeKind({
   previous,
@@ -24,35 +22,16 @@ export function agentChangeKind({
 export function conversationContext({
   hydraId,
   state,
-  ownerBefore = Infinity,
 }: {
   hydraId: string
   state: HydraState
-  ownerBefore?: number
 }): string {
-  const after = state.hydraContext?.after ?? 0
-  const messages = readEventsFrom({
-    hydraId,
-    offset: 0,
-  })?.events.flatMap(event => {
-    if (event.seq <= after) {
-      return []
-    }
-
-    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role === 'assistant') {
-      return [`[Hydra] ${event.data.text}`]
-    }
-
-    if (event.type === 'hydra.message' && event.seq < ownerBefore && event.data.kind !== 'divider' && ownerActor({ actor: event.actor })) {
-      return [`[owner] ${event.data.text}`]
-    }
-
-    return []
-  }) ?? []
-
   return [
-    state.hydraContext?.summary,
-    ...messages,
+    lastCompactionSummary({ state }),
+    `Read the recorded conversation since the last compaction with ${historyCommand({
+      hydraId,
+      since: 'last-compaction',
+    })}. Follow every continuation cursor before acting on the conversation.`,
   ].filter(Boolean).join('\n\n')
 }
 
@@ -76,10 +55,24 @@ export async function agentChangeTurn({
   try {
     for await (const event of session.run({
       input: input(),
-      permission: async () => ({
-        behavior: 'deny',
-        message: 'Compaction summarizes the recorded conversation and cannot run tools.',
-      }),
+      permission: async ({
+        tool,
+        input,
+      }) => {
+        let command = input.command
+
+        if (Array.isArray(command) && command.length === 3 && (command[1] === '-lc' || command[1] === '-c')) {
+          command = command[2]
+        }
+
+        const shell = tool === 'Bash' || tool === 'Command'
+        const read = typeof command === 'string' && /^pnyx-axi hydra history(?: --(?:hydra|since|through|budget|after) [a-zA-Z0-9:_.-]+)*$/.test(command)
+
+        return shell && read ? { behavior: 'allow' } : {
+          behavior: 'deny',
+          message: 'Compaction may only read history with the supplied pnyx-axi hydra history command.',
+        }
+      },
     })) {
       if (typeof event !== 'object' || event.type !== 'turn-ended') {
         continue

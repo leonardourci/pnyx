@@ -66,11 +66,15 @@ export interface HydraStatus {
 // Something that stops or blocks Hydra for a while: a restart, an upgrade's restart or a compaction.
 export interface HydraOperation {
   id: string
-  kind: 'restart' | 'upgrade' | 'compaction'
+  kind: 'restart' | 'upgrade' | 'compaction' | 'inscribe'
   state: 'started' | 'finished' | 'failed'
   error?: string
   // On start: the last event before the oldest message already waiting for Hydra, so the recap covers it too.
   after?: number
+  // The last log position covered, fixed before the operation starts reading.
+  through?: number
+  // An inscribe pass within a switch shares its compaction's chat divider.
+  parent?: string
 }
 
 export type ChatEvent = EventBase & {
@@ -78,6 +82,8 @@ export type ChatEvent = EventBase & {
   data: {
     session: string
     nativeId: string
+    messageId?: string
+    part?: number
     role: string
     text: string
   }

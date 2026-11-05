@@ -413,6 +413,7 @@ export interface HydraState {
   hydraMessages?: HydraMessage[]
   hydraAgent?: import('#workers/model.ts').AgentConfig
   hydraAgentChange?: import('#hydra/model.ts').HydraAgentChange
+  historyMilestones?: import('#hydra/history.ts').HistoryMilestone[]
   hydraContext?: {
     after: number
     summary: string

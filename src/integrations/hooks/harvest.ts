@@ -270,6 +270,8 @@ export function harvestTranscripts({
                 data: {
                   session,
                   nativeId: entry.id,
+                  messageId: entry.messageId,
+                  part: entry.part,
                   role: entry.role,
                   text: redact({ text: entry.text }),
                 },

@@ -74,11 +74,15 @@ export const COMMAND_REGISTRY = {
   column: { page: true },
   hydra: {
     page: true,
-    worker: ['send'],
+    worker: [
+      'send',
+      'history',
+    ],
     helper: {
       reads: [
         'check',
         'messages',
+        'history',
         'show',
       ],
     },

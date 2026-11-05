@@ -1,3 +1,4 @@
+import { applyHistory } from '#hydra/history.ts'
 import { cloneValue } from './preimage.ts'
 import { operationLabel } from '#hydra/operation-label.ts'
 import { ownerActor } from './actors.ts'
@@ -85,6 +86,10 @@ export function applyHydra({
   }
 
   if (event.type === 'hydra.operation') {
+    if (event.data.kind === 'inscribe') {
+      return true
+    }
+
     if (event.data.state === 'started') {
       state.hydraOperation = {
         id: event.data.id,
@@ -92,23 +97,13 @@ export function applyHydra({
         since: event.at,
         seq: event.data.after ?? event.seq,
       }
-
-      if (event.data.kind === 'compaction') {
-        state.hydraMessages = [
-          ...(state.hydraMessages ?? []),
-          {
-            id: event.id,
-            action: 'send',
-            kind: 'divider',
-            text: 'Compaction started',
-            at: event.at,
-            actor: 'pnyx',
-            hydra: hydraConfig({ state }).hydra.id,
-          },
-        ]
-      }
     } else if (state.hydraOperation?.id === event.data.id) {
       delete state.hydraOperation
+
+      if (event.data.kind === 'compaction') {
+        return true
+      }
+
       state.hydraMessages = [
         ...(state.hydraMessages ?? []),
         {
@@ -632,6 +627,11 @@ function apply({
   applyLabelColors({
     state,
     colors: event.labelColors,
+  })
+
+  applyHistory({
+    state,
+    event,
   })
 
   if (applyCompaction({

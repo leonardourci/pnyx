@@ -16,6 +16,10 @@ const LABELS: Record<HydraOperation['kind'], {
     done: 'Compacted',
     failed: 'Compaction failed',
   },
+  inscribe: {
+    done: 'Inscribed',
+    failed: 'Inscribe failed',
+  },
 }
 
 // The words the chat's divider shows when an operation that stopped Hydra ends.

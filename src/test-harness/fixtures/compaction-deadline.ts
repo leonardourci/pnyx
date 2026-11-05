@@ -1,3 +1,4 @@
+import { historyBoundary } from '#hydra/history.ts'
 import assert from 'node:assert/strict'
 import { randomUUID } from 'node:crypto'
 import { rmSync, writeFileSync } from 'node:fs'
@@ -216,6 +217,14 @@ try {
     check: () => !stopped(),
     tick: RELEASE_TICK_MS,
   })
+
+  assert.equal(
+    historyBoundary({
+      state: loadHydra({ hydraId }).state,
+      since: 'last-compaction',
+    }),
+    0,
+  )
 
   // The same compaction reports again after its deadline: Claude Code gives the status a new uuid, then sends its result.
   await status({})

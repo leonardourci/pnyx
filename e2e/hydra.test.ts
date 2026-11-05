@@ -12,6 +12,40 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
+async function finishInscribe({
+  s,
+  agent,
+}: {
+  s: Scenario
+  agent: Awaited<ReturnType<Scenario['agent']>>
+}) {
+  const worker = s.as({ agent })
+  const pass = await worker.run({
+    args: [
+      'hydra',
+      'inscribe',
+      'start',
+    ],
+  })
+  const milestone = pass.match(/^milestone: (.+)$/m)?.[1]
+  assert.ok(milestone)
+  const id = JSON.parse(milestone) as string
+  const through = pass.match(/^through: (\d+)$/m)?.[1]
+  assert.ok(id)
+  assert.ok(through)
+  await worker.run({
+    args: [
+      'hydra',
+      'inscribe',
+      'finish',
+      '--key',
+      id,
+      '--through',
+      through,
+    ],
+  })
+}
+
 const finished = async ({
   s,
   turns,
@@ -99,7 +133,7 @@ test(
       }),
     )
     const handover = pnyx.claude.plan({
-      text: 'read the conversation page by page with `pnyx-axi hydra messages --inscribe`.</pnyx-wake>',
+      text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
       reply: 'Memory saved.',
       hold: true,
     })
@@ -129,7 +163,7 @@ test(
       const inscriber = await until({
         what: 'the replacement model to read the paged log',
         check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
-          && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>'))),
+          && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>'))),
       })
       assert.equal(
         inscriber.model,
@@ -148,9 +182,10 @@ test(
       const firstPage = await s.as({ agent: inscriber }).run({
         args: [
           'hydra',
-          'messages',
-          '--inscribe',
-          '--limit',
+          'history',
+          '--since',
+          'last-inscribe',
+          '--budget',
           '1',
         ],
       })
@@ -158,17 +193,19 @@ test(
         firstPage,
         /Remember the release decision/,
       )
-      const through = firstPage.match(/through: (\d+)/)?.[1]
-      assert.ok(through)
+      const after = firstPage.match(/after: (.+)/)?.[1]
+      assert.ok(after)
+      const through = JSON.parse(after) as string
       const nextPage = await s.as({ agent: inscriber }).run({
         args: [
           'hydra',
-          'messages',
-          '--inscribe',
+          'history',
+          '--since',
+          'last-inscribe',
           '--after',
           through,
-          '--limit',
-          '1',
+          '--budget',
+          '15000',
         ],
       })
       assert.match(
@@ -179,18 +216,9 @@ test(
         nextPage,
         /Remember the release decision/,
       )
-      await s.as({ agent: inscriber }).run({
-        args: [
-          'hydra',
-          'memory',
-          'set',
-          '--key',
-          'inscribe-cursor',
-          '--text',
-          String(s.state().seq),
-          '--reason',
-          'Inscribe pass complete',
-        ],
+      await finishInscribe({
+        s,
+        agent: inscriber,
       })
       handover.release()
       await until({
@@ -336,7 +364,7 @@ test(
         (await page.refusal({
           name: 'hydra-agent-change',
           args: [
-            'after',
+            'stale-choice',
             'neither',
           ],
         })).code,
@@ -551,18 +579,9 @@ test(
             'Inscribe',
           ],
         })
-        await s.as({ agent: inscribing }).run({
-          args: [
-            'hydra',
-            'memory',
-            'set',
-            '--key',
-            'inscribe-cursor',
-            '--text',
-            String(s.state().seq),
-            '--reason',
-            'Inscribe pass complete',
-          ],
+        await finishInscribe({
+          s,
+          agent: inscribing,
         })
         inscription.release()
         await until({
@@ -576,9 +595,45 @@ test(
         )
         const compactPrompt = s.received({ cwd: agent.cwd }).at(-1)!
         assert.ok(compactPrompt.includes('The release notes were acknowledged.'))
-        assert.ok(compactPrompt.includes('Before Fast'))
+        assert.ok(compactPrompt.includes('pnyx-axi hydra history'))
+        assert.ok(!compactPrompt.includes('Before Fast'))
         assert.ok(compactPrompt.includes('Release decisions saved before switching.'))
         assert.ok(!compactPrompt.includes('Before the switch'))
+        const summarizer = pnyx.claude.sessions.findLast(session =>
+          session.env.PNYX_HYDRA === s.hydraId)!
+        const historyCommand = compactPrompt.match(/`(pnyx-axi hydra history[^`]+)`/)?.[1]
+        assert.ok(historyCommand)
+        const useTool = summarizer.useTool
+        assert.ok(useTool)
+        assert.equal(
+          (await useTool({
+            tool: 'Bash',
+            input: { command: historyCommand },
+          }))?.behavior,
+          'allow',
+        )
+        assert.equal(
+          (await useTool({
+            tool: 'Bash',
+            input: { command: `${historyCommand} && touch unexpected` },
+          }))?.behavior,
+          'deny',
+        )
+        const historyArgs = historyCommand.replace(
+          ` --hydra ${s.hydraId}`,
+          '',
+        ).split(' ')
+          .slice(1)
+        const recordedHistory = await s.as({ agent: summarizer }).run({ args: historyArgs })
+        assert.match(
+          recordedHistory,
+          /Before Fast/,
+        )
+        assert.doesNotMatch(
+          recordedHistory,
+          /Before the switch/,
+        )
+
         await send({
           s,
           text: 'Queued during the switch',
@@ -589,6 +644,14 @@ test(
           s,
           turns: 12,
         })
+        assert.equal(
+          s.state().hydraMessages?.filter(message => message.kind === 'divider' && message.text === 'Inscribed and compacted').length,
+          1,
+        )
+        assert.equal(
+          s.state().hydraMessages?.filter(message => message.kind === 'divider' && message.text === 'Inscribed').length,
+          0,
+        )
         const resumed = s.received({ cwd: agent.cwd }).at(-1)!
         assert.ok(resumed.includes('Switch back'))
         assert.ok(resumed.includes('Release decisions saved before switching.'))
@@ -653,7 +716,7 @@ test(
             'codex',
           )
           const handover = pnyx.codex.plan({
-            text: 'read the conversation page by page with `pnyx-axi hydra messages --inscribe`.</pnyx-wake>',
+            text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
             reply: 'Memory saved.',
             hold: true,
           })
@@ -667,24 +730,15 @@ test(
           await until({
             what: 'the new agent to inscribe for the agent with no usage left',
             check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId
-              && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>'))),
+              && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>'))),
           })
           const inscriber = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
-            && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>')))!
+            && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>')))!
           assert.ok(!inscriber.received[0]!.includes('Conversation context:'))
           const inscribeSession = s.state().cards[HYDRA_CARD]!.agent!.sessionId
-          await s.as({ agent: inscriber }).run({
-            args: [
-              'hydra',
-              'memory',
-              'set',
-              '--key',
-              'inscribe-cursor',
-              '--text',
-              String(s.state().seq),
-              '--reason',
-              'Inscribe pass complete',
-            ],
+          await finishInscribe({
+            s,
+            agent: inscriber,
           })
           handover.release()
           await until({

@@ -1,3 +1,5 @@
+import { HydraError } from '#store/errors.ts'
+import { loggedEntry } from './history.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -632,14 +634,7 @@ export function readThread(
       }
 
       splitEntry({
-        entry: {
-          id: e.id,
-          role: e.data.role,
-          kind: 'message',
-          text: e.data.text,
-          at: e.at,
-          session: e.data.session,
-        },
+        entry: loggedEntry({ event: e }),
       }).forEach((
         item,
         index,
@@ -724,4 +719,71 @@ export function readThread(
   }
 
   return result
+}
+
+// History reads the same saved pages as chat, including archived sessions and transport parts.
+export function historyEntries({
+  hydraId,
+  state,
+}: {
+  hydraId: string
+  state: HydraState
+}): ThreadEntry[] {
+  const card = state.cards[HYDRA_CARD]
+
+  if (!card) {
+    return []
+  }
+
+  const entries = new Map<string, ThreadEntry>()
+  const cursors = new Set<string>()
+  let before: string | undefined
+
+  do {
+    const page = readThread({
+      hydraId,
+      state,
+      card,
+      homes: [],
+      before,
+    })
+
+    for (const entry of page.entries) {
+      const id = `${entry.session ?? ''}:${entry.id}`
+      entries.set(
+        id,
+        entry,
+      )
+    }
+
+    before = page.older
+
+    if (before && cursors.has(before)) {
+      throw new HydraError({
+        message: 'Conversation history did not advance',
+        code: 'HISTORY_UNAVAILABLE',
+      })
+    }
+
+    if (before) {
+      cursors.add(before)
+    }
+  } while (before)
+
+  return [...entries.values()].sort((
+    a,
+    b,
+  ) => {
+    const time = (a.at ?? '').localeCompare(b.at ?? '')
+
+    if (time) {
+      return time
+    }
+
+    if (a.messageId && a.messageId === b.messageId) {
+      return (a.part ?? 0) - (b.part ?? 0)
+    }
+
+    return Number.parseInt(a.id) - Number.parseInt(b.id)
+  })
 }
