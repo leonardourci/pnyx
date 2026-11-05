@@ -1,6 +1,6 @@
 import {
   IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
-  IconArrowsSplit2, IconArrowUpRight,
+  IconArrowsMinimize, IconArrowsSplit2, IconArrowUpRight,
   IconAt,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
   IconChevronDown, IconChevronRight, IconCircleArrowUp, IconClipboardList, IconClock, IconCode,
@@ -10,7 +10,7 @@ import {
   IconMessage, IconMessagePlus, IconMessageQuestion, IconMinus, IconPaperclip, IconPencil,
   IconPencilCheck, IconPhoto, IconPinned, IconPinnedFilled, IconPlayerStopFilled, IconPlug,
   IconPlus, IconQuote, IconRobot, IconRotateClockwise, IconSearch, IconSettings, IconStar, IconTag,
-  IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconX,
+  IconTerminal2, IconTestPipe, IconTool, IconUser, IconWorld, IconWriting, IconX,
   IconCards, IconEyeOff, IconInfoCircle, IconKeyboard, IconLayoutColumns, IconLayoutSidebar,
   IconMoon, IconPalette, IconRefresh, IconSparkles, IconSun, IconTypography, IconUsers,
 } from '@tabler/icons-react'
@@ -108,4 +108,6 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   helper: IconSparkles,
   workers: IconUsers,
   dispatch: IconArrowsSplit2,
+  inscribe: IconWriting,
+  compact: IconArrowsMinimize,
 }

@@ -28,7 +28,7 @@ import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
-import { accountEnvironment, agentAvailability, readUsage } from '#workers/dispatch.ts'
+import { accountEnvironment, agentExhausted, readUsage } from '#workers/dispatch.ts'
 import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch, type Harness } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { statSync } from 'node:fs'
@@ -2738,6 +2738,7 @@ export function createHost({
       id,
       release = false,
       selected,
+      history = true,
     }) => {
       if (reportActor({ actor })) {
         changed()
@@ -2953,7 +2954,8 @@ export function createHost({
 
           state = loadHydra({ hydraId }).state
           card = state.cards[HYDRA_CARD]
-          const sameIdentity = card?.agent?.provider === provider && card.agent.account === main
+          const sameIdentity = history && card?.agent?.provider === provider
+            && card.agent.account === main
             && state.hydraContext?.previousSession !== sessionId({ agent: card.agent })
             && (!state.hydraContext || state.hydraAgent?.model === candidate.model)
           const agent = sameIdentity ? card?.agent : undefined
@@ -2974,7 +2976,7 @@ export function createHost({
               cwd,
               agent,
               settings,
-              ...hydraSession({ history: !agent && Boolean(state.hydraContext) }),
+              ...hydraSession({ history: history && !agent && Boolean(state.hydraContext) }),
               env: agent?.loginFolder ? accountEnvironment({
                 account: {
                   provider: candidate.harness,
@@ -3316,7 +3318,7 @@ export function createHost({
 
       return Promise.resolve({ state: 'queued' })
     },
-    agentAvailability: async ({ agent }) => {
+    agentExhausted: async ({ agent }) => {
       const effective = effectiveDispatch()
       const name = harnessAccount({
         effective,
@@ -3325,10 +3327,10 @@ export function createHost({
       })
       const account = name ? effective.accounts[name] : undefined
 
-      return account ? agentAvailability({
+      return account ? agentExhausted({
         candidate: agent,
         account,
-      }) : 'unknown'
+      }) : false
     },
     changeAgent: ({
       id,
@@ -3421,16 +3423,18 @@ export function createHost({
               return
             }
 
-            const available = await host.agentAvailability({ agent: change.previous })
+            // A previous agent with no usage left hands inscribe to the new agent, which pages through Pnyx's log instead of taking the conversation in its prompt.
+            const handOver = await host.agentExhausted({ agent: change.previous })
 
-            if (choice === 'inscribe' && available !== 'exhausted') {
+            if (choice === 'inscribe') {
               const inscribeId = `operation:${operationId}:inscribe`
-              const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Complete the inscribe pass before this agent switch.</pnyx-wake>`
+              const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Complete the inscribe pass before this agent switch.${handOver ? ' You take over from an agent with no usage left: read the conversation page by page with `pnyx-axi hydra messages --inscribe`.' : ''}</pnyx-wake>`
               await host.hydra({
                 id: inscribeId,
                 actor: 'pnyx',
                 text: inscribeText,
-                selected: change.previous,
+                selected: handOver ? change.next : change.previous,
+                history: !handOver,
               })
               await hydraTurn
               const inscribingAgent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
@@ -3481,7 +3485,7 @@ export function createHost({
                 at: at(),
               }),
             })
-            const candidate = available === 'exhausted' ? change.next : change.previous
+            const candidate = handOver ? change.next : change.previous
             const effective = effectiveDispatch()
             const name = harnessAccount({
               effective,
@@ -3533,13 +3537,15 @@ export function createHost({
               text,
               id: `${operationId}:summary`,
             })
+            // The next turn must start from the saved summary rather than resume the inscribe session.
+            const last = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
             changeAgent({
               change: {
                 ...change,
                 choice,
                 state: 'finished',
                 summary,
-                previousSession: current ? sessionId({ agent: current }) : undefined,
+                previousSession: last ? sessionId({ agent: last }) : undefined,
               },
             })
             endOperation({ id: operationId })

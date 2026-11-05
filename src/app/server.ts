@@ -1823,7 +1823,6 @@ export async function mountOwnedHydra({
       'hydras',
       'hydra-agent',
       'hydra-agent-change',
-      'hydra-agent-usage',
       'models',
       'compact',
     ].includes(String(name))) {
@@ -2017,36 +2016,6 @@ export async function mountOwnedHydra({
           }
 
           answer()
-        } else if (name === 'hydra-agent-usage') {
-          if (args.length !== 1) {
-            throw new HydraError({
-              message: 'hydra-agent-usage expects one agent configuration',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const agent = candidates({ value: [JSON.parse(args[0]!)] })[0]!
-          background({
-            name: 'Hydra agent usage',
-            run: async () => {
-              try {
-                const availability = await agents.agentAvailability({ agent })
-                send({
-                  ws,
-                  message: {
-                    type: 'receipt',
-                    id,
-                    availability,
-                  },
-                })
-              } catch (error) {
-                fail({
-                  error: (error as Error).message,
-                  code: 'UNKNOWN',
-                })
-              }
-            },
-          })
         } else if (name === 'hydra-agent-change') {
           const choice = args[1]
 

@@ -348,13 +348,14 @@ function exhausted({ effective }: { effective?: EffectiveQuota }): boolean {
   return effective?.runway?.status === 'exhausted_now' || (effective?.status === 'known' && effective.effectivePercentRemaining !== undefined && effective.effectivePercentRemaining <= 0)
 }
 
-export async function agentAvailability({
+// A signed-out account counts as exhausted: it can run nothing until the owner logs in again.
+export async function agentExhausted({
   candidate,
   account,
 }: {
   candidate: Candidate
   account: Account
-}): Promise<'available' | 'exhausted' | 'unknown'> {
+}): Promise<boolean> {
   const reading = await readQuota({ account })
   const model = nativeModel({
     candidate,
@@ -363,16 +364,8 @@ export async function agentAvailability({
 
   const modelQuota = model?.state?.stale ? undefined : model?.effective
 
-  if (reading.auth === 'signed-out' || exhausted({ effective: reading.effective })
-    || exhausted({ effective: modelQuota })) {
-    return 'exhausted'
-  }
-
-  const evidence = modelQuota ?? reading.effective
-  const remaining = evidence?.effectivePercentRemaining
-
-  return evidence?.status === 'known' && remaining !== undefined && remaining > 0
-    ? 'available' : 'unknown'
+  return reading.auth === 'signed-out' || exhausted({ effective: reading.effective })
+    || exhausted({ effective: modelQuota })
 }
 
 const known = ({ row }: { row: EffectiveQuota }): number | undefined => {

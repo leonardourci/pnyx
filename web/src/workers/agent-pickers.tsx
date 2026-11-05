@@ -26,6 +26,7 @@ export function AgentPickers({
   inherited,
   command,
   connected,
+  disabled = false,
   load = true,
   label,
   onChange,
@@ -44,6 +45,8 @@ export function AgentPickers({
   inherited?: Partial<AgentConfig>
   command: Command
   connected: boolean
+  // Locks the pickers while still reading the catalogs, so the model keeps its display name.
+  disabled?: boolean
   // Whether to read the harness catalogs; a Firstmate Hydra has none.
   load?: boolean
   label: string
@@ -126,7 +129,7 @@ export function AgentPickers({
   const reported = useRef('')
 
   useEffect(() => {
-    if (ready && reported.current !== key) {
+    if (ready && !disabled && reported.current !== key) {
       reported.current = key
       onResolved?.({ next: resolved })
     }
@@ -188,7 +191,7 @@ export function AgentPickers({
             effective={effective}
             command={command}
             connected={connected}
-            disabled={!connected}
+            disabled={!connected || disabled}
             invalid={marks?.model?.invalid}
             describedBy={describedBy}
             change={change}
@@ -225,7 +228,7 @@ export function AgentPickers({
             label={field === 'mode' ? 'Permissions' : 'Effort'}
             value={value ?? ''}
             options={options}
-            disabled={!connected || !catalog.models}
+            disabled={!connected || disabled || !catalog.models}
             mark={marks?.[field]}
             onChange={({ value }) => change({
               next: {
@@ -253,7 +256,7 @@ export function AgentPickers({
             data-changed={marks?.fast?.changed || undefined}
             aria-label="Fast mode"
             aria-pressed={agent.fast === true}
-            disabled={!connected}
+            disabled={!connected || disabled}
             onClick={() => change({
               next: {
                 ...agent,
