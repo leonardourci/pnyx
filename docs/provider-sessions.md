@@ -11,3 +11,9 @@ Native permission IDs are separate from the saved Pnyx permission ID. An answer 
 Each `turn-ended` fact carries its completion time, input IDs, status, final text, assembled assistant messages, structured output, usage and any error. The helper parses this complete outcome. Input, permission, answer, terminal, compaction and structured-output events are critical facts; text, tools, thinking, usage, work and foreground activity are view events.
 
 Foreground `finished` does not authorize idle cleanup. Cleanup requires no running turn or tool, unsettled input, pending control, queued native turn or background task. Claude's queue count and background-task replacement sets supply native knowledge; missing queue information keeps the session open. A Codex input refused by steering remains carried until its own turn settles. Codex child agents block cleanup until confirmed shutdown; background commands and unsupported native work also keep their owner open. Explicit close and server shutdown retain their existing authority.
+
+## Usage
+
+Each provider implements `Provider.readUsage` for its own transcript format and emits neutral `HostedUsage` events for live readings. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`.
+
+Current context is the latest request's reading, not the sum of earlier requests. Recorded task tokens retain their worker and attributed Hydra breakdown. If a provider cannot report a count, only complete current context text may be estimated by the browser-safe `countTokens` helper; transcript fragments and task totals never substitute for current context. Cost is never estimated.
