@@ -2954,7 +2954,8 @@ export function createHost({
 
           state = loadHydra({ hydraId }).state
           card = state.cards[HYDRA_CARD]
-          const sameIdentity = card?.agent?.provider === provider && card.agent.account === main
+          const sameIdentity = history && card?.agent?.provider === provider
+            && card.agent.account === main
             && state.hydraContext?.previousSession !== sessionId({ agent: card.agent })
             && (!state.hydraContext || state.hydraAgent?.model === candidate.model)
           const agent = sameIdentity ? card?.agent : undefined
@@ -3536,7 +3537,7 @@ export function createHost({
               text,
               id: `${operationId}:summary`,
             })
-            // The session that inscribed, the new agent's when it took over, must not be resumed as the fresh one.
+            // The next turn must start from the saved summary rather than resume the inscribe session.
             const last = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
             changeAgent({
               change: {

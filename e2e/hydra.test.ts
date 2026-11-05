@@ -49,6 +49,172 @@ const send = ({
 })
 
 test(
+  'an exhausted model hands inscribe to a fresh session on the same account before the first compaction',
+  async () => {
+    const s = await pnyx.scenario()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    await page.command({
+      name: 'hydra-agent',
+      args: [
+        JSON.stringify({
+          harness: 'claude',
+          model: 'sonnet',
+        }),
+      ],
+    })
+    await send({
+      s,
+      text: 'Remember the release decision',
+      id: 'release-decision',
+    })
+    await finished({
+      s,
+      turns: 1,
+    })
+    const previous = await s.agent({ hydra: true })
+    assert.equal(
+      s.state().hydraContext,
+      undefined,
+    )
+    const quota = join(
+      previous.env.CLAUDE_CONFIG_DIR!,
+      'quota.json',
+    )
+    writeFileSync(
+      quota,
+      JSON.stringify({
+        models: [
+          {
+            provider: 'claude',
+            id: 'sonnet',
+            effective: {
+              status: 'known',
+              effectivePercentRemaining: 0,
+            },
+          },
+        ],
+      }),
+    )
+    const handover = pnyx.claude.plan({
+      text: 'read the conversation page by page with `pnyx-axi hydra messages --inscribe`.</pnyx-wake>',
+      reply: 'Memory saved.',
+      hold: true,
+    })
+
+    try {
+      await page.command({
+        name: 'hydra-agent',
+        args: [
+          JSON.stringify({
+            harness: 'claude',
+            model: 'opus',
+          }),
+        ],
+      })
+      await send({
+        s,
+        text: 'Continue with the new model',
+        id: 'new-model',
+      })
+      await page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'new-model',
+          'inscribe',
+        ],
+      })
+      const inscriber = await until({
+        what: 'the replacement model to read the paged log',
+        check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
+          && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>'))),
+      })
+      assert.equal(
+        inscriber.model,
+        'opus',
+      )
+      assert.equal(
+        inscriber.env.CLAUDE_CONFIG_DIR,
+        previous.env.CLAUDE_CONFIG_DIR,
+      )
+      assert.notEqual(
+        inscriber.id,
+        previous.id,
+      )
+      assert.ok(!inscriber.received[0]!.includes('Conversation context:'))
+      assert.ok(!inscriber.received[0]!.includes('Remember the release decision'))
+      const firstPage = await s.as({ agent: inscriber }).run({
+        args: [
+          'hydra',
+          'messages',
+          '--inscribe',
+          '--limit',
+          '1',
+        ],
+      })
+      assert.match(
+        firstPage,
+        /Remember the release decision/,
+      )
+      const through = firstPage.match(/through: (\d+)/)?.[1]
+      assert.ok(through)
+      const nextPage = await s.as({ agent: inscriber }).run({
+        args: [
+          'hydra',
+          'messages',
+          '--inscribe',
+          '--after',
+          through,
+          '--limit',
+          '1',
+        ],
+      })
+      assert.match(
+        nextPage,
+        /Continue with the new model/,
+      )
+      assert.doesNotMatch(
+        nextPage,
+        /Remember the release decision/,
+      )
+      await s.as({ agent: inscriber }).run({
+        args: [
+          'hydra',
+          'memory',
+          'set',
+          '--key',
+          'inscribe-cursor',
+          '--text',
+          String(s.state().seq),
+          '--reason',
+          'Inscribe pass complete',
+        ],
+      })
+      handover.release()
+      await until({
+        what: 'the held message to reach a fresh session after inscribe',
+        check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
+          && session.received.some(text => text.includes('Continue with the new model'))),
+      })
+      assert.notEqual(
+        s.state().cards[HYDRA_CARD]?.agent?.sessionId,
+        inscriber.id,
+      )
+      assert.equal(
+        s.state().hydraAgent?.model,
+        'opus',
+      )
+    } finally {
+      handover.release()
+      unlinkSync(quota)
+      page.close()
+    }
+  },
+)
+
+test(
   'owner messages queue once, agent switches compact the stored conversation, and effort and Fast apply on the next turn',
   async () => {
     const s = await pnyx.scenario()
@@ -505,7 +671,6 @@ test(
           })
           const inscriber = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
             && session.received.some(text => text.endsWith('`pnyx-axi hydra messages --inscribe`.</pnyx-wake>')))!
-          // The conversation reaches the new agent only through the paged log, never in its prompt.
           assert.ok(!inscriber.received[0]!.includes('Conversation context:'))
           const inscribeSession = s.state().cards[HYDRA_CARD]!.agent!.sessionId
           await s.as({ agent: inscriber }).run({
@@ -527,7 +692,6 @@ test(
             check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Continue on Codex') && text.includes('back after a stop'))),
           })
           assert.ok(pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.endsWith('Return only the handoff summary.'))))
-          // The queue goes to a fresh session that starts from the summary, not to the one that inscribed.
           assert.notEqual(
             s.state().cards[HYDRA_CARD]?.agent?.sessionId,
             inscribeSession,
