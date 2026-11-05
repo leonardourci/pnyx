@@ -5,12 +5,12 @@ export type { RecordedUsage } from '#workers/provider.ts'
 
 export interface UsageReader extends TranscriptUsageReader {
   provider: string
-  adapter?: Provider
+  read: Provider['readUsage']
 }
 
 export const usageReader = ({ provider }: { provider: string }): UsageReader => ({
   provider,
-  adapter: transcriptProvider({ provider }),
+  read: transcriptProvider({ provider }),
   rows: [],
   messages: new Map(),
   previousTotal: 0,
@@ -25,7 +25,7 @@ export function readUsage({
   reader: UsageReader
   value: unknown
 }): void {
-  reader.adapter?.readUsage({
+  reader.read({
     reader,
     value,
   })

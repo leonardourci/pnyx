@@ -15,6 +15,27 @@ export function taskContext({ text }: { text: string }): string[] {
   return [...new Set([...text.matchAll(/<pnyx-report\b[^>]*\btask="([^"]+)"/g)].map(match => match[1]!))]
 }
 
+export function usageNumber({
+  value,
+  integer = false,
+}: {
+  value: unknown
+  integer?: boolean
+}): number | undefined {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
+    return undefined
+  }
+
+  if (integer && !Number.isSafeInteger(value)) {
+    return undefined
+  }
+
+  return value
+}
+
 export function count({ value }: { value: unknown }): number {
-  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 ? value : 0
+  return usageNumber({
+    value,
+    integer: true,
+  }) ?? 0
 }

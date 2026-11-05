@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
-import { object, count, taskContext, textContent } from './transcript-usage.ts'
+import { object, count, usageNumber, taskContext, textContent } from './transcript-usage.ts'
 import type { TranscriptUsageReader, HostedImage, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
@@ -768,7 +768,7 @@ export function claudeProvider({
   }
 }
 
-function readClaudeUsage({
+export function readClaudeUsage({
   reader,
   value,
 }: {
@@ -787,18 +787,14 @@ function readClaudeUsage({
     reader.tasks = taskContext({ text: textContent({ value: message.content }) })
   }
 
-  if (record.type === 'result') {
-    const models = object({ value: record.modelUsage })
-    const windows = Object.values(models).map(value => object({ value }).contextWindow)
-      .filter((size): size is number => typeof size === 'number' && size > 0)
+  if (record.type === 'system' && record.subtype === 'compact_boundary') {
+    reader.current = {}
 
-    if (windows.length) {
-      reader.current.window = Math.max(...windows)
-    }
+    return
+  }
 
-    if (typeof record.total_cost_usd === 'number') {
-      reader.current.cost = record.total_cost_usd
-    }
+  if (message.model === '<synthetic>') {
+    return
   }
 
   const usage = object({ value: message.usage })
@@ -833,7 +829,10 @@ function readClaudeUsage({
     usage.cache_creation_input_tokens,
   ]
   const reportedContext = contextCounts.some(value =>
-    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+    usageNumber({
+      value,
+      integer: true,
+    }) !== undefined)
 
   if (reportedContext) {
     reader.current.used = count({ value: usage.input_tokens })

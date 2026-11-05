@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import { usageFor } from './usage.ts'
 
 test(
-  'neutral usage keeps recorded totals separate from context and estimates only complete text',
+  'neutral usage keeps recorded totals separate from context and uses only reported context',
   () => {
     const reading = usageFor({
       agent: {
@@ -22,7 +22,6 @@ test(
         unavailable: 1,
         sharedHydra: true,
       },
-      contextText: 'unrelated assembled text',
     })
     assert.deepEqual(
       reading.context,
@@ -44,22 +43,9 @@ test(
         sharedHydra: true,
       },
     )
-    assert.deepEqual(
-      usageFor({ contextText: '你好🙂' }).context,
-      {
-        used: 3,
-        source: 'estimated',
-      },
-    )
-    assert.deepEqual(
-      usageFor({
-        live: { used: NaN },
-        contextText: '',
-      }).context,
-      {
-        used: 0,
-        source: 'estimated',
-      },
+    assert.equal(
+      usageFor({ live: { used: NaN } }).context,
+      undefined,
     )
     assert.equal(
       usageFor({

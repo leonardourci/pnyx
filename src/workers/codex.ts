@@ -7,7 +7,7 @@ import { pnyxHome } from '#store/paths.ts'
 import { imageBytes } from './input.ts'
 import { nativeSession, type NativeEvent, type NativeSession } from './native-session.ts'
 import { compactCommand } from './compact-command.ts'
-import { count, taskContext, textContent } from './transcript-usage.ts'
+import { object, count, taskContext, textContent } from './transcript-usage.ts'
 import type { TranscriptUsageReader, AskPermission, HostedInput, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
@@ -21,9 +21,6 @@ export type SpawnCodex = ({
 type ObjectValue = Record<string, unknown>
 // JSON-RPC's code for a method the app-server does not have.
 const METHOD_NOT_FOUND = -32601
-const object = ({ value }: { value: unknown }): ObjectValue =>
-  typeof value === 'object' && value !== null && !Array.isArray(value) ? value as ObjectValue : {}
-
 // Codex's never with full access is Pnyx's bypass permissions.
 const NEVER = 'never', ON_REQUEST = 'on-request', BYPASS = 'bypassPermissions'
 const FULL_ACCESS = 'danger-full-access', WORKSPACE_WRITE = 'workspace-write'
@@ -1496,7 +1493,7 @@ export function codexProvider({
   }
 }
 
-function readCodexUsage({
+export function readCodexUsage({
   reader,
   value,
 }: {

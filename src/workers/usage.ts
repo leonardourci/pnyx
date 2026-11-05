@@ -1,26 +1,19 @@
-import { claudeProvider } from './claude.ts'
-import { codexProvider } from './codex.ts'
-import { HARNESSES, PROVIDERS, harnessOf } from './providers.ts'
+import { readClaudeUsage } from './claude.ts'
+import { readCodexUsage } from './codex.ts'
+import { PROVIDERS, harnessOf } from './providers.ts'
 import { mergeWindows, type AgentUsage, type PlanWindow, type UsageReading } from './provider.ts'
 import type { AgentRef } from './model.ts'
 import type { TaskSpend } from './task-spend.ts'
 import type { HelperUsageTotal } from '#routine-helper/state.ts'
-import { countTokens } from './token-count.ts'
+import { usageNumber } from './transcript-usage.ts'
 
-const adapters = {
-  claude: claudeProvider({}),
-  codex: codexProvider({}),
+const transcriptReaders = {
+  claude: readClaudeUsage,
+  codex: readCodexUsage,
 }
 
-export function transcriptProvider({ provider }: { provider: string }) {
-  const harness = HARNESSES.find(harness => harness === provider
-    || PROVIDERS[harness].provider === provider)
-
-  return harness ? adapters[harness] : undefined
-}
-
-const validCount = ({ value }: { value?: number }): boolean =>
-  value !== undefined && Number.isFinite(value) && Number.isInteger(value) && value >= 0
+export const transcriptProvider = ({ provider }: { provider: string }) =>
+  transcriptReaders[harnessOf({ provider })]
 
 export function usageFor({
   agent,
@@ -29,7 +22,7 @@ export function usageFor({
   transcript = {},
   plan,
   spend,
-  contextText,
+  account,
   helper,
   now = Date.now(),
 }: {
@@ -42,8 +35,7 @@ export function usageFor({
     windows: PlanWindow[]
   }
   spend?: TaskSpend
-  // Only the complete current context qualifies for an estimate.
-  contextText?: string
+  account?: string
   helper?: HelperUsageTotal
   now?: number
 }): AgentUsage {
@@ -55,15 +47,14 @@ export function usageFor({
   const usage: AgentUsage = {
     who: {
       provider: registry?.usageName ?? 'Agent',
-      icon: registry?.icon ?? 'robot',
+      icon: registry?.icon ?? 'agent',
       model,
-      account: agent?.account,
+      account: account ?? agent?.account,
       plan: reading.plan ?? plan?.plan,
     },
     recorded: {
       tokens: spend?.total,
-      cost: typeof reading.cost === 'number' && Number.isFinite(reading.cost)
-        && reading.cost >= 0 ? reading.cost : undefined,
+      cost: usageNumber({ value: reading.cost }),
       worker: spend?.worker,
       hydra: spend?.hydra,
       unavailable: spend?.unavailable ?? 0,
@@ -73,7 +64,7 @@ export function usageFor({
       base: plan?.windows ?? [],
       over: (reading.limits ?? []).filter(limit =>
         !limit.resetsAt || Date.parse(limit.resetsAt) > now),
-    }).filter(window => Number.isFinite(window.used) && window.used >= 0),
+    }).filter(window => usageNumber({ value: window.used }) !== undefined),
   }
 
   if (helper) {
@@ -85,28 +76,31 @@ export function usageFor({
     }
   }
 
-  const reported = validCount({ value: reading.used }) ? reading.used : undefined
+  const used = usageNumber({
+    value: reading.used,
+    integer: true,
+  })
 
-  if (reported === undefined && contextText === undefined) {
+  if (used === undefined) {
     usage.unavailable = 'Current context has not been reported'
 
     return usage
   }
 
-  const count = countTokens({
-    text: contextText ?? '',
-    reported,
-  })
   usage.context = {
-    used: count.tokens,
-    source: count.source,
+    used,
+    source: 'reported',
   }
+  const window = usageNumber({
+    value: reading.window,
+    integer: true,
+  })
 
-  if (reading.window !== undefined && validCount({ value: reading.window }) && reading.window > 0) {
-    usage.context.window = reading.window
+  if (window !== undefined && window > 0) {
+    usage.context.window = window
     usage.context.left = Math.max(
       0,
-      reading.window - count.tokens,
+      window - used,
     )
   }
 
