@@ -31,18 +31,22 @@ export function useUsageRefresh({
         return
       }
 
-      setRefreshing(true)
+      if (refresh) {
+        setRefreshing(true)
+      }
 
       try {
         await command({
           name: 'hydra',
           args: refresh ? [
             'usage',
+            'refresh',
             '--task',
             id,
-            '--refresh',
+            '--force',
           ] : [
             'usage',
+            'refresh',
             '--task',
             id,
           ],
@@ -51,7 +55,9 @@ export function useUsageRefresh({
       } catch (error) {
         setError(error instanceof Error ? error.message : String(error))
       } finally {
-        setRefreshing(false)
+        if (refresh) {
+          setRefreshing(false)
+        }
       }
     },
     [
@@ -109,9 +115,16 @@ export function UsageRing({
   const usage = card?.usage
   const percent = usagePercent({ usage })
   const tone = usageTone({ percent })
-  const prefix = usage?.context?.source === 'estimated' ? '≈' : ''
-  const label = percent === undefined ? 'Context unavailable' : `Context window ${prefix}${percent}% used`
-  const value = percent === undefined ? '—' : `${prefix}${percent}%`
+  let label = 'Context unavailable'
+
+  if (percent !== undefined) {
+    label = `Context window ${percent}% used`
+  } else if (usage?.context) {
+    const used = usage.context.used.toLocaleString()
+    label = `Context ${used} tokens used; capacity unavailable`
+  }
+
+  const value = percent === undefined ? '—' : `${percent}%`
   const panel = <TooltipPanel><Usage usage={usage} {...reading} /></TooltipPanel>
 
   return (

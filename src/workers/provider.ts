@@ -29,7 +29,6 @@ export type HostedUsage = {
   limits?: PlanWindow[]
 }
 export type UsageReading = Omit<HostedUsage, 'type'>
-export type UsageSource = 'reported' | 'estimated'
 export type AgentUsage = {
   who: {
     provider: string
@@ -42,7 +41,7 @@ export type AgentUsage = {
     used: number
     window?: number
     left?: number
-    source: UsageSource
+    source: 'reported'
   }
   recorded: {
     tokens?: number

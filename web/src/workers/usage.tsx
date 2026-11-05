@@ -113,10 +113,9 @@ export function Usage({
   const windows = usage?.windows ?? []
   const percent = usagePercent({ usage })
   const tone = usageTone({ percent })
-  const prefix = context?.source === 'estimated' ? '≈' : ''
   const provider = who?.provider ?? 'Agent'
-  const source = context?.source === 'estimated' ? 'Estimated from current context text' : `From ${provider} · last request`
-  const sourceIcon = context?.source === 'estimated' ? 'info' : who?.icon ?? 'info'
+  const source = `From ${provider} · last request`
+  const sourceIcon = who?.icon ?? 'info'
   const cost = recorded?.cost
   let footerTitle = 'Usage'
   let footerValue = 'Unavailable'
@@ -130,8 +129,8 @@ export function Usage({
     footerIcon = 'cost'
   } else if (context) {
     footerTitle = 'Context tokens'
-    footerValue = `${prefix}${tokens({ count: context.used })} tokens`
-    footerSource = `Cost unavailable · ${source.toLowerCase()}`
+    footerValue = `${tokens({ count: context.used })} tokens`
+    footerSource = `Cost unavailable · from ${provider}`
     footerIcon = 'context'
   }
 
@@ -142,14 +141,14 @@ export function Usage({
       <TooltipSection className="shared-context">
         <span className="shared-header">
           <span className="usage-icon-line"><Icon name="context" size={13} /><strong>Context window</strong></span>
-          {percent !== undefined && <span className="shared-context-percent">{prefix}{percent}% used</span>}
+          {percent !== undefined && <span className="shared-context-percent">{percent}% used</span>}
         </span>
         {context ? (
           <span className="usage-context-reading" data-tone={tone}>
             <span className="context-amounts">
-              <span><b>{prefix}{tokens({ count: context.used })} tokens</b> used</span>
+              <span><b>{tokens({ count: context.used })} tokens</b> used</span>
               {context.left !== undefined && (
-                <span><b>{prefix}{tokens({ count: context.left })}</b> left</span>
+                <span><b>{tokens({ count: context.left })}</b> left</span>
               )}
             </span>
             {percent !== undefined && <UsageBar percent={percent} label="Context window use" />}
