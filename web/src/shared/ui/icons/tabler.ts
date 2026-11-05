@@ -1,5 +1,5 @@
 import {
-  IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
+  IconCurrencyDollar, IconAlertCircle, IconArrowDown, IconArrowLeft, IconArrowFork, IconArrowRight,
   IconArrowsMinimize, IconArrowsSplit2, IconArrowUpRight,
   IconAt,
   IconBolt, IconBoltFilled, IconBrandGit, IconBrandGithub, IconBulb, IconCalendar, IconCheck,
@@ -51,6 +51,7 @@ export const TABLER_ICONS: Record<string, typeof IconRobot> = {
   'mode-auto': IconEyeCheck,
   'mode-never': IconLockOpen,
   'mode-bypassPermissions': IconLockOpen,
+  cost: IconCurrencyDollar,
   context: IconMaximize,
   client: IconDeviceDesktop,
   version: IconTag,

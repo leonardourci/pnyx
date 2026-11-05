@@ -1,9 +1,11 @@
 import type { Card } from '#tasks/model.ts'
 import { accountLabel } from '#workers/account-choice.ts'
 import type { Command } from '#web-app/connection.ts'
+import { Disclosure } from '#web-shared/ui/disclosure.tsx'
 import { TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
 import { useHeadsDispatch } from './heads-dispatch.ts'
-import { harnessName } from './view.ts'
+import { Usage } from './usage.tsx'
+import { useUsageRefresh } from './usage-ring.tsx'
 
 export function AgentDetails({
   card,
@@ -13,6 +15,10 @@ export function AgentDetails({
   command: Command
 }) {
   const { effective } = useHeadsDispatch({ command })
+  const reading = useUsageRefresh({
+    card,
+    command,
+  })
   const agent = card.agent
 
   if (!agent) {
@@ -59,42 +65,25 @@ export function AgentDetails({
     ],
     ...Object.entries(card.terminal ?? {}),
   ]
-  const spend = card.spend
-  const tokens = spend?.total !== undefined
-    ? `${spend.total.toLocaleString()} recorded task tokens` : 'Task tokens not recorded'
 
   return (
     <TooltipPanel>
-      <strong>{harnessName({ provider: agent.provider })}</strong>
-      <TooltipSection>
-        <span>Model: {card.settings?.model ?? 'not recorded'}</span>
-        {settings.map(([
-          key,
-          value,
-        ]) => <span key={key}>{settingLabel({ key })}: {value}</span>)}
-      </TooltipSection>
-      <TooltipSection>
-        <strong>{tokens}</strong>
-        {spend?.total !== undefined && (
-          <span>
-            {(spend.worker ?? 0).toLocaleString()} worker ·
-            {' '}{(spend.hydra ?? 0).toLocaleString()} attributed Hydra
-          </span>
-        )}
-        <span>Task totals include earlier workers. Unattributed Hydra turns are excluded.</span>
-        <span>Usage is never estimated.</span>
-        {spend && spend.unavailable > 0 && (
-          <span>{spend.unavailable} transcript(s) unavailable.</span>
-        )}
-        {spend?.sharedHydra && <span>Includes Hydra turns shared with other tasks.</span>}
-      </TooltipSection>
-      <TooltipSection>
-        {details.filter((entry): entry is [string, string] => Boolean(entry[1]))
-          .map(([
+      <Usage usage={card.usage} {...reading} />
+      <Disclosure title="Session details" className="usage-session-details">
+        <TooltipSection>
+          {settings.map(([
             key,
             value,
           ]) => <span key={key}>{settingLabel({ key })}: {value}</span>)}
-      </TooltipSection>
+        </TooltipSection>
+        <TooltipSection>
+          {details.filter((entry): entry is [string, string] => Boolean(entry[1]))
+            .map(([
+              key,
+              value,
+            ]) => <span key={key}>{settingLabel({ key })}: {value}</span>)}
+        </TooltipSection>
+      </Disclosure>
     </TooltipPanel>
   )
 }

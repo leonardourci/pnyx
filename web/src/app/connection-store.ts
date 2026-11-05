@@ -973,18 +973,30 @@ export function createHydraConnection() {
 
       persistSoon({ scope })
     } else if (message.type === 'latest') {
-      if (message.spend) {
+      if (message.spend || message.usage) {
         const state = scope.resource.snapshot().confirmed
         const cards = { ...state.cards }
 
         for (const [
           id,
           spend,
-        ] of Object.entries(message.spend)) {
+        ] of Object.entries(message.spend ?? {})) {
           if (cards[id]) {
             cards[id] = {
               ...cards[id],
               spend,
+            }
+          }
+        }
+
+        for (const [
+          id,
+          usage,
+        ] of Object.entries(message.usage ?? {})) {
+          if (cards[id]) {
+            cards[id] = {
+              ...cards[id],
+              usage,
             }
           }
         }

@@ -1,78 +1,76 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Tooltip, TooltipPanel, TooltipSection } from '#web-shared/ui/tooltip.tsx'
-import type { HydraUsage } from '#workers/provider.ts'
+import { Tooltip, TooltipPanel } from '#web-shared/ui/tooltip.tsx'
+import type { Card } from '#tasks/model.ts'
 import type { Command } from '#web-app/connection.ts'
+import { Usage, usagePercent, usageTone } from './usage.tsx'
 
 const REFRESH_MS = 60_000
 
-function tokens({ count }: { count: number }) {
-  if (count >= 1_000_000) {
-    return `${Number((count / 1_000_000).toFixed(1))}m`
-  }
-
-  return count >= 1_000 ? `${Math.round(count / 1_000)}k` : String(count)
-}
-
-function resetsIn({
-  at,
-  now,
-}: {
-  at: string
-  now: number
-}) {
-  const minutes = Math.max(
-    0,
-    Math.round((Date.parse(at) - now) / 60_000),
-  )
-
-  if (minutes < 60) {
-    return `${minutes}m`
-  }
-
-  if (minutes < 24 * 60) {
-    return `${Math.floor(minutes / 60)}h ${minutes % 60}m`
-  }
-
-  return `${Math.floor(minutes / (24 * 60))}d ${Math.floor(minutes % (24 * 60) / 60)}h`
-}
-
-const capital = ({ text }: { text: string }) => text.charAt(0).toUpperCase() + text.slice(1)
-
-// A ring filled by how much of the context window Hydra's session uses; hover shows the rest.
-export function UsageRing({
+export function useUsageRefresh({
+  card,
   command,
-  connected,
-  turn,
+  connected = true,
 }: {
+  card?: Card
   command: Command
-  connected: boolean
-  // Changes when a turn starts or ends, which is when the numbers move.
-  turn: unknown
+  connected?: boolean
 }) {
   const [
-    usage,
-    setUsage,
-  ] = useState<HydraUsage | null>(null)
+    refreshing,
+    setRefreshing,
+  ] = useState(false)
+  const [
+    error,
+    setError,
+  ] = useState<string>()
+  const id = card?.id
+  const session = card?.agent?.sessionId
   const load = useCallback(
-    () => command({
-      name: 'hydra',
-      args: ['usage'],
-    }).then(
-      result => setUsage(typeof result.usage === 'string' ? null : result as HydraUsage),
-      // A missed refresh keeps the last reading; the next poll tries again.
-      () => {},
-    ),
-    [command],
-  )
-  useEffect(
-    () => {
-      if (!connected) {
+    async ({ refresh = false }: { refresh?: boolean } = {}) => {
+      if (!id || !session) {
         return
       }
 
-      void load()
+      setRefreshing(true)
+
+      try {
+        await command({
+          name: 'hydra',
+          args: refresh ? [
+            'usage',
+            '--task',
+            id,
+            '--refresh',
+          ] : [
+            'usage',
+            '--task',
+            id,
+          ],
+        })
+        setError(undefined)
+      } catch (error) {
+        setError(error instanceof Error ? error.message : String(error))
+      } finally {
+        setRefreshing(false)
+      }
+    },
+    [
+      command,
+      id,
+      session,
+    ],
+  )
+  useEffect(
+    () => {
+      if (!connected || !session) {
+        return
+      }
+
+      load().catch(console.error)
       const timer = setInterval(
-        () => void load(),
+        () => {
+          load().catch(console.error)
+        },
         REFRESH_MS,
       )
 
@@ -81,86 +79,54 @@ export function UsageRing({
     [
       connected,
       load,
-      turn,
+      session,
     ],
   )
 
-  if (!usage || (usage.used === undefined && usage.cost === undefined
-    && !usage.helper && !usage.windows?.length)) {
-    return null
+  return {
+    refresh: () => {
+      load({ refresh: true }).catch(console.error)
+    },
+    refreshing,
+    error,
   }
+}
 
-  const percent = usage.used !== undefined && usage.window ? Math.min(
-    100,
-    Math.round(usage.used / usage.window * 100),
-  ) : undefined
-  const now = Date.now()
-  const panel = (
-    <TooltipPanel>
-      {percent !== undefined && (
-        <TooltipSection>
-          <strong>Context window</strong>
-          <span>
-            {percent}% used · {tokens({ count: usage.used! })}
-            {' / '}{tokens({ count: usage.window! })} tokens
-          </span>
-        </TooltipSection>
-      )}
-      {usage.cost !== undefined && (
-        <TooltipSection>Hydra session ${usage.cost.toFixed(2)}</TooltipSection>
-      )}
-      {usage.helper && (
-        <TooltipSection>
-          <strong>Routine helper · {usage.helper.batches} {usage.helper.batches === 1 ? 'batch' : 'batches'}</strong>
-          <span>
-            {usage.helper.cost === undefined ? 'Cost unavailable' : `Cost $${usage.helper.cost.toFixed(2)}`}
-            {usage.helper.measuredBatches < usage.helper.batches && (
-              ` · measured ${usage.helper.measuredBatches}/${usage.helper.batches} batches`
-            )}
-          </span>
-          {usage.helper.used !== undefined && (
-            <span>Last context {tokens({ count: usage.helper.used })} tokens</span>
-          )}
-          {usage.helper.inputTokens !== undefined && (
-            <span>Total input {tokens({ count: usage.helper.inputTokens })} tokens</span>
-          )}
-        </TooltipSection>
-      )}
-      {usage.combinedCost !== undefined && (
-        <TooltipSection>Combined ${usage.combinedCost.toFixed(2)}</TooltipSection>
-      )}
-      {!!usage.windows?.length && (
-        <TooltipSection>
-          <strong>{usage.harness === 'codex' ? 'Codex' : 'Claude'}{usage.plan ? ` ${capital({ text: usage.plan })}` : ''}</strong>
-          {usage.windows.map(window => (
-            <span key={window.label} className="usage-window">
-              <span>{capital({ text: window.label })} · {window.used}% used{window.resetsAt ? ` · resets in ${resetsIn({
-                at: window.resetsAt,
-                now,
-              })}` : ''}
-              </span>
-              <span className="usage-bar"><i style={{ width: `${window.used}%` }} /></span>
-            </span>
-          ))}
-        </TooltipSection>
-      )}
-      {!usage.windows?.length && <TooltipSection>Quota unavailable</TooltipSection>}
-    </TooltipPanel>
-  )
+export function UsageRing({
+  card,
+  command,
+  connected,
+}: {
+  card?: Card
+  command: Command
+  connected: boolean
+}) {
+  const reading = useUsageRefresh({
+    card,
+    command,
+    connected,
+  })
+  const usage = card?.usage
+  const percent = usagePercent({ usage })
+  const tone = usageTone({ percent })
+  const prefix = usage?.context?.source === 'estimated' ? '≈' : ''
+  const label = percent === undefined ? 'Context unavailable' : `Context window ${prefix}${percent}% used`
+  const value = percent === undefined ? '—' : `${prefix}${percent}%`
+  const panel = <TooltipPanel><Usage usage={usage} {...reading} /></TooltipPanel>
 
   return (
-    <Tooltip content={panel}>
+    <Tooltip content={panel} interactive label="Usage details">
       <span
         className="usage-ring"
         role="img"
         tabIndex={0}
-        aria-label={percent === undefined ? 'Usage' : `Context window ${percent}% used`}
-        onPointerEnter={() => void load()}
+        aria-label={label}
+        data-tone={tone}
       >
         <svg
           viewBox="0 0 20 20"
-          width="18"
-          height="18"
+          width="15"
+          height="15"
           aria-hidden="true"
         >
           <circle
@@ -180,6 +146,7 @@ export function UsageRing({
             />
           )}
         </svg>
+        <span>{value}</span>
       </span>
     </Tooltip>
   )

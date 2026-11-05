@@ -990,7 +990,7 @@ export function HydraChat({
         projectRequest={projectRequest}
         projectRequested={projectRequested}
         stop={canStop ? stop : undefined}
-        meter={card?.agent?.host === 'pnyx' && <UsageRing command={command} connected={connected} turn={running} />}
+        meter={card?.agent && <UsageRing card={card} command={command} connected={connected} />}
         settings={(
           <HydraAgent
             state={state}
