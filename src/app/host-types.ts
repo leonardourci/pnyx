@@ -1,6 +1,6 @@
 import type { Card } from '#tasks/model.ts'
 import type { AgentConfig, AgentSettings } from '#workers/model.ts'
-import type { AgentUsage, UsageReading, ModelOption, HydraUsage, HostedSession } from '#workers/provider.ts'
+import type { AgentUsage, UsageReading, ModelOption, HostedSession } from '#workers/provider.ts'
 import type { DispatchChoice } from '#workers/dispatch.ts'
 import type { HydraState, HydraEvent } from './model.ts'
 import { inbox } from '#hydra/update-queue.ts'
@@ -8,6 +8,11 @@ import type { HydraQueue } from '#hydra/wakes.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { liveReplies } from '#workers/streaming.ts'
+
+export type UsageInputs = {
+  spend?: Record<string, import('#workers/task-spend.ts').TaskSpend>
+  readings?: Record<string, UsageReading>
+}
 
 export interface Host {
   hydraId: string
@@ -63,18 +68,20 @@ export interface Host {
   }): Promise<Record<string, unknown>>
   usage({
     card,
-    refresh }
-  ?: {
+    spend,
+    readings }
+  ?: { card?: string } & UsageInputs): Promise<AgentUsage | { usage: string }>
+  refreshUsage({
+    card,
+    force,
+  }: {
     card?: string
-    refresh?: boolean
-  }): Promise<HydraUsage | { usage: string }>
+    force?: boolean
+  }): Promise<{ refreshed: string }>
   usageViews({
     spend,
     readings,
-  }: {
-    spend?: Record<string, import('#workers/task-spend.ts').TaskSpend>
-    readings?: Record<string, UsageReading>
-  }): Record<string, AgentUsage>
+  }: UsageInputs): Record<string, AgentUsage>
   start({
     task,
     prompt,

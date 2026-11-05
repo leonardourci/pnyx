@@ -1489,6 +1489,10 @@ export async function mountOwnedHydra({
     ask: ({ body }) => hostRequest({
       host: agents,
       body,
+      usage: {
+        spend: spendNow.spend,
+        readings: readingsNow,
+      },
     }),
   })
 

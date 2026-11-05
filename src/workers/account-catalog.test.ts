@@ -213,17 +213,18 @@ process.exit(result.status ?? 1);
 `,
       { mode: 0o755 },
     )
+    await host.refreshUsage({})
     const usage = await host.usage()
-    assert.ok('harness' in usage)
+    assert.ok('who' in usage)
     assert.equal(
-      usage.account,
+      usage.who.account,
       'work',
     )
     assert.equal(
-      usage.plan,
+      usage.who.plan,
       'work',
     )
-    await host.usage({ refresh: true })
+    await host.refreshUsage({ force: true })
     const maxAges = readFileSync(
       quotaReads,
       'utf8',
@@ -261,20 +262,22 @@ process.exit(result.status ?? 1);
       repointed[0]?.value,
       'personal-model',
     )
+    await host.refreshUsage({})
     const afterEdit = await host.usage()
-    assert.ok('harness' in afterEdit)
+    assert.ok('who' in afterEdit)
     assert.equal(
-      afterEdit.plan,
+      afterEdit.who.plan,
       'work',
     )
     rmSync(join(
       homes.work,
       'quota.json',
     ))
+    await host.refreshUsage({})
     const unavailable = await host.usage()
-    assert.ok('harness' in unavailable)
+    assert.ok('who' in unavailable)
     assert.equal(
-      unavailable.plan,
+      unavailable.who.plan,
       undefined,
     )
     await assert.rejects(

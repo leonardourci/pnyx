@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict'
+import { appendFileSync, copyFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -14,6 +15,17 @@ test(
       hydraId: s.hydraId,
     })
     t.after(() => page.close())
+    const transcript = join(
+      s.folder({ name: 'claude-transcript' }),
+      'usage.jsonl',
+    )
+    copyFileSync(
+      join(
+        import.meta.dirname,
+        'fixtures/usage/claude.jsonl',
+      ),
+      transcript,
+    )
     await s.owner({
       args: [
         'task',
@@ -36,10 +48,7 @@ test(
         agent: {
           provider: 'claude-code',
           sessionId: 'usage-claude',
-          transcriptPath: join(
-            import.meta.dirname,
-            'fixtures/usage/claude.jsonl',
-          ),
+          transcriptPath: transcript,
         },
       }),
     })
@@ -56,10 +65,7 @@ test(
         agent: {
           provider: 'claude-code',
           sessionId: 'usage-composer',
-          transcriptPath: join(
-            import.meta.dirname,
-            'fixtures/usage/claude.jsonl',
-          ),
+          transcriptPath: transcript,
         },
       }),
     })
@@ -83,8 +89,6 @@ test(
       taskUsage.context,
       {
         used: 84_000,
-        window: 200_000,
-        left: 116_000,
         source: 'reported',
       },
     )
@@ -111,6 +115,36 @@ test(
     assert.deepEqual(
       cliUsage.recorded,
       taskUsage.recorded,
+    )
+    assert.deepEqual(
+      cliUsage.who,
+      taskUsage.who,
+    )
+    assert.equal(
+      taskUsage.who.account,
+      'claude:test',
+    )
+    assert.equal(
+      cliUsage.used,
+      undefined,
+    )
+    assert.equal(
+      cliUsage.account,
+      undefined,
+    )
+    const refreshed = await page.command({
+      name: 'hydra',
+      args: [
+        'usage',
+        'refresh',
+        '--task',
+        claude.id,
+        '--force',
+      ],
+    })
+    assert.equal(
+      refreshed.refreshed,
+      'plan limits',
     )
     assert.equal(
       cliUsage.helper,
@@ -161,7 +195,12 @@ test(
     })
     assert.deepEqual(
       codexUsage.context,
-      taskUsage.context,
+      {
+        used: 84_000,
+        window: 200_000,
+        left: 116_000,
+        source: 'reported',
+      },
     )
     assert.deepEqual(
       codexUsage.recorded,
@@ -182,6 +221,23 @@ test(
         'unknown-usage',
       ],
     })
+    const empty = s.task({ key: 'unknown-usage' })
+    const noAgent = await page.command({
+      name: 'hydra',
+      args: [
+        'usage',
+        '--task',
+        empty.id,
+      ],
+    })
+    assert.equal(
+      noAgent.usage,
+      'none: task has no agent session',
+    )
+    assert.equal(
+      page.usages[empty.id],
+      undefined,
+    )
     await s.owner({
       args: [
         'push',
@@ -217,6 +273,53 @@ test(
     assert.equal(
       unavailable.unavailable,
       'Current context has not been reported',
+    )
+    appendFileSync(
+      transcript,
+      JSON.stringify({
+        type: 'system',
+        subtype: 'compact_boundary',
+      }) + '\n',
+    )
+    await until({
+      what: 'compaction to clear the transcript context',
+      check: () => {
+        const worker = page.usages[claude.id]?.context
+        const composer = page.usages[HYDRA_CARD]?.context
+
+        return worker === undefined && composer === undefined
+      },
+    })
+    assert.equal(
+      page.usages[claude.id]?.recorded.tokens,
+      110_000,
+    )
+    appendFileSync(
+      transcript,
+      JSON.stringify({
+        type: 'assistant',
+        timestamp: '2026-11-05T12:03:00Z',
+        message: {
+          id: 'after-compaction',
+          model: 'claude-opus-5-5',
+          usage: {
+            input_tokens: 100,
+            output_tokens: 5,
+          },
+        },
+      }) + '\n',
+    )
+    await until({
+      what: 'real response after compaction to restore context',
+      check: () =>
+        page.usages[claude.id]?.context?.used === 100,
+    })
+    assert.deepEqual(
+      page.usages[claude.id]?.context,
+      {
+        used: 100,
+        source: 'reported',
+      },
     )
   },
 )

@@ -603,7 +603,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     options: {
       ...WRITE,
       task: { type: 'string' },
-      refresh: { type: 'boolean' },
+      force: { type: 'boolean' },
       action: { type: 'string' },
       kind: { type: 'string' },
       key: { type: 'string' },
@@ -843,14 +843,15 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'stop' || positionals[0] === 'usage') {
-    const action = positionals[0]
+    const action = positionals[0] === 'usage' && positionals[1] === 'refresh'
+      ? 'usage-refresh' : positionals[0]
 
     return readServer({ hydraId }).then(server => server ? askHost({
       hydraId,
       body: {
         action,
         card: values.task,
-        refresh: values.refresh,
+        force: values.force,
         actor: meta({ values }).actor,
       },
     }) : { [action === 'stop' ? 'stopped' : 'usage']: 'none: no Pnyx server runs this Hydra' })

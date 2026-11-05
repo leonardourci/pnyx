@@ -70,15 +70,6 @@ export interface TranscriptUsageReader {
   current: UsageReading
 }
 
-// What `hydra usage` answers: the session's own numbers and its account's plan windows.
-export type HydraUsage = AgentUsage & Omit<HostedUsage, 'type' | 'limits'> & {
-  harness: 'claude' | 'codex'
-  account?: string
-  windows?: PlanWindow[]
-  helper?: HelperUsageTotal
-  combinedCost?: number
-}
-
 const named = ({ label }: PlanWindow) => label.toLowerCase()
 
 // A window in `over` takes the place of the same label in `base`, whatever its case; new labels go last.
