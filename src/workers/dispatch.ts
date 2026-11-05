@@ -154,7 +154,13 @@ interface PlanUsage {
 }
 
 // The account's plan windows for the composer's usage panel: a cached quota-axi read, so a hover never waits on the vendor.
-export async function readUsage({ account }: { account: Account }): Promise<PlanUsage | undefined> {
+export async function readUsage({
+  account,
+  refresh = false,
+}: {
+  account: Account
+  refresh?: boolean
+}): Promise<PlanUsage | undefined> {
   if (!existsSync(loginFolder({ account }))) {
     return undefined
   }
@@ -172,7 +178,7 @@ export async function readUsage({ account }: { account: Account }): Promise<Plan
           ? ['--profile-only'] : []),
         '--no-credential-refresh',
         '--max-age',
-        '5m',
+        refresh ? '0' : '5m',
         '--json',
       ],
       {

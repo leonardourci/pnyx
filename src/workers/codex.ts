@@ -7,7 +7,8 @@ import { pnyxHome } from '#store/paths.ts'
 import { imageBytes } from './input.ts'
 import { nativeSession, type NativeEvent, type NativeSession } from './native-session.ts'
 import { compactCommand } from './compact-command.ts'
-import type { AskPermission, HostedInput, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
+import { count, taskContext, textContent } from './transcript-usage.ts'
+import type { TranscriptUsageReader, AskPermission, HostedInput, HostedCompaction, HostedText, HostedTool, HostedThinking, HostedUsage, ModelOption, PermissionDecision, Provider } from './provider.ts'
 
 export type SpawnCodex = ({
   cwd,
@@ -858,6 +859,7 @@ export function codexProvider({
 }: { spawnCodex?: SpawnCodex }): Provider {
   return {
     compact: true,
+    readUsage: readCodexUsage,
     async models({
       cwd,
       env,
@@ -1491,5 +1493,55 @@ export function codexProvider({
         throw error
       }
     },
+  }
+}
+
+function readCodexUsage({
+  reader,
+  value,
+}: {
+  reader: TranscriptUsageReader
+  value: unknown
+}): void {
+  const record = object({ value })
+  const payload = object({ value: record.payload })
+  const at = typeof record.timestamp === 'string' ? record.timestamp : undefined
+  const { rows } = reader
+
+  if (record.type === 'response_item' && payload.type === 'message' && payload.role === 'user') {
+    reader.tasks = taskContext({ text: textContent({ value: payload.content }) })
+  }
+
+  if (record.type !== 'event_msg' || payload.type !== 'token_count') {
+    return
+  }
+
+  const info = object({ value: payload.info })
+  const last = object({ value: info.last_token_usage })
+
+  if (typeof last.total_tokens === 'number') {
+    reader.current.used = last.total_tokens
+  }
+
+  if (typeof info.model_context_window === 'number') {
+    reader.current.window = info.model_context_window
+  }
+
+  const usage = object({ value: info.total_token_usage })
+  const total = count({ value: usage.total_tokens })
+
+  if (!total) {
+    return
+  }
+
+  const delta = total >= reader.previousTotal ? total - reader.previousTotal : total
+  reader.previousTotal = total
+
+  if (delta) {
+    rows.push({
+      at,
+      tokens: delta,
+      tasks: [...reader.tasks],
+    })
   }
 }

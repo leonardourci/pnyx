@@ -1,6 +1,7 @@
 import { isAbsolute } from 'node:path'
 import { readUsage, usageReader, type RecordedUsage, type UsageReader } from '#integrations/hooks/usage.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
+import type { UsageReading } from './provider.ts'
 import type { AgentRef } from './model.ts'
 import { readTranscript } from '#oracle/index.ts'
 
@@ -291,4 +292,25 @@ export function taskSpend({
       tasks: [task],
     }),
   })[task]!
+}
+
+export function sessionReadings({ inputs }: { inputs: SpendInputs }): Record<string, UsageReading> {
+  const readings: Record<string, UsageReading> = {}
+
+  for (const session of inputs.sessions) {
+    const rows = transcriptUsage({ agent: session.agent })
+
+    if (rows === undefined) {
+      continue
+    }
+
+    const path = session.agent.transcriptPath
+    const reader = path ? readers.get(path)?.reader : undefined
+
+    if (reader && reader.provider === session.agent.provider) {
+      readings[session.id] = reader.current
+    }
+  }
+
+  return readings
 }

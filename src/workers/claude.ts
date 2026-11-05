@@ -8,7 +8,8 @@ import { randomUUID } from 'node:crypto'
 import type { EffortLevel, Options, PermissionMode, SDKMessage, SDKRateLimitInfo, Settings, query } from '@anthropic-ai/claude-agent-sdk'
 import type { AgentSettings } from './model.ts'
 import { questions } from './native-prompts.ts'
-import type { HostedImage, ModelOption, Provider } from './provider.ts'
+import { object, count, taskContext, textContent } from './transcript-usage.ts'
+import type { TranscriptUsageReader, HostedImage, ModelOption, Provider } from './provider.ts'
 import { nativeSession, type NativeSession } from './native-session.ts'
 import { imageBytes } from './input.ts'
 import { compactCommand } from './compact-command.ts'
@@ -179,6 +180,7 @@ export function claudeProvider({
 }): Provider {
   return {
     compact: true,
+    readUsage: readClaudeUsage,
     async models({
       cwd,
       env,
@@ -763,5 +765,79 @@ export function claudeProvider({
 
       return nativeSession({ native })
     },
+  }
+}
+
+function readClaudeUsage({
+  reader,
+  value,
+}: {
+  reader: TranscriptUsageReader
+  value: unknown
+}): void {
+  const record = object({ value })
+  const message = object({ value: record.message })
+  const at = typeof record.timestamp === 'string' ? record.timestamp : undefined
+  const {
+    rows,
+    messages,
+  } = reader
+
+  if (record.type === 'user' && !record.toolUseResult) {
+    reader.tasks = taskContext({ text: textContent({ value: message.content }) })
+  }
+
+  if (record.type === 'result') {
+    const models = object({ value: record.modelUsage })
+    const windows = Object.values(models).map(value => object({ value }).contextWindow)
+      .filter((size): size is number => typeof size === 'number' && size > 0)
+
+    if (windows.length) {
+      reader.current.window = Math.max(...windows)
+    }
+
+    if (typeof record.total_cost_usd === 'number') {
+      reader.current.cost = record.total_cost_usd
+    }
+  }
+
+  const usage = object({ value: message.usage })
+
+  if (record.type !== 'assistant' || typeof message.id !== 'string' || !Object.keys(usage).length) {
+    return
+  }
+
+  const tokens = count({ value: usage.input_tokens }) + count({ value: usage.output_tokens })
+      + count({ value: usage.cache_read_input_tokens })
+      + count({ value: usage.cache_creation_input_tokens })
+  const index = messages.get(message.id)
+  const row = {
+    at,
+    tokens,
+    tasks: [...reader.tasks],
+  }
+
+  if (index === undefined) {
+    messages.set(
+      message.id,
+      rows.length,
+    )
+    rows.push(row)
+  } else if (rows[index]!.tokens < tokens) {
+    rows[index] = row
+  }
+
+  const contextCounts = [
+    usage.input_tokens,
+    usage.cache_read_input_tokens,
+    usage.cache_creation_input_tokens,
+  ]
+  const reportedContext = contextCounts.some(value =>
+    typeof value === 'number' && Number.isSafeInteger(value) && value >= 0)
+
+  if (reportedContext) {
+    reader.current.used = count({ value: usage.input_tokens })
+      + count({ value: usage.cache_read_input_tokens })
+      + count({ value: usage.cache_creation_input_tokens })
   }
 }
