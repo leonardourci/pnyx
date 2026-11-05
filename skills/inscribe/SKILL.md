@@ -12,7 +12,7 @@ Keep saved context brief and up to date, and edit or remove entries when things 
 
 - Owner memory, Pnyx-wide and read by every Hydra (24000 characters): the owner's preferences under `preferences` and general learnings about tools, workers and routes under `learnings`.
 - Project memory, shared by every Hydra on that project (10000 characters): facts, conventions and owner preferences that hold only for that project.
-- Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check and inscribe cursors.
+- Hydra memory, this Hydra only (1500 characters): its scope, where it left off, its check cursor. Successful inscribe milestones track what has been read.
 
 Owner and Hydra memory are printed in full when a session opens and after compaction. Later wakes carry only a short memory-changed note. Project memory loads only on demand and for workers assigned to that project, so every line must earn its place.
 
@@ -27,7 +27,7 @@ Save each document whole with `pnyx-axi project memory set --project <name|path>
 Without a project, sweep for every layer: route project facts and project preferences as above, and curate owner and Hydra memory with the steps below.
 
 1. Read the current memory: `pnyx-axi owner memory list` and `pnyx-axi hydra memory list --hydra <hydra>` (each shows the characters used; owner memory also prints its revision).
-2. Sweep this session and everything since your last pass for what exists only in the conversation. Read it with `pnyx-axi hydra messages --hydra <hydra> --inscribe`, which starts after the saved `inscribe-cursor` (the whole history when none is saved) and adds task briefs and the owner's words on tasks; page with `--after <through>` as its help says. Keep the owner's messages and the briefs' standing rules:
+2. Start or resume the pass with `pnyx-axi hydra inscribe start --hydra <hydra>`. Keep its `milestone` ID and `through`, and run the history command it returns. It reads since the last successful inscribe, including the owner's messages, agent replies and task briefs. Follow every `--after <cursor>` until `more` is false; each page ends at a whole message. When more follows, carry forward the facts from this page for your next update before finishing the pass. Keep the owner's messages and the briefs' standing rules:
    - Owner preferences: how the owner wants work done, standing decisions, people and tools they named. These hold until the owner changes them.
    - Learnings: facts you had to discover the hard way about tools, workers and routes, which would cost the next session time to rediscover. Each must still be true; check one you doubt before keeping it.
    - Hydra notes: what this Hydra covers and where it left off.
@@ -50,5 +50,5 @@ Without a project, sweep for every layer: route project facts and project prefer
 
    Forget keys that became stale with `owner memory forget --key <key>` or `hydra memory forget --key <key> --hydra <hydra>`, each with `--reason "<why>"`. A save over budget is refused: shorten and save again. Other Hydras share owner memory, so a save refused for its revision means another Hydra saved first: list it again, merge and save.
 6. Finish each inscribe pass by saving each memory layer you curated: `pnyx-axi owner memory save --reason "<what you checked>"` and/or `pnyx-axi project memory save --project <project> --reason "<what you checked>" --hydra <hydra>`, even when the documents did not change. Add `--used "<exact line>"` for a learning you used or confirmed this session; for several, put their exact lines in one newline-separated value. Name the session evidence in the reason. This save refreshes their dates and clears their counts, and adds one unused save to every other learning in that layer. Include lines you already confirmed during this pass in `--used` too. A set, read, wake or timed review never advances this count. Recheck any lines that reach their limit on this save and confirm or archive them before finishing.
-7. Only after the saves above succeed, save the last `through` you swept in step 2 as `hydra memory set --key inscribe-cursor --text "<through>"`. If you are supervising with `hydra check`, save the last `through` you fully handled as `hydra memory set --key check-cursor --text "<through>"`.
-8. Finish with one line: what you saved, what you dropped, and the characters now used in each layer. Forgotten and replaced entries stay in their logs.
+7. Only after every history page is read and the saves above succeed, finish the milestone with `pnyx-axi hydra inscribe finish --key <id> --through <through> --hydra <hydra>`, using the pass snapshot returned in step 2. On failure, record `hydra inscribe fail --key <id> --error "<why>" --hydra <hydra>`; it leaves the previous boundary in place. If you are supervising with `hydra check`, save the last `through` you fully handled as `hydra memory set --key check-cursor --text "<through>"`.
+8. During an agent switch, return silently. Otherwise finish with one line: what you saved, what you dropped, and the characters now used in each layer. Forgotten and replaced entries stay in their logs.
