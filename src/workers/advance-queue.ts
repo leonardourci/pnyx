@@ -1,4 +1,5 @@
 import { sameProjectPath } from '#projects/identity.ts'
+import { taskBranch } from '#projects/git.ts'
 import { landingContext, provesLanding } from '#tasks/delivery/proof.ts'
 import { taskReadiness } from '#tasks/dependencies.ts'
 import { execFile } from 'node:child_process'
@@ -606,7 +607,10 @@ export async function advanceQueues({
         continue
       }
 
-      const branch = `pnyx/${hydraId}-${next.id}`
+      const branch = taskBranch({
+        hydraId,
+        task: next.id,
+      })
       const brief = await taskPrompt({
         hydraId,
         card: next,

@@ -4,6 +4,14 @@ import type { HydraProject } from './model.ts'
 
 export const COPY_TIMEOUT_MS = 120_000
 
+export const taskBranch = ({
+  hydraId,
+  task,
+}: {
+  hydraId: string
+  task: string
+}) => `pnyx/${hydraId}-${task}`
+
 export async function git({
   cwd,
   args,
