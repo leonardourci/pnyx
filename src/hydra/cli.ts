@@ -19,6 +19,7 @@ import { findSession } from '#workers/session-attachments.ts'
 import { sessionRef } from '#workers/cli.ts'
 import type { HydraIdentity, HydraConfig } from './model.ts'
 import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts'
+import { otherHydraNames } from './taken-names.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { decideView } from '#preferences/decisions.ts'
@@ -539,23 +540,6 @@ function hydraConfigCommand({ args }: { args: string[] }): Output {
     ...settings,
     help: ['These settings apply to every Hydra; see `pnyx-axi settings show`'],
   }
-}
-
-// An unreadable Hydra counts as none: a repeated name is harmless.
-export function otherHydraNames({ id }: { id: string }): string[] {
-  return hydraIds().filter(other => other !== id)
-    .flatMap(other => {
-      try {
-        return [
-          hydraConfig({
-            state: loadHydra({ hydraId: other }).state,
-            id: other,
-          }).name,
-        ]
-      } catch {
-        return []
-      }
-    })
 }
 
 function homeHydraId({ home }: { home: string }): string {

@@ -11,7 +11,7 @@ import { projectsFor } from '#projects/read.ts'
 import { firstmateProjects } from '#integrations/firstmate/projects.ts'
 import { liveTask } from '#tasks/select.ts'
 import { pickName } from '#hydra/hydra-names.ts'
-import { otherHydraNames } from '#hydra/cli.ts'
+import { otherHydraNames } from '#hydra/taken-names.ts'
 
 export interface HydraProjectSummary {
   name: string
