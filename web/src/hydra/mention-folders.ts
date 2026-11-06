@@ -5,7 +5,6 @@ import type { MentionItem } from './mention-picker.tsx'
 
 const CLONE_URL = /^(?:https?:\/\/|git@)\S+$/
 
-// What the @ picker offers beyond this Hydra's own projects.
 export function folderSuggestions({
   query,
   typed,

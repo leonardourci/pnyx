@@ -1,4 +1,3 @@
-// A selection's fixed end and the end that moves, whichever way it was made.
 export const selectionEnds = ({ field }: { field: HTMLTextAreaElement }) => field.selectionDirection === 'backward'
   ? {
     anchor: field.selectionEnd,

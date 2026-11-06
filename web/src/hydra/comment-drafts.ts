@@ -102,8 +102,7 @@ export function useCommentDrafts({
     return comment.id
   }
 
-  // An image pasted over a passage goes at the end of its comment's text as a placeholder at once, so Send
-  // waits for its upload; the upload then puts the image in its place, or takes the placeholder out.
+  // Pending images keep Send waiting until every upload settles.
   const attach = ({
     id,
     files,
@@ -196,7 +195,6 @@ export function useCommentDrafts({
     }
   }
 
-  // A streamed reply settles into the transcript under a new id; its comments follow the passage there.
   useEffect(() => {
     const rendered = blocks(), present = new Set(rendered.map(b => b.dataset.messageId))
     let moved = false
