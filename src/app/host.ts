@@ -1043,6 +1043,16 @@ export function createHost({
       }),
     })
 
+    const compactOwner = () => {
+      const state = loadHydra({ hydraId }).state
+
+      return sessionOwner({
+        state,
+        session: key,
+        fallback: card.id,
+      })
+    }
+
     try {
       entry.session ??= await providerOf({ provider: card.agent.provider }).open({
         cwd: folderOf({ card }),
@@ -1097,16 +1107,6 @@ export function createHost({
         } catch {
           return 0
         }
-      }
-
-      const compactOwner = () => {
-        const state = loadHydra({ hydraId }).state
-
-        return sessionOwner({
-          state,
-          session: key,
-          fallback: card.id,
-        })
       }
 
       const input = async function* () {
@@ -1773,15 +1773,7 @@ export function createHost({
       entry.pendingDirect.clear()
     }
 
-    const compactCard = (() => {
-      const state = loadHydra({ hydraId }).state
-
-      return sessionOwner({
-        state,
-        session: key,
-        fallback: card.id,
-      })
-    })()
+    const compactCard = compactOwner()
     const unfinishedCompact = activeCompaction({ card: compactCard })
 
     if (unfinishedCompact && !closing) {
@@ -3959,12 +3951,11 @@ export function createHost({
         })
       }
 
-      const provider = settings.provider ?? DEFAULT_PROVIDER
       const {
-        provider: _provider,
+        provider: requested,
         ...options
       } = settings
-      void _provider
+      const provider = requested ?? DEFAULT_PROVIDER
       settings = options
       starting.add(target.id)
       let session: HostedSession | undefined
