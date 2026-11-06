@@ -26,7 +26,7 @@ import { cardChip, CHIP_SPACE, draftView, editDraft, copyDraft, isPendingImage, 
 import { taskStateIcon, type TaskReferenceData } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
 import { projectTitle } from '#web-projects/view.ts'
-import { useFolders } from '#web-projects/add-project.tsx'
+import { useFolders } from '#web-projects/folders.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { Label } from './label.tsx'
 import { SuggestionPicker } from './suggestion-picker.tsx'
