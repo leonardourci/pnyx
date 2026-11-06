@@ -7,7 +7,6 @@ import { useEffect,useState,type ReactNode } from 'react'
 import { clock,duration } from './chat.ts'
 import { WorkingDots } from './streaming.tsx'
 
-// The running dots and timer, and Hydra's queue built from Pnyx's own state: what it is reading and what waits for it.
 export function Running({
   since,
   running,
@@ -108,7 +107,6 @@ export function Running({
   )
 }
 
-// What the status says aloud: that Hydra is working, then what its queue holds.
 function statusName({
   running,
   label,
@@ -129,7 +127,6 @@ function statusName({
   return words ?? undefined
 }
 
-// What the running line says about Hydra's queue; null once it is empty.
 function queueWords({
   reading,
   waiting,

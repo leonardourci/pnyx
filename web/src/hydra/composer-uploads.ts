@@ -140,7 +140,6 @@ export function useComposerUploads({
     }
   }
 
-  // Each image takes its place at the caret at once, so typing goes on while it uploads.
   const attach = ({ files }: { files: File[] }) => {
     const {
       images,
@@ -166,7 +165,6 @@ export function useComposerUploads({
     }))
     input.current?.focus()
 
-    // Each upload settles its own placeholder and reports its own failure.
     for (const image of placed) {
       void upload(image)
     }
