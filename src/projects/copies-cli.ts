@@ -8,7 +8,7 @@ import { HYDRA_ACTOR } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
 import { checkCopy } from './copy-check.ts'
-import { settleCopy } from './copies.ts'
+import { settleCopy } from './copy-settle.ts'
 
 export async function copyCommand({
   hydraId,
