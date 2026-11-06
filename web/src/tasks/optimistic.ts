@@ -222,7 +222,14 @@ export function optimisticState({
     if (action === 'hide-after') {
       const hours = hideAfterHours({ value: args[2] ?? '' })
 
-      return hours === undefined ? state : update({ patch: { doneAfterHours: hours ?? undefined } })
+      if (hours === undefined) {
+        return state
+      }
+
+      // `default` clears the card's own hours, so it follows the shared setting again.
+      const doneAfterHours = hours === null ? undefined : hours
+
+      return update({ patch: { doneAfterHours } })
     }
   }
 
