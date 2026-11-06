@@ -19,7 +19,7 @@ export function permissionDetails({ request }: {
   text: string
 }[] {
   const input = request.input
-  const command = text({ value: input.command })
+  const command = text({ value: input.display }) ?? text({ value: input.command })
   const paths = (Array.isArray(input.paths) ? input.paths : [])
     .flatMap(path => text({ value: path }) ?? [])
   const file = text({ value: input.file_path ?? input.notebook_path ?? input.path })
