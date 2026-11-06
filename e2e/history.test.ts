@@ -395,7 +395,13 @@ test(
   },
 )
 
-async function pendingSwitch({ characters }: { characters: number }) {
+async function pendingSwitch({
+  characters,
+  effort = false,
+}: {
+  characters: number
+  effort?: boolean
+}) {
   const s = await pnyx.scenario()
   const page = await openPage({
     port: pnyx.port(),
@@ -437,7 +443,8 @@ async function pendingSwitch({ characters }: { characters: number }) {
     args: [
       JSON.stringify({
         harness: 'claude',
-        model: 'opus',
+        model: effort ? 'sonnet' : 'opus',
+        effort: effort ? 'low' : undefined,
       }),
     ],
   })
@@ -589,6 +596,43 @@ test(
       )
     } finally {
       stale.page.close()
+    }
+
+    const effort = await pendingSwitch({
+      characters: 59981,
+      effort: true,
+    })
+
+    try {
+      const agent = await effort.s.agent({ hydra: true })
+      const previous = agent.id
+      await effort.page.command({
+        name: 'hydra-agent-change',
+        args: [
+          'switch',
+          'neither',
+        ],
+      })
+      await until({
+        what: 'an effort change to keep its existing context above the switch limit',
+        check: () => effort.s.state().cards[HYDRA_CARD]?.settings?.effort === 'low' && !effort.s.state().hydraAgentChange,
+      })
+      assert.equal(
+        effort.s.state().cards[HYDRA_CARD]?.agent?.sessionId,
+        previous,
+      )
+      await until({
+        what: 'the effort-only continuation to finish',
+        check: () => effort.s.answered({ cwd: agent.cwd }) === 3,
+      })
+      const latest = pnyx.claude.sessions.findLast(session =>
+        session.env.PNYX_HYDRA === effort.s.hydraId)!
+      assert.doesNotMatch(
+        latest.received.at(-1)!,
+        /pnyx-axi hydra history/,
+      )
+    } finally {
+      effort.page.close()
     }
   },
 )

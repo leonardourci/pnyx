@@ -86,7 +86,7 @@ export function applyHydra({
   }
 
   if (event.type === 'hydra.operation') {
-    if (event.data.kind === 'inscribe') {
+    if (event.data.kind === 'inscribe' || event.data.blocking === false) {
       return true
     }
 

@@ -1,5 +1,6 @@
+import { permissionCommand } from '#workers/permission-rules.ts'
 import type { HydraState } from '#app/model.ts'
-import { historyCommand, lastCompactionSummary } from './history.ts'
+import { historyCommand, compactionContext } from './history.ts'
 import type { AgentConfig } from '#workers/model.ts'
 import type { HostedSession } from '#workers/provider.ts'
 
@@ -26,11 +27,13 @@ export function conversationContext({
   hydraId: string
   state: HydraState
 }): string {
+  const context = compactionContext({ state })
+
   return [
-    lastCompactionSummary({ state }),
+    context.summary,
     `Read the recorded conversation since the last compaction with ${historyCommand({
       hydraId,
-      since: 'last-compaction',
+      since: context.since,
     })}. Follow every continuation cursor before acting on the conversation.`,
   ].filter(Boolean).join('\n\n')
 }
@@ -59,16 +62,13 @@ export async function agentChangeTurn({
         tool,
         input,
       }) => {
-        let command = input.command
+        const command = permissionCommand({
+          tool,
+          input,
+        })
+        const read = command !== undefined && /^pnyx-axi hydra history(?: --(?:hydra|since|through|budget|after) [a-zA-Z0-9:_.-]+)*$/.test(command)
 
-        if (Array.isArray(command) && command.length === 3 && (command[1] === '-lc' || command[1] === '-c')) {
-          command = command[2]
-        }
-
-        const shell = tool === 'Bash' || tool === 'Command'
-        const read = typeof command === 'string' && /^pnyx-axi hydra history(?: --(?:hydra|since|through|budget|after) [a-zA-Z0-9:_.-]+)*$/.test(command)
-
-        return shell && read ? { behavior: 'allow' } : {
+        return read ? { behavior: 'allow' } : {
           behavior: 'deny',
           message: 'Compaction may only read history with the supplied pnyx-axi hydra history command.',
         }

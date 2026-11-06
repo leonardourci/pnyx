@@ -59,6 +59,10 @@ export function decideNote(
     }),
   }
 
+  if (note.operation) {
+    data.operation = note.operation
+  }
+
   if (note.at) {
     data.at = note.at
   }

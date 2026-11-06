@@ -82,7 +82,6 @@ export const COMMAND_REGISTRY = {
       reads: [
         'check',
         'messages',
-        'history',
         'show',
       ],
     },

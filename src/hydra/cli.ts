@@ -40,8 +40,7 @@ import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
 import { requestEnv, hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
-import { historyCommand, inscribeOperation, lastMilestone, readHistory } from './history.ts'
-import { historyEntries } from './transcripts-read.ts'
+import { historyCommand, inscribeOperation, readHistory } from './history.ts'
 import { operationEvent } from './operations.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 
@@ -650,10 +649,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     const page = readHistory({
       state,
       events: readEvents({ hydraId }),
-      transcript: historyEntries({
-        hydraId,
-        state,
-      }),
       since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
       after: values.after as string | undefined,
       through: integer({
@@ -669,7 +664,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     if (values.count) {
       return {
         totalTokens: page.totalTokens,
-        source: page.source,
         boundary: page.boundary,
         snapshot: page.snapshot,
       }
@@ -681,6 +675,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         `Run \`${historyCommand({
           hydraId,
           since: page.since,
+          budget: page.budget,
         })} --after ${page.after}\` for the next page`,
       ] : [],
     }
@@ -724,10 +719,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         }),
       }),
     })
-    const since = lastMilestone({
-      state,
-      kind: 'inscribe',
-    })?.id ?? 'origin'
+    const since = operation.historySince ?? 'origin'
 
     return {
       ...result,

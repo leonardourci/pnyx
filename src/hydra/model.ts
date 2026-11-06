@@ -73,8 +73,11 @@ export interface HydraOperation {
   after?: number
   // The last log position covered, fixed before the operation starts reading.
   through?: number
+  historySince?: string
   // An inscribe pass within a switch shares its compaction's chat divider.
   parent?: string
+  // Overlapping operations can record a milestone without taking over the existing stop.
+  blocking?: false
 }
 
 export type ChatEvent = EventBase & {
@@ -96,6 +99,7 @@ export interface HydraAgentChange {
   kind: 'agent' | 'effort'
   state: 'requested' | 'running' | 'finished' | 'failed'
   choice?: 'inscribe' | 'compact' | 'neither'
+  operation?: string
   summary?: string
   previousSession?: string
   error?: string

@@ -12,6 +12,25 @@ import type { ThreadPage } from '#hydra/transcripts-read.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
+const inscribePrompt = ({ text }: { text: string }) => text.includes(skillSource({ name: 'inscribe' }))
+  && text.includes('pnyx-axi hydra history')
+const summaryPrompt = ({ text }: { text: string }) => text.includes('pnyx-axi hydra history')
+  && !inscribePrompt({ text })
+
+function pendingSummary({
+  s,
+  harness = 'claude',
+}: {
+  s: Scenario
+  harness?: 'claude' | 'codex'
+}) {
+  const sessions = harness === 'claude' ? pnyx.claude.sessions : pnyx.codex.sessions
+  const latest = sessions.findLast(session => session.env.PNYX_HYDRA === s.hydraId)
+
+  return latest && latest.id !== s.state().cards[HYDRA_CARD]?.agent?.sessionId
+    && latest.received.some(text => summaryPrompt({ text })) ? latest : undefined
+}
+
 async function finishInscribe({
   s,
   agent,
@@ -133,7 +152,7 @@ test(
       }),
     )
     const handover = pnyx.claude.plan({
-      text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+      match: inscribePrompt,
       reply: 'Memory saved.',
       hold: true,
     })
@@ -163,7 +182,7 @@ test(
       const inscriber = await until({
         what: 'the replacement model to read the paged log',
         check: () => pnyx.claude.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
-          && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>'))),
+          && session.received.some(text => inscribePrompt({ text }))),
       })
       assert.equal(
         inscriber.model,
@@ -371,7 +390,7 @@ test(
         'VALIDATION_ERROR',
       )
       pnyx.claude.plan({
-        text: 'Return only the handoff summary.',
+        match: summaryPrompt,
         reply: 'The release notes were acknowledged.',
       })
       await page.command({
@@ -408,6 +427,30 @@ test(
       )
       assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Switched to opus'))
       assert.ok(s.state().hydraMessages?.some(message => message.kind === 'divider' && message.text === 'Compacted'))
+      const compactedHistory = await page.command({
+        name: 'hydra',
+        args: [
+          'history',
+          '--since',
+          'last-compaction',
+        ],
+      })
+      const firstInscription = await page.command({
+        name: 'hydra',
+        args: [
+          'history',
+          '--since',
+          'last-inscribe',
+        ],
+      })
+      assert.equal(
+        firstInscription.boundary,
+        compactedHistory.boundary,
+      )
+      assert.doesNotMatch(
+        String(firstInscription.text),
+        /Before the switch/,
+      )
 
       await choose({
         model: 'opus',
@@ -510,7 +553,7 @@ test(
         check: () => s.state().hydraAgentChange?.id === 'back',
       })
       pnyx.claude.plan({
-        text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+        match: inscribePrompt,
         reply: 'No memory saved.',
       })
       await page.command({
@@ -534,12 +577,12 @@ test(
       })
       assert.ok(!s.received({ cwd: agent.cwd }).some(text => text.includes('Switch back')))
       const inscription = pnyx.claude.plan({
-        text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+        match: inscribePrompt,
         reply: 'Memory saved.',
         hold: true,
       })
       const summary = pnyx.claude.plan({
-        text: 'Return only the handoff summary.',
+        match: summaryPrompt,
         reply: 'Fast was enabled after the release discussion.',
         hold: true,
       })
@@ -554,7 +597,7 @@ test(
         })
         await until({
           what: 'inscribe on the previous model',
-          check: () => s.received({ cwd: agent.cwd }).some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>')),
+          check: () => s.received({ cwd: agent.cwd }).some(text => inscribePrompt({ text })),
         })
         const inscribing = pnyx.claude.sessions.findLast(session =>
           session.env.PNYX_HYDRA === s.hydraId)!
@@ -586,8 +629,7 @@ test(
         inscription.release()
         await until({
           what: 'the summary after inscribe',
-          check: () => s.received({ cwd: agent.cwd }).at(-1)
-            ?.endsWith('Return only the handoff summary.'),
+          check: () => pendingSummary({ s }),
         })
         assert.equal(
           s.state().hydraMemory?.scope?.text,
@@ -618,6 +660,21 @@ test(
             input: { command: `${historyCommand} && touch unexpected` },
           }))?.behavior,
           'deny',
+        )
+        assert.equal(
+          (await useTool({
+            tool: 'Command',
+            input: {
+              command: `/bin/zsh -lc '${historyCommand}'`,
+              commandActions: [
+                {
+                  type: 'unknown',
+                  command: historyCommand,
+                },
+              ],
+            },
+          }))?.behavior,
+          'allow',
         )
         const historyArgs = historyCommand.replace(
           ` --hydra ${s.hydraId}`,
@@ -716,7 +773,7 @@ test(
             'codex',
           )
           const handover = pnyx.codex.plan({
-            text: 'Complete the inscribe pass before this agent switch.</pnyx-wake>',
+            match: inscribePrompt,
             reply: 'Memory saved.',
             hold: true,
           })
@@ -730,10 +787,10 @@ test(
           await until({
             what: 'the new agent to inscribe for the agent with no usage left',
             check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId
-              && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>'))),
+              && session.received.some(text => inscribePrompt({ text }))),
           })
           const inscriber = pnyx.codex.sessions.find(session => session.env.PNYX_HYDRA === s.hydraId
-            && session.received.some(text => text.endsWith('Complete the inscribe pass before this agent switch.</pnyx-wake>')))!
+            && session.received.some(text => inscribePrompt({ text })))!
           assert.ok(!inscriber.received[0]!.includes('Conversation context:'))
           const inscribeSession = s.state().cards[HYDRA_CARD]!.agent!.sessionId
           await finishInscribe({
@@ -745,7 +802,8 @@ test(
             what: 'Codex to receive the resumed queue',
             check: () => pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Continue on Codex') && text.includes('back after a stop'))),
           })
-          assert.ok(pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.endsWith('Return only the handoff summary.'))))
+          assert.ok(pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId
+            && session.received.some(text => summaryPrompt({ text }))))
           assert.notEqual(
             s.state().cards[HYDRA_CARD]?.agent?.sessionId,
             inscribeSession,
@@ -791,7 +849,7 @@ test(
             check: () => s.state().hydraAgentChange?.next.account === 'codex:alternate',
           })
           const compacting = pnyx.codex.plan({
-            text: 'Return only the handoff summary.',
+            match: summaryPrompt,
             hold: true,
           })
 
@@ -805,7 +863,10 @@ test(
             })
             await until({
               what: 'the account switch compaction to start',
-              check: () => pnyx.codex.sessions.at(-1)?.received.some(text => text.endsWith('Return only the handoff summary.')),
+              check: () => pendingSummary({
+                s,
+                harness: 'codex',
+              }),
             })
             await recovered.command({
               name: 'hydra',
@@ -830,7 +891,7 @@ test(
           })
           assert.ok(!pnyx.codex.sessions.some(session => session.env.PNYX_HYDRA === s.hydraId && session.received.some(text => text.includes('Use the alternate account'))))
           const interrupted = pnyx.codex.plan({
-            text: 'Return only the handoff summary.',
+            match: summaryPrompt,
             hold: true,
           })
 
@@ -844,7 +905,10 @@ test(
             })
             await until({
               what: 'the retry summary before restart',
-              check: () => pnyx.codex.sessions.at(-1)?.received.some(text => text.endsWith('Return only the handoff summary.')),
+              check: () => pendingSummary({
+                s,
+                harness: 'codex',
+              }),
             })
             recovered.close()
             await pnyx.restart()

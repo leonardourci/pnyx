@@ -6,8 +6,10 @@ import { redact } from '#oracle/text.ts'
 import type { ChatEvent, HydraOperation } from './model.ts'
 import type { ThreadEntry } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { operationLabel } from './operation-label.ts'
 
-export const HISTORY_BUDGET = 15000
+export const HISTORY_BUDGET = 6000
+const HISTORY_PAGE_BYTES = 24000
 export const NEITHER_LIMIT = 15000
 export const NEITHER_REASON = 'Neither requires less than 15,000 tokens since the last successful compaction.'
 
@@ -30,17 +32,33 @@ export function lastMilestone({
     .toSorted((
       a,
       b,
-    ) => a.through - b.through)
+    ) => kind === 'compaction' ? a.seq - b.seq : a.through - b.through)
     .at(-1)
 }
 
-export function lastCompactionSummary({ state }: { state: HydraState }): string | undefined {
+export function compactionContext({ state }: { state: HydraState }): {
+  since: string
+  summary?: string
+} {
   const milestone = lastMilestone({
     state,
     kind: 'compaction',
   })
 
-  return milestone ? milestone.summary : state.hydraContext?.summary
+  return {
+    since: milestone?.id ?? 'origin',
+    summary: milestone ? milestone.summary : state.hydraContext?.summary,
+  }
+}
+
+export function inscribeSince({ state }: { state: HydraState }): string {
+  return lastMilestone({
+    state,
+    kind: 'inscribe',
+  })?.id ?? lastMilestone({
+    state,
+    kind: 'compaction',
+  })?.id ?? 'origin'
 }
 
 export function historyBoundary({
@@ -52,11 +70,19 @@ export function historyBoundary({
 }): number {
   if (since === 'last-compaction' || since === 'last-inscribe') {
     const kind = since === 'last-compaction' ? 'compaction' : 'inscribe'
-
-    return lastMilestone({
+    const milestone = lastMilestone({
       state,
       kind,
-    })?.through ?? 0
+    })
+
+    if (!milestone && kind === 'inscribe') {
+      return historyBoundary({
+        state,
+        since: 'last-compaction',
+      })
+    }
+
+    return milestone?.through ?? 0
   }
 
   if (since === 'origin') {
@@ -79,14 +105,16 @@ export function historyCommand({
   hydraId,
   since,
   through,
+  budget = HISTORY_BUDGET,
 }: {
   hydraId: string
   since: string
   through?: number
+  budget?: number
 }): string {
   const end = through === undefined ? '' : ` --through ${through}`
 
-  return `pnyx-axi hydra history --hydra ${hydraId} --since ${since}${end} --budget ${HISTORY_BUDGET}`
+  return `pnyx-axi hydra history --hydra ${hydraId} --since ${since}${end} --budget ${budget}`
 }
 
 // Transport parts rejoin before rendering or counting, including parts from different pages.
@@ -220,7 +248,9 @@ export function inscribeOperation({
   }
 
   return {
-    ...previous,
+    parent: previous?.parent,
+    historySince: previous?.historySince ?? inscribeSince({ state }),
+    after: previous?.after,
     id,
     kind: 'inscribe',
     state: nextState,
@@ -248,37 +278,22 @@ export function loggedEntry({ event }: { event: ChatEvent }): ThreadEntry {
   }
 }
 
-function historyMessages({
-  events,
-  transcript,
-}: {
-  events: HydraEvent[]
-  transcript: ThreadEntry[]
-}): {
+function historyMessages({ events }: { events: HydraEvent[] }): {
   seq: number
-  id: string
   text: string
 }[] {
   const entries: ThreadEntry[] = []
   const sequences = new Map<string, number>()
-  const recorded = new Map<string, ChatEvent>()
 
   for (const event of events) {
-    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD) {
-      recorded.set(
-        event.id,
-        event,
-      )
-      recorded.set(
-        `${event.data.session}:${event.data.nativeId}`,
-        event,
-      )
-      continue
-    }
-
     let entry: ThreadEntry
 
-    if (event.type === 'hydra.message' && event.data.kind !== 'divider' && ownerActor({ actor: event.actor })) {
+    if (event.type === 'chat.message' && event.cardId === HYDRA_CARD && event.data.role.startsWith('assistant')) {
+      entry = {
+        ...loggedEntry({ event }),
+        role: 'Hydra',
+      }
+    } else if (event.type === 'hydra.message' && event.data.kind !== 'divider' && ownerActor({ actor: event.actor })) {
       entry = {
         id: event.id,
         kind: 'message',
@@ -307,33 +322,7 @@ function historyMessages({
 
     entries.push(entry)
     sequences.set(
-      entry.id,
-      event.seq,
-    )
-  }
-
-  const seen = new Set<string>()
-
-  for (const entry of transcript) {
-    if (entry.kind !== 'message' || !entry.role.startsWith('assistant') || entry.streaming) {
-      continue
-    }
-
-    const event = recorded.get(entry.id) ?? recorded.get(`${entry.session}:${entry.id}`)
-      ?? recorded.get(entry.messageId ?? '')
-
-    if (!event || seen.has(event.id)) {
-      continue
-    }
-
-    seen.add(event.id)
-    const source = loggedEntry({ event })
-    entries.push({
-      ...source,
-      role: 'Hydra',
-    })
-    sequences.set(
-      source.messageId ?? source.id,
+      entry.messageId ?? entry.id,
       event.seq,
     )
   }
@@ -358,7 +347,6 @@ function historyMessages({
   })
 
   return messages.map(entry => ({
-    id: entry.id,
     seq: sequences.get(entry.messageId ?? entry.id)!,
     text: `[${entry.role}] ${redact({ text: entry.text })}`,
   }))
@@ -367,7 +355,6 @@ function historyMessages({
 export function readHistory({
   state,
   events,
-  transcript,
   since,
   after,
   through = state.seq,
@@ -375,7 +362,6 @@ export function readHistory({
 }: {
   state: HydraState
   events: HydraEvent[]
-  transcript: ThreadEntry[]
   since: string
   after?: string
   through?: number
@@ -432,7 +418,6 @@ export function readHistory({
 
   const messages = historyMessages({
     events: events.filter(event => event.seq <= through),
-    transcript,
   })
     .filter(message => message.seq > boundary)
   const totalTokens = countTokens({ text: messages.map(message => message.text).join('\n\n') })
@@ -447,17 +432,23 @@ export function readHistory({
   const pending = messages.slice(position)
   const page: typeof messages = []
 
-  for (const message of pending) {
-    const text = [
-      ...page,
-      message,
-    ].map(item => item.text).join('\n\n')
+  let bytes = 0
+  let outputBytes = 0
+  const encoder = new TextEncoder()
 
-    if (page.length && countTokens({ text }) > budget) {
+  for (const message of pending) {
+    const separator = page.length ? 2 : 0
+    const nextBytes = bytes + separator + encoder.encode(message.text).length
+    const encoded = encoder.encode(JSON.stringify(message.text)).length - 2
+    const nextOutput = outputBytes + separator * 2 + encoded
+
+    if (page.length && (nextBytes > budget * 4 || nextOutput > HISTORY_PAGE_BYTES)) {
       break
     }
 
     page.push(message)
+    bytes = nextBytes
+    outputBytes = nextOutput
   }
 
   const text = page.map(message => message.text).join('\n\n')
@@ -472,8 +463,8 @@ export function readHistory({
     snapshot: through,
     text,
     tokens: countTokens({ text }),
+    budget,
     totalTokens,
-    source: 'estimated' as const,
     more,
     after: cursor,
     note: more
@@ -491,15 +482,30 @@ export function applyHistory({
   event: HydraEvent
 }): void {
   const milestones = state.historyMilestones ?? []
-  const compaction = milestones.findLast(item => item.kind === 'compaction' && item.state !== 'failed')
 
-  if (compaction && event.type === 'hydra.agent-change' && event.data.state === 'finished' && event.data.summary !== undefined) {
-    compaction.summary = event.data.summary
+  if (event.type === 'hydra.agent-change' && event.data.state === 'finished' && event.data.summary !== undefined) {
+    const change = event.data
+    let id = change.operation
+    const active = state.hydraOperation
+
+    // Older switch records name the owner message but carry no operation ID.
+    if (!id && active?.kind === 'compaction' && active.id.startsWith(`agent-change:${change.id}:`)) {
+      id = active.id
+    }
+
+    const milestone = milestones.find(item => item.id === id && item.kind === 'compaction')
+
+    if (milestone) {
+      milestone.summary = change.summary
+    }
   }
 
-  if (compaction && event.type === 'card.noted' && event.cardId === HYDRA_CARD && event.data.kind === 'summary'
-    && (event.data.source === 'claude-code' || event.data.source === 'codex')) {
-    compaction.summary = event.data.text
+  if (event.type === 'card.noted' && event.cardId === HYDRA_CARD && event.data.kind === 'summary' && event.data.operation) {
+    const milestone = milestones.find(item => item.id === event.data.operation && item.kind === 'compaction')
+
+    if (milestone) {
+      milestone.summary = event.data.text
+    }
   }
 
   let operation: HydraOperation
@@ -554,18 +560,12 @@ export function applyHistory({
     return
   }
 
-  let label = operation.kind === 'inscribe' ? 'Inscribed' : 'Compacted'
-
   const inscribed = milestones.some(item => item.parent === operation.id
     && item.kind === 'inscribe' && item.state === 'finished')
-
-  if (operation.kind === 'compaction' && inscribed) {
-    label = 'Inscribed and compacted'
-  }
-
-  if (operation.state === 'failed') {
-    label = operation.kind === 'inscribe' ? 'Inscribe failed' : 'Compaction failed'
-  }
+  const label = operationLabel({
+    ...operation,
+    inscribed,
+  })
 
   const dividerId = `milestone:${operation.id}`
   const combined = operation.kind === 'compaction' && operation.state === 'finished'
