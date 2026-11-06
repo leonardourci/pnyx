@@ -107,6 +107,18 @@ async function run({
   }
 }
 
+// The request id of a reply's note: per Hydra, card and reply, so a retry of the
+// same reply replays its note.
+export const noteRequestId = ({
+  hydraId,
+  card,
+  reply,
+}: {
+  hydraId: string
+  card: string
+  reply: string
+}) => `pnyx:${hydraId}:${card}:${reply}`
+
 // Asks the orchestrator for a change to the task's worker with a request note,
 // `fm-inbox.sh note --request-id <id> --json -- <text>`. The same request id replays
 // the note it saved first. Its exit contract: 0 saved and announced; 3 saved but not

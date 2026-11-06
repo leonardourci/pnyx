@@ -2,7 +2,7 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ReplyRoute } from './reply-route.ts'
-import { fmNote, fmSend } from '#integrations/firstmate/reply.ts'
+import { fmNote, fmSend, noteRequestId } from '#integrations/firstmate/reply.ts'
 import type { KeyStep } from '#integrations/hooks/answer.ts'
 import { HOOK } from '#integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '#integrations/hooks/terminal.ts'
@@ -22,18 +22,6 @@ export function routeName({
   return route.kind === 'firstmate' ? (control ? 'firstmate:inbox' : 'firstmate')
     : route.kind === 'paseo-agent' || route.kind === 'pnyx' ? route.kind : `terminal:${route.kind}`
 }
-
-// The request id of a setting change's note: per Hydra, card and change, so a retry
-// of the same change replays its note.
-const noteId = ({
-  hydraId,
-  card,
-  reply,
-}: {
-  hydraId: string
-  card: string
-  reply: string
-}) => `pnyx:${hydraId}:${card}:${reply}`
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
@@ -77,7 +65,7 @@ export async function deliver({
     return request.control
       ? fmNote({
         home: route.home,
-        requestId: noteId({
+        requestId: noteRequestId({
           hydraId,
           card,
           reply,
