@@ -1,3 +1,4 @@
+import { readTranscriptRecord } from '#workers/transcripts.ts'
 import { readFileSync, renameSync, writeFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join } from 'node:path'
 import { decideNote, noteId } from '#tasks/notes.ts'
@@ -318,7 +319,7 @@ export function harvestTranscripts({
           subagent,
         }),
       })
-      const stamp = Date.parse(String((line.record as { timestamp?: unknown }).timestamp))
+      const stamp = Date.parse(readTranscriptRecord({ record: line.record }).at ?? '')
       const stale = hooked > 0 && !(stamp >= hooked)
 
       Object.assign(
