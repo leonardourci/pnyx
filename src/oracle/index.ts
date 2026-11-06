@@ -12,7 +12,7 @@ import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
 import type { Hit, IndexResult, IndexStatus, Kind, Match, Query } from './model.ts'
-import { synonymGroup } from './synonyms.ts'
+import { bare, fold, queryTerms, quote, termExpr, words, type Term } from './query.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
@@ -668,94 +668,6 @@ export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
 }
 
 export const SNIPPETS = 3
-
-const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
-  .replace(
-    /\p{M}/gu,
-    '',
-  )
-
-// The distinct words of a text, folded, as typo matching looks them up. Words under
-// three letters have no trigram; longer than 32 are mostly hashes and ids.
-function words({ text }: { text: string }): Set<string> {
-  return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
-}
-
-const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
-  /"/g,
-  '""',
-)}"`
-
-const bare = ({ token }: { token: string }) => token.replace(
-  /^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu,
-  '',
-)
-
-// One query word, or a synonym phrase, and what it may match: its synonym group,
-// or the word itself. A trailing * matches the word as a prefix, and the indexed
-// words starting with it, and skips synonyms and typos.
-interface Term {
-  alts: readonly string[]
-  prefix: boolean
-  typo: boolean
-}
-
-function queryTerms({ text }: { text: string }): Term[] {
-  const tokens = text.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token))
-  const terms: Term[] = []
-
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]!
-
-    if (token.endsWith('*')) {
-      terms.push({
-        alts: [
-          token.slice(
-            0,
-            -1,
-          ),
-        ],
-        prefix: true,
-        typo: false,
-      })
-      continue
-    }
-
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: tokens[i + 1]! })}`.toLowerCase()) : undefined
-
-    if (pair) {
-      i += 1
-    }
-
-    const group = pair ?? synonymGroup.get(bare({ token }).toLowerCase())
-    terms.push(
-      group
-        ? {
-          alts: group,
-          prefix: false,
-          typo: false,
-        }
-        : {
-          alts: [token],
-          prefix: false,
-          typo: true,
-        },
-    )
-  }
-
-  return terms
-}
-
-// A term as an FTS5 expression, each phrase quoted so punctuation is never read as
-// query syntax. A prefix term's first alternative is the prefix.
-function termExpr({ term }: { term: Term }): string {
-  const alts = term.alts.map((
-    alt,
-    i,
-  ) => `${quote({ phrase: alt })}${term.prefix && i === 0 ? '*' : ''}`)
-
-  return alts.length === 1 ? alts[0]! : `(${alts.join(' OR ')})`
-}
 
 const trigrams = ({ word }: { word: string }) =>
   Array.from(
