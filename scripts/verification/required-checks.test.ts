@@ -122,7 +122,8 @@ for (const row of rows) {
         policy.tests,
         row.tests,
       )
-      const body = REVIEW_CHECKLISTS.map(name => `- [${row.reviews.includes(name) ? 'x' : ' '}] Ran \`${name}\``).join('\n')
+      const description = '## Problem\nMissing checks.\n## Fix\nRequire descriptions.\n## Validation\nTests passed.\n## Review\nNo findings.\n'
+      const body = description + REVIEW_CHECKLISTS.map(name => `- [${row.reviews.includes(name) ? 'x' : ' '}] Ran \`${name}\``).join('\n')
       const marker = {
         head_sha: 'head',
         head_tree: 'tree',
@@ -199,7 +200,7 @@ test(
         'Change: mechanical (rename)',
         'Change: mechanical (move)',
       ].includes(declaration)
-      const body = `${declaration}\n- [x] Ran \`deslop\``
+      const body = `## Problem\nMissing checks.\n## Fix\nRequire descriptions.\n## Validation\nTests passed.\n## Review\nNo findings.\n${declaration}\n- [x] Ran \`deslop\``
       assert.equal(
         mechanicalDeclaration({ body }),
         valid,
