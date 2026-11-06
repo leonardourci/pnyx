@@ -153,12 +153,10 @@ export function searchSchedule({
 export function useFoundCards({
   command,
   query,
-  workspace,
   revision,
 }: {
   command: Command
   query: string
-  workspace: string
   revision: number
 }): {
   hits: Hit[]
@@ -176,7 +174,7 @@ export function useFoundCards({
   const text = query.trim()
   const search = text ? {
     text,
-    workspace,
+    workspace: '',
   } : null
   const key = search ? keyOf({ search }) : ''
   const latest = useRef(search); latest.current = search

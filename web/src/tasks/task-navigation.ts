@@ -18,8 +18,6 @@ export function useTaskNavigation({
   setRevealed,
   page,
   setPage,
-  workspace,
-  tag,
   project,
   projectReferences,
 }: {
@@ -38,8 +36,6 @@ export function useTaskNavigation({
   }>>
   page: string
   setPage: Dispatch<SetStateAction<string>>
-  workspace: string
-  tag: string
   project: string
   projectReferences: string[]
 }) {
@@ -125,12 +121,11 @@ export function useTaskNavigation({
   const columns = columnsFor({ state })
   const filteredCards = filterCards({
     state,
-    workspace,
-    tag,
   }).filter(c => !project || c.project === project || projectReferences.includes(c.project ?? ''))
+  // Saved reveal scopes reserve two empty slots before the project.
   const filterScope = JSON.stringify([
-    workspace,
-    tag,
+    '',
+    '',
     project,
   ])
   useEffect(

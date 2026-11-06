@@ -57,7 +57,6 @@ export function Oracle({
   connected,
   hydra,
   projects,
-  workspace,
   layer,
   save,
   notify,
@@ -86,7 +85,6 @@ export function Oracle({
     icon: string
   }
   projects: HydraProjectSummary[]
-  workspace: string
   // The page element the palette draws in, so it takes the page's text sizes.
   layer: HTMLElement | null
   save({ patch }: { patch: unknown }): Promise<boolean>
@@ -201,7 +199,6 @@ export function Oracle({
   const found = useFoundCards({
     command,
     query: open ? text : '',
-    workspace,
     revision: state.seq,
   })
   const menu = token ? filterMenu({

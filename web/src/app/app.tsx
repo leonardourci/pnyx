@@ -91,15 +91,9 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
   const [restored] = useState(() => hydraViews.get(hydra.viewKey)
     ?? restoreView({ key: restoreKey }))
   const [
-      page,
-      setPage,
-    ] = useState(() => new URLSearchParams(location.search).has('settings') || restored.page === 'settings' ? 'settings' : 'hydra'), [
-      workspace,
-      setWorkspace,
-    ] = useState(''), [
-      tag,
-      setTag,
-    ] = useState('')
+    page,
+    setPage,
+  ] = useState(() => new URLSearchParams(location.search).has('settings') || restored.page === 'settings' ? 'settings' : 'hydra')
   const [
       selectedRef,
       setActive,
@@ -274,8 +268,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     setRevealed,
     page,
     setPage,
-    workspace,
-    tag,
     project,
     projectReferences,
   })
@@ -347,7 +339,7 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
     column: string
     parent?: string
   }) => {
-    setPage('hydra'); setWorkspace(''); setTag(''); filterProject({ path: '' }); clearSelection()
+    setPage('hydra'); filterProject({ path: '' }); clearSelection()
     taskFormVersion.current++
     const refused = hydra.edits.findLast(intent => {
       const {
@@ -608,7 +600,6 @@ function HydraView({ hydra }: { hydra: ReturnType<typeof useHydra> }) {
                 connected={connected}
                 hydra={oracleHydra}
                 projects={shownHydra?.projects ?? []}
-                workspace={workspace}
                 layer={layer}
                 save={save}
                 notify={notify}
