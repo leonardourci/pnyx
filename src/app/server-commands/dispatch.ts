@@ -2,7 +2,6 @@ import { AxiError } from 'axi-sdk-js'
 import { type createIndexSync } from '#oracle/index-sync.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
-import { knownHarness } from '#workers/providers.ts'
 import type { createHost } from '#app/host.ts'
 import type { HydraState } from '#app/model.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from '#app/save-receipts.ts'
@@ -12,8 +11,10 @@ import { CLI_COMMANDS, type HydraClient } from '#app/server-transport.ts'
 import { COMMAND_WORKER, type createServerWorkers } from '#app/server-workers.ts'
 import { loadHydra } from '#app/store.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
+import { compactCommand } from './compact.ts'
 import { hydraAgentChangeCommand, hydraAgentCommand } from './hydra-agent.ts'
 import { hydrasCommand } from './hydras.ts'
+import { modelsCommand } from './models.ts'
 import { oracleCommand } from './oracle.ts'
 import { replyCommand } from './reply.ts'
 import { threadCommand } from './thread.ts'
@@ -196,56 +197,23 @@ export function createServerCommands({
 
       try {
         if (name === 'compact') {
-          if (args.length < 1 || args.length > 2) {
-            throw new HydraError({
-              message: 'compact expects a card and an optional queued message ID',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          void agents.compact({
-            card: args[0]!,
-            sendNow: args[1],
-          }).then(
-            result => send({
-              ws,
-              message: {
-                type: 'receipt',
-                id,
-                ...result,
-              },
-            }),
-            (error: Error) => fail({
-              error: error.message,
-              code: error instanceof HydraError ? error.code : 'UNKNOWN',
-            }),
-          )
-        } else if (name === 'models') {
-          const harness = knownHarness({ name: args[0] })
-
-          if (args.length < 1 || args.length > 2 || !harness) {
-            throw new HydraError({
-              message: 'models expects claude or codex and an optional account name',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          void agents.models({
-            harness,
-            account: args[1],
+          compactCommand({
+            ws,
+            id,
+            args,
+            fail,
+            send,
+            agents,
           })
-            .then(models => send({
-              ws,
-              message: {
-                type: 'receipt',
-                id,
-                models,
-              },
-            }))
-            .catch((error: Error) => fail({
-              error: error instanceof HydraError ? error.message : 'Harness model catalog unavailable. Reopen the picker to retry.',
-              code: error instanceof HydraError ? error.code : 'CATALOG_UNAVAILABLE',
-            }))
+        } else if (name === 'models') {
+          modelsCommand({
+            ws,
+            id,
+            args,
+            fail,
+            send,
+            agents,
+          })
         } else if (name === 'catalog') {
           catalogCommand({
             ws,
