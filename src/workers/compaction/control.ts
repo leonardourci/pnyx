@@ -12,6 +12,9 @@ import type { Host } from '#app/host-types.ts'
 
 // A deadline that could not record its failure tries again this soon.
 const COMPACTION_RETRY_MS = 1000
+
+// A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
+export const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
 import type { Writer } from '#app/writer.ts'
 
 // Inputs held while an agent compacts, the deadline that fails a silent compaction, and releasing them in order.
