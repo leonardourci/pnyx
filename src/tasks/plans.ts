@@ -1,3 +1,5 @@
+import { createBeforeRank } from './create-placement.ts'
+import { roleColumn } from './column-rules.ts'
 import { randomUUID } from 'node:crypto'
 import { taskColumn } from './column-rules.ts'
 import type { Decision, HydraState } from '#app/model.ts'
@@ -32,6 +34,7 @@ export type TaskOperation = { reason?: string } & (
     hold?: boolean
     parent?: string
     column?: string
+    before?: string
     ask?: string
     message?: string
   }
@@ -182,6 +185,22 @@ export function planTaskChange({
       key,
       title,
     }
+
+    if (operation.before) {
+      const column = operation.hold ? roleColumn({
+        columns,
+        role: 'queued',
+      }) : selected?.id
+      created.rank = createBeforeRank({
+        state,
+        column: column ?? roleColumn({
+          columns,
+          role: 'queued',
+        }) ?? 'parked',
+        before: operation.before,
+      })
+    }
+
     const folder = inField({
       field: 'folder',
       read: () => canonical({ path: operation.folder }),

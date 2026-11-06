@@ -56,6 +56,7 @@ export const OPERATION_SCHEMAS: Record<Operation['op'], OperationSchema> = {
       hold: 'boolean',
       parent: 'text',
       column: 'text',
+      before: 'text',
       ask: 'text',
       message: 'text',
     },

@@ -14,6 +14,7 @@ export interface TaskDraft {
 export function TaskCreate({
   column,
   parent,
+  before,
   command,
   connected,
   submitted,
@@ -24,6 +25,7 @@ export function TaskCreate({
 }: {
   column: string
   parent?: string
+  before?: string
   command: Command
   connected: boolean
   submitted({ id }: { id: string }): void
@@ -65,6 +67,10 @@ export function TaskCreate({
             title.trim(),
             '--ask',
             prompt,
+            ...(before ? [
+              '--before',
+              before,
+            ] : []),
             '--column',
             column,
             ...(parent ? [
