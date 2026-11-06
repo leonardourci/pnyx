@@ -426,9 +426,18 @@ test(
         'Comparing options',
       ],
     })
-    assert.equal(
-      s.task({ key: 'research' }).column,
-      s.column({ role: 'parked' }),
+    const declared = s.events().find(event => event.type === 'task.declared' && event.cardId === s.task({ key: 'research' }).id)
+    assert.deepEqual(
+      [
+        s.task({ key: 'research' }).column,
+        s.task({ key: 'research' }).updatedAt,
+        s.task({ key: 'research' }).updatedSeq,
+      ],
+      [
+        s.column({ role: 'parked' }),
+        declared?.at,
+        declared?.seq,
+      ],
     )
     const question = await run({
       args: [
