@@ -13,6 +13,7 @@ import { findCard } from './push-rules.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
 import { touch } from './touch.ts'
 import { isManagedTask } from './select.ts'
+import { answerDelivery, askWording, openAsks, pendingAnswer } from './ask-state.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -90,32 +91,6 @@ const findAsk = ({
   return ask
 }
 
-const currentAnswerReplies = ({
-  card,
-  question,
-}: {
-  card: Card
-  question: string
-}) => {
-  const round = card.asks?.find(ask => ask.id === question)?.answerRound
-
-  return card.replies?.filter(reply =>
-    reply.answers === question && reply.decision?.answerRound === round) ?? []
-}
-
-// An answer still being sent, or one that may have landed, holds the question until someone checks.
-export const pendingAnswer = ({
-  card,
-  ask,
-}: {
-  card: Card
-  ask: Ask
-}) => currentAnswerReplies({
-  card,
-  question: ask.id,
-})
-  .find(reply => reply.state === 'queued' || reply.state === 'delivery_unknown')
-
 // undelivered: the answerer checked the worker's session and the uncertain answer never arrived.
 const closed = ({
   card,
@@ -146,15 +121,6 @@ const closed = ({
     })
   }
 }
-
-export const openAsks = ({
-  card,
-  audience,
-}: {
-  card: Card
-  audience?: AskAudience
-}) => (card.asks ?? []).filter(a =>
-  !a.answered && !a.closed && (!audience || a.audience === audience))
 
 export function decideAsk({
   state,
@@ -417,11 +383,6 @@ export const askReport = ({
   ...(ask.details ? [`Details: \`pnyx-axi task show ${task} --full --hydra ${hydraId}\``] : []),
   `Answer: \`pnyx-axi task answer ${task} ${ask.id} --choice <n> | --text "<answer>" --reason "<why>" --hydra ${hydraId}\`; hand on only an owner decision: \`pnyx-axi task escalate ${task} ${ask.id} --reason "<why>" --hydra ${hydraId}\``,
 ].join('\n')
-
-export const askWording = ({ ask }: { ask: Ask }) => ({
-  question: ask.escalated?.question ?? ask.question,
-  context: ask.escalated?.context ?? ask.context,
-})
 
 const answeredMergeHold = ({ ask }: { ask: Ask }) =>
   ask.kind === 'merge' && ask.audience === 'owner' && ask.choice === 'Hold' && !!ask.answered && !ask.closed
@@ -1064,19 +1025,6 @@ export function decideAskClosure({
       },
     },
   })
-}
-
-export function answerDelivery({
-  card,
-  question,
-}: {
-  card: Card
-  question: string
-}) {
-  return currentAnswerReplies({
-    card,
-    question,
-  }).at(-1)
 }
 
 export interface OwnerQuestion {

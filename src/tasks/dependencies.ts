@@ -1,5 +1,5 @@
 import { reportReviewGaps } from '#investigations/inventory.ts'
-import { openAsks } from './questions.ts'
+import { openAsks } from './ask-state.ts'
 import { ownerGates } from './owner-gates.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'

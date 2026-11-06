@@ -1,7 +1,7 @@
 import { ChoiceOption } from '#web-shared/ui/choice-option.tsx'
 import { useState } from 'react'
 import type { Ask, Card } from '#tasks/model.ts'
-import { answerDelivery, askWording } from '#tasks/questions.ts'
+import { answerDelivery, askWording } from '#tasks/ask-state.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { ComposerField } from '#web-shared/ui/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
