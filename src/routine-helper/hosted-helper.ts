@@ -157,9 +157,8 @@ export function createHostedHelper({
 
       return agent
     },
-    // Defined below, once the helper it offers updates to exists.
-    handback: () => armWake(),
-    outcomesReady: () => armWake(),
+    handback: armWake,
+    outcomesReady: armWake,
   })
 
   return {
