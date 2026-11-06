@@ -719,10 +719,6 @@ export function createHydraTurns({
     }
   }
 
-  const activityChanged = ({ activity }: { activity: string }) => {
-    turnEnded({ activity })
-  }
-
   const activityEventId = ({
     writer,
     card,
@@ -776,10 +772,6 @@ export function createHydraTurns({
     return eventId
   }
 
-  const turnRecorded = () => {
-    armWake()
-  }
-
   const sessionEnded = ({ entry }: { entry: Live }) => {
     // A check turn cut before it finished hands its updates back; they reach Hydra once the owner continues it.
     if (entry.activity === 'working') {
@@ -796,9 +788,9 @@ export function createHydraTurns({
     hydra,
     startedByOwner,
     turnFinished,
-    activityChanged,
+    activityChanged: turnEnded,
     activityEventId,
-    turnRecorded,
+    turnRecorded: armWake,
     sessionEnded,
   }
 }
