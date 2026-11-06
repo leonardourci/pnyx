@@ -204,6 +204,7 @@ export async function mountOwnedHydra({
     transcripts,
     transcriptPolls,
     touchLatest,
+    streamed,
   } = feed
 
   const pump = () => {
@@ -331,25 +332,7 @@ export async function mountOwnedHydra({
         sendQueue({ ws })
       }
     },
-    streamed: ({ session }) => {
-      touchLatest({
-        ids: Object.values(state.cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
-          .map(card => card.id),
-      })
-
-      for (const map of threadSubscriptions) {
-        for (const [
-          ws,
-          sub,
-        ] of map) {
-          const agent = state.cards[sub.card]?.agent
-
-          if (agent && `${agent.provider}:${agent.sessionId}` === session) {
-            refreshThread({ ws })
-          }
-        }
-      }
-    },
+    streamed,
   })
 
   const withdrawHost = offerHost({
