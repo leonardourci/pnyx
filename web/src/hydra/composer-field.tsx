@@ -11,7 +11,7 @@ import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } fro
 import { slashState,type SlashState } from './view.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useFolders } from '#web-projects/folders.ts'
-import { useAutoHeight } from '#web-shared/ui/auto-height.ts'
+import { useAutoHeight } from './auto-height.ts'
 import { Textarea } from '#web-shared/ui/controls.tsx'
 import { Label } from '#web-shared/ui/label.tsx'
 import { SuggestionPicker } from '#web-shared/ui/suggestion-picker.tsx'
