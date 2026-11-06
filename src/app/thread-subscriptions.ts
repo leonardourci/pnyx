@@ -100,7 +100,7 @@ export function createThreadSubscriptions({
     return {
       ...prepared,
       conversation: {
-        ...prepared.conversation!,
+        ...prepared.conversation,
         stream: sub.view.id,
         version: ++sub.view.version,
       },
@@ -239,7 +239,7 @@ export function createThreadSubscriptions({
       })
     }
 
-    return paseoHistory({
+    const page = await paseoHistory({
       card: card.id,
       conversation: { read: async ({ before }) => (await native).read({ before }) },
       readSaved: ({ before }) => readThread({
@@ -250,11 +250,13 @@ export function createThreadSubscriptions({
         before,
       }),
       before,
-    }).then(page => prepareThread({
+    })
+
+    return prepareThread({
       sub,
       page,
       older: before !== undefined,
-    }))
+    })
   }
 
   const bindThread = ({

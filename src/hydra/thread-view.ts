@@ -15,11 +15,7 @@ export function hydraThreadView({
   state: HydraState
   page: ThreadPage
   thinking: boolean
-}): ThreadPage {
-  if (page.card !== HYDRA_CARD) {
-    return page
-  }
-
+}): ThreadPage & { conversation: NonNullable<ThreadPage['conversation']> } {
   const config = hydraConfig({ state })
   const card = state.cards[HYDRA_CARD]
   const entries = page.entries.map(entry => injectedInstructions({
