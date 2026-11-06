@@ -80,7 +80,7 @@ test(
         {
           id: 'build',
           tool: 'Bash',
-          input: { command: 'pnpm build' },
+          command: 'pnpm build',
         },
       ],
     )
@@ -92,7 +92,7 @@ test(
         {
           id: 'build',
           tool: 'shell',
-          input: { command: 'pnpm build' },
+          command: 'pnpm build',
         },
       ],
     )

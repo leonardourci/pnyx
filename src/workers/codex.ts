@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader, TranscriptTrace } from './provider.ts'
-import { foundSettings, onOff, transcriptString, transcriptText } from './transcript-content.ts'
+import { foundSettings, onOff, transcriptString, transcriptText, transcriptCall } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1736,7 +1736,7 @@ function scriptCalls({
       text: body,
     }) ?? PATCHED_FILE.exec(body)?.[1]
 
-    return {
+    return transcriptCall({
       id,
       tool: match[1]!,
       input: {
@@ -1746,7 +1746,7 @@ function scriptCalls({
         }),
         path,
       },
-    }
+    })
   })
 }
 
@@ -1767,11 +1767,11 @@ function customCalls({
   }
 
   return [
-    {
+    transcriptCall({
       id,
       tool,
       input: { path: PATCHED_FILE.exec(input)?.[1] },
-    },
+    }),
   ]
 }
 
@@ -1890,11 +1890,11 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   }
 
   if (payload.type === 'function_call' && typeof payload.call_id === 'string') {
-    parsed.calls.push({
+    parsed.calls.push(transcriptCall({
       id: payload.call_id,
       tool: typeof payload.name === 'string' ? payload.name : 'tool',
       input: parsedArguments({ text: payload.arguments }),
-    })
+    }))
   }
 
   if (payload.type === 'custom_tool_call' && typeof payload.call_id === 'string' && typeof payload.input === 'string') {

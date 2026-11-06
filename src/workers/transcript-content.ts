@@ -1,5 +1,6 @@
+import { commandOf } from './tool-input.ts'
 import { withoutInjected } from '#oracle/text.ts'
-import type { FoundSettings, TranscriptMessage } from './provider.ts'
+import type { FoundSettings, TranscriptMessage, TranscriptCall } from './provider.ts'
 
 export const transcriptString = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined
@@ -22,7 +23,7 @@ export function onOff({ fast }: { fast: boolean | undefined }) {
   return fast ? 'on' : 'off'
 }
 
-export const wakeInput = ({ text }: { text: string }) => /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(text)
+const wakeInput = ({ text }: { text: string }) => /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(text)
 
 export function transcriptText({
   texts,
@@ -55,4 +56,37 @@ export function transcriptText({
   }
 
   return messages
+}
+
+export function transcriptCall({
+  id,
+  tool,
+  input,
+}: {
+  id: string
+  tool: string
+  input: Record<string, unknown>
+}): TranscriptCall {
+  const call: TranscriptCall = {
+    id,
+    tool,
+  }
+  const fields = {
+    command: commandOf({ input }),
+    file: input.file_path ?? input.notebook_path ?? input.path,
+    query: input.pattern ?? input.query,
+    url: input.url,
+    skill: input.skill ?? input.subagent_type,
+    description: input.description,
+  }
+
+  for (const name of Object.keys(fields) as (keyof typeof fields)[]) {
+    const value = fields[name]
+
+    if (typeof value === 'string') {
+      call[name] = value
+    }
+  }
+
+  return call
 }
