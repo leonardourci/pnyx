@@ -4,7 +4,7 @@ import type { AgentConfig, AgentSettings } from '#workers/model.ts'
 import { DEFAULT_HARNESS, harnessOf } from '#workers/providers.ts'
 import { HYDRA_CARD } from './identity.ts'
 
-// The harness that receives Hydra's messages: the chosen agent, then the dispatch rules, then the one Hydra runs on now.
+// The agent that receives Hydra's messages: Hydra's chosen agent, its dispatch rule, the default rule, the harness Hydra runs on now, then Claude.
 export function hydraCandidate({
   state,
   dispatch,

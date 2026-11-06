@@ -180,7 +180,7 @@ export function applyReplyReceipt({
   // A task shows its session's requests, which hooks read back from the
   // session's own card, so the answer is marked on all of them.
   if (answers && event.data.state === 'delivered') {
-    // Never a go question, so no hold to lift: only Hydra asks one, and an answer to Hydra's question is a Hydra message (applyAsk).
+    // Lifts no hold: a go question is always Hydra's, and an answer to Hydra's question arrives as a Hydra message, which applyAsk handles.
     if (card.asks && !reply.accepted) {
       card.asks = card.asks.map(ask => {
         const sameRound = ask.answerRound === decision?.answerRound
