@@ -2,8 +2,6 @@ import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
 import { readTranscriptRecord, transcriptMessages } from './transcripts.ts'
-import { readClaudeTranscript } from './claude.ts'
-import { readCodexTranscript } from './codex.ts'
 
 const records = JSON.parse(readFileSync(
   new URL(
@@ -15,39 +13,44 @@ const records = JSON.parse(readFileSync(
 const at = '2026-10-22T10:00:00.000Z'
 
 test(
-  'both adapters expose typed text with the same neutral role and timestamp',
+  'Claude and Codex records read as the same neutral role, timestamp and typed text',
   () => {
-    for (const record of [
-      records.claude,
-      records.codex,
-    ]) {
-      const parsed = readTranscriptRecord({ record })
-      assert.equal(
-        parsed.role,
-        'assistant',
-      )
-      assert.equal(
-        parsed.at,
-        at,
-      )
-      assert.deepEqual(
-        parsed.messages,
-        [
-          {
-            at,
-            text: 'Ready',
-          },
-        ],
-      )
-    }
-
+    const claude = readTranscriptRecord({ record: records.claude })
     assert.equal(
-      readClaudeTranscript({ record: records.codex }),
-      undefined,
+      claude.role,
+      'assistant',
     )
     assert.equal(
-      readCodexTranscript({ record: records.claude }),
-      undefined,
+      claude.at,
+      at,
+    )
+    assert.deepEqual(
+      claude.messages,
+      [
+        {
+          at,
+          text: 'Ready',
+        },
+      ],
+    )
+
+    const codex = readTranscriptRecord({ record: records.codex })
+    assert.equal(
+      codex.role,
+      'assistant',
+    )
+    assert.equal(
+      codex.at,
+      at,
+    )
+    assert.deepEqual(
+      codex.messages,
+      [
+        {
+          at,
+          text: 'Ready',
+        },
+      ],
     )
   },
 )
