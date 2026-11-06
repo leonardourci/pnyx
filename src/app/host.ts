@@ -79,8 +79,7 @@ import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
 import { wakeId, WAKE_ID, WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakeText, outageMinutes, recapText, wakesThrough, wakeCursor, findHydraTurnToResume, type QueuedUpdate } from '#hydra/wakes.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
-import { arrivedSince, operationEvent, operationRecap } from '#hydra/operations.ts'
-import type { HydraOperation } from '#hydra/model.ts'
+import { createHydraOperations, operationEvent } from '#hydra/operations.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
@@ -284,172 +283,19 @@ export function createHost({
     at,
   })
 
-  // One machinery for whatever stops Hydra for a while: it records the start and the end, holds nothing of its own,
-  // and when it ends Hydra's first turn is the recap of what arrived meanwhile.
-  // The first of back-to-back operations: the recap after the last one covers everything since it began.
-  let stoppedSince: NonNullable<HydraState['hydraOperation']> | undefined
-
-  const stoppedFor = ({ id }: { id: string }) => {
-    const running = loadHydra({ hydraId }).state.hydraOperation
-
-    const change = loadHydra({ hydraId }).state.hydraAgentChange
-
-    return (Boolean(running) || Boolean(change)) && !id.startsWith('operation:')
-  }
-
-  const startOperation = ({
-    id,
-    kind,
-    after,
-    independent = false,
-  }: {
-    id: string
-    after?: number
-    kind: HydraOperation['kind']
-    independent?: boolean
-  }) => note({
-    fn: ({ writer }) => {
-      // A second compaction straight after the first, or a restart inside an upgrade, continues the same stop.
-      if (writer.state.hydraOperation && !independent) {
-        return
-      }
-
-      // Messages already waiting for a Hydra turn when the stop begins are part of what it recaps.
-      const waiting = [...queuedHydra].flatMap(queuedId => writer.state.eventIds[queuedId] ?? [])
-      const operation: HydraOperation = {
-        id,
-        kind,
-        state: 'started',
-        through: writer.state.seq,
-      }
-
-      if (writer.state.hydraOperation) {
-        operation.blocking = false
-      }
-
-      if (waiting.length || after !== undefined) {
-        operation.after = Math.min(
-          after ?? Infinity,
-          ...waiting.map(seq => seq - 1),
-        )
-      }
-
-      if (!stoppedSince) {
-        stoppedSince = {
-          id,
-          kind,
-          since: at(),
-          seq: operation.after ?? writer.state.seq + 1,
-        }
-      }
-
-      applyDecision({
-        writer,
-        decision: operationEvent({
-          state: writer.state,
-          operation,
-          meta: {
-            at: at(),
-            actor: 'pnyx',
-          },
-        }),
-      })
-    },
+  const {
+    stoppedFor,
+    startOperation,
+    endOperation,
+  } = createHydraOperations({
+    hydraId,
+    queuedHydra,
+    at,
+    // Defined below; each is read only once an operation runs.
+    note: ({ fn }) => note({ fn }),
+    armWake: () => armWake(),
+    host: () => host,
   })
-
-  const endOperation = ({
-    id,
-    error,
-  }: {
-    id: string
-    error?: string
-  }) => {
-    const state = loadHydra({ hydraId }).state
-    const active = state.hydraOperation
-    const running = active?.id === id ? active : undefined
-    const milestone = state.historyMilestones?.find(item => item.id === id)
-
-    if (!running && (milestone?.state !== 'started' || milestone.blocking !== false)) {
-      return
-    }
-
-    const kind = running?.kind ?? milestone?.kind
-
-    if (!kind) {
-      return
-    }
-
-    const ended: HydraOperation = {
-      id,
-      kind,
-      state: error ? 'failed' : 'finished',
-    }
-
-    if (!running) {
-      ended.blocking = false
-    }
-
-    if (error) {
-      ended.error = error
-    }
-
-    note({
-      fn: ({ writer }) => applyDecision({
-        writer,
-        decision: operationEvent({
-          state: writer.state,
-          operation: ended,
-          meta: {
-            at: at(),
-            actor: 'pnyx',
-          },
-        }),
-      }),
-    })
-    background({
-      name: 'Hydra back after a stop',
-      run: async () => {
-        const state = loadHydra({ hydraId }).state
-
-        // Another operation started meanwhile; the recap waits for the last one to end.
-        if (state.hydraOperation || state.hydraAgentChange?.state === 'running') {
-          return
-        }
-
-        const since = stoppedSince ?? running
-        stoppedSince = undefined
-
-        if (!since) {
-          armWake()
-
-          return
-        }
-
-        // A clean stop that nothing waited on needs no turn of its own.
-        if (error || arrivedSince({
-          state,
-          after: since.seq,
-        })) {
-          const pendingSwitch = state.hydraAgentChange
-          const recap = error && pendingSwitch
-            ? `<pnyx-wake>Compaction failed: ${error}. The agent switch is still waiting for the owner to retry; its queued messages remain held.</pnyx-wake>`
-            : operationRecap({
-              state,
-              operation: since,
-              error,
-              now: Date.now(),
-            })
-          await host.hydra({
-            id: `operation:${id}`,
-            actor: 'pnyx',
-            text: recap,
-          })
-        }
-
-        armWake()
-      },
-    })
-  }
 
   const compaction = createCompactionControl({
     hydraId,
