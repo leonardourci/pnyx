@@ -1,11 +1,17 @@
 ---
 name: follow-conventions
-description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors and installed-version APIs. Read before writing or reviewing Pnyx code.
+description: Coding conventions for Pnyx code that AGENTS.md and ESLint do not already state, such as when to split a file, early-return guards, named constants, plain named steps, HydraError failures, one decision in one place, behavior-preserving refactors and installed-version APIs. Read before writing or reviewing Pnyx code.
 ---
 
 # Follow conventions
 
 `AGENTS.md` holds the layout, design rules and the one-object-parameter rule, and `pnpm run lint` enforces formatting. This skill adds the rest. Cleaning up code that drifted from these rules is [deslop](../deslop/SKILL.md).
+
+## Files and concerns
+
+- Split a file when it holds unrelated concerns, so each part has one clear job and a reader can find it by name. Keep closely related code together, even when that mixes a few kinds of work; a split that scatters one idea across files is harder to follow than one longer file.
+- A very large file outside the provider adapters is a signal to look for unrelated concerns, not a limit to enforce.
+- Provider adapters (`src/workers/claude.ts`, `src/workers/codex.ts`) hold their provider's specific code, as [Provider boundaries](#provider-boundaries) describes, and may grow larger than other files.
 
 ## Control flow
 
