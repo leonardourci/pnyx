@@ -6,7 +6,7 @@ import type { ReplyState } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
 import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { transcriptMessages } from '#oracle/text.ts'
+import { readTranscriptRecord } from './transcripts.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
@@ -164,17 +164,13 @@ function transcriptHas({
         return false
       }
 
-      const fields = record as {
-        type?: unknown
-        payload?: { role?: unknown }
-      }
-      const fromUser = fields.type === 'user' || fields.payload?.role === 'user'
+      const parsed = readTranscriptRecord({ record })
 
-      if (!fromUser) {
+      if (parsed.role !== 'user') {
         return false
       }
 
-      return transcriptMessages({ record }).some(message => {
+      return parsed.messages.filter(message => !message.internal).some(message => {
         const recordedAt = message.at ? Date.parse(message.at) : after
         const said = folded({ text: message.text })
         const whole = said === wanted || said.endsWith(wanted)
