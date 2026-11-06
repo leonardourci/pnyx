@@ -25,14 +25,10 @@ export const columnsFor = ({ state }: { state: HydraState }) => {
 
 export function filterCards({
   state,
-  workspace,
-  tag,
   query = '',
   actions,
 }: {
   state: HydraState
-  workspace: string
-  tag: string
   query?: string
   actions?: Record<string, CurrentAction>
 }): Card[] {
@@ -41,8 +37,6 @@ export function filterCards({
     .filter(Boolean)
 
   return Object.values(state.cards).filter(c => liveTask({ card: c })
-    && (!workspace || c.workspace === workspace)
-    && (!tag || c.tags.includes(tag))
     && words.every(w => [
       c.title,
       c.project ?? '',

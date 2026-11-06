@@ -230,8 +230,6 @@ export function oracleResults({
   // filterCards also matches a card's key, tags, link numbers and status badge text, which the index doesn't hold.
   const cardMatches = text ? filterCards({
     state,
-    workspace: '',
-    tag: '',
     query: text,
     actions: cardActions,
   }).filter(card => card.id !== HYDRA_CARD && !found.has(card.id))
