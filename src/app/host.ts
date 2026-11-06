@@ -23,9 +23,8 @@ import { pendingSteering, steeringWorkerIdentity, steeringHeld } from '#workers/
 import { steeringMessages } from '#workers/inbox-notice.ts'
 import { requireUnheld } from '#tasks/holds.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
-import { helperAgent, helperBatch, helperEvent, helperPermission } from '#routine-helper/route.ts'
+import { helperAgent, helperBatch, helperEvent } from '#routine-helper/route.ts'
 import { activeHelperBatches, helperLeases, outcomeLines, type HelperAgent } from '#routine-helper/state.ts'
-import { isHelper } from '#routine-helper/leases.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -37,15 +36,15 @@ import { join } from 'node:path'
 import { claudeProvider, transcriptPath, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
 import { createUsageTracker } from '#workers/usage-tracker.ts'
-import { hydraFastReaches, type HostedSession, type PermissionDecision } from '#workers/provider.ts'
+import { createPermissionBridge } from '#workers/permission-bridge.ts'
+import { hydraFastReaches, type HostedSession } from '#workers/provider.ts'
 import { liveReplies } from '#workers/streaming.ts'
 import { copyTagged } from '#workers/tagged-updates.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
-import { explained } from './cli-support.ts'
-import { permissionAnswer, permissionEvent } from '#workers/permission-rules.ts'
+import { permissionEvent } from '#workers/permission-rules.ts'
 import { declareTask } from '#tasks/declarations.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { QUIET_REPLY, hostedHydra, hydraEvent, pnyxRunsHydra, reportActor } from '#hydra/hydra.ts'
@@ -63,7 +62,7 @@ import { decideSession } from '#workers/sessions.ts'
 import { HYDRA_ACTOR, ownerActor } from './actors.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
-import type { AgentRef, AgentSession, AgentSettings, Attention, PermissionRequest } from '#workers/model.ts'
+import type { AgentRef, AgentSession, AgentSettings, Attention } from '#workers/model.ts'
 import type { HydraAgentChange, HydraMessage } from '#hydra/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import { liveTask } from '#tasks/select.ts'
@@ -169,11 +168,6 @@ export function createHost({
     streamed,
   })
 
-  const pending = new Map<string, {
-    card: string
-    entry: Live
-    finish({ result }: { result: PermissionDecision }): void
-  }>()
   let closing = false
   let hydraTurn = Promise.resolve()
   const queuedHydra = new Set<string>()
@@ -209,61 +203,6 @@ export function createHost({
   }
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
-
-  const expire = ({ id }: { id: string }) => {
-    const waiting = pending.get(id)
-
-    if (!waiting) {
-      return
-    }
-
-    waiting.finish({
-      result: {
-        behavior: 'deny',
-        message: 'This permission request expired.',
-      },
-    })
-
-    // A stop records nothing about running turns; the next start expires what was left waiting, as after a crash.
-    if (closing) {
-      return
-    }
-
-    note({
-      fn: ({ writer }) => {
-        const card = writer.state.cards[waiting.card]
-        const request = card?.permissions?.find(p => p.id === id && p.status === 'pending')
-
-        if (card && request) {
-          writer.append({
-            event: permissionEvent({
-              state: writer.state,
-              card,
-              request: {
-                ...request,
-                status: 'expired',
-              },
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-            }),
-          })
-        }
-      },
-    })
-  }
-
-  const expireEntry = ({ entry }: { entry: Live }) => {
-    for (const [
-      id,
-      waiting,
-    ] of pending) {
-      if (waiting.entry === entry) {
-        expire({ id })
-      }
-    }
-  }
 
   const retire = ({
     key,
@@ -884,117 +823,20 @@ export function createHost({
     return providers[known]
   }
 
-  const askPermission = ({
-    id: nativeId,
-    key,
-    entry,
-    tool,
-    input,
-    signal,
-    description,
-    questions,
-    form,
-  }: {
-    tool: string
-    input: Record<string, unknown>
-    signal: AbortSignal
-    description?: string
-    key: string
-    entry: Live
-    id: string
-  } & Pick<PermissionRequest, 'questions' | 'form'>): Promise<PermissionDecision> => {
-    if (closing || signal.aborted) {
-      return Promise.resolve({
-        behavior: 'deny',
-        message: 'This permission request expired.',
-      })
-    }
-
-    return new Promise<PermissionDecision>(resolve => {
-      const cards = Object.values(loadHydra({ hydraId }).state.cards)
-      const previous = cards.flatMap(card => card.permissions ?? [])
-        .find(request => {
-          const same = request.session === key && request.nativeId === nativeId
-
-          return same && request.status !== 'expired'
-        })
-      const id = previous?.id ?? randomUUID()
-      const abort = () => expire({ id })
-
-      const finish = ({ result }: { result: PermissionDecision }) => {
-        pending.delete(id)
-        signal.removeEventListener(
-          'abort',
-          abort,
-        )
-        resolve(result)
-      }
-
-      const request: PermissionRequest = {
-        id,
-        nativeId,
-        session: key,
-        tool,
-        input,
-        status: previous?.status ?? 'pending',
-        answers: previous?.answers,
-        values: previous?.values,
-        ...(description ? { description } : {}),
-        ...(questions?.length ? { questions } : {}),
-        ...(form ? { form } : {}),
-      }
-      signal.addEventListener(
-        'abort',
-        abort,
-        { once: true },
-      )
-
-      try {
-        write({
-          fn: ({ writer }) => {
-            const session = writer.state.sessions?.[key]
-            const current = session?.id === writer.state.config?.hydra.session
-              ? writer.state.cards[HYDRA_CARD]
-              : session?.taskId ? writer.state.cards[session.taskId] : undefined
-
-            if (!current || current.agent?.host !== 'pnyx' || sessionId({ agent: current.agent }) !== key) {
-              throw new HydraError({
-                message: 'the agent is no longer attached to this task',
-                code: 'NO_ROUTE',
-              })
-            }
-
-            pending.set(
-              id,
-              {
-                card: current.id,
-                entry,
-                finish,
-              },
-            )
-            writer.append({
-              event: permissionEvent({
-                state: writer.state,
-                card: current,
-                request,
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-              }),
-            })
-          },
-        })
-      } catch (error) {
-        finish({
-          result: {
-            behavior: 'deny',
-            message: `Could not record permission: ${(error as Error).message}`,
-          },
-        })
-      }
-    })
-  }
+  const {
+    expireEntry,
+    askPermission,
+    permission,
+    reconcilePermissions,
+    expireOrphans,
+  } = createPermissionBridge({
+    hydraId,
+    live,
+    closing: () => closing,
+    at,
+    write,
+    note,
+  })
 
   const {
     pendingSteeringIds,
@@ -4188,176 +4030,7 @@ export function createHost({
 
     send,
 
-    permission: ({
-      task,
-      request: id,
-      choice,
-      answer,
-      actor,
-      reason,
-      details,
-    }) => {
-      const why = explained({
-        meta: {
-          at: at(),
-          actor,
-          reason,
-        },
-      })
-      const waiting = pending.get(id)
-      const result = write({
-        fn: ({ writer }) => {
-          const card = findCard({
-            state: writer.state,
-            ref: task,
-          })
-          const request = card.permissions?.find(p => p.id === id)
-
-          if (!request) {
-            throw new HydraError({
-              message: `permission request not found: ${id}`,
-              code: 'NOT_FOUND',
-            })
-          }
-
-          if (request.status !== 'pending' && request.delivery !== 'needs_reentry') {
-            throw new HydraError({
-              message: `permission request is already ${request.status}`,
-              code: 'PERMISSION_CLOSED',
-            })
-          }
-
-          // A question or form is the worker asking; the helper leaves its answer to main or the owner.
-          if (isHelper({ actor }) && (!helperPermission({ request }) || answer !== undefined)) {
-            throw new HydraError({
-              message: 'This request asks a question; leave it to the main Hydra',
-              code: 'MAIN_ONLY',
-            })
-          }
-
-          // Hydra runs pnyx-axi unasked, so it must not clear its own prompts with it.
-          if (card.id === HYDRA_CARD && actor === HYDRA_ACTOR) {
-            throw new HydraError({
-              message: 'Hydra cannot answer its own permission request',
-              code: 'NO_ROUTE',
-              help: ['The owner answers it in Hydra’s chat'],
-            })
-          }
-
-          if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
-            writer.append({
-              event: permissionEvent({
-                state: writer.state,
-                card,
-                request: {
-                  ...request,
-                  status: 'expired',
-                },
-                meta: {
-                  at: at(),
-                  actor: 'pnyx',
-                },
-              }),
-            })
-
-            return { expired: true as const }
-          }
-
-          if (request.delivery === 'needs_reentry' && choice !== request.status) {
-            throw new HydraError({
-              code: 'PERMISSION_CLOSED',
-              message: 'Re-entry supplies missing secret values for the original decision',
-            })
-          }
-
-          const answered = choice === 'allow' && (request.questions || request.form || answer !== undefined)
-            ? permissionAnswer({
-              request,
-              value: answer,
-            })
-            : {}
-
-          if (request.delivery === 'needs_reentry' && answered.answers && request.answers) {
-            for (const [
-              index,
-              previous,
-            ] of request.answers.entries()) {
-              const nextAnswer = answered.answers[index]
-              const sameAnswer = JSON.stringify(previous) === JSON.stringify(nextAnswer)
-
-              if (!request.questions?.[index]?.secret && !sameAnswer) {
-                throw new HydraError({
-                  code: 'PERMISSION_CLOSED',
-                  message: 'Only the missing secret answer can change on re-entry',
-                })
-              }
-            }
-          }
-
-          const recorded = answered.answers
-            ? {
-              answers: answered.answers.map((
-                picked,
-                i,
-              ) => request.questions?.[i]?.secret ? ['(hidden)'] : picked),
-            }
-            : answered
-          writer.append({
-            event: permissionEvent({
-              state: writer.state,
-              card,
-              request: {
-                ...request,
-                status: choice,
-                ...recorded,
-              },
-              meta: {
-                at: at(),
-                actor,
-                reason: why,
-                details,
-              },
-            }),
-          })
-
-          return {
-            expired: false as const,
-            answered,
-            receipt: {
-              task: card.id,
-              request: id,
-              status: choice,
-              ...recorded,
-            },
-          }
-        },
-      })
-
-      if (result.expired) {
-        waiting?.finish({
-          result: {
-            behavior: 'deny',
-            message: 'This permission request expired.',
-          },
-        })
-        throw new HydraError({
-          message: 'the agent no longer waits for this request',
-          code: 'PERMISSION_CLOSED',
-        })
-      }
-
-      waiting?.finish({
-        result: choice === 'allow' ? {
-          behavior: 'allow',
-          ...result.answered,
-        } : {
-          behavior: 'deny',
-          message: why || 'Permission denied from Pnyx.',
-        },
-      })
-
-      return result.receipt
-    },
+    permission,
 
     set: async ({
       card: ref,
@@ -4572,17 +4245,7 @@ export function createHost({
     reconcile: ({ state }) => {
       syncCompactions({ state })
 
-      for (const [
-        id,
-        waiting,
-      ] of pending) {
-        const card = state.cards[waiting.card]
-        const request = card?.permissions?.find(p => p.id === id)
-
-        if (!request || request.status !== 'pending' || card?.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
-          expire({ id })
-        }
-      }
+      reconcilePermissions({ state })
 
       for (const card of Object.values(state.cards)) {
         const assignment = steeringAssignment({ card })
@@ -4711,26 +4374,7 @@ export function createHost({
             }
           }
 
-          for (const card of Object.values(writer.state.cards)) {
-            for (const request of card.permissions ?? []) {
-              if (request.status === 'pending' && !pending.has(request.id) && !live.has(request.session)) {
-                writer.append({
-                  event: permissionEvent({
-                    state: writer.state,
-                    card,
-                    request: {
-                      ...request,
-                      status: 'expired',
-                    },
-                    meta: {
-                      at: at(),
-                      actor: 'pnyx',
-                    },
-                  }),
-                })
-              }
-            }
-          }
+          expireOrphans({ writer })
 
           for (const session of Object.values(writer.state.sessions ?? {})) {
             const wasWorking = (session.sessionActivity ?? session.activity) === 'working'
