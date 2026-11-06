@@ -266,9 +266,9 @@ export function createHostRecovery({
         continue
       }
 
-      const oldest = pendingSteering({ card })[0]
+      const next = pendingSteering({ card })[0]
 
-      if (!oldest) {
+      if (!next) {
         continue
       }
 
@@ -277,7 +277,7 @@ export function createHostRecovery({
           card: card.id,
           text: '',
           actor: 'pnyx',
-          steering: oldest.id,
+          steering: next.id,
         })
       } catch (error) {
         console.error(`pnyx-axi serve: ${card.id} inbox could not resume: ${(error as Error).message}`)
