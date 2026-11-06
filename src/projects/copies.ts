@@ -24,18 +24,11 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { applyDecision } from '#app/decision.ts'
+import { isFolder } from '#workers/folders.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
 export const POOL_IDLE = 2
-
-export function isFolder({ path }: { path: string }): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
-  }
-}
 
 function taskProject({
   state,
