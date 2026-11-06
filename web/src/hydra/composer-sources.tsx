@@ -95,7 +95,7 @@ export function HydraComposerSources({
       config.hydra.agent?.harness,
     ]),
     card: HYDRA_CARD,
-    provider: card?.agent?.provider,
+    provider: config.hydra.agent?.harness ?? card?.agent?.provider,
     command,
     connected,
     open,
