@@ -1,3 +1,6 @@
+import { useEffect, type RefObject, type Dispatch, type SetStateAction, type KeyboardEvent } from 'react'
+import { composing } from '#web-shared/ime.ts'
+
 export const INPUT = 'input'
 
 export type FocusMove = 'next' | 'previous' | 'escape'
@@ -243,4 +246,239 @@ export function bufferedScroll({
   }
 
   return scrollTop
+}
+
+const FOCUSABLE = 'a[href], button, input, textarea, [tabindex]'
+const ARROWS = [
+  'ArrowUp',
+  'ArrowDown',
+  'ArrowLeft',
+  'ArrowRight',
+]
+
+export const keepInView = ({
+  container,
+  items,
+  focus,
+}: {
+  container: HTMLElement
+  items: HTMLElement[]
+  focus: HTMLElement
+}) => {
+  const box = container.getBoundingClientRect()
+
+  container.scrollTop = bufferedScroll({
+    scrollTop: container.scrollTop,
+    viewport: container.clientHeight,
+    rows: items.map(item => {
+      const rect = item.getBoundingClientRect()
+
+      return {
+        top: rect.top - box.top + container.scrollTop,
+        height: rect.height,
+      }
+    }),
+    index: items.indexOf(focus),
+  })
+}
+
+export function usePreviewFocus({
+  preview,
+  input,
+  focused,
+  setInPreview,
+  setQuery,
+  open,
+}: {
+  preview: RefObject<HTMLDivElement | null>
+  input: RefObject<HTMLInputElement | null>
+  focused: RefObject<{
+    control: HTMLElement
+    before: HTMLElement[]
+  } | null>
+  setInPreview: Dispatch<SetStateAction<boolean>>
+  setQuery: Dispatch<SetStateAction<string>>
+  open: boolean
+}) {
+  // A roving item (tabindex -1) is reached through the one that stands for its group.
+  const previewControls = () => [...preview.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []]
+    .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.checkVisibility())
+
+  const focusStop = ({ to }: { to: HTMLElement | typeof INPUT }) => {
+    if (to === INPUT) {
+      focused.current = null
+      setInPreview(false)
+      input.current?.focus()
+    } else {
+      to.focus()
+    }
+  }
+
+  const focusPreview = () => {
+    const controls = previewControls()
+
+    enterPreview({
+      controls,
+      own: controls.filter(control => control.closest('.setting-control')),
+    })?.focus()
+  }
+
+  // A focused control that unmounts or is disabled would leave focus nowhere the keyboard can leave, so it moves on.
+  useEffect(
+    () => {
+      const node = preview.current
+
+      if (!open || !node) {
+        return
+      }
+
+      const observer = new MutationObserver(() => {
+        const last = focused.current
+
+        if (!last) {
+          return
+        }
+
+        const controls = previewControls()
+        const active = document.activeElement
+
+        if (controls.includes(last.control)) {
+          last.before = controls
+
+          return
+        }
+
+        if (active instanceof HTMLElement && active !== last.control && controls.includes(active)) {
+          focused.current = {
+            control: active,
+            before: controls,
+          }
+
+          return
+        }
+
+        focusStop({
+          to: recoverFocus({
+            before: last.before,
+            controls,
+            lost: last.control,
+          }),
+        })
+      })
+      observer.observe(
+        node,
+        {
+          subtree: true,
+          childList: true,
+          attributes: true,
+          attributeFilter: [
+            'disabled',
+            'tabindex',
+            'hidden',
+            'class',
+            'style',
+          ],
+        },
+      )
+
+      return () => observer.disconnect()
+    },
+    [open],
+  )
+
+  const cycleFocus = ({ event }: { event: KeyboardEvent<HTMLDialogElement> }) => {
+    const controls = previewControls()
+    const control = controls.find(item => item === event.target)
+
+    event.preventDefault(); event.stopPropagation()
+    focusStop({
+      to: moveFocus({
+        controls,
+        from: control ?? INPUT,
+        move: event.shiftKey ? 'previous' : 'next',
+      }),
+    })
+  }
+
+  // Runs before the control's own keys, so a closed Select or a radio group doesn't take ↑ ↓ for itself.
+  const previewArrow = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
+    const { target } = event
+    const modified = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
+    const typing = composing({ event: event.nativeEvent })
+    const plainArrow = ARROWS.includes(event.key) && !modified && !typing
+
+    if (!plainArrow || !(target instanceof HTMLElement)) {
+      return
+    }
+
+    const to = arrowFocus({
+      controls: previewControls(),
+      from: target,
+      key: event.key,
+      kind: controlKind({
+        tag: target.tagName,
+        type: target instanceof HTMLInputElement ? target.type : undefined,
+        role: target.getAttribute('role'),
+        expanded: target.getAttribute('aria-expanded') === 'true',
+        popup: ![
+          null,
+          'false',
+        ].includes(target.getAttribute('aria-haspopup')),
+      }),
+      lines: target instanceof HTMLTextAreaElement ? {
+        value: target.value,
+        start: target.selectionStart,
+        end: target.selectionEnd,
+      } : undefined,
+    })
+
+    if (to === PASS) {
+      return
+    }
+
+    event.preventDefault(); event.stopPropagation()
+
+    if (to !== target) {
+      focusStop({ to })
+    }
+  }
+
+  // A control that closed its own popup on this Esc already kept the key, so only the next Esc returns.
+  const previewKey = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
+    if (composing({ event: event.nativeEvent })) {
+      return
+    }
+
+    const { target } = event
+    const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
+    const plain = !event.metaKey && !event.ctrlKey && !event.altKey
+    const typed = event.key.length === 1 && event.key !== ' ' && plain && !field && !event.nativeEvent.defaultPrevented
+
+    if (event.key !== 'Escape' && !typed) {
+      return
+    }
+
+    event.preventDefault(); event.stopPropagation()
+
+    if (typed) {
+      // eslint-disable-next-line pnyx/object-params -- React state setter callback contract.
+      setQuery(value => value + event.key)
+    }
+
+    focusStop({
+      to: moveFocus({
+        controls: previewControls(),
+        from: INPUT,
+        move: 'escape',
+      }),
+    })
+  }
+
+  return {
+    previewControls,
+    focusPreview,
+    cycleFocus,
+    previewArrow,
+    previewKey,
+  }
 }

@@ -1,57 +1,34 @@
-import { useEffect, useId, useRef, useState, type KeyboardEvent, type MouseEvent, type ReactNode } from 'react'
-import { createPortal, flushSync } from 'react-dom'
-import type { CurrentAction } from '#hydra/calls.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { CurrentAction } from '#hydra/calls.ts'
+import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { HYDRA_MARK } from '#hydra/hydra-names.ts'
-import type { Command, Receipt } from '#web-app/connection.ts'
-import { focusElement, keyScopeOf, useKeyAction, useKeyboard, type ActionContext } from '#web-preferences/keyboard-registry.tsx'
-import { SETTINGS_SECTIONS } from '#web-settings/catalog.ts'
-import { SETTING_ICONS } from '#web-settings/settings-page.tsx'
+import type { Command,Receipt } from '#web-app/connection.ts'
+import { focusElement,keyScopeOf,useKeyAction,useKeyboard,type ActionContext } from '#web-preferences/keyboard-registry.tsx'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
 import { composing } from '#web-shared/ime.ts'
 import { Button } from '#web-shared/ui/controls.tsx'
 import { Icon } from '#web-shared/ui/icon.tsx'
-import { SearchBar, type SearchBadge } from '#web-shared/ui/search-bar.tsx'
-import { Highlight } from '#web-shared/ui/setting-row.tsx'
-import { relativeTime } from '#web-tasks/brief.ts'
+import { SearchBar,type SearchBadge } from '#web-shared/ui/search-bar.tsx'
 import { columnsFor } from '#web-tasks/view.ts'
-import { askAttempt, askKey, askStart, askTargets, settledSend, type AskAttempt, type AskKey, type AskTarget } from './ask.ts'
-import { arrowFocus, bufferedScroll, controlKind, enterPreview, INPUT, moveFocus, PASS, recoverFocus } from './focus.ts'
+import { useEffect,useId,useRef,useState,type KeyboardEvent,type MouseEvent } from 'react'
+import { createPortal,flushSync } from 'react-dom'
+import { ASK_BADGE,useAskMode,type Asking } from './ask-mode.ts'
+import { askTargets,type AskAttempt,type AskTarget } from './ask.ts'
 import { useFoundCards } from './card-oracle.ts'
-import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, queryText, SETTINGS_FILTER, TYPE_LABELS, type Filter } from './filters.ts'
-import { movedId, paletteKey, selectedId, type Chosen, type PaletteKey } from './keys.ts'
-import { ACTION_ICONS, oracleActions, type OracleAction } from './oracle-catalog.ts'
-import { AskPreview, FilterPreview, ResultPreview, type SettingProps } from './oracle-preview.tsx'
-import { menuActions, oracleResults, type OracleResult } from './results.ts'
+import { addBadge,committedQuery,filterMenu,filterOptions,filterToken,hydraFilter,queryText,SETTINGS_FILTER,type Filter } from './filters.ts'
+import { keepInView,usePreviewFocus } from './focus.ts'
+import { movedId,paletteKey,selectedId,type Chosen,type PaletteKey } from './keys.ts'
+import { oracleActions,type OracleAction } from './oracle-catalog.ts'
+import { AskPreview,FilterPreview,ResultPreview,type SettingProps } from './oracle-preview.tsx'
+import { oracleResultList } from './result-list.tsx'
+import { countLabel,menuActions,oracleResults,type OracleResult } from './results.ts'
 
-const FOCUSABLE = 'a[href], button, input, textarea, [tabindex]'
 // The help key opens on the settings and actions that name the keyboard.
 const HELP_QUERY = 'keyboard'
 
-const ASK_BADGE = 'ask'
-
-interface Asking {
-  // The Hydra named with ask:<name>; without one, Enter shows the picker.
-  target?: string
-  picking: boolean
-  picked?: string
-  sending: boolean
-  // The send went out but its receipt has not come back yet.
-  checking?: boolean
-  error?: string
-}
-
 const MENU_LABEL = 'Filters, actions and settings'
-
-const ARROWS = [
-  'ArrowUp',
-  'ArrowDown',
-  'ArrowLeft',
-  'ArrowRight',
-]
 
 interface Pressed {
   key: string
@@ -59,186 +36,17 @@ interface Pressed {
   atEnd: boolean
 }
 
-const keepInView = ({
-  container,
-  items,
-  focus,
-}: {
-  container: HTMLElement
-  items: HTMLElement[]
-  focus: HTMLElement
-}) => {
-  const box = container.getBoundingClientRect()
-
-  container.scrollTop = bufferedScroll({
-    scrollTop: container.scrollTop,
-    viewport: container.clientHeight,
-    rows: items.map(item => {
-      const rect = item.getBoundingClientRect()
-
-      return {
-        top: rect.top - box.top + container.scrollTop,
-        height: rect.height,
-      }
-    }),
-    index: items.indexOf(focus),
-  })
-}
-
 const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
   target,
   scope: keyScopeOf({ target }),
 })
 
-const countLabel = ({
-  pending,
-  failed,
-  count,
-}: {
-  pending: boolean
-  failed: boolean
-  count: number
-}) => {
-  if (pending) {
-    return 'Searching…'
-  }
-
-  if (failed) {
-    return 'Search unavailable'
-  }
-
-  return `${count} ${count === 1 ? 'result' : 'results'}`
-}
-
-const resultIcon = ({ result }: { result: OracleResult }) => {
-  switch (result.kind) {
-    case 'task':
-      return 'task'
-    case 'conversation':
-      return 'comments'
-    case 'project':
-      return 'project'
-    case 'setting':
-      return SETTING_ICONS[result.match.entry.id] ?? 'settings'
-    case 'panel':
-      return result.panel.panel === 'projects' ? 'project' : 'agent'
-    case 'action':
-      return ACTION_ICONS[result.action.run]
-  }
-}
-
-function resultMeta({
-  result,
-  state,
-  keys,
-  now,
-}: {
-  result: OracleResult
-  state: HydraState
-  keys({ id }: { id: string }): string
-  now: number
-}): string {
-  switch (result.kind) {
-    case 'task':
-      return `${columnsFor({ state }).find(column => column.id === result.card.column)?.title ?? ''} · ${relativeTime({
-        at: result.at,
-        now,
-      })}`
-    case 'conversation':
-      return conversationMeta({
-        result,
-        now,
-      })
-    case 'project':
-      return result.summary.path
-    case 'setting':
-      return SETTINGS_SECTIONS.find(section => section.id === result.match.entry.section)?.label ?? ''
-    case 'panel':
-      return ''
-    case 'action':
-      return result.action.run === 'key' ? keys({ id: result.action.key }) : ''
-  }
-}
-
-const conversationMeta = ({
-  result,
-  now,
-}: {
-  result: Extract<OracleResult, { kind: 'conversation' }>
-  now: number
-}) => {
-  const when = result.at ? relativeTime({
-    at: result.at,
-    now,
-  }) : ''
-
-  return result.card ? `Task · ${when}` : when
-}
-
-const menuHint = ({ filter }: { filter: Filter }) => {
-  const words = filter.label.toLowerCase().split(' ')
-
-  return `${TYPE_LABELS[filter.type]} · >${words.at(-1)}`
-}
-
-// A press outside the palette's box lands on its backdrop, which closes it.
 const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
   const box = event.currentTarget.getBoundingClientRect()
   const across = event.clientX >= box.left && event.clientX <= box.right
   const inside = across && event.clientY >= box.top && event.clientY <= box.bottom
 
   return event.target === event.currentTarget && !inside
-}
-
-function Option({
-  id,
-  value,
-  selected,
-  icon,
-  label,
-  terms,
-  meta,
-  pick,
-}: {
-  id: string
-  value: string
-  selected: boolean
-  icon: string
-  label: string
-  terms: string[]
-  meta: string
-  pick(): void
-}) {
-  return (
-    <div
-      id={id}
-      role="option"
-      className="oracle-option"
-      data-value={value}
-      aria-selected={selected}
-      onMouseDown={event => event.preventDefault()}
-      onClick={pick}
-    >
-      <Icon name={icon} size={15} />
-      <span className="oracle-option-label"><Highlight text={label} terms={terms} /></span>
-      {meta && <span className="oracle-option-meta">{meta}</span>}
-    </div>
-  )
-}
-
-function Group({
-  label,
-  children,
-}: {
-  label: string
-  children: ReactNode
-}) {
-  return (
-    <div role="group" aria-label={label}>
-      <div className="oracle-caption" aria-hidden="true">{label}</div>
-      {children}
-    </div>
-  )
 }
 
 export function Oracle({
@@ -533,11 +341,6 @@ export function Oracle({
     }
   }
 
-  const leaveAsk = () => {
-    attempt.current = null
-    setAsk(null)
-  }
-
   useKeyAction({
     id: 'palette',
     handler: ({ context }) => {
@@ -582,29 +385,6 @@ export function Oracle({
         })
       }
     }
-  }
-
-  // A roving item (tabindex -1) is reached through the one that stands for its group.
-  const previewControls = () => [...preview.current?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? []]
-    .filter(element => element.tabIndex >= 0 && !element.hasAttribute('disabled') && element.checkVisibility())
-
-  const focusStop = ({ to }: { to: HTMLElement | typeof INPUT }) => {
-    if (to === INPUT) {
-      focused.current = null
-      setInPreview(false)
-      input.current?.focus()
-    } else {
-      to.focus()
-    }
-  }
-
-  const focusPreview = () => {
-    const controls = previewControls()
-
-    enterPreview({
-      controls,
-      own: controls.filter(control => control.closest('.setting-control')),
-    })?.focus()
   }
 
   const chooseSetting = ({
@@ -826,68 +606,20 @@ export function Oracle({
     },
     [found.pending],
   )
-  // A focused control that unmounts or is disabled would leave focus nowhere the keyboard can leave, so it moves on.
-  useEffect(
-    () => {
-      const node = preview.current
-
-      if (!open || !node) {
-        return
-      }
-
-      const observer = new MutationObserver(() => {
-        const last = focused.current
-
-        if (!last) {
-          return
-        }
-
-        const controls = previewControls()
-        const active = document.activeElement
-
-        if (controls.includes(last.control)) {
-          last.before = controls
-
-          return
-        }
-
-        if (active instanceof HTMLElement && active !== last.control && controls.includes(active)) {
-          focused.current = {
-            control: active,
-            before: controls,
-          }
-
-          return
-        }
-
-        focusStop({
-          to: recoverFocus({
-            before: last.before,
-            controls,
-            lost: last.control,
-          }),
-        })
-      })
-      observer.observe(
-        node,
-        {
-          subtree: true,
-          childList: true,
-          attributes: true,
-          attributeFilter: [
-            'disabled',
-            'tabindex',
-            'hidden',
-            'class',
-            'style',
-          ],
-        },
-      )
-
-      return () => observer.disconnect()
-    },
-    [open],
-  )
+  const {
+    previewControls,
+    focusPreview,
+    cycleFocus,
+    previewArrow,
+    previewKey,
+  } = usePreviewFocus({
+    preview,
+    input,
+    focused,
+    setInPreview,
+    setQuery,
+    open,
+  })
   useEffect(
     () => {
       const node = list.current
@@ -915,179 +647,25 @@ export function Oracle({
     ],
   )
 
-  const sendAsk = async ({
-    to,
-    opening,
-  }: {
-    to?: AskTarget
-    opening: boolean
-  }) => {
-    const text = query.trim()
-
-    if (!ask || !to || ask.sending || !text) {
-      return
-    }
-
-    const sending = askAttempt({
-      kept: attempt.current,
-      text,
-      to: to.id,
-    })
-    attempt.current = sending
-    setAsk({
-      ...ask,
-      sending: true,
-      checking: false,
-      error: undefined,
-    })
-
-    let problem: string | undefined
-
-    try {
-      const receipt = await send({
-        id: to.id,
-        text,
-        event: sending.id,
-        onChecking: () => {
-          if (attempt.current === sending) {
-            setAsk(value => value && {
-              ...value,
-              checking: true,
-            })
-          }
-        },
-      })
-
-      if (receipt.state !== 'queued') {
-        problem = typeof receipt.detail === 'string' ? receipt.detail : `${to.name} did not take the request.`
-      }
-    } catch (error) {
-      problem = error instanceof Error ? error.message : String(error)
-    }
-
-    const sent = problem === undefined
-    const outcome = settledSend({
-      current: attempt.current === sending,
-      sent,
-      opening,
-    })
-
-    switch (outcome) {
-      case 'notify':
-        notify({ text: sent ? `Sent to ${to.name}` : `Ask ${to.name}: ${problem}` })
-        break
-      case 'show-error':
-        setAsk(value => value && {
-          ...value,
-          sending: false,
-          checking: false,
-          error: problem,
-        })
-        break
-      case 'close':
-      case 'open-chat':
-        setAsk(null); setQuery('')
-        close({ restore: outcome === 'close' })
-        notify({ text: `Sent to ${to.name}` })
-
-        if (outcome === 'open-chat') {
-          openChat({ id: to.id })
-        }
-    }
-  }
-
-  const askAct = ({ key }: { key: AskKey }) => {
-    if (!ask) {
-      return
-    }
-
-    switch (key) {
-      case 'leave':
-        leaveAsk()
-        break
-      case 'back':
-        setAsk({
-          ...ask,
-          picking: false,
-        })
-        break
-      case 'pick':
-        setAsk({
-          ...ask,
-          picking: true,
-          picked: undefined,
-        })
-        break
-      case 'up':
-      case 'down':
-        stepped.current = true
-        setAsk({
-          ...ask,
-          picked: movedId({
-            ids: targetIds,
-            current: pickedId,
-            step: key === 'down' ? 1 : -1,
-          }),
-        })
-        break
-      case 'send':
-      case 'send-open':
-        sendAsk({
-          to: ask.picking ? pickedTarget : askTarget,
-          opening: key === 'send-open',
-        })
-    }
-  }
-
-  const askInput = ({ event }: { event: KeyboardEvent<HTMLInputElement> }) => {
-    const key = askKey({
-      key: event.key,
-      mod: event.metaKey || event.ctrlKey,
-      composing: composing({ event: event.nativeEvent }),
-      picking: ask?.picking === true,
-      targeted: !!askTarget,
-      request: query,
-    })
-
-    if (!key) {
-      return
-    }
-
-    event.preventDefault(); event.stopPropagation()
-    askAct({ key })
-  }
-
-  const type = ({ typed }: { typed: string }) => {
-    // The request is on its way, so its text stays as sent.
-    if (ask?.sending) {
-      return
-    }
-
-    const start = ask ? null : askStart({
-      query: typed,
-      hydras: targets,
-    })
-
-    if (start) {
-      setAsk({
-        target: start.target?.id,
-        picking: false,
-        sending: false,
-      })
-      setQuery(start.request)
-
-      return
-    }
-
-    if (ask?.error) {
-      setAsk({
-        ...ask,
-        error: undefined,
-      })
-    }
-
-    setQuery(typed)
-  }
+  const {
+    leaveAsk,
+    sendAsk,
+    askAct,
+    askInput,
+    type,
+  } = useAskMode({
+    ask,
+    setAsk,
+    attempt,
+    query,
+    setQuery,
+    targets,
+    stepped,
+    send,
+    notify,
+    close,
+    openChat,
+  })
 
   const removeBadge = ({ id }: { id: string }) => {
     if (id === ASK_BADGE) {
@@ -1152,93 +730,6 @@ export function Oracle({
   }
 
   // Tab and ⇧Tab always follow the palette's own order, so the browser never picks a stop outside it.
-  const cycleFocus = ({ event }: { event: KeyboardEvent<HTMLDialogElement> }) => {
-    const controls = previewControls()
-    const control = controls.find(item => item === event.target)
-
-    event.preventDefault(); event.stopPropagation()
-    focusStop({
-      to: moveFocus({
-        controls,
-        from: control ?? INPUT,
-        move: event.shiftKey ? 'previous' : 'next',
-      }),
-    })
-  }
-
-  // Runs before the control's own keys, so a closed Select or a radio group doesn't take ↑ ↓ for itself.
-  const previewArrow = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
-    const { target } = event
-    const modified = event.metaKey || event.ctrlKey || event.altKey || event.shiftKey
-    const typing = composing({ event: event.nativeEvent })
-    const plainArrow = ARROWS.includes(event.key) && !modified && !typing
-
-    if (!plainArrow || !(target instanceof HTMLElement)) {
-      return
-    }
-
-    const to = arrowFocus({
-      controls: previewControls(),
-      from: target,
-      key: event.key,
-      kind: controlKind({
-        tag: target.tagName,
-        type: target instanceof HTMLInputElement ? target.type : undefined,
-        role: target.getAttribute('role'),
-        expanded: target.getAttribute('aria-expanded') === 'true',
-        popup: ![
-          null,
-          'false',
-        ].includes(target.getAttribute('aria-haspopup')),
-      }),
-      lines: target instanceof HTMLTextAreaElement ? {
-        value: target.value,
-        start: target.selectionStart,
-        end: target.selectionEnd,
-      } : undefined,
-    })
-
-    if (to === PASS) {
-      return
-    }
-
-    event.preventDefault(); event.stopPropagation()
-
-    if (to !== target) {
-      focusStop({ to })
-    }
-  }
-
-  // A control that closed its own popup on this Esc already kept the key, so only the next Esc returns.
-  const previewKey = ({ event }: { event: KeyboardEvent<HTMLDivElement> }) => {
-    if (composing({ event: event.nativeEvent })) {
-      return
-    }
-
-    const { target } = event
-    const field = target instanceof HTMLInputElement || target instanceof HTMLTextAreaElement
-    const plain = !event.metaKey && !event.ctrlKey && !event.altKey
-    const typed = event.key.length === 1 && event.key !== ' ' && plain && !field && !event.nativeEvent.defaultPrevented
-
-    if (event.key !== 'Escape' && !typed) {
-      return
-    }
-
-    event.preventDefault(); event.stopPropagation()
-
-    if (typed) {
-      setQuery(value => value + event.key)
-    }
-
-    focusStop({
-      to: moveFocus({
-        controls: previewControls(),
-        from: INPUT,
-        move: 'escape',
-      }),
-    })
-  }
-
   const searchBadges: SearchBadge[] = badges.map(badge => ({
     id: badge.id,
     label: badge.label,
@@ -1265,125 +756,33 @@ export function Oracle({
   const widen = narrowing ? ' Remove a badge to widen the search.' : ''
   const nothing = `Nothing matches.${widen}`
 
-  const resultOption = ({
-    result,
-    index,
-    picked,
-  }: {
-    result: OracleResult
-    index: number
-    picked: boolean
-  }) => (
-    <Option
-      key={result.id}
-      id={optionId({ index })}
-      value={result.id}
-      selected={picked}
-      icon={resultIcon({ result })}
-      label={result.title}
-      terms={terms}
-      meta={resultMeta({
-        result,
-        state,
-        keys,
-        now,
-      })}
-      pick={() => choose({
-        result,
-        elsewhere: false,
-      })}
-    />
-  )
-  const filterGroup = menu.length > 0 && (
-    <Group key="filters" label="Filters">
-      {menu.map((
-        filter,
-        index,
-      ) => (
-        <Option
-          key={filter.id}
-          id={optionId({ index })}
-          value={filter.id}
-          selected={filter.id === menuSelected}
-          icon={filter.icon}
-          label={filter.label}
-          terms={[]}
-          meta={menuHint({ filter })}
-          pick={() => commit({ filter })}
-        />
-      ))}
-    </Group>
-  )
-  const actionGroup = typedActions.length > 0 && (
-    <Group key="actions" label="Actions and settings">
-      {typedActions.map((
-        result,
-        index,
-      ) => resultOption({
-        result,
-        index: menu.length + index,
-        picked: result.id === menuSelected,
-      }))}
-    </Group>
-  )
-  const menuList = [
-    filterGroup,
-    actionGroup,
-  ].filter(group => group !== false)
-  const resultList = groups.map(group => (
-    <Group key={group.label} label={group.label}>
-      {group.results.map(result => resultOption({
-        result,
-        index: results.indexOf(result),
-        picked: result.id === selected,
-      }))}
-    </Group>
-  ))
-  const emptyMenu = <p className="oracle-empty">Nothing matches “{token?.text}” here. Esc drops it.</p>
-  const emptyResults = <p className="oracle-empty">{nothing}</p>
-  const askRow = (
-    <Group label="Request">
-      <Option
-        id={optionId({ index: 0 })}
-        value={ASK_BADGE}
-        selected
-        icon={askTarget?.icon ?? HYDRA_MARK}
-        label={askTarget ? `Send to ${askTarget.name}` : 'Send to which Hydra?'}
-        terms={[]}
-        meta={askTarget ? `↵ sends · ${mod}↵ and opens its chat` : '↵ picks the Hydra'}
-        pick={() => askAct({ key: askTarget ? 'send' : 'pick' })}
-      />
-    </Group>
-  )
-  const pickList = (
-    <Group label="Send to which Hydra?">
-      {targets.map((
-        target,
-        index,
-      ) => (
-        <Option
-          key={target.id}
-          id={optionId({ index })}
-          value={target.id}
-          selected={target.id === pickedId}
-          icon={target.icon}
-          label={target.name}
-          terms={[]}
-          meta={target.id === hydra.id ? 'this Hydra' : ''}
-          pick={() => sendAsk({
-            to: target,
-            opening: false,
-          })}
-        />
-      ))}
-    </Group>
-  )
-  const askList = ask?.picking ? pickList : askRow
-  const searchList = token ? menuList : resultList
-  const shownList = ask ? [askList] : searchList
+  const shownList = oracleResultList({
+    terms,
+    state,
+    keys,
+    now,
+    choose,
+    commit,
+    optionId,
+    menu,
+    menuSelected,
+    typedActions,
+    groups,
+    results,
+    selected,
+    token,
+    ask,
+    askTarget,
+    mod,
+    askAct,
+    targets,
+    pickedId,
+    hydra,
+    sendAsk,
+  })
   // The previous results stay, dimmed, until the new query's answer arrives.
   const dimmed = found.pending && !token && !ask
-  const empty = token ? emptyMenu : emptyResults
+  const empty = token ? <p className="oracle-empty">Nothing matches “{token.text}” here. Esc drops it.</p> : <p className="oracle-empty">{nothing}</p>
   const listLabel = token ? MENU_LABEL : 'Oracle results'
   const searchPlaceholder = 'Search tasks, conversations, projects and settings; > filters; ask to ask a Hydra'
 
