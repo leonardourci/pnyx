@@ -1,5 +1,5 @@
 import { AxiError } from 'axi-sdk-js'
-import { DEFAULT_HARNESS, HARNESSES, isHarness, providerIdOf, type Harness } from '#workers/providers.ts'
+import { DEFAULT_HARNESS, HARNESSES, knownHarness, providerIdOf } from '#workers/providers.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { commandTimeout } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
@@ -1881,9 +1881,9 @@ export async function mountOwnedHydra({
             }),
           )
         } else if (name === 'models') {
-          const harness = args[0]
+          const harness = knownHarness({ name: args[0] })
 
-          if (args.length < 1 || args.length > 2 || !isHarness({ harness })) {
+          if (args.length < 1 || args.length > 2 || !harness) {
             throw new HydraError({
               message: 'models expects claude or codex and an optional account name',
               code: 'VALIDATION_ERROR',
@@ -1891,7 +1891,7 @@ export async function mountOwnedHydra({
           }
 
           void agents.models({
-            harness: harness as Harness,
+            harness,
             account: args[1],
           })
             .then(models => send({

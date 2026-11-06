@@ -1,5 +1,5 @@
 import { execFile } from 'node:child_process'
-import { providerIdOf } from './providers.ts'
+import { knownHarness, providerIdOf } from './providers.ts'
 import { isDeepStrictEqual, promisify } from 'node:util'
 import { existsSync } from 'node:fs'
 import { harnessControls } from './controls.ts'
@@ -470,7 +470,7 @@ export async function chooseCandidate({
     })
   }
 
-  if (harness && harness !== 'claude' && harness !== 'codex') {
+  if (harness && !knownHarness({ name: harness })) {
     throw new HydraError({
       message: `unknown harness: ${harness}`,
       code: 'VALIDATION_ERROR',
