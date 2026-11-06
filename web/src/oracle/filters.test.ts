@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
-import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, passes, queryText, type Filter } from './filters.ts'
+import { addBadge, committedQuery, filterMenu, filterOptions, filterToken, hydraFilter, passes, queryText, searchFilters, type Filter } from './filters.ts'
 
 const hydra = hydraFilter({
   hydra: {
@@ -345,6 +345,61 @@ test(
         hydra.id,
         queued.id,
       ],
+    )
+  },
+)
+
+test(
+  'the search gets the column ids, project references and the widest time window of the badges',
+  () => {
+    assert.deepEqual(
+      searchFilters({
+        badges: [
+          hydra,
+          queued,
+          inProgress,
+          billing,
+          today,
+          week,
+        ],
+        now: Date.parse('2026-10-29T18:00:00Z'),
+      }),
+      {
+        columns: [
+          'queued',
+          'in_progress',
+        ],
+        projects: ['/work/billing-service'],
+        since: '2026-10-22T18:00:00.000Z',
+      },
+    )
+    assert.deepEqual(
+      searchFilters({
+        badges: [
+          hydra,
+          today,
+        ],
+        now,
+      }),
+      {
+        columns: [],
+        projects: [],
+        since: new Date(
+          2026,
+          9,
+          29,
+        ).toISOString(),
+      },
+    )
+    assert.deepEqual(
+      searchFilters({
+        badges: [hydra],
+        now,
+      }),
+      {
+        columns: [],
+        projects: [],
+      },
     )
   },
 )
