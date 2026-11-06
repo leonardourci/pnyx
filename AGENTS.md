@@ -22,7 +22,7 @@ Tests use Node's built-in test runner and run TypeScript directly through Node's
 
 ## Layout
 
-One folder per feature. Code for a feature lives in its folder. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Do not add speculative code.
+One folder per feature. Code for a feature lives in its folder. Inside a feature, split a file when it holds unrelated concerns and keep closely related code together, as [follow-conventions](.agents/skills/follow-conventions/SKILL.md#files-and-concerns) describes. The root README introduces Pnyx; usage and setup references live in `docs/`; tests and the test harness are described in `docs/testing.md`. Do not add speculative code.
 
 | Folder | Holds |
 |---|---|
