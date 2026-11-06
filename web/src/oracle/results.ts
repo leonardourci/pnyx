@@ -435,5 +435,3 @@ export const menuHint = ({ filter }: { filter: Filter }) => {
 
   return `${TYPE_LABELS[filter.type]} · >${words.at(-1)}`
 }
-
-// A press outside the palette's box lands on its backdrop, which closes it.
