@@ -1,7 +1,10 @@
-import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
+import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
-import { UpdateEntry } from '#web-tasks/update-rows.tsx'
+import { clock,copiedText,duration,type TurnTiming } from './chat.ts'
 import type { TurnActions } from './conversation.ts'
+
+import { CollapsibleText,Disclosure } from '#web-shared/ui/disclosure.tsx'
+import { UpdateEntry } from '#web-tasks/update-rows.tsx'
 
 export function TurnActionsFold({ fold }: { fold: TurnActions }) {
   const changes = fold.tasks.reduce(
@@ -39,6 +42,46 @@ export function TurnActionsFold({ fold }: { fold: TurnActions }) {
         ))}
 
       </Disclosure>
+    </div>
+  )
+}
+
+export function TurnFooter({
+  turn,
+  taskTitle,
+}: {
+  turn: TurnTiming
+  taskTitle({ id }: { id?: string }): string | undefined
+}) {
+  const took = duration({ ms: Date.parse(turn.end) - Date.parse(turn.start) })
+  const started = clock({
+    at: turn.start,
+    seconds: true,
+  })
+
+  return (
+    <div className="turn-foot" contentEditable={false}>
+      {turn.reply && (
+        <CopyButton
+          label="Copy reply"
+          text={() => copiedText({
+            text: turn.reply,
+            task: turn.task,
+            title: taskTitle({ id: turn.task }),
+          })}
+        />
+      )}
+      {turn.latest
+        ? <time dateTime={turn.end} title={`Worked for ${took} · started ${started}`}>{clock({ at: turn.end })}</time>
+        : (
+          <span
+            title={`Started ${started} · stopped ${clock({
+              at: turn.end,
+              seconds: true,
+            })}`}
+          >Worked for {took}
+          </span>
+        )}
     </div>
   )
 }
