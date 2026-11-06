@@ -17,7 +17,7 @@ import { HydraError } from '#store/errors.ts'
 import { offerHost } from '#app/server-state.ts'
 import { decidePush } from './push.ts'
 import { findCard } from './push-rules.ts'
-import { answerDelivery, cardQuestion, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
+import { answerDelivery, mergeApproval, openAsks, ownerQuestions } from './questions.ts'
 import { ownerGates } from './owner-gates.ts'
 import { relevantUpdate } from './updates.ts'
 
@@ -577,7 +577,7 @@ test(
       message,
     })
     assert.equal(
-      cardQuestion({ card: l.card({ ref: plain }) }),
+      ownerQuestions({ card: l.card({ ref: plain }) })[0],
       undefined,
     )
     const merge = await l.create({ key: 'merge' })
@@ -855,7 +855,7 @@ test(
       /no reply route/,
     )
     assert.equal(
-      cardQuestion({ card: l.card({ ref }) }),
+      ownerQuestions({ card: l.card({ ref }) })[0],
       undefined,
     )
     assert.equal(

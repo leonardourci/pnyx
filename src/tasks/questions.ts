@@ -1133,6 +1133,3 @@ export function ownerQuestions({ card }: { card: Card }): OwnerQuestion[] {
     ...asks,
   ]
 }
-
-export const cardQuestion = ({ card }: { card: Card }): OwnerQuestion | undefined =>
-  ownerQuestions({ card })[0]
