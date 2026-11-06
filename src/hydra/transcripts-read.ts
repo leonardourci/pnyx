@@ -15,6 +15,8 @@ import { cardSessionId } from '#workers/session-attachments.ts'
 import { obj, readAction, recordBlocks, shortened, type ActionRead } from './calls.ts'
 import { effectiveView } from '#settings/store.ts'
 import { isManagedTask } from '#tasks/select.ts'
+import type { TurnActions } from './conversation.ts'
+import type { TurnTiming } from './chat-messages.ts'
 
 // messageId and part let the Hydra rejoin a long message split into transport chunks.
 export interface ThreadEntry {
@@ -56,8 +58,8 @@ export interface ThreadPage {
     stream?: string
     version?: number
     entries: ThreadEntry[]
-    folds: Record<string, import('./conversation.ts').TurnActions>
-    timings: Record<string, import('./chat-messages.ts').TurnTiming>
+    folds: Record<string, TurnActions>
+    timings: Record<string, TurnTiming>
   }
   unavailable?: string
   currentTurn?: {
