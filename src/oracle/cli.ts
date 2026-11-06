@@ -193,7 +193,7 @@ function present(
   const shown = card ? hits[0]!.snippets.length : hits.length
 
   if (total > shown) {
-    help.push(`${total - shown} more ${card ? 'matches' : 'matching cards'}; raise --limit (max ${MAX}) or narrow with --kind, --card or --workspace`)
+    help.push(`${total - shown} more ${card ? 'matches' : 'matching cards'}; raise --limit (max ${MAX}) or narrow with --kind, --card, --workspace, --column, --project or --since`)
   }
 
   return {
