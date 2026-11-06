@@ -18,18 +18,17 @@ import { applyDependencies } from '#tasks/dependencies.ts'
 import { applyQueue } from '#workers/queue.ts'
 import { applyReminder } from '#tasks/reminders.ts'
 import { applyPermission } from '#workers/permission-rules.ts'
-import { applyAsk, applyAskChoice } from '#tasks/ask-reducer.ts'
+import { applyAsk } from '#tasks/ask-reducer.ts'
 import { applyHelper } from '#routine-helper/state.ts'
-import { applyAttachment, cardSessionId, observeSession, sessionId } from '#workers/session-attachments.ts'
+import { observeSession, sessionId } from '#workers/session-attachments.ts'
 import { newCardColumn, isStaleSource, sameSource, offerTitle, wouldCycle } from '#tasks/events.ts'
 import { isStaleLink } from '#tasks/delivery/events.ts'
-import { requestId } from '#workers/answers.ts'
-import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
 import { touch } from '#tasks/touch.ts'
 import { applyMemory } from '#memory/reduce.ts'
 import { applyProject } from '#projects/reduce.ts'
 import { applyView } from '#preferences/reduce.ts'
+import { applyDispatchProposal, applyLaunch, applySessionMove, applyReplyReceipt } from '#workers/reduce.ts'
 
 function applyHydra({
   state,
@@ -38,15 +37,6 @@ function applyHydra({
   state: HydraState
   event: HydraEvent
 }): boolean {
-  if (event.type === 'hydra.dispatch-proposed') {
-    state.dispatchProposals = [
-      ...(state.dispatchProposals ?? []).filter(p => p.token !== event.data.token),
-      structuredClone(event.data),
-    ]
-
-    return true
-  }
-
   if (event.type === 'hydra.agent-used') {
     state.hydraAgent = structuredClone(event.data)
 
@@ -131,24 +121,6 @@ function applyHydra({
       ...structuredClone(event.data),
       seq: event.seq,
     }
-
-    return true
-  }
-
-  if (event.type === 'hydra.dispatch-progress') {
-    const proposal = state.dispatchProposals?.find(p => p.token === event.data.token)
-
-    if (proposal) {
-      proposal.status = event.data.status
-      proposal.error = event.data.error
-    }
-
-    return true
-  }
-
-  if (event.type === 'hydra.dispatch-resolved') {
-    state.dispatchProposals = (state.dispatchProposals ?? [])
-      .filter(p => p.token !== event.data.token)
 
     return true
   }
@@ -496,30 +468,6 @@ function applyHydra({
     return true
   }
 
-  if (event.type === 'task.launched' || event.type === 'task.copy') {
-    const card = state.cards[event.cardId]
-
-    if (card) {
-      if (event.type === 'task.copy') {
-        card.copy = structuredClone(event.data.after)
-      } else {
-        card.launch = structuredClone(event.data)
-        const session = card.sessionIds?.[0] && state.sessions?.[card.sessionIds[0]]
-
-        if (session) {
-          session.launch = structuredClone(event.data)
-        }
-      }
-
-      touch({
-        card,
-        event,
-      })
-    }
-
-    return true
-  }
-
   if (event.type === 'hydra.message') {
     const message = {
       ...event.data,
@@ -648,6 +596,14 @@ function apply({
     || applyProject({
       state,
       event,
+    })
+    || applyDispatchProposal({
+      state,
+      event,
+    })
+    || applyLaunch({
+      state,
+      event,
     })) {
     if (event.undoes) {
       state.undone[event.undoes] = event.id
@@ -667,50 +623,14 @@ function apply({
     return true
   }
 
-  let card = state.cards[event.cardId]
-
-  if (event.type === 'task.session') {
-    const attached = state.sessions?.[event.data.session]?.taskId === event.data.before
-    applyAttachment({
-      state,
-      event,
-    })
-
-    if (attached) {
-      for (const id of [
-        event.data.before,
-        event.data.after,
-      ]) {
-        const task = id && state.cards[id]
-
-        if (task) {
-          task.steeringGeneration = event.seq
-        }
-      }
-    }
-
-    if (event.undoes) {
-      state.undone[event.undoes] = event.id
-    }
-
-    refreshTasks({
-      state,
-      ids: [
-        event.cardId,
-        event.data.before,
-        event.data.after,
-      ],
-    })
-
-    if (card && event.data.before !== card.id) {
-      touch({
-        card,
-        event,
-      })
-    }
-
+  if (applySessionMove({
+    state,
+    event,
+  })) {
     return true
   }
+
+  let card = state.cards[event.cardId]
 
   if (event.type === 'card.pushed') {
     const {
@@ -902,88 +822,11 @@ function apply({
         ])
         : others
     } else if (event.type === 'card.replied') {
-      const answers = event.data.answers
-      const previous = card.replies?.find(r => r.id === event.data.reply)
-      const taskMessage = event.data.taskMessage || previous?.route
-      const resumes = event.data.resumes ?? previous?.resumes
-      const reply: Reply = {
-        id: event.data.reply,
-        state: event.data.state,
-        ...(resumes !== undefined ? { resumes } : {}),
-        ...(taskMessage ? { route: event.data.route } : {}),
-        ...(taskMessage && event.data.detail ? { detail: event.data.detail } : {}),
-      }
-      const decision = event.data.decision ?? previous?.decision
-
-      if (event.data.accepted || previous?.accepted) {
-        reply.accepted = true
-        reply.text = event.data.text ?? previous?.text
-        reply.context = event.data.context ?? previous?.context
-      }
-
-      if (decision) {
-        reply.decision = decision
-      }
-
-      const kept = answers ? {
-        ...reply,
-        answers,
-      } : reply
-      const replies = card.replies ?? []
-      card.replies = replies.some(r => r.id === reply.id)
-        ? replies.map(r => (r.id === reply.id ? kept : r))
-        : [
-          ...replies,
-          kept,
-        ]
-
-      // A task shows its session's requests, which hooks read back from the
-      // session's own card, so the answer is marked on all of them.
-      if (answers && event.data.state === 'delivered') {
-        if (card.asks && !reply.accepted) {
-          card.asks = card.asks.map(ask => {
-            const sameRound = ask.answerRound === decision?.answerRound
-
-            if (ask.id !== answers || !sameRound || ask.answered || ask.closed) {
-              return ask
-            }
-
-            const answered = {
-              ...ask,
-              answered: reply.id,
-              answeredAt: event.at,
-              fromMessage: decision?.fromMessage,
-            }
-            applyAskChoice({
-              ask: answered,
-              choice: decision?.choice,
-              answer: decision?.answer,
-            })
-
-            return answered
-          })
-        }
-
-        const id = cardSessionId({ card })
-        const session = id ? state.sessions?.[id] : undefined
-        const origin = session && state.cards[session.originCardId]
-        const task = session?.taskId ? state.cards[session.taskId] : undefined
-
-        for (const holder of new Set([
-          card,
-          session,
-          origin,
-          task,
-        ])) {
-          if (holder) {
-            holder.attention = holder.attention
-              .map(a => (requestId({ request: a }) === answers ? {
-                ...a,
-                answered: reply.id,
-              } : a))
-          }
-        }
-      }
+      applyReplyReceipt({
+        state,
+        card,
+        event,
+      })
     } else if (event.type === 'project.refreshed') {
       card.projectRefresh = {
         ...card.projectRefresh,
