@@ -11,17 +11,12 @@ import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
+import type { Hit, IndexResult, IndexStatus, Kind, Match, Query } from './model.ts'
 import { synonymGroup } from './synonyms.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8
-export const KINDS = [
-  'event',
-  'note',
-  'transcript',
-] as const
-export type Kind = (typeof KINDS)[number]
 
 const EVENTS = 'events'
 const NOTE_WEIGHT = 2
@@ -222,12 +217,6 @@ function transaction<T>({
     db.exec('ROLLBACK')
     throw error
   }
-}
-
-export interface IndexResult {
-  events: number
-  transcripts: number
-  docs: number
 }
 
 // Folds what the log and the recorded transcripts gained since the cursors into
@@ -678,35 +667,7 @@ export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
   }
 }
 
-export interface Query {
-  text: string
-  kind?: Kind
-  card?: string
-  workspace?: string
-  limit: number
-  live?: boolean
-  highlight?: boolean
-}
-
 export const SNIPPETS = 3
-
-export interface Snippet {
-  kind: Kind
-  at: string
-  snippet: string
-}
-
-// lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
-// that way, so words with typos or cut short matched the indexed words nearest them.
-export type Match = 'lexical' | 'fuzzy'
-
-export interface Hit {
-  card: string
-  title: string
-  kind?: 'hydra'
-  match: Match
-  snippets: Snippet[]
-}
 
 const fold = ({ text }: { text: string }) => text.toLowerCase().normalize('NFD')
   .replace(
@@ -1076,17 +1037,6 @@ function run(
     total: cards[0]?.total ?? 0,
     match: mode,
   }
-}
-
-export interface IndexStatus {
-  builtThrough: number
-  docs: Record<Kind, number>
-  transcripts: {
-    tracked: number
-    missing: number
-  }
-  bytes: number
-  current: boolean
 }
 
 // Reads the index without writing it. Null when it has not been built.

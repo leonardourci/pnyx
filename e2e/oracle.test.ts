@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict'
 import { chmodSync } from 'node:fs'
 import { test } from 'node:test'
-import { indexStatus, searchPath, type Hit } from '#oracle/index.ts'
+import { indexStatus, searchPath } from '#oracle/index.ts'
+import type { Hit } from '#oracle/model.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx, type Scenario } from '#test-harness/pnyx.ts'
 
