@@ -1,8 +1,8 @@
 import { HYDRA_ACTOR } from '#app/actors.ts'
-import { hydraDelivery,QUIET_REPLY,reportActor } from '#hydra/hydra.ts'
-import { taskMentions } from '#hydra/mentions.ts'
-import type { HydraMessage } from '#hydra/model.ts'
-import type { ThreadEntry } from '#hydra/transcripts-read.ts'
+import { hydraDelivery,QUIET_REPLY,reportActor } from './hydra.ts'
+import { taskMentions } from './mentions.ts'
+import type { HydraMessage } from './model.ts'
+import type { ThreadEntry } from './transcripts-read.ts'
 import { withoutInjected } from '#oracle/text.ts'
 
 export function leadingTask({ entry }: { entry: Pick<ThreadEntry, 'task' | 'text'> }) {
@@ -30,7 +30,7 @@ export interface TurnTiming {
   latest: boolean
 }
 
-// A streamed start of Hydra's quiet reply hides too.
+// A streamed reply that so far reads as the start of Hydra's quiet reply hides, as the finished one does.
 const quiet = ({ entry }: { entry: ThreadEntry }) => entry.kind === 'message' && entry.role.startsWith('assistant')
   && Boolean(entry.text.trim()) && QUIET_REPLY.startsWith(entry.text.trim())
 

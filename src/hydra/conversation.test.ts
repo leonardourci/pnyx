@@ -3,7 +3,7 @@ import { test } from 'node:test'
 import type { HydraEvent } from '#app/model.ts'
 import { hydraConversation } from './conversation.ts'
 import { mergeThreadPages } from './thread-history.ts'
-import { recordEntries, type ThreadEntry } from './transcripts-read.ts'
+import { recordEntries, type ThreadEntry, type ThreadPage } from './transcripts-read.ts'
 
 const at = ({ minute }: { minute: number }) => `2026-10-22T10:${String(minute).padStart(
   2,
@@ -265,7 +265,7 @@ test(
         )).toISOString(),
       }),
     )
-    const page = ({ items }: { items: ThreadEntry[] }): import('#hydra/transcripts-read.ts').ThreadPage => ({
+    const page = ({ items }: { items: ThreadEntry[] }): ThreadPage => ({
       card: '$hydra',
       session: 'fixture:one',
       entries: items,

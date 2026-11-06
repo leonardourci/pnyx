@@ -94,7 +94,7 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
           / · continued$/,
           '',
         ),
-        continued: continued,
+        continued,
         text,
       },
     ]
