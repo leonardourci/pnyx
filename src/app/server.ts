@@ -26,8 +26,8 @@ import { doneDeadline } from '#tasks/retention-rules.ts'
 import { effectiveView, readSettings } from '#settings/store.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { settleDone, settles } from '#projects/copies.ts'
-import { latestMessage, readThread, threadPath, THREAD_CURSOR, type LatestMessage, type LatestRead, type ThreadPage } from '#hydra/transcripts-read.ts'
-import type { CurrentAction } from '#hydra/calls.ts'
+import { readThread, threadPath, THREAD_CURSOR, type ThreadPage } from '#hydra/transcripts-read.ts'
+import { LATEST_DELAY_MS, createLatestFeed } from './latest-feed.ts'
 import type { Catalog, CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
@@ -45,7 +45,7 @@ import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
-import { pollPath, watchPath, type PathWatch } from './watch.ts'
+import { watchPath, type PathWatch } from './watch.ts'
 import { background } from './background.ts'
 import { basename, dirname, join } from 'node:path'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
@@ -92,12 +92,9 @@ const shownTraces = ({
   return `${tools}:${thinking}`
 }
 
-const LATEST_DELAY_MS = 200
-
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
 export const CREATION_POLL_MS = 1000
-const EVENT_POLL_MS = 500
 // How often replies a route could not confirm are checked for a resend.
 const REPLY_POLL_MS = 30_000
 
@@ -612,11 +609,6 @@ export async function mountOwnedHydra({
     hydrasChanged()
   }
 
-  // Each card's last conversation message, read from its transcript tail and pushed
-  // to every tab. A card is read again when it gets an event or its transcript
-  // changes: transcript folders are watched, as a live session writes between hook events.
-  // File watches and stat polling cover content writes a native folder watch does not report.
-  // ponytail: one watcher per transcript folder, never released while the server runs; release ended sessions' folders if that grows.
   // Task tokens, counted off the event loop; tabs get them once the first count is in.
   let readingsNow: Record<string, import('#workers/provider.ts').UsageReading> = {}
   let usageNow: Record<string, AgentUsage> = {}
@@ -658,249 +650,25 @@ export async function mountOwnedHydra({
       }
     },
   })
-  const latest: Record<string, LatestMessage> = {}
-  const actions: Record<string, CurrentAction> = {}
-  const reads = new Map<string, LatestRead>()
-  const folders = new Map<string, PathWatch>()
-  const transcripts = new Map<string, PathWatch>()
-  const transcriptPolls = new Map<string, { close(): void }>()
-  const unread = new Set<string>()
-  let latestTimer: ReturnType<typeof setTimeout> | undefined
-
-  const touchPath = ({ path }: { path: string }) => touchLatest({
-    ids: Object.values(state.cards).filter(c => threadPath({ card: c }) === path)
-      .map(c => c.id),
+  const feed = createLatestFeed({
+    state: () => state,
+    closed: () => closed,
+    clients,
+    send,
+    threadSubscriptions,
+    refreshThread,
+    historyIndex: () => historyIndex,
+    agents: () => agents,
+    spend,
   })
-
-  const unwatchTranscript = ({ path }: { path: string }) => {
-    transcripts.get(path)?.close()
-    transcripts.delete(path)
-  }
-
-  const transcriptChanged = ({ path }: { path: string }) => {
-    touchPath({ path })
-    historyIndex.changed()
-
-    for (const map of threadSubscriptions) {
-      for (const [
-        ws,
-        sub,
-      ] of map) {
-        if (sub.path === path) {
-          refreshThread({ ws })
-        }
-      }
-    }
-  }
-
-  const watchTranscript = ({ path }: { path: string }) => {
-    if (closed || transcripts.has(path)) {
-      return
-    }
-
-    try {
-      const watcher = watchPath({
-        path,
-        changed: () => transcriptChanged({ path }),
-      })
-      transcripts.set(
-        path,
-        watcher,
-      )
-    } catch {
-      // A missing file is watched once the card's next event reads it again.
-    }
-  }
-
-  const watchWorkingTranscripts = () => {
-    const working = new Set(Object.values(state.cards).flatMap(c => (c.sessionActivity ?? c.activity) === 'working' ? threadPath({ card: c }) ?? [] : []))
-
-    for (const path of transcripts.keys()) {
-      if (!working.has(path)) {
-        unwatchTranscript({ path })
-      }
-    }
-
-    for (const path of working) {
-      watchTranscript({ path })
-    }
-  }
-
-  const watchFolder = ({ dir }: { dir: string }) => {
-    if (closed || folders.has(dir)) {
-      return
-    }
-
-    try {
-      const watcher = watchPath({
-        path: dir,
-        changed: ({ filename }) => {
-          if (filename) {
-            touchPath({
-              path: join(
-                dir,
-                String(filename),
-              ),
-            })
-
-            return
-          }
-
-          touchLatest({
-            ids: Object.values(state.cards).filter(c => {
-              const path = threadPath({ card: c })
-
-              return path && dirname(path) === dir
-            })
-              .map(c => c.id),
-          })
-        },
-      })
-      folders.set(
-        dir,
-        watcher,
-      )
-    } catch {
-      // A missing folder is watched once the card's next event reads it again.
-    }
-  }
-
-  const pollTranscripts = () => {
-    const wanted = new Set(Object.values(state.cards).flatMap(c => threadPath({ card: c }) ?? []))
-
-    for (const [
-      path,
-      poll,
-    ] of transcriptPolls) {
-      if (!wanted.has(path)) {
-        poll.close()
-        transcriptPolls.delete(path)
-      }
-    }
-
-    for (const path of wanted) {
-      if (transcriptPolls.has(path)) {
-        continue
-      }
-
-      // Native notices can miss content writes; stat polling follows replaced and recreated paths.
-      transcriptPolls.set(
-        path,
-        pollPath({
-          path,
-          interval: EVENT_POLL_MS,
-          changed: () => transcriptChanged({ path }),
-        }),
-      )
-    }
-  }
-
-  // Keeps a card's value and notes it in changes when it differs from the one last sent.
-  const track = <Value>({
-    store,
-    changes,
-    id,
-    value,
-  }: {
-    store: Record<string, Value>
-    changes: Record<string, Value | null>
-    id: string
-    value: Value | null
-  }) => {
-    if (JSON.stringify(value) === JSON.stringify(store[id] ?? null)) {
-      return
-    }
-
-    if (value) {
-      store[id] = value
-    } else {
-      delete store[id]
-    }
-
-    changes[id] = value
-  }
-
-  const readLatest = () => {
-    latestTimer = undefined
-    const changed: Record<string, LatestMessage | null> = {}
-    const changedActions: Record<string, CurrentAction | null> = {}
-
-    for (const id of unread) {
-      const card = state.cards[id], path = card && threadPath({ card })
-
-      if (path) {
-        watchFolder({ dir: dirname(path) })
-      }
-
-      const read = path ? latestMessage({
-        path,
-        prev: reads.get(id),
-      }) : undefined
-
-      if (read) {
-        reads.set(
-          id,
-          read,
-        )
-      } else {
-        reads.delete(id)
-      }
-
-      track({
-        store: latest,
-        changes: changed,
-        id,
-        value: read?.message ?? null,
-      })
-      track({
-        store: actions,
-        changes: changedActions,
-        id,
-        value: card ? agents.action({
-          card,
-          action: read?.action ?? null,
-        }) : null,
-      })
-    }
-
-    unread.clear()
-    watchWorkingTranscripts()
-    pollTranscripts()
-    spend.count()
-
-    if (Object.keys(changed).length || Object.keys(changedActions).length) {
-      for (const ws of clients) {
-        send({
-          ws,
-          message: {
-            type: 'latest',
-            messages: changed,
-            actions: changedActions,
-          },
-        })
-      }
-    }
-  }
-
-  function touchLatest({ ids }: { ids: Iterable<string> }) {
-    if (closed) {
-      return
-    }
-
-    for (const id of ids) {
-      unread.add(id)
-    }
-
-    if (unread.size) {
-      latestTimer ??= setTimeout(
-        () => background({
-          name: 'latest messages',
-          run: readLatest,
-        }),
-        LATEST_DELAY_MS,
-      )
-    }
-  }
+  const {
+    latest,
+    actions,
+    folders,
+    transcripts,
+    transcriptPolls,
+    touchLatest,
+  } = feed
 
   const pump = () => {
     const read = readEventsFrom({
@@ -2516,7 +2284,7 @@ export async function mountOwnedHydra({
     transcripts.clear()
     transcriptPolls.clear()
     threadSubscriptions.forEach(map => map.clear())
-    clearTimeout(latestTimer)
+    clearTimeout(feed.latestTimer)
     clearTimeout(expiryTimer)
     cancelReminder()
 
