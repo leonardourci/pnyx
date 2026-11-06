@@ -74,6 +74,7 @@ const HIDDEN = [
   'startedAtMs',
 ]
 
+// Codex's own request fields plus the neutral `display` (its command without the shell wrapper) and `paths`.
 function approvalInput({
   params,
   item,
@@ -83,33 +84,25 @@ function approvalInput({
   item?: ObjectValue
   method: string
 }): ObjectValue {
-  const input = Object.fromEntries(Object.entries(params).filter(([key]) => !HIDDEN.includes(key)))
+  const shown = Object.fromEntries(Object.entries(params).filter(([key]) => !HIDDEN.includes(key)))
   const actions = Array.isArray(params.commandActions) ? params.commandActions : []
-  const parsed = actions.length === 1 ? object({ value: actions[0] }).command : undefined
-  const command = typeof parsed === 'string' && parsed.trim() ? parsed.trim() : params.command
-
-  if (command !== undefined) {
-    input.command = Array.isArray(command) ? command.join(' ') : command
-  }
-
+  const display = actions.length === 1 ? object({ value: actions[0] }).command : undefined
   const changes = item?.changes ?? params.changes
-
-  if (Array.isArray(changes)) {
-    input.paths = changes.flatMap(change => {
+  const paths = Array.isArray(changes)
+    ? changes.flatMap(change => {
       const path = object({ value: change }).path
 
-      return typeof path === 'string' && path.trim() ? [path.trim()] : []
+      return typeof path === 'string' ? [path] : []
     })
+    : undefined
+
+  return {
+    ...shown,
+    ...(method === 'item/permissions/requestApproval' ? { scope: 'turn' } : {}),
+    ...(item?.changes ? { changes: item.changes } : {}),
+    ...(typeof display === 'string' ? { display } : {}),
+    ...(paths ? { paths } : {}),
   }
-
-  delete input.commandActions
-  delete input.changes
-
-  if (method === 'item/permissions/requestApproval') {
-    input.scope = 'turn'
-  }
-
-  return input
 }
 
 // request_user_input questions; one without options takes typed text only.

@@ -245,11 +245,7 @@ test(
       id: 'approval',
       method: 'item/commandExecution/requestApproval',
       params: {
-        command: [
-          '/bin/zsh',
-          '-lc',
-          'build',
-        ],
+        command: "/bin/zsh -lc 'build'",
         commandActions: [{ command: 'build' }],
         cwd: root,
         reason: 'Build the project',
@@ -260,9 +256,11 @@ test(
     assert.deepEqual(
       asked.request.input,
       {
-        command: 'build',
+        command: "/bin/zsh -lc 'build'",
+        commandActions: [{ command: 'build' }],
         cwd: root,
         reason: 'Build the project',
+        display: 'build',
       },
     )
     assert.deepEqual(
@@ -335,6 +333,10 @@ test(
     assert.deepEqual(
       files.request.input,
       {
+        changes: [
+          { path: 'src/one.ts' },
+          { path: 'src/two.ts' },
+        ],
         paths: [
           'src/one.ts',
           'src/two.ts',
