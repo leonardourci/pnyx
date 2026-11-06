@@ -65,7 +65,7 @@ import { readEvents, readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
-import { hydraIdentity, localToken, offerHost, readServer, socketPath } from './server-state.ts'
+import { hydraIdentity, localToken, offerHost, socketPath } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
 import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
@@ -2873,12 +2873,3 @@ export const SERVE_OPTIONS = {
     multiple: true,
   },
 } as const
-
-// A fixed default keeps every Hydra at one address, so an open tab finds a restarted server again.
-export { DEFAULT_PORT } from './server-state.ts'
-
-export async function serverPids(): Promise<number[]> {
-  const info = await readServer({ hydraId: 'default' })
-
-  return info ? [info.pid] : []
-}
