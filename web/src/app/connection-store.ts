@@ -562,7 +562,7 @@ export function createHydraConnection() {
       scope.usage = {}
       scope.hasSnapshot = true
       confirmSaves({ scope })
-      scope.queue = emptyQueue()
+      // The shown queue stays until the one the server sends after every snapshot arrives.
 
       if (selected === scope.id) {
         staleUpdates()
