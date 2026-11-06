@@ -42,12 +42,54 @@ function followsProject({ prompt }: { prompt: string }): void {
 }
 
 test(
-  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, and the card survives a restart',
+  'task life: Hydra creates and starts a task only with a reason, a repeated start runs one worker with the project conventions, its declarations place and wake, its own question gets the owner’s answer once, Done, the session hands off to the next task, the card survives a restart, and Hydra\'s own card refuses task-only commands',
   async () => {
     const s = await pnyx.scenario()
     const folder = s.folder({ name: 'mobile' })
     const hydraAgent = await s.chat({ text: 'Fix the login crash on mobile.' })
     const hydra = s.as({ agent: hydraAgent })
+    assert.deepEqual(
+      [
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hold',
+            '$hydra',
+            '--reason',
+            'discuss first',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'remind',
+            '$hydra',
+            'in 1 hour',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            '$hydra',
+            '24',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide',
+            '$hydra',
+          ],
+        }),
+      ],
+      [
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+      ],
+    )
     const create = [
       'task',
       'create',
