@@ -1,30 +1,25 @@
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
-import { PROVIDERS, harnessOf, knownProvider, providerIdOf } from '#workers/providers.ts'
+import { PROVIDERS, harnessOf, knownProvider } from '#workers/providers.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
 import { trackChildren } from '#workers/children.ts'
 import { pendingSteering, steeringHeld } from '#workers/steering.ts'
-import { createRoutineHelper } from '#routine-helper/runner.ts'
-import { helperAgent } from '#routine-helper/route.ts'
-import { outcomeLines, type HelperAgent } from '#routine-helper/state.ts'
-import { accountEnv, accountEnvironment, agentExhausted } from '#workers/dispatch.ts'
-import { defaultLogin, effectiveDispatch, loginFolder, type EffectiveDispatch } from '#workers/dispatch-config.ts'
+import { createHostedHelper } from '#routine-helper/hosted-helper.ts'
+import { agentExhausted } from '#workers/dispatch.ts'
+import { effectiveDispatch } from '#workers/dispatch-config.ts'
 import { randomUUID } from 'node:crypto'
 import { claudeProvider, type QueryFn } from '#workers/claude.ts'
 import { codexProvider, type SpawnCodex } from '#workers/codex.ts'
 import { createUsageTracker } from '#workers/usage-tracker.ts'
 import { createPermissionBridge } from '#workers/permission-bridge.ts'
-import { hydraFastReaches } from '#workers/provider.ts'
 import { terminalPresence, type Presence } from '#workers/presence.ts'
 import { MAX_RESENDS } from '#workers/reply-retry.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { clip } from '#hydra/digest.ts'
-import type { HydraState } from './model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { HYDRA_ACTOR } from './actors.ts'
@@ -526,44 +521,6 @@ export function createHost({
     unnotifiedSteering,
   })
 
-  const helperFailed = ({ state }: { state: HydraState }) => Object.values(state.helper?.runs ?? {})
-    .some(batch => batch.error)
-
-  const helperPending = () => {
-    const state = loadHydra({ hydraId }).state
-
-    return outcomeLines({ state }).length > 0 || helperFailed({ state })
-  }
-
-  // No helper agent when it is off or its account is no longer registered, so main takes the updates and no other login is used.
-  const usableHelper = ({
-    state,
-    effective,
-  }: {
-    state: HydraState
-    effective?: EffectiveDispatch
-  }) => {
-    const candidate = helperAgent({
-      state,
-      main: effective && hydraCandidate({
-        state,
-        dispatch: effective.dispatch,
-      }),
-    })
-
-    if (candidate?.account === undefined) {
-      return candidate
-    }
-
-    const known = effective ?? effectiveDispatch()
-
-    return known.accounts[candidate.account]?.provider === candidate.harness ? candidate : undefined
-  }
-
-  // A failed batch sends routine work to main until main has seen the failure.
-  const helperOpen = ({ state }: { state: HydraState }) => !!usableHelper({ state })
-    && !helperFailed({ state })
-
   const {
     back,
     takeRecap,
@@ -580,94 +537,21 @@ export function createHost({
     host: () => host,
   })
 
-  const helper = createRoutineHelper({
+  const {
+    helper,
+    helperPending,
+    helperOpen,
+  } = createHostedHelper({
     hydraId,
-    spawned: children.spawned,
-    provider: ({ harness }) => providers[providerIdOf({ harness })],
-    environment: ({
-      harness,
-      actor,
-      account: selectedAccount,
-      loginFolder: selectedFolder,
-    }) => {
-      const env = {
-        ...environment({ hydra: true }),
-        PNYX_ACTOR: actor,
-      }
-
-      if (selectedFolder) {
-        return accountEnvironment({
-          account: {
-            provider: harness,
-            folder: selectedFolder,
-          },
-          env,
-        })
-      }
-
-      const { account } = accountFor({
-        effective: effectiveDispatch(),
-        harness,
-        prefer: selectedAccount,
-      })
-
-      return accountEnv({
-        account,
-        env,
-      })
-    },
-    context: () => digest({ remember: false }),
-    changed: () => {
-      changed()
-      armWake()
-    },
-    bound: helperBound,
-    agentFor: async () => {
-      const state = loadHydra({ hydraId }).state
-      const effective = effectiveDispatch()
-      const candidate = usableHelper({
-        state,
-        effective,
-      })
-
-      if (!candidate) {
-        return undefined
-      }
-
-      const {
-        name,
-        account,
-      } = accountFor({
-        effective,
-        harness: candidate.harness,
-        prefer: candidate.account,
-      })
-
-      const nativeDefault = defaultLogin({ provider: candidate.harness })
-      const folder = account ? loginFolder({ account }) : nativeDefault
-      const hydraFast = await hydraFastReaches({
-        hydraFast: state.config?.hydra.agent?.fast,
-        models: () => host.models({
-          harness: candidate.harness,
-          account: name,
-        }),
-        model: candidate.model,
-      })
-      const agent: HelperAgent = {
-        ...candidate,
-        account: name,
-        loginFolder: folder,
-      }
-
-      if (candidate.fast || hydraFast) {
-        agent.fast = true
-      }
-
-      return agent
-    },
-    // Defined below, once the helper it offers updates to exists.
-    handback: () => armWake(),
-    outcomesReady: () => armWake(),
+    providers,
+    children,
+    helperBound,
+    changed,
+    environment,
+    // Defined below; each is read only when the helper runs.
+    digest: ({ ...input }) => digest(input),
+    armWake: () => armWake(),
+    host: () => host,
   })
 
   const {
