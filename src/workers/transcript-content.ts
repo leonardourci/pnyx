@@ -1,9 +1,57 @@
 import { commandOf } from './tool-input.ts'
+import { object } from './transcript-usage.ts'
 import { withoutInjected } from '#oracle/text.ts'
-import type { FoundSettings, TranscriptMessage, TranscriptCall } from './provider.ts'
+import type { FoundSettings, TranscriptMessage, TranscriptCall, TranscriptTrace } from './provider.ts'
+
+const TEXT_BLOCKS = [
+  'text',
+  'input_text',
+  'output_text',
+]
+const UNRECORDED_DETAIL = 'Recorded details unavailable'
+const UNNAMED_TOOL = 'tool'
 
 export const transcriptString = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined
+
+export function blockText({ value }: { value: unknown }): string {
+  if (typeof value === 'string') {
+    return value
+  }
+
+  const block = object({ value })
+  const text = TEXT_BLOCKS.includes(String(block.type))
+
+  return text && typeof block.text === 'string' ? block.text : ''
+}
+
+export function transcriptTrace({
+  index,
+  kind,
+  name,
+  detail,
+  call,
+}: {
+  index: number
+  kind: TranscriptTrace['kind']
+  name: unknown
+  detail: unknown
+  call: unknown
+}): TranscriptTrace {
+  const recorded = detail ?? UNRECORDED_DETAIL
+  const trace: TranscriptTrace = {
+    index,
+    kind,
+    role: typeof name === 'string' ? name : kind,
+    text: typeof recorded === 'string' ? recorded : JSON.stringify(recorded),
+  }
+
+  if (kind === 'tool' && typeof call === 'string') {
+    trace.call = call
+  }
+
+  return trace
+}
 
 export function foundSettings({ settings }: {
   settings: Record<string, string | null | undefined>
@@ -64,12 +112,12 @@ export function transcriptCall({
   input,
 }: {
   id: string
-  tool: string
+  tool: unknown
   input: Record<string, unknown>
 }): TranscriptCall {
   const call: TranscriptCall = {
     id,
-    tool,
+    tool: typeof tool === 'string' ? tool : UNNAMED_TOOL,
   }
   const fields = {
     command: commandOf({ input }),

@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
-import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader, TranscriptTrace } from './provider.ts'
-import { foundSettings, onOff, transcriptString, transcriptText, transcriptCall } from './transcript-content.ts'
+import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1756,7 +1756,7 @@ function customCalls({
   input,
 }: {
   id: string
-  tool: string
+  tool: unknown
   input: string
 }): TranscriptCall[] {
   if (tool === CODE_MODE_TOOL) {
@@ -1781,21 +1781,6 @@ const parsedArguments = ({ text }: { text: unknown }): Record<string, unknown> =
   } catch {
     return {}
   }
-}
-
-function codexTranscriptText({ value }: { value: unknown }): string {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  const block = object({ value })
-  const text = [
-    'text',
-    'input_text',
-    'output_text',
-  ].includes(String(block.type))
-
-  return text && typeof block.text === 'string' ? block.text : ''
 }
 
 export const readCodexTranscript: TranscriptReader = ({ record }) => {
@@ -1845,7 +1830,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
         raw,
         index,
       ) => {
-        const text = codexTranscriptText({ value: raw })
+        const text = blockText({ value: raw })
         const before = object({ value: blocks[index - 1] })
         const after = object({ value: blocks[index + 1] })
         const opensImage = after.type === 'input_image' && /^<image\b[^>]*>$/.test(text.trim())
@@ -1868,21 +1853,14 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   const thinking = payload.type === 'reasoning'
 
   if (tool || thinking) {
-    const kind = tool ? 'tool' : 'thinking'
-    const detail = payload.thinking ?? payload.summary ?? payload.content ?? payload.output ?? payload.arguments ?? payload.input ?? 'Recorded details unavailable'
-    const call = payload.tool_use_id ?? payload.call_id ?? payload.id
-    const trace: TranscriptTrace = {
+    parsed.traces.push(transcriptTrace({
       index: 0,
-      kind,
-      role: typeof payload.name === 'string' ? payload.name : kind,
-      text: typeof detail === 'string' ? detail : JSON.stringify(detail),
-    }
-
-    if (kind === 'tool' && typeof call === 'string') {
-      trace.call = call
-    }
-
-    parsed.traces.push(trace)
+      kind: tool ? 'tool' : 'thinking',
+      name: payload.name,
+      detail: payload.thinking ?? payload.summary ?? payload.content
+        ?? payload.output ?? payload.arguments ?? payload.input,
+      call: payload.tool_use_id ?? payload.call_id ?? payload.id,
+    }))
   }
 
   if (entry.isSidechain === true) {
@@ -1892,7 +1870,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   if (payload.type === 'function_call' && typeof payload.call_id === 'string') {
     parsed.calls.push(transcriptCall({
       id: payload.call_id,
-      tool: typeof payload.name === 'string' ? payload.name : 'tool',
+      tool: payload.name,
       input: parsedArguments({ text: payload.arguments }),
     }))
   }
@@ -1900,7 +1878,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   if (payload.type === 'custom_tool_call' && typeof payload.call_id === 'string' && typeof payload.input === 'string') {
     parsed.calls.push(...customCalls({
       id: payload.call_id,
-      tool: typeof payload.name === 'string' ? payload.name : 'tool',
+      tool: payload.name,
       input: payload.input,
     }))
   }
