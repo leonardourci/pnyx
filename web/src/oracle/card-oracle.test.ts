@@ -57,7 +57,6 @@ test(
     f.schedule.query({
       search: {
         text: 'billing',
-        workspace: '',
       },
     })
 
@@ -74,7 +73,7 @@ test(
     await f.settle()
     assert.deepEqual(
       f.shown,
-      ['billing\n'],
+      ['billing'],
     )
   },
 )
@@ -86,21 +85,18 @@ test(
     f.schedule.query({
       search: {
         text: 'dep',
-        workspace: '',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY)
     f.schedule.query({
       search: {
         text: 'deplo',
-        workspace: '',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY / 2)
     f.schedule.query({
       search: {
         text: 'deploy',
-        workspace: '',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY)
@@ -117,7 +113,7 @@ test(
     await f.settle()
     assert.deepEqual(
       f.shown,
-      ['deploy\n'],
+      ['deploy'],
     )
   },
 )
@@ -129,7 +125,6 @@ test(
     f.schedule.query({
       search: {
         text: 'deploy',
-        workspace: 'ops',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY)
@@ -156,7 +151,6 @@ test(
       f.asked[1],
       {
         text: 'deploy',
-        workspace: 'ops',
       },
     )
   },
@@ -169,7 +163,6 @@ test(
     f.schedule.query({
       search: {
         text: 'deploy',
-        workspace: '',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY)
@@ -177,14 +170,13 @@ test(
     await f.settle()
     assert.deepEqual(
       f.failed,
-      ['deploy\n'],
+      ['deploy'],
       'the query is answered, so Enter and the arrows stop waiting for it',
     )
 
     f.schedule.query({
       search: {
         text: 'billing',
-        workspace: '',
       },
     })
     t.mock.timers.tick(SEARCH_DELAY)
@@ -196,11 +188,11 @@ test(
     await f.settle()
     assert.deepEqual(
       f.shown,
-      ['billing\n'],
+      ['billing'],
     )
     assert.deepEqual(
       f.failed,
-      ['deploy\n'],
+      ['deploy'],
       'the refresh of an answered query failed, so its results stay',
     )
   },
