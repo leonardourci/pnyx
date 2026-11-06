@@ -28,7 +28,7 @@ import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
 import { touch } from '#tasks/touch.ts'
 
-export function applyHydra({
+function applyHydra({
   state,
   event,
 }: {
