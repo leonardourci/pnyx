@@ -20,6 +20,7 @@ import { isManagedTask } from '#tasks/select.ts'
 export interface ThreadEntry {
   id: string
   hidden?: boolean
+  continued?: boolean
   role: string
   // divider: a conversation milestone drawn as a line across the chat.
   kind: 'message' | 'tool' | 'thinking' | 'divider'
@@ -50,6 +51,14 @@ export interface ThreadPage {
   card: string
   session?: string
   entries: ThreadEntry[]
+  conversation?: {
+    through: number
+    stream?: string
+    version?: number
+    entries: ThreadEntry[]
+    folds: Record<string, import('./conversation.ts').TurnActions>
+    timings: Record<string, import('./chat-messages.ts').TurnTiming>
+  }
   unavailable?: string
   currentTurn?: {
     at: string
@@ -77,6 +86,11 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
     return [
       {
         ...entry,
+        role: entry.role.replace(
+          / · continued$/,
+          '',
+        ),
+        continued: entry.continued || entry.role.endsWith(' · continued'),
         text,
       },
     ]
@@ -104,7 +118,11 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
         start,
         end,
       ),
-      role: start ? `${entry.role} · continued` : entry.role,
+      role: entry.role.replace(
+        / · continued$/,
+        '',
+      ),
+      continued: start > 0 || entry.continued || entry.role.endsWith(' · continued'),
     })
     start = end
   }

@@ -1,3 +1,8 @@
+import { randomUUID } from 'node:crypto'
+import { hydraThreadView } from '#hydra/thread-view.ts'
+import { mergeThreadPages } from '#hydra/thread-history.ts'
+import { effectiveView } from '#settings/store.ts'
+import { traces } from '#preferences/view.ts'
 import { basename, dirname } from 'node:path'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { readThread, threadPath, type ThreadPage } from '#hydra/transcripts-read.ts'
@@ -13,6 +18,11 @@ import { watchPath, type PathWatch } from './watch.ts'
 
 export type Subscription = {
   card: string
+  history?: ThreadPage
+  view?: {
+    id: string
+    version: number
+  }
   path?: string
   paseo?: string
   watcher?: { close(): unknown }
@@ -50,6 +60,52 @@ export function createThreadSubscriptions({
   const subscriptionMap = ({ card }: { card: string }) =>
     card === HYDRA_CARD ? hydraSubscriptions : subscriptions
   const threadTimers = new Map<HydraClient, ReturnType<typeof setTimeout>>()
+
+  const prepareThread = ({
+    sub,
+    page,
+    older = false,
+  }: {
+    sub: Subscription
+    page: ThreadPage
+    older?: boolean
+  }) => {
+    if (page.card !== HYDRA_CARD) {
+      return page
+    }
+
+    const current = state()
+    sub.history = mergeThreadPages({
+      before: sub.history ?? null,
+      latest: page,
+      olderPage: older,
+    })
+
+    const prepared = hydraThreadView({
+      state: current,
+      page: sub.history,
+      thinking: traces({
+        view: effectiveView({ state: current }),
+        card: HYDRA_CARD,
+      }).thinking,
+    })
+
+    if (!sub.view) {
+      sub.view = {
+        id: randomUUID(),
+        version: 0,
+      }
+    }
+
+    return {
+      ...prepared,
+      conversation: {
+        ...prepared.conversation!,
+        stream: sub.view.id,
+        version: ++sub.view.version,
+      },
+    }
+  }
 
   const refreshThread = ({ ws }: { ws: HydraClient }) => {
     if (closed() || threadTimers.has(ws)) {
@@ -106,7 +162,10 @@ export function createThreadSubscriptions({
                           ws,
                           message: {
                             type: 'thread',
-                            thread,
+                            thread: prepareThread({
+                              sub,
+                              page: thread,
+                            }),
                           },
                         })
                       }
@@ -123,13 +182,16 @@ export function createThreadSubscriptions({
                   ws,
                   message: {
                     type: 'thread',
-                    thread: agents().thread({
-                      card,
-                      page: readThread({
-                        hydraId,
-                        state: state(),
+                    thread: prepareThread({
+                      sub,
+                      page: agents().thread({
                         card,
-                        homes: homes(),
+                        page: readThread({
+                          hydraId,
+                          state: state(),
+                          card,
+                          homes: homes(),
+                        }),
                       }),
                     }),
                   },
@@ -165,9 +227,15 @@ export function createThreadSubscriptions({
         before,
       })
 
-      return before ? page : agents().thread({
+      const latest = before ? page : agents().thread({
         card,
         page,
+      })
+
+      return prepareThread({
+        sub,
+        page: latest,
+        older: before !== undefined,
       })
     }
 
@@ -182,7 +250,11 @@ export function createThreadSubscriptions({
         before,
       }),
       before,
-    })
+    }).then(page => prepareThread({
+      sub,
+      page,
+      older: before !== undefined,
+    }))
   }
 
   const bindThread = ({
