@@ -1,3 +1,5 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { ownerActor } from '#app/actors.ts'
 import { useEffect, useId, useState } from 'react'
 import { canSkipCompaction, NEITHER_REASON } from '#hydra/history.ts'
 import type { HydraState } from '#app/model.ts'
@@ -42,13 +44,13 @@ function useAgentName({
 
 function HeldMessageCard({
   change,
-  seq,
+  revision,
   command,
   connected,
   notify,
 }: {
   change: HydraAgentChange
-  seq: number
+  revision: number
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -67,7 +69,7 @@ function HeldMessageCard({
   ] = useState<{
     tokens?: number
     error?: string
-    seq?: number
+    revision?: number
   }>({})
 
   useEffect(
@@ -75,7 +77,7 @@ function HeldMessageCard({
       let active = true
 
       async function refresh() {
-        if (!connected) {
+        if (!connected || change.kind === 'effort' || change.state === 'running') {
           return
         }
 
@@ -93,14 +95,14 @@ function HeldMessageCard({
           if (active) {
             setHistory({
               tokens: Number(receipt.totalTokens),
-              seq,
+              revision,
             })
           }
         } catch (error) {
           if (active) {
             setHistory({
               error: (error as Error).message,
-              seq,
+              revision,
             })
           }
         }
@@ -115,7 +117,10 @@ function HeldMessageCard({
     [
       command,
       connected,
-      seq,
+      revision,
+      change.id,
+      change.kind,
+      change.state,
     ],
   )
 
@@ -144,9 +149,9 @@ function HeldMessageCard({
 
   const explanation = effort ? `The agent continues at its new effort. ${COMPACT_WHY}` : `A new agent starts with fresh context. ${COMPACT_WHY}`
   const caption = 'Recommended: saves what\'s worth remembering first.'
-  const tokens = history.seq === seq ? history.tokens : undefined
+  const tokens = history.revision === revision ? history.tokens : undefined
   const historyKnown = tokens !== undefined
-  const neitherAllowed = tokens !== undefined && canSkipCompaction({ tokens })
+  const neitherAllowed = effort || (tokens !== undefined && canSkipCompaction({ tokens }))
   const neitherReason = historyKnown ? NEITHER_REASON : history.error ?? 'Counting the conversation…'
 
   return (
@@ -206,7 +211,11 @@ export function AgentChangeChoice({
   return (
     <HeldMessageCard
       change={change}
-      seq={state.seq}
+      revision={Math.max(
+        state.cards[HYDRA_CARD]?.updatedSeq ?? 0,
+        ...state.hydraMessages?.filter(message => ownerActor({ actor: message.actor }))
+          .map(message => state.eventIds[message.id] ?? 0) ?? [],
+      )}
       command={command}
       connected={connected}
       notify={notify}
