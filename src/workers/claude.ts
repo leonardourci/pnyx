@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader, TranscriptTrace } from './provider.ts'
-import { foundSettings, onOff, transcriptString, transcriptText } from './transcript-content.ts'
+import { foundSettings, onOff, transcriptString, transcriptText, transcriptCall } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -1139,11 +1139,11 @@ export const readClaudeTranscript: TranscriptReader = ({
     }
 
     if (block.type === 'tool_use' && typeof block.id === 'string') {
-      parsed.calls.push({
+      parsed.calls.push(transcriptCall({
         id: block.id,
         tool: typeof block.name === 'string' ? block.name : 'tool',
         input: object({ value: block.input }),
-      })
+      }))
     }
 
     if (block.type === 'tool_result' && typeof block.tool_use_id === 'string') {

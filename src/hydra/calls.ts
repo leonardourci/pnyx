@@ -1,7 +1,5 @@
-import { commandOf } from '#workers/tool-input.ts'
-
 export { commandOf, SHELL_WRAPPER } from '#workers/tool-input.ts'
-import type { NativeWork } from '#workers/provider.ts'
+import type { NativeWork, TranscriptCall } from '#workers/provider.ts'
 import { redact } from '#oracle/text.ts'
 
 export const obj = ({ v }: { v: unknown }): Record<string, unknown> => typeof v === 'object' && v !== null ? v as Record<string, unknown> : {}
@@ -102,18 +100,8 @@ const scrubbed = ({
   })
 }
 
-const descriptionOf = ({ input }: { input: Record<string, unknown> }) => {
-  if (typeof input.description !== 'string') {
-    return undefined
-  }
-
-  return firstLine({ text: input.description })
-}
-
-const fileOf = ({ input }: { input: Record<string, unknown> }): unknown => {
-  const path = input.file_path ?? input.notebook_path ?? input.path
-
-  if (typeof path !== 'string' || path.length <= LINE_MAX) {
+const fileOf = ({ path }: { path?: string }): string | undefined => {
+  if (path === undefined || path.length <= LINE_MAX) {
     return path
   }
 
@@ -128,35 +116,36 @@ const fileOf = ({ input }: { input: Record<string, unknown> }): unknown => {
 export function callOf({
   id,
   tool,
-  input,
-}: {
-  id: string
-  tool: string
-  input: Record<string, unknown>
-}): ToolCall {
+  command,
+  file,
+  query,
+  url,
+  skill,
+  description,
+}: TranscriptCall): ToolCall {
   const fields: Record<typeof CALL_FIELDS[number], string | undefined> = {
     command: scrubbed({
-      value: commandOf({ input }),
+      value: command,
       max: COMMAND_MAX,
     }),
     file: scrubbed({
-      value: fileOf({ input }),
+      value: fileOf({ path: file }),
       max: LINE_MAX,
     }),
     query: scrubbed({
-      value: input.pattern ?? input.query,
+      value: query,
       max: LINE_MAX,
     }),
     url: scrubbed({
-      value: input.url,
+      value: url,
       max: LINE_MAX,
     }),
     skill: scrubbed({
-      value: input.skill ?? input.subagent_type,
+      value: skill,
       max: LINE_MAX,
     }),
     description: scrubbed({
-      value: descriptionOf({ input }),
+      value: description === undefined ? undefined : firstLine({ text: description }),
       max: LINE_MAX,
     }),
   }

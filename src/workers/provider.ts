@@ -370,7 +370,12 @@ export interface TranscriptTrace {
 export interface TranscriptCall {
   id: string
   tool: string
-  input: Record<string, unknown>
+  command?: string
+  file?: string
+  query?: string
+  url?: string
+  skill?: string
+  description?: string
 }
 
 export type FoundSettings = Record<string, string | null>
