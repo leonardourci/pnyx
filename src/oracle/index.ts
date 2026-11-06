@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync, statSync } from 'node:fs'
+import { chmodSync, closeSync, existsSync, fstatSync, openSync, readSync, rmSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import { isAbsolute, join } from 'node:path'
 import type { DatabaseSync } from 'node:sqlite'
@@ -10,14 +10,14 @@ import { hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { privateDir } from '#store/storage.ts'
-import type { IndexResult, IndexStatus, Kind } from './model.ts'
+import type { IndexResult, Kind } from './model.ts'
 import { words } from './query.ts'
 import { CHUNKER_VERSION, chunk, eventText, redact, transcriptMessages } from './text.ts'
 
 // Bump when the tables change; the index rebuilds on mismatch.
 export const SCHEMA_VERSION = 8
 
-const EVENTS = 'events'
+export const EVENTS = 'events'
 const BUSY_TIMEOUT = 'PRAGMA busy_timeout = 5000'
 // Readers keep answering during a catch-up, and a killed writer leaves no hot journal that blocks read-only opens.
 const WAL = 'PRAGMA journal_mode = WAL'
@@ -109,7 +109,7 @@ function metaValue({
   return row?.value
 }
 
-function isCurrent({ db }: { db: DatabaseSync }): boolean {
+export function isCurrent({ db }: { db: DatabaseSync }): boolean {
   try {
     return metaValue({
       db,
@@ -186,7 +186,7 @@ export function openReader({ path }: { path: string }): DatabaseSync {
   return db
 }
 
-interface Cursor {
+export interface Cursor {
   source: string
   card: string
   identity: string
@@ -658,87 +658,6 @@ export function rebuildIndex({ hydraId }: { hydraId: string }): IndexResult {
       db,
       hydraId,
     })
-  } finally {
-    db.close()
-  }
-}
-
-// Reads the index without writing it. Null when it has not been built.
-export function indexStatus({ hydraId }: { hydraId: string }): IndexStatus | null {
-  const path = searchPath({ hydraId })
-
-  if (!existsSync(path)) {
-    return null
-  }
-
-  const db = openReader({ path })
-
-  try {
-    const bytes = statSync(path).size
-
-    if (!isCurrent({ db })) {
-      return {
-        builtThrough: 0,
-        docs: {
-          event: 0,
-          note: 0,
-          transcript: 0,
-        },
-        transcripts: {
-          tracked: 0,
-          missing: 0,
-        },
-        bytes,
-        current: false,
-      }
-    }
-
-    const count = ({ kind }: { kind: Kind }) => (db.prepare('SELECT count(*) AS n FROM docs WHERE kind = ?').get(kind) as { n: number }).n
-    const cursors = db.prepare('SELECT * FROM cursors').all() as unknown as Cursor[]
-    const transcripts = cursors.filter(c => c.source !== EVENTS)
-
-    return {
-      builtThrough: cursors.find(c => c.source === EVENTS)?.seq ?? 0,
-      docs: {
-        event: count({ kind: 'event' }),
-        note: count({ kind: 'note' }),
-        transcript: count({ kind: 'transcript' }),
-      },
-      transcripts: {
-        tracked: transcripts.length,
-        missing: transcripts.filter(c => !existsSync(c.source)).length,
-      },
-      bytes,
-      current: true,
-    }
-  } finally {
-    db.close()
-  }
-}
-
-// The last event seq indexed, without indexStatus's full counts; null when missing or from another version.
-export function indexedThrough({ hydraId }: { hydraId: string }): number | null {
-  const path = searchPath({ hydraId })
-
-  if (!existsSync(path)) {
-    return null
-  }
-
-  const db = openReader({ path })
-
-  try {
-    if (!isCurrent({ db })) {
-      return null
-    }
-
-    const events = db.prepare('SELECT seq FROM cursors WHERE source = ?').get(EVENTS) as { seq: number } | undefined
-
-    // A first build commits its tables before its events.
-    if (!events) {
-      return 0
-    }
-
-    return events.seq
   } finally {
     db.close()
   }
