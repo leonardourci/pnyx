@@ -4,8 +4,9 @@ import { COMMON, guard, parse, type Options, type Output } from '#app/cli-suppor
 import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
 import { KINDS, type Hit, type IndexResult, type Kind, type Match } from './model.ts'
-import { indexStatus, rebuildIndex, updateIndex } from './index.ts'
+import { rebuildIndex, updateIndex } from './index.ts'
 import { SNIPPETS, search } from './search.ts'
+import { indexStatus } from './status.ts'
 
 const LIMIT = 20
 const MAX = 100
