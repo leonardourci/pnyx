@@ -128,6 +128,47 @@ test(
         collaboration: 'default',
       },
     )
+    assert.deepEqual(
+      readTranscriptRecord({
+        record: {
+          type: 'session_meta',
+          payload: {
+            originator: 'codex_cli_rs',
+            cli_version: '0.200.0',
+          },
+        },
+      }).settings,
+      {
+        client: 'codex_cli_rs',
+        version: '0.200.0',
+      },
+    )
+    assert.deepEqual(
+      readTranscriptRecord({
+        record: {
+          type: 'event_msg',
+          payload: {
+            type: 'thread_settings_applied',
+            thread_settings: {
+              model: 'gpt-6.1-mini',
+              reasoning_effort: 'low',
+              service_tier: 'flex',
+              approval_policy: 'never',
+              collaboration_mode: { mode: 'plan' },
+              reasoning_summary: 'concise',
+            },
+          },
+        },
+      }).settings,
+      {
+        model: 'gpt-6.1-mini',
+        effort: 'low',
+        fast: 'off',
+        approval: 'never',
+        collaboration: 'plan',
+        summary: 'concise',
+      },
+    )
     const sidechain = {
       ...records.claude,
       isSidechain: true,
