@@ -29,6 +29,7 @@ import { refreshDone } from '#tasks/retention-rules.ts'
 import { touch } from '#tasks/touch.ts'
 import { applyMemory } from '#memory/reduce.ts'
 import { applyProject } from '#projects/reduce.ts'
+import { applyView } from '#preferences/reduce.ts'
 
 function applyHydra({
   state,
@@ -659,33 +660,10 @@ function apply({
     return true
   }
 
-  if (event.type === 'board.view') {
-    state.view = structuredClone(event.data.after)
-    state.viewRevision = (state.viewRevision ?? 0) + 1
-
-    for (const placement of event.data.placements ?? []) {
-      const placed = state.cards[placement.cardId]
-
-      if (!placed) {
-        continue
-      }
-
-      if (placement.after) {
-        placed.column = placement.after
-      }
-
-      touch({
-        card: placed,
-        event,
-      })
-    }
-
-    refreshTasks({ state })
-
-    if (event.undoes) {
-      state.undone[event.undoes] = event.id
-    }
-
+  if (applyView({
+    state,
+    event,
+  })) {
     return true
   }
 
