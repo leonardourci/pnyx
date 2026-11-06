@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { Hit } from '#oracle/model.ts'
+import type { SearchFilters } from '#oracle/filters.ts'
 import type { Command } from '#web-app/connection.ts'
 
 // Typing waits this long before searching; a Hydra event refreshes the results at most this often.
@@ -19,15 +20,25 @@ export const findCards = async ({
   live?: boolean
   filters?: Search['filters']
 }) => {
+  // The workspace comes second, where an empty one searches every workspace, then the scope, where hydra keeps to live tasks.
+  const args = [
+    query,
+    '',
+  ]
+  const scope = live ? 'hydra' : ''
+
+  if (filters) {
+    args.push(
+      scope,
+      JSON.stringify(filters),
+    )
+  } else if (live) {
+    args.push(scope)
+  }
+
   const result = await command({
     name: 'oracle',
-    args: [
-      query,
-      // The workspace comes second; an empty one searches every workspace.
-      '',
-      ...(live || filters ? [live ? 'hydra' : ''] : []),
-      ...(filters ? [JSON.stringify(filters)] : []),
-    ],
+    args,
   })
 
   return result.hits as Hit[]
@@ -35,7 +46,7 @@ export const findCards = async ({
 
 export interface Search {
   text: string
-  filters?: Pick<import('#oracle/model.ts').Query, 'columns' | 'projects' | 'since'>
+  filters?: SearchFilters
 }
 
 const keyOf = ({ search }: { search: Search }) => `${search.text}${search.filters ? `\n${JSON.stringify(search.filters)}` : ''}`
