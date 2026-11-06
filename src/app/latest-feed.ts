@@ -5,6 +5,7 @@ import { background } from './background.ts'
 import type { createHost } from './host.ts'
 import type { HydraState } from './model.ts'
 import type { HydraClient, ServerMessage } from './server-transport.ts'
+import type { Subscription } from './thread-subscriptions.ts'
 import { pollPath, watchPath, type PathWatch } from './watch.ts'
 
 export const LATEST_DELAY_MS = 200
@@ -36,7 +37,7 @@ export function createLatestFeed({
     ws: HydraClient
     message: ServerMessage
   }): void
-  threadSubscriptions: Map<HydraClient, { path?: string }>[]
+  threadSubscriptions: Map<HydraClient, Subscription>[]
   refreshThread({ ws }: { ws: HydraClient }): void
   historyIndex(): { changed(): void }
   agents(): Pick<ReturnType<typeof createHost>, 'action'>
@@ -286,6 +287,27 @@ export function createLatestFeed({
     }
   }
 
+  // A session Pnyx runs streamed: its cards' latest messages and open thread pages are read again.
+  const streamed = ({ session }: { session: string }) => {
+    touchLatest({
+      ids: Object.values(state().cards).filter(card => card.agent && `${card.agent.provider}:${card.agent.sessionId}` === session)
+        .map(card => card.id),
+    })
+
+    for (const map of threadSubscriptions) {
+      for (const [
+        ws,
+        sub,
+      ] of map) {
+        const agent = state().cards[sub.card]?.agent
+
+        if (agent && `${agent.provider}:${agent.sessionId}` === session) {
+          refreshThread({ ws })
+        }
+      }
+    }
+  }
+
   return {
     latest,
     actions,
@@ -293,6 +315,7 @@ export function createLatestFeed({
     transcripts,
     transcriptPolls,
     touchLatest,
+    streamed,
     get latestTimer() {
       return latestTimer
     },
