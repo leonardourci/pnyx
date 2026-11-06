@@ -31,6 +31,8 @@ export const STALL_REPEAT_MAX_MS = 60 * 60 * 1000
 // How much of a message Hydra's Not confirmed wake quotes.
 export const UNCONFIRMED_QUOTE_CHARS = 80
 
+export const HYDRA_TURN_POLL_MS = 20
+
 export const WORKER_RESUME = 'Pnyx restarted during your turn; continue from where you stopped.'
 
 export { WORKER_COMMANDS } from '#app/command-registry.ts'

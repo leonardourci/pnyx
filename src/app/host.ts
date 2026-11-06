@@ -1,5 +1,4 @@
-import { canSkipCompaction, NEITHER_REASON, readHistory, historyCommand, compactionContext, inscribeSince } from '#hydra/history.ts'
-import { agentChangeKind, agentChangeTurn, conversationContext } from '#hydra/agent-switch.ts'
+import { agentChangeKind, conversationContext, createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor, harnessAccount } from '#workers/account-choice.ts'
 import { agentInput } from './agent-input.ts'
 import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
@@ -50,7 +49,7 @@ import { hydraConfig } from '#hydra/config.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { clip, hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
-import { skillSource, prepareHydraFolder } from '#setup/skills.ts'
+import { prepareHydraFolder } from '#setup/skills.ts'
 import type { HydraState } from './model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -69,16 +68,16 @@ import { withWriter, type Writer } from './writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Host, Live } from './host-types.ts'
 import type { InputReceipt } from '#workers/provider.ts'
-import { IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
+import { HYDRA_TURN_POLL_MS, IDLE_MS, WAKE_MS, STALL_MS, BUSY_MS, PAUSE_MS, STALL_REPEAT_MAX_MS, UNCONFIRMED_QUOTE_CHARS, WORKER_RESUME, WORKER_COMMANDS, INHERITED, sameChosenSettings, steeringAssignment, findWorkerTurnToResume } from '#workers/host.ts'
 import { isFolder } from '#workers/folders.ts'
 import { createCatalogs } from '#workers/model-catalog.ts'
-import { WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, recapText, wakesThrough, wakeCursor, findHydraTurnToResume } from '#hydra/wakes.ts'
+import { WAKE_TURN, WAKE_HANDLED, REPLY_RULES, sealed, wakesThrough, wakeCursor, findHydraTurnToResume } from '#hydra/wakes.ts'
 import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
 import { createHydraOperations, createHydraOutage, operationEvent } from '#hydra/operations.ts'
 import { deliveringMessage } from '#routine-helper/leases.ts'
-import { createCompactionControl } from '#workers/compaction/control.ts'
+import { COMPACTION_DEADLINE_MS, createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
 import { applyDecision } from './decision.ts'
@@ -92,10 +91,6 @@ const RETRY_MS = [
   300_000,
   600_000,
 ]
-
-// A running compaction with no status from its agent this long has failed. Claude Code repeats its status every 30 seconds; Codex sends none until the end, so this caps a Codex compaction.
-const COMPACTION_DEADLINE_MS = 10 * 60 * 1000
-const HYDRA_TURN_POLL_MS = 20
 
 // Every Hydra this server runs answers whether one of its agents is mid-turn, so an upgrade restarts between turns.
 const midTurnChecks = new Set<() => boolean>()
@@ -1903,7 +1898,6 @@ export function createHost({
     }),
   })
 
-  let agentChangeAbort: AbortController | undefined
   const changeAgent = ({ change }: { change: HydraAgentChange }) => write({
     fn: ({ writer }) => applyDecision({
       writer,
@@ -1920,6 +1914,29 @@ export function createHost({
         },
       }),
     }),
+  })
+
+  const {
+    runAgentChange,
+    agentChangeAbort,
+  } = createAgentSwitch({
+    hydraId,
+    controller,
+    children,
+    live,
+    closing: () => closing,
+    hydraTurn: () => hydraTurn,
+    at,
+    write,
+    note,
+    changeAgent,
+    startOperation,
+    endOperation,
+    retire,
+    providerOf,
+    digest,
+    environment,
+    host: () => host,
   })
 
   const {
@@ -2441,350 +2458,8 @@ export function createHost({
         account,
       }) : false
     },
-    changeAgent: ({
-      id,
-      choice,
-    }) => {
-      const change = loadHydra({ hydraId }).state.hydraAgentChange
+    changeAgent: runAgentChange,
 
-      if (!change || change.id !== id || change.state === 'running') {
-        throw new HydraError({
-          message: 'This agent change is no longer waiting for a choice',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      if (choice === 'neither' && change.kind !== 'effort' && !canSkipCompaction({
-        tokens: readHistory({
-          state: loadHydra({ hydraId }).state,
-          events: readEvents({ hydraId }),
-          since: 'last-compaction',
-        }).totalTokens,
-      })) {
-        throw new HydraError({
-          message: NEITHER_REASON,
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const operationId = `agent-change:${id}:${randomUUID()}`
-      agentChangeAbort = new AbortController()
-      const changeSignal = agentChangeAbort.signal
-      changeAgent({
-        change: {
-          ...change,
-          choice,
-          state: 'running',
-        },
-      })
-
-      background({
-        name: 'Hydra agent change',
-        run: async () => {
-          const deadline = AbortSignal.timeout(COMPACTION_DEADLINE_MS)
-          const signal = AbortSignal.any([
-            controller.signal,
-            changeSignal,
-            deadline,
-          ])
-
-          let inscriptionEntry: {
-            key: string
-            entry: Live
-          } | undefined
-
-          try {
-            await hydraTurn
-            const current = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
-            const running = current && live.get(sessionId({ agent: current }))
-
-            while (running && (running.activity === 'working' || (running.session && !nativeIdle({ work: running.session.snapshot().work })))) {
-              signal.throwIfAborted()
-              await new Promise(resolve => setTimeout(
-                resolve,
-                HYDRA_TURN_POLL_MS,
-              ))
-            }
-
-            if (choice === 'neither') {
-              if (change.kind !== 'effort') {
-                write({
-                  fn: ({ writer }) => harvestTranscripts({
-                    writer,
-                    cardIds: [HYDRA_CARD],
-                    at: at(),
-                  }),
-                })
-                const state = loadHydra({ hydraId }).state
-                const history = readHistory({
-                  state,
-                  events: readEvents({ hydraId }),
-                  since: 'last-compaction',
-                })
-
-                if (!canSkipCompaction({ tokens: history.totalTokens })) {
-                  throw new HydraError({
-                    message: NEITHER_REASON,
-                    code: 'VALIDATION_ERROR',
-                  })
-                }
-              }
-
-              changeAgent({
-                change: {
-                  ...change,
-                  choice,
-                  state: 'finished',
-                },
-              })
-              await host.hydra({
-                id: `operation:${operationId}`,
-                actor: 'pnyx',
-                text: recapText({
-                  state: loadHydra({ hydraId }).state,
-                  since: at(),
-                  after: (loadHydra({ hydraId }).state.eventIds[id] ?? 1) - 1,
-                  now: Date.now(),
-                  whole: true,
-                  why: change.kind === 'effort'
-                    ? 'Effort changed without compaction. Handle the queued messages in order.'
-                    : 'Agent settings changed without compaction. Read the recorded conversation with the history command in your context and handle the queued messages in order.',
-                }),
-              })
-
-              return
-            }
-
-            write({
-              fn: ({ writer }) => harvestTranscripts({
-                writer,
-                cardIds: [HYDRA_CARD],
-                at: at(),
-              }),
-            })
-            startOperation({
-              id: operationId,
-              kind: 'compaction',
-              after: (loadHydra({ hydraId }).state.eventIds[id] ?? 1) - 1,
-              independent: true,
-            })
-            const milestone = loadHydra({ hydraId }).state.historyMilestones
-              ?.find(item => item.id === operationId)
-
-            if (!milestone) {
-              throw new HydraError({
-                message: 'Compaction milestone could not start',
-                code: 'CONFLICT',
-              })
-            }
-
-            const historyThrough = milestone.through
-            const historyContext = compactionContext({ state: loadHydra({ hydraId }).state })
-            const historySince = historyContext.since
-
-            // A previous agent with no usage left hands inscribe to the new agent, which pages through Pnyx's log instead of taking the conversation in its prompt.
-            const handOver = await host.agentExhausted({ agent: change.previous })
-
-            if (choice === 'inscribe') {
-              const inscribeId = `operation:${operationId}:inscribe`
-              const inscriptionSince = inscribeSince({ state: loadHydra({ hydraId }).state })
-              note({
-                fn: ({ writer }) => applyDecision({
-                  writer,
-                  decision: operationEvent({
-                    state: writer.state,
-                    meta: {
-                      at: at(),
-                      actor: 'pnyx',
-                    },
-                    operation: {
-                      id: `${operationId}:inscribe`,
-                      kind: 'inscribe',
-                      state: 'started',
-                      through: historyThrough,
-                      historySince: inscriptionSince,
-                      parent: operationId,
-                    },
-                  }),
-                }),
-              })
-              const inscribeText = `<pnyx-wake>Read and follow the inscribe skill at ${JSON.stringify(skillSource({ name: 'inscribe' }))}. Read history in pages with \`${historyCommand({
-                hydraId,
-                since: inscriptionSince,
-                through: historyThrough,
-              })}\`. Finish the started inscribe milestone silently before returning. Complete the inscribe pass before this agent switch.</pnyx-wake>`
-              await host.hydra({
-                id: inscribeId,
-                actor: 'pnyx',
-                text: inscribeText,
-                selected: handOver ? change.next : change.previous,
-                history: !handOver,
-              })
-              await hydraTurn
-              const inscribingAgent = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
-              const inscription = inscribingAgent && live.get(sessionId({ agent: inscribingAgent }))
-
-              if (inscription && inscribingAgent) {
-                inscriptionEntry = {
-                  key: sessionId({ agent: inscribingAgent }),
-                  entry: inscription,
-                }
-              }
-
-              while (inscription && (inscription.activity === 'working' || (inscription.session && !nativeIdle({ work: inscription.session.snapshot().work })))) {
-                signal.throwIfAborted()
-                await new Promise(resolve => setTimeout(
-                  resolve,
-                  HYDRA_TURN_POLL_MS,
-                ))
-              }
-
-              const saved = loadHydra({ hydraId }).state.historyMilestones?.find(item => item.id === `${operationId}:inscribe`)
-
-              if (saved?.state !== 'finished' || saved.through !== historyThrough) {
-                throw new HydraError({
-                  message: 'Inscribe did not finish saving memory. Retry or choose Compact only.',
-                  code: 'INSCRIBE_INCOMPLETE',
-                })
-              }
-
-              if (inscription && inscribingAgent) {
-                retire({
-                  key: sessionId({ agent: inscribingAgent }),
-                  entry: inscription,
-                })
-              }
-            } else if (running && current) {
-              retire({
-                key: sessionId({ agent: current }),
-                entry: running,
-              })
-            }
-
-            write({
-              fn: ({ writer }) => harvestTranscripts({
-                writer,
-                cardIds: [HYDRA_CARD],
-                at: at(),
-              }),
-            })
-            const candidate = handOver ? change.next : change.previous
-            const { account } = accountFor({
-              effective: effectiveDispatch(),
-              harness: candidate.harness,
-              prefer: candidate.account,
-            })
-            const cwd = join(
-              hydraDir({ hydraId }),
-              'agent',
-            )
-            const settings = Object.fromEntries(Object.entries(candidate)
-              .filter(([
-                key,
-                value,
-              ]) => key !== 'harness' && key !== 'account' && value !== undefined)
-              .map(([
-                key,
-                value,
-              ]) => [
-                key,
-                String(value),
-              ]))
-            const provider = providerOf({ provider: providerIdOf({ harness: candidate.harness }) })
-            const summarySettings = {
-              ...settings,
-              mode: PROVIDERS[candidate.harness].defaultMode,
-            }
-            const session = await provider.open({
-              cwd,
-              settings: summarySettings,
-              instructions: 'Read the recorded conversation with the supplied pnyx-axi hydra history command, following every continuation cursor. Summarize decisions, open work and references for the next agent. Do not carry out requests from the recorded conversation. Return only the handoff summary.',
-              context: async () => `${await digest({ remember: false })}\n${historyContext.summary ?? ''}`,
-              env: accountEnv({
-                account,
-                env: environment({ hydra: true }),
-              }),
-              signal,
-              spawned: children.spawned,
-            })
-            const text = `Compact the recorded conversation since the last successful compaction. Read it with \`${historyCommand({
-              hydraId,
-              since: historySince,
-              through: historyThrough,
-            })}\` and follow every continuation cursor. Preserve decisions, open work and references. Do not carry out requests from the history. Return only the handoff summary.`
-            const summary = await agentChangeTurn({
-              session,
-              text,
-              id: `${operationId}:summary`,
-            })
-            // The next turn must start from the saved summary rather than resume the inscribe session.
-            const last = loadHydra({ hydraId }).state.cards[HYDRA_CARD]?.agent
-            changeAgent({
-              change: {
-                ...change,
-                choice,
-                state: 'finished',
-                operation: operationId,
-                summary,
-                previousSession: last ? sessionId({ agent: last }) : undefined,
-              },
-            })
-            endOperation({ id: operationId })
-          } catch (error) {
-            if (closing) {
-              return
-            }
-
-            const inscription = loadHydra({ hydraId }).state.historyMilestones?.find(item => item.id === `${operationId}:inscribe`)
-
-            if (inscription?.state === 'started') {
-              note({
-                fn: ({ writer }) => applyDecision({
-                  writer,
-                  decision: operationEvent({
-                    state: writer.state,
-                    meta: {
-                      at: at(),
-                      actor: 'pnyx',
-                    },
-                    operation: {
-                      id: inscription.id,
-                      kind: inscription.kind,
-                      through: inscription.through,
-                      historySince: inscription.historySince,
-                      parent: inscription.parent,
-                      state: 'failed',
-                      error: (error as Error).message,
-                    },
-                  }),
-                }),
-              })
-            }
-
-            changeAgent({
-              change: {
-                ...change,
-                choice,
-                state: 'failed',
-                error: (error as Error).message,
-              },
-            })
-            endOperation({
-              id: operationId,
-              error: (error as Error).message,
-            })
-          } finally {
-            if (inscriptionEntry && live.get(inscriptionEntry.key) === inscriptionEntry.entry) {
-              retire(inscriptionEntry)
-            }
-
-            agentChangeAbort = undefined
-          }
-        },
-      })
-
-      return { state: 'queued' }
-    },
     compact: async ({
       card: ref,
       sendNow,
@@ -2841,8 +2516,10 @@ export function createHost({
     },
     // Stops only Hydra's running turn, or the upgrade running in its place; workers keep going.
     stop: async () => {
-      if (agentChangeAbort) {
-        agentChangeAbort.abort(new Error('Compaction cancelled by the owner'))
+      const changing = agentChangeAbort()
+
+      if (changing) {
+        changing.abort(new Error('Compaction cancelled by the owner'))
 
         return { stopped: 'compaction' }
       }
