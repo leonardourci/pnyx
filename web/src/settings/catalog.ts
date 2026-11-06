@@ -361,8 +361,6 @@ export interface SettingsMatch {
   terms: string[]
 }
 
-const words = ({ text }: { text: string }) => tokens({ text })
-
 const directText = ({ entry }: { entry: CatalogEntry }) => [
   entry.label,
   entry.description,
@@ -377,7 +375,7 @@ export function searchSettings({
   query: string
   entries?: CatalogEntry[]
 }): SettingsMatch[] {
-  const asked = words({ text: query })
+  const asked = tokens({ text: query })
   const direct = new Set(asked
     .filter(word => entries.some(entry => directText({ entry }).includes(word))))
 
