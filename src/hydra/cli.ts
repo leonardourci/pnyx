@@ -21,7 +21,6 @@ import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
-import { withWriter } from '#app/writer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { startHydra } from '#workers/start.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
@@ -34,9 +33,7 @@ import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#set
 import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
-import { historyCommand, inscribeOperation, readHistory } from './history.ts'
-import { operationEvent } from './operations.ts'
-import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
+import { harvestHydra, hydraHistory, hydraInscribe } from './history-cli.ts'
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
   const {
@@ -439,103 +436,25 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
 
   if (readingHistory || (positionals[0] === 'inscribe' && positionals[1] === 'start')) {
-    withWriter({
+    harvestHydra({
+      values,
       hydraId,
-      fn: ({ writer }) => harvestTranscripts({
-        writer,
-        cardIds: [HYDRA_CARD],
-        at: meta({ values }).at,
-      }),
     })
   }
 
   if (readingHistory) {
-    const state = loadHydra({ hydraId }).state
-    const page = readHistory({
-      state,
-      events: readEvents({ hydraId }),
-      since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
-      after: values.after as string | undefined,
-      through: integer({
-        value: values.through,
-        flag: '--through',
-      }),
-      budget: integer({
-        value: values.budget,
-        flag: '--budget',
-      }),
+    return hydraHistory({
+      values,
+      hydraId,
     })
-
-    if (values.count) {
-      return {
-        totalTokens: page.totalTokens,
-        boundary: page.boundary,
-        snapshot: page.snapshot,
-      }
-    }
-
-    return {
-      ...page,
-      help: page.more ? [
-        `Run \`${historyCommand({
-          hydraId,
-          since: page.since,
-          budget: page.budget,
-        })} --after ${page.after}\` for the next page`,
-      ] : [],
-    }
   }
 
   if (positionals[0] === 'inscribe') {
-    const action = positionals[1]
-    const state = loadHydra({ hydraId }).state
-    const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
-    const operationId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
-    const through = integer({
-      value: values.through,
-      flag: '--through',
-    })
-    const error = values.error as string | undefined
-    const operation = inscribeOperation({
-      state,
-      id: operationId,
-      action,
-      through,
-      error,
-    })
-
-    const m = meta({ values })
-    const result = commit({
+    return hydraInscribe({
+      values,
+      positionals,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'hydra.operation',
-        card: HYDRA_CARD,
-      },
-      decide: ({ state }) => operationEvent({
-        state,
-        meta: m,
-        operation: inscribeOperation({
-          state,
-          id: operationId,
-          action,
-          through,
-          error,
-        }),
-      }),
     })
-    const since = operation.historySince ?? 'origin'
-
-    return {
-      ...result,
-      milestone: operationId,
-      through: operation.through,
-      command: historyCommand({
-        hydraId,
-        since,
-        through: operation.through,
-      }),
-    }
   }
 
   if (positionals[0] === 'resize') {
