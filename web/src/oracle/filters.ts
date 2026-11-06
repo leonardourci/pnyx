@@ -1,4 +1,5 @@
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
+import type { SearchFilters } from '#oracle/filters.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
 import { columnLook } from '#web-tasks/view.ts'
 
@@ -375,17 +376,20 @@ export function searchFilters({
 }: {
   badges: Filter[]
   now: number
-}): Pick<import('#oracle/model.ts').Query, 'columns' | 'projects' | 'since'> {
-  const columns = badges.filter(badge => badge.type === 'column').flatMap(badge => badge.values)
-  const projects = badges.filter(badge => badge.type === 'project').flatMap(badge => badge.values)
+}): SearchFilters {
   const windows = badges.filter(badge => badge.type === 'when').map(badge => since({
     window: badge.values[0],
     now,
   }))
-
-  return {
-    columns,
-    projects,
-    ...(windows.length ? { since: new Date(Math.min(...windows)).toISOString() } : {}),
+  const filters: SearchFilters = {
+    columns: badges.filter(badge => badge.type === 'column').flatMap(badge => badge.values),
+    projects: badges.filter(badge => badge.type === 'project').flatMap(badge => badge.values),
   }
+
+  // Two time badges mean either, so the wider window wins.
+  if (windows.length) {
+    filters.since = new Date(Math.min(...windows)).toISOString()
+  }
+
+  return filters
 }
