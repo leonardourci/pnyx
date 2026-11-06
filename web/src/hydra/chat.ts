@@ -2,8 +2,6 @@ import { taskMention } from '#hydra/mentions.ts'
 import type { HydraStatus } from '#hydra/model.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 
-export { hydraMessages,leadingTask,ownMessage,type TurnTiming } from '#hydra/chat-messages.ts'
-
 export interface ChatComment {
   id: string
   messageId: string
@@ -135,8 +133,6 @@ export function quoteSnippet({
     after: context.slice(at + quote.length),
   }
 }
-
-export { joinMessageParts } from '#hydra/history.ts'
 
 type Keyed<Entry> = Entry & { renderKey?: string }
 
@@ -309,7 +305,6 @@ export function quoteInto({
     .filter(Boolean).join('\n\n') + '\n\n'
 }
 
-// A message about a task opens with the task's chip, unless its words already mention that task.
 // A copied message keeps the task chip it opens with, as the reference a draft turns back into the chip.
 export const copiedText = ({
   text,

@@ -29,7 +29,8 @@ import {
   selectionFocus,
 } from './caret.ts'
 import { ChatTokensContext } from './chat-token-text.tsx'
-import { clock,copiedText,leadingTask,orderedComments,ownMessage,type ChatComment,type TurnTiming } from './chat.ts'
+import { clock,copiedText,orderedComments,type ChatComment } from './chat.ts'
+import { leadingTask, ownMessage, type TurnTiming } from '#hydra/chat-messages.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { useCommentDrafts } from './comment-drafts.ts'
