@@ -1,3 +1,4 @@
+import { readSearchFilters } from '#oracle/filters.ts'
 import type { createIndexSync } from '#oracle/index-sync.ts'
 import { search as oracleSearch } from '#oracle/search.ts'
 import { indexedThrough } from '#oracle/status.ts'
@@ -22,19 +23,21 @@ export function oracleCommand({
   state(): HydraState
   historyIndex: ReturnType<typeof createIndexSync>
 }) {
-  if (args.length > 3 || (args[2] !== undefined && args[2] !== 'hydra')) {
+  if (args.length > 4 || (args[2] !== undefined && args[2] !== 'hydra' && args[2] !== '')) {
     throw new HydraError({
-      message: 'oracle expects text, optional workspace and optional Hydra scope',
+      message: 'oracle expects text, optional workspace, Hydra scope and filters',
       code: 'VALIDATION_ERROR',
     })
   }
 
+  const filters = readSearchFilters({ value: args[3] })
   const query = {
+    ...filters,
     text: args[0] ?? '',
     ...(args[1] ? { workspace: args[1] } : {}),
     ...(args[2] === 'hydra' ? { live: true } : {}),
     limit: ORACLE_LIMIT,
-    highlight: false,
+    highlight: true,
   }
 
   // Never rejects, so nothing is lost by not awaiting it.
@@ -64,6 +67,7 @@ export function oracleCommand({
           ...oracleSearch({
             hydraId,
             query,
+            state: state(),
           }),
         },
       })

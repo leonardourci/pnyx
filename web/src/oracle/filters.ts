@@ -368,3 +368,24 @@ export function passes({
     })
   })
 }
+
+export function searchFilters({
+  badges,
+  now,
+}: {
+  badges: Filter[]
+  now: number
+}): Pick<import('#oracle/model.ts').Query, 'columns' | 'projects' | 'since'> {
+  const columns = badges.filter(badge => badge.type === 'column').flatMap(badge => badge.values)
+  const projects = badges.filter(badge => badge.type === 'project').flatMap(badge => badge.values)
+  const windows = badges.filter(badge => badge.type === 'when').map(badge => since({
+    window: badge.values[0],
+    now,
+  }))
+
+  return {
+    columns,
+    projects,
+    ...(windows.length ? { since: new Date(Math.min(...windows)).toISOString() } : {}),
+  }
+}

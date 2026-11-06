@@ -9,7 +9,7 @@ export const fold = ({ text }: { text: string }) => text.toLowerCase().normalize
 // The distinct words of a text, folded, as typo matching looks them up. Words under
 // three letters have no trigram; longer than 32 are mostly hashes and ids.
 export function words({ text }: { text: string }): Set<string> {
-  return new Set((fold({ text }).match(/[\p{L}\p{N}]+/gu) ?? []).filter(w => w.length >= 3 && w.length <= 32))
+  return new Set(tokens({ text: fold({ text }) }).filter(w => w.length >= 3 && w.length <= 32))
 }
 
 export const quote = ({ phrase }: { phrase: string }) => `"${phrase.replace(
@@ -31,12 +31,28 @@ export interface Term {
   typo: boolean
 }
 
+export function tokens({
+  text,
+  prefixes = false,
+}: {
+  text: string
+  prefixes?: boolean
+}): string[] {
+  return (text.toLowerCase().match(/[\p{L}\p{N}]+\*?/gu) ?? []).map(token => prefixes ? token : token.replace(
+    /\*$/,
+    '',
+  ))
+}
+
 export function queryTerms({ text }: { text: string }): Term[] {
-  const tokens = text.split(/\s+/).filter(token => /[\p{L}\p{N}]/u.test(token))
+  const typed = tokens({
+    text,
+    prefixes: true,
+  })
   const terms: Term[] = []
 
-  for (let i = 0; i < tokens.length; i += 1) {
-    const token = tokens[i]!
+  for (let i = 0; i < typed.length; i += 1) {
+    const token = typed[i]!
 
     if (token.endsWith('*')) {
       terms.push({
@@ -52,7 +68,7 @@ export function queryTerms({ text }: { text: string }): Term[] {
       continue
     }
 
-    const pair = i + 1 < tokens.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: tokens[i + 1]! })}`.toLowerCase()) : undefined
+    const pair = i + 1 < typed.length ? synonymGroup.get(`${bare({ token })} ${bare({ token: typed[i + 1]! })}`.toLowerCase()) : undefined
 
     if (pair) {
       i += 1

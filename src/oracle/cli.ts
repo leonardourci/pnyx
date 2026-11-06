@@ -1,3 +1,4 @@
+import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
@@ -16,6 +17,15 @@ const SEARCH: Options = {
   kind: { type: 'string' },
   card: { type: 'string' },
   workspace: { type: 'string' },
+  column: {
+    type: 'string',
+    multiple: true,
+  },
+  project: {
+    type: 'string',
+    multiple: true,
+  },
+  since: { type: 'string' },
   limit: { type: 'string' },
 }
 
@@ -116,6 +126,13 @@ const oracleCommand = guard({
       input: search({
         hydraId,
         query: {
+          ...readSearchFilters({
+            value: JSON.stringify({
+              columns: values.column,
+              projects: values.project,
+              since: values.since,
+            }),
+          }),
           text,
           limit: Math.min(
             rawLimit ? Number(rawLimit) : LIMIT,
@@ -182,8 +199,9 @@ export const oracleCommands = {
   oracle: oracleCommand,
 }
 
-export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--limit <n>]
+export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
+Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
 hooks recorded. Every word must match somewhere on one card: its title, link titles or any entry.
 With --card or --kind, every word must match in one entry of that card or kind. Words match by
