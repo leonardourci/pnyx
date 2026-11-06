@@ -5,8 +5,6 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
 import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { workerError, type createIndexSync } from '#oracle/index-sync.ts'
-import { search as oracleSearch } from '#oracle/search.ts'
-import { indexedThrough } from '#oracle/status.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -25,8 +23,7 @@ import { COMMAND_WORKER, type createServerWorkers } from '#app/server-workers.ts
 import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import type { createThreadSubscriptions } from '#app/thread-subscriptions.ts'
-
-const ORACLE_LIMIT = 100
+import { oracleCommand } from './oracle.ts'
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
@@ -265,60 +262,16 @@ export function createServerCommands({
             send,
           })
         } else if (name === 'oracle') {
-          if (args.length > 3 || (args[2] !== undefined && args[2] !== 'hydra')) {
-            throw new HydraError({
-              message: 'oracle expects text, optional workspace and optional Hydra scope',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const query = {
-            text: args[0] ?? '',
-            ...(args[1] ? { workspace: args[1] } : {}),
-            ...(args[2] === 'hydra' ? { live: true } : {}),
-            limit: ORACLE_LIMIT,
-            highlight: false,
-          }
-
-          // Never rejects, so nothing is lost by not awaiting it.
-          const answer = async () => {
-            try {
-              const indexed = indexedThrough({ hydraId })
-              const behind = indexed === null || indexed < state().seq
-
-              if (behind) {
-                const failure = await historyIndex.ready()
-
-                if (failure) {
-                  return fail({
-                    error: `Oracle index could not catch up: ${failure.message}`,
-                    code: failure.code,
-                  })
-                }
-              } else {
-                historyIndex.changed()
-              }
-
-              send({
-                ws,
-                message: {
-                  type: 'receipt',
-                  id,
-                  ...oracleSearch({
-                    hydraId,
-                    query,
-                  }),
-                },
-              })
-            } catch (error) {
-              fail({
-                error: (error as Error).message,
-                code: error instanceof HydraError ? error.code : 'UNKNOWN',
-              })
-            }
-          }
-
-          answer()
+          oracleCommand({
+            ws,
+            id,
+            args,
+            fail,
+            send,
+            hydraId,
+            state,
+            historyIndex,
+          })
         } else if (name === 'hydra-agent-change') {
           const choice = args[1]
 
