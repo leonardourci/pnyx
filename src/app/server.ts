@@ -163,6 +163,7 @@ export async function mountOwnedHydra({
     clients,
     hydraSubscribers,
     send,
+    queueMessage,
     sendQueue,
     sendSnapshot,
     broadcast,
@@ -328,8 +329,13 @@ export async function mountOwnedHydra({
     restart,
     changed: () => kick(),
     queued: () => {
+      const queue = queueMessage()
+
       for (const ws of clients) {
-        sendQueue({ ws })
+        sendQueue({
+          ws,
+          queue,
+        })
       }
     },
     streamed,

@@ -98,23 +98,39 @@ export function createServerClients({
     }
   }
 
-  const sendQueue = ({ ws }: { ws: HydraClient }) => {
+  const queueMessage = (): ServerMessage => {
     const queued = agents().queue()
     const chat = hydraChatQueue({ state: state() })
-    send({
-      ws,
-      message: {
-        type: 'hydraQueue',
-        queue: {
-          ...queued,
-          reading: chat.working ? queued.reading : [],
-          chat,
-        },
+
+    // The batch Hydra reads shows only while its turn runs.
+    return {
+      type: 'hydraQueue',
+      queue: {
+        waiting: queued.waiting,
+        reading: chat.working ? queued.reading : [],
+        chat,
       },
-    })
+    }
   }
 
-  const sendSnapshot = ({ ws }: { ws: HydraClient }) => {
+  const sendQueue = ({
+    ws,
+    queue = queueMessage(),
+  }: {
+    ws: HydraClient
+    queue?: ServerMessage
+  }) => send({
+    ws,
+    message: queue,
+  })
+
+  const sendSnapshot = ({
+    ws,
+    queue,
+  }: {
+    ws: HydraClient
+    queue?: ServerMessage
+  }) => {
     resyncing.delete(ws)
     send({
       ws,
@@ -137,7 +153,10 @@ export function createServerClients({
       },
     })
 
-    sendQueue({ ws })
+    sendQueue({
+      ws,
+      queue,
+    })
 
     if (hydraSubscribers.has(ws)) {
       ws.send({
@@ -152,9 +171,9 @@ export function createServerClients({
 
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
   const broadcast = ({ event }: { event: HydraEvent }) => {
-    for (const ws of clients) {
-      sendQueue({ ws })
+    const queue = queueMessage()
 
+    for (const ws of clients) {
       if (!resyncing.has(ws)) {
         send({
           ws,
@@ -163,11 +182,16 @@ export function createServerClients({
             event,
           },
         })
+        sendQueue({
+          ws,
+          queue,
+        })
       } else if (ws.bufferedAmount <= MAX_BUFFERED) {
-        sendSnapshot({ ws })
+        sendSnapshot({
+          ws,
+          queue,
+        })
       }
-
-      sendQueue({ ws })
 
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)
@@ -283,6 +307,7 @@ export function createServerClients({
       }
     }
 
+    sendQueue({ ws })
     send({
       ws,
       message: {
@@ -302,6 +327,7 @@ export function createServerClients({
     clients,
     hydraSubscribers,
     send,
+    queueMessage,
     sendQueue,
     sendSnapshot,
     broadcast,
