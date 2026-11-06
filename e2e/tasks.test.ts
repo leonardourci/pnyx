@@ -117,6 +117,30 @@ test(
       s.task({ key: 'crash' }).column,
       s.column({ role: 'queued' }),
     )
+    assert.deepEqual(
+      [
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            'crash',
+            'soon',
+          ],
+        }),
+        await s.ownerRefused({
+          args: [
+            'task',
+            'hide-after',
+            'crash',
+            '876001',
+          ],
+        }),
+      ],
+      [
+        'VALIDATION_ERROR',
+        'VALIDATION_ERROR',
+      ],
+    )
     assert.equal(
       await hydra.refused({
         args: [
