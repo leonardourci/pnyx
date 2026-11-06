@@ -19,7 +19,7 @@ import { HYDRA_ICONS, HYDRA_MARK, isHydraIcon, pickName } from './hydra-names.ts
 import { otherHydraNames } from './taken-names.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
-import { decideView } from '#preferences/decisions.ts'
+import { hydraResize } from '#preferences/cli.ts'
 import { hydraMemory } from '#memory/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { readEvents } from '#app/event-log.ts'
@@ -539,32 +539,9 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'resize') {
-    const width = integer({
-      value: values.width,
-      flag: '--width',
-    })
-
-    if (width === undefined) {
-      throw new HydraError({
-        message: 'pass --width <pixels>',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    const m = meta({ values })
-
-    return commit({
+    return hydraResize({
+      values,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'board.view',
-        card: '$board',
-      },
-      decide: ({ state }) => decideView({
-        state,
-        patch: { hydraWidth: width },
-        meta: m,
-      }),
     })
   }
 
