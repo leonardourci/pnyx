@@ -215,7 +215,7 @@ test(
       )
       assert.equal(
         first.totalTokens,
-        countTokens({ text: `${first.text}\n\n${second.text}\n\n${third.text}` }).tokens,
+        countTokens({ text: `${first.text}\n\n${second.text}\n\n${third.text}` }),
       )
       await page.command({
         name: 'hydra',

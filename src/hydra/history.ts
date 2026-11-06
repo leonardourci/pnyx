@@ -435,7 +435,7 @@ export function readHistory({
     transcript,
   })
     .filter(message => message.seq > boundary)
-  const totalTokens = countTokens({ text: messages.map(message => message.text).join('\n\n') }).tokens
+  const totalTokens = countTokens({ text: messages.map(message => message.text).join('\n\n') })
 
   if (position > messages.length) {
     throw new HydraError({
@@ -453,7 +453,7 @@ export function readHistory({
       message,
     ].map(item => item.text).join('\n\n')
 
-    if (page.length && countTokens({ text }).tokens > budget) {
+    if (page.length && countTokens({ text }) > budget) {
       break
     }
 
@@ -471,7 +471,7 @@ export function readHistory({
     through: end,
     snapshot: through,
     text,
-    tokens: countTokens({ text }).tokens,
+    tokens: countTokens({ text }),
     totalTokens,
     source: 'estimated' as const,
     more,
