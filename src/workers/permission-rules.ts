@@ -19,8 +19,13 @@ export function permissionDetails({ request }: {
   text: string
 }[] {
   const input = request.input
-  const command = text({ value: input.display }) ?? text({ value: input.command })
-  const paths = (Array.isArray(input.paths) ? input.paths : [])
+  // Codex permissions logged before its adapter added `display` and `paths` carry only its own `commandActions` and `changes`.
+  const actions = Array.isArray(input.commandActions) ? input.commandActions : []
+  const logged = actions.length === 1 ? (actions[0] as { command?: unknown })?.command : undefined
+  const changes = (Array.isArray(input.changes) ? input.changes : [])
+    .map(change => (change as { path?: unknown })?.path)
+  const command = text({ value: input.display ?? logged }) ?? text({ value: input.command })
+  const paths = (Array.isArray(input.paths) ? input.paths : changes)
     .flatMap(path => text({ value: path }) ?? [])
   const file = text({ value: input.file_path ?? input.notebook_path ?? input.path })
   const files = [
