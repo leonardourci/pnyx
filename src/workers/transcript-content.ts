@@ -14,6 +14,9 @@ const UNNAMED_TOOL = 'tool'
 export const transcriptString = ({ value }: { value: unknown }): string | undefined =>
   typeof value === 'string' && value.trim() !== '' ? value : undefined
 
+export const trimmedString = ({ value }: { value: unknown }): string | undefined =>
+  transcriptString({ value })?.trim()
+
 export function blockText({ value }: { value: unknown }): string {
   if (typeof value === 'string') {
     return value

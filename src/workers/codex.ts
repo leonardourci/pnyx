@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptCall, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace } from './transcript-content.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { spawn, type ChildProcessWithoutNullStreams } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 import { createInterface } from 'node:readline'
@@ -1666,9 +1666,9 @@ export function codexThreadTitle({
         updated_at?: unknown
       }
 
-      if (r.id === sessionId && transcriptString({ value: r.thread_name })?.trim()) {
-        title = transcriptString({ value: r.thread_name })?.trim()
-        at = transcriptString({ value: r.updated_at })?.trim()
+      if (r.id === sessionId && trimmedString({ value: r.thread_name })) {
+        title = trimmedString({ value: r.thread_name })
+        at = trimmedString({ value: r.updated_at })
       }
     } catch {
       // A torn or foreign line names no thread.
@@ -1803,8 +1803,8 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
   }
 
   if (entry.type === 'compacted') {
-    const text = transcriptString({ value: payload.message })?.trim()
-    const stamp = transcriptString({ value: entry.timestamp })?.trim()
+    const text = trimmedString({ value: payload.message })
+    const stamp = trimmedString({ value: entry.timestamp })
 
     if (text) {
       parsed.notes.push({

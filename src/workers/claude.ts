@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
 import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
-import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace } from './transcript-content.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace, trimmedString } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -899,8 +899,6 @@ type Rec = {
   payload?: { message?: unknown }
 }
 
-const str = ({ value }: { value: unknown }): string | undefined => (typeof value === 'string' && value.trim() !== '' ? value.trim() : undefined)
-
 function contentText({ content }: { content: unknown }): string {
   if (typeof content === 'string') {
     return content
@@ -936,10 +934,10 @@ function answers({
     return []
   }
 
-  const call = Array.isArray(r.message?.content)
-    ? (r.message.content as { tool_use_id?: unknown }[]).find(b => str({ value: b?.tool_use_id }))
-    : undefined
-  const id = str({ value: call?.tool_use_id }) ?? str({ value: r.uuid })
+  const content = r.message?.content
+  const blocks = Array.isArray(content) ? content as { tool_use_id?: unknown }[] : []
+  const call = blocks.find(b => trimmedString({ value: b?.tool_use_id }))
+  const id = trimmedString({ value: call?.tool_use_id }) ?? trimmedString({ value: r.uuid })
 
   if (!id) {
     return []
@@ -951,14 +949,16 @@ function answers({
     q: { question?: unknown },
     i: number,
   ) => {
-    const question = str({ value: q?.question })
-    const answer = question && str({ value: (given as Record<string, unknown>)[question] })
+    const question = trimmedString({ value: q?.question })
+    const answer = question && trimmedString({
+      value: (given as Record<string, unknown>)[question],
+    })
 
     if (!question || !answer) {
       return []
     }
 
-    const note = str({ value: notes[question]?.notes })
+    const note = trimmedString({ value: notes[question]?.notes })
     const text = [
       question,
       `Answer: ${answer}`,
@@ -984,7 +984,7 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
     return []
   }
 
-  const at = str({ value: r.timestamp })
+  const at = trimmedString({ value: r.timestamp })
   const note = ({
     kind,
     source,
@@ -1009,7 +1009,7 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
   switch (r.type) {
     case 'user':
       if (r.isCompactSummary === true) {
-        const text = str({
+        const text = trimmedString({
           value: contentText({ content: r.message?.content }).replace(
             COMPACT_PREAMBLE,
             '',
@@ -1020,7 +1020,7 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
           kind: 'summary',
           source: 'claude-code',
           text,
-          ref: `compact:${str({ value: r.uuid }) ?? text}`,
+          ref: `compact:${trimmedString({ value: r.uuid }) ?? text}`,
         })
       }
 
@@ -1029,18 +1029,18 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
         at,
       })
     case 'summary': {
-      const text = str({ value: r.summary })
+      const text = trimmedString({ value: r.summary })
 
       return note({
         kind: 'summary',
         source: 'claude-code',
         text,
-        ref: `summary:${str({ value: r.leafUuid }) ?? ''}:${text}`,
+        ref: `summary:${trimmedString({ value: r.leafUuid }) ?? ''}:${text}`,
       })
     }
     case 'custom-title':
     case 'ai-title': {
-      const title = str({ value: r.customTitle }) ?? str({ value: r.aiTitle })
+      const title = trimmedString({ value: r.customTitle }) ?? trimmedString({ value: r.aiTitle })
 
       return note({
         kind: 'context',
