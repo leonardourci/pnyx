@@ -8,7 +8,6 @@ import { privateDir } from '#store/storage.ts'
 import { buildId, readBytes, reply, serveStatic } from './server-http.ts'
 import type { HydraRequest } from './server-transport.ts'
 
-// The HTTP routes of one mounted Hydra: image uploads and reads, folders, health and its page.
 export function createServerRoutes({
   hydraId,
   dir,
