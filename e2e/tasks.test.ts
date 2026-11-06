@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { taskReadiness } from '#tasks/dependencies.ts'
+import { columnCards } from '#tasks/select.ts'
 import { hydraDigest } from '#hydra/digest.ts'
 import { boardReview } from '#hydra/review.ts'
 import type { HydraState } from '#app/model.ts'
@@ -1306,5 +1307,124 @@ test(
       resumed.received[0]!,
       /Carry on from where you stopped/,
     )
+  },
+)
+
+test(
+  'a task created before another keeps that place through a restart, from the CLI and an apply document, and a target outside its column is refused',
+  async () => {
+    const s = await pnyx.scenario()
+    const create = ({
+      key,
+      flags = [],
+    }: {
+      key: string
+      flags?: string[]
+    }) => s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        key,
+        '--key',
+        key,
+        ...flags,
+      ],
+    })
+    const queued = () => columnCards({
+      state: s.state(),
+      column: s.column({ role: 'queued' })!,
+    }).map(card => card.key)
+
+    await create({ key: 'first' })
+    await create({ key: 'last' })
+    await create({
+      key: 'middle',
+      flags: [
+        '--before',
+        'last',
+      ],
+    })
+    await s.owner({
+      args: [
+        'apply',
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        version: 1,
+        changes: [
+          {
+            op: 'task.create',
+            as: 'lead',
+            key: 'lead',
+            title: 'lead',
+            before: 'first',
+          },
+          {
+            op: 'task.create',
+            key: 'top',
+            title: 'top',
+            before: '$lead',
+          },
+        ],
+      }),
+    })
+    assert.deepEqual(
+      queued(),
+      [
+        'top',
+        'lead',
+        'first',
+        'middle',
+        'last',
+      ],
+    )
+    assert.deepEqual(
+      await s.ownerRefusal({
+        args: [
+          'task',
+          'create',
+          '--title',
+          'Elsewhere',
+          '--column',
+          'in_progress',
+          '--before',
+          'first',
+        ],
+      }),
+      {
+        code: 'VALIDATION_ERROR',
+        error: `card first is not in column ${s.column({ role: 'in_progress' })}`,
+      },
+    )
+
+    await pnyx.restart()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+
+    try {
+      const restarted = await page.shows({
+        what: 'the restarted server\'s Hydra',
+        check: ({ state }) => state,
+      })
+      assert.deepEqual(
+        columnCards({
+          state: restarted,
+          column: s.column({ role: 'queued' })!,
+        }).map(card => card.key),
+        [
+          'top',
+          'lead',
+          'first',
+          'middle',
+          'last',
+        ],
+      )
+    } finally {
+      page.close()
+    }
   },
 )
