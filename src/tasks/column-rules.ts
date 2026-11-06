@@ -35,6 +35,46 @@ export function lockedColumn({
   return state.config?.hydra.kind === 'firstmate' && DEFAULT_COLUMNS.some(c => c.role === role)
 }
 
+// A column named by its id or its role.
+export function columnByRef({
+  columns,
+  ref,
+}: {
+  columns: HydraColumn[]
+  ref: string
+}): HydraColumn | undefined {
+  return columns.find(c => c.id === ref || c.role === ref)
+}
+
+// The column a new task names, which may also be its title.
+export function taskColumn({
+  columns,
+  ref,
+}: {
+  columns: HydraColumn[]
+  ref: string
+}): HydraColumn | undefined {
+  return columns.find(c => c.id === ref || c.title === ref || c.role === ref)
+}
+
+// Where a new task lands: a held one waits in the queued column, any other in the column it names, or queued, or parked.
+export function createdColumn({
+  columns,
+  column,
+  held,
+}: {
+  columns: HydraColumn[]
+  column?: Column
+  held: boolean
+}): Column {
+  const queued = roleColumn({
+    columns,
+    role: 'queued',
+  })
+
+  return (held ? queued : column) ?? queued ?? 'parked'
+}
+
 export function roleColumn({
   columns,
   role,

@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto'
+import { taskColumn } from './column-rules.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { explained } from '#app/cli-support.ts'
@@ -164,8 +165,10 @@ export function planTaskChange({
       state,
       id: hydraId,
     }).columns
-    const selected = operation.column ? columns.find(column => column.id === operation.column
-      || column.title === operation.column || column.role === operation.column) : undefined
+    const selected = operation.column ? taskColumn({
+      columns,
+      ref: operation.column,
+    }) : undefined
 
     if (operation.column && !selected) {
       throw new HydraError({

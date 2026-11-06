@@ -3,9 +3,16 @@ import { test } from 'node:test'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
 import { DEFAULT_COLUMNS } from '#tasks/column-defaults.ts'
-import { optimisticState, projectEdits } from './optimistic.ts'
+import { decideMove } from '#tasks/columns-decisions.ts'
+import type { Column } from '#tasks/columns-model.ts'
+import { optimisticState, projectEdits, type Edit } from './optimistic.ts'
 
-const fixture = () => {
+// The queued column takes another id, so a role and an id name different things.
+const fixture = ({ queued = 'queued' }: { queued?: Column } = {}) => {
+  const columns = structuredClone(DEFAULT_COLUMNS).map(column => column.role === 'queued' ? {
+    ...column,
+    id: queued,
+  } : column)
   const events: HydraEvent[] = [
     {
       v: 1,
@@ -23,7 +30,7 @@ const fixture = () => {
           kind: 'agent',
           name: 'Hydra',
         },
-        columns: structuredClone(DEFAULT_COLUMNS),
+        columns,
       },
     },
     ...[
@@ -44,7 +51,7 @@ const fixture = () => {
       data: {
         key: id,
         title: id,
-        column: 'queued',
+        column: queued,
       },
     })),
   ]
@@ -195,6 +202,162 @@ test(
     assert.equal(
       state.view,
       undefined,
+    )
+  },
+)
+
+test(
+  'previews resolve columns, place new tasks and bound hide-after as the server does',
+  () => {
+    const state = fixture({ queued: 'custom:todo' })
+    const preview = ({
+      name,
+      args,
+    }: Edit) => optimisticState({
+      state,
+      edit: {
+        name,
+        args,
+      },
+    })
+    const create = ({ args }: { args: string[] }) => preview({
+      name: 'task',
+      args: [
+        'create',
+        '--title',
+        'New',
+        '--key',
+        'new',
+        '--event-id',
+        'e1',
+        ...args,
+      ],
+    }).cards.new?.column
+
+    const moved = preview({
+      name: 'move',
+      args: [
+        'three',
+        'queued',
+        '--before',
+        'two',
+      ],
+    }).cards.three
+    const decision = decideMove({
+      state,
+      ref: 'three',
+      column: 'custom:todo',
+      before: 'two',
+      meta: {
+        actor: 'test',
+        at: '2026-10-16T12:00:00Z',
+      },
+    })
+    assert.ok('event' in decision && decision.event.type === 'card.moved')
+    assert.deepEqual(
+      [
+        moved?.column,
+        moved?.rank,
+      ],
+      [
+        'custom:todo',
+        decision.event.data.rank,
+      ],
+    )
+
+    assert.equal(
+      create({ args: [] }),
+      'custom:todo',
+    )
+    assert.equal(
+      create({
+        args: [
+          '--column',
+          'Parked',
+        ],
+      }),
+      'parked',
+    )
+    assert.equal(
+      create({
+        args: [
+          '--column',
+          'parked',
+          '--hold',
+        ],
+      }),
+      'custom:todo',
+    )
+    assert.equal(
+      create({
+        args: [
+          '--column',
+          'nowhere',
+        ],
+      }),
+      undefined,
+    )
+
+    for (const hours of [
+      '-1',
+      'soon',
+      '876001',
+      '',
+    ]) {
+      assert.equal(
+        preview({
+          name: 'task',
+          args: [
+            'hide-after',
+            'one',
+            hours,
+          ],
+        }),
+        state,
+      )
+    }
+
+    assert.equal(
+      preview({
+        name: 'task',
+        args: [
+          'hide-after',
+          'one',
+          '12',
+        ],
+      }).cards.one?.doneAfterHours,
+      12,
+    )
+
+    assert.deepEqual(
+      preview({
+        name: 'column',
+        args: [
+          'reorder',
+          'done',
+          '--before',
+          'queued',
+        ],
+      }).config?.columns.map(column => column.id).slice(
+        0,
+        2,
+      ),
+      [
+        'done',
+        'custom:todo',
+      ],
+    )
+    assert.equal(
+      preview({
+        name: 'column',
+        args: [
+          'delete',
+          'parked',
+          '--to',
+          'nowhere',
+        ],
+      }),
+      state,
     )
   },
 )
