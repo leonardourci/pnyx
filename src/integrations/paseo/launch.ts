@@ -4,7 +4,6 @@ import { requireUnheld } from '#tasks/holds.ts'
 import { accountEnvironment, type DispatchChoice } from '#workers/dispatch.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { randomUUID } from 'node:crypto'
-import { statSync } from 'node:fs'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -19,6 +18,7 @@ import { canonical } from '#store/paths.ts'
 import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import { openPaseo, type Connect } from './client.ts'
+import { isFolder } from '#workers/folders.ts'
 
 const MAX_PROMPT = 32000
 
@@ -408,14 +408,6 @@ export async function createPaseoAgent({
   return {
     agent,
     ref,
-  }
-}
-
-function isFolder({ path }: { path: string }): boolean {
-  try {
-    return statSync(path).isDirectory()
-  } catch {
-    return false
   }
 }
 
