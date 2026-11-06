@@ -1,4 +1,4 @@
-import { mergeApproval } from '#tasks/questions.ts'
+import { mergeApproval } from './merge-questions.ts'
 import { commit, required, type Output } from '#app/cli-support.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
