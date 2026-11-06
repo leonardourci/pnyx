@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import { isDeepStrictEqual } from 'node:util'
 import { basename } from 'node:path'
-import { parse, WRITE, required, meta, commit, integer, explained, HISTORY_LIMIT, HISTORY_MAX, guard, type Output } from '#app/cli-support.ts'
+import { parse, WRITE, required, meta, commit, integer, HISTORY_LIMIT, HISTORY_MAX, guard, type Output } from '#app/cli-support.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { hydraIds, hydraDir } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
@@ -20,9 +20,7 @@ import { otherHydraNames } from './taken-names.ts'
 import { hydraEvent, reportActor, hydraDelivery } from './hydra.ts'
 import { mentionContext } from './mentions.ts'
 import { decideView } from '#preferences/decisions.ts'
-import { memoryList, memoryChange } from '#memory/cli.ts'
-import { HYDRA_MEMORY_BUDGET, OWNER_DOCUMENTS, checkBudget } from '#memory/budgets.ts'
-import { checkWorkerNotes, workerNotesNotice } from '#memory/workers.ts'
+import { hydraMemory } from '#memory/cli.ts'
 import { withWriter } from '#app/writer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { startHydra } from '#workers/start.ts'
@@ -571,107 +569,11 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
   }
 
   if (positionals[0] === 'memory') {
-    const action = positionals[1] ?? 'list'
-
-    if (action === 'list') {
-      const state = loadHydra({ hydraId }).state
-
-      return memoryList({
-        memory: state.hydraMemory ?? {},
-        budget: HYDRA_MEMORY_BUDGET,
-        empty: 'none: no Hydra memory yet',
-      })
-    }
-
-    const {
-      key,
-      after,
-    } = memoryChange({
-      action,
+    return hydraMemory({
       values,
-      usage: 'use hydra memory list|set|forget',
-    })
-
-    if (key === 'inscribe-cursor' && after !== null) {
-      throw new HydraError({
-        message: 'Finish the inscribe milestone with hydra inscribe finish --through <snapshot>',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    if (after !== null && Object.hasOwn(
-      OWNER_DOCUMENTS,
-      key,
-    )) {
-      throw new HydraError({
-        message: `${OWNER_DOCUMENTS[key as keyof typeof OWNER_DOCUMENTS]} are Pnyx-wide owner memory`,
-        code: 'VALIDATION_ERROR',
-        help: [`Run \`pnyx-axi owner memory set --key ${key} --text "<document>"\`, or save a note only this Hydra needs under another key`],
-      })
-    }
-
-    const m = meta({ values })
-
-    if (key === 'workers') {
-      explained({ meta: m })
-      checkWorkerNotes({
-        text: after,
-        reason: m.reason,
-      })
-    }
-
-    const result = commit({
+      positionals,
       hydraId,
-      meta: m,
-      intent: {
-        type: 'hydra.memory',
-        card: '$board',
-      },
-      decide: ({ state }) => {
-        const before = state.hydraMemory?.[key]?.text ?? null
-        checkBudget({
-          memory: state.hydraMemory ?? {},
-          key,
-          after,
-          budget: HYDRA_MEMORY_BUDGET,
-          layer: 'Hydra',
-        })
-
-        return before === after ? { skipped: 'unchanged' } : hydraEvent({
-          state,
-          meta: m,
-          cardId: '$board',
-          change: {
-            type: 'hydra.memory',
-            data: {
-              key,
-              before,
-              after,
-            },
-          },
-        })
-      },
     })
-
-    if (key === 'workers' && result.event === 'none: unchanged') {
-      withWriter({
-        hydraId,
-        fn: ({ writer }) => {
-          const saved = readEvents({ hydraId }).findLast(event => event.type === 'hydra.memory'
-            && event.data.key === 'workers')
-
-          if (saved) {
-            workerNotesNotice({
-              writer,
-              target: `Hydra ${hydraId}`,
-              meta: saved,
-            })
-          }
-        },
-      })
-    }
-
-    return result
   }
 
   if (positionals[0] === 'start') {
