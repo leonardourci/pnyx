@@ -1,7 +1,7 @@
 import { ORCHESTRATE_SKILL } from '#setup/skill-names.ts'
 import { requireReady } from '#tasks/dependencies.ts'
 import { requireUnheld } from '#tasks/holds.ts'
-import { dispatchTask, hostedOverride, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
+import { dispatchTask, ruleCandidates, startCandidates, type DispatchChoice, type Override } from './dispatch.ts'
 import { modelIds, type ModelOption } from './provider.ts'
 import { effectiveDispatch } from './dispatch-config.ts'
 import { openPaseo } from '#integrations/paseo/client.ts'
@@ -28,8 +28,7 @@ import { loadHydra } from '#app/store.ts'
 import { withWriter } from '#app/writer.ts'
 import type { Output } from '#app/cli-support.ts'
 import { requestCwd } from '#app/request-context.ts'
-import { raisesPermission, workerMode } from './permission-level.ts'
-import { hydraActor } from '#app/request-context.ts'
+import { requireOwnerToRaise } from './permission-level.ts'
 import { applyDecision } from '#app/decision.ts'
 import { taskPrompt } from './worker-brief.ts'
 import { namedProjectCommand, startCommand } from './start-command.ts'
@@ -289,33 +288,18 @@ export async function startTask({
       override,
       offers,
     })
-
-    if (how === 'pnyx') {
-      hostedOverride({
-        harness: dispatch.candidate.harness,
-        override: dispatch.override,
-      })
-    }
   }
 
   const agent = dispatch?.candidate
 
-  const permissionOverride = override?.mode
-
-  const hydraRequest = hydraActor({ actor: meta.actor })
-
-  if (hydraRequest && agent && permissionOverride !== undefined && raisesPermission({
-    harness: agent.harness,
-    before: workerMode({
+  // The host checks a Pnyx start when it receives it; a Paseo start is checked here.
+  if (how === 'paseo' && agent) {
+    requireOwnerToRaise({
       state,
+      actor: meta.actor,
       harness: agent.harness,
-      mode: agent.mode,
-    }),
-    after: permissionOverride,
-  })) {
-    throw new HydraError({
-      message: 'Only the owner can raise a worker’s permission level',
-      code: 'OWNER_ONLY',
+      before: agent.mode,
+      after: override?.mode,
     })
   }
 

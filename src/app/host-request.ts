@@ -7,13 +7,11 @@ import { helperGrant, type HelperAction } from '#routine-helper/route.ts'
 import { isAbsolute } from 'node:path'
 import { field } from '#workers/http.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
-import { overrideOf, ruleCandidates, validateChoice, chooseCandidate, hostedOverride, chosenSettings, readQuota } from '#workers/dispatch.ts'
-import { catalogOffers } from '#workers/model-catalog.ts'
-import { HARNESSES, knownHarness, providerIdOf } from '#workers/providers.ts'
+import { validateChoice, chosenSettings, readQuota } from '#workers/dispatch.ts'
+import { knownHarness, providerIdOf } from '#workers/providers.ts'
 import { hydraFastReaches, modelIds } from '#workers/provider.ts'
 import { SETTINGS } from '#workers/host.ts'
-import { raisesPermission, workerMode } from '#workers/permission-level.ts'
-import { hydraActor } from './request-context.ts'
+import { requireOwnerToRaise, workerMode } from '#workers/permission-level.ts'
 
 // The host names the helper's reply action 'send'.
 const HELPER_ACTIONS: Record<string, HelperAction> = {
@@ -110,61 +108,19 @@ export async function hostRequestUnlocked({
         state: current,
         ref: task,
       }).project
-      const config = effectiveDispatch()
-      const rule = field({
-        body,
-        name: 'rule',
-        optional: true,
-      })
-      const harness = field({
-        body,
-        name: 'harness',
-        optional: true,
-      })
-      const requestedHarness = knownHarness({ name: harness })
-      const override = overrideOf({ value: body.override })
-      const named = (ruleCandidates({
-        dispatch: config.dispatch,
-        rule,
-      }) ?? []).filter(c => c.model)
-      const dispatch = body.dispatch
-        ? validateChoice({
-          value: body.dispatch,
-          config,
-          project,
-        })
-        : await chooseCandidate({
-          config,
-          project,
-          rule,
-          harness,
-          override,
-          offers: await catalogOffers({
-            host,
-            harnesses: requestedHarness ? [requestedHarness]
-              : override?.model ? [...HARNESSES] : named.map(c => c.harness),
-          }),
-        })
-
-      hostedOverride({
-        harness: dispatch.provider,
-        override: dispatch.override,
+      const dispatch = validateChoice({
+        value: body.dispatch,
+        config: effectiveDispatch(),
+        project,
       })
 
-      if (hydraActor({ actor }) && dispatch.override?.mode !== undefined && raisesPermission({
+      requireOwnerToRaise({
+        state: current,
+        actor,
         harness: dispatch.provider,
-        before: workerMode({
-          state: current,
-          harness: dispatch.provider,
-          mode: dispatch.candidate.mode,
-        }),
-        after: dispatch.override.mode,
-      })) {
-        throw new HydraError({
-          message: 'Only the owner can raise a worker’s permission level',
-          code: 'OWNER_ONLY',
-        })
-      }
+        before: dispatch.candidate.mode,
+        after: dispatch.override?.mode,
+      })
 
       if (dispatch.ownerOverride || dispatch.candidate.account) {
         const settings = chosenSettings({ choice: dispatch })
