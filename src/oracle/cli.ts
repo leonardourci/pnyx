@@ -2,6 +2,8 @@ import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
 import { findProject } from '#projects/read.ts'
+import type { HydraState } from '#app/model.ts'
+import { HydraError } from '#store/errors.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
@@ -64,6 +66,34 @@ function built({ result }: { result: IndexResult }): Output {
   }
 }
 
+// Pnyx tasks record a project by its path and Firstmate tasks by its name, so a filter
+// matches both the value given and the attached project it names.
+function projectRefs({
+  state,
+  ref,
+}: {
+  state: HydraState
+  ref: string
+}): string[] {
+  try {
+    const { path } = findProject({
+      state,
+      ref,
+    })
+
+    return path === ref ? [ref] : [
+      ref,
+      path,
+    ]
+  } catch (error) {
+    if (error instanceof HydraError && error.code === 'NOT_FOUND') {
+      return [ref]
+    }
+
+    throw error
+  }
+}
+
 const oracleCommand = guard({
   handler: ({ args }) => {
     if (args[0] === 'status' || args[0] === 'rebuild') {
@@ -121,11 +151,10 @@ const oracleCommand = guard({
         state,
         ref: values.card as string,
       }).id
-    // Pnyx tasks record a project by its path, so a name or relative path is resolved first.
-    const projects = (values.project as string[] | undefined)?.map(ref => findProject({
+    const projects = (values.project as string[] | undefined)?.flatMap(ref => projectRefs({
       state,
       ref,
-    }).path)
+    }))
 
     updateIndex({ hydraId })
 
