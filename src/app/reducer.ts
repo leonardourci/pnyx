@@ -28,6 +28,7 @@ import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
 import { touch } from '#tasks/touch.ts'
 import { applyMemory } from '#memory/reduce.ts'
+import { applyProject } from '#projects/reduce.ts'
 
 function applyHydra({
   state,
@@ -147,35 +148,6 @@ function applyHydra({
   if (event.type === 'hydra.dispatch-resolved') {
     state.dispatchProposals = (state.dispatchProposals ?? [])
       .filter(p => p.token !== event.data.token)
-
-    return true
-  }
-
-  if (event.type === 'hydra.project') {
-    state.projects = [
-      ...(state.projects ?? []).filter(p => p.path !== event.data.after.path),
-      structuredClone(event.data.after),
-    ]
-    state.projectsRevision = (state.projectsRevision ?? 0) + 1
-
-    return true
-  }
-
-  if (event.type === 'task.project') {
-    const card = state.cards[event.cardId]
-
-    if (card) {
-      if (event.data.after === null) {
-        delete card.project
-      } else {
-        card.project = event.data.after
-      }
-
-      touch({
-        card,
-        event,
-      })
-    }
 
     return true
   }
@@ -669,6 +641,10 @@ function apply({
       event,
     })
     || applyMemory({
+      state,
+      event,
+    })
+    || applyProject({
       state,
       event,
     })) {
