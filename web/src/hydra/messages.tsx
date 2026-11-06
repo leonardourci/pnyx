@@ -1,3 +1,4 @@
+import type { TurnActions } from '#hydra/conversation.ts'
 import type { Catalog } from '#hydra/transcripts-catalog.ts'
 import type { ThreadEntry } from '#hydra/transcripts-read.ts'
 import type { HydraColumn } from '#tasks/columns-model.ts'
@@ -28,13 +29,12 @@ import {
   selectionFocus,
 } from './caret.ts'
 import { ChatTokensContext } from './chat-token-text.tsx'
-import { clock,copiedText,leadingTask,orderedComments,ownMessage,turnTimings,type ChatComment,type TurnTiming } from './chat.ts'
+import { clock,copiedText,leadingTask,orderedComments,ownMessage,type ChatComment,type TurnTiming } from './chat.ts'
 import { copyMessageChips } from './clipboard.ts'
 import { CommentAnnotations } from './comment-annotations.tsx'
 import { useCommentDrafts } from './comment-drafts.ts'
 import { HIGHLIGHT_SUPPORTED,clearHighlights,commentHighlightName,commentRange,paintComments } from './comment-highlight.ts'
 import { revealComment } from './comment-reveal.ts'
-import type { TurnActions } from './conversation.ts'
 import { MessageComment } from './message-comment.tsx'
 import {
   MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
@@ -86,7 +86,6 @@ function ChatMessageText({
 
 export function Messages({
   entries: all,
-  working,
   lookup,
   comments,
   setComments,
@@ -124,8 +123,6 @@ export function Messages({
   thinkingDetails?: boolean
   assistantLabel?: string
   entries: ChatEntry[]
-  // Whether the latest turn is still running, so it has no footer yet.
-  working: boolean
   lookup: PnyxLookup
   comments: ChatComment[]
   setComments({ items }: { items: ChatComment[] }): void
@@ -153,10 +150,7 @@ export function Messages({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
-  const turns = timings ?? turnTimings({
-    entries,
-    working,
-  })
+  const turns = timings ?? new Map<string, TurnTiming>()
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -847,7 +841,7 @@ export function Messages({
                 </Button>
               )}
             </article>
-            {ownMessage({ entry }) && !entry.role.endsWith('continued') && (
+            {ownMessage({ entry }) && !entry.continued && (
               <div className="message-meta" contentEditable={false}>
                 {entry.at && (
                   <time

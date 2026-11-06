@@ -1,3 +1,4 @@
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
 import type { ViewPreferences } from '#preferences/model.ts'
@@ -164,7 +165,7 @@ export function createServerClients({
         const sub = map.get(ws)
 
         // A view change that switches this card's traces on or off changes its page.
-        if (sub && (sub.card === event.cardId
+        if (sub && (sub.card === HYDRA_CARD || sub.card === event.cardId
         || (event.type === 'task.session' && sub.card === event.data.before)
         || (event.type === 'board.view' &&
           shownTraces({

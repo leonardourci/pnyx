@@ -26,9 +26,10 @@ export function threadCommand({
   threadPage: ThreadSubscriptions['threadPage']
 }) {
   const map = subscriptionMap({ card: args[0] ?? '' })
-  const old = map.get(ws); old?.watcher?.close(); map.delete(ws)
+  const old = map.get(ws)
 
   if (!args[0]) {
+    old?.watcher?.close(); map.delete(ws)
     send({
       ws,
       message: {
@@ -55,10 +56,14 @@ export function threadCommand({
     })
   }
 
-  bindThread({
-    ws,
-    card,
-  })
+  if (!args[1] || old?.card !== card.id) {
+    old?.watcher?.close(); map.delete(ws)
+    bindThread({
+      ws,
+      card,
+    })
+  }
+
   const sub = map.get(ws)!
   void threadPage({
     sub,

@@ -70,54 +70,18 @@ export async function loadEarlierMessages({
   }
 }
 
-export function mergeThreadPages({
+export { mergeThreadPages } from '#hydra/thread-history.ts'
+
+export function receivedThread({
   before,
   latest,
 }: {
   before: ThreadPage | null
   latest: ThreadPage
 }): ThreadPage {
-  const changedSession = before?.session !== latest.session
+  const sameSession = before?.session === latest.session
+  const sameStream = sameSession && before?.conversation?.stream === latest.conversation?.stream
+  const newer = (before?.conversation?.version ?? 0) > (latest.conversation?.version ?? 0)
 
-  if (!before || changedSession) {
-    return latest
-  }
-
-  const saved = before.entries.filter(entry => !entry.id.startsWith('live:'))
-  const entries = new Map(saved.map(entry => [
-    entry.id,
-    entry,
-  ]))
-
-  for (const entry of latest.entries) {
-    entries.set(
-      entry.id,
-      entry,
-    )
-  }
-
-  const actions = new Map((before.actions ?? []).map(event => [
-    event.id,
-    event,
-  ]))
-
-  for (const event of latest.actions ?? []) {
-    actions.set(
-      event.id,
-      event,
-    )
-  }
-
-  const ordered = [...entries.values()].sort((
-    a,
-    b,
-  ) => (a.at ?? '').localeCompare(b.at ?? ''))
-  const older = before.entries.length ? before.older : latest.older
-
-  return {
-    ...latest,
-    entries: ordered,
-    actions: [...actions.values()],
-    older,
-  }
+  return sameStream && newer ? before! : latest
 }

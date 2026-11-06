@@ -3,7 +3,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { HydraEvent } from '#app/model.ts'
 import { recordEntries, type ThreadEntry } from '#hydra/transcripts-read.ts'
-import { hydraConversation } from './conversation.ts'
+import { hydraConversation } from '#hydra/conversation.ts'
 import { copiedText } from './chat.ts'
 import { taskMention } from '#hydra/mentions.ts'
 

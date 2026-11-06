@@ -1,10 +1,11 @@
+import { hydraThreadView } from './thread-view.ts'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { emptyHydra, reduce } from '#app/reducer.ts'
-import { readThread } from './transcripts-read.ts'
+import { readThread, splitEntry, type ThreadPage } from './transcripts-read.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { liveReplies } from '#workers/streaming.ts'
 
@@ -91,3 +92,125 @@ for (const provider of [
     },
   )
 }
+
+test(
+  'the server returns serializable reconciled turns with folds timings and hidden instructions',
+  () => {
+    const state = reduce({
+      state: emptyHydra(),
+      event: {
+        v: 1,
+        seq: 1,
+        id: 'create',
+        at: '2026-11-06T00:00:00Z',
+        actor: 'web',
+        cardId: HYDRA_CARD,
+        type: 'task.created',
+        data: {
+          key: 'hydra',
+          title: 'Hydra',
+        },
+      },
+    })
+    state.cards[HYDRA_CARD]!.agent = {
+      provider: 'codex',
+      sessionId: 'fixture',
+    }
+    state.hydraMessages = [
+      {
+        id: 'owner',
+        action: 'send',
+        hydra: 'hydra',
+        text: 'Please check',
+        actor: 'web',
+        at: '2026-11-06T00:00:01Z',
+      },
+    ]
+    const page: ThreadPage = {
+      card: HYDRA_CARD,
+      route: true,
+      watching: 'unknown',
+      entries: [
+        {
+          id: 'instructions',
+          kind: 'message',
+          role: 'user',
+          text: '# AGENTS.md instructions\n<INSTRUCTIONS>internal</INSTRUCTIONS>',
+          at: '2026-11-06T00:00:00Z',
+        },
+        {
+          id: 'native-owner',
+          kind: 'message',
+          role: 'user',
+          text: 'Please check',
+          at: '2026-11-06T00:00:01Z',
+        },
+        {
+          id: 'note',
+          kind: 'message',
+          role: 'assistant',
+          text: 'Checking now',
+          at: '2026-11-06T00:00:02Z',
+        },
+        {
+          id: 'reply',
+          kind: 'message',
+          role: 'assistant',
+          text: 'It works',
+          at: '2026-11-06T00:00:03Z',
+        },
+        {
+          id: 'quiet',
+          kind: 'message',
+          role: 'assistant',
+          text: 'NO_REPLY',
+          at: '2026-11-06T00:00:04Z',
+        },
+      ],
+    }
+    const wire = JSON.parse(JSON.stringify(hydraThreadView({
+      state,
+      page,
+      thinking: true,
+    }))) as ThreadPage
+    assert.equal(
+      wire.entries[0]!.hidden,
+      true,
+    )
+    assert.equal(
+      wire.entries[0]!.text,
+      '',
+    )
+    assert.deepEqual(
+      wire.conversation!.entries.map(entry => entry.id),
+      [
+        'native-owner',
+        'reply',
+      ],
+    )
+    assert.equal(
+      wire.conversation!.timings.reply!.reply,
+      'It works',
+    )
+    assert.equal(
+      wire.conversation!.folds.reply!.notes[0]!.text,
+      'Checking now',
+    )
+    const chunks = splitEntry({
+      entry: {
+        id: 'long',
+        role: 'user',
+        kind: 'message',
+        text: 'x'.repeat(1100),
+      },
+    })
+    assert.equal(
+      chunks[1]!.continued,
+      true,
+    )
+    assert.equal(
+      chunks[1]!.role,
+      'user',
+    )
+  },
+)

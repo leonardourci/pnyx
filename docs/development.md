@@ -25,6 +25,8 @@ Owner actions in the app run in the server, which holds each Hydra in memory and
 
 The browser caches confirmed Hydra state under the installation and Hydra URL. The former identity-only `pnyx:<identity>:hydra-state` cache is removed on access; an older tab without a current cache loads a fresh snapshot from the server.
 
+Hydra thread subscriptions keep their loaded history on the server. Each thread page carries reconciled conversation entries, turn timings and action folds. Continuation chunks carry a boolean, and injected instruction blocks are hidden before transport. The browser renders that projection and keeps only its unsent previews locally.
+
 ## Run a development server
 
 ```sh
