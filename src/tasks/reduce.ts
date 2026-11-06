@@ -1,7 +1,7 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { refreshTasks } from './columns.ts'
-import { roleColumn, ROLE_STATUS } from './column-rules.ts'
+import { createdColumn, roleColumn, ROLE_STATUS } from './column-rules.ts'
 import { touch } from './touch.ts'
 
 export function applyTask({
@@ -152,10 +152,11 @@ export function applyTask({
       ...(initial ? { status: initial } : {}),
       ...(parentId ? { parentId } : {}),
       ...(folder ? { folder } : {}),
-      column: placement ?? roleColumn({
+      column: createdColumn({
         columns,
-        role: 'queued',
-      }) ?? 'parked',
+        column,
+        held: Boolean(event.data.hold),
+      }),
       revision: 1,
       createdSeq: event.seq,
       updatedSeq: event.seq,
