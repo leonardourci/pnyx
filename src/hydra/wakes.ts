@@ -19,6 +19,7 @@ export interface QueuedUpdate {
 }
 
 export interface HydraQueue {
+  chat?: import('./chat-queue.ts').HydraChatQueue
   waiting: QueuedUpdate[]
   reading: QueuedUpdate[]
 }

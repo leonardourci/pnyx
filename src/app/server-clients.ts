@@ -1,3 +1,4 @@
+import { hydraChatQueue } from '#hydra/chat-queue.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
 import { threadPath, type LatestMessage } from '#hydra/transcripts-read.ts'
@@ -97,13 +98,21 @@ export function createServerClients({
     }
   }
 
-  const sendQueue = ({ ws }: { ws: HydraClient }) => send({
-    ws,
-    message: {
-      type: 'hydraQueue',
-      queue: agents().queue(),
-    },
-  })
+  const sendQueue = ({ ws }: { ws: HydraClient }) => {
+    const queued = agents().queue()
+    const chat = hydraChatQueue({ state: state() })
+    send({
+      ws,
+      message: {
+        type: 'hydraQueue',
+        queue: {
+          ...queued,
+          reading: chat.working ? queued.reading : [],
+          chat,
+        },
+      },
+    })
+  }
 
   const sendSnapshot = ({ ws }: { ws: HydraClient }) => {
     resyncing.delete(ws)
@@ -128,12 +137,7 @@ export function createServerClients({
       },
     })
 
-    // A tab starts every snapshot with an empty queue.
-    const queue = agents().queue()
-
-    if (queue.waiting.length || queue.reading.length) {
-      sendQueue({ ws })
-    }
+    sendQueue({ ws })
 
     if (hydraSubscribers.has(ws)) {
       ws.send({
@@ -149,6 +153,8 @@ export function createServerClients({
   // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
   const broadcast = ({ event }: { event: HydraEvent }) => {
     for (const ws of clients) {
+      sendQueue({ ws })
+
       if (!resyncing.has(ws)) {
         send({
           ws,
@@ -160,6 +166,8 @@ export function createServerClients({
       } else if (ws.bufferedAmount <= MAX_BUFFERED) {
         sendSnapshot({ ws })
       }
+
+      sendQueue({ ws })
 
       for (const map of threadSubscriptions) {
         const sub = map.get(ws)

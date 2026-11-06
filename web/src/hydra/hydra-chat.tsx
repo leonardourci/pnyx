@@ -1,6 +1,5 @@
 import type { HydraState } from '#app/model.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { hydraQueueView } from '#hydra/chat-queue.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { ThreadPage } from '#hydra/transcripts-read.ts'
@@ -185,31 +184,32 @@ export function HydraChat({
     },
     [liveThread],
   )
-  const messages = (state.hydraMessages ?? []).filter(m => m.hydra === hydra.id)
-  const pending = sending.filter(s => {
-    const recorded = messages.some(message => message.id === s.id)
-    const rendered = (state.eventIds[s.id] ?? 0) <= (page?.conversation?.through ?? 0)
+  const chatQueue = queue.chat
+  const held = new Set(chatQueue?.held ?? [])
+  const pending = sending.filter(item => {
+    const deliveredAt = chatQueue?.received[item.id]
+    const recorded = deliveredAt !== undefined
+    const rendered = (deliveredAt ?? 0) <= (page?.conversation?.through ?? 0)
 
     return !recorded || !rendered
   })
-  const {
-    compacting,
-    upgrades,
-    held,
-    compactOperations,
-    shownUpgrades,
-    upgrading,
-    holding,
-    runningChange,
-    compactionRunning,
-    upgradeRunning,
-    compactInputs,
-  } = hydraQueueView({
-    state,
-    messages,
-    card,
-    pending,
-  })
+  const compacting = chatQueue?.compacting
+  const upgrades = chatQueue?.upgrades ?? []
+  const compactOperations = chatQueue?.compactOperations ?? []
+  const shownUpgrades = chatQueue?.shownUpgrades ?? []
+  const upgrading = chatQueue?.upgrading ?? false
+  const holding = chatQueue?.holding ?? false
+  const runningChange = chatQueue?.runningChange ?? false
+  const compactionRunning = chatQueue?.compactionRunning ?? false
+  const upgradeRunning = chatQueue?.upgradeRunning ?? false
+  const compactInputs = [
+    ...chatQueue?.compactInputs ?? [],
+    ...pending.filter(item => holding && !held.has(item.id)).map(item => ({
+      ...item,
+      actor: 'web',
+      route: 'hydra' as const,
+    })),
+  ]
 
   // Stops Hydra's turn, its compaction or the upgrade running in their place.
   const stop = async () => {
@@ -241,7 +241,7 @@ export function HydraChat({
   const transcript = page?.entries ?? []
   const olderCursor = page?.older
   const firstAt = transcript[0]?.at
-  const working = hydra.kind !== 'firstmate' && (card?.sessionActivity ?? card?.activity) === 'working'
+  const working = chatQueue?.working ?? false
   const conversation = page?.conversation
   const chat = {
     entries: conversation?.entries ?? [],
@@ -401,7 +401,7 @@ export function HydraChat({
     }
   }
 
-  const hosted = hydra.kind !== 'firstmate'
+  const hosted = chatQueue?.hosted ?? false
   // The dots start with the send and stay on until the turn ends, through streaming and tool calls.
   const running = working || (hosted && pending.length > 0)
   // A send counts from the owner's message until the server says the turn began.
@@ -577,7 +577,7 @@ export function HydraChat({
     connected,
   })
   // Hydra reads only while its turn runs; a stale reading list from a finished turn shows nothing.
-  const queueReading = running ? queue.reading : []
+  const queueReading = queue.reading
   const canStop = runningChange || ((working || compacting) && card?.agent?.host === 'pnyx') || upgradeRunning
   const errors = card?.attention.filter(a => a.key === 'pnyx:interrupted' || a.kind === 'interrupted') ?? []
   // Hydra's own state, apart from the browser's connection that the offline badge shows.
