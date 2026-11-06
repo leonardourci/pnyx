@@ -14,7 +14,7 @@ Foreground `finished` does not authorize idle cleanup. Cleanup requires no runni
 
 ## Usage
 
-Each provider's adapter exports a usage reader for its own transcript format, which `src/workers/usage.ts` picks by harness, and emits neutral `HostedUsage` events for live readings. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`.
+Each provider's adapter reads usage from its own transcript format and emits neutral `HostedUsage` events for live readings; `src/workers/usage.ts` picks the transcript reader by harness. Consumers never interpret vendor fields. `src/workers/usage.ts` combines those readings, recorded task totals and quota plan windows into `AgentUsage`. The server pushes that derived shape over the existing WebSocket; both the composer and task card render `web/src/workers/usage.tsx`.
 
 Current context is the latest request's reading, not the sum of earlier requests. Recorded task tokens retain their worker and attributed Hydra breakdown. Only reported counts are shown. Claude transcripts provide used tokens but no window or session cost; those details can come from live readings. Synthetic assistant records do not change usage, and a transcript compaction boundary clears current context. Transcript fragments and task totals never substitute for current context.
 
