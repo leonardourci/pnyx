@@ -22,7 +22,7 @@ export function restoreView({ key }: { key: string }): Restore {
   }
 }
 
-export const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
+const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanban, [data-column] > .column-cards')]
   .map(el => [
     el.closest('[data-column]')?.getAttribute('data-column') ?? 'kanban',
     el,
@@ -30,7 +30,7 @@ export const scrollers = () => [...document.querySelectorAll<HTMLElement>('.kanb
 
 export const hydraViews = new Map<string, Restore>()
 
-export function persistView({
+function persistView({
   key,
   viewKey,
   value,
