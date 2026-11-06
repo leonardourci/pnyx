@@ -48,7 +48,8 @@ test('…', async () => {
 - `openPage` is the owner's page over the WebSocket: `shows` waits until its state passes a check, `command` sends a command and returns its receipt, `refusal` one the server refuses and returns its error.
 - `s.state()`, `s.task({ key })` and `s.events()` read the Hydra's saved files.
 - `s.owner({ args, input })` pipes `input` into the CLI, including `reply --file -`.
-- `page.queues` records the server's worker-update queue messages, including waiting and reading batches.
+- `page.queues` records the server's queue messages, including waiting and reading batches and Hydra's chat queue.
+- `page.threads` records the thread pages the server pushes to a tab subscribed with the `thread` command.
 - `pnyx.restart()` keeps the port, so an open page reconnects to the new server. Flows run one at a time, so a restart never cuts into another flow.
 
 Rules:
