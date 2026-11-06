@@ -1,6 +1,7 @@
 import { readSearchFilters } from './filters.ts'
 import { AxiError } from 'axi-sdk-js'
 import { findCard } from '#tasks/push-rules.ts'
+import { findProject } from '#projects/read.ts'
 import { COMMON, guard, parse, type Options, type Output } from '#app/cli-support.ts'
 import { loadHydra } from '#app/store.ts'
 import { SYNONYMS, SYNONYMS_VERSION } from './synonyms.ts'
@@ -113,23 +114,30 @@ const oracleCommand = guard({
       )
     }
 
+    const state = loadHydra({ hydraId }).state
     const card = values.card === undefined
       ? undefined
       : findCard({
-        state: loadHydra({ hydraId }).state,
+        state,
         ref: values.card as string,
       }).id
+    // Pnyx tasks record a project by its path, so a name or relative path is resolved first.
+    const projects = (values.project as string[] | undefined)?.map(ref => findProject({
+      state,
+      ref,
+    }).path)
 
     updateIndex({ hydraId })
 
     return present({
       input: search({
         hydraId,
+        state,
         query: {
           ...readSearchFilters({
             value: JSON.stringify({
               columns: values.column,
-              projects: values.project,
+              projects,
               since: values.since,
             }),
           }),
@@ -199,7 +207,7 @@ export const oracleCommands = {
   oracle: oracleCommand,
 }
 
-export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <path>] [--since <date>] [--limit <n>]
+export const ORACLE_HELP = `usage: pnyx-axi oracle "<words>" [--kind event|note|transcript] [--card <id>] [--workspace <name>] [--column <id>] [--project <name|path>] [--since <date>] [--limit <n>]
        pnyx-axi oracle status | rebuild [--hydra <name>]
 Column, project and date filters apply before the result limit; repeat --column or --project for alternatives.
 Full-text search over card titles, links, event text, harvested notes and the session transcripts
