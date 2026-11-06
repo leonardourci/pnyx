@@ -1,3 +1,4 @@
+import { removeStored } from './connection-storage.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra,reduce } from '#app/reducer.ts'
 import { saveEventId,savedReceipt,type SaveCommand } from '#app/save-receipts.ts'
@@ -136,13 +137,10 @@ export function createHydraConnection() {
     const summary = hydras.snapshot().view.find(hydra => hydra.id === id)
     const identity = summary?.identity ?? (id === initialId
       ? document.querySelector<HTMLMetaElement>('meta[name=pnyx-hydra]')?.content ?? id : id)
-    const legacy = stored({
-      key: `pnyx:${identity}:hydra-state`,
-      fallback: emptyHydra(),
-    })
+    removeStored({ key: `pnyx:${identity}:hydra-state` })
     const restored = stored({
       key: keyFor({ id }),
-      fallback: legacy,
+      fallback: emptyHydra(),
     })
     const confirmed = restored?.v === 1 && restored.cards ? restored : emptyHydra()
     const scope: Scope = {
@@ -347,10 +345,6 @@ export function createHydraConnection() {
 
     save({
       key: keyFor({ id: scope.id }),
-      value: scope.resource.snapshot().confirmed,
-    })
-    save({
-      key: `pnyx:${scope.identity}:hydra-state`,
       value: scope.resource.snapshot().confirmed,
     })
   }
