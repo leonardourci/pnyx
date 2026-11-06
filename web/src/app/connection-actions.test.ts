@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
+import { setImmediate } from 'node:timers/promises'
 import { emptyHydra } from '#app/reducer.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { createHydraConnection } from './connection-store.ts'
@@ -86,8 +87,9 @@ test(
         key,
       ),
     ]))
-    t.after(() => {
+    t.after(async () => {
       cleanup.stop?.()
+      await setImmediate()
 
       for (const key of Object.keys(environment)) {
         const descriptor = descriptors[key]
