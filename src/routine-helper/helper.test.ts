@@ -12,7 +12,9 @@ import { hydraConfig } from '#hydra/config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { PermissionRequest } from '#workers/model.ts'
 import { taskLease } from './leases.ts'
-import { helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
+import { helperAgent, helperBatch, helperEvent, helperGrant, helperReason } from './route.ts'
+import { HELPER_MODELS } from '#settings/model.ts'
+import { writeDocument } from '#workers/dispatch-config.ts'
 import { createRoutineHelper, HELPER_INSTRUCTIONS, outcomeSchema, parseOutcomes } from './runner.ts'
 import { until } from '#test-harness/harness.ts'
 import type { Provider } from '#workers/provider.ts'
@@ -1209,6 +1211,33 @@ test(
       readEvents({ hydraId: 'lab' })
         .filter(event => event.type === 'hydra.helper-finished' && event.data.batch === 'original').length,
       1,
+    )
+  },
+)
+
+test(
+  'the automatic helper runs on the harness that receives Hydra’s messages',
+  () => {
+    writeDocument({
+      document: {
+        accounts: {},
+        default: [{ harness: 'claude' }],
+        workers: {},
+        projects: {},
+        rules: {
+          hydra: {
+            when: 'Hydra itself',
+            candidates: [{ harness: 'codex' }],
+          },
+        },
+      },
+    })
+    assert.deepEqual(
+      helperAgent({ state: state() }),
+      {
+        harness: 'codex',
+        model: HELPER_MODELS.codex,
+      },
     )
   },
 )

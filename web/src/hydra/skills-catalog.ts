@@ -100,6 +100,7 @@ export function useSkillsCatalog({
   command: Command
   connected: boolean
   open: boolean
+  // Names the skills before the server's catalog, which carries its own provider, arrives.
   provider?: string
 }): Catalog | null {
   const scope = storageKey({ key: `skills:${identity}` })
@@ -171,6 +172,6 @@ export function useSkillsCatalog({
   return withBuiltInSkills({
     catalog: catalog ?? { suggestions: [] },
     card,
-    provider,
+    provider: catalog?.provider ?? provider,
   })
 }

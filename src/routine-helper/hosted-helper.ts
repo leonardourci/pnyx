@@ -1,7 +1,6 @@
 import type { Host } from '#app/host-types.ts'
 import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
-import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { accountFor } from '#workers/account-choice.ts'
 import type { trackChildren } from '#workers/children.ts'
 import { accountEnv, accountEnvironment } from '#workers/dispatch.ts'
@@ -51,13 +50,7 @@ export function createHostedHelper({
     state: HydraState
     effective?: EffectiveDispatch
   }) => {
-    const candidate = helperAgent({
-      state,
-      main: effective && hydraCandidate({
-        state,
-        dispatch: effective.dispatch,
-      }),
-    })
+    const candidate = helperAgent({ state })
 
     if (candidate?.account === undefined) {
       return candidate
