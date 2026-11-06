@@ -1,7 +1,7 @@
 import type { HydraState, HydraChange, Decision } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { requireReportReview } from '#investigations/inventory.ts'
-import { openAsks } from '#tasks/questions.ts'
+import { openAsks } from '#tasks/ask-state.ts'
 import { HydraError } from '#store/errors.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import type { HydraMessage } from './model.ts'

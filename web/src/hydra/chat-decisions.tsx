@@ -1,5 +1,5 @@
 import type { Ask, Card } from '#tasks/model.ts'
-import { askWording } from '#tasks/questions.ts'
+import { askWording } from '#tasks/ask-state.ts'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { Disclosure, CollapsibleText } from '#web-shared/ui/disclosure.tsx'
 import { Button } from '#web-shared/ui/controls.tsx'

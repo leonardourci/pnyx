@@ -1,4 +1,5 @@
-import { askWording, openAsks, waitingPrompt } from './questions.ts'
+import { waitingPrompt } from './questions.ts'
+import { askWording, openAsks } from './ask-state.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { HydraState } from '#app/model.ts'
 import type { Card } from './model.ts'

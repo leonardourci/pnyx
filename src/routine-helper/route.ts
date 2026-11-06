@@ -1,5 +1,5 @@
 import { ownerGates } from '#tasks/owner-gates.ts'
-import { openAsks } from '#tasks/questions.ts'
+import { openAsks } from '#tasks/ask-state.ts'
 import { openDecisions } from '#tasks/decisions.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
