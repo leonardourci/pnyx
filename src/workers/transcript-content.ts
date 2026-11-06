@@ -74,6 +74,7 @@ export function onOff({ fast }: { fast: boolean | undefined }) {
   return fast ? 'on' : 'off'
 }
 
+// Pnyx's own wake turns are not anyone's words.
 const wakeInput = ({ text }: { text: string }) => /^\s*<pnyx-wake>[\s\S]*<\/pnyx-wake>/.test(text)
 
 export function transcriptText({

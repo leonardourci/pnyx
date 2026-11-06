@@ -1,5 +1,6 @@
 export const SHELL_WRAPPER = /(^|\/)(ba|z)?sh$/
 
+// Claude's Bash input is {command}; Codex's shell calls carry {cmd} or an argv list.
 export function commandOf({ input }: { input: Record<string, unknown> }): string | undefined {
   const value = input.command ?? input.cmd
 
