@@ -1,21 +1,16 @@
 import type { HydraState } from '#app/model.ts'
 import type { HydraProjectSummary } from '#app/server-hydras.ts'
 import type { CurrentAction } from '#hydra/calls.ts'
-import { SETTING_ICONS,SETTINGS_SECTIONS } from '#web-settings/catalog.ts'
-import { relativeTime } from '#web-tasks/brief.ts'
-import { columnsFor } from '#web-tasks/view.ts'
-import { TYPE_LABELS,type Filter } from './filters.ts'
-import { ACTION_ICONS,type OracleAction } from './oracle-catalog.ts'
-
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import type { Hit } from '#oracle/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { liveTask } from '#tasks/select.ts'
-import { searchSettings,SETTINGS_CATALOG,type SettingsMatch } from '#web-settings/catalog.ts'
-import { filterCards } from '#web-tasks/view.ts'
+import { searchSettings,SETTING_ICONS,SETTINGS_CATALOG,SETTINGS_SECTIONS,type SettingsMatch } from '#web-settings/catalog.ts'
+import { relativeTime } from '#web-tasks/brief.ts'
+import { columnsFor,filterCards } from '#web-tasks/view.ts'
 import { cardSessionId } from '#workers/session-attachments.ts'
-import { nameMatches,passes,type Candidate,type FilterToken } from './filters.ts'
-import { matchesCommand,oraclePanels,type OraclePanel } from './oracle-catalog.ts'
+import { nameMatches,passes,TYPE_LABELS,type Candidate,type Filter,type FilterToken } from './filters.ts'
+import { ACTION_ICONS,matchesCommand,oraclePanels,type OracleAction,type OraclePanel } from './oracle-catalog.ts'
 
 interface Shown extends Candidate {
   id: string
