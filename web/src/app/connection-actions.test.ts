@@ -1,6 +1,5 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { setImmediate } from 'node:timers/promises'
 import { emptyHydra } from '#app/reducer.ts'
 import type { ServerMessage } from '#app/server-transport.ts'
 import { createHydraConnection } from './connection-store.ts'
@@ -10,6 +9,11 @@ class BrowserSocket {
   static instances: BrowserSocket[] = []
   readyState = 1
   subscription: string
+  sent: {
+    id: string
+    name: string
+  }[] = []
+
   onmessage?: ({ data }: { data: string }) => void
   onclose?: () => void
   onerror?: () => void
@@ -19,7 +23,14 @@ class BrowserSocket {
     BrowserSocket.instances.push(this)
   }
 
-  send() {}
+  // eslint-disable-next-line pnyx/object-params -- WebSocket owns the method signature.
+  send(data: string) {
+    this.sent.push(JSON.parse(data) as {
+      id: string
+      name: string
+    })
+  }
+
   close() {
     this.readyState = 3
   }
@@ -87,9 +98,8 @@ test(
         key,
       ),
     ]))
-    t.after(async () => {
+    t.after(() => {
       cleanup.stop?.()
-      await setImmediate()
 
       for (const key of Object.keys(environment)) {
         const descriptor = descriptors[key]
@@ -222,5 +232,13 @@ test(
       connection.snapshot().actions,
       {},
     )
+    // Answering the page's Hydra list leaves no request to reject once the connection stops.
+    const listing = replacement.sent.find(message => message.name === 'hydras')!
+    replacement.receive({
+      message: {
+        type: 'receipt',
+        id: listing.id,
+      },
+    })
   },
 )
