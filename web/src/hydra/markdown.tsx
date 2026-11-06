@@ -1,7 +1,8 @@
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { decodeValue, mentionId } from '#hydra/mentions.ts'
 import { Fragment, memo, useContext, useMemo, type ReactNode } from 'react'
-import { Marked, type Token, type Tokens } from 'marked'
+import type { Token, Tokens } from 'marked'
+import { decodeEntities, inlineText, markdown } from './markdown-text.ts'
 import { SHOWN_IMAGE, shownImageLabel, shownImageNames, shownImagePath } from '#hydra/images.ts'
 import { ImageChip } from './attached-image.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
@@ -10,47 +11,7 @@ import { prepareChatTokens } from './chat-tokens.ts'
 import { readSkillReference } from '#hydra/transcripts-skill-reference.ts'
 import { CHIP_SOURCE } from './message-selection.ts'
 
-export const markdown = new Marked({ gfm: true })
-const decodeEntities = ({ text }: { text: string }) => text.replace(
-  /&(?:#x[\da-f]+|#\d+|[a-z][a-z\d]+);/gi,
-  entity => {
-  // Only a single character reference enters this inert decoder, never markup.
-    const decoder = document.createElement('textarea')
-    decoder.innerHTML = entity
-
-    return decoder.value
-  },
-)
-
-const inlineText = ({ tokens }: { tokens: Token[] }): string => tokens.map(token => {
-  if (token.type === 'codespan') {
-    return token.text
-  }
-
-  if (token.type === 'br') {
-    return ''
-  }
-
-  if ('tokens' in token && token.tokens) {
-    return inlineText({ tokens: token.tokens })
-  }
-
-  return 'text' in token ? decodeEntities({ text: String(token.text) }) : token.raw
-}).join('')
-
-export const markdownText = ({ text }: { text: string }) => markdown.lexer(text).filter(token => token.type !== 'space')
-  .map(token => {
-    if (token.type === 'code') {
-      return token.text
-    }
-
-    if ('tokens' in token && token.tokens) {
-      return inlineText({ tokens: token.tokens })
-    }
-
-    return token.raw.trim()
-  })
-  .join('\n\n')
+export { markdown, markdownText } from './markdown-text.ts'
 
 // Tokens become React elements, never HTML. Raw HTML remains visible text;
 // images remain links so transcripts cannot trigger remote tracking requests.
