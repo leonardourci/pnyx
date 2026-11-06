@@ -361,6 +361,29 @@ test(
       connection.snapshot().state.cards.task!.usage,
       usage,
     )
+    const other = connection.snapshot().state.cards.other
+    socket.receive({
+      message: {
+        type: 'latest',
+        messages: {},
+        actions: {},
+        spend: {
+          task: {
+            ...spend,
+            total: 4,
+          },
+        },
+      },
+    })
+    assert.equal(
+      connection.snapshot().state.cards.task!.spend!.total,
+      4,
+    )
+    assert.equal(
+      connection.snapshot().state.cards.other,
+      other,
+      'a card without live totals keeps its identity',
+    )
     events.dispatchEvent(new Event('pagehide'))
     const saved = [...stored.values()].map(value => JSON.parse(value)).filter(value => value?.cards)
     assert.ok(saved.length > 0)
@@ -386,6 +409,48 @@ test(
     assert.equal(
       connection.snapshot().state.cards.task!.spend,
       undefined,
+    )
+  },
+)
+
+test(
+  'Hydra\'s queue stays shown while a snapshot replaces the state',
+  t => {
+    const { connection } = browserFixture({ t })
+    const socket = BrowserSocket.instances.at(-1)!
+    socket.receive({
+      message: {
+        type: 'hello',
+        build: 'test',
+        hydraId: 'default',
+        installation: 'test',
+      },
+    })
+    const queue = {
+      waiting: [
+        {
+          seq: 1,
+          card: 'task',
+        },
+      ],
+      reading: [],
+    }
+    socket.receive({
+      message: {
+        type: 'hydraQueue',
+        queue,
+      },
+    })
+    socket.receive({
+      message: {
+        type: 'snapshot',
+        seq: 0,
+        state: emptyHydra(),
+      },
+    })
+    assert.deepEqual(
+      connection.snapshot().hydraQueue,
+      queue,
     )
   },
 )
