@@ -304,13 +304,6 @@ export async function hydraFastReaches({
 }
 
 export interface Provider {
-  readUsage({
-    reader,
-    value,
-  }: {
-    reader: TranscriptUsageReader
-    value: unknown
-  }): void
   compact?: true
   // The harness's own list, the same in every folder: a model's defaultEffort is its own and defaultMode is unset.
   models({
