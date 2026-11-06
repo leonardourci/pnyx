@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { CLI_SKILL } from '#setup/skill-names.ts'
 import assert from 'node:assert/strict'
 import test from 'node:test'
@@ -17,7 +18,8 @@ const marker = {
   head_tree: 'tree-tested',
   finished_at: '2026-10-21T00:00:00.000Z',
 }
-const reviews = [
+const description = '## Problem\nMissing checks.\n## Fix\nRequire complete descriptions.\n## Validation\nParser tests passed.\n## Review\nNo findings.\n'
+const reviews = description + [
   'review-code',
   'audit-tests',
   'deslop',
@@ -350,5 +352,132 @@ test(
         }
       }
     }
+  },
+)
+
+test(
+  'incomplete descriptions cannot get or retain a verification pass',
+  async () => {
+    const template = readFileSync(
+      new URL(
+        '../../.github/pull_request_template.md',
+        import.meta.url,
+      ),
+      'utf8',
+    )
+    const ready = {
+      failedSteps: 0,
+      changedPaths: 0,
+      headSha: 'tested',
+      headAfter: 'tested',
+      pullRequestHead: 'tested',
+    }
+
+    for (const body of [
+      template,
+      passing + '\n## Problem\nAnother problem.',
+      passing.replace(
+        'Missing checks.',
+        '[only]: https://example.com',
+      ),
+      passing.replace(
+        'Missing checks.',
+        '<br>',
+      ),
+      passing.replace(
+        '## Problem',
+        '## Context',
+      ),
+      passing.replace(
+        'Missing checks.',
+        '',
+      ),
+      passing.replace(
+        'No findings.',
+        '',
+      ),
+      passing.replace(
+        'Parser tests passed.',
+        '<!-- Passed. -->',
+      ),
+      passing.replace(
+        'Parser tests passed.',
+        '```md\nPassed.\n```',
+      ),
+      passing + '\n' + template,
+      passing.replace(
+        'Missing checks.',
+        '    example only',
+      ),
+      passing.replace(
+        'Missing checks.',
+        '# Appendix\nAppendix text.',
+      ),
+      passing.replace(
+        'Missing checks.',
+        '---',
+      ),
+      passing.replace(
+        'No findings.',
+        '  Complete [review-code](url), then note fixes.',
+      ),
+      '<!--\n' + passing + '\n-->',
+      '```md\n' + passing + '\n```',
+    ]) {
+      assert.ok(markerBlockers({
+        ...ready,
+        pullRequestBody: body,
+      }).length > 0)
+      await assert.rejects(
+        check({
+          body,
+          headSha: 'tested',
+        }),
+        /PR description|template placeholders/,
+      )
+      await assert.rejects(
+        check({
+          body,
+          headSha: 'docs',
+          linked: {
+            tested: [
+              {
+                number: 3,
+                body: passing,
+              },
+            ],
+          },
+        }),
+        /PR description|template placeholders/,
+      )
+    }
+  },
+)
+
+test(
+  'substantive checklists fill Fix and Validation sections',
+  async () => {
+    const body = passing.replace(
+      'Require complete descriptions.',
+      '- [x] Reject missing sections.\n- [x] Preserve the existing marker.',
+    ).replace(
+      'Parser tests passed.',
+      '- [x] Parser tests passed.\n- [ ] CI is pending approval.',
+    )
+    assert.deepEqual(
+      markerBlockers({
+        failedSteps: 0,
+        changedPaths: 0,
+        headSha: 'tested',
+        headAfter: 'tested',
+        pullRequestHead: 'tested',
+        pullRequestBody: body,
+      }),
+      [],
+    )
+    await check({
+      body,
+      headSha: 'tested',
+    })
   },
 )

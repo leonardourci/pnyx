@@ -32,6 +32,85 @@ export function reviewBlockers({
   }).map(name => `complete ${name} and tick its PR checkbox`)
 }
 
+const DESCRIPTION_SECTIONS = [
+  'Problem',
+  'Fix',
+  'Validation',
+  'Review',
+]
+const TEMPLATE_PLACEHOLDERS = [
+  'What is wrong or missing, and who it affects. Plain English, no session history.',
+  'What the change does now, and what it leaves alone.',
+  'What was run and what passed. Note any test that failed or was skipped, and why.',
+]
+
+export function descriptionBlockers({ body }: { body: string }): string[] {
+  const sections = new Map<string, string[]>()
+  const blockers: string[] = []
+  let current: string | undefined
+
+  for (const line of visibleLines({ body })) {
+    const heading = /^ {0,3}#{1,6}\s+(.+?)\s*#*\s*$/.exec(line)
+
+    if (heading) {
+      if (/^ {0,3}#\s+/.test(line)) {
+        current = undefined
+      }
+
+      if (/^ {0,3}##\s+/.test(line)) {
+        current = heading[1]!
+
+        if (sections.has(current)) {
+          blockers.push(`PR description repeats ${current}`)
+        }
+
+        sections.set(
+          current,
+          [],
+        )
+      }
+
+      continue
+    }
+
+    if (current) {
+      sections.get(current)!.push(line)
+    }
+  }
+
+  for (const name of DESCRIPTION_SECTIONS) {
+    const content = sections.get(name)
+
+    if (!content) {
+      blockers.push(`PR description is missing ## ${name}`)
+      continue
+    }
+
+    const prose = content.filter(line => {
+      const reviewBox = /^\s*[-*] \[[ xX]\] Ran `(.+)`\s*$/.exec(line)?.[1]
+      const templateBox = REVIEW_CHECKLISTS.some(review => review === reviewBox)
+
+      return line.trim()
+        && !templateBox
+        && !/^(?: {4}|\t)/.test(line)
+        && !/^\s*\[[^\]]+\]:\s*\S+/.test(line)
+        && !/^\s*(?:<[^>]*>\s*)+$/.test(line)
+        && /[\p{L}\p{N}]/u.test(line)
+        && !line.trim().startsWith('Complete [review-code]')
+    })
+
+    if (prose.length === 0) {
+      blockers.push(`PR description needs content in ## ${name}`)
+    }
+  }
+
+  if (TEMPLATE_PLACEHOLDERS.some(placeholder => body.includes(placeholder))) {
+    blockers.push('replace the PR template placeholders')
+  }
+
+  return blockers
+}
+
 export interface Marker {
   head_sha: string
   head_tree: string
@@ -172,10 +251,13 @@ export function markerBlockers({
   requiredReviews?: readonly Review[]
   mechanical?: boolean
 }): string[] {
-  const blockers = reviewBlockers({
-    body: pullRequestBody,
-    requiredReviews,
-  })
+  const blockers = [
+    ...descriptionBlockers({ body: pullRequestBody }),
+    ...reviewBlockers({
+      body: pullRequestBody,
+      requiredReviews,
+    }),
+  ]
 
   if (mechanical && !mechanicalDeclaration({ body: pullRequestBody })) {
     blockers.push('--mechanical requires a visible PR line: Change: mechanical (rename) or Change: mechanical (move)')
@@ -219,6 +301,12 @@ export async function checkPullRequest({
   commit({ sha }: { sha: string }): Promise<Commit>
   pullRequestsFor({ sha }: { sha: string }): Promise<PullRequest[]>
 }): Promise<string> {
+  const description = descriptionBlockers({ body })
+
+  if (description.length > 0) {
+    throw new MarkerError(description.join('; '))
+  }
+
   let own: Marker | undefined
   let ownError: MarkerError | undefined
 
