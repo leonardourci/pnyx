@@ -20,7 +20,7 @@ import { pendingSteering, steeringWorkerIdentity, steeringHeld } from '#workers/
 import { steeringMessages } from '#workers/inbox-notice.ts'
 import { createRoutineHelper } from '#routine-helper/runner.ts'
 import { helperAgent } from '#routine-helper/route.ts'
-import { activeHelperBatches, helperLeases, outcomeLines, type HelperAgent } from '#routine-helper/state.ts'
+import { activeHelperBatches, failedBatches, helperLeases, outcomeLines, ownerOutcomes, type HelperAgent } from '#routine-helper/state.ts'
 import { taskMention } from '#hydra/mentions.ts'
 import { setupCheck, setupDigest } from '#setup/check.ts'
 import { projectDigest } from '#projects/context.ts'
@@ -2109,11 +2109,8 @@ export function createHost({
           let helperText = ''
           // Main holds the tasks whose outcomes or hand-backs it is given, as it holds a wake's tasks.
           const presentedTasks = [
-            ...(helperState.helper?.outcomes ?? [])
-              .filter(outcome => outcome.audience === 'owner' && outcome.seq > (helperState.helper?.delivered ?? 0))
-              .map(outcome => outcome.task),
-            ...Object.values(helperState.helper?.runs ?? {}).filter(batch => batch.error)
-              .flatMap(batch => batch.tasks),
+            ...ownerOutcomes({ state: helperState }).map(outcome => outcome.task),
+            ...failedBatches({ state: helperState }).flatMap(batch => batch.tasks),
           ]
 
           if (activeHelperBatches({ state: helperState }).length) {
@@ -2128,8 +2125,7 @@ export function createHost({
             helperText += `\n<pnyx-wake>Helper outcomes to relay, one line each:\n${sealed({ text: helperLines.join('\n') })}\n${REPLY_RULES}</pnyx-wake>`
           }
 
-          const pendingBatches = Object.values(helperState.helper?.runs ?? {})
-            .filter(batch => batch.error)
+          const pendingBatches = failedBatches({ state: helperState })
 
           // Every failed batch reaches main as one notice naming its tasks, not one wake each.
           if (pendingBatches.length) {
