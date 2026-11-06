@@ -6,9 +6,6 @@ import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { sourceDeadline } from '#task-sources/state.ts'
-import type { AgentUsage } from '#workers/provider.ts'
-import { spendInputs, type TaskSpend } from '#workers/task-spend.ts'
-import { spendCounter } from '#workers/spend-counter.ts'
 import { advanceQueues } from '#workers/advance-queue.ts'
 import { QUEUE_POLL_MS } from '#workers/queue.ts'
 import { steeringToFollow } from '#workers/inbox-follow-up.ts'
@@ -23,11 +20,12 @@ import { fireReminders } from '#tasks/fire-reminders.ts'
 import { reminderDeadline, waitingReminders } from '#tasks/reminders.ts'
 import { listFolders } from '#projects/folders.ts'
 import { doneDeadline } from '#tasks/retention-rules.ts'
-import { effectiveView, readSettings } from '#settings/store.ts'
+import { readSettings } from '#settings/store.ts'
 import { hideDone } from '#tasks/retention.ts'
 import { settleDone, settles } from '#projects/copies.ts'
-import { threadPath, THREAD_CURSOR } from '#hydra/transcripts-read.ts'
+import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
 import { createLatestFeed } from './latest-feed.ts'
+import { createServerClients } from './server-clients.ts'
 import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { Catalog, CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
@@ -51,14 +49,12 @@ import { join } from 'node:path'
 import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
-import type { ViewPreferences } from '#preferences/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { reduce } from './reducer.ts'
-import { traces } from '#preferences/view.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot, withWriter } from './writer.ts'
-import { readEvents, readEventsFrom } from './event-log.ts'
+import { readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
 import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
@@ -68,29 +64,11 @@ import { hostRequest } from './host-request.ts'
 import { createHost, type QueryFn } from './host.ts'
 import type { SpawnCodex } from '#workers/codex.ts'
 import { COMMAND_WORKER, createServerWorkers } from './server-workers.ts'
-import { RESUME_LIMIT, MAX_BUFFERED, CLI_COMMANDS, type ServerMessage, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
+import { RESUME_LIMIT, CLI_COMMANDS, type HydraClient, type HydraSubscription, type MountedHydra, type HydraRequest } from './server-transport.ts'
 import { readBytes, buildId, reply, serveStatic } from './server-http.ts'
 import { listenIngest } from '#integrations/hooks/socket.ts'
 
 const ORACLE_LIMIT = 100
-
-const shownTraces = ({
-  view,
-  card,
-}: {
-  view: ViewPreferences
-  card: string
-}) => {
-  const {
-    tools,
-    thinking,
-  } = traces({
-    view: effectiveView({ state: { view } }),
-    card,
-  })
-
-  return `${tools}:${thinking}`
-}
 
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
@@ -142,8 +120,6 @@ export async function mountOwnedHydra({
   upgradeStatus(): UpgradeStatus | undefined
 }): Promise<MountedHydra> {
   let homes = (given ?? []).map(path => resolveHome({ path }))
-  const clients = new Set<HydraClient>()
-  const hydraSubscribers = new WeakSet<HydraClient>()
   // Set by close(): work already scheduled then must not open new watchers or timers.
   let closed = false
 
@@ -259,132 +235,27 @@ export async function mountOwnedHydra({
   }
 
   let recent: HydraEvent[] = []
-  let derivedThrough = -1
-  let derivedHistory: HydraEvent[] = []
-
-  const derivationEvents = () => {
-    if (state.seq !== derivedThrough) {
-      derivedHistory = readEvents({ hydraId })
-      derivedThrough = state.seq
-    }
-
-    return derivedHistory
-  }
-
-  const resyncing = new WeakSet<HydraClient>()
-
-  const send = ({
-    ws,
-    message,
-  }: {
-    ws: HydraClient
-    message: ServerMessage
-  }) => {
-    if (ws.bufferedAmount > MAX_BUFFERED) {
-      resyncing.add(ws)
-
-      return
-    }
-
-    if (ws.readyState === ws.OPEN) {
-      ws.send({ message })
-    }
-  }
-
-  const sendQueue = ({ ws }: { ws: HydraClient }) => send({
-    ws,
-    message: {
-      type: 'hydraQueue',
-      queue: agents.queue(),
-    },
+  const tabs = createServerClients({
+    hydraId,
+    state: () => state,
+    recent: () => recent,
+    agents: () => agents,
+    threadSubscriptions,
+    bindThread,
+    refreshThread,
+    feed: () => feed,
   })
-
-  const sendSnapshot = ({ ws }: { ws: HydraClient }) => {
-    resyncing.delete(ws)
-    send({
-      ws,
-      message: {
-        type: 'snapshot',
-        seq: state.seq,
-        state,
-      },
-    })
-    ws.send({
-      message: {
-        type: 'latest',
-        ...spendNow,
-        usage: agents.usageViews({
-          spend: spendNow.spend,
-          readings: readingsNow,
-        }),
-        messages: latest,
-        actions,
-      },
-    })
-
-    // A tab starts every snapshot with an empty queue.
-    const queue = agents.queue()
-
-    if (queue.waiting.length || queue.reading.length) {
-      sendQueue({ ws })
-    }
-
-    if (hydraSubscribers.has(ws)) {
-      ws.send({
-        message: {
-          type: 'hydras',
-          hydraId,
-          hydras: listHydras(),
-        },
-      })
-    }
-  }
-
-  // ponytail: a lagging tab gets its snapshot on the next change, not when its buffer drains.
-  const broadcast = ({ event }: { event: HydraEvent }) => {
-    for (const ws of clients) {
-      if (!resyncing.has(ws)) {
-        send({
-          ws,
-          message: {
-            type: 'event',
-            event,
-          },
-        })
-      } else if (ws.bufferedAmount <= MAX_BUFFERED) {
-        sendSnapshot({ ws })
-      }
-
-      for (const map of threadSubscriptions) {
-        const sub = map.get(ws)
-
-        // A view change that switches this card's traces on or off changes its page.
-        if (sub && (sub.card === event.cardId
-        || (event.type === 'task.session' && sub.card === event.data.before)
-        || (event.type === 'board.view' &&
-          shownTraces({
-            view: event.data.before,
-            card: sub.card,
-          })
-          !== shownTraces({
-            view: event.data.after,
-            card: sub.card,
-          })))) {
-          const card = state.cards[sub.card]
-
-          if (card && (sub.path !== threadPath({ card })
-            || sub.paseo !== card.agent?.paseoAgentId)) {
-            bindThread({
-              ws,
-              card,
-            })
-          }
-
-          refreshThread({ ws })
-        }
-      }
-    }
-  }
+  const {
+    clients,
+    hydraSubscribers,
+    send,
+    sendQueue,
+    sendSnapshot,
+    broadcast,
+    spend,
+    sendSettings,
+    resume,
+  } = tabs
 
   const reload = () => {
     ({
@@ -403,47 +274,6 @@ export async function mountOwnedHydra({
     hydrasChanged()
   }
 
-  // Task tokens, counted off the event loop; tabs get them once the first count is in.
-  let readingsNow: Record<string, import('#workers/provider.ts').UsageReading> = {}
-  let usageNow: Record<string, AgentUsage> = {}
-  let spendNow: { spend?: Record<string, TaskSpend> } = {}
-  const spend = spendCounter({
-    inputs: () => spendInputs({
-      state,
-      events: derivationEvents(),
-    }),
-    onSpend: ({
-      spend,
-      readings,
-    }) => {
-      readingsNow = readings
-      const usage = agents.usageViews({
-        spend,
-        readings,
-      })
-
-      if (JSON.stringify(spend) === JSON.stringify(spendNow.spend)
-        && JSON.stringify(usage) === JSON.stringify(usageNow)) {
-        return
-      }
-
-      spendNow = { spend }
-      usageNow = usage
-
-      for (const ws of clients) {
-        send({
-          ws,
-          message: {
-            type: 'latest',
-            spend,
-            usage,
-            messages: {},
-            actions: {},
-          },
-        })
-      }
-    },
-  })
   const feed = createLatestFeed({
     state: () => state,
     closed: () => closed,
@@ -456,8 +286,6 @@ export async function mountOwnedHydra({
     spend,
   })
   const {
-    latest,
-    actions,
     folders,
     transcripts,
     transcriptPolls,
@@ -811,8 +639,8 @@ export async function mountOwnedHydra({
       host: agents,
       body,
       usage: {
-        spend: spendNow.spend,
-        readings: readingsNow,
+        spend: tabs.spendNow.spend,
+        readings: tabs.readingsNow,
       },
     }),
   })
@@ -1879,18 +1707,6 @@ export async function mountOwnedHydra({
     })
   }
 
-  const sendSettings = ({ ws }: { ws: HydraClient }) => {
-    const read = readSettings()
-    send({
-      ws,
-      message: {
-        type: 'settings',
-        settings: read.settings,
-        revision: read.revision,
-      },
-    })
-  }
-
   const connect = ({
     ws,
     after,
@@ -1961,50 +1777,6 @@ export async function mountOwnedHydra({
         }
       },
     }
-  }
-
-  // A cursor this server can continue from gets only the events after it; any
-  // other cursor (ahead of the Hydra, older than the kept events, or none) gets a snapshot.
-  // Either way the tab then gets every card's last message.
-  const resume = ({
-    ws,
-    after,
-  }: {
-    ws: HydraClient
-    after: string | null
-  }) => {
-    const seq = after !== null && /^\d+$/.test(after) ? Number(after) : undefined
-    const first = recent[0]?.seq ?? state.seq + 1
-
-    if (seq === undefined || seq > state.seq || seq < first - 1) {
-      return sendSnapshot({ ws })
-    }
-
-    for (const event of recent) {
-      if (event.seq > seq) {
-        send({
-          ws,
-          message: {
-            type: 'event',
-            event,
-          },
-        })
-      }
-    }
-
-    send({
-      ws,
-      message: {
-        type: 'latest',
-        ...spendNow,
-        usage: agents.usageViews({
-          spend: spendNow.spend,
-          readings: readingsNow,
-        }),
-        messages: latest,
-        actions,
-      },
-    })
   }
 
   const ingest = await listenIngest({
