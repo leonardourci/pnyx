@@ -1202,8 +1202,13 @@ test(
         name: 'card',
         args: [s.task({ key: 'fix' }).id],
       })
+      assert.ok(page.queues.length > 0)
+      const queuedWork = page.queues.flatMap(queue => [
+        ...queue.waiting,
+        ...queue.reading,
+      ])
       assert.deepEqual(
-        page.queues,
+        queuedWork,
         [],
       )
       assert.equal(
