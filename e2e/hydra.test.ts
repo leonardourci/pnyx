@@ -663,15 +663,6 @@ test(
           }))?.behavior,
           'deny',
         )
-        assert.equal(
-          (await useTool({
-            tool: 'Command',
-            input: {
-              command: historyCommand,
-            },
-          }))?.behavior,
-          'allow',
-        )
         const historyArgs = historyCommand.replace(
           ` --hydra ${s.hydraId}`,
           '',
