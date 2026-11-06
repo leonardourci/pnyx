@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react'
 import { Button, Input } from '#web-shared/ui/controls.tsx'
-import { ComposerField } from '#web-shared/ui/composer-field.tsx'
+import { ComposerField } from '#web-hydra/composer-field.tsx'
 import { hasPendingImage } from '#web-hydra/draft.ts'
 import { CommandFailure } from '#web-shared/pending-intents.ts'
 import type { Command } from '#web-app/connection.ts'
