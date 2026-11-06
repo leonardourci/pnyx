@@ -7,7 +7,7 @@ import { copyDraft,draftView,editDraft,isPendingImage,placeBlock,removeChip,repl
 import { pastedImages } from './image-upload.ts'
 import { MentionPicker,type MentionItem } from './mention-picker.tsx'
 import { completePath } from './path-completion.ts'
-import { GOALS,mentionText,REQUEST_HEAD,requestPaths } from './project-request.ts'
+import { GOALS,mentionText,projectRequestActions,REQUEST_HEAD,requestPaths } from './project-request.ts'
 import { slashState,type SlashState } from './view.ts'
 import { useKeyAction } from '#web-preferences/keyboard-registry.tsx'
 import { useFolders } from '#web-projects/folders.ts'
@@ -24,7 +24,6 @@ import { useComposerUploads } from './composer-uploads.ts'
 import { DraftMirror } from './draft-mirror.tsx'
 import { mentionCandidates } from './mention-candidates.ts'
 import { folderSuggestions } from './mention-folders.ts'
-import { projectRequestActions } from './project-request.ts'
 import { slashIcons,useSlashMenu } from './slash-menu.ts'
 
 export interface ComposerFieldHandle {

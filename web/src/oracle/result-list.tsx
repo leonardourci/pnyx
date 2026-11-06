@@ -3,13 +3,10 @@ import { HYDRA_MARK } from '#hydra/hydra-names.ts'
 import { Icon } from '#web-shared/ui/icon.tsx'
 import { Highlight } from '#web-shared/ui/setting-row.tsx'
 import { type ReactNode } from 'react'
-import { type AskKey,type AskTarget } from './ask.ts'
-import { type Filter } from './filters.ts'
-import { type OracleResult } from './results.ts'
-
 import { ASK_BADGE,type Asking } from './ask-mode.ts'
-import type { FilterToken } from './filters.ts'
-import { menuHint,resultIcon,resultMeta } from './results.ts'
+import { type AskKey,type AskTarget } from './ask.ts'
+import { type Filter,type FilterToken } from './filters.ts'
+import { menuHint,resultIcon,resultMeta,type OracleResult } from './results.ts'
 
 function Option({
   id,

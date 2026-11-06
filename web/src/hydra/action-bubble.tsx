@@ -2,12 +2,10 @@ import { Icon } from '#web-shared/ui/icon.tsx'
 import { ColumnChip } from '#web-tasks/column-chip.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
 import { columnLook } from '#web-tasks/view.ts'
-import { type PnyxCall,type PnyxLookup } from './pnyx-action.ts'
-
 import type { CurrentAction } from '#hydra/calls.ts'
 import { LiveLabel } from '#web-shared/ui/live-label.tsx'
 import { currentLabel } from './action-label.ts'
-import type { Segment } from './pnyx-action.ts'
+import type { PnyxCall,PnyxLookup,Segment } from './pnyx-action.ts'
 
 interface Shown {
   icon?: string
