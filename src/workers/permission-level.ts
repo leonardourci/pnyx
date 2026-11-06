@@ -64,7 +64,7 @@ export function requireOwnerToRaise({
   before?: string
   after?: string
 }): void {
-  if (after === undefined || !hydraActor({ actor }) || !raisesPermission({
+  const hydraRaises = after !== undefined && hydraActor({ actor }) && raisesPermission({
     harness,
     before: workerMode({
       state,
@@ -72,14 +72,14 @@ export function requireOwnerToRaise({
       mode: before,
     }),
     after,
-  })) {
-    return
-  }
-
-  throw new HydraError({
-    message: 'Only the owner can raise a worker’s permission level',
-    code: 'OWNER_ONLY',
   })
+
+  if (hydraRaises) {
+    throw new HydraError({
+      message: 'Only the owner can raise a worker’s permission level',
+      code: 'OWNER_ONLY',
+    })
+  }
 }
 
 export function agentPermissionNeedsOwner({
