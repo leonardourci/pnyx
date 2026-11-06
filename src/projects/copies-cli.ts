@@ -7,7 +7,8 @@ import { runsInBypass } from '#hydra/hydra-session.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { HydraError } from '#store/errors.ts'
 import { loadHydra } from '#app/store.ts'
-import { checkCopy, settleCopy } from './copies.ts'
+import { checkCopy } from './copy-check.ts'
+import { settleCopy } from './copies.ts'
 
 export async function copyCommand({
   hydraId,
