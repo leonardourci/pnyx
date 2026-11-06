@@ -1,3 +1,4 @@
+import { confirmedState } from './connection-storage.ts'
 import { removeStored } from './connection-storage.ts'
 import type { HydraState } from '#app/model.ts'
 import { emptyHydra,reduce } from '#app/reducer.ts'
@@ -142,7 +143,8 @@ export function createHydraConnection() {
       key: keyFor({ id }),
       fallback: emptyHydra(),
     })
-    const confirmed = restored?.v === 1 && restored.cards ? restored : emptyHydra()
+    const usable = restored?.v === 1 && restored.cards
+    const confirmed = usable ? confirmedState({ state: restored }) : emptyHydra()
     const scope: Scope = {
       id,
       identity,
@@ -554,7 +556,7 @@ export function createHydraConnection() {
       scope.ready = false
       scope.subscribed = false
     } else if (message.type === 'snapshot') {
-      scope.resource.confirm({ state: message.state })
+      scope.resource.confirm({ state: confirmedState({ state: message.state }) })
       scope.actions = {}
       scope.spend = {}
       scope.usage = {}
