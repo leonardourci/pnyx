@@ -9,7 +9,7 @@ import { answerPrompt, answerText, checkAnswer, requestId } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideReply } from './reply-rules.ts'
-import { deliver, routeName, waiting } from './reply-delivery.ts'
+import { deliver, routeName } from './reply-delivery.ts'
 import { HydraError } from '#store/errors.ts'
 import type { RepliedEvent } from '#tasks/model.ts'
 import type { ReplyState } from './model.ts'
@@ -17,7 +17,7 @@ import { KEY_LABEL, inputReason, type Key } from './controls.ts'
 import { replyRoute } from './reply-route.ts'
 import { STATUS_KEY, TASK_ID, resolveHome } from '#integrations/firstmate/home.ts'
 import { answerKeys, type KeyStep } from '#integrations/hooks/answer.ts'
-import { HOOK } from '#integrations/hooks/observe.ts'
+import { HOOK, waitsOnHook } from '#integrations/hooks/observe.ts'
 import type { Delivery } from '#integrations/hooks/terminal.ts'
 import type { Connect } from '#integrations/paseo/client.ts'
 import { withWriter } from '#app/writer.ts'
@@ -241,7 +241,7 @@ export async function sendReply({
         })
       }
 
-      if (request.control && route?.kind !== 'firstmate' && waiting({ card })) {
+      if (request.control && route?.kind !== 'firstmate' && waitsOnHook({ attention: card.attention })) {
         throw new HydraError({
           message: `card ${card.id} is waiting on a request; answer it in the session before changing settings`,
           code: 'SESSION_WAITING',

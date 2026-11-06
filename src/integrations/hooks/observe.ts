@@ -67,6 +67,12 @@ export const HOOK = 'hook:'
 const ELICITATION = `${HOOK}elicitation`
 const NOTIFICATION = `${HOOK}notification`
 
+// A permission prompt, question or other request the session's hooks show as open and nobody has answered:
+// keys sent then would answer it instead of reaching the prompt.
+export function waitsOnHook({ attention }: { attention?: Attention[] }): boolean {
+  return attention?.some(a => a.blocking && !a.answered && a.key.startsWith(HOOK)) ?? false
+}
+
 export type Turn = 'working' | 'finished' | 'ended'
 
 export function isHookEnvelope({ value }: { value: Record<string, unknown> }): boolean {

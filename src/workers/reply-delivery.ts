@@ -1,10 +1,9 @@
 import { setTimeout as delay } from 'node:timers/promises'
 import { HydraError } from '#store/errors.ts'
-import type { Card } from '#tasks/model.ts'
 import type { ReplyRoute } from './reply-route.ts'
 import { fmNote, fmSend, noteRequestId } from '#integrations/firstmate/reply.ts'
 import type { KeyStep } from '#integrations/hooks/answer.ts'
-import { HOOK } from '#integrations/hooks/observe.ts'
+import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { pressKey, pressKeys, typeInto, type Delivery } from '#integrations/hooks/terminal.ts'
 import { paseoReply } from '#integrations/paseo/reply.ts'
 import { askHost } from '#app/server-state.ts'
@@ -25,12 +24,6 @@ export function routeName({
 
 // Time for Claude Code to show its confirmation after a model or effort command.
 const CONFIRM_SETTLE_MS = 1500
-
-// A permission prompt, question or other request the session's hooks show as open:
-// keys sent then would answer it instead of reaching the prompt.
-export function waiting({ card }: { card: Card | undefined }): boolean {
-  return card?.attention.some(a => a.blocking && a.key.startsWith(HOOK)) ?? false
-}
 
 export async function deliver({
   hydraId,
@@ -122,7 +115,7 @@ export async function deliver({
     fn: ({ writer }) => {
       drainSpool({ writer })
 
-      return waiting({ card: writer.state.cards[card] })
+      return waitsOnHook({ attention: writer.state.cards[card]?.attention })
     },
   })) {
     return {

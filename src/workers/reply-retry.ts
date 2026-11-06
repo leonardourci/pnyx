@@ -4,7 +4,7 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { ReplyState } from './model.ts'
 import { liveTask } from '#tasks/select.ts'
-import { HOOK } from '#integrations/hooks/observe.ts'
+import { waitsOnHook } from '#integrations/hooks/observe.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { transcriptMessages } from '#oracle/text.ts'
 import { loadHydra } from '#app/store.ts'
@@ -227,7 +227,7 @@ function replyFollowUps({
 
     const replies = card.replies ?? []
     const activity = card.sessionActivity ?? card.activity
-    const waiting = card.attention.some(a => a.blocking && !a.answered && a.key.startsWith(HOOK))
+    const waiting = waitsOnHook({ attention: card.attention })
     const path = threadPath({ card })
 
     // Only an idle session with a transcript can show whether a message arrived.
