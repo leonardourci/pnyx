@@ -41,7 +41,7 @@ import {
   MESSAGE_DECORATIONS,blockPassage,messageBlock,messageBlockKey,samePassage,selectedPassage,
   type CommentPassage,
 } from './message-selection.ts'
-import { type PnyxLookup } from './pnyx-action.ts'
+import type { PnyxLookup } from './pnyx-action.ts'
 import { MessageText } from './streaming.tsx'
 import { Trace,roleLabel } from './trace-row.tsx'
 import { TurnActionsFold,TurnFooter } from './turn-actions.tsx'
@@ -86,7 +86,7 @@ function ChatMessageText({
 }
 
 export function Messages({
-  entries: all,
+  entries,
   lookup,
   comments,
   setComments,
@@ -114,7 +114,7 @@ export function Messages({
   }): void
   catalog?: Catalog | null
   labelColors?: SavedLabelColor[]
-  timings?: Map<string, TurnTiming>
+  timings: Map<string, TurnTiming>
   folds?: Map<string, TurnActions>
   inline?: Map<string, React.ReactNode>
   notify({ text }: { text: string }): void
@@ -146,12 +146,10 @@ export function Messages({
     comment.id,
     index + 1,
   ]))
-  const entries = all
   const lookColumn = ({ id }: { id: string }) => columnLook({
     column: lookup?.column({ ref: id }) ?? { id: id as HydraColumn['id'] },
   })
   const taskTitle = ({ id }: { id?: string }) => id ? taskReferences?.[id]?.title : undefined
-  const turns = timings ?? new Map<string, TurnTiming>()
   const { platform } = useKeyboard()
   const blocks = () => [...(root.current?.querySelectorAll<HTMLElement>('[data-message-block]') ?? [])]
   const blockFor = ({ key }: { key: string | null }) =>
@@ -865,8 +863,8 @@ export function Messages({
               </div>
             )}
             {folds?.has(entry.id) && <TurnActionsFold fold={folds.get(entry.id)!} />}
-            {turns.has(entry.id) && (
-              <TurnFooter turn={turns.get(entry.id)!} taskTitle={taskTitle} />
+            {timings.has(entry.id) && (
+              <TurnFooter turn={timings.get(entry.id)!} taskTitle={taskTitle} />
             )}
           </Fragment>
         ))}

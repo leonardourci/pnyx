@@ -200,6 +200,7 @@ export function Oracle({
   const token = ask ? null : filterToken({ query })
   const text = ask ? '' : queryText({ query })
   const terms = tokens({ text })
+  // A time badge's start holds still until the badges change or the Oracle reopens, so typing keeps one search key.
   const filterNow = useMemo(
     () => Date.now(),
     [
