@@ -50,7 +50,10 @@ export function createHostedHelper({
     state: HydraState
     effective?: EffectiveDispatch
   }) => {
-    const candidate = helperAgent({ state })
+    const candidate = helperAgent({
+      state,
+      dispatch: effective?.dispatch,
+    })
 
     if (candidate?.account === undefined) {
       return candidate
