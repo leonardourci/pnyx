@@ -16,12 +16,16 @@ reviews:
         edge cases, regressions and duplicated existing code. Flag claims the
         diff does not support and changes the description leaves out.
         Skip formatting and other findings already covered by lint.
-        Apply AGENTS.md and only the three configured skill guidelines within
+        Apply AGENTS.md and only the configured skill guidelines within
         their applyTo scopes; ignore other auto-discovered skills.
+        Use the review-code checklist and its Must fix / Recommended tags; skip
+        its process steps (running pnpm verify, ticking PR boxes and agent-only notes).
 knowledge_base:
   code_guidelines:
     filePatterns:
       - files: '.agents/skills/follow-conventions/SKILL.md'
+        applyTo: '**'
+      - files: '.agents/skills/review-code/SKILL.md'
         applyTo: '**'
       - files: '.agents/skills/write-front-end/SKILL.md'
         applyTo: 'web/**'
