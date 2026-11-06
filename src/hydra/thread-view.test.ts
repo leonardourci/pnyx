@@ -212,5 +212,19 @@ test(
       chunks[1]!.role,
       'user',
     )
+    const archived = splitEntry({
+      entry: {
+        id: 'tail',
+        messageId: 'long',
+        part: 1000,
+        role: 'user',
+        kind: 'message',
+        text: 'tail',
+      },
+    })
+    assert.equal(
+      archived[0]!.continued,
+      true,
+    )
   },
 )
