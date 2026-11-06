@@ -7,6 +7,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { helperPermission } from '#routine-helper/route.ts'
 import { isHelper } from '#routine-helper/leases.ts'
 import { findCard } from '#tasks/push-rules.ts'
+import type { Card } from '#tasks/model.ts'
 import { HydraError } from '#store/errors.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { explained } from '#app/cli-support.ts'
@@ -37,6 +38,31 @@ export function createPermissionBridge({
     finish({ result }: { result: PermissionDecision }): void
   }>()
 
+  const expirePermission = ({
+    writer,
+    card,
+    request,
+  }: {
+    writer: Writer
+    card: Card
+    request: PermissionRequest
+  }) => {
+    writer.append({
+      event: permissionEvent({
+        state: writer.state,
+        card,
+        request: {
+          ...request,
+          status: 'expired',
+        },
+        meta: {
+          at: at(),
+          actor: 'pnyx',
+        },
+      }),
+    })
+  }
+
   const expire = ({ id }: { id: string }) => {
     const waiting = pending.get(id)
 
@@ -62,19 +88,10 @@ export function createPermissionBridge({
         const request = card?.permissions?.find(p => p.id === id && p.status === 'pending')
 
         if (card && request) {
-          writer.append({
-            event: permissionEvent({
-              state: writer.state,
-              card,
-              request: {
-                ...request,
-                status: 'expired',
-              },
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-            }),
+          expirePermission({
+            writer,
+            card,
+            request,
           })
         }
       },
@@ -261,19 +278,10 @@ export function createPermissionBridge({
         }
 
         if (!waiting || waiting.card !== card.id || card.agent?.host !== 'pnyx' || sessionId({ agent: card.agent }) !== request.session) {
-          writer.append({
-            event: permissionEvent({
-              state: writer.state,
-              card,
-              request: {
-                ...request,
-                status: 'expired',
-              },
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-            }),
+          expirePermission({
+            writer,
+            card,
+            request,
           })
 
           return { expired: true as const }
@@ -395,19 +403,10 @@ export function createPermissionBridge({
     for (const card of Object.values(writer.state.cards)) {
       for (const request of card.permissions ?? []) {
         if (request.status === 'pending' && !pending.has(request.id) && !live.has(request.session)) {
-          writer.append({
-            event: permissionEvent({
-              state: writer.state,
-              card,
-              request: {
-                ...request,
-                status: 'expired',
-              },
-              meta: {
-                at: at(),
-                actor: 'pnyx',
-              },
-            }),
+          expirePermission({
+            writer,
+            card,
+            request,
           })
         }
       }
