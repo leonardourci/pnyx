@@ -6,7 +6,7 @@ import { workerQueue } from '#workers/queue.ts'
 import { runProcess } from '#app/run-process.ts'
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs'
 import { isAbsolute, join } from 'node:path'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
@@ -23,6 +23,7 @@ import { hydraDir, hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
+import { applyDecision } from '#app/decision.ts'
 
 // A claim older than the git steps it guards was left by a start that crashed.
 const CLAIM_STALE_MS = 2 * COPY_TIMEOUT_MS
@@ -33,18 +34,6 @@ export function isFolder({ path }: { path: string }): boolean {
     return statSync(path).isDirectory()
   } catch {
     return false
-  }
-}
-
-function apply({
-  writer,
-  decision,
-}: {
-  writer: Writer
-  decision: Decision
-}): void {
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
   }
 }
 
@@ -541,7 +530,7 @@ async function releasedCopyLanded({
         return
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
@@ -894,7 +883,7 @@ export async function taskFolder({
               after: copy,
             },
           }
-          apply({
+          applyDecision({
             writer,
             decision: hydraEvent({
               state: writer.state,
@@ -937,7 +926,7 @@ function pushFolder({
   meta: Meta
 }): void {
   if ((card.folder ?? null) !== folder) {
-    apply({
+    applyDecision({
       writer,
       decision: decidePush({
         state: writer.state,
@@ -1255,7 +1244,7 @@ export async function settleCopy({
         }
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
@@ -1288,7 +1277,7 @@ export async function settleCopy({
         const text = `The copy of task ${now.id} "${now.title}" at ${copy.path} was kept: ${after.reason}. `
           + `Prove its current work landed, then run \`pnyx-axi task copy ${now.id} remove --hydra ${hydraId}\`. `
           + `Discarding work that never landed needs the owner: \`pnyx-axi task copy ${now.id} remove --discard --hydra ${hydraId}\`.`
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,

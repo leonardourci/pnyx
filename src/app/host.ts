@@ -55,7 +55,7 @@ import { freeTask } from '#workers/start.ts'
 import { clip, hydraDigest } from '#hydra/digest.ts'
 import { ownerMemory } from '#memory/owner-memory.ts'
 import { skillSource, prepareHydraFolder } from '#setup/skills.ts'
-import type { Decision, HydraState } from './model.ts'
+import type { HydraState } from './model.ts'
 import { decidePush } from '#tasks/push.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { decideOutcome } from '#tasks/delivery/outcome.ts'
@@ -86,6 +86,7 @@ import { deliveringMessage } from '#routine-helper/leases.ts'
 import { createCompactionControl } from '#workers/compaction/control.ts'
 import { createSteeringDelivery } from '#workers/steering-delivery.ts'
 import { inbox } from '#hydra/update-queue.ts'
+import { applyDecision } from './decision.ts'
 
 export type { QueryFn } from '#workers/claude.ts'
 
@@ -223,18 +224,6 @@ export function createHost({
     changed()
 
     return result
-  }
-
-  const apply = ({
-    writer,
-    decision,
-  }: {
-    writer: Writer
-    decision: Decision
-  }) => {
-    if ('event' in decision) {
-      writer.append({ event: decision.event })
-    }
   }
 
   const sessionKey = ({ agent }: { agent: AgentRef }) => `${harnessOf({ provider: agent.provider })}:${agent.sessionId}`
@@ -433,7 +422,7 @@ export function createHost({
         }
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: operationEvent({
           state: writer.state,
@@ -484,7 +473,7 @@ export function createHost({
     }
 
     note({
-      fn: ({ writer }) => apply({
+      fn: ({ writer }) => applyDecision({
         writer,
         decision: operationEvent({
           state: writer.state,
@@ -612,7 +601,7 @@ export function createHost({
     const session = writer.state.sessions?.[sessionId({ agent })]
     const card = session && writer.state.cards[session.taskId ?? session.originCardId]
 
-    apply({
+    applyDecision({
       writer,
       decision: decidePush({
         state: writer.state,
@@ -781,7 +770,7 @@ export function createHost({
         },
         ...task.attention.filter(a => a.key !== INTERRUPTED),
       ]
-      apply({
+      applyDecision({
         writer,
         decision: decidePush({
           state: writer.state,
@@ -1713,7 +1702,7 @@ export function createHost({
                 const batches = [...helperBatchesPresented]
 
                 if (batches.length || outcomesPresented > (writer.state.helper?.delivered ?? 0)) {
-                  apply({
+                  applyDecision({
                     writer,
                     decision: hydraEvent({
                       state: writer.state,
@@ -1853,7 +1842,7 @@ export function createHost({
           const done = writer.state.cards[card.id]?.status?.state === 'done'
 
           if (failure && card.id !== HYDRA_CARD && attached && !done) {
-            apply({
+            applyDecision({
               writer,
               decision: declareTask({
                 state: writer.state,
@@ -1963,7 +1952,7 @@ export function createHost({
         data.answers = reply.answers
       }
 
-      apply({
+      applyDecision({
         writer,
         decision: decideReply({
           state: writer.state,
@@ -2110,7 +2099,7 @@ export function createHost({
               input,
               meta,
             })
-            apply({
+            applyDecision({
               writer,
               decision,
             })
@@ -2300,7 +2289,7 @@ export function createHost({
           at: new Date(now).toISOString(),
           actor: 'pnyx',
         }
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -2315,7 +2304,7 @@ export function createHost({
             },
           }),
         })
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -2764,7 +2753,7 @@ export function createHost({
 
   let agentChangeAbort: AbortController | undefined
   const changeAgent = ({ change }: { change: HydraAgentChange }) => write({
-    fn: ({ writer }) => apply({
+    fn: ({ writer }) => applyDecision({
       writer,
       decision: hydraEvent({
         state: writer.state,
@@ -2890,7 +2879,7 @@ export function createHost({
 
         if (used && kind && ownerActor({ actor })) {
           write({
-            fn: ({ writer }) => apply({
+            fn: ({ writer }) => applyDecision({
               writer,
               decision: hydraEvent({
                 state: writer.state,
@@ -2927,7 +2916,7 @@ export function createHost({
                 actor,
               })
             } else {
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3076,7 +3065,7 @@ export function createHost({
                 })
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3088,7 +3077,7 @@ export function createHost({
                   meta,
                 }),
               })
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3138,12 +3127,12 @@ export function createHost({
                 },
               })
 
-              apply({
+              applyDecision({
                 writer,
                 decision: delivery,
               })
 
-              apply({
+              applyDecision({
                 writer,
                 decision: hydraEvent({
                   state: writer.state,
@@ -3292,7 +3281,7 @@ export function createHost({
                 })
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -3306,7 +3295,7 @@ export function createHost({
               })
 
               if (retried && !down) {
-                apply({
+                applyDecision({
                   writer,
                   decision: hydraEvent({
                     state: writer.state,
@@ -3333,7 +3322,7 @@ export function createHost({
 
               // Retries fail quietly; the owner hears of each failure their own message meets.
               if (!down || ownerActor({ actor })) {
-                apply({
+                applyDecision({
                   writer,
                   decision: hydraEvent({
                     state: writer.state,
@@ -3533,7 +3522,7 @@ export function createHost({
               const inscribeId = `operation:${operationId}:inscribe`
               const inscriptionSince = inscribeSince({ state: loadHydra({ hydraId }).state })
               note({
-                fn: ({ writer }) => apply({
+                fn: ({ writer }) => applyDecision({
                   writer,
                   decision: operationEvent({
                     state: writer.state,
@@ -3683,7 +3672,7 @@ export function createHost({
 
             if (inscription?.state === 'started') {
               note({
-                fn: ({ writer }) => apply({
+                fn: ({ writer }) => applyDecision({
                   writer,
                   decision: operationEvent({
                     state: writer.state,
@@ -4052,7 +4041,7 @@ export function createHost({
             }
 
             if (replacement) {
-              apply({
+              applyDecision({
                 writer,
                 decision: decideSession({
                   state: writer.state,
@@ -4074,7 +4063,7 @@ export function createHost({
             }
 
             if (Object.keys(input).length) {
-              apply({
+              applyDecision({
                 writer,
                 decision: decidePush({
                   state: writer.state,
@@ -4099,7 +4088,7 @@ export function createHost({
                 loginFolder: dispatch.folder,
               } : {}),
             }
-            apply({
+            applyDecision({
               writer,
               decision: decidePush({
                 state: writer.state,
@@ -4121,7 +4110,7 @@ export function createHost({
                 },
               }),
             })
-            apply({
+            applyDecision({
               writer,
               decision: decideSession({
                 state: writer.state,
@@ -4136,7 +4125,7 @@ export function createHost({
             })
 
             if (dispatch) {
-              apply({
+              applyDecision({
                 writer,
                 decision: hydraEvent({
                   state: writer.state,
@@ -4260,7 +4249,7 @@ export function createHost({
           actor,
           ...(reason ? { reason } : {}),
         }
-        apply({
+        applyDecision({
           writer,
           decision: decidePush({
             state: writer.state,
@@ -4294,7 +4283,7 @@ export function createHost({
         })
 
         if (card.outcome?.source === 'hooks') {
-          apply({
+          applyDecision({
             writer,
             decision: decideOutcome({
               state: writer.state,
@@ -4310,7 +4299,7 @@ export function createHost({
         }
 
         if (card.status?.state !== 'done') {
-          apply({
+          applyDecision({
             writer,
             decision: declareTask({
               state: writer.state,
@@ -4557,7 +4546,7 @@ export function createHost({
 
           // Wakes retain this agent, so permission controls must update its saved mode too.
           if (card.id === HYDRA_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
-            apply({
+            applyDecision({
               writer,
               decision: hydraEvent({
                 state: writer.state,
@@ -4780,7 +4769,7 @@ export function createHost({
         fn: ({ writer }) => {
           for (const pass of writer.state.historyMilestones ?? []) {
             if (pass.state === 'started' && (pass.kind === 'inscribe' || pass.blocking === false)) {
-              apply({
+              applyDecision({
                 writer,
                 decision: operationEvent({
                   state: writer.state,
@@ -5019,7 +5008,7 @@ export function createHost({
                 continue
               }
 
-              apply({
+              applyDecision({
                 writer,
                 decision: decideReply({
                   state: writer.state,
