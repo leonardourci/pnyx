@@ -1688,7 +1688,9 @@ export function codexThreadTitle({
     : []
 }
 
+// Codex's code mode runs every tool from one script passed to this tool.
 const CODE_MODE_TOOL = 'exec'
+// A script calls tools.exec_command({cmd:"git status"}) and friends; a patch names its files on "*** Update File:" lines.
 const SCRIPT_CALL = /tools\.(\w+)\(/g
 const SCRIPT_COMMAND = /["']?cmd["']?\s*:\s*("(?:[^"\\]|\\.)*")/
 const SCRIPT_PATH = /["']?path["']?\s*:\s*("(?:[^"\\]|\\.)*")/
@@ -1802,6 +1804,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
     settings: codexSettings({ record: entry }),
   }
 
+  // Codex's local compaction keeps its summary here; a remote one is encrypted and leaves it empty.
   if (entry.type === 'compacted') {
     const text = trimmedString({ value: payload.message })
     const stamp = trimmedString({ value: entry.timestamp })
@@ -1833,6 +1836,7 @@ export const readCodexTranscript: TranscriptReader = ({ record }) => {
         const text = blockText({ value: raw })
         const before = object({ value: blocks[index - 1] })
         const after = object({ value: blocks[index + 1] })
+        // The text blocks Codex wraps around each attached image are not anyone's words.
         const opensImage = after.type === 'input_image' && /^<image\b[^>]*>$/.test(text.trim())
         const closesImage = before.type === 'input_image' && text.trim() === '</image>'
 

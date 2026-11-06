@@ -873,6 +873,7 @@ function claudeSettings(
 
   return foundSettings({
     settings: {
+      // A synthetic turn, such as an error, names no real model.
       model: model?.startsWith('<') ? undefined : model,
       effort: transcriptString({ value: record.effort }),
       fast: onOff({ fast: speed === undefined ? undefined : speed === 'fast' }),
@@ -1110,6 +1111,7 @@ export const readClaudeTranscript: TranscriptReader = ({
       }))
     }
 
+    // A subagent's own records stay out: its parent's call already names what it is doing.
     if (entry.isSidechain === true) {
       continue
     }
