@@ -16,12 +16,15 @@ export function mergeThreadPages({
   }
 
   const saved = before.entries.filter(entry => olderPage || !entry.id.startsWith('live:'))
-  const entries = new Map(saved.map(entry => [
+  // An older page goes first, so entries sharing a time, such as the parts of one long message, keep their order.
+  const first = olderPage ? latest.entries : saved
+  const then = olderPage ? saved : latest.entries
+  const entries = new Map(first.map(entry => [
     entry.id,
     entry,
   ]))
 
-  for (const entry of latest.entries) {
+  for (const entry of then) {
     entries.set(
       entry.id,
       entry,
