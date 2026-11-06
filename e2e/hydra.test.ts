@@ -1676,3 +1676,84 @@ test(
     )
   },
 )
+
+test(
+  'the Hydra thread keeps what it loaded when an older page arrives, and pushes a newer version after a change',
+  async t => {
+    const s = await pnyx.scenario()
+    // Long enough to split into more parts than one page holds.
+    const plan = 'Every step of the release plan. '.repeat(2100).trimEnd()
+    pnyx.claude.plan({
+      text: 'Write the whole plan',
+      reply: plan,
+    })
+    await send({
+      s,
+      text: 'Write the whole plan',
+      id: 'plan',
+    })
+    await finished({
+      s,
+      turns: 1,
+    })
+    // A restart drops the streamed copy of the reply, so every page reads the saved transcript.
+    await pnyx.restart()
+    const page = await openPage({
+      port: pnyx.port(),
+      hydraId: s.hydraId,
+    })
+    t.after(() => page.close())
+
+    const latest = (await page.command({
+      name: 'thread',
+      args: [HYDRA_CARD],
+    })).thread as ThreadPage
+    const older = (await page.command({
+      name: 'thread',
+      args: [
+        HYDRA_CARD,
+        latest.older!,
+      ],
+    })).thread as ThreadPage
+    const conversation = ({ page }: { page: ThreadPage }) => page.conversation!.entries
+      .map(entry => ({
+        role: entry.role,
+        text: entry.text,
+      }))
+    assert.deepEqual(
+      conversation({ page: older }),
+      [
+        {
+          role: 'user',
+          text: 'Write the whole plan',
+        },
+        {
+          role: 'assistant',
+          text: plan,
+        },
+      ],
+    )
+
+    await s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        'Ship the plan',
+      ],
+    })
+    const pushed = await until({
+      what: 'a newer Hydra thread after the change',
+      check: () => page.threads.find(thread => thread.conversation!.version!
+        > older.conversation!.version!),
+    })
+    assert.equal(
+      pushed.conversation!.stream,
+      older.conversation!.stream,
+    )
+    assert.deepEqual(
+      conversation({ page: pushed }),
+      conversation({ page: older }),
+    )
+  },
+)
