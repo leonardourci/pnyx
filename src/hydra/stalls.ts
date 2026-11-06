@@ -17,6 +17,7 @@ import { wakeHandled } from '#routine-helper/state.ts'
 import type { Live } from '#app/host-types.ts'
 import type { createRoutineHelper } from '#routine-helper/runner.ts'
 import type { WakeReason } from './wake-reasons.ts'
+import { pendingPermissions } from '#workers/permission-rules.ts'
 
 // A stall, ended wait or unconfirmed reply the stall check found, as one reason line.
 export type StallItem = WakeReason & {
@@ -136,7 +137,7 @@ export function createStallChecks({
     card: Card & { agent: AgentRef }
     now: number
   }): StallItem[] => {
-    const requests = (card.permissions ?? []).filter(p => p.status === 'pending')
+    const requests = pendingPermissions({ card })
 
     if (requests.length) {
       return requests.flatMap(p => {

@@ -147,6 +147,10 @@ export function permissionAnswer({
   }
 }
 
+export function pendingPermissions({ card }: { card: Card }): PermissionRequest[] {
+  return (card.permissions ?? []).filter(p => p.status === 'pending')
+}
+
 export function permissionAttention({ card }: { card: Card }): void {
   card.attention = [
     ...card.attention.filter(a => !a.key.startsWith(PERMISSION_PREFIX)),

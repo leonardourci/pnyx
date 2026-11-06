@@ -12,6 +12,7 @@ import { HYDRA_CARD } from './identity.ts'
 import { liveTask, rankOf } from '#tasks/select.ts'
 import { describeColumnRule } from '#tasks/columns.ts'
 import { helperLeases } from '#routine-helper/state.ts'
+import { pendingPermissions } from '#workers/permission-rules.ts'
 
 export const TEMPLATE_NUDGE = 'Heads dispatch runs on the shipped template rules until `pnyx-axi rule init` saves them in the Pnyx home to edit'
 
@@ -64,7 +65,7 @@ function taskLine({
       text: a.text,
       size: 100,
     })}"` : ''}`),
-    ...(card.permissions ?? []).filter(p => p.status === 'pending').map(p => `permission ${p.tool}`),
+    ...pendingPermissions({ card }).map(p => `permission ${p.tool}`),
     ...openAsks({ card }).map(ask => `question ${ask.id} to ${ask.audience === 'owner' ? 'the owner' : 'you'} "${clip({
       text: askWording({ ask }).question,
       size: 100,

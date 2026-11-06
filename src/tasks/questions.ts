@@ -6,7 +6,7 @@ import type { AnswerMessage, Ask, AskAudience, Card } from './model.ts'
 import { cardLanding, type Link } from '#tasks/delivery/model.ts'
 import type { Question, PermissionRequest, Attention, Reply } from '#workers/model.ts'
 import { requestId } from '#workers/answers.ts'
-import { PERMISSION_PREFIX } from '#workers/permission-rules.ts'
+import { PERMISSION_PREFIX, pendingPermissions } from '#workers/permission-rules.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
@@ -1097,7 +1097,7 @@ const asked = ({ questions }: { questions?: { question: string }[] }) => questio
 
 // Everything on the card waiting on the owner; the status word and the closed card's question box both read it.
 export function ownerQuestions({ card }: { card: Card }): OwnerQuestion[] {
-  const permissions = (card.permissions ?? []).filter(request => request.status === 'pending')
+  const permissions = pendingPermissions({ card })
     .map((permission): OwnerQuestion => {
       const own = card.attention.find(prompt => prompt.key === `${PERMISSION_PREFIX}${permission.id}`)
 

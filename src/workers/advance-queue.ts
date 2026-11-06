@@ -26,6 +26,7 @@ import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter, type Writer } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
+import { pendingPermissions } from './permission-rules.ts'
 
 const GIT_TIMEOUT_MS = 30_000
 const exec = promisify(execFile)
@@ -556,7 +557,7 @@ export async function advanceQueues({
     const current = state.cards[session!.taskId!]!
 
     if (session!.activity === 'working' || session!.attention.some(a => a.blocking && !a.answered)
-      || current.permissions?.some(p => p.status === 'pending')) {
+      || pendingPermissions({ card: current }).length > 0) {
       continue
     }
 
