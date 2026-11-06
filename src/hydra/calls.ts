@@ -1,3 +1,6 @@
+import { commandOf } from '#workers/tool-input.ts'
+
+export { commandOf, SHELL_WRAPPER } from '#workers/tool-input.ts'
 import type { NativeWork } from '#workers/provider.ts'
 import { redact } from '#oracle/text.ts'
 
@@ -42,7 +45,6 @@ export interface RecordCalls {
 
 export const LINE_MAX = 120
 const COMMAND_MAX = 400
-export const SHELL_WRAPPER = /(^|\/)(ba|z)?sh$/
 const CALL_FIELDS = [
   'command',
   'file',
@@ -98,28 +100,6 @@ const scrubbed = ({
     text: redact({ text: value.trim() }),
     max,
   })
-}
-
-// Claude's Bash input is {command}; Codex's shell calls carry {cmd} or an argv list.
-export function commandOf({ input }: { input: Record<string, unknown> }): string | undefined {
-  const value = input.command ?? input.cmd
-
-  if (typeof value === 'string') {
-    return value
-  }
-
-  if (!Array.isArray(value) || !value.every(part => typeof part === 'string')) {
-    return undefined
-  }
-
-  const [
-    program,
-    flag,
-    script,
-  ] = value
-  const wrapsScript = value.length === 3 && SHELL_WRAPPER.test(program ?? '') && !!flag?.startsWith('-')
-
-  return wrapsScript ? script : value.join(' ')
 }
 
 const descriptionOf = ({ input }: { input: Record<string, unknown> }) => {
