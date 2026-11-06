@@ -13,7 +13,6 @@ import { findCard } from '#tasks/push-rules.ts'
 import { decidePush } from '#tasks/push.ts'
 import { decideSession } from '#workers/sessions.ts'
 import { declaredState } from '#tasks/declarations.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HydraError } from '#store/errors.ts'
 import { reminderTime } from '#tasks/time.ts'
@@ -24,7 +23,7 @@ import { startTask } from '#workers/start.ts'
 import { taskFields, attentionLabel, cardRow, TASK_FIELDS, taskHistory, type TaskField } from '#tasks/cli.ts'
 import { startOverride, taskSessions, sessionRef, afterAttach } from '#workers/cli.ts'
 import { copyCommand } from '#projects/copies-cli.ts'
-import { liveTask } from '#tasks/select.ts'
+import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { interactive, findSession } from '#workers/session-attachments.ts'
 import { findProject } from '#projects/read.ts'
 import { decideQueue } from '#workers/queue-decisions.ts'
@@ -228,7 +227,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'Choose a task for the reminder',
             code: 'VALIDATION_ERROR',
@@ -743,7 +742,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',
@@ -795,7 +794,7 @@ export async function taskCommand({ args }: { args: string[] }): Promise<Output>
           ref,
         })
 
-        if (task.automaticTask || task.id === HYDRA_CARD) {
+        if (isManagedTask({ card: task })) {
           throw new HydraError({
             message: 'choose a task',
             code: 'VALIDATION_ERROR',

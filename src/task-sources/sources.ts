@@ -3,7 +3,6 @@ import { accessSync, constants, readFileSync, realpathSync, statSync } from 'nod
 import { isAbsolute } from 'node:path'
 import type { Meta } from '#app/command-meta.ts'
 import { findCard } from '#tasks/push-rules.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { ownerActor } from '#app/actors.ts'
 import { EVENT_VERSION } from '#store/events.ts'
 import { HydraError } from '#store/errors.ts'
@@ -14,6 +13,7 @@ import { requireSteeringWorker } from '#workers/inbox.ts'
 import { sameClaim, steeringClaim } from '#workers/steering.ts'
 import type { ExternalSource, ExternalSourceChange, SourceCommand, SourceOutcome, SourceResult } from './model.ts'
 import { lavishCanRearm, lavishSession } from './lavish-output.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 export const SOURCE_TIMEOUT_MS = 3_600_000
 export const SOURCE_MAX_TIMEOUT_MS = 86_400_000
@@ -89,7 +89,7 @@ export function sourceTask({
     ref,
   })
 
-  if (card.id === HYDRA_CARD || card.automaticTask || card.mirror
+  if (isManagedTask({ card }) || card.mirror
     || card.sourceRefs.some(source => source.adapter === 'firstmate')) {
     invalidSource({ message: 'Choose a native task for external sources' })
   }

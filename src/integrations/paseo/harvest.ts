@@ -8,6 +8,7 @@ import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
 import { withWriter } from '#app/writer.ts'
 import { openPaseo, type Connect } from './client.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 const PAGE_SIZE = 100
 const HISTORY_TIMEOUT_MS = 30_000
@@ -171,7 +172,8 @@ export async function harvestPaseoChats({
     const taskId = session.taskId ?? last?.data.after
     const task = taskId ? state.cards[taskId] : undefined
 
-    return task && task.id !== '$hydra' && !task.automaticTask && session.id !== state.config?.hydra.session && url && id
+    return task && !isManagedTask({ card: task }) && session.id !== state.config?.hydra.session
+      && url && id
       ? [
         {
           task: task.id,

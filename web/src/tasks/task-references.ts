@@ -2,11 +2,11 @@ import type { CurrentAction } from '#hydra/calls.ts'
 import { useEffect, useMemo, useState } from 'react'
 import type { HydraState } from '#app/model.ts'
 import { hydraConfig } from '#hydra/config.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { cardState } from './view.ts'
 import { statusLabel } from '#tasks/card-status.ts'
 import type { DoneAfterHours } from '#settings/model.ts'
 import { useSharedSettings } from '#web-settings/shared-settings.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 export function taskReferences({
   state,
@@ -24,7 +24,7 @@ export function taskReferences({
   const config = hydraConfig({ state })
 
   return Object.fromEntries(Object.values(state.cards)
-    .filter(c => c.id !== HYDRA_CARD && !c.automaticTask)
+    .filter(c => !isManagedTask({ card: c }))
     .map(c => {
       const column = config.columns.find(column => column.id === c.column)
       const status = cardState({

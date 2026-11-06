@@ -2,7 +2,6 @@ import { setTimeout as delay } from 'node:timers/promises'
 import { compactCommand } from '#workers/compaction/state.ts'
 import { readInput } from '#app/request-context.ts'
 import { resolveSkillReferences } from '#hydra/skill-invocation.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { notificationReceipt } from './inbox-notice.ts'
 import { steeringHeld } from './steering.ts'
 import { notifySteering } from './inbox-delivery.ts'
@@ -32,6 +31,7 @@ import { withWriter } from '#app/writer.ts'
 import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { COMMON, guard, meta, parse, required, type Options, type Output } from '#app/cli-support.ts'
 import { askAnswer } from '#tasks/questions.ts'
+import { isManagedTask } from '#tasks/select.ts'
 
 export interface ReplyRequest {
   card: string
@@ -635,7 +635,7 @@ export async function sendReply({
         context,
       ].filter(Boolean).join('\n\n')
       const nativeCompact = route?.kind === 'pnyx' && compactCommand({ text: payload })
-      const steering = !nativeCompact && route?.kind !== 'firstmate' && card.id !== HYDRA_CARD && !card.automaticTask
+      const steering = !nativeCompact && route?.kind !== 'firstmate' && !isManagedTask({ card })
         && !control && !answers && !resolveKey
         ? reply : undefined
 

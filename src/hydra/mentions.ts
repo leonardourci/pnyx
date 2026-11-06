@@ -2,7 +2,7 @@ import type { HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import { matchingSuggestions, suggestionMatch, type SuggestionMatch } from './suggestion-matches.ts'
 import { HYDRA_CARD } from './identity.ts'
-import { liveTask } from '#tasks/select.ts'
+import { liveTask, isManagedTask } from '#tasks/select.ts'
 import { paragraphs } from '#oracle/text.ts'
 
 export interface TaskMention {
@@ -234,7 +234,7 @@ export function mentionContext({
         mention.id,
       ) ? state.cards[mention.id] : undefined
 
-      if (!card || card.automaticTask || card.id === HYDRA_CARD) {
+      if (!card || isManagedTask({ card })) {
         return `Task ${mention.id}: ${mention.title}\nUnavailable in this Hydra.`
       }
 
