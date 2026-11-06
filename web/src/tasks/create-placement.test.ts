@@ -1,42 +1,36 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { emptyHydra, reduce } from '#app/reducer.ts'
-import { hydraConfig } from '#hydra/config.ts'
-import { createBeforeRank } from '#tasks/create-placement.ts'
+import type { HydraEvent } from '#app/model.ts'
+import { emptyHydra, reduce, replay } from '#app/reducer.ts'
+import { planTaskChange } from '#tasks/plans.ts'
+import { columnCards } from '#tasks/select.ts'
 import { optimisticState } from './optimistic.ts'
 
+const created = ({ key }: { key: string }): HydraEvent => ({
+  v: 1,
+  seq: key === 'first' ? 1 : 2,
+  id: key,
+  at: '2026-11-06T00:00:00Z',
+  actor: 'web',
+  cardId: key,
+  type: 'task.created',
+  data: {
+    key,
+    title: key,
+    column: 'queued',
+  },
+})
+
 test(
-  'a create preview uses the server position for its before target',
+  'a create preview shows the task where the server will place it before its target',
   () => {
-    let state = emptyHydra()
-    const column = hydraConfig({ state }).columns.find(column => column.role === 'queued')!.id
-
-    for (const [
-      index,
-      id,
-    ] of [
-        'first',
-        'last',
-      ].entries()) {
-      state = reduce({
-        state,
-        event: {
-          v: 1,
-          seq: index + 1,
-          id,
-          at: '2026-11-06T00:00:00Z',
-          actor: 'web',
-          cardId: id,
-          type: 'task.created',
-          data: {
-            key: id,
-            title: id,
-            column,
-          },
-        },
-      })
-    }
-
+    const state = replay({
+      state: emptyHydra(),
+      events: [
+        created({ key: 'first' }),
+        created({ key: 'last' }),
+      ],
+    })
     const preview = optimisticState({
       state,
       edit: {
@@ -46,7 +40,7 @@ test(
           '--title',
           'Middle',
           '--column',
-          column,
+          'queued',
           '--before',
           'last',
           '--event-id',
@@ -54,13 +48,55 @@ test(
         ],
       },
     })
+    const decision = planTaskChange({
+      state,
+      hydraId: 'default',
+      cardId: 'task:middle',
+      operation: {
+        op: 'task.create',
+        key: 'task:middle',
+        title: 'Middle',
+        column: 'queued',
+        before: 'last',
+      },
+      meta: {
+        at: '2026-11-06T00:00:01Z',
+        actor: 'web',
+        id: 'middle',
+      },
+      landing: new Map(),
+    })
+    assert.ok('event' in decision)
+    const confirmed = reduce({
+      state,
+      event: decision.event,
+    })
+
+    assert.deepEqual(
+      columnCards({
+        state: preview,
+        column: 'queued',
+      }).map(card => card.id),
+      [
+        'first',
+        'task:middle',
+        'last',
+      ],
+    )
+    assert.deepEqual(
+      columnCards({
+        state: confirmed,
+        column: 'queued',
+      }).map(card => card.id),
+      [
+        'first',
+        'task:middle',
+        'last',
+      ],
+    )
     assert.equal(
       preview.cards['task:middle']!.rank,
-      createBeforeRank({
-        state,
-        column,
-        before: 'last',
-      }),
+      confirmed.cards['task:middle']!.rank,
     )
   },
 )
