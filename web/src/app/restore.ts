@@ -65,7 +65,9 @@ export function persistView({
       key,
       JSON.stringify(restored),
     )
-  } catch { /* The in-memory view preserves drafts when storage is blocked. */ }
+  } catch {
+    // Storage full or blocked: the open tab keeps its in-memory view; a reload starts fresh.
+  }
 }
 
 export function usePersistView({

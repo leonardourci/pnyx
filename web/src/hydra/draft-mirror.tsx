@@ -9,6 +9,7 @@ import { cardChip,CHIP_SPACE,draftView,isPendingImage,type PlacedChip } from './
 import { ReferenceBadge } from './reference-badge.tsx'
 import { SkillBadge } from './skill-badge.tsx'
 
+// Display text from `from` to `to`, with the request paths in it marked.
 export function markedPaths({
   display,
   from,

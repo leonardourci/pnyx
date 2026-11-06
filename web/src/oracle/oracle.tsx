@@ -41,6 +41,7 @@ const contextOf = ({ target }: { target: HTMLElement }): ActionContext => ({
   scope: keyScopeOf({ target }),
 })
 
+// A press outside the palette's box lands on its backdrop, which closes it.
 const onBackdrop = ({ event }: { event: MouseEvent<HTMLDialogElement> }) => {
   const box = event.currentTarget.getBoundingClientRect()
   const across = event.clientX >= box.left && event.clientX <= box.right

@@ -11,6 +11,7 @@ import { harnessOf } from '#workers/providers.ts'
 import { createContext,useCallback,useContext,useMemo,useRef,useState,type ReactNode } from 'react'
 import { useSkillsCatalog } from './skills-catalog.ts'
 
+// What every composer field offers to mention, open and invoke; the app provides it once.
 export interface ComposerSources {
   cards: Card[]
   projects: HydraProject[]
@@ -18,8 +19,10 @@ export interface ComposerSources {
   taskReferences: Record<string, TaskReferenceData>
   openTask({ id }: { id: string }): void
   catalog: Catalog | null
+  // A field asks for the skills catalog while its / menu is open.
   catalogOpen({ open }: { open: boolean }): void
   labelColors?: SavedLabelColor[]
+  // Projects of the owner's other Hydras, offered under Folders in the @ picker.
   otherProjects: {
     name: string
     path: string
