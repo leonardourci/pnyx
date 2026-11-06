@@ -5,7 +5,7 @@ import { execFile } from 'node:child_process'
 import { runProcess } from '#app/run-process.ts'
 import { statSync, realpathSync } from 'node:fs'
 import { promisify } from 'node:util'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import { decideLink } from '#tasks/delivery/links.ts'
 import { decideSession } from './sessions.ts'
 import { roleColumn } from '#tasks/column-rules.ts'
@@ -24,9 +24,10 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { hydraIds } from '#app/home-migration.ts'
 import { loadHydra } from '#app/store.ts'
 import { readEvents } from '#app/event-log.ts'
-import { withWriter, type Writer } from '#app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { QUEUE_CONTEXT_BYTES, QUEUE_MAX_TASKS, QUEUE_STALL_MS, workerQueue } from './queue.ts'
 import { pendingPermissions } from './permission-rules.ts'
+import { applyDecision } from '#app/decision.ts'
 
 const GIT_TIMEOUT_MS = 30_000
 const exec = promisify(execFile)
@@ -34,18 +35,6 @@ const meta = () => ({
   actor: 'pnyx',
   at: new Date().toISOString(),
 })
-
-function append({
-  writer,
-  decision,
-}: {
-  writer: Writer
-  decision: Decision
-}) {
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
-}
 
 async function git({
   cwd,
@@ -113,7 +102,7 @@ function releaseQueue({
         state: writer.state,
         session,
       })) {
-        append({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -422,7 +411,7 @@ async function refreshLinks({
               })
             }
 
-            append({
+            applyDecision({
               writer,
               decision: decideLink({
                 state: writer.state,

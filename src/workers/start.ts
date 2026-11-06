@@ -20,7 +20,7 @@ import { randomUUID } from 'node:crypto'
 import { spawnSync } from 'node:child_process'
 import { appendFileSync, existsSync, mkdirSync, readFileSync } from 'node:fs'
 import { basename, dirname, isAbsolute, join, relative } from 'node:path'
-import type { Decision, HydraState } from '#app/model.ts'
+import type { HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { decideNote } from '#tasks/notes.ts'
 import { decidePush } from '#tasks/push.ts'
@@ -47,12 +47,13 @@ import { drainSpool } from '#integrations/hooks/ingest.ts'
 import { canonical } from '#store/paths.ts'
 import { askHost } from '#app/server-state.ts'
 import { loadHydra } from '#app/store.ts'
-import { withWriter, type Writer } from '#app/writer.ts'
+import { withWriter } from '#app/writer.ts'
 import { pnyxHome } from '#store/storage.ts'
 import type { Output } from '#app/cli-support.ts'
 import { requestCwd } from '#app/request-context.ts'
 import { raisesPermission, workerMode } from './permission-level.ts'
 import { hydraActor } from '#app/request-context.ts'
+import { applyDecision } from '#app/decision.ts'
 
 export const VIAS = [
   'pnyx',
@@ -93,18 +94,6 @@ function chooseVia({
   }
 
   return chosen as Via
-}
-
-function apply({
-  writer,
-  decision,
-}: {
-  writer: Writer
-  decision: Decision
-}): void {
-  if ('event' in decision) {
-    writer.append({ event: decision.event })
-  }
 }
 
 export function freeTask({
@@ -694,7 +683,7 @@ async function askFirstmate({
         `Use the ${ORCHESTRATE_SKILL} skill: read \`pnyx-axi task show ${card.id} --hydra ${hydraId}\`, dispatch the worker, and keep the task's status current.`,
       ].join('\n')
       const id = meta.id ?? randomUUID()
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
@@ -814,7 +803,7 @@ async function startCommand({
       const duplicate = `${id}:started` in writer.state.eventIds
 
       if (!duplicate && role === 'hydra' && !writer.state.configured) {
-        apply({
+        applyDecision({
           writer,
           decision: hydraEvent({
             state: writer.state,
@@ -872,7 +861,7 @@ async function startCommand({
   withWriter({
     hydraId,
     fn: ({ writer }) => {
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
@@ -894,7 +883,7 @@ async function startCommand({
           },
         }),
       })
-      apply({
+      applyDecision({
         writer,
         decision: decideNote({
           state: writer.state,
@@ -1125,7 +1114,7 @@ export async function startHydra({
     hydraId,
     fn: ({ writer }) => {
       drainSpool({ writer })
-      apply({
+      applyDecision({
         writer,
         decision: decidePush({
           state: writer.state,
@@ -1158,7 +1147,7 @@ export async function startHydra({
         session: sessionId({ agent: ref }),
       }
       delete hydra.home
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
@@ -1280,7 +1269,7 @@ export async function setupHydra({
           home: real,
         },
       }
-      apply({
+      applyDecision({
         writer,
         decision: hydraEvent({
           state: writer.state,
