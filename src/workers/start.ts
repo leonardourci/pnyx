@@ -55,14 +55,14 @@ import { raisesPermission, workerMode } from './permission-level.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { applyDecision } from '#app/decision.ts'
 
-export const VIAS = [
+const VIAS = [
   'pnyx',
   'paseo',
   'firstmate',
   'command',
 ] as const
 type Via = (typeof VIAS)[number]
-export const HYDRA_SKILL = join(
+const HYDRA_SKILL = join(
   import.meta.dirname,
   '..',
   '..',
@@ -70,7 +70,7 @@ export const HYDRA_SKILL = join(
   ORCHESTRATE_SKILL,
   'SKILL.md',
 )
-export const HOME_SKILL = join(
+const HOME_SKILL = join(
   '.agents',
   'skills',
   ORCHESTRATE_SKILL,
@@ -139,7 +139,7 @@ export function freeTask({
   return card
 }
 
-export function workerPrompt({
+function workerPrompt({
   hydraId,
   id,
   title,
@@ -156,7 +156,7 @@ export function workerPrompt({
 }
 
 // Every worker Pnyx starts opens with the same scope and authority, then where its job stops.
-export function workerHeader({
+function workerHeader({
   hydraId,
   id,
   stops = [],
