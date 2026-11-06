@@ -7,8 +7,7 @@ import { withWriter } from '#app/writer.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { updateIndex } from './index.ts'
 import { search } from './search.ts'
-import { readSearchFilters } from './filters.ts'
-import { tokens } from './query.ts'
+import { readSearchFilters, type SearchFilters } from './filters.ts'
 
 test(
   'column project and time filters select matching cards before the hit limit',
@@ -38,42 +37,49 @@ test(
       hydraId: 'default',
       fn: ({ writer }) => {
         const columns = hydraConfig({ state: writer.state }).columns
-        const queued = columns.find(column => column.role === 'queued')!.id
-        const other = columns.find(column => column.id !== queued)!.id
-
-        for (let index = 0; index <= 120; index++) {
-          const target = index === 120
-          writer.append({
-            event: {
-              v: 1,
-              seq: writer.state.seq + 1,
-              id: `create-${index}`,
-              at: target ? '2026-11-06T00:00:00Z' : '2020-01-01T00:00:00Z',
-              actor: 'web',
-              cardId: `task-${index}`,
-              type: 'task.created',
-              data: {
-                key: `key-${index}`,
-                title: 'Migration',
-                brief: 'Migration notes',
-                column: target ? queued : other,
-                project: target ? '/wanted' : '/other',
-              },
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'create-other',
+            at: '2020-01-01T00:00:00Z',
+            actor: 'web',
+            cardId: 'task-other',
+            type: 'task.created',
+            data: {
+              key: 'other',
+              title: 'Migration',
+              brief: 'Migration notes',
+              column: columns.find(column => column.role !== 'queued')!.id,
+              project: '/other',
             },
-          })
-        }
+          },
+        })
+        writer.append({
+          event: {
+            v: 1,
+            seq: writer.state.seq + 1,
+            id: 'create-target',
+            at: '2026-11-06T00:00:00Z',
+            actor: 'web',
+            cardId: 'task-target',
+            type: 'task.created',
+            data: {
+              key: 'target',
+              title: 'Migration',
+              brief: 'Migration notes',
+              column: columns.find(column => column.role === 'queued')!.id,
+              project: '/wanted',
+            },
+          },
+        })
 
         return writer.state
       },
     })
     updateIndex({ hydraId: 'default' })
-    const queued = hydraConfig({ state }).columns.find(column => column.role === 'queued')!.id
 
-    for (const filters of [
-      { columns: [queued] },
-      { projects: ['/wanted'] },
-      { since: '2026-01-01T00:00:00Z' },
-    ]) {
+    const first = ({ filters }: { filters: SearchFilters }) => {
       const result = search({
         hydraId: 'default',
         state,
@@ -83,15 +89,41 @@ test(
           ...filters,
         },
       })
-      assert.deepEqual(
-        result.hits.map(hit => hit.card),
-        ['task-120'],
-      )
-      assert.equal(
-        result.total,
-        1,
-      )
+
+      return {
+        cards: result.hits.map(hit => hit.card),
+        total: result.total,
+      }
     }
+
+    assert.deepEqual(
+      first({ filters: {} }),
+      {
+        cards: ['task-other'],
+        total: 2,
+      },
+    )
+    assert.deepEqual(
+      first({ filters: { columns: ['queued'] } }),
+      {
+        cards: ['task-target'],
+        total: 1,
+      },
+    )
+    assert.deepEqual(
+      first({ filters: { projects: ['/wanted'] } }),
+      {
+        cards: ['task-target'],
+        total: 1,
+      },
+    )
+    assert.deepEqual(
+      first({ filters: { since: '2026-01-01T00:00:00.000Z' } }),
+      {
+        cards: ['task-target'],
+        total: 1,
+      },
+    )
 
     const fuzzy = search({
       hydraId: 'default',
@@ -99,7 +131,7 @@ test(
       query: {
         text: 'migraton',
         limit: 1,
-        columns: [queued],
+        columns: ['queued'],
         highlight: true,
       },
     })
@@ -107,31 +139,72 @@ test(
       fuzzy.match,
       'fuzzy',
     )
-    assert.ok(fuzzy.hits[0]!.snippets.some(snippet => snippet.parts?.some(part => part.matched && /migration/i.test(part.text))))
     assert.deepEqual(
-      tokens({ text: 'Deploy/rollback: CI-CD' }),
+      fuzzy.hits[0]!.snippets.map(snippet => snippet.parts),
       [
-        'deploy',
-        'rollback',
-        'ci',
-        'cd',
+        [
+          {
+            text: 'Migration',
+            matched: true,
+          },
+        ],
       ],
     )
   },
 )
 
 test(
-  'Oracle filter payloads reject malformed and unknown values',
+  'Oracle filter payloads keep known filters and refuse malformed or unknown ones',
   () => {
-    for (const value of [
-      'null',
-      '[]',
-      '{',
-      '{"columns":[1]}',
-      '{"since":"no"}',
-      '{"limit":1}',
-    ]) {
-      assert.throws(() => readSearchFilters({ value }))
-    }
+    assert.deepEqual(
+      readSearchFilters({ value: '{"columns":["queued"],"projects":["/app"],"since":"2026-01-01"}' }),
+      {
+        columns: ['queued'],
+        projects: ['/app'],
+        since: '2026-01-01T00:00:00.000Z',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: 'null' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Oracle filters must be an object',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: '[]' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'Oracle filters must be an object',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: '{' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'invalid Oracle filters',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: '{"columns":[1]}' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'invalid Oracle columns',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: '{"since":"no"}' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'invalid Oracle filter: since',
+      },
+    )
+    assert.throws(
+      () => readSearchFilters({ value: '{"limit":1}' }),
+      {
+        code: 'VALIDATION_ERROR',
+        message: 'invalid Oracle filter: limit',
+      },
+    )
   },
 )
