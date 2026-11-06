@@ -1,3 +1,4 @@
+import { transcriptMessages } from '#workers/transcripts.ts'
 import assert from 'node:assert/strict'
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -8,7 +9,7 @@ import { HYDRA_CARD } from '#hydra/identity.ts'
 import { decidePush } from '#tasks/push.ts'
 import { searchPath, sqlite, updateIndex } from './index.ts'
 import { search } from './search.ts'
-import { redact, transcriptMessages } from './text.ts'
+import { redact } from './text.ts'
 
 const scratch = mkdtempSync(join(
   tmpdir(),
