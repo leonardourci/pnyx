@@ -80,6 +80,8 @@ const MAX_TEXT = 1000
 export const replyEntryId = ({ reply }: { reply: string }) => `reply:${reply}`
 
 export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => {
+  const fromPart = (entry.part ?? 0) > 0
+  const continued = entry.continued === true || fromPart || entry.role.endsWith(' · continued')
   const text = redact({ text: entry.text })
 
   if (text.length <= MAX_TEXT) {
@@ -90,7 +92,7 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
           / · continued$/,
           '',
         ),
-        continued: entry.continued || entry.role.endsWith(' · continued'),
+        continued: continued,
         text,
       },
     ]
@@ -122,7 +124,7 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
         / · continued$/,
         '',
       ),
-      continued: start > 0 || entry.continued || entry.role.endsWith(' · continued'),
+      continued: start > 0 || continued,
     })
     start = end
   }
