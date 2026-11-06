@@ -4,6 +4,7 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { SteeringClaim } from './model.ts'
 import { cardSessionId } from './session-attachments.ts'
+import { touch } from '#tasks/touch.ts'
 
 export function pendingSteering({ card }: { card: Card }) {
   if (activeCompaction({ card })) {
@@ -129,9 +130,10 @@ export function applySteering({
     }
   }
 
-  card.revision++
-  card.updatedSeq = event.seq
-  card.updatedAt = event.at
+  touch({
+    card,
+    event,
+  })
 
   return true
 }

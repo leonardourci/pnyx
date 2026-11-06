@@ -3,6 +3,7 @@ import { interactive } from './session-attachments.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentSession } from './model.ts'
+import { touch } from '#tasks/touch.ts'
 
 export const QUEUE_STALL_MS = 30 * 60 * 1000
 export const QUEUE_MAX_TASKS = 3
@@ -89,17 +90,19 @@ export function applyQueue({
         queued.queue.rank = index + 1
 
         if (queued.id !== card.id) {
-          queued.revision++
-          queued.updatedSeq = event.seq
-          queued.updatedAt = event.at
+          touch({
+            card: queued,
+            event,
+          })
         }
       }
     }
 
     card.column = event.data.column
-    card.revision++
-    card.updatedSeq = event.seq
-    card.updatedAt = event.at
+    touch({
+      card,
+      event,
+    })
   }
 
   return true
