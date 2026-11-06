@@ -5,7 +5,7 @@ import type { HydraState } from '#app/model.ts'
 import { loadHydra } from '#app/store.ts'
 import { helperBatch, helperEvent } from '#routine-helper/route.ts'
 import type { createRoutineHelper } from '#routine-helper/runner.ts'
-import { activeHelperBatches } from '#routine-helper/state.ts'
+import { activeHelperBatches, failedBatches, ownerOutcomes } from '#routine-helper/state.ts'
 import { INTERRUPTED } from '#workers/session-attachments.ts'
 import { pnyxRunsHydra, reportActor } from './hydra.ts'
 import { HYDRA_CARD } from './identity.ts'
@@ -153,10 +153,8 @@ export function createWakeQueue({
     const mainOnly = new Set([
       ...mainTasks,
       ...unread.filter(update => !routed.has(update.seq)).map(update => update.card),
-      ...(state.helper?.outcomes ?? []).filter(outcome => outcome.audience === 'owner'
-        && outcome.seq > (state.helper?.delivered ?? 0)).map(outcome => outcome.task),
-      ...Object.values(state.helper?.runs ?? {}).filter(batch => batch.error)
-        .flatMap(batch => batch.tasks),
+      ...ownerOutcomes({ state }).map(outcome => outcome.task),
+      ...failedBatches({ state }).flatMap(batch => batch.tasks),
     ])
     const items = [...routed]
       .filter(([
