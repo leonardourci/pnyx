@@ -59,27 +59,37 @@ export function TaskCreate({
         }
 
         setBusy(true)
+        const args = [
+          'create',
+          '--title',
+          title.trim(),
+          '--ask',
+          prompt,
+          '--column',
+          column,
+        ]
+
+        if (before) {
+          args.push(
+            '--before',
+            before,
+          )
+        }
+
+        if (parent) {
+          args.push(
+            '--parent',
+            parent,
+          )
+        }
+
+        args.push(
+          '--event-id',
+          attempt.current,
+        )
         const saving = command({
           name: 'task',
-          args: [
-            'create',
-            '--title',
-            title.trim(),
-            '--ask',
-            prompt,
-            ...(before ? [
-              '--before',
-              before,
-            ] : []),
-            '--column',
-            column,
-            ...(parent ? [
-              '--parent',
-              parent,
-            ] : []),
-            '--event-id',
-            attempt.current,
-          ],
+          args,
         })
         submitted({ id: `task:${attempt.current}` })
         void saving.catch((error: Error) => {
