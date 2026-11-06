@@ -1,10 +1,7 @@
 import { createAgentSwitch } from '#hydra/agent-switch.ts'
 import { accountFor } from '#workers/account-choice.ts'
-import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
-import { hydraActor } from './request-context.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { PROVIDERS, harnessOf, knownProvider, providerIdOf } from '#workers/providers.ts'
-import { nativeIdle } from '#workers/native-session.ts'
 import { activeCompaction } from '#workers/compaction/state.ts'
 import { upgradeQueue } from '#upgrade/queue.ts'
 import { requestRestart } from '#upgrade/restart.ts'
@@ -35,7 +32,6 @@ import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
 import type { AgentRef, AgentSession, Attention } from '#workers/model.ts'
 import type { HydraAgentChange } from '#hydra/model.ts'
-import { harnessControls } from '#workers/controls.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
 import { loadHydra } from './store.ts'
@@ -49,6 +45,7 @@ import { createStallChecks } from '#hydra/stalls.ts'
 import { createWakeQueue } from '#hydra/wake-queue.ts'
 import { createHostRecovery } from './host-recovery.ts'
 import { createLiveSessions } from '#workers/live-sessions.ts'
+import { createLiveSettings } from '#workers/live-settings.ts'
 import { createHydraTurns } from '#hydra/turns.ts'
 import { createWorkerStarts } from '#workers/hosted-start.ts'
 import { createHostedDelivery } from '#workers/hosted-delivery.ts'
@@ -500,6 +497,15 @@ export function createHost({
     settleDirect: ({ ...input }) => settleDirect(input),
     directReply: ({ ...input }) => directReply(input),
     turns: () => turns,
+  })
+
+  const { set } = createLiveSettings({
+    live,
+    at,
+    write,
+    hosted,
+    record,
+    retire,
   })
 
   const {
@@ -968,105 +974,7 @@ export function createHost({
 
     permission,
 
-    set: async ({
-      card: ref,
-      setting,
-      value,
-      actor,
-    }) => {
-      const card = write({
-        fn: ({ writer }) => {
-          const card = hosted({
-            writer,
-            ref,
-          })
-          const controls = harnessControls({
-            provider: card.agent.provider,
-            hosted: true,
-          })
-          const control = controls?.controls.find(c => c.setting === setting)
-
-          if (!control || !control.options.some(o => o.value === value)) {
-            throw new HydraError({
-              message: `${setting} cannot be ${value}`,
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          if (hydraActor({ actor }) && setting === 'mode' && agentPermissionNeedsOwner({
-            card,
-            value,
-          })) {
-            throw new HydraError({
-              message: 'Only the owner can raise an agent’s permission level',
-              code: 'OWNER_ONLY',
-            })
-          }
-
-          record({
-            writer,
-            agent: card.agent,
-            input: { settings: { [setting]: value } },
-            actor,
-          })
-
-          const usedAgent = writer.state.hydraAgent
-
-          // Wakes retain this agent, so permission controls must update its saved mode too.
-          if (card.id === HYDRA_CARD && setting === 'mode' && usedAgent && usedAgent.mode !== value) {
-            applyDecision({
-              writer,
-              decision: hydraEvent({
-                state: writer.state,
-                cardId: HYDRA_CARD,
-                meta: {
-                  at: at(),
-                  actor,
-                },
-                change: {
-                  type: 'hydra.agent-used',
-                  data: {
-                    ...usedAgent,
-                    mode: value,
-                  },
-                },
-              }),
-            })
-          }
-
-          return card
-        },
-      })
-      const key = sessionId({ agent: card.agent })
-      const running = live.get(key)
-
-      if (!running) {
-        return
-      }
-
-      try {
-        if (!running.session) {
-          throw new Error('Provider is still loading')
-        }
-
-        await running.session.set({
-          setting,
-          value,
-        })
-      } catch {
-        // Some settings require replacing the process after its native work settles.
-        running.stale = true
-
-        const settled = running.session && nativeIdle({ work: running.session.snapshot().work })
-
-        if (running.activity !== 'working' && settled) {
-          retire({
-            key,
-            entry: running,
-          })
-        }
-      }
-    },
+    set,
 
     unconfirmed: ({
       card,
