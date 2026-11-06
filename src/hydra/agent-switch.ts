@@ -1,11 +1,10 @@
 import { permissionCommand } from '#workers/permission-rules.ts'
 import type { HydraState } from '#app/model.ts'
 import { randomUUID } from 'node:crypto'
-import { join } from 'node:path'
 import { background } from '#app/background.ts'
 import { applyDecision } from '#app/decision.ts'
 import { readEvents } from '#app/event-log.ts'
-import { hydraDir } from '#app/home-migration.ts'
+import { hydraAgentFolder } from '#app/home-migration.ts'
 import type { Host, Live } from '#app/host-types.ts'
 import { loadHydra } from '#app/store.ts'
 import type { Writer } from '#app/writer.ts'
@@ -420,10 +419,7 @@ export function createAgentSwitch({
             harness: candidate.harness,
             prefer: candidate.account,
           })
-          const cwd = join(
-            hydraDir({ hydraId }),
-            'agent',
-          )
+          const cwd = hydraAgentFolder({ hydraId })
           const settings = Object.fromEntries(Object.entries(candidate)
             .filter(([
               key,

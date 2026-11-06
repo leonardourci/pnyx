@@ -60,7 +60,7 @@ import type { HydraAgentChange, HydraMessage } from '#hydra/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import { liveTask } from '#tasks/select.ts'
 import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
-import { hydraDir } from './home-migration.ts'
+import { hydraAgentFolder } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
 import { withWriter, type Writer } from './writer.ts'
@@ -1915,10 +1915,7 @@ export function createHost({
               key,
               String(value),
             ]))
-          const cwd = join(
-            hydraDir({ hydraId }),
-            'agent',
-          )
+          const cwd = hydraAgentFolder({ hydraId })
           prepareHydraFolder({ folder: cwd })
           let card = previous
           const previousAgent = card?.agent
