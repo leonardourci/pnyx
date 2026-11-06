@@ -72,3 +72,27 @@ export function harnessAccount({
   ].find(name => ours({ name }))
     ?? Object.keys(effective.accounts).find(name => ours({ name }))
 }
+
+export function accountFor({
+  effective,
+  harness,
+  prefer,
+}: {
+  effective: EffectiveDispatch
+  harness: Harness
+  prefer?: string
+}): {
+  name: string | undefined
+  account: Account | undefined
+} {
+  const name = harnessAccount({
+    effective,
+    harness,
+    prefer,
+  })
+
+  return {
+    name,
+    account: name ? effective.accounts[name] : undefined,
+  }
+}
