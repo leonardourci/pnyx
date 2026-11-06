@@ -1163,3 +1163,124 @@ test(
     )
   },
 )
+
+test(
+  'Continue in Pnyx refuses a task with no outside session, one that may still run or one attached elsewhere, and resumes an ended session in its folder',
+  async () => {
+    const s = await pnyx.scenario()
+    const folder = s.folder({ name: 'outside' })
+    const create = ({ key }: { key: string }) => s.owner({
+      args: [
+        'task',
+        'create',
+        '--title',
+        `Work on ${key}`,
+        '--key',
+        key,
+        '--folder',
+        folder,
+      ],
+    })
+    const push = ({
+      key,
+      activity,
+    }: {
+      key: string
+      activity: string
+    }) => s.owner({
+      args: [
+        'push',
+        '--key',
+        key,
+        '--file',
+        '-',
+      ],
+      input: JSON.stringify({
+        agent: {
+          provider: 'claude-code',
+          sessionId: 'outside-session',
+          cwd: folder,
+        },
+        activity,
+      }),
+    })
+    const refusal = ({ key }: { key: string }) => s.ownerRefusal({
+      args: [
+        'task',
+        'continue',
+        key,
+      ],
+    })
+    await create({ key: 'outside' })
+    await create({ key: 'plain' })
+    await create({ key: 'elsewhere' })
+    await push({
+      key: 'outside',
+      activity: 'working',
+    })
+    await push({
+      key: 'elsewhere',
+      activity: 'working',
+    })
+    assert.deepEqual(
+      [
+        await refusal({ key: 'plain' }),
+        await refusal({ key: 'outside' }),
+        await refusal({ key: 'elsewhere' }),
+      ],
+      [
+        {
+          code: 'NO_ROUTE',
+          error: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
+        },
+        {
+          code: 'SESSION_RUNNING',
+          error: 'cannot confirm the outside session has ended: No process and terminal were recorded.',
+        },
+        {
+          code: 'SESSION_CONFLICT',
+          error: 'the session is no longer attached to this task',
+        },
+      ],
+    )
+
+    await push({
+      key: 'outside',
+      activity: 'ended',
+    })
+    await s.owner({
+      args: [
+        'task',
+        'continue',
+        'outside',
+      ],
+    })
+    assert.deepEqual(
+      [
+        s.task({ key: 'outside' }).agent?.host,
+        s.task({ key: 'outside' }).status?.note,
+      ],
+      [
+        'pnyx',
+        'Worker continued in Pnyx',
+      ],
+    )
+    await s.owner({
+      args: [
+        'reply',
+        'outside',
+        '--text',
+        'Carry on from where you stopped',
+      ],
+    })
+    const resumed = await s.agent({ cwd: folder })
+    assert.equal(
+      resumed.resumed,
+      true,
+    )
+    assert.match(
+      resumed.received[0]!,
+      /Carry on from where you stopped/,
+    )
+  },
+)
