@@ -8,7 +8,7 @@ import { answerPrompt, answerText, checkAnswer, type Answer, type Prompt } from 
 import type { Card } from '#tasks/model.ts'
 import type { Attention } from './model.ts'
 import { KEY, answerKeys } from '#integrations/hooks/answer.ts'
-import { attend, observe, type HookEnvelope } from '#integrations/hooks/observe.ts'
+import { attend, observe, waitsOnHook, type HookEnvelope } from '#integrations/hooks/observe.ts'
 
 const ROOT = join(
   import.meta.dirname,
@@ -896,6 +896,54 @@ test(
         change,
       }),
       [permission],
+    )
+  },
+)
+
+test(
+  'a session waits on its hooks’ blocking request only until Hydra answers it',
+  () => {
+    const open = {
+      kind: 'permission',
+      key: 'hook:permission',
+      blocking: true,
+    }
+    assert.equal(
+      waitsOnHook({ attention: [open] }),
+      true,
+    )
+    assert.equal(
+      waitsOnHook({
+        attention: [
+          {
+            ...open,
+            answered: 'r1',
+          },
+        ],
+      }),
+      false,
+    )
+    assert.equal(
+      waitsOnHook({
+        attention: [
+          {
+            ...open,
+            blocking: false,
+          },
+        ],
+      }),
+      false,
+    )
+    assert.equal(
+      waitsOnHook({
+        attention: [
+          {
+            ...open,
+            key: 'status',
+          },
+        ],
+      }),
+      false,
     )
   },
 )
