@@ -9,6 +9,7 @@ import { hydraDir } from '#app/home-migration.ts'
 import { readEventsFrom } from '#app/event-log.ts'
 import { redact } from '#oracle/text.ts'
 import { readTranscriptRecord } from '#workers/transcripts.ts'
+import type { TranscriptRecord } from '#workers/provider.ts'
 import { HOST_LABEL, replyRoute, type ReplyRoute } from '#workers/reply-route.ts'
 import { traces } from '#preferences/view.ts'
 import { taskReceipt } from './transcripts-task.ts'
@@ -136,20 +137,30 @@ export const splitEntry = ({ entry }: { entry: ThreadEntry }): ThreadEntry[] => 
   return parts
 }
 
-export function recordEntries({
-  record,
-  offset,
-  tools = true,
-  thinking = true,
-  boundaries = false,
-}: {
-  record: unknown
+interface EntryOptions {
   offset: number
   tools?: boolean
   thinking?: boolean
   boundaries?: boolean
-}): ThreadEntry[] {
-  const parsed = readTranscriptRecord({ record })
+}
+
+export function recordEntries({
+  record,
+  ...options
+}: EntryOptions & { record: unknown }): ThreadEntry[] {
+  return transcriptEntries({
+    parsed: readTranscriptRecord({ record }),
+    ...options,
+  })
+}
+
+export function transcriptEntries({
+  parsed,
+  offset,
+  tools = true,
+  thinking = true,
+  boundaries = false,
+}: EntryOptions & { parsed: TranscriptRecord }): ThreadEntry[] {
   const messages = parsed.messages.filter(message => boundaries || !message.internal)
   const entries: ThreadEntry[] = messages.map((
     message,
@@ -542,15 +553,15 @@ export function readThread(
               newline,
             ).toString())
 
-            const at = readTranscriptRecord({ record }).at
+            const decoded = readTranscriptRecord({ record })
 
-            if (beforeItem !== undefined && offset === beforeOffset && at !== undefined) {
-              excludedAt.push(at)
+            if (beforeItem !== undefined && offset === beforeOffset && decoded.at !== undefined) {
+              excludedAt.push(decoded.at)
             }
 
             // Hidden traces must not use up the conversation page.
-            recordEntries({
-              record,
+            transcriptEntries({
+              parsed: decoded,
               offset,
               tools,
               thinking,
