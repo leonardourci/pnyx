@@ -28,10 +28,12 @@ export interface Snippet {
   kind: Kind
   at: string
   snippet: string
-  parts?: {
-    text: string
-    matched: boolean
-  }[]
+  parts?: SnippetPart[]
+}
+
+export interface SnippetPart {
+  text: string
+  matched: boolean
 }
 
 // lexical: the words as typed, stemmed and with synonyms; fuzzy: nothing matched
