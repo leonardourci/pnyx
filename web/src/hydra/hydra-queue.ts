@@ -38,6 +38,7 @@ export function hydraQueueView({
     ...waiting.map(message => message.id),
   ])
   const compactOperations = card?.compaction?.operations ?? []
+  // Only the newest result shows; a new attempt replaces the last one.
   const shownUpgrades = upgrades.filter(operation => operation.state !== 'queued')
     .sort((
       a,
@@ -50,6 +51,7 @@ export function hydraQueueView({
   const compactionRunning = Boolean(compacting) || runningChange
   const upgradeRunning = upgrades.some(operation => operation.state === 'running')
 
+  // A queued /upgrade waits in the same box, with the same Send now.
   const compactInputs = [
     ...(card?.compaction?.inputs.filter(input => ownerActor({ actor: input.actor })) ?? []),
     ...upgrades.filter(operation => operation.state === 'queued').map(operation => ({

@@ -69,6 +69,7 @@ export function createHydraConnection() {
   })
   const keyFor = ({ id }: { id: string }) => `pnyx:${namespace}/hydra/${id}/:hydra-state`
 
+  // Arrows reach functions declared below; accessors share the live socket, selection and listing.
   const {
     command,
     flush,

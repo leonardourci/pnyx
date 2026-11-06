@@ -5,6 +5,7 @@ import { checkImages, uploadImage } from './image-upload.ts'
 import { isPendingImage, pendingImage, placeImages, settleImage, withoutPendingImages } from './draft.ts'
 import { selectionEnds } from './composer-caret.ts'
 
+// Placeholders whose upload still runs; a field that mounts on the same text keeps them.
 const uploadingImages = new Set<string>()
 
 export function useComposerUploads({
@@ -140,6 +141,7 @@ export function useComposerUploads({
     }
   }
 
+  // Each image takes its place at the caret at once, so typing goes on while it uploads.
   const attach = ({ files }: { files: File[] }) => {
     const {
       images,
@@ -165,6 +167,7 @@ export function useComposerUploads({
     }))
     input.current?.focus()
 
+    // Each upload settles its own placeholder and reports its own failure.
     for (const image of placed) {
       void upload(image)
     }
