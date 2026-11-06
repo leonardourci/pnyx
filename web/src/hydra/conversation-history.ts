@@ -70,8 +70,6 @@ export async function loadEarlierMessages({
   }
 }
 
-export { mergeThreadPages } from '#hydra/thread-history.ts'
-
 export function receivedThread({
   before,
   latest,

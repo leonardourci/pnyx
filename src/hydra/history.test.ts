@@ -2,8 +2,9 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { emptyHydra, replay } from '#app/reducer.ts'
 import type { HydraEvent } from '#app/model.ts'
-import { compactionContext, historyBoundary } from './history.ts'
+import { compactionContext, historyBoundary, joinMessageParts } from './history.ts'
 import { HYDRA_CARD } from './identity.ts'
+import { recordEntries } from './transcripts-read.ts'
 
 const base = {
   v: 1 as const,
@@ -114,6 +115,73 @@ test(
     assert.equal(
       state.historyMilestones?.find(item => item.id === 'native')?.summary,
       undefined,
+    )
+  },
+)
+
+test(
+  'Markdown messages split for transport reassemble across older pages without losing text',
+  () => {
+    const text = '# Plan\n\n```typescript\n' + 'const ready = true;\n'.repeat(130) + '```\n\nFinal paragraph.'
+    const entries = recordEntries({
+      record: {
+        type: 'assistant',
+        message: {
+          content: [
+            {
+              type: 'text',
+              text,
+            },
+          ],
+        },
+      },
+      offset: 42,
+    })
+    assert.ok(entries.length > 2)
+    const latest = joinMessageParts({ entries: entries.slice(1) })
+    assert.equal(
+      latest.length,
+      1,
+    )
+    assert.ok(latest[0].part! > 0)
+    const all = joinMessageParts({ entries })
+    assert.equal(
+      all.length,
+      1,
+    )
+    assert.equal(
+      all[0].text,
+      text,
+    )
+    assert.equal(
+      all[0].messageId,
+      '42:m0',
+    )
+    assert.equal(
+      all[0].role,
+      'assistant',
+    )
+    assert.equal(
+      joinMessageParts({
+        entries: [
+          entries[0],
+          entries[2],
+        ],
+      }).length,
+      2,
+      'never bridge a missing part',
+    )
+    assert.equal(
+      joinMessageParts({
+        entries: [
+          ...entries,
+          {
+            ...entries[0],
+            messageId: 'different',
+          },
+        ],
+      }).length,
+      2,
     )
   },
 )

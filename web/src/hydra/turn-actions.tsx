@@ -1,6 +1,7 @@
 import { CopyButton } from '#web-shared/ui/copy-button.tsx'
 import { TaskReference } from '#web-tasks/task-reference.tsx'
-import { clock,copiedText,duration,type TurnTiming } from './chat.ts'
+import { clock,copiedText,duration } from './chat.ts'
+import type { TurnTiming } from '#hydra/chat-messages.ts'
 import type { TurnActions } from '#hydra/conversation.ts'
 
 import { CollapsibleText,Disclosure } from '#web-shared/ui/disclosure.tsx'
