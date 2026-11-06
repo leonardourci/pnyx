@@ -11,7 +11,7 @@ import { readEvents } from '#app/event-log.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { checkWorkerNotes, workerNotesNotice } from './workers.ts'
 
-export function memoryList({
+function memoryList({
   memory,
   budget,
   empty,
@@ -46,7 +46,7 @@ export function memoryList({
   }
 }
 
-export function memoryChange({
+function memoryChange({
   action,
   values,
   usage,
