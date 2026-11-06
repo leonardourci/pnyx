@@ -33,109 +33,12 @@ import { HYDRA_CARD } from './identity.ts'
 import { resolveSkillReferences } from './skill-invocation.ts'
 import { upgradeCommand, restartCommand } from '#upgrade/model.ts'
 import { checkSettings, readSettings, saveSettings, settingsReceipt } from '#settings/store.ts'
-import type { Settings } from '#settings/model.ts'
-import type { AgentConfig } from '#workers/model.ts'
-import { HELPER_MODELS } from '#settings/model.ts'
+import { SETTING_FLAGS, sharedSettingFlags } from '#settings/cli.ts'
 import { hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
 import { historyCommand, inscribeOperation, readHistory } from './history.ts'
 import { operationEvent } from './operations.ts'
 import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
-
-const HELPER_FLAGS = [
-  'helper',
-  'helper-model',
-  'helper-account',
-  'helper-effort',
-  'helper-fast',
-]
-
-// The hydra set flags that write shared settings; any other flag changes this Hydra, so the Hydra event is committed too.
-const SETTING_FLAGS = [
-  'done-after-hours',
-  'review-minutes',
-  ...HELPER_FLAGS,
-]
-
-function sharedSettingFlags({
-  values,
-  hydraId,
-}: {
-  values: Record<string, string | boolean | undefined>
-  hydraId: string
-}): Partial<Settings> | undefined {
-  const patch: Partial<Settings> = {}
-  const done = values['done-after-hours']
-
-  if (done !== undefined) {
-    const raw = String(done).trim()
-    patch.doneAfterHours = raw === 'off' ? 'off' : Number(raw || Number.NaN)
-  }
-
-  if (values['review-minutes'] !== undefined) {
-    const raw = String(values['review-minutes']).trim()
-
-    if (!raw) {
-      throw new HydraError({
-        message: '--review-minutes takes a number of minutes (0 turns reviews off)',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-
-    patch.reviewMinutes = Number(raw)
-  }
-
-  if (HELPER_FLAGS.some(flag => values[flag] !== undefined)) {
-    const current = readSettings().settings.helper
-    const agent = typeof current === 'object' ? current : undefined
-    const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
-
-    if (harness === 'off' || harness === 'auto') {
-      patch.helper = harness
-    } else if (harness === 'claude' || harness === 'codex') {
-      const previous = agent?.harness === harness ? agent : undefined
-      const effort = values['helper-effort'] ?? previous?.effort
-      const helper: AgentConfig = {
-        harness,
-        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
-      }
-
-      const account = values['helper-account'] ?? previous?.account
-
-      if (account) {
-        helper.account = String(account)
-      }
-
-      if (effort !== undefined) {
-        helper.effort = String(effort)
-      }
-
-      const fast = values['helper-fast']
-
-      if (fast !== undefined && fast !== 'on' && fast !== 'off') {
-        throw new HydraError({
-          message: '--helper-fast takes on or off',
-          code: 'VALIDATION_ERROR',
-        })
-      }
-
-      const fastOn = fast === undefined ? previous?.fast : fast === 'on'
-
-      if (fastOn) {
-        helper.fast = true
-      }
-
-      patch.helper = helper
-    } else {
-      throw new HydraError({
-        message: '--helper takes auto, off, claude or codex',
-        code: 'VALIDATION_ERROR',
-      })
-    }
-  }
-
-  return Object.keys(patch).length ? patch : undefined
-}
 
 function hydraConfigCommand({ args }: { args: string[] }): Output {
   const {
