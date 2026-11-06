@@ -63,6 +63,19 @@ export interface DispatchChoice {
 
 export const AUTH_ENV = /^(ANTHROPIC_|CLAUDE_CODE_OAUTH_TOKEN|CLAUDE_CONFIG_DIR$|OPENAI_|CODEX_HOME$|CODEX_API_KEY$)/
 
+export function accountEnv({
+  account,
+  env,
+}: {
+  account: Account | undefined
+  env: NodeJS.ProcessEnv
+}): NodeJS.ProcessEnv {
+  return account ? accountEnvironment({
+    account,
+    env,
+  }) : env
+}
+
 export function accountEnvironment({
   account,
   env = process.env,
