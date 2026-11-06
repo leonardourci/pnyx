@@ -12,6 +12,7 @@ import type { Meta } from '#app/command-meta.ts'
 import { findCard } from './push-rules.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
 import { hydraEvent, reportActor } from '#hydra/hydra.ts'
+import { touch } from './touch.ts'
 
 const QUESTION_MAX = 300
 const CONTEXT_MAX = 1500
@@ -787,9 +788,10 @@ export function applyAsk({
     } : a))
   }
 
-  card.revision++
-  card.updatedSeq = event.seq
-  card.updatedAt = event.at
+  touch({
+    card,
+    event,
+  })
 
   return true
 }

@@ -1,6 +1,7 @@
 import { sessionId } from '#workers/session-attachments.ts'
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
+import { touch } from '#tasks/touch.ts'
 
 export { compactCommand } from '#workers/compact-command.ts'
 
@@ -64,9 +65,10 @@ export function applyCompaction({
     }
   }
 
-  card.revision++
-  card.updatedSeq = event.seq
-  card.updatedAt = event.at
+  touch({
+    card,
+    event,
+  })
 
   return true
 }

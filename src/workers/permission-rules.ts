@@ -5,6 +5,7 @@ import type { Card } from '#tasks/model.ts'
 import type { PermissionRequest } from './model.ts'
 import { checkAnswer, type Prompt } from './answers.ts'
 import type { Meta } from '#app/command-meta.ts'
+import { touch } from '#tasks/touch.ts'
 
 export const PERMISSION_PREFIX = 'pnyx:permission:'
 
@@ -210,9 +211,10 @@ export function applyPermission({
     if (prior && sameRequest && event.data.delivery) {
       prior.delivery = event.data.delivery
       permissionAttention({ card })
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
 
     if ((!prior && event.data.status === 'pending') || (prior?.status === 'pending' && event.data.status !== 'pending' && prior.session === event.data.session)) {
@@ -251,9 +253,10 @@ export function applyPermission({
           },
         ]
       permissionAttention({ card })
-      card.revision++
-      card.updatedSeq = event.seq
-      card.updatedAt = event.at
+      touch({
+        card,
+        event,
+      })
     }
   }
 

@@ -1,5 +1,6 @@
 import type { HydraEvent, HydraState } from '#app/model.ts'
 import type { Card } from '#tasks/model.ts'
+import { touch } from '#tasks/touch.ts'
 
 export function sourceDeadline({ state }: { state: HydraState }): number | undefined {
   const deadlines = Object.values(state.cards).flatMap(card =>
@@ -87,9 +88,10 @@ export function applyExternalSource({
     }
   }
 
-  card.revision++
-  card.updatedAt = event.at
-  card.updatedSeq = event.seq
+  touch({
+    card,
+    event,
+  })
 
   return true
 }

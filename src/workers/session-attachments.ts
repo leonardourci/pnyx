@@ -3,6 +3,7 @@ import type { AgentRef, AgentSession, TerminalFacts, SessionEvent } from './mode
 import type { Card } from '#tasks/model.ts'
 import type { HydraState, HydraEvent } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
+import { touch } from '#tasks/touch.ts'
 
 // The open request marking a hosted agent's turn cut off by a server stop; it belongs
 // to that agent, so it goes when the agent leaves the task.
@@ -176,9 +177,10 @@ export function applyAttachment({
       delete old.outcome
     }
 
-    old.revision++
-    old.updatedSeq = event.seq
-    old.updatedAt = event.at
+    touch({
+      card: old,
+      event,
+    })
   }
 
   const target = event.data.after && state.cards[event.data.after]

@@ -5,6 +5,7 @@ import type { HydraEvent, HydraState } from '#app/model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from './model.ts'
 import { cardLanding } from '#tasks/delivery/model.ts'
+import { touch } from './touch.ts'
 
 export function applyDependencies({
   state,
@@ -21,9 +22,10 @@ export function applyDependencies({
 
   if (card) {
     card.prerequisites = [...event.data.after]
-    card.revision++
-    card.updatedSeq = event.seq
-    card.updatedAt = event.at
+    touch({
+      card,
+      event,
+    })
   }
 
   return true
