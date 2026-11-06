@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 import { openDecisions } from '#tasks/decisions.ts'
+import { HYDRA_CARD } from '#hydra/identity.ts'
 import { openPage, until } from '#test-harness/harness.ts'
 import { pnyx } from '#test-harness/pnyx.ts'
 import { ownerQuestions } from '#tasks/questions.ts'
@@ -713,6 +714,78 @@ test(
     assert.equal(
       s.task({ key: 'cache' }).copy,
       undefined,
+    )
+  },
+)
+
+test(
+  'Hydra’s own permission request waits for the owner, who answers it once, and an unknown request is not found',
+  async () => {
+    const s = await pnyx.scenario()
+    const hydraAgent = await s.chat({ text: 'Tidy the repository.' })
+    const hydra = s.as({ agent: hydraAgent })
+    await until({
+      what: 'Hydra to finish its turn',
+      check: () => s.state().cards[HYDRA_CARD]?.sessionActivity === 'finished',
+    })
+    const bash = hydraAgent.useTool!({
+      tool: 'Bash',
+      input: {
+        command: 'ls',
+        description: 'List the files',
+      },
+    })
+    const request = await until({
+      what: 'Hydra’s pending permission request',
+      check: () => s.state().cards[HYDRA_CARD]?.permissions?.find(r => r.status === 'pending'),
+    })
+    assert.match(
+      await hydra.run({
+        args: [
+          'task',
+          'permission',
+          HYDRA_CARD,
+          request.id,
+          'allow',
+          '--reason',
+          'it only lists files',
+        ],
+      }),
+      /^confirmation: needed$/m,
+    )
+    assert.deepEqual(
+      [
+        s.state().cards[HYDRA_CARD]?.permissions?.find(r => r.id === request.id)?.status,
+        await s.ownerRefusal({
+          args: [
+            'task',
+            'permission',
+            HYDRA_CARD,
+            'no-such-request',
+            'allow',
+          ],
+        }),
+      ],
+      [
+        'pending',
+        {
+          code: 'NOT_FOUND',
+          error: 'permission request not found: no-such-request',
+        },
+      ],
+    )
+    await s.owner({
+      args: [
+        'task',
+        'permission',
+        HYDRA_CARD,
+        request.id,
+        'allow',
+      ],
+    })
+    assert.deepEqual(
+      await bash,
+      { behavior: 'allow' },
     )
   },
 )
