@@ -28,7 +28,6 @@ import { checkWorkerNotes, workerNotesNotice } from '#memory/workers.ts'
 import { withWriter } from '#app/writer.ts'
 import { readEvents } from '#app/event-log.ts'
 import { startHydra } from '#workers/start.ts'
-import type { HydraEvent } from '#app/model.ts'
 import { HYDRA_ACTOR } from '#app/actors.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { effectiveDispatch } from '#workers/dispatch-config.ts'
@@ -41,6 +40,9 @@ import type { AgentConfig } from '#workers/model.ts'
 import { HELPER_MODELS } from '#settings/model.ts'
 import { requestEnv, hydraActor } from '#app/request-context.ts'
 import { raisesPermission } from '#workers/permission-level.ts'
+import { historyCommand, inscribeOperation, readHistory } from './history.ts'
+import { operationEvent } from './operations.ts'
+import { harvestTranscripts } from '#integrations/hooks/harvest.ts'
 
 export async function home(): Promise<Output> {
   const hydraId = requestEnv().PNYX_HYDRA || DEFAULT_HYDRA
@@ -610,6 +612,11 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       width: { type: 'string' },
       text: { type: 'string' },
       after: { type: 'string' },
+      since: { type: 'string' },
+      budget: { type: 'string' },
+      through: { type: 'string' },
+      count: { type: 'boolean' },
+      error: { type: 'string' },
       limit: { type: 'string' },
       full: { type: 'boolean' },
       inscribe: { type: 'boolean' },
@@ -623,6 +630,108 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     },
     positionals: 2,
   })
+
+  const readingHistory = positionals[0] === 'history' || (positionals[0] === 'messages' && values.inscribe)
+
+  if (readingHistory || (positionals[0] === 'inscribe' && positionals[1] === 'start')) {
+    withWriter({
+      hydraId,
+      fn: ({ writer }) => harvestTranscripts({
+        writer,
+        cardIds: [HYDRA_CARD],
+        at: meta({ values }).at,
+      }),
+    })
+  }
+
+  if (readingHistory) {
+    const state = loadHydra({ hydraId }).state
+    const page = readHistory({
+      state,
+      events: readEvents({ hydraId }),
+      since: String(values.since ?? (values.inscribe ? 'last-inscribe' : 'last-compaction')),
+      after: values.after as string | undefined,
+      through: integer({
+        value: values.through,
+        flag: '--through',
+      }),
+      budget: integer({
+        value: values.budget,
+        flag: '--budget',
+      }),
+    })
+
+    if (values.count) {
+      return {
+        totalTokens: page.totalTokens,
+        boundary: page.boundary,
+        snapshot: page.snapshot,
+      }
+    }
+
+    return {
+      ...page,
+      help: page.more ? [
+        `Run \`${historyCommand({
+          hydraId,
+          since: page.since,
+          budget: page.budget,
+        })} --after ${page.after}\` for the next page`,
+      ] : [],
+    }
+  }
+
+  if (positionals[0] === 'inscribe') {
+    const action = positionals[1]
+    const state = loadHydra({ hydraId }).state
+    const running = state.historyMilestones?.findLast(item => item.kind === 'inscribe' && item.state === 'started')
+    const operationId = values.key === undefined ? running?.id ?? randomUUID() : String(values.key)
+    const through = integer({
+      value: values.through,
+      flag: '--through',
+    })
+    const error = values.error as string | undefined
+    const operation = inscribeOperation({
+      state,
+      id: operationId,
+      action,
+      through,
+      error,
+    })
+
+    const m = meta({ values })
+    const result = commit({
+      hydraId,
+      meta: m,
+      intent: {
+        type: 'hydra.operation',
+        card: HYDRA_CARD,
+      },
+      decide: ({ state }) => operationEvent({
+        state,
+        meta: m,
+        operation: inscribeOperation({
+          state,
+          id: operationId,
+          action,
+          through,
+          error,
+        }),
+      }),
+    })
+    const since = operation.historySince ?? 'origin'
+
+    return {
+      ...result,
+      milestone: operationId,
+      through: operation.through,
+      command: historyCommand({
+        hydraId,
+        since,
+        through: operation.through,
+      }),
+    }
+  }
 
   if (positionals[0] === 'resize') {
     const width = integer({
@@ -675,6 +784,13 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       values,
       usage: 'use hydra memory list|set|forget',
     })
+
+    if (key === 'inscribe-cursor' && after !== null) {
+      throw new HydraError({
+        message: 'Finish the inscribe milestone with hydra inscribe finish --through <snapshot>',
+        code: 'VALIDATION_ERROR',
+      })
+    }
 
     if (after !== null && Object.hasOwn(
       OWNER_DOCUMENTS,
@@ -767,13 +883,10 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 
   if (positionals[0] === 'messages') {
     const state = loadHydra({ hydraId }).state
-    const cursor = Number(state.hydraMemory?.['inscribe-cursor']?.text)
-    // With no saved cursor an inscribe sweep reads the whole history, so nothing said earlier is skipped.
-    const inscribeFrom = values.inscribe && Number.isSafeInteger(cursor) && cursor >= 0 ? cursor : 0
     const after = integer({
       value: values.after,
       flag: '--after',
-    }) ?? inscribeFrom
+    }) ?? 0
     const limit = Math.min(
       integer({
         value: values.limit,
@@ -790,7 +903,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
     }
 
     const events = readEvents({ hydraId }).filter(e => e.seq > after
-      && (e.type === 'hydra.message' || e.type === 'task.reminder-due' || (values.inscribe && taskWords({ event: e }))))
+      && (e.type === 'hydra.message' || e.type === 'task.reminder-due'))
     const page = events.slice(
       0,
       limit,
@@ -805,19 +918,6 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
       }).hydra.id,
       messages: page.length
         ? page.map(e => {
-          const words = taskWords({ event: e })
-
-          if (words) {
-            return values.full ? e : {
-              seq: e.seq,
-              id: e.id,
-              at: e.at,
-              actor: e.actor,
-              task: e.cardId,
-              ...words,
-            }
-          }
-
           if (e.type !== 'hydra.message' && e.type !== 'task.reminder-due') {
             throw new Error(`Unexpected ${e.type} in Hydra messages`)
           }
@@ -838,7 +938,7 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
         })
         : `none: no messages after seq ${after}`,
       through,
-      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through}${values.inscribe ? ' --inscribe' : ''} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
+      ...(events.length > limit ? { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` for the next page`] } : { help: [`Run \`pnyx-axi hydra messages --after ${through} --hydra ${hydraId}\` later for new messages`] }),
     }
   }
 
@@ -1020,37 +1120,3 @@ function hydraCommand({ args }: { args: string[] }): Output | Promise<Output> {
 }
 
 export const hydraCommandHandler = guard({ handler: ({ args }) => hydraCommand({ args }) })
-
-// The task records an inscribe sweep reads besides chat: a task's brief and the owner's own words on it.
-function taskWords({ event }: { event: HydraEvent }): {
-  action: string
-  text: string
-} | undefined {
-  if (event.type === 'task.created') {
-    const text = [
-      event.data.ask?.text,
-      event.data.brief,
-    ].filter(Boolean).join('\n\n')
-
-    return text ? {
-      action: 'task created',
-      text,
-    } : undefined
-  }
-
-  if (event.type === 'task.brief') {
-    return {
-      action: 'brief',
-      text: event.data.after,
-    }
-  }
-
-  if (event.type === 'task.owner-ask' || event.type === 'task.intent') {
-    return {
-      action: 'owner ask',
-      text: event.data.text,
-    }
-  }
-
-  return undefined
-}

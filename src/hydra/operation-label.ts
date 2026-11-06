@@ -16,10 +16,21 @@ const LABELS: Record<HydraOperation['kind'], {
     done: 'Compacted',
     failed: 'Compaction failed',
   },
+  inscribe: {
+    done: 'Inscribed',
+    failed: 'Inscribe failed',
+  },
 }
 
 // The words the chat's divider shows when an operation that stopped Hydra ends.
 export const operationLabel = ({
   kind,
   state,
-}: Pick<HydraOperation, 'kind' | 'state'>) => state === 'failed' ? LABELS[kind].failed : LABELS[kind].done
+  inscribed = false,
+}: Pick<HydraOperation, 'kind' | 'state'> & { inscribed?: boolean }) => {
+  if (state === 'failed') {
+    return LABELS[kind].failed
+  }
+
+  return kind === 'compaction' && inscribed ? 'Inscribed and compacted' : LABELS[kind].done
+}

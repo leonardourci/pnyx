@@ -245,27 +245,7 @@ export function quoteSnippet({
   }
 }
 
-// Transport parts must rejoin before Markdown parsing, even across loaded pages.
-export function joinMessageParts({ entries }: { entries: ThreadEntry[] }): ThreadEntry[] {
-  const result: ThreadEntry[] = []
-
-  for (const entry of entries) {
-    const prior = result.at(-1)
-
-    if (entry.messageId && prior?.messageId === entry.messageId &&
-      prior.kind === entry.kind && (prior.part ?? 0) + prior.text.length === entry.part) {
-      prior.text += entry.text
-    } else {
-      // The message's own id keeps a streaming reply's key stable once it grows past one part.
-      result.push({
-        ...entry,
-        id: entry.messageId && entry.part === 0 ? entry.messageId : entry.id,
-      })
-    }
-  }
-
-  return result
-}
+export { joinMessageParts } from '#hydra/history.ts'
 
 type Keyed<Entry> = Entry & { renderKey?: string }
 

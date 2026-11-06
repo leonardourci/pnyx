@@ -270,6 +270,8 @@ export function harvestTranscripts({
                 data: {
                   session,
                   nativeId: entry.id,
+                  messageId: entry.messageId,
+                  part: entry.part,
                   role: entry.role,
                   text: redact({ text: entry.text }),
                 },
@@ -280,6 +282,13 @@ export function harvestTranscripts({
       }
 
       for (const note of transcriptNotes({ record: line.record })) {
+        if (id === '$hydra' && note.kind === 'summary' && /^(compact:|compacted:)/.test(note.ref)) {
+          const timestamp = note.at ?? at
+          note.operation = writer.state.cards[id]?.compaction?.operations.findLast(operation =>
+            operation.session === session
+            && operation.startedAt <= timestamp)?.id
+        }
+
         if (note.kind !== 'context' || !note.text.startsWith(SESSION_TITLE)) {
           appended += appendNote({
             writer,

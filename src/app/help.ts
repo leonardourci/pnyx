@@ -99,11 +99,15 @@ pnyx-axi hydra resize --width <pixels>
 pnyx-axi hydra worker-notes set|forget [--text <text>] --reason <why>
 Standing worker instructions are included verbatim in every new worker header.
 pnyx-axi hydra memory list|set|forget [--key <key>] [--text <text>]
-Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor and inscribe-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
+Hydra memory holds only what this Hydra needs (its scope, where it left off under left-off, its check-cursor), within ${HYDRA_MEMORY_BUDGET} characters. Owner preferences and learnings are Pnyx-wide: see \`pnyx-axi owner --help\`.
 pnyx-axi hydra digest
 Prints Hydra's live state: columns, open tasks and their workers, what waits on someone, owner memory and Hydra memory.
 pnyx-axi hydra messages [--after <seq>] [--limit <n>] [--full] [--inscribe]
---inscribe starts after the saved inscribe-cursor (the whole history when none is saved) and adds task briefs and the owner's words on tasks.
+--inscribe is an alias for hydra history --since last-inscribe; before the first inscribe milestone this starts at the last successful compaction.
+pnyx-axi hydra history --since <last-compaction|last-inscribe|milestone-id|origin> [--after <cursor>] [--budget <tokens>] [--through <seq>] [--count]
+Read whole messages since a successful milestone, including task briefs. The default budget is 6000 estimated tokens; an oversized first message is returned whole. Follow after while more is true. Cursors pin the boundary and snapshot, so later messages and milestones do not change subsequent pages. --count returns only the total token estimate.
+pnyx-axi hydra inscribe start|finish|fail [--key <milestone-id>] [--through <seq>] [--error <why>]
+start returns the pass ID, snapshot and history command; finish requires that snapshot after every page and memory save succeeds. Failed and started passes never advance the inscribe boundary.
 pnyx-axi hydra check [--after <seq>] [--wait <seconds>]
 pnyx-axi hydra start [--via paseo|command] [--rule <name>] [--harness claude|codex] [--prompt <text>] [--folder <path>] [--paseo-url <url>]
 pnyx-axi hydra start --via firstmate --home <firstmate home>

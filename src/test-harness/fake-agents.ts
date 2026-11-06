@@ -94,7 +94,8 @@ const textOf = ({ message }: { message: SDKUserMessage }) => {
 }
 
 interface TurnPlan {
-  text: string
+  text?: string
+  match?({ text }: { text: string }): boolean
   reply?: string
   hold?: boolean
 }
@@ -142,7 +143,7 @@ function plannedTurns<Plan extends TurnPlan>({ hydra }: { hydra(): string }) {
       env: NodeJS.ProcessEnv
     }) => {
       const index = plans.findIndex(plan => plan.hydra === env.PNYX_HYDRA
-        && text.endsWith(plan.text))
+        && (plan.match ? plan.match({ text }) : text.endsWith(plan.text ?? '')))
 
       if (index >= 0) {
         return plans.splice(

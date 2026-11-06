@@ -1,3 +1,4 @@
+import { assignDefined } from '#workers/session-attachments.ts'
 import type { Decision, HydraState } from '#app/model.ts'
 import type { Meta } from '#app/command-meta.ts'
 import { hydraEvent } from './hydra.ts'
@@ -18,6 +19,23 @@ export function operationEvent({
   operation: HydraOperation
   meta: Meta
 }): Decision {
+  const data: HydraOperation = {
+    id: operation.id,
+    kind: operation.kind,
+    state: operation.state,
+  }
+  assignDefined({
+    target: data,
+    values: {
+      error: operation.error,
+      after: operation.after,
+      through: operation.through,
+      historySince: operation.historySince,
+      parent: operation.parent,
+      blocking: operation.blocking,
+    },
+  })
+
   return hydraEvent({
     state,
     cardId: HYDRA_CARD,
@@ -27,7 +45,7 @@ export function operationEvent({
     },
     change: {
       type: 'hydra.operation',
-      data: operation,
+      data,
     },
   })
 }

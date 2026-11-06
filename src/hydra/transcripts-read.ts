@@ -1,3 +1,4 @@
+import { loggedEntry } from './history.ts'
 import { HYDRA_CARD } from './identity.ts'
 import { closeSync, fstatSync, openSync, readSync } from 'node:fs'
 import { isAbsolute } from 'node:path'
@@ -632,14 +633,7 @@ export function readThread(
       }
 
       splitEntry({
-        entry: {
-          id: e.id,
-          role: e.data.role,
-          kind: 'message',
-          text: e.data.text,
-          at: e.at,
-          session: e.data.session,
-        },
+        entry: loggedEntry({ event: e }),
       }).forEach((
         item,
         index,

@@ -150,6 +150,14 @@ test(
         },
       ],
     )
+    assert.equal(
+      s.state().historyMilestones?.filter(item => item.kind === 'compaction' && item.state === 'finished').length,
+      2,
+    )
+    assert.equal(
+      s.state().hydraMessages?.filter(message => message.kind === 'divider' && message.text === 'Compacted').length,
+      2,
+    )
     // One recap, after the second compaction ended, carries what waited through both.
     const agent = await s.agent({ hydra: true })
     const recaps = s.received({ cwd: agent.cwd }).filter(text => text.includes('back after a stop'))

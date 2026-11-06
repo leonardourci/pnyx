@@ -1,4 +1,7 @@
-import { useId } from 'react'
+import { HYDRA_CARD } from '#hydra/identity.ts'
+import { ownerActor } from '#app/actors.ts'
+import { useEffect, useId, useState } from 'react'
+import { canSkipCompaction, NEITHER_REASON } from '#hydra/history.ts'
 import type { HydraState } from '#app/model.ts'
 import type { HydraAgentChange } from '#hydra/model.ts'
 import type { EffectiveDispatch } from '#workers/dispatch-config.ts'
@@ -41,11 +44,13 @@ function useAgentName({
 
 function HeldMessageCard({
   change,
+  revision,
   command,
   connected,
   notify,
 }: {
   change: HydraAgentChange
+  revision: number
   command: Command
   connected: boolean
   notify({ text }: { text: string }): void
@@ -58,6 +63,66 @@ function HeldMessageCard({
     connected,
   })
   const captionId = useId()
+  const [
+    history,
+    setHistory,
+  ] = useState<{
+    tokens?: number
+    error?: string
+    revision?: number
+  }>({})
+
+  useEffect(
+    () => {
+      let active = true
+
+      async function refresh() {
+        if (!connected || change.kind === 'effort' || change.state === 'running') {
+          return
+        }
+
+        try {
+          const receipt = await command({
+            name: 'hydra',
+            args: [
+              'history',
+              '--since',
+              'last-compaction',
+              '--count',
+            ],
+          })
+
+          if (active) {
+            setHistory({
+              tokens: Number(receipt.totalTokens),
+              revision,
+            })
+          }
+        } catch (error) {
+          if (active) {
+            setHistory({
+              error: (error as Error).message,
+              revision,
+            })
+          }
+        }
+      }
+
+      refresh()
+
+      return () => {
+        active = false
+      }
+    },
+    [
+      command,
+      connected,
+      revision,
+      change.id,
+      change.kind,
+      change.state,
+    ],
+  )
 
   const choose = async ({ choice }: { choice: string }) => {
     try {
@@ -83,9 +148,11 @@ function HeldMessageCard({
   }
 
   const explanation = effort ? `The agent continues at its new effort. ${COMPACT_WHY}` : `A new agent starts with fresh context. ${COMPACT_WHY}`
-  const caption = effort
-    ? 'Recommended: saves what\'s worth remembering first. Neither carries on without compacting and is not recommended.'
-    : 'Recommended: saves what\'s worth remembering first.'
+  const caption = 'Recommended: saves what\'s worth remembering first.'
+  const tokens = history.revision === revision ? history.tokens : undefined
+  const historyKnown = tokens !== undefined
+  const neitherAllowed = effort || (tokens !== undefined && canSkipCompaction({ tokens }))
+  const neitherReason = historyKnown ? NEITHER_REASON : history.error ?? 'Counting the conversation…'
 
   return (
     <div className="agent-change-choice" role="region" aria-label="Continue with the selected agent">
@@ -108,19 +175,18 @@ function HeldMessageCard({
           <Icon name="compact" size={16} />
           Compact only
         </Button>
-        {effort && (
-          <Button
-            variant="surface"
-            className="agent-change-neither"
-            disabled={actionsDisabled}
-            aria-describedby={captionId}
-            onClick={() => choose({ choice: 'neither' })}
-          >
-            Neither
-          </Button>
-        )}
+        <Button
+          variant="surface"
+          className="agent-change-neither"
+          disabled={actionsDisabled || !neitherAllowed}
+          aria-describedby={neitherAllowed ? captionId : `${captionId}-neither`}
+          onClick={() => choose({ choice: 'neither' })}
+        >
+          Neither
+        </Button>
       </div>
       <p id={captionId} className="agent-change-caption">{caption}</p>
+      {!neitherAllowed && <p id={`${captionId}-neither`} className="agent-change-caption">{neitherReason}</p>}
     </div>
   )
 }
@@ -145,6 +211,11 @@ export function AgentChangeChoice({
   return (
     <HeldMessageCard
       change={change}
+      revision={Math.max(
+        state.cards[HYDRA_CARD]?.updatedSeq ?? 0,
+        ...state.hydraMessages?.filter(message => ownerActor({ actor: message.actor }))
+          .map(message => state.eventIds[message.id] ?? 0) ?? [],
+      )}
       command={command}
       connected={connected}
       notify={notify}

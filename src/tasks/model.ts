@@ -35,6 +35,7 @@ export interface AutoTitle {
 }
 
 export interface Note {
+  operation?: string
   kind: NoteKind
   source: string
   text: string
