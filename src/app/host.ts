@@ -6,7 +6,7 @@ import { agentPermissionNeedsOwner } from '#workers/permission-level.ts'
 import { hydraActor } from './request-context.ts'
 import { hydraCandidate } from '#hydra/agent-choice.ts'
 import { HYDRA_COMMANDS } from './command-registry.ts'
-import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, isProviderId, providerIdOf, providerLabel, type ProviderId } from '#workers/providers.ts'
+import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, knownProvider, providerIdOf, providerLabel } from '#workers/providers.ts'
 import { nativeIdle } from '#workers/native-session.ts'
 import { memoryConditions } from '#memory/conditions.ts'
 import { background } from './background.ts'
@@ -655,7 +655,7 @@ export function createHost({
   }): AgentSession => {
     const agent = card.agent
 
-    if (!liveTask({ card }) || !agent || !isProviderId({ provider: agent.provider })
+    if (!liveTask({ card }) || !agent || !knownProvider({ name: agent.provider })
       || agent.host || agent.agentId || agent.paseoAgentId) {
       throw new HydraError({
         message: 'Continue in Pnyx needs an outside Claude Code or Codex session attached to a task',
@@ -890,14 +890,16 @@ export function createHost({
   }
 
   const providerOf = ({ provider }: { provider: string }) => {
-    if (!isProviderId({ provider })) {
+    const known = knownProvider({ name: provider })
+
+    if (!known) {
       throw new HydraError({
         message: `unsupported hosted provider: ${provider}`,
         code: 'VALIDATION_ERROR',
       })
     }
 
-    return providers[provider as ProviderId]
+    return providers[known]
   }
 
   const askPermission = ({

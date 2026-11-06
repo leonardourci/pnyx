@@ -4,6 +4,7 @@ import { readSettings, saveSettings, settingsReceipt } from './store.ts'
 import { DEFAULT_SETTINGS } from './settings.ts'
 import { HELPER_MODELS, type Settings } from './model.ts'
 import type { AgentConfig } from '#workers/model.ts'
+import { knownHarness } from '#workers/providers.ts'
 import { hydraConfig } from '#hydra/config.ts'
 import { loadHydra } from '#app/store.ts'
 import { HydraError } from '#store/errors.ts'
@@ -128,15 +129,16 @@ export function sharedSettingFlags({
     const current = readSettings().settings.helper
     const agent = typeof current === 'object' ? current : undefined
     const harness = values.helper ?? agent?.harness ?? hydraConfig({ state: loadHydra({ hydraId }).state }).hydra.agent?.harness ?? 'claude'
+    const helperHarness = knownHarness({ name: harness })
 
     if (harness === 'off' || harness === 'auto') {
       patch.helper = harness
-    } else if (harness === 'claude' || harness === 'codex') {
-      const previous = agent?.harness === harness ? agent : undefined
+    } else if (helperHarness) {
+      const previous = agent?.harness === helperHarness ? agent : undefined
       const effort = values['helper-effort'] ?? previous?.effort
       const helper: AgentConfig = {
-        harness,
-        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[harness]),
+        harness: helperHarness,
+        model: String(values['helper-model'] ?? previous?.model ?? HELPER_MODELS[helperHarness]),
       }
 
       const account = values['helper-account'] ?? previous?.account

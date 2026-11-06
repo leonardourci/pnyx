@@ -26,11 +26,11 @@ export const HARNESSES = Object.keys(PROVIDERS) as Harness[]
 export const DEFAULT_HARNESS: Harness = 'claude'
 export const DEFAULT_PROVIDER = PROVIDERS[DEFAULT_HARNESS].provider
 
-export const isHarness = ({ harness }: { harness?: string }): boolean =>
-  HARNESSES.includes(harness as Harness)
+export const knownHarness = ({ name }: { name?: unknown }): Harness | undefined =>
+  HARNESSES.find(harness => harness === name)
 
-export const isProviderId = ({ provider }: { provider: string }): boolean =>
-  HARNESSES.some(harness => PROVIDERS[harness].provider === provider)
+export const knownProvider = ({ name }: { name?: string }): ProviderId | undefined =>
+  HARNESSES.map(harness => PROVIDERS[harness].provider).find(provider => provider === name)
 
 // Any provider id other than codex, or none, is Claude: hooks and older records name it more than one way.
 export const harnessOf = ({ provider }: { provider?: string }): Harness =>
