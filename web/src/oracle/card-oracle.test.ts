@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test, type TestContext } from 'node:test'
 import type { Hit } from '#oracle/model.ts'
-import { REFRESH_DELAY, SEARCH_DELAY, searchSchedule, type Search } from './card-oracle.ts'
+import { findCards, REFRESH_DELAY, SEARCH_DELAY, searchSchedule, type Search } from './card-oracle.ts'
 
 const hit = ({ card }: { card: string }): Hit => ({
   card,
@@ -194,6 +194,49 @@ test(
       f.failed,
       ['deploy'],
       'the refresh of an answered query failed, so its results stay',
+    )
+  },
+)
+
+test(
+  'a card search asks the Hydra server for every workspace, live cards included',
+  async () => {
+    const sent: {
+      name: string
+      args: string[]
+    }[] = []
+    const hits = await findCards({
+      command: async ({
+        name,
+        args,
+      }) => {
+        sent.push({
+          name,
+          args,
+        })
+
+        return { hits: [hit({ card: 'task-1' })] }
+      },
+      query: 'deploy',
+      live: true,
+    })
+
+    assert.deepEqual(
+      sent,
+      [
+        {
+          name: 'oracle',
+          args: [
+            'deploy',
+            '',
+            'hydra',
+          ],
+        },
+      ],
+    )
+    assert.deepEqual(
+      hits,
+      [hit({ card: 'task-1' })],
     )
   },
 )
