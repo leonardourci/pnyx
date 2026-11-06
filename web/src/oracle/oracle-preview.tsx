@@ -35,6 +35,7 @@ import type { AskTarget } from './ask.ts'
 import { APPLIES, TYPE_LABELS, type Filter } from './filters.ts'
 import { ACTION_ICONS, type OracleAction, type OraclePanel } from './oracle-catalog.ts'
 import type { OracleResult } from './results.ts'
+import { snippetText } from './snippet-text.ts'
 
 const SNIPPET_SOURCES: Record<Kind, string> = {
   event: 'Update',
@@ -74,10 +75,10 @@ function Snippets({
             now,
           })}
           </span>
-          <span>{snippet.parts ? snippet.parts.map((
+          <span>{snippetText({ snippet }).map((
             part,
             index,
-          ) => part.matched ? <mark key={index}>{part.text}</mark> : part.text) : snippet.snippet}
+          ) => part.matched ? <mark key={index}>{part.text}</mark> : part.text)}
           </span>
         </p>
       ))}
