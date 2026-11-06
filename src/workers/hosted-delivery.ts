@@ -3,7 +3,7 @@ import { enqueueSteering } from './inbox.ts'
 import type { AgentRef } from './model.ts'
 import type { InputReceipt } from './provider.ts'
 import { decideReply } from './reply-rules.ts'
-import { INTERRUPTED, sessionId } from './session-attachments.ts'
+import { INTERRUPTED, sessionId, withoutInterrupted } from './session-attachments.ts'
 import { steeringHeld } from './steering.ts'
 import type { createSteeringDelivery } from './steering-delivery.ts'
 import type { createCompactionControl } from '#workers/compaction/control.ts'
@@ -230,7 +230,7 @@ export function createHostedDelivery({
           }
 
           if (card.attention.some(a => a.key === INTERRUPTED)) {
-            const attention = card.attention.filter(a => a.key !== INTERRUPTED)
+            const attention = withoutInterrupted({ attention: card.attention })
             const meta = {
               at: at(),
               actor,
