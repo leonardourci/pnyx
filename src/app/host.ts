@@ -59,7 +59,7 @@ import type { AgentRef, AgentSession, Attention } from '#workers/model.ts'
 import type { HydraAgentChange, HydraMessage } from '#hydra/model.ts'
 import { harnessControls } from '#workers/controls.ts'
 import { liveTask } from '#tasks/select.ts'
-import { INTERRUPTED, sessionId } from '#workers/session-attachments.ts'
+import { INTERRUPTED, sessionId, withoutInterrupted } from '#workers/session-attachments.ts'
 import { hydraAgentFolder } from './home-migration.ts'
 import { loadHydra } from './store.ts'
 import { readEvents } from './event-log.ts'
@@ -2006,8 +2006,9 @@ export function createHost({
                   state: writer.state,
                   key: HYDRA_CARD,
                   input: {
-                    attention: writer.state.cards[HYDRA_CARD]?.attention
-                      .filter(a => a.key !== INTERRUPTED) ?? [],
+                    attention: withoutInterrupted({
+                      attention: writer.state.cards[HYDRA_CARD]?.attention ?? [],
+                    }),
                   },
                   meta,
                 }),

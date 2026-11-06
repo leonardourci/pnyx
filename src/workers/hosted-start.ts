@@ -7,7 +7,7 @@ import type { AgentRef, AgentSession } from './model.ts'
 import type { Presence } from './presence.ts'
 import type { HostedSession, Provider } from './provider.ts'
 import { DEFAULT_PROVIDER, PROVIDERS, harnessOf, knownProvider } from './providers.ts'
-import { INTERRUPTED, sessionId } from './session-attachments.ts'
+import { sessionId, withoutInterrupted } from './session-attachments.ts'
 import { decideSession } from './sessions.ts'
 import { freeTask } from './start.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
@@ -301,7 +301,7 @@ export function createWorkerStarts({
           }
 
           // A marker left by an earlier agent belongs to it, not to the one starting now.
-          const attention = card.attention.filter(a => a.key !== INTERRUPTED)
+          const attention = withoutInterrupted({ attention: card.attention })
           const input = {
             ...(cwd !== card.folder ? { folder: cwd } : {}),
             ...(attention.length !== card.attention.length ? { attention } : {}),
