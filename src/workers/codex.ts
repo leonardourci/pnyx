@@ -74,6 +74,44 @@ const HIDDEN = [
   'startedAtMs',
 ]
 
+function approvalInput({
+  params,
+  item,
+  method,
+}: {
+  params: ObjectValue
+  item?: ObjectValue
+  method: string
+}): ObjectValue {
+  const input = Object.fromEntries(Object.entries(params).filter(([key]) => !HIDDEN.includes(key)))
+  const actions = Array.isArray(params.commandActions) ? params.commandActions : []
+  const parsed = actions.length === 1 ? object({ value: actions[0] }).command : undefined
+  const command = typeof parsed === 'string' && parsed.trim() ? parsed.trim() : params.command
+
+  if (command !== undefined) {
+    input.command = Array.isArray(command) ? command.join(' ') : command
+  }
+
+  const changes = item?.changes ?? params.changes
+
+  if (Array.isArray(changes)) {
+    input.paths = changes.flatMap(change => {
+      const path = object({ value: change }).path
+
+      return typeof path === 'string' && path.trim() ? [path.trim()] : []
+    })
+  }
+
+  delete input.commandActions
+  delete input.changes
+
+  if (method === 'item/permissions/requestApproval') {
+    input.scope = 'turn'
+  }
+
+  return input
+}
+
 // request_user_input questions; one without options takes typed text only.
 function userQuestions({ value }: { value: unknown }): (Question & { id: string })[] {
   return (Array.isArray(value) ? value : []).flatMap(raw => {
@@ -329,13 +367,11 @@ function connection({ child }: { child: ChildProcessWithoutNullStreams }) {
                 },
               })
               : undefined
-            const shown = Object.fromEntries(Object.entries(params)
-              .filter(([key]) => !HIDDEN.includes(key)))
-            const input = {
-              ...shown,
-              ...(method === 'item/permissions/requestApproval' ? { scope: 'turn' } : {}),
-              ...(item?.changes ? { changes: item.changes } : {}),
-            }
+            const input = approvalInput({
+              params,
+              item,
+              method,
+            })
             const nativeId = `${typeof id}:${id}`
             const answer = permission && params.threadId === activeThread ? permission({
               id: nativeId,
