@@ -29,6 +29,7 @@ import { COMMON, guard, integer, parse, type Output, summarize } from '#app/cli-
 import { commands } from '#app/cli.ts'
 import { requestEnv } from '#app/request-context.ts'
 import { isManagedTask } from '#tasks/select.ts'
+import { pendingPermissions } from './permission-rules.ts'
 
 const TRACKED: readonly EventType[] = [
   'task.queue',
@@ -303,8 +304,7 @@ export async function hydraCheck({
   })
 
   const state = loadHydra({ hydraId }).state
-  const requests = Object.values(state.cards).flatMap(card => (card.permissions ?? [])
-    .filter(p => p.status === 'pending')
+  const requests = Object.values(state.cards).flatMap(card => pendingPermissions({ card })
     .map(p => ({
       id: p.id,
       task: card.id,
