@@ -27,6 +27,7 @@ import { requestId } from '#workers/answers.ts'
 import type { Reply } from '#workers/model.ts'
 import { refreshDone } from '#tasks/retention-rules.ts'
 import { touch } from '#tasks/touch.ts'
+import { applyMemory } from '#memory/reduce.ts'
 
 function applyHydra({
   state,
@@ -174,21 +175,6 @@ function applyHydra({
         card,
         event,
       })
-    }
-
-    return true
-  }
-
-  if (event.type === 'hydra.memory') {
-    state.hydraMemory ??= {}
-
-    if (event.data.after === null) {
-      delete state.hydraMemory[event.data.key]
-    } else {
-      state.hydraMemory[event.data.key] = {
-        text: event.data.after,
-        at: event.at,
-      }
     }
 
     return true
@@ -679,6 +665,10 @@ function apply({
       event,
     })
     || applyHydra({
+      state,
+      event,
+    })
+    || applyMemory({
       state,
       event,
     })) {
