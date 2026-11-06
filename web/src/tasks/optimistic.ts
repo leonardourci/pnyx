@@ -263,15 +263,6 @@ export function optimisticState({
       ref: ref ?? '',
     })
 
-    const named = ({ flag }: { flag: string }) => {
-      const value = option({ flag })
-
-      return value === undefined ? undefined : columnByRef({
-        columns,
-        ref: value,
-      }) ?? null
-    }
-
     if (action === 'create') {
       const id = option({ flag: '--id' }), title = option({ flag: '--title' })
 
@@ -296,9 +287,14 @@ export function optimisticState({
       columns = columns.filter(c => c.id !== selected.id)
 
       if (action === 'reorder') {
-        const above = named({ flag: '--before' })
+        const before = option({ flag: '--before' })
+        const above = before ? columnByRef({
+          columns,
+          ref: before,
+        }) : undefined
 
-        if (above === null) {
+        // The server refuses a --before column it cannot find.
+        if (before && !above) {
           return state
         }
 
@@ -310,13 +306,18 @@ export function optimisticState({
       }
     }
 
-    const to = action === 'delete' ? named({ flag: '--to' }) : undefined
+    const to = action === 'delete' ? option({ flag: '--to' }) : undefined
+    const target = to ? columnByRef({
+      columns,
+      ref: to,
+    }) : undefined
 
-    if (to === null) {
+    // The server refuses a --to column it cannot find.
+    if (to && !target) {
       return state
     }
 
-    const fallback = to?.id ?? columns[0]?.id
+    const fallback = target?.id ?? columns[0]?.id
     const cards = action === 'delete' && selected && fallback ? Object.fromEntries(Object.entries(state.cards).map(([
       id,
       card,
