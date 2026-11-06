@@ -22,6 +22,7 @@ export function readTranscriptRecord({
     }
   }
 
+  // The same role a Claude record without a type gets; no reader matches it.
   return {
     role: 'undefined',
     messages: [],
