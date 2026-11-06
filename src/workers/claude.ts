@@ -1,6 +1,6 @@
 import { SESSION_TITLE, type Note, type SourceNote } from '#tasks/model.ts'
-import type { FoundSettings, TranscriptRecord, TranscriptReader, TranscriptTrace } from './provider.ts'
-import { foundSettings, onOff, transcriptString, transcriptText, transcriptCall } from './transcript-content.ts'
+import type { FoundSettings, TranscriptRecord, TranscriptReader } from './provider.ts'
+import { blockText, foundSettings, onOff, transcriptCall, transcriptString, transcriptText, transcriptTrace } from './transcript-content.ts'
 import { existsSync } from 'node:fs'
 // Loaded with the server, so a server waiting to restart after an upgrade never loads the newly installed SDK into its old code.
 import * as sdk from '@anthropic-ai/claude-agent-sdk'
@@ -1054,21 +1054,6 @@ function claudeTranscriptNotes({ record }: { record: unknown }): SourceNote[] {
   }
 }
 
-function claudeTranscriptText({ value }: { value: unknown }): string {
-  if (typeof value === 'string') {
-    return value
-  }
-
-  const block = object({ value })
-  const text = [
-    'text',
-    'input_text',
-    'output_text',
-  ].includes(String(block.type))
-
-  return text && typeof block.text === 'string' ? block.text : ''
-}
-
 export const readClaudeTranscript: TranscriptReader = ({
   record,
   subagent = false,
@@ -1104,7 +1089,7 @@ export const readClaudeTranscript: TranscriptReader = ({
     const texts = typeof content === 'string' ? [content] : blocks
     parsed.messages = transcriptText({
       at,
-      texts: texts.map(raw => ({ text: claudeTranscriptText({ value: raw }) })),
+      texts: texts.map(raw => ({ text: blockText({ value: raw }) })),
     })
   }
 
@@ -1117,21 +1102,14 @@ export const readClaudeTranscript: TranscriptReader = ({
     const thinking = block.type === 'thinking'
 
     if (tool || thinking) {
-      const kind = tool ? 'tool' : 'thinking'
-      const detail = block.thinking ?? block.summary ?? block.content ?? block.output ?? block.arguments ?? block.input ?? 'Recorded details unavailable'
-      const call = block.tool_use_id ?? block.call_id ?? block.id
-      const trace: TranscriptTrace = {
+      parsed.traces.push(transcriptTrace({
         index,
-        kind,
-        role: typeof block.name === 'string' ? block.name : kind,
-        text: typeof detail === 'string' ? detail : JSON.stringify(detail),
-      }
-
-      if (kind === 'tool' && typeof call === 'string') {
-        trace.call = call
-      }
-
-      parsed.traces.push(trace)
+        kind: tool ? 'tool' : 'thinking',
+        name: block.name,
+        detail: block.thinking ?? block.summary ?? block.content
+          ?? block.output ?? block.arguments ?? block.input,
+        call: block.tool_use_id ?? block.call_id ?? block.id,
+      }))
     }
 
     if (entry.isSidechain === true) {
@@ -1141,7 +1119,7 @@ export const readClaudeTranscript: TranscriptReader = ({
     if (block.type === 'tool_use' && typeof block.id === 'string') {
       parsed.calls.push(transcriptCall({
         id: block.id,
-        tool: typeof block.name === 'string' ? block.name : 'tool',
+        tool: block.name,
         input: object({ value: block.input }),
       }))
     }
