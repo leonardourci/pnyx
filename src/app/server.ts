@@ -1,26 +1,24 @@
-import { DEFAULT_HARNESS, HARNESSES } from '#workers/providers.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
 import { FOLLOW_POLL_MS } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
 import { createLatestFeed } from './latest-feed.ts'
 import { createServerClients } from './server-clients.ts'
+import { createCatalog } from '#app/server-commands/catalog.ts'
 import { createServerCommands } from '#app/server-commands/dispatch.ts'
 import { createServerRoutes } from './server-routes.ts'
 import { createServerTick } from './server-tick.ts'
 import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
-import { HYDRA_CARD } from '#hydra/identity.ts'
 import { wakeReasons } from '#hydra/wake-reasons.ts'
 import { createIndexSync } from '#oracle/index-sync.ts'
 import { watchHomes } from '#integrations/firstmate/cli.ts'
 import { resolveHome } from '#integrations/firstmate/home.ts'
-import { existsSync, mkdirSync, rmSync } from 'node:fs'
+import { existsSync, rmSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
 import { join } from 'node:path'
 import type { HydraEvent } from './model.ts'
-import type { Card } from '#tasks/model.ts'
 import { reduce } from './reducer.ts'
 import { hydraDir } from './home-migration.ts'
 import { heldHydra, holdHydra, loadHydra } from './store.ts'
@@ -124,56 +122,6 @@ export async function mountOwnedHydra({
     }),
     agents: () => agents,
   })
-
-  const catalogCard = ({
-    card,
-    provider,
-  }: {
-    card: Card
-    provider?: string
-  }): Card => {
-    if (card.id !== HYDRA_CARD) {
-      return card
-    }
-
-    const cwd = card.agent?.cwd ?? join(
-      dir,
-      'agent',
-    )
-
-    if (!card.agent?.cwd) {
-      mkdirSync(
-        cwd,
-        { recursive: true },
-      )
-    }
-
-    return {
-      ...card,
-      agent: {
-        ...card.agent,
-        sessionId: card.agent?.sessionId ?? '',
-        cwd,
-        provider: provider ?? card.agent?.provider ?? DEFAULT_HARNESS,
-      },
-    }
-  }
-
-  const warmCatalog = async () => {
-    const card = state.cards[HYDRA_CARD]
-
-    if (!card) {
-      return
-    }
-
-    await Promise.all(HARNESSES.map(provider => catalogIndex.read({
-      card: catalogCard({
-        card,
-        provider,
-      }),
-      projects: state.projects,
-    })))
-  }
 
   // The recorded Firstmate home is watched, and followed when it changes; given homes stay fixed.
   let firstmate: ReturnType<typeof watchHomes> | undefined
@@ -440,6 +388,17 @@ export async function mountOwnedHydra({
     state: () => state,
   })
 
+  const {
+    warmCatalog,
+    catalogReads,
+    catalogCommand,
+  } = createCatalog({
+    dir,
+    state: () => state,
+    catalogIndex,
+    agents,
+  })
+
   setImmediate(() => {
     if (!closed) {
       void warmCatalog().catch(error => console.error(
@@ -449,10 +408,7 @@ export async function mountOwnedHydra({
     }
   })
 
-  const {
-    runCommand,
-    catalogReads,
-  } = createServerCommands({
+  const { runCommand } = createServerCommands({
     hydraId,
     url,
     open,
@@ -462,8 +418,7 @@ export async function mountOwnedHydra({
     send,
     kick,
     agents,
-    catalogIndex,
-    catalogCard,
+    catalogCommand,
     historyIndex,
     hydraSubscribers,
     subscriptionMap,

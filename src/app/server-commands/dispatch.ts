@@ -2,8 +2,6 @@ import { AxiError } from 'axi-sdk-js'
 import { hydraConfig } from '#hydra/config.ts'
 import { hydraEvent } from '#hydra/hydra.ts'
 import { HYDRA_CARD } from '#hydra/identity.ts'
-import type { Catalog } from '#hydra/transcripts-catalog.ts'
-import type { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
 import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
 import { PASEO_HISTORY_CURSOR } from '#integrations/paseo/history.ts'
 import { workerError, type createIndexSync } from '#oracle/index-sync.ts'
@@ -11,7 +9,6 @@ import { search as oracleSearch } from '#oracle/search.ts'
 import { indexedThrough } from '#oracle/status.ts'
 import { HydraError } from '#store/errors.ts'
 import { nonblockingLocks } from '#store/storage.ts'
-import type { Card } from '#tasks/model.ts'
 import { findCard } from '#tasks/push-rules.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
@@ -33,6 +30,23 @@ const ORACLE_LIMIT = 100
 
 type ThreadSubscriptions = ReturnType<typeof createThreadSubscriptions>
 
+// A command the server answers itself: the tab that sent it, its id and arguments, and how to answer.
+export type CommandRequest = {
+  ws: HydraClient
+  id: string
+  args: string[]
+  send: ReturnType<typeof createServerClients>['send']
+  fail({
+    error,
+    code,
+    help,
+  }: {
+    error: string
+    code: string
+    help?: string[]
+  }): void
+}
+
 // The page's WebSocket commands: the ones the server answers itself, then any CLI command the page may run.
 export function createServerCommands({
   hydraId,
@@ -44,8 +58,7 @@ export function createServerCommands({
   send,
   kick,
   agents,
-  catalogIndex,
-  catalogCard,
+  catalogCommand,
   historyIndex,
   hydraSubscribers,
   subscriptionMap,
@@ -62,14 +75,13 @@ export function createServerCommands({
   send: ReturnType<typeof createServerClients>['send']
   kick(): void
   agents: ReturnType<typeof createHost>
-  catalogIndex: ReturnType<typeof createCatalogIndex>
-  catalogCard({
-    card,
-    provider,
-  }: {
-    card: Card
-    provider?: string
-  }): Card
+  catalogCommand({
+    ws,
+    id,
+    args,
+    fail,
+    send,
+  }: CommandRequest): void
   historyIndex: ReturnType<typeof createIndexSync>
   hydraSubscribers: WeakSet<HydraClient>
   subscriptionMap: ThreadSubscriptions['subscriptionMap']
@@ -77,11 +89,6 @@ export function createServerCommands({
   threadPage: ThreadSubscriptions['threadPage']
   startWorker: ReturnType<typeof createServerWorkers>['startWorker']
 }) {
-  const catalogReads = new WeakMap<HydraClient, {
-    scope: string
-    read: Promise<Catalog>
-  }>()
-
   const runCommand = ({
     ws,
     message,
@@ -250,81 +257,13 @@ export function createServerCommands({
               code: error instanceof HydraError ? error.code : 'CATALOG_UNAVAILABLE',
             }))
         } else if (name === 'catalog') {
-          if (args.length !== 1) {
-            throw new HydraError({
-              message: 'catalog expects a card',
-              code: 'VALIDATION_ERROR',
-            })
-          }
-
-          const card = findCard({
-            state: state(),
-            ref: args[0],
-          })
-          const config = hydraConfig({ state: state() })
-          const effective = effectiveDispatch()
-          const receiving = card.id === HYDRA_CARD
-            ? config.hydra.agent?.harness
-              ?? effective.dispatch.rules.hydra?.candidates[0]?.harness
-              ?? effective.dispatch.default[0]?.harness
-            : card.agent?.provider
-          const currentCard = catalogCard({
-            card,
-            provider: receiving,
-          })
-          const scope = JSON.stringify([
-            card.id,
-            receiving,
-            state().projectsRevision,
-          ])
-          let entry = catalogReads.get(ws)
-
-          if (entry?.scope !== scope) {
-            const previous = entry?.read.catch(() => undefined)
-            const next = {
-              scope,
-              read: Promise.resolve(previous).then(async () => {
-                const native = await agents.catalogCommands({
-                  card,
-                  provider: receiving,
-                })
-                const catalog = await catalogIndex.read({
-                  card: currentCard,
-                  projects: state().projects,
-                })
-
-                return {
-                  ...catalog,
-                  suggestions: [
-                    ...catalog.suggestions,
-                    ...native,
-                  ],
-                  provider: receiving,
-                }
-              }),
-            }
-            catalogReads.set(
-              ws,
-              entry = next,
-            )
-            void next.read.catch(() => undefined).finally(() => {
-              if (catalogReads.get(ws) === next) {
-                catalogReads.delete(ws)
-              }
-            })
-          }
-
-          void entry.read.then(catalog => send({
+          catalogCommand({
             ws,
-            message: {
-              type: 'receipt',
-              id,
-              catalog,
-            },
-          })).catch(() => fail({
-            error: 'Local catalog unavailable',
-            code: 'CATALOG_UNAVAILABLE',
-          }))
+            id,
+            args,
+            fail,
+            send,
+          })
         } else if (name === 'oracle') {
           if (args.length > 3 || (args[2] !== undefined && args[2] !== 'hydra')) {
             throw new HydraError({
@@ -899,8 +838,5 @@ export function createServerCommands({
     })
   }
 
-  return {
-    runCommand,
-    catalogReads,
-  }
+  return { runCommand }
 }
