@@ -3,29 +3,20 @@ import { DEFAULT_HARNESS, HARNESSES, knownHarness, providerIdOf } from '#workers
 import { nonblockingLocks } from '#store/storage.ts'
 import { commandTimeout } from './server-protocol.ts'
 import { startReviewTimer } from '#hydra/review-timer.ts'
-import { FOLLOW_POLL_MS, followPullRequests, needsPullRequestFollow } from '#tasks/delivery/follow.ts'
+import { FOLLOW_POLL_MS } from '#tasks/delivery/follow.ts'
 import { createSourceRunner } from '#task-sources/runner.ts'
-import { sourceDeadline } from '#task-sources/state.ts'
-import { advanceQueues } from '#workers/advance-queue.ts'
-import { QUEUE_POLL_MS } from '#workers/queue.ts'
-import { steeringToFollow } from '#workers/inbox-follow-up.ts'
-import { followUpReplies, repliesToFollow } from '#workers/reply-retry.ts'
 import { candidates, effectiveDispatch } from '#workers/dispatch-config.ts'
 import { harnessAccount } from '#workers/account-choice.ts'
 import { saveEventId, savedReceipt, type SaveCommand } from './save-receipts.ts'
 import { IMAGE_TYPES, MAX_IMAGE_BYTES, imageExtension, imageLine } from '#hydra/images.ts'
 import { hydraImageFile } from '#hydra/image-files.ts'
 import { systemReminderScheduler, type ReminderScheduler } from '#tasks/reminder-scheduler.ts'
-import { fireReminders } from '#tasks/fire-reminders.ts'
-import { reminderDeadline, waitingReminders } from '#tasks/reminders.ts'
+import { waitingReminders } from '#tasks/reminders.ts'
 import { listFolders } from '#projects/folders.ts'
-import { doneDeadline } from '#tasks/retention-rules.ts'
-import { readSettings } from '#settings/store.ts'
-import { hideDone } from '#tasks/retention.ts'
-import { settleDone, settles } from '#projects/copies.ts'
 import { THREAD_CURSOR } from '#hydra/transcripts-read.ts'
 import { createLatestFeed } from './latest-feed.ts'
 import { createServerClients } from './server-clients.ts'
+import { createServerTick } from './server-tick.ts'
 import { createThreadSubscriptions } from './thread-subscriptions.ts'
 import type { Catalog, CatalogLocations } from '#hydra/transcripts-catalog.ts'
 import { createCatalogIndex } from '#hydra/transcripts-catalog-index.ts'
@@ -44,9 +35,7 @@ import { resolveHome } from '#integrations/firstmate/home.ts'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs'
 import { watchPath, type PathWatch } from './watch.ts'
-import { background } from './background.ts'
 import { join } from 'node:path'
-import { ingestSpool } from '#integrations/hooks/ingest.ts'
 import type { HydraEvent } from './model.ts'
 import { HydraError } from '#store/errors.ts'
 import type { Card } from '#tasks/model.ts'
@@ -56,7 +45,7 @@ import { heldHydra, holdHydra, loadHydra } from './store.ts'
 import { saveSnapshot, withWriter } from './writer.ts'
 import { readEventsFrom } from './event-log.ts'
 import { spoolWrite } from './spool.ts'
-import { privateDir, spoolDir, spoolFiles } from '#store/storage.ts'
+import { privateDir, spoolDir } from '#store/storage.ts'
 import type { UpgradeStatus } from '#upgrade/model.ts'
 import { hydraIdentity, localToken, offerHost, socketPath } from './server-state.ts'
 import { createHydra, editHydra, listHydras } from './server-hydras.ts'
@@ -73,8 +62,6 @@ const ORACLE_LIMIT = 100
 export const RETRY_MS = 60_000
 export const UPGRADE_CHECK_MS = 24 * 60 * 60_000
 export const CREATION_POLL_MS = 1000
-// How often replies a route could not confirm are checked for a resend.
-const REPLY_POLL_MS = 30_000
 
 export async function mountOwnedHydra({
   hydraId,
@@ -365,18 +352,6 @@ export async function mountOwnedHydra({
     }
   }
 
-  let expiryTimer: ReturnType<typeof setTimeout> | undefined
-  let cancelReminder = () => {}
-  let queueRun: Promise<void> | undefined
-  let queueCheckedAt = 0
-  let queueNeedsRetry = false
-  let followRun: Promise<void> | undefined
-  let settling: Promise<void> | undefined
-  let followCheckedAt = 0
-  let replyRun: Promise<void> | undefined
-  let replyCheckedAt = 0
-  let scheduled = false
-
   const {
     startWorker,
     runWorker,
@@ -394,196 +369,22 @@ export async function mountOwnedHydra({
   })
   historyIndex.changed()
 
-  const kick = () => {
-    if (closed || scheduled) {
-      return
-    }
-
-    scheduled = true
-    setImmediate(() => {
-      scheduled = false
-
-      if (closed) {
-        return
-      }
-
-      let repliesPending = false
-
-      try {
-        if (spoolFiles({ dir }).length > 0) {
-          ingestSpool({ hydraId })
-        }
-
-        pump()
-
-        if (!queueRun && Date.now() - queueCheckedAt >= QUEUE_POLL_MS) {
-          queueCheckedAt = Date.now()
-          queueRun = (async () => {
-            try {
-              queueNeedsRetry = await advanceQueues({
-                hydraId,
-                active: () => !closed,
-                state,
-              })
-            } catch (error) {
-              queueNeedsRetry = true
-              console.error(`pnyx-axi queue: ${(error as Error).message}`)
-            } finally {
-              queueRun = undefined
-              kick()
-            }
-          })()
-        }
-
-        const following = needsPullRequestFollow({ state })
-
-        if (following && !followRun && Date.now() - followCheckedAt >= followDelay) {
-          followCheckedAt = Date.now()
-          followRun = (async () => {
-            try {
-              await followPullRequests({
-                hydraId,
-                active: () => !closed,
-              })
-            } catch (error) {
-              console.error(`pnyx-axi follow: ${(error as Error).message}`)
-            } finally {
-              followRun = undefined
-              kick()
-            }
-          })()
-        }
-
-        const replyCheckDue = Date.now() - replyCheckedAt >= REPLY_POLL_MS
-        repliesPending = repliesToFollow({ state }) || steeringToFollow({ state })
-
-        if (!replyRun && repliesPending && replyCheckDue) {
-          replyCheckedAt = Date.now()
-          replyRun = (async () => {
-            try {
-              if (steeringToFollow({ state })) {
-                await runWorker({
-                  args: [
-                    'inbox-follow',
-                    hydraId,
-                  ],
-                })
-              }
-
-              if (closed) {
-                return
-              }
-
-              await followUpReplies({
-                hydraId,
-                tried: triedResends,
-                resend: resendReply,
-                unconfirmed: agents.unconfirmed,
-              })
-            } catch (error) {
-              if (!closed) {
-                console.error(`pnyx-axi replies: ${(error as Error).message}`)
-              }
-            } finally {
-              replyRun = undefined
-              kick()
-            }
-          })()
-        }
-
-        sources.reconcile()
-        background({
-          name: 'review',
-          run: review.check,
-        })
-        fireReminders({
-          hydraId,
-          at: new Date(reminderScheduler.now()).toISOString(),
-          state,
-        })
-        pump()
-        const deadline = doneDeadline({
-          state,
-          hours: readSettings().settings.doneAfterHours,
-        })
-
-        if (deadline !== undefined && deadline <= Date.now()) {
-          hideDone({ hydraId })
-          pump()
-        }
-
-        // One settle at a time; it reads the copies with git, off the event loop.
-        if (!settling && Object.values(state.cards).some(card => settles({ card }))) {
-          const settle = async () => {
-            try {
-              await settleDone({ hydraId })
-            } catch (error) {
-              console.error(`pnyx-axi serve: settling copies: ${(error as Error).message}`)
-
-              return
-            } finally {
-              settling = undefined
-            }
-
-            pump()
-          }
-
-          settling = settle()
-        }
-      } catch (error) {
-        // A held lock or a damaged log; the next change retries.
-        console.error(`pnyx-axi serve: ${(error as Error).message}`)
-      } finally {
-        clearTimeout(expiryTimer)
-        cancelReminder()
-        const reminder = reminderDeadline({ state })
-
-        if (reminder !== undefined) {
-          cancelReminder = reminderScheduler.schedule({
-            at: reminder,
-            fire: kick,
-          })
-        }
-
-        const deadlines = [
-          sourceDeadline({ state }),
-          sources.deadline(),
-          doneDeadline({
-            state,
-            hours: readSettings().settings.doneAfterHours,
-          }),
-          ...(!queueRun && (queueNeedsRetry || Object.values(state.cards).some(c => c.queue))
-            ? [queueCheckedAt + QUEUE_POLL_MS] : []),
-        ]
-          .filter((at): at is number => at !== undefined)
-
-        if (!followRun && needsPullRequestFollow({ state })) {
-          deadlines.push(followCheckedAt + followDelay)
-        }
-
-        const replyFollowUpDue = !replyRun && repliesPending
-
-        if (replyFollowUpDue) {
-          deadlines.push(replyCheckedAt + REPLY_POLL_MS)
-        }
-
-        const deadline = deadlines.length ? Math.min(...deadlines) : undefined
-
-        if (deadline !== undefined) {
-          expiryTimer = setTimeout(
-            kick,
-            Math.max(
-              100,
-              Math.min(
-                60_000,
-                deadline - Date.now(),
-              ),
-            ),
-          )
-        }
-      }
-    })
-  }
+  const tick = createServerTick({
+    hydraId,
+    dir,
+    state: () => state,
+    closed: () => closed,
+    pump,
+    followDelay,
+    reminderScheduler,
+    runWorker,
+    triedResends,
+    resendReply,
+    agents: () => agents,
+    sources: () => sources,
+    review: () => review,
+  })
+  const { kick } = tick
 
   const authorized = ({ given }: { given: string | null }) => {
     const bytes = Buffer.from(given ?? '')
@@ -1807,10 +1608,10 @@ export async function mountOwnedHydra({
     historyIndex.stop()
 
     await Promise.all([
-      queueRun,
-      replyRun,
-      followRun,
-      settling,
+      tick.queueRun,
+      tick.replyRun,
+      tick.followRun,
+      tick.settling,
       joinWorkers(),
     ])
     await sources.close()
@@ -1851,8 +1652,8 @@ export async function mountOwnedHydra({
     transcriptPolls.clear()
     threadSubscriptions.forEach(map => map.clear())
     clearTimeout(feed.latestTimer)
-    clearTimeout(expiryTimer)
-    cancelReminder()
+    clearTimeout(tick.expiryTimer)
+    tick.cancelReminder()
 
     for (const timer of threadTimers.values()) {
       clearTimeout(timer)
